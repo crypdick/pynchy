@@ -79,6 +79,46 @@ def _optional_positive_int(value: object, field: str) -> int | None:
     return _positive_int(value, field)
 
 
+async def _run_computer_use_action(
+    binary: str,
+    source_group: str | None,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    if source_group is None:
+        raise RuntimeError("Missing or invalid source group for computer_use request.")
+
+    action = _action(data)
+    if action == "wait":
+        seconds = _cua_action_and_payload(action, data)[1]["seconds"]
+        await asyncio.sleep(seconds)
+        return {"result": {"action": action, "output": f"waited {seconds:g}s"}}
+
+    cua_action, payload = _cua_action_and_payload(action, data)
+    screenshot_path = None
+    if action == "capture":
+        screenshot_path = _artifact_path(source_group=source_group, label=data.get("label"))
+
+    result = await _run_cua(
+        binary=binary,
+        action=cua_action,
+        payload=payload,
+        screenshot_path=screenshot_path,
+    )
+    result["action"] = action
+
+    if data.get("capture_after") is True and {"pid", "window_id"} <= payload.keys():
+        after_path = _artifact_path(source_group=source_group, label=f"after-{action}")
+        after = await _run_cua(
+            binary=binary,
+            action="get_window_state",
+            payload={"pid": payload["pid"], "window_id": payload["window_id"]},
+            screenshot_path=after_path,
+        )
+        result["after"] = after
+
+    return {"result": result}
+
+
 def _action(data: dict[str, Any]) -> str:
     action = data.get("action")
     if not isinstance(action, str) or action not in _VALID_ACTIONS:
@@ -230,38 +270,9 @@ async def _handle_computer_use(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     try:
-        action = _action(data)
-        if action == "wait":
-            seconds = _cua_action_and_payload(action, data)[1]["seconds"]
-            await asyncio.sleep(seconds)
-            return {"result": {"action": action, "output": f"waited {seconds:g}s"}}
-
-        cua_action, payload = _cua_action_and_payload(action, data)
-        screenshot_path = None
-        if action == "capture":
-            screenshot_path = _artifact_path(source_group=source_group, label=data.get("label"))
-
-        result = await _run_cua(
-            binary=binary,
-            action=cua_action,
-            payload=payload,
-            screenshot_path=screenshot_path,
-        )
-        result["action"] = action
-
-        if data.get("capture_after") is True and {"pid", "window_id"} <= payload.keys():
-            after_path = _artifact_path(source_group=source_group, label=f"after-{action}")
-            after = await _run_cua(
-                binary=binary,
-                action="get_window_state",
-                payload={"pid": payload["pid"], "window_id": payload["window_id"]},
-                screenshot_path=after_path,
-            )
-            result["after"] = after
+        return await _run_computer_use_action(binary, source_group, data)
     except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
-    else:
-        return {"result": result}
 
 
 class ComputerUsePlugin:

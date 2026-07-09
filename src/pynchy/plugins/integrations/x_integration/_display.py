@@ -7,6 +7,7 @@ the lifetime of this plugin on headless hosts.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import os
 import shutil
 import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
@@ -53,6 +54,47 @@ def _resolve_executables(*names: str) -> dict[str, str]:
     return resolved
 
 
+def _start_vnc_layer_processes(
+    tool_paths: dict[str, str],
+) -> list[subprocess.Popen[bytes]]:
+    procs: list[subprocess.Popen[bytes]] = []
+    with contextlib.ExitStack() as stack:
+        x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
+            [
+                tool_paths["x11vnc"],
+                "-display",
+                XVFB_DISPLAY,
+                "-forever",
+                "-nopw",
+                "-rfbport",
+                str(_VNC_PORT),
+                "-quiet",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        procs.append(x11vnc)
+        stack.callback(stop_procs, procs)
+        time.sleep(0.5)
+        if x11vnc.poll() is not None:
+            raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
+
+        ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
+        if Path(_NOVNC_WEB_DIR).is_dir():
+            ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
+        websockify_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved path.
+            ws_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        procs.append(websockify_proc)
+        time.sleep(0.5)
+        if websockify_proc.poll() is not None:
+            raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
+        stack.pop_all()
+    return procs
+
+
 def ensure_xvfb() -> None:
     """Ensure Xvfb is running. X needs headed mode to avoid bot detection.
 
@@ -96,45 +138,8 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
         raise RuntimeError(
             f"VNC layer requires: {exc}. Install with: apt install x11vnc novnc"
         ) from exc
-    procs: list[subprocess.Popen[bytes]] = []
-    try:
-        x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
-            [
-                tool_paths["x11vnc"],
-                "-display",
-                XVFB_DISPLAY,
-                "-forever",
-                "-nopw",
-                "-rfbport",
-                str(_VNC_PORT),
-                "-quiet",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(x11vnc)
-        time.sleep(0.5)
-        if x11vnc.poll() is not None:
-            raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
-
-        ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
-        if Path(_NOVNC_WEB_DIR).is_dir():
-            ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        websockify_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved path.
-            ws_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        procs.append(websockify_proc)
-        time.sleep(0.5)
-        if websockify_proc.poll() is not None:
-            raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
-
-    except Exception:  # noqa: BLE001, RUF100 - browser-layer startup cleanup is best-effort.
-        stop_procs(procs)
-        raise
-    else:
-        return procs, f"http://HOST:{_NOVNC_PORT}/vnc.html?autoconnect=true"
+    procs = _start_vnc_layer_processes(tool_paths)
+    return procs, f"http://HOST:{_NOVNC_PORT}/vnc.html?autoconnect=true"
 
 
 def cleanup_xvfb() -> None:

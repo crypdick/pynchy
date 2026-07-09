@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 import subprocess  # noqa: S404, TC003, RUF100 - trusted display helper handles and beartype runtime annotation binding.
 from typing import TYPE_CHECKING, Any
@@ -40,8 +41,6 @@ else:
 
 async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
     """Launch a headed browser for manual X login. Saves the session."""
-    from playwright.async_api import async_playwright
-
     timeout_seconds = data.get("timeout_seconds", 120)
     vnc_procs: list[subprocess.Popen[bytes]] = []
     novnc_url: str | None = None
@@ -51,66 +50,67 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
         ensure_xvfb()
         if need_vnc:
             vnc_procs, novnc_url = start_vnc_layer()
-
-        x_profile = profile_dir("x")
-        cleanup_lock_files(x_profile)
-
-        async with async_playwright() as pw:
-            context = await pw.chromium.launch_persistent_context(
-                **launch_kwargs(x_profile),
-            )
-            page = context.pages[0] if context.pages else await context.new_page()
-
-            await page.goto(
-                "https://x.com/login",
-                timeout=TIMEOUTS["navigation"],
-                wait_until="domcontentloaded",
-            )
-            await page.wait_for_timeout(TIMEOUTS["page_load"])
-
-            # Already logged in?
-            if await is_visible(page.locator(SEL["account_switcher"])):
-                await context.close()
-                result: dict[str, Any] = {
-                    "status": "ok",
-                    "message": f"Already logged in to X. Profile saved at {x_profile}",
-                }
-                if novnc_url:
-                    result["novnc_url"] = novnc_url
-                return {"result": result}
-
-            # Wait for human to complete login
-            try:
-                await page.wait_for_selector(
-                    SEL["account_switcher"],
-                    timeout=timeout_seconds * 1000,
-                )
-            except Exception:  # noqa: BLE001, RUF100  # allow: exception-handling - timeout becomes a caller-facing error.
-                await context.close()
-                return {
-                    "error": (
-                        f"Login not completed within {timeout_seconds}s. "
-                        "Try again with a longer timeout."
-                    )
-                }
-
-            await context.close()
-
-        result = {
-            "status": "ok",
-            "profile_dir": str(x_profile),
-            "message": "X session saved. Future tool calls will use this session.",
-        }
-        if novnc_url:
-            result["novnc_url"] = novnc_url
+        return await _run_x_session_setup(timeout_seconds, novnc_url)
     except Exception as exc:  # noqa: BLE001, RUF100 - X session setup failures are surfaced to the caller.
         logger.error("X session setup failed", error=str(exc))
         return {"error": str(exc)}
-    else:
-        return {"result": result}
 
     finally:
         stop_procs(vnc_procs)
+
+
+async def _run_x_session_setup(timeout_seconds: int, novnc_url: str | None) -> dict[str, Any]:
+    from playwright.async_api import async_playwright
+
+    x_profile = profile_dir("x")
+    cleanup_lock_files(x_profile)
+
+    async with async_playwright() as pw, contextlib.AsyncExitStack() as stack:
+        context = await pw.chromium.launch_persistent_context(
+            **launch_kwargs(x_profile),
+        )
+        stack.push_async_callback(context.close)
+        page = context.pages[0] if context.pages else await context.new_page()
+
+        await page.goto(
+            "https://x.com/login",
+            timeout=TIMEOUTS["navigation"],
+            wait_until="domcontentloaded",
+        )
+        await page.wait_for_timeout(TIMEOUTS["page_load"])
+
+        # Already logged in?
+        if await is_visible(page.locator(SEL["account_switcher"])):
+            result: dict[str, Any] = {
+                "status": "ok",
+                "message": f"Already logged in to X. Profile saved at {x_profile}",
+            }
+            if novnc_url:
+                result["novnc_url"] = novnc_url
+            return {"result": result}
+
+        # Wait for human to complete login
+        try:
+            await page.wait_for_selector(
+                SEL["account_switcher"],
+                timeout=timeout_seconds * 1000,
+            )
+        except Exception:  # noqa: BLE001, RUF100  # allow: exception-handling - timeout becomes a caller-facing error.
+            return {
+                "error": (
+                    f"Login not completed within {timeout_seconds}s. "
+                    "Try again with a longer timeout."
+                )
+            }
+
+    result = {
+        "status": "ok",
+        "profile_dir": str(x_profile),
+        "message": "X session saved. Future tool calls will use this session.",
+    }
+    if novnc_url:
+        result["novnc_url"] = novnc_url
+    return {"result": result}
 
 
 @service_tool

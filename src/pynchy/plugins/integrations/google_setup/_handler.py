@@ -157,8 +157,6 @@ async def _run_interactive_setup(
     profile_name: str, kp: Path, api_ids: list[str], scopes: str, data: dict[str, Any]
 ) -> dict[str, Any]:
     """Drive the browser through GCP project/API/OAuth setup for profile_name."""
-    from playwright.async_api import async_playwright
-
     steps_done: list[str] = []
     setup = _google_interactive_setup(profile_name, kp, api_ids, scopes, data)
     vnc_procs: list[subprocess.Popen[bytes]] = []
@@ -168,48 +166,7 @@ async def _run_interactive_setup(
     try:
         if not has_display():
             vnc_procs, novnc_url = start_virtual_display()
-
-        async with async_playwright() as pw:
-            context = await pw.chromium.launch_persistent_context(
-                user_data_dir=str(setup.profile_dir),
-                executable_path=chrome_path(),
-                headless=False,
-                accept_downloads=True,
-                viewport={"width": 1280, "height": 720},
-                timeout=60_000,
-            )
-            context.set_default_navigation_timeout(60_000)
-            context.set_default_timeout(15_000)
-            page = context.pages[0] if context.pages else await context.new_page()
-
-            # Navigate to GCP Console (triggers login if needed)
-            await page.goto(GCP_CONSOLE, wait_until="domcontentloaded")
-            await page.wait_for_timeout(5000)
-            await wait_for_login(page)
-            await dismiss_modals(page)
-
-            # 1. Ensure GCP project
-            await ensure_project(page, setup.project_id)
-            steps_done.append(f"GCP project '{setup.project_id}' ready")
-
-            # 2. Enable required APIs
-            for api_id in setup.api_ids:
-                await ensure_api(page, setup.project_id, api_id)
-                steps_done.append(f"API '{api_id}' enabled")
-
-            # 3. Ensure OAuth consent + credentials
-            steps_done.append(
-                await _ensure_oauth_credentials(page, setup.project_id, kp, setup.profile_name)
-            )
-
-            # 4. Run OAuth flow
-            tokens = await run_oauth_flow(page, keys_path(setup.profile_name), setup.scopes)
-            save_credentials_to_profile(tokens, setup.profile_name)
-            steps_done.append("OAuth tokens obtained")
-
-            await context.close()
-
-        return {"result": _interactive_success_result(setup, steps_done, novnc_url)}
+        return await _run_interactive_setup_body(setup, kp, steps_done, novnc_url)
 
     except Exception as exc:  # noqa: BLE001, RUF100 - interactive setup failure is converted into a caller-facing error.
         logger.error("setup_google failed", profile=profile_name, error=str(exc))
@@ -221,6 +178,56 @@ async def _run_interactive_setup(
             os.environ["DISPLAY"] = original_display
         elif "DISPLAY" in os.environ and vnc_procs:
             del os.environ["DISPLAY"]
+
+
+async def _run_interactive_setup_body(
+    setup: _GoogleInteractiveSetup,
+    kp: Path,
+    steps_done: list[str],
+    novnc_url: str | None,
+) -> dict[str, Any]:
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw:
+        context = await pw.chromium.launch_persistent_context(
+            user_data_dir=str(setup.profile_dir),
+            executable_path=chrome_path(),
+            headless=False,
+            accept_downloads=True,
+            viewport={"width": 1280, "height": 720},
+            timeout=60_000,
+        )
+        context.set_default_navigation_timeout(60_000)
+        context.set_default_timeout(15_000)
+        page = context.pages[0] if context.pages else await context.new_page()
+
+        # Navigate to GCP Console (triggers login if needed)
+        await page.goto(GCP_CONSOLE, wait_until="domcontentloaded")
+        await page.wait_for_timeout(5000)
+        await wait_for_login(page)
+        await dismiss_modals(page)
+
+        # 1. Ensure GCP project
+        await ensure_project(page, setup.project_id)
+        steps_done.append(f"GCP project '{setup.project_id}' ready")
+
+        # 2. Enable required APIs
+        for api_id in setup.api_ids:
+            await ensure_api(page, setup.project_id, api_id)
+            steps_done.append(f"API '{api_id}' enabled")
+
+        # 3. Ensure OAuth consent + credentials
+        steps_done.append(
+            await _ensure_oauth_credentials(page, setup.project_id, kp, setup.profile_name)
+        )
+
+        # 4. Run OAuth flow
+        tokens = await run_oauth_flow(page, keys_path(setup.profile_name), setup.scopes)
+        save_credentials_to_profile(tokens, setup.profile_name)
+        steps_done.append("OAuth tokens obtained")
+        await context.close()
+
+    return {"result": _interactive_success_result(setup, steps_done, novnc_url)}
 
 
 def _google_interactive_setup(

@@ -19,6 +19,7 @@ policy enforcement.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 from dataclasses import dataclass
@@ -193,8 +194,6 @@ async def _handle_refresh_slack_tokens(data: dict[str, Any]) -> dict[str, Any]:
 
 async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
     """Launch a headed browser for manual Slack login. Saves the session."""
-    from playwright.async_api import async_playwright
-
     request = _parse_slack_setup_request(data)
     if request is None:
         return {"error": "workspace_name is required"}
@@ -206,38 +205,7 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
     try:
         if not has_display():
             vnc_procs, novnc_url = start_virtual_display()
-
-        async with async_playwright() as pw:
-            context = await pw.chromium.launch_persistent_context(
-                **_launch_kwargs(request.profile, headless=False),
-            )
-            page = context.pages[0] if context.pages else await context.new_page()
-
-            await page.goto(request.workspace_url, wait_until="networkidle")
-
-            # Already logged in?
-            if "/client/" in page.url:
-                await context.close()
-                return {"result": _already_logged_in_result(request.profile, novnc_url)}
-
-            # Wait for the human to complete login
-            try:
-                await page.wait_for_url(
-                    re.compile(r"/client/"),
-                    timeout=request.timeout_seconds * 1000,
-                )
-            except Exception as exc:  # noqa: BLE001, RUF100 - login timeout handling is caller-facing.
-                logger.warning(
-                    "Slack login not completed before timeout",
-                    timeout_seconds=request.timeout_seconds,
-                    error=str(exc),
-                )
-                await context.close()
-                return _timeout_result(request.timeout_seconds, novnc_url)
-
-            await context.close()
-
-        return {"result": _saved_session_result(request, novnc_url)}
+        return await _run_slack_session_setup(request, novnc_url)
 
     except Exception as exc:  # noqa: BLE001, RUF100 - session setup failures are surfaced to the caller.
         logger.error("Slack session setup failed", error=str(exc))
@@ -249,6 +217,42 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
             os.environ["DISPLAY"] = original_display
         elif "DISPLAY" in os.environ and vnc_procs:
             del os.environ["DISPLAY"]
+
+
+async def _run_slack_session_setup(
+    request: _SlackSetupRequest,
+    novnc_url: str | None,
+) -> dict[str, Any]:
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as pw, contextlib.AsyncExitStack() as stack:
+        context = await pw.chromium.launch_persistent_context(
+            **_launch_kwargs(request.profile, headless=False),
+        )
+        stack.push_async_callback(context.close)
+        page = context.pages[0] if context.pages else await context.new_page()
+
+        await page.goto(request.workspace_url, wait_until="networkidle")
+
+        # Already logged in?
+        if "/client/" in page.url:
+            return {"result": _already_logged_in_result(request.profile, novnc_url)}
+
+        # Wait for the human to complete login
+        try:
+            await page.wait_for_url(
+                re.compile(r"/client/"),
+                timeout=request.timeout_seconds * 1000,
+            )
+        except Exception as exc:  # noqa: BLE001, RUF100 - login timeout handling is caller-facing.
+            logger.warning(
+                "Slack login not completed before timeout",
+                timeout_seconds=request.timeout_seconds,
+                error=str(exc),
+            )
+            return _timeout_result(request.timeout_seconds, novnc_url)
+
+    return {"result": _saved_session_result(request, novnc_url)}
 
 
 def _parse_slack_setup_request(data: dict[str, Any]) -> _SlackSetupRequest | None:

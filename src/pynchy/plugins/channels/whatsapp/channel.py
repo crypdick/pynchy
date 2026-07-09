@@ -271,17 +271,21 @@ class WhatsAppChannel:
                     return
         try:
             groups = await self._client.get_joined_groups()
-            count = 0
-            for group in groups:
-                name = group.GroupName.Name
-                if name:
-                    group_jid = Jid2String(group.JID)
-                    await update_chat_name(group_jid, name)
-                    count += 1
+            count = await self._apply_group_metadata(groups)
             await set_last_group_sync()
             logger.info("Group metadata synced", count=count)
         except Exception as err:  # noqa: BLE001, RUF100 - group sync is best-effort background maintenance.
             logger.error("Failed to sync group metadata", error=str(err))
+
+    async def _apply_group_metadata(self, groups: list[Any]) -> int:
+        count = 0
+        for group in groups:
+            name = group.GroupName.Name
+            if name:
+                group_jid = Jid2String(group.JID)
+                await update_chat_name(group_jid, name)
+                count += 1
+        return count
 
     async def _periodic_group_sync(self) -> None:
         while True:

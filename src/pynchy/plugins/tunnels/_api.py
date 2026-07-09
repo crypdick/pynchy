@@ -40,6 +40,26 @@ def _is_valid_tunnel_provider(candidate: Any) -> bool:
     )
 
 
+def _check_tunnel_provider(t: TunnelProvider) -> str | None:
+    try:
+        if not t.is_available():
+            logger.info("Tunnel not available on this host", tunnel=t.name)
+            return None
+        if t.is_connected():
+            logger.info("Tunnel connected", tunnel=t.name, status=t.status_summary())
+            return t.name
+        logger.warning(
+            "Tunnel not connected",
+            tunnel=t.name,
+            status=t.status_summary(),
+        )
+    except Exception as exc:  # noqa: BLE001, RUF100 - tunnel provider checks are best-effort plugin isolation.
+        logger.warning("Tunnel check failed", tunnel=t.name, err=str(exc))
+        return None
+    else:
+        return None
+
+
 def check_tunnels(pm: pluggy.PluginManager) -> None:
     """Check all registered tunnel providers, warn if none connected.
 
@@ -55,21 +75,9 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
 
     connected: list[str] = []
     for t in tunnels:
-        try:
-            if not t.is_available():
-                logger.info("Tunnel not available on this host", tunnel=t.name)
-                continue
-            if t.is_connected():
-                logger.info("Tunnel connected", tunnel=t.name, status=t.status_summary())
-                connected.append(t.name)
-            else:
-                logger.warning(
-                    "Tunnel not connected",
-                    tunnel=t.name,
-                    status=t.status_summary(),
-                )
-        except Exception as exc:  # noqa: BLE001, RUF100 - tunnel provider checks are best-effort plugin isolation.
-            logger.warning("Tunnel check failed", tunnel=t.name, err=str(exc))
+        tunnel_name = _check_tunnel_provider(t)
+        if tunnel_name is not None:
+            connected.append(tunnel_name)
 
     if not connected:
         logger.warning(

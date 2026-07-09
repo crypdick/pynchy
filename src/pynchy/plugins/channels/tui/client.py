@@ -199,30 +199,33 @@ class PynchyTUI(App[None]):
         connected_before = False
         while True:
             try:
-                async with self._session.get(
-                    f"{self._base_url}/api/events",
-                    headers={"Accept": "text/event-stream"},
-                    timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
-                ) as resp:
-                    if connected_before and self._active_jid:
-                        # Reconnected after a drop — reload messages to fill the gap
-                        await self._switch_to_group(self._active_jid)
-                        await self._update_status()
-                    connected_before = True
-                    async for line in resp.content:
-                        decoded = line.decode("utf-8").strip()
-                        if not decoded.startswith("data: "):
-                            continue
-                        try:
-                            event = json.loads(decoded[6:])
-                        except json.JSONDecodeError:
-                            continue
-                        self._handle_sse_event(event)
+                connected_before = await self._consume_sse_stream(connected_before=connected_before)
             except (aiohttp.ClientError, TimeoutError):
                 # Reconnect after a brief pause
                 await asyncio.sleep(2)
             except asyncio.CancelledError:
                 return
+
+    async def _consume_sse_stream(self, *, connected_before: bool) -> bool:
+        async with self._session.get(
+            f"{self._base_url}/api/events",
+            headers={"Accept": "text/event-stream"},
+            timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
+        ) as resp:
+            if connected_before and self._active_jid:
+                # Reconnected after a drop — reload messages to fill the gap
+                await self._switch_to_group(self._active_jid)
+                await self._update_status()
+            async for line in resp.content:
+                decoded = line.decode("utf-8").strip()
+                if not decoded.startswith("data: "):
+                    continue
+                try:
+                    event = json.loads(decoded[6:])
+                except json.JSONDecodeError:
+                    continue
+                self._handle_sse_event(event)
+        return True
 
     def _handle_sse_event(self, event: dict[str, Any]) -> None:
         message = self._message_event(event)
