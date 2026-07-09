@@ -60,7 +60,7 @@ class SlackAllowlist:
                 err=str(exc),
             )
 
-    async def _sync_allowed_channels(self) -> None:
+    async def sync_allowed_channels(self) -> None:
         ch = self._channel
         configured_chat_names = ch.configured_chat_names
         if not configured_chat_names:
@@ -89,6 +89,9 @@ class SlackAllowlist:
             connection=ch.connection_name,
             count=ch.allowed_channel_count(),
         )
+
+    async def _sync_allowed_channels(self) -> None:
+        await self.sync_allowed_channels()
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         """Resolve a configured chat name to a Slack JID."""

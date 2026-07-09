@@ -143,8 +143,20 @@ class SlackChannel:
         return self._connection_name
 
     @property
+    def bot_token(self) -> str:
+        return self._bot_token
+
+    @property
+    def app_token(self) -> str:
+        return self._app_token
+
+    @property
     def slack_app(self) -> Any:
         return self._app
+
+    @slack_app.setter
+    def slack_app(self, app: Any) -> None:
+        self._app = app
 
     def require_slack_app(self) -> Any:
         if self._app is None:
@@ -152,8 +164,52 @@ class SlackChannel:
         return self._app
 
     @property
+    def handler(self) -> Any:
+        return self._handler
+
+    @handler.setter
+    def handler(self, handler: Any) -> None:
+        self._handler = handler
+
+    @property
+    def handler_task(self) -> asyncio.Task[None] | None:
+        return self._handler_task
+
+    @handler_task.setter
+    def handler_task(self, task: asyncio.Task[None] | None) -> None:
+        self._handler_task = task
+
+    @property
+    def reconnect_task(self) -> asyncio.Task[None] | None:
+        return self._reconnect_task
+
+    @reconnect_task.setter
+    def reconnect_task(self, task: asyncio.Task[None] | None) -> None:
+        self._reconnect_task = task
+
+    @property
     def bot_user_id(self) -> str:
         return self._bot_user_id
+
+    @bot_user_id.setter
+    def bot_user_id(self, user_id: str) -> None:
+        self._bot_user_id = user_id
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    @connected.setter
+    def connected(self, connected: bool) -> None:
+        self._connected = connected
+
+    @property
+    def shutting_down(self) -> bool:
+        return self._shutting_down
+
+    @shutting_down.setter
+    def shutting_down(self, shutting_down: bool) -> None:
+        self._shutting_down = shutting_down
 
     @property
     def on_ask_user_answer(self) -> Callable[[str, dict[str, Any]], None] | None:
@@ -192,6 +248,9 @@ class SlackChannel:
         self._seen_ts[ts] = now
         return False
 
+    async def sync_allowed_channels(self) -> None:
+        await self.allowlist.sync_allowed_channels()
+
     @property
     def allow_create(self) -> bool:
         return self._allow_create
@@ -225,9 +284,6 @@ class SlackChannel:
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         return await self.allowlist.resolve_chat_jid(chat_name)
-
-    def _register_allowed_channel(self, name: str, channel_id: str) -> None:
-        self.register_allowed_channel(name, channel_id)
 
     def _is_allowed_channel(self, channel_id: str) -> bool:
         return self.is_allowed_channel(channel_id)

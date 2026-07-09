@@ -87,8 +87,8 @@ def _make_channel(
         on_chat_metadata=on_chat_metadata or MagicMock(),
     )
     # Pre-register a couple of channel IDs for allowlist-dependent tests.
-    ch._register_allowed_channel("general", "C12345")
-    ch._register_allowed_channel("general", "C1")
+    ch.register_allowed_channel("general", "C12345")
+    ch.register_allowed_channel("general", "C1")
     return ch
 
 
@@ -119,14 +119,14 @@ class TestSlackChannelDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_sets_connected_false(self) -> None:
         ch = _make_channel()
-        ch._connected = True
-        ch._handler = MagicMock()
-        ch._handler.close_async = AsyncMock()
-        ch._handler_task = None
+        ch.connected = True
+        ch.handler = MagicMock()
+        ch.handler.close_async = AsyncMock()
+        ch.handler_task = None
 
         await ch.disconnect()
 
-        assert ch.is_connected() is False
+        assert ch.connected is False
 
 
 class TestReconnectShutdownRace:
@@ -143,7 +143,7 @@ class TestReconnectShutdownRace:
         ch = _make_channel()
         # Simulate: _on_handler_done set _connected=False and scheduled us,
         # but another path (e.g. forced reconnect()) already reconnected.
-        ch._connected = True
+        ch.connected = True
 
         # Patch connect to detect if it gets called
         ch.connect = AsyncMock()
@@ -156,12 +156,12 @@ class TestReconnectShutdownRace:
     async def test_reconnect_proceeds_when_not_connected(self) -> None:
         """Normal reconnect path: _connected is False, so connect() runs."""
         ch = _make_channel()
-        ch._connected = False
+        ch.connected = False
 
         # connect() will set _connected = True; mock it to avoid real Slack calls
         async def fake_connect() -> None:
             await asyncio.sleep(0)
-            ch._connected = True
+            ch.connected = True
 
         ch.connect = AsyncMock(side_effect=fake_connect)
 
@@ -173,8 +173,8 @@ class TestReconnectShutdownRace:
     async def test_reconnect_aborts_when_shutting_down(self) -> None:
         """prepare_shutdown() prevents reconnect even when _connected is False."""
         ch = _make_channel()
-        ch._connected = False
-        ch._shutting_down = True
+        ch.connected = False
+        ch.shutting_down = True
 
         ch.connect = AsyncMock()
 
@@ -185,8 +185,8 @@ class TestReconnectShutdownRace:
     def test_on_handler_done_skips_reconnect_when_shutting_down(self) -> None:
         """_on_handler_done does nothing after prepare_shutdown()."""
         ch = _make_channel()
-        ch._connected = True
-        ch._shutting_down = True
+        ch.connected = True
+        ch.shutting_down = True
 
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = False
@@ -196,13 +196,13 @@ class TestReconnectShutdownRace:
 
         # Should not schedule a reconnect
         task.get_loop.assert_not_called()
-        assert ch._reconnect_task is None
+        assert ch.reconnect_task is None
 
     def test_on_handler_done_catches_runtime_error(self) -> None:
         """create_task RuntimeError during loop shutdown doesn't propagate."""
         ch = _make_channel()
-        ch._connected = True
-        ch._shutting_down = False
+        ch.connected = True
+        ch.shutting_down = False
 
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = False
@@ -215,27 +215,27 @@ class TestReconnectShutdownRace:
         ch._on_handler_done(task)
 
         # _connected should be False (we tried to reconnect but couldn't)
-        assert ch._connected is False
+        assert ch.connected is False
 
 
 class TestPrepareShutdown:
     def test_sets_shutting_down_flag(self) -> None:
         ch = _make_channel()
-        assert ch._shutting_down is False
+        assert ch.shutting_down is False
         ch.prepare_shutdown()
-        assert ch._shutting_down is True
+        assert ch.shutting_down is True
 
     def test_channel_remains_connected(self) -> None:
         """prepare_shutdown doesn't disconnect — channel can still send messages."""
         ch = _make_channel()
-        ch._connected = True
-        ch._handler_task = MagicMock(spec=asyncio.Task)
-        ch._handler_task.done.return_value = False
+        ch.connected = True
+        ch.handler_task = MagicMock(spec=asyncio.Task)
+        ch.handler_task.done.return_value = False
 
         ch.prepare_shutdown()
 
         assert ch.is_connected() is True
-        assert ch._shutting_down is True
+        assert ch.shutting_down is True
 
 
 class TestNormalizeBotMention:
@@ -243,35 +243,35 @@ class TestNormalizeBotMention:
 
     def test_replaces_mention_at_start(self) -> None:
         ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
+        ch.bot_user_id = "U_BOT"
         result = ch._normalize_bot_mention("<@U_BOT> hello")
         assert result == "@pynchy hello"
 
     def test_replaces_mention_in_middle(self) -> None:
         ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
+        ch.bot_user_id = "U_BOT"
         result = ch._normalize_bot_mention("hey <@U_BOT> hello")
         assert result == "hey @pynchy hello"
 
     def test_preserves_other_mentions(self) -> None:
         ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
+        ch.bot_user_id = "U_BOT"
         assert ch._normalize_bot_mention("<@U_OTHER> hello") == "<@U_OTHER> hello"
 
     def test_noop_when_no_bot_id(self) -> None:
         ch = _make_channel()
-        ch._bot_user_id = ""
+        ch.bot_user_id = ""
         assert ch._normalize_bot_mention("<@U_BOT> hello") == "<@U_BOT> hello"
 
     def test_single_word_command_after_mention(self) -> None:
         ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
+        ch.bot_user_id = "U_BOT"
         result = ch._normalize_bot_mention("<@U_BOT> c")
         assert result == "@pynchy c"
 
     def test_mention_only(self) -> None:
         ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
+        ch.bot_user_id = "U_BOT"
         result = ch._normalize_bot_mention("<@U_BOT>")
         assert result == "@pynchy"
 
@@ -280,7 +280,7 @@ class TestNormalizeBotMention:
         import re
 
         ch = _make_channel()
-        ch._bot_user_id = "U_BOT"
+        ch.bot_user_id = "U_BOT"
         result = ch._normalize_bot_mention("<@U_BOT> do something")
         pattern = re.compile(r"^@pynchy\b", re.IGNORECASE)
         assert pattern.search(result), f"Trigger pattern should match: {result!r}"
