@@ -6,13 +6,13 @@ from unittest.mock import Mock
 import pytest
 
 from pynchy.plugins.integrations.google_setup import (
-    _handler as google_handler,  # allow: private-test-imports -- _run_interactive_setup only exposes browser-side effects; handle_setup_google does not surface the internal novnc_url path we need to pin here.
+    _handler as google_handler,  # allow: private-test-imports - public API hides novnc_url.
 )
 from pynchy.plugins.integrations.google_setup import (
-    _oauth as google_oauth,  # allow: private-test-imports -- URL safety is enforced inside the integration module, not surfaced through the plugin API.
+    _oauth as google_oauth,  # allow: private-test-imports - URL safety is module-local.
 )
 from pynchy.plugins.integrations.google_setup import (
-    _rest_api as google_rest_api,  # allow: private-test-imports -- URL safety is enforced inside the integration module, not surfaced through the plugin API.
+    _rest_api as google_rest_api,  # allow: private-test-imports - URL safety is module-local.
 )
 
 

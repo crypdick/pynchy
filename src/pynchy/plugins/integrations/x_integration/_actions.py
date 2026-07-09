@@ -85,7 +85,7 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
                     SEL["account_switcher"],
                     timeout=timeout_seconds * 1000,
                 )
-            except Exception:  # allow: exception-handling — wait_for_selector timeout surfaced as a caller-facing error below
+            except Exception:  # allow: exception-handling - timeout becomes a caller-facing error
                 await context.close()
                 return {
                     "error": (

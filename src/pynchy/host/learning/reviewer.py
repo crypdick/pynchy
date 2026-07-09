@@ -99,34 +99,39 @@ def should_review(packet: LearningPacket) -> bool:
 def build_review_prompt(packet: LearningPacket, paths: LearningPaths) -> str:
     """Build the hidden reviewer instruction prompt for one learning packet."""
     packet_payload = json.dumps(asdict(packet), ensure_ascii=False, indent=2, sort_keys=True)
-    return f"""You are Pynchy's hidden learning reviewer. Inspect the captured turn and update the mounted Obsidian vault only when the conversation contains durable, factual learning.
-
-Vault namespace and placement policy:
-- The mounted vault root is the global memory namespace.
-- Mounted vault root: {paths.vault_mount_path}
-- Use existing folder organization first.
-- Use the profile fallback memory path only when no repo, machine, subject, or other existing folder clearly fits.
-- Profile fallback memory path: {paths.mounted_memory_root}
-- Keep notes small and factual; update existing notes when that is cleaner than adding new ones.
-- If nothing durable was learned, make no filesystem changes.
-
-Memory note policy:
-- Memory notes are folder-governed; they should not depend on semantic frontmatter.
-- Do not invent semantic frontmatter requirements for memory notes.
-- Prefer a concise note in the strongest existing semantic folder over a broad catch-all note.
-
-Learned skill policy:
-- Write learned skills only under the profile skill path.
-- Profile skill path: {paths.mounted_skills_root}
-- Learned skills belong under the profile skill namespace and must use Pynchy's existing `SKILL.md` skill format.
-- Create or update a learned skill only for repeatable workflows, not one-off facts.
-
-Review the packet below. Make the smallest filesystem changes that preserve durable learning.
-
-```json
-{packet_payload}
-```
-"""
+    return (
+        "You are Pynchy's hidden learning reviewer. Inspect the captured "
+        "turn and update the mounted Obsidian vault only when the "
+        "conversation contains durable, factual learning.\n\n"
+        "Vault namespace and placement policy:\n"
+        "- The mounted vault root is the global memory namespace.\n"
+        f"- Mounted vault root: {paths.vault_mount_path}\n"
+        "- Use existing folder organization first.\n"
+        "- Use the profile fallback memory path only when no repo, machine, "
+        "subject, or other existing folder clearly fits.\n"
+        f"- Profile fallback memory path: {paths.mounted_memory_root}\n"
+        "- Keep notes small and factual; update existing notes when that is "
+        "cleaner than adding new ones.\n"
+        "- If nothing durable was learned, make no filesystem changes.\n\n"
+        "Memory note policy:\n"
+        "- Memory notes are folder-governed; they should not depend on "
+        "semantic frontmatter.\n"
+        "- Do not invent semantic frontmatter requirements for memory notes.\n"
+        "- Prefer a concise note in the strongest existing semantic folder "
+        "over a broad catch-all note.\n\n"
+        "Learned skill policy:\n"
+        "- Write learned skills only under the profile skill path.\n"
+        f"- Profile skill path: {paths.mounted_skills_root}\n"
+        "- Learned skills belong under the profile skill namespace and must "
+        "use Pynchy's existing `SKILL.md` skill format.\n"
+        "- Create or update a learned skill only for repeatable workflows, "
+        "not one-off facts.\n\n"
+        "Review the packet below. Make the smallest filesystem changes that "
+        "preserve durable learning.\n\n"
+        "```json\n"
+        f"{packet_payload}\n"
+        "```\n"
+    )
 
 
 def _packet_text(packet: LearningPacket) -> str:

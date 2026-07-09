@@ -78,7 +78,9 @@ async def test_computer_use_reports_missing_cua_driver(tmp_path: Path) -> None:
         result = await handler({"source_group": "admin", "action": "list_apps"})
 
     assert result == {
-        "error": "cua-driver is not installed on the host; install Cua Driver before using computer_use."
+        "error": (
+            "cua-driver is not installed on the host; install Cua Driver before using computer_use."
+        )
     }
 
 

@@ -162,10 +162,11 @@ async def _maybe_require_cop_approval(
 
     import json as json_mod
 
-    summary = (
-        f"script MCP tool: {request.tool_name}\n"
-        f"args: {json_mod.dumps({k: v for k, v in data.items() if k not in ('type', 'request_id', 'source_group')}, default=str)[:1000]}"
-    )
+    args_preview = json_mod.dumps(
+        {k: v for k, v in data.items() if k not in ("type", "request_id", "source_group")},
+        default=str,
+    )[:1000]
+    summary = f"script MCP tool: {request.tool_name}\nargs: {args_preview}"
     return await cop_gate(
         f"script_mcp:{request.tool_name}",
         summary,

@@ -879,7 +879,10 @@ class TestRunScheduledAgent:
     ):
         """Should classify streamed status='error' outputs (e.g. SDK is_error) as task errors."""
         mock_deps.groups["test-jid"] = sample_group
-        api_error_text = 'API Error: 429 {"error":{"type":"rate_limit_error","message":"This request would exceed your account\'s rate limit."}}'
+        api_error_text = (
+            'API Error: 429 {"error":{"type":"rate_limit_error","message":'
+            '"This request would exceed your account\'s rate limit."}}'
+        )
         # Container now emits status="error" when ResultMessage.is_error is True
         streamed = ContainerOutput(status="error", error=api_error_text)
 

@@ -156,7 +156,7 @@ async def run_shell_command(
         with contextlib.suppress(Exception):
             await process.communicate()
         return ShellResult(returncode=None, stdout="", stderr="", timed_out=True)
-    except Exception as exc:  # allow: exception-handling — failure captured into ShellResult.start_error and logged by the caller via log_shell_result
+    except Exception as exc:  # allow: exception-handling - start_error is surfaced by the caller
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
 
     return ShellResult(

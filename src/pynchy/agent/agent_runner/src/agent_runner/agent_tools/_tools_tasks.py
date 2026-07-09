@@ -165,9 +165,11 @@ async def _schedule_task_handle(arguments: dict[str, Any]) -> list[TextContent] 
     if task_type == "host":
         payload = _host_task_payload(arguments, schedule_type, schedule_value)
         filename, _request_id = _ipc.write_request_file("schedule_host_job", payload, reply_to=None)
-        return _scheduled_text(
-            f"Host job scheduled ({filename}): {arguments['name']} - {schedule_type} - {schedule_value}"
+        message = (
+            f"Host job scheduled ({filename}): {arguments['name']} - "
+            f"{schedule_type} - {schedule_value}"
         )
+        return _scheduled_text(message)
 
     payload = _agent_task_payload(arguments, schedule_type, schedule_value)
     filename, _request_id = _ipc.write_request_file("schedule_task", payload, reply_to=None)

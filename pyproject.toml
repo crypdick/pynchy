@@ -200,7 +200,6 @@ select = [
     "W",
     "YTT",
 ]
-# E501 is enforced by the formatter, not the linter, to avoid double-reporting.
 # TRY003 is intentionally skipped: simple domain errors do not need exception-class
 # constructors just to centralize messages.
 # The remaining ignores are the current baseline surfaced by Strictify's expanded
@@ -214,7 +213,6 @@ ignore = [
     "ASYNC110",
     "ASYNC240",
     "BLE001",
-    "E501",
     "ERA001",
     "FBT001",
     "PLC0415",

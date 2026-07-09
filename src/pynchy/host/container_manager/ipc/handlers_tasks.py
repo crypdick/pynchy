@@ -74,7 +74,11 @@ async def _handle_schedule_task(
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
         prompt_preview = (data.get("prompt") or "")[:500]
-        summary = f"target={data.get('targetGroup')}, schedule={data.get('schedule_type')}:{data.get('schedule_value')}, prompt={prompt_preview}"
+        summary = (
+            f"target={data.get('targetGroup')}, "
+            f"schedule={data.get('schedule_type')}:{data.get('schedule_value')}, "
+            f"prompt={prompt_preview}"
+        )
         allowed = await cop_gate(
             "schedule_task",
             summary,
@@ -240,7 +244,11 @@ async def _handle_schedule_host_job(
     if not data.get("_cop_approved"):
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
-        summary = f"name={data.get('name')}, command={data.get('command')}, schedule={data.get('schedule_type')}:{data.get('schedule_value')}"
+        summary = (
+            f"name={data.get('name')}, "
+            f"command={data.get('command')}, "
+            f"schedule={data.get('schedule_type')}:{data.get('schedule_value')}"
+        )
         allowed = await cop_gate(
             "schedule_host_job",
             summary,

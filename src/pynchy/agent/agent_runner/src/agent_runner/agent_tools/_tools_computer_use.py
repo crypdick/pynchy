@@ -92,7 +92,10 @@ register_ipc_tool(
             "capture_after": {
                 "type": "boolean",
                 "default": False,
-                "description": "Run get_window_state after a state-changing action when pid/window_id are known.",
+                "description": (
+                    "Run get_window_state after a state-changing action when "
+                    "pid/window_id are known."
+                ),
             },
         },
         "required": ["action"],

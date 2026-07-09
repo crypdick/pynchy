@@ -1,4 +1,4 @@
-"""Tests for pynchy.host.orchestrator.startup_handler — startup helpers and plugin credential validation."""
+"""Tests for startup_handler startup helpers and plugin credential validation."""
 
 from __future__ import annotations
 

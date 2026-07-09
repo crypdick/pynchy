@@ -56,7 +56,10 @@ class PrintStatementVisitor(ast.NodeVisitor):
                 self.violations.append(
                     (
                         line_num,
-                        "print() call in production code — use logger.info() or logger.debug() instead",
+                        (
+                            "print() call in production code — use logger.info() "
+                            "or logger.debug() instead"
+                        ),
                     )
                 )
 

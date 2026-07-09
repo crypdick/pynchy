@@ -287,11 +287,15 @@ class TestContainerProcessHelpers:
 
         runtime = MagicMock(cli="container")
         runtime.name = "apple"
-        ps_output = b"""
-        123 /opt/homebrew/bin/container-runtime-linux start --root /Users/me/Library/Application Support/com.apple.container/containers/pynchy-code-improver --uuid pynchy-code-improver
-        456 /opt/homebrew/bin/container-runtime-linux start --root /Users/me/Library/Application Support/com.apple.container/containers/pynchy-code-improver-old --uuid pynchy-code-improver-old
-        789 /usr/bin/other --uuid pynchy-code-improver
-        """
+        container_root = "/Users/me/Library/Application Support/com.apple.container/containers"
+        old_container = f"{container_root}/pynchy-code-improver-old"
+        ps_output = (
+            b"123 /opt/homebrew/bin/container-runtime-linux start --root "
+            + f"{container_root}/pynchy-code-improver --uuid pynchy-code-improver\n".encode()
+            + b"456 /opt/homebrew/bin/container-runtime-linux start --root "
+            + f"{old_container} --uuid pynchy-code-improver-old\n".encode()
+            + b"789 /usr/bin/other --uuid pynchy-code-improver\n"
+        )
         alive = {123}
         signals: list[tuple[int, signal.Signals]] = []
 
