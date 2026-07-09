@@ -6,12 +6,15 @@ import contextlib
 import importlib
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _enabled_learning(vault_root: Path, *, skill_max_bytes: int = 200_000) -> LearningConfig:

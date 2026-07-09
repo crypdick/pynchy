@@ -227,8 +227,9 @@ class TestListPendingApprovals:
 
 
 class TestSweepExpiredApprovals:
+    @pytest.mark.usefixtures("_setup_db")
     @pytest.mark.asyncio
-    async def test_expires_old_pending(self, _setup_db, ipc_dir: Path, settings):
+    async def test_expires_old_pending(self, ipc_dir: Path, settings):
         from pynchy.host.container_manager.security.approval import (
             create_pending_approval,
             sweep_expired_approvals,

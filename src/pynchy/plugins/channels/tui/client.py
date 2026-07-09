@@ -8,15 +8,18 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import aiohttp
 from textual.app import App
-from textual.binding import Binding, BindingType
+from textual.binding import Binding
 from textual.containers import Horizontal
-from textual.selection import Selection
-from textual.widget import Widget
 from textual.widgets import Footer, Header, Input, ListItem, ListView, RichLog, Static
+
+if TYPE_CHECKING:
+    from textual.binding import BindingType
+    from textual.selection import Selection
+    from textual.widget import Widget
 
 
 @dataclass(frozen=True)

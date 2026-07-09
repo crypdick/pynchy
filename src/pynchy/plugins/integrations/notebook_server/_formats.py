@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import nbformat
-from nbformat.notebooknode import NotebookNode
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
+
+if TYPE_CHECKING:
+    from nbformat.notebooknode import NotebookNode
 
 
 def generate_name() -> str:

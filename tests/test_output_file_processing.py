@@ -42,7 +42,9 @@ def _write_output_file(base_dir: Path, group: str, data: dict, filename: str = "
 class TestOutputFileProcessing:
     """Tests for _process_output_file — parsing, dispatch, and cleanup."""
 
-    async def test_text_event_dispatched_to_handler(self, _db, tmp_path: Path):
+    pytestmark = pytest.mark.usefixtures("_db")
+
+    async def test_text_event_dispatched_to_handler(self, tmp_path: Path):
         """A text output event should be dispatched to the output handler."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -67,7 +69,7 @@ class TestOutputFileProcessing:
         assert output.text == "Hello world"
         assert output.status == "success"
 
-    async def test_file_deleted_when_handler_exists(self, _db, tmp_path: Path):
+    async def test_file_deleted_when_handler_exists(self, tmp_path: Path):
         """Output file should be unlinked after a handler consumes it."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -88,7 +90,7 @@ class TestOutputFileProcessing:
 
         assert not file_path.exists()
 
-    async def test_file_preserved_when_no_handler(self, _db, tmp_path: Path):
+    async def test_file_preserved_when_no_handler(self, tmp_path: Path):
         """Output files should be left in place when no session handler exists."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -108,7 +110,7 @@ class TestOutputFileProcessing:
 
         assert file_path.exists(), "File should be preserved for one-shot container collection"
 
-    async def test_thinking_event_dispatched(self, _db, tmp_path: Path):
+    async def test_thinking_event_dispatched(self, tmp_path: Path):
         """Thinking events should be dispatched to the output handler."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -131,7 +133,7 @@ class TestOutputFileProcessing:
         assert output.type == "thinking"
         assert output.thinking == "Let me consider..."
 
-    async def test_tool_use_event_dispatched(self, _db, tmp_path: Path):
+    async def test_tool_use_event_dispatched(self, tmp_path: Path):
         """Tool use events should be dispatched to the output handler."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -165,7 +167,9 @@ class TestOutputFileProcessing:
 class TestQueryDonePulse:
     """Tests for detecting the query-done pulse in output files."""
 
-    async def test_result_with_session_id_signals_query_done(self, _db, tmp_path: Path):
+    pytestmark = pytest.mark.usefixtures("_db")
+
+    async def test_result_with_session_id_signals_query_done(self, tmp_path: Path):
         """A result event with new_session_id should signal query done."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -192,7 +196,7 @@ class TestQueryDonePulse:
         mock_signal.assert_called_once_with("test-group")
         assert not file_path.exists()
 
-    async def test_text_event_does_not_signal_query_done(self, _db, tmp_path: Path):
+    async def test_text_event_does_not_signal_query_done(self, tmp_path: Path):
         """A non-result event should not signal query done."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -215,7 +219,7 @@ class TestQueryDonePulse:
 
         mock_signal.assert_not_called()
 
-    async def test_result_with_error_does_not_signal_query_done(self, _db, tmp_path: Path):
+    async def test_result_with_error_does_not_signal_query_done(self, tmp_path: Path):
         """A result event with an error should not signal query done."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -241,7 +245,7 @@ class TestQueryDonePulse:
         # is_query_done_pulse requires error=None
         mock_signal.assert_not_called()
 
-    async def test_result_with_text_result_does_not_signal_query_done(self, _db, tmp_path: Path):
+    async def test_result_with_text_result_does_not_signal_query_done(self, tmp_path: Path):
         """A result event with a non-None result should not signal query done."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -266,7 +270,7 @@ class TestQueryDonePulse:
         # is_query_done_pulse requires result=None
         mock_signal.assert_not_called()
 
-    async def test_handler_called_before_query_done_signal(self, _db, tmp_path: Path):
+    async def test_handler_called_before_query_done_signal(self, tmp_path: Path):
         """Handler should be called even for query-done pulse events."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -302,7 +306,7 @@ class TestQueryDonePulse:
 class TestOutputFileErrors:
     """Tests for error handling during output file processing."""
 
-    async def test_missing_file_is_idempotent(self, _db, tmp_path: Path):
+    async def test_missing_file_is_idempotent(self, tmp_path: Path):
         """Duplicate watchdog/sweep delivery should not turn a consumed file into an error."""
         ipc_dir = tmp_path / "ipc"
         file_path = ipc_dir / "test-group" / "output" / "already-gone.json"
@@ -311,7 +315,7 @@ class TestOutputFileErrors:
 
         assert not (ipc_dir / "errors").exists()
 
-    async def test_file_consumed_during_handler_is_idempotent(self, _db, tmp_path: Path):
+    async def test_file_consumed_during_handler_is_idempotent(self, tmp_path: Path):
         """A competing output processor may delete the file after this processor read it."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -337,7 +341,7 @@ class TestOutputFileErrors:
         assert not file_path.exists()
         assert not (ipc_dir / "errors").exists()
 
-    async def test_concurrent_duplicate_output_file_is_processed_once(self, _db, tmp_path: Path):
+    async def test_concurrent_duplicate_output_file_is_processed_once(self, tmp_path: Path):
         """Watchdog and runtime sweep can both discover the same output file."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -366,7 +370,7 @@ class TestOutputFileErrors:
         assert not file_path.exists()
         assert not (ipc_dir / "errors").exists()
 
-    async def test_malformed_json_moved_to_errors(self, _db, tmp_path: Path):
+    async def test_malformed_json_moved_to_errors(self, tmp_path: Path):
         """A file with invalid JSON should be moved to errors/."""
         ipc_dir = tmp_path / "ipc"
         target_dir = ipc_dir / "test-group" / "output"
@@ -379,7 +383,7 @@ class TestOutputFileErrors:
         assert not bad_file.exists()
         assert (ipc_dir / "errors" / "test-group-bad.json").exists()
 
-    async def test_missing_status_field_moved_to_errors(self, _db, tmp_path: Path):
+    async def test_missing_status_field_moved_to_errors(self, tmp_path: Path):
         """A file missing the required 'status' field should be moved to errors/."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -396,7 +400,7 @@ class TestOutputFileErrors:
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "test-group-test.json").exists()
 
-    async def test_handler_exception_does_not_prevent_file_deletion(self, _db, tmp_path: Path):
+    async def test_handler_exception_does_not_prevent_file_deletion(self, tmp_path: Path):
         """If the output handler raises, the file should still be deleted."""
         ipc_dir = tmp_path / "ipc"
         file_path = _write_output_file(
@@ -420,7 +424,7 @@ class TestOutputFileErrors:
         # Should NOT be in errors/ — the handler failure is non-fatal
         assert not (ipc_dir / "errors").exists()
 
-    async def test_multiple_output_files_processed_in_order(self, _db, tmp_path: Path):
+    async def test_multiple_output_files_processed_in_order(self, tmp_path: Path):
         """Multiple output files should be processable independently."""
         ipc_dir = tmp_path / "ipc"
         file1 = _write_output_file(

@@ -23,6 +23,8 @@ from ._ids import _jid
 from ._ui import AGENT_STOP_ACTION_RE, ASK_USER_ACTION_RE, COP_APPROVAL_ACTION_RE
 
 if TYPE_CHECKING:
+    from slack_bolt.context.async_context import AsyncBoltContext
+
     from ._channel import SlackChannel
 else:
     # beartype resolves the ``channel: SlackChannel`` forward ref at call time
@@ -87,7 +89,6 @@ class SlackEvents:
 
     def _register_assistant_handlers(self) -> None:
         """Register Slack Assistant API handlers for the sidebar panel."""
-        from slack_bolt.context.async_context import AsyncBoltContext
         from slack_bolt.middleware.assistant.async_assistant import AsyncAssistant
 
         ch = self._channel

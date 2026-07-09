@@ -73,8 +73,10 @@ def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: boo
 
 
 class TestProcessApprovalDecision:
+    pytestmark = pytest.mark.usefixtures("_setup_db")
+
     @pytest.mark.asyncio
-    async def test_approved_executes_and_writes_response(self, _setup_db, ipc_dir: Path, settings):
+    async def test_approved_executes_and_writes_response(self, ipc_dir: Path, settings):
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(ipc_dir, "grp", "req123", "my_tool", {"arg": "val"})
@@ -111,7 +113,7 @@ class TestProcessApprovalDecision:
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
-    async def test_denied_writes_error_response(self, _setup_db, ipc_dir: Path, settings):
+    async def test_denied_writes_error_response(self, ipc_dir: Path, settings):
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
         _write_pending(ipc_dir, "grp", "req456", "my_tool", {})
@@ -136,7 +138,7 @@ class TestProcessApprovalDecision:
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
-    async def test_missing_pending_cleans_decision(self, _setup_db, ipc_dir: Path, settings):
+    async def test_missing_pending_cleans_decision(self, ipc_dir: Path, settings):
         """Decision with no matching pending file should be cleaned up."""
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
@@ -151,7 +153,7 @@ class TestProcessApprovalDecision:
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
-    async def test_unknown_tool_writes_error(self, _setup_db, ipc_dir: Path, settings):
+    async def test_unknown_tool_writes_error(self, ipc_dir: Path, settings):
         """Approved request for unknown tool should write error response."""
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
@@ -176,7 +178,7 @@ class TestProcessApprovalDecision:
         assert "error" in response
 
     @pytest.mark.asyncio
-    async def test_handler_exception_writes_error(self, _setup_db, ipc_dir: Path, settings):
+    async def test_handler_exception_writes_error(self, ipc_dir: Path, settings):
         """If the handler raises, write an error response instead of crashing."""
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
@@ -207,10 +209,10 @@ class TestProcessApprovalDecision:
 class TestIpcApprovalDispatch:
     """Tests for handler_type="ipc" approval dispatch through the registry."""
 
+    pytestmark = pytest.mark.usefixtures("_setup_db")
+
     @pytest.mark.asyncio
-    async def test_ipc_approved_dispatches_through_registry(
-        self, _setup_db, ipc_dir: Path, settings
-    ):
+    async def test_ipc_approved_dispatches_through_registry(self, ipc_dir: Path, settings):
         """Approved IPC request dispatches through ipc._registry.dispatch()."""
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
@@ -250,7 +252,7 @@ class TestIpcApprovalDispatch:
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
-    async def test_ipc_approved_without_deps_writes_error(self, _setup_db, ipc_dir: Path, settings):
+    async def test_ipc_approved_without_deps_writes_error(self, ipc_dir: Path, settings):
         """IPC approval without deps writes an error response."""
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 
@@ -279,7 +281,7 @@ class TestIpcApprovalDispatch:
         assert "deps" in response["error"].lower()
 
     @pytest.mark.asyncio
-    async def test_ipc_dispatch_failure_writes_error(self, _setup_db, ipc_dir: Path, settings):
+    async def test_ipc_dispatch_failure_writes_error(self, ipc_dir: Path, settings):
         """If IPC dispatch raises, write an error response."""
         from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 

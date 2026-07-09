@@ -221,42 +221,46 @@ class TestMcpProxyFencing:
         finally:
             await client.close()
 
-    async def test_cop_flagged_content_is_blocked(self, mock_backend, _mock_cop):
+    async def test_cop_flagged_content_is_blocked(self, mock_backend):
         """When Cop flags content, it should be replaced with a warning."""
         from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 
-        _mock_cop.return_value = CopVerdict(flagged=True, reason="Prompt injection detected")
+        with patch(
+            "pynchy.host.container_manager.mcp.proxy.inspect_inbound",
+            new_callable=AsyncMock,
+        ) as mock_cop:
+            mock_cop.return_value = CopVerdict(flagged=True, reason="Prompt injection detected")
 
-        security = WorkspaceSecurity(
-            services={
-                "browser": ServiceTrustConfig(
-                    public_source=True,
-                    dangerous_writes=False,
-                )
-            }
-        )
-        create_gate("test-ws", 1000.0, security)
-
-        backend_url = f"http://localhost:{mock_backend.port}/mcp"
-        app = create_proxy_app(
-            {"browser": backend_url},
-            trust_map={"browser": {"public_source": True}},
-        )
-        client = TestClient(TestServer(app))
-        await client.start_server()
-
-        try:
-            resp = await client.post(
-                "/mcp/test-ws/1000.0/browser",
-                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            security = WorkspaceSecurity(
+                services={
+                    "browser": ServiceTrustConfig(
+                        public_source=True,
+                        dangerous_writes=False,
+                    )
+                }
             )
-            assert resp.status == 200
-            data = await resp.json()
-            text = data["result"]["content"][0]["text"]
-            assert "blocked by security policy" in text.lower()
-            assert "Page content from browser" not in text
-        finally:
-            await client.close()
+            create_gate("test-ws", 1000.0, security)
+
+            backend_url = f"http://localhost:{mock_backend.port}/mcp"
+            app = create_proxy_app(
+                {"browser": backend_url},
+                trust_map={"browser": {"public_source": True}},
+            )
+            client = TestClient(TestServer(app))
+            await client.start_server()
+
+            try:
+                resp = await client.post(
+                    "/mcp/test-ws/1000.0/browser",
+                    json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+                )
+                assert resp.status == 200
+                data = await resp.json()
+                text = data["result"]["content"][0]["text"]
+                assert "blocked by security policy" in text.lower()
+                assert "Page content from browser" not in text
+            finally:
+                await client.close()
 
     async def test_fencing_sets_corruption_taint(self, mock_backend):
         """Reading from a public_source server should set corruption taint on the gate."""
