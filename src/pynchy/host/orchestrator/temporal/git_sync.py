@@ -64,7 +64,7 @@ class _TemporalGitSyncDeps:
             return bool(self._deps.has_active_session(group_folder))
         manager = SessionManager(
             getattr(self._deps, "sessions", {}),
-            getattr(self._deps, "_session_cleared", set()),
+            getattr(self._deps, "session_cleared", set()),
         )
         return manager.has_active_session(group_folder)
 
@@ -79,7 +79,7 @@ class _TemporalGitSyncDeps:
             return {}
         manager = SessionManager(
             getattr(self._deps, "sessions", {}),
-            getattr(self._deps, "_session_cleared", set()),
+            getattr(self._deps, "session_cleared", set()),
         )
         return manager.get_active_sessions(self.workspaces())
 

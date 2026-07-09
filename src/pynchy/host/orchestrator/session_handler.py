@@ -30,7 +30,7 @@ class SessionDeps(Protocol):
     def sessions(self) -> dict[str, str]: ...
 
     @property
-    def _session_cleared(self) -> set[str]: ...
+    def session_cleared(self) -> set[str]: ...
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -80,7 +80,7 @@ async def _teardown_group(
 
     if clear_context:
         deps.sessions.pop(group.folder, None)
-        deps._session_cleared.add(group.folder)
+        deps.session_cleared.add(group.folder)
         logger.info("teardown_trace", step="clear_session_start", group=group.name)
         await clear_session(GroupFolder(group.folder))
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
@@ -138,7 +138,7 @@ async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
 
     # Build active_sessions so all groups resume after restart
-    sm = SessionManager(deps.sessions, deps._session_cleared)
+    sm = SessionManager(deps.sessions, deps.session_cleared)
     active_sessions = sm.get_active_sessions(deps.workspaces)
 
     await start_deploy_workflow(

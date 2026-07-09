@@ -24,7 +24,7 @@ class _DiscordChannel(NullChannel):
 class _Deps:
     def __init__(self):
         self.sessions = {}
-        self._session_cleared = set()
+        self.session_cleared = set()
         self.last_agent_timestamp = {}
         self.queue = GroupQueue()
         self.channels = [_DiscordChannel()]

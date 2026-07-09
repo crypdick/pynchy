@@ -55,7 +55,7 @@ class PynchyApp:
     def __init__(self) -> None:
         self.last_timestamp: str = ""
         self.sessions: dict[str, str] = {}
-        self._session_cleared: set[str] = set()  # group folders with pending clears
+        self.session_cleared: set[str] = set()  # group folders with pending clears
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.last_agent_timestamp: dict[str, str] = {}
         # Transient dispatch tracker — NOT persisted.  Resets to {} on every

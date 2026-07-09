@@ -38,7 +38,7 @@ class _FakeDeps:
 
     def __init__(self):
         self.sessions: dict[str, str] = {}
-        self._session_cleared: set[str] = set()
+        self.session_cleared: set[str] = set()
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.queue = GroupQueue()
         self.plugin_manager = None

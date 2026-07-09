@@ -1686,7 +1686,7 @@ class TestAgentRunnerPreContainerHelpers:
         class _Deps:
             def __init__(self) -> None:
                 self.sessions: dict[str, str] = {}
-                self._session_cleared: set[str] = set()
+                self.session_cleared: set[str] = set()
                 self.workspaces: dict[str, WorkspaceProfile] = {}
                 self.queue = MagicMock()
                 self.plugin_manager = None

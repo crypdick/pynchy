@@ -123,7 +123,7 @@ async def _start_temporal_deploy(
 def make_http_deps(app: PynchyApp) -> HttpDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    session_manager = SessionManager(app.sessions, app._session_cleared)
+    session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
     periodic_agent_manager = PeriodicAgentManager(app.workspaces)
     user_message_handler = UserMessageHandler(
@@ -159,7 +159,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     registration_manager = GroupRegistrationManager(
         app.workspaces, app._register_workspace, app._send_clear_confirmation
     )
-    session_manager = SessionManager(app.sessions, app._session_cleared)
+    session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
 
     class IpcDeps:
@@ -196,7 +196,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 
 def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
-    session_manager = SessionManager(app.sessions, app._session_cleared)
+    session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
 
     class _StatusDeps:
@@ -244,7 +244,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
     """Create the dependency object for the git sync loop."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    session_manager = SessionManager(app.sessions, app._session_cleared)
+    session_manager = SessionManager(app.sessions, app.session_cleared)
 
     class GitSyncDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message

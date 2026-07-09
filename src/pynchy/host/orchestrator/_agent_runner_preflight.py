@@ -56,7 +56,7 @@ class _PreflightDeps(Protocol):
     def sessions(self) -> dict[str, str]: ...
 
     @property
-    def _session_cleared(self) -> set[str]: ...
+    def session_cleared(self) -> set[str]: ...
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
@@ -109,7 +109,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         request.extra_system_notices,
     )
 
-    request.deps._session_cleared.discard(request.group.folder)
+    request.deps.session_cleared.discard(request.group.folder)
     agent_core_module, agent_core_class = resolve_agent_core(request.deps.plugin_manager)
     config_timeout = resolve_container_timeout(request.group)
 
@@ -184,7 +184,7 @@ def session_tracking_output_handler(
     async def wrapped_on_output(output: ContainerOutput) -> None:
         if (
             session_id := session_id_from_output(output)
-        ) and group_folder not in deps._session_cleared:
+        ) and group_folder not in deps.session_cleared:
             deps.sessions[group_folder] = session_id
             await set_session(GroupFolder(group_folder), SessionId(session_id))
         if on_output:
