@@ -11,30 +11,39 @@ from unittest.mock import MagicMock, patch
 
 import pluggy
 
-import pynchy.plugins.tunnels._api as _tunnels_impl
-import pynchy.plugins.tunnels.tailscale as _tailscale_impl
 from pynchy.plugins.tunnels import TunnelProvider, check_tunnels
 
-# The provider validator and built-in Tailscale provider are module-private
-# (no public alias exists); bind them here so tests exercise them without a
-# private-symbol import.
-_is_valid_tunnel_provider = _tunnels_impl._is_valid_tunnel_provider
-_TailscaleTunnel = _tailscale_impl._TailscaleTunnel
+
+def _get_pm():
+    from pynchy.plugins import get_plugin_manager
+
+    with patch(
+        "pluggy.PluginManager.load_setuptools_entrypoints",
+        return_value=0,
+    ):
+        return get_plugin_manager()
+
+
+def _tailscale_provider() -> TunnelProvider:
+    providers = _get_pm().hook.pynchy_tunnel()
+    return next(
+        provider for provider in providers if getattr(provider, "name", None) == "tailscale"
+    )
+
 
 # ---------------------------------------------------------------------------
 # TunnelProvider validation
 # ---------------------------------------------------------------------------
 
 
-class TestTunnelValidation:
-    """Test the _is_valid_tunnel_provider helper."""
+class TestTunnelProviderContract:
+    """Test provider acceptance through public tunnel behavior."""
 
-    def test_valid_provider_accepted(self):
-        tunnel = _TailscaleTunnel()
-        assert _is_valid_tunnel_provider(tunnel)
+    def test_tailscale_provider_satisfies_protocol(self):
+        assert isinstance(_tailscale_provider(), TunnelProvider)
 
-    def test_missing_method_rejected(self):
-        """Object missing required methods should be rejected."""
+    def test_check_tunnels_skips_provider_missing_method(self):
+        """Object missing required methods should be skipped."""
 
         class Incomplete:
             name = "broken"
@@ -42,10 +51,11 @@ class TestTunnelValidation:
             def is_available(self) -> bool:
                 return True
 
-        assert not _is_valid_tunnel_provider(Incomplete())
+        pm = TestCheckTunnels._make_pm([Incomplete()])
+        check_tunnels(pm)
 
-    def test_non_callable_rejected(self):
-        """Object with non-callable attributes should be rejected."""
+    def test_check_tunnels_skips_provider_with_non_callable_methods(self):
+        """Object with non-callable attributes should be skipped."""
 
         class BadProvider:
             name = "bad"
@@ -53,11 +63,8 @@ class TestTunnelValidation:
             is_connected = True
             status_summary = "nope"
 
-        assert not _is_valid_tunnel_provider(BadProvider())
-
-    def test_protocol_runtime_check(self):
-        """_TailscaleTunnel should satisfy the Protocol at runtime."""
-        assert isinstance(_TailscaleTunnel(), TunnelProvider)
+        pm = TestCheckTunnels._make_pm([BadProvider()])
+        check_tunnels(pm)
 
 
 # ---------------------------------------------------------------------------
@@ -73,11 +80,11 @@ class TestTailscaleTunnel:
             "pynchy.plugins.tunnels.tailscale.shutil.which",
             return_value="/usr/bin/tailscale",
         ):
-            assert _TailscaleTunnel().is_available()
+            assert _tailscale_provider().is_available()
 
     def test_is_available_not_found(self):
         with patch("pynchy.plugins.tunnels.tailscale.shutil.which", return_value=None):
-            assert not _TailscaleTunnel().is_available()
+            assert not _tailscale_provider().is_available()
 
     def test_is_connected_running(self):
         mock_result = MagicMock()
@@ -85,7 +92,7 @@ class TestTailscaleTunnel:
         mock_result.stdout = json.dumps({"BackendState": "Running"})
 
         with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             assert t.is_connected()
             assert t.status_summary() == "BackendState=Running"
 
@@ -95,7 +102,7 @@ class TestTailscaleTunnel:
         mock_result.stdout = json.dumps({"BackendState": "Stopped"})
 
         with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             assert not t.is_connected()
             assert t.status_summary() == "BackendState=Stopped"
 
@@ -105,7 +112,7 @@ class TestTailscaleTunnel:
         mock_result.stdout = ""
 
         with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             assert not t.is_connected()
             assert "exit code" in t.status_summary()
 
@@ -114,7 +121,7 @@ class TestTailscaleTunnel:
             "pynchy.plugins.tunnels.tailscale.subprocess.run",
             side_effect=FileNotFoundError("No such file"),
         ):
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             assert not t.is_connected()
             assert t.status_summary() == "CLI not found"
 
@@ -125,7 +132,7 @@ class TestTailscaleTunnel:
             "pynchy.plugins.tunnels.tailscale.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="tailscale", timeout=5),
         ):
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             assert not t.is_connected()
             assert "timed out" in t.status_summary().lower()
 
@@ -135,7 +142,7 @@ class TestTailscaleTunnel:
         mock_result.stdout = json.dumps({"Health": "ok"})
 
         with patch("pynchy.plugins.tunnels.tailscale.subprocess.run", return_value=mock_result):
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             assert not t.is_connected()
             assert "unknown" in t.status_summary()
 
@@ -149,7 +156,7 @@ class TestTailscaleTunnel:
             "pynchy.plugins.tunnels.tailscale.subprocess.run",
             return_value=mock_result,
         ) as mock_run:
-            t = _TailscaleTunnel()
+            t = _tailscale_provider()
             t.is_connected()
             t.status_summary()
             mock_run.assert_called_once()
@@ -167,6 +174,40 @@ class _FakePM(pluggy.PluginManager):
         self.hook = hook
 
 
+class _FakeTunnel:
+    """Concrete protocol-shaped tunnel test double."""
+
+    def __init__(
+        self,
+        *,
+        name: str = "test",
+        available: bool = True,
+        connected: bool = True,
+        available_error: Exception | None = None,
+    ) -> None:
+        self.name = name
+        self.available = available
+        self.connected = connected
+        self.available_error = available_error
+        self.is_available_calls = 0
+        self.is_connected_calls = 0
+        self.status_summary_calls = 0
+
+    def is_available(self) -> bool:
+        self.is_available_calls += 1
+        if self.available_error is not None:
+            raise self.available_error
+        return self.available
+
+    def is_connected(self) -> bool:
+        self.is_connected_calls += 1
+        return self.connected
+
+    def status_summary(self) -> str:
+        self.status_summary_calls += 1
+        return "ok" if self.connected else "disconnected"
+
+
 class TestCheckTunnels:
     """Test the check_tunnels() consumer function."""
 
@@ -179,13 +220,8 @@ class TestCheckTunnels:
     @staticmethod
     def _make_tunnel(
         *, name: str = "test", available: bool = True, connected: bool = True
-    ) -> MagicMock:
-        t = MagicMock()
-        t.name = name
-        t.is_available.return_value = available
-        t.is_connected.return_value = connected
-        t.status_summary.return_value = "ok" if connected else "disconnected"
-        return t
+    ) -> _FakeTunnel:
+        return _FakeTunnel(name=name, available=available, connected=connected)
 
     def test_no_tunnel_plugins(self):
         pm = self._make_pm([])
@@ -195,23 +231,22 @@ class TestCheckTunnels:
         tunnel = self._make_tunnel(connected=True)
         pm = self._make_pm([tunnel])
         check_tunnels(pm)  # Should not raise
-        tunnel.is_connected.assert_called_once()
+        assert tunnel.is_connected_calls == 1
 
     def test_one_tunnel_disconnected(self):
         tunnel = self._make_tunnel(connected=False)
         pm = self._make_pm([tunnel])
         check_tunnels(pm)  # Should not raise (warning only)
-        tunnel.is_connected.assert_called_once()
+        assert tunnel.is_connected_calls == 1
 
     def test_tunnel_not_available(self):
         tunnel = self._make_tunnel(available=False)
         pm = self._make_pm([tunnel])
         check_tunnels(pm)  # Should not raise
-        tunnel.is_connected.assert_not_called()
+        assert tunnel.is_connected_calls == 0
 
     def test_tunnel_check_exception(self):
-        tunnel = self._make_tunnel()
-        tunnel.is_available.side_effect = RuntimeError("boom")
+        tunnel = _FakeTunnel(available_error=RuntimeError("boom"))
         pm = self._make_pm([tunnel])
         check_tunnels(pm)  # Should not raise
 
@@ -219,14 +254,14 @@ class TestCheckTunnels:
         tunnel = self._make_tunnel()
         pm = self._make_pm([None, tunnel, None])
         check_tunnels(pm)
-        tunnel.is_connected.assert_called_once()
+        assert tunnel.is_connected_calls == 1
 
     def test_invalid_provider_skipped(self):
         valid = self._make_tunnel(name="good")
         invalid = "not a tunnel"  # string, not a provider
         pm = self._make_pm([invalid, valid])
         check_tunnels(pm)  # Should not raise
-        valid.is_connected.assert_called_once()
+        assert valid.is_connected_calls == 1
 
     def test_hook_exception_handled(self):
         hook = MagicMock()
@@ -245,13 +280,7 @@ class TestTailscalePluginIntegration:
 
     @staticmethod
     def _get_pm():
-        from pynchy.plugins import get_plugin_manager
-
-        with patch(
-            "pluggy.PluginManager.load_setuptools_entrypoints",
-            return_value=0,
-        ):
-            return get_plugin_manager()
+        return _get_pm()
 
     def test_tailscale_plugin_registered(self):
         """TailscaleTunnelPlugin appears in the plugin manager's registry."""
@@ -271,7 +300,6 @@ class TestTailscalePluginIntegration:
         )
         assert tailscale is not None
         assert isinstance(tailscale, TunnelProvider)
-        assert _is_valid_tunnel_provider(tailscale)
 
     def test_check_tunnels_with_real_pm(self):
         """check_tunnels() works with the real plugin manager (mocked subprocess)."""

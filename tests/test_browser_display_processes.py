@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import subprocess  # noqa: S404, RUF100 - test double subclasses Popen; no subprocess launch.
 from typing import TYPE_CHECKING, Any
 
 from pynchy.plugins.integrations import browser
-from pynchy.plugins.integrations.x_integration import (
-    _display as x_display,  # allow: private-test-imports - process side effect.
-)
+from pynchy.plugins.integrations.x_integration import XIntegrationPlugin
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pytest
 
 
@@ -69,7 +70,9 @@ def test_browser_vnc_repair_uses_resolved_executables(monkeypatch: pytest.Monkey
     assert [command[0] for command in commands] == ["/opt/bin/x11vnc", "/opt/bin/websockify"]
 
 
-def test_x_display_uses_resolved_executables(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_x_session_setup_uses_resolved_display_executables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     commands: list[list[str]] = []
     paths = {
         "Xvfb": "/opt/bin/Xvfb",
@@ -81,18 +84,43 @@ def test_x_display_uses_resolved_executables(monkeypatch: pytest.MonkeyPatch) ->
         commands.append(command)
         return _FakeProcess(command, **kwargs)
 
-    monkeypatch.setattr(x_display.shutil, "which", paths.__getitem__)
-    monkeypatch.setattr(x_display, "has_display", lambda: False)
-    monkeypatch.setattr(x_display.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(x_display.time, "sleep", lambda _seconds: None)
-    x_display._state.xvfb_proc = None
+    async def fake_run_session_setup(
+        _timeout_seconds: int,
+        novnc_url: str | None,
+    ) -> dict[str, Any]:
+        await asyncio.sleep(0)
+        return {"result": {"status": "ok", "novnc_url": novnc_url}}
+
+    setup_tool = XIntegrationPlugin().pynchy_service_handler()["tools"]["setup_x_session"]
+    setup_handler = getattr(
+        setup_tool,
+        "__wrapped__",
+        setup_tool,
+    )
+    action_globals = setup_handler.__globals__
+    ensure_xvfb: Callable[[], None] = action_globals["ensure_xvfb"]
+    display_globals = getattr(ensure_xvfb, "__wrapped__", ensure_xvfb).__globals__
+
+    monkeypatch.setitem(action_globals, "has_display", lambda: False)
+    monkeypatch.setitem(action_globals, "_run_x_session_setup", fake_run_session_setup)
+    monkeypatch.setitem(action_globals, "stop_procs", lambda _procs: None)
+    monkeypatch.setitem(display_globals, "has_display", lambda: False)
+    monkeypatch.setattr(display_globals["shutil"], "which", paths.__getitem__)
+    monkeypatch.setattr(display_globals["subprocess"], "Popen", fake_popen)
+    monkeypatch.setattr(display_globals["time"], "sleep", lambda _seconds: None)
+    display_globals["_state"].xvfb_proc = None
 
     try:
-        x_display.ensure_xvfb()
-        x_display.start_vnc_layer()
+        result = await setup_tool({"timeout_seconds": 1})
     finally:
-        x_display._state.xvfb_proc = None
+        display_globals["_state"].xvfb_proc = None
 
+    assert result == {
+        "result": {
+            "status": "ok",
+            "novnc_url": "http://HOST:6080/vnc.html?autoconnect=true",
+        }
+    }
     assert [command[0] for command in commands] == [
         "/opt/bin/Xvfb",
         "/opt/bin/x11vnc",
