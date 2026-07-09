@@ -1,13 +1,13 @@
-"""Convention-based directive resolution — reads directives/<name>.md files.
+"""Convention-based prompt resolution -- reads prompts/<name>.md files.
 
-Directive names map to files by convention: "base" → directives/base.md.
+Prompt names map to files by convention: "base" -> prompts/base.md.
 No scope logic — assignment is handled by profiles and workspaces.
 
 Usage::
 
-    from pynchy.config.directives import read_directives
+    from pynchy.config.prompts import read_prompts
 
-    text = read_directives(["base", "admin-ops"], project_root)
+    text = read_prompts(["base", "admin-ops"], project_root)
 """
 
 from __future__ import annotations
@@ -17,13 +17,13 @@ from pathlib import Path
 from pynchy.logger import logger
 
 
-def read_directives(names: list[str], project_root: Path) -> str | None:
-    """Read and concatenate directive files by name.
+def read_prompts(names: list[str], project_root: Path) -> str | None:
+    """Read and concatenate prompt files by name.
 
-    Maps each name to ``directives/<name>.md`` under *project_root*.
+    Maps each name to ``prompts/<name>.md`` under *project_root*.
     Missing or empty files are warned about and skipped.
 
-    Returns None if no directives produce content.
+    Returns None if no prompts produce content.
     """
     if not names:
         return None
@@ -31,11 +31,11 @@ def read_directives(names: list[str], project_root: Path) -> str | None:
     parts: list[str] = []
 
     for name in names:
-        file_path = project_root / "directives" / f"{name}.md"
+        file_path = project_root / "prompts" / f"{name}.md"
         if not file_path.exists():
             logger.warning(
-                "Directive file not found, skipping",
-                directive=name,
+                "Prompt file not found, skipping",
+                prompt=name,
                 path=str(file_path),
             )
             continue
@@ -56,5 +56,5 @@ def _read_file(path: Path) -> str | None:
         text = path.read_text().strip()
         return text if text else None
     except OSError:
-        logger.warning("Failed to read directive file", path=str(path))
+        logger.warning("Failed to read prompt file", path=str(path))
         return None

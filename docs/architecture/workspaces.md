@@ -8,7 +8,7 @@ Workspaces are configured chat roots. A workspace binds one Discord/Slack channe
 
 A workspace spec declares: "this channel should exist and should use this profile." The profile carries policy and capabilities such as admin status, repo access, model routing, MCP servers, skills, and whether the workspace filesystem contains secrets.
 
-At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. Config-backed jobs under `[jobs.*]` create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [directives](../usage/directives.md) rather than seeded files.
+At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. Config-backed jobs under `[jobs.*]` create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [prompts](../usage/prompts.md) rather than seeded files.
 
 ## Config Merging
 
@@ -55,7 +55,7 @@ To change a schedule, prompt, repo access, or model override, edit `config.toml`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tags` | `list[str]` | Capability tags used by directive, MCP, and skill selection |
+| `tags` | `list[str]` | Capability tags used by prompt, MCP, and skill selection |
 | `is_admin` | `bool` | Whether workspaces using this profile get admin privileges |
 | `contains_secrets` | `bool` | Whether workspace files may contain secrets |
 | `repo_access` | `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts a project worktree |

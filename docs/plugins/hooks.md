@@ -394,7 +394,7 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
 | `folder` | `str` | Workspace folder name |
 | `config` | `dict[str, Any]` | `WorkspaceConfig`-compatible fields |
 
-Agent instructions are now delivered via [directives](../usage/directives.md) rather than seeded CLAUDE.md files. The `claude_md` field is ignored.
+Agent instructions are now delivered via [prompts](../usage/prompts.md) rather than seeded CLAUDE.md files. The `claude_md` field is ignored.
 
 ## Multi-Category Plugins
 
