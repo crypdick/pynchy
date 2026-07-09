@@ -166,7 +166,7 @@ def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[st
 async def _await_query(
     session: ContainerSession,
     group: WorkspaceProfile,
-    timeout: float,
+    query_timeout_seconds: float,
     label: str,
 ) -> str:
     """Wait for a session's query to complete. Returns 'success' or 'error'.
@@ -176,7 +176,7 @@ async def _await_query(
     - SessionDiedError: container exited mid-query — leave cleanup to caller.
     """
     try:
-        await session.wait_for_query_done(timeout=timeout)
+        await session.wait_for_query_done(query_timeout_seconds=query_timeout_seconds)
     except TimeoutError:
         logger.error("query timed out, destroying session", label=label, group=group.name)
         await destroy_session(group.folder)

@@ -178,7 +178,7 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        self.fake_session.wait_for_query_done.assert_awaited_once_with(timeout=300.0)
+        self.fake_session.wait_for_query_done.assert_awaited_once_with(query_timeout_seconds=300.0)
 
     def test_run_container_agent_fully_removed(self):
         """run_container_agent was removed — ensure it doesn't reappear."""

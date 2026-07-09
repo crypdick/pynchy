@@ -413,7 +413,7 @@ async def _ensure_mcp_image(config: McpServerConfig) -> None:
             "build", "-t", image,
             "-f", dockerfile_path,
             project_root,
-            timeout=300,
+            command_timeout_seconds=300,
         )  # fmt: skip
         logger.info("MCP image built", image=image)
     else:

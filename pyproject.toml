@@ -211,7 +211,6 @@ ignore = [
     "ANN204",
     "ANN401",
     "ARG001",
-    "ASYNC109",
     "ASYNC110",
     "ASYNC240",
     "BLE001",

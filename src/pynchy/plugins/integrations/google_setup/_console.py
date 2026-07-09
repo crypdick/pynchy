@@ -52,7 +52,7 @@ async def try_step(
     step_fn,
     fallback_msg: str,
     done_check=None,
-    timeout: int = 60,
+    manual_step_timeout_seconds: int = 60,
 ) -> None:
     """Attempt an automated Console step; fall back to manual + noVNC."""
     try:
@@ -68,14 +68,17 @@ async def try_step(
     logger.info("Manual step required", instructions=fallback_msg)
 
     if done_check:
-        deadline = time.time() + timeout
+        deadline = time.time() + manual_step_timeout_seconds
         while time.time() < deadline:
             with contextlib.suppress(Exception):
                 if await done_check(page):
                     logger.info("Manual step completed")
                     return
             await page.wait_for_timeout(5000)
-        logger.warning("Timed out waiting for manual step", timeout=timeout)
+        logger.warning(
+            "Timed out waiting for manual step",
+            manual_step_timeout_seconds=manual_step_timeout_seconds,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +242,7 @@ async def ensure_consent_screen(page, project_id: str) -> None:
             '  3. Click "Save and Continue" through all pages (skip scopes/test users)'
         ),
         done_check=_consent_configured,
-        timeout=180,
+        manual_step_timeout_seconds=180,
     )
     logger.info("OAuth consent screen configured")
 

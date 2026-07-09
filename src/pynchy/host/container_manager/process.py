@@ -84,8 +84,8 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
         proc.kill()
 
 
-async def _run_rm_force(container_name: str, timeout: float) -> bool:
-    """Run ``container rm -f``/``docker rm -f`` once, bounded by ``timeout``."""
+async def _run_rm_force(container_name: str, rm_timeout_seconds: float) -> bool:
+    """Run ``container rm -f``/``docker rm -f`` once, bounded by ``rm_timeout_seconds``."""
     proc = await asyncio.create_subprocess_exec(
         get_runtime().cli,
         "rm",
@@ -95,7 +95,7 @@ async def _run_rm_force(container_name: str, timeout: float) -> bool:
         stderr=asyncio.subprocess.DEVNULL,
     )
     try:
-        await asyncio.wait_for(proc.wait(), timeout=timeout)
+        await asyncio.wait_for(proc.wait(), timeout=rm_timeout_seconds)
     except TimeoutError:
         logger.warning(
             "Container force-remove timed out, killing cleanup CLI",
@@ -168,9 +168,9 @@ def _pid_exists(pid: int) -> bool:
     return True
 
 
-async def _wait_for_pids_to_exit(pids: list[int], timeout: float) -> bool:
+async def _wait_for_pids_to_exit(pids: list[int], pids_exit_timeout_seconds: float) -> bool:
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
+    deadline = loop.time() + pids_exit_timeout_seconds
     while loop.time() < deadline:
         if all(not _pid_exists(pid) for pid in pids):
             return True

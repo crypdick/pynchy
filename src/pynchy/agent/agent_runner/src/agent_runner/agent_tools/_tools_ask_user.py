@@ -79,6 +79,6 @@ async def _ask_user_handle(arguments: dict[str, Any]) -> list[TextContent] | Cal
     return await ipc_service_request(
         "ask_user",
         {"questions": questions},
-        timeout=ASK_USER_TIMEOUT,
+        response_timeout_seconds=ASK_USER_TIMEOUT,
         type_override="ask_user:ask",
     )

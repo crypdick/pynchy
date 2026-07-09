@@ -15,7 +15,8 @@ class _FakePage:
     async def goto(self, _url: str, *, wait_until: str) -> None:
         assert wait_until == "networkidle"
 
-    async def wait_for_url(self, _pattern, *, timeout: int) -> None:
+    async def wait_for_url(self, _pattern, *, timeout: int) -> None:  # noqa: ASYNC109
+        # Mirrors Playwright's timeout= API shape for this fake.
         assert timeout == 5_000
         raise TimeoutError("timed out")
 

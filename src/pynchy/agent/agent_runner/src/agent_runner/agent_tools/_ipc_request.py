@@ -79,11 +79,11 @@ def _read_response(response_file: Path) -> list[TextContent]:
 async def _wait_for_response_file(
     response_file: Path,
     wakeup: asyncio.Event,
-    timeout: float,
+    response_timeout_seconds: float,
 ) -> None:
     """Wait for a response file, using watchdog wakeups plus periodic polling."""
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
+    deadline = loop.time() + response_timeout_seconds
 
     while True:
         if response_file.exists():
@@ -103,7 +103,7 @@ async def _wait_for_response_file(
 async def ipc_service_request(
     tool_name: str,
     request: dict[str, Any],
-    timeout: float = 300,
+    response_timeout_seconds: float = 300,
     *,
     type_override: str | None = None,
 ) -> list[TextContent]:
@@ -116,7 +116,8 @@ async def ipc_service_request(
     Args:
         tool_name: Name of the service tool (e.g. "read_email")
         request: Request payload (tool-specific fields)
-        timeout: Seconds to wait for response (default 5 min for human approval)
+        response_timeout_seconds: Seconds to wait for response (default 5 min for
+            human approval)
         type_override: Optional IPC type string. When set, overrides the default
             ``service:{tool_name}`` prefix. Use this for tools that require a
             different dispatch prefix on the host (e.g. ``"ask_user:ask"``).
@@ -161,7 +162,7 @@ async def ipc_service_request(
             return _read_response(response_file)
 
         # Watchdog should wake this promptly; polling covers missed/unavailable events.
-        await _wait_for_response_file(response_file, wakeup, timeout)
+        await _wait_for_response_file(response_file, wakeup, response_timeout_seconds)
 
         return _read_response(response_file)
 

@@ -32,7 +32,7 @@ async def _ipc_bash_check(command: str) -> HookDecision:
     results = await ipc_service_request(
         "bash_check",
         {"command": command},
-        timeout=300,  # Match approval timeout
+        response_timeout_seconds=300,  # Match approval timeout
         type_override="security:bash_check",
     )
 

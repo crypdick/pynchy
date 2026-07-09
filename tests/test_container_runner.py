@@ -3090,7 +3090,7 @@ class TestSessionStartOnlyStderr:
             runtime_running = False
 
             with pytest.raises(SessionDiedError):
-                await session.wait_for_query_done(timeout=0.5)
+                await session.wait_for_query_done(query_timeout_seconds=0.5)
 
         assert proc._killed is True
         reap_orphan.assert_awaited_once_with("pynchy-apple-runtime-stop-test")
@@ -3126,7 +3126,7 @@ class TestSessionStartOnlyStderr:
             session.set_output_handler(AsyncMock())
 
             with pytest.raises(SessionDiedError):
-                await session.wait_for_query_done(timeout=0.5)
+                await session.wait_for_query_done(query_timeout_seconds=0.5)
 
         assert proc._killed is True
         reap_orphan.assert_awaited_once_with("pynchy-never-start")

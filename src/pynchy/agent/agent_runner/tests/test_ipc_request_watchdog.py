@@ -97,7 +97,7 @@ class TestWatchdogPicksUpResponse:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, timeout=5.0),
+                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
                 timeout=10.0,
             )
             await task
@@ -112,7 +112,7 @@ class TestWatchdogTimeout:
 
     @pytest.mark.asyncio
     async def test_timeout_returns_error(self, ipc_dirs: dict[str, Path]) -> None:
-        result = await ipc_service_request("test_tool", {}, timeout=1.0)
+        result = await ipc_service_request("test_tool", {}, response_timeout_seconds=1.0)
 
         assert len(result) == 1
         assert "timed out" in result[0].text.lower()
@@ -159,7 +159,7 @@ class TestWatchdogFallback:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, timeout=5.0),
+                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
                 timeout=10.0,
             )
             await task
@@ -203,7 +203,7 @@ class TestResponseFileCleanedUp:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, timeout=5.0),
+                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
                 timeout=10.0,
             )
             await task
@@ -253,7 +253,7 @@ class TestErrorResponse:
 
             task = asyncio.create_task(write_error_response())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, timeout=5.0),
+                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
                 timeout=10.0,
             )
             await task

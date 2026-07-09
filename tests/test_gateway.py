@@ -395,7 +395,7 @@ class TestLiteLLMGatewayStart:
         assert "LITELLM_SALT_KEY=" in litellm_run
         assert "--network pynchy-litellm-net" in litellm_run
         assert wait_healthy_mock.await_args.args[1] == "http://localhost:4000/health/readiness"
-        assert isinstance(wait_healthy_mock.await_args.kwargs["timeout"], float)
+        assert isinstance(wait_healthy_mock.await_args.kwargs["health_timeout_seconds"], float)
 
     @pytest.fixture
     def litellm_config(self, tmp_path: Path) -> Path:

@@ -158,7 +158,7 @@ class ContainerSession:
         """Write a JSON message file to the container's IPC input directory."""
         write_ipc_message(self.group_folder, text)
 
-    async def wait_for_query_done(self, timeout: float) -> None:
+    async def wait_for_query_done(self, query_timeout_seconds: float) -> None:
         """Wait for the query-done pulse or container death.
 
         Raises TimeoutError if the query doesn't complete in time.
@@ -168,13 +168,13 @@ class ContainerSession:
         this is not an error — the pulse already confirmed query completion.
         """
         try:
-            await asyncio.wait_for(self._query_done.wait(), timeout=timeout)
+            await asyncio.wait_for(self._query_done.wait(), timeout=query_timeout_seconds)
         except TimeoutError:
             logger.error(
                 "Session query timed out",
                 group=self.group_folder,
                 container=self.container_name,
-                timeout=timeout,
+                query_timeout_seconds=query_timeout_seconds,
             )
             raise
 

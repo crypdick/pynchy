@@ -162,7 +162,7 @@ class TestAskUserIPCRequest:
         result = await ipc_service_request(
             "ask_user",
             {"questions": [{"question": "Hello?"}]},
-            timeout=1.0,
+            response_timeout_seconds=1.0,
             type_override="ask_user:ask",
         )
 

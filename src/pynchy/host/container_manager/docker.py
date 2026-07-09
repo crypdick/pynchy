@@ -42,10 +42,15 @@ def _run_docker_sync(
 async def run_docker(
     *args: str,
     check: bool = True,
-    timeout: int = 30,
+    command_timeout_seconds: int = 30,
 ) -> subprocess.CompletedProcess[str]:
     """Run a ``docker`` CLI command without blocking the event loop."""
-    return await asyncio.to_thread(_run_docker_sync, *args, check=check, timeout=timeout)
+    return await asyncio.to_thread(
+        _run_docker_sync,
+        *args,
+        check=check,
+        timeout=command_timeout_seconds,
+    )
 
 
 async def ensure_image(image: str) -> None:
@@ -55,7 +60,7 @@ async def ensure_image(image: str) -> None:
         return
 
     logger.info("Pulling Docker image (first run may take a minute)", image=image)
-    await run_docker("pull", image, timeout=300)
+    await run_docker("pull", image, command_timeout_seconds=300)
     logger.info("Docker image pulled", image=image)
 
 
@@ -90,21 +95,21 @@ async def remove_container(name: str) -> None:
     await run_docker("rm", "-f", name, check=False)
 
 
-async def stop_container(name: str, *, timeout: int = 5) -> None:
+async def stop_container(name: str, *, stop_timeout_seconds: int = 5) -> None:
     """Gracefully stop a container then force-remove it.
 
     Sends SIGTERM (docker stop) with a grace period, then removes
     the container so it doesn't linger as "exited".  Idempotent —
     safe to call even if the container is already stopped or absent.
     """
-    await run_docker("stop", "-t", str(timeout), name, check=False)
+    await run_docker("stop", "-t", str(stop_timeout_seconds), name, check=False)
     await run_docker("rm", "-f", name, check=False)
 
 
 async def wait_healthy(
     container_name: str,
     url: str,
-    timeout: float = 90,
+    health_timeout_seconds: float = 90,
     poll_interval: float = 1.0,
     headers: dict[str, str] | None = None,
     *,
@@ -120,7 +125,7 @@ async def wait_healthy(
     """
     start = time.monotonic()
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
+    deadline = loop.time() + health_timeout_seconds
 
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=5),
@@ -152,5 +157,5 @@ async def wait_healthy(
 
             await asyncio.sleep(poll_interval)
 
-    msg = f"Container {container_name} did not become healthy within {timeout}s"
+    msg = f"Container {container_name} did not become healthy within {health_timeout_seconds}s"
     raise TimeoutError(msg)
