@@ -14,10 +14,31 @@ from pynchy.logger import logger
 from ._ids import channel_jid
 from ._lookup import normalize_discord_channel_name, same_name
 
+DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
+DISCORD_CHAT_REF_NOT_CONFIGURED_GUILD_CHANNEL = (
+    "Discord chat ref is not a configured guild channel: {name}"
+)
+DISCORD_GUILD_NOT_FOUND_FOR_CONFIGURED_CHAT = (
+    "Discord guild not found for configured chat: {guild_id}"
+)
+DISCORD_GUILD_MESSAGES_DISABLED = "Discord guild messages are disabled"
+CONFIGURED_DISCORD_GUILD_NOT_FOUND_FOR_WORKSPACE_PROVISIONING = (
+    "Configured Discord guild not found for workspace provisioning"
+)
+MULTIPLE_DISCORD_GUILDS_CONFIGURED = (
+    "Multiple Discord guilds are configured; workspace channel provisioning "
+    "needs exactly one guild"
+)
+DISCORD_BOT_NOT_IN_ANY_GUILD = "Discord bot is not in any guild"
+MULTIPLE_DISCORD_GUILDS_AVAILABLE = (
+    "Multiple Discord guilds are available; configure one Discord guild for "
+    "workspace channel provisioning"
+)
+
 
 def _require_client(client: Any) -> Any:
     if client is None:
-        raise RuntimeError("Discord client is not connected")
+        raise RuntimeError(DISCORD_CLIENT_NOT_CONNECTED)
     return client
 
 
@@ -30,7 +51,9 @@ async def create_discord_group(channel: Any, name: str) -> str:
 
     target = resolve_discord_chat_target(channel.config, name)
     if target is None or target.kind != "channel":
-        raise ValueError(f"Discord chat ref is not a configured guild channel: {name}")
+        raise ValueError(
+            DISCORD_CHAT_REF_NOT_CONFIGURED_GUILD_CHANNEL.format(name=name)
+        )
     return await _create_configured_channel(channel, target)
 
 
@@ -41,7 +64,11 @@ async def _create_configured_channel(channel: Any, target: DiscordChatTarget) ->
 
     guild = await channel.find_configured_guild(target)
     if guild is None:
-        raise RuntimeError(f"Discord guild not found for configured chat: {target.guild_id}")
+        raise RuntimeError(
+            DISCORD_GUILD_NOT_FOUND_FOR_CONFIGURED_CHAT.format(
+                guild_id=target.guild_id
+            )
+        )
 
     channel_name = channel.configured_channel_name(target)
     created = await guild.create_text_channel(
@@ -69,7 +96,7 @@ async def _create_workspace_channel(channel: Any, name: str) -> str:
 
 async def _find_workspace_provisioning_guild(channel: Any) -> Any:
     if channel.config.group_policy == "disabled":
-        raise ValueError("Discord guild messages are disabled")
+        raise ValueError(DISCORD_GUILD_MESSAGES_DISABLED)
 
     configured_guilds = list(channel.config.chat)
     if len(configured_guilds) == 1:
@@ -77,22 +104,18 @@ async def _find_workspace_provisioning_guild(channel: Any) -> Any:
         guild = await channel.find_configured_guild(target)
         if guild is not None:
             return guild
-        raise RuntimeError("Configured Discord guild not found for workspace provisioning")
-    if len(configured_guilds) > 1:
         raise RuntimeError(
-            "Multiple Discord guilds are configured; workspace channel provisioning "
-            "needs exactly one guild"
+            CONFIGURED_DISCORD_GUILD_NOT_FOUND_FOR_WORKSPACE_PROVISIONING
         )
+    if len(configured_guilds) > 1:
+        raise RuntimeError(MULTIPLE_DISCORD_GUILDS_CONFIGURED)
 
     guilds = list(getattr(_require_client(channel.client), "guilds", []) or [])
     if len(guilds) == 1:
         return guilds[0]
     if not guilds:
-        raise RuntimeError("Discord bot is not in any guild")
-    raise RuntimeError(
-        "Multiple Discord guilds are available; configure one Discord guild for "
-        "workspace channel provisioning"
-    )
+        raise RuntimeError(DISCORD_BOT_NOT_IN_ANY_GUILD)
+    raise RuntimeError(MULTIPLE_DISCORD_GUILDS_AVAILABLE)
 
 
 def _find_guild_channel_by_name(guild: Any, channel_name: str) -> Any | None:
