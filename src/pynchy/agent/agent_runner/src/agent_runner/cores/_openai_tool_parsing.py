@@ -32,7 +32,7 @@ def _as_mapping(obj: Any) -> dict[str, Any] | None:
     if hasattr(obj, "model_dump"):
         try:
             data = obj.model_dump()
-        except Exception:  # allow: exception-handling — best-effort coercion to None
+        except Exception:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
             data = None
         if isinstance(data, dict):
             return data

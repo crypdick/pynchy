@@ -212,9 +212,9 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
                     "category": "conversation",
                 },
             )
-        except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
+        except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
             _log(f"save_memory IPC failed (non-fatal): {exc}")
-    except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
+    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
         _log(f"Failed to archive transcript: {exc}")
         return None
     else:
@@ -241,7 +241,7 @@ def main() -> None:
 
     try:
         asyncio.run(archive_transcript(transcript_path, session_id))
-    except Exception as exc:  # allow: exception-handling — gate fails open; logged via _log()
+    except Exception as exc:  # allow: exception-handling; gate fails open  # noqa: BLE001, RUF100
         _log(f"archive error, skipping: {exc}")
 
     sys.exit(0)

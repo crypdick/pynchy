@@ -118,7 +118,7 @@ def main() -> None:
     hooks = _load_roster()
     try:
         decision = asyncio.run(_evaluate(hooks, tool_name, tool_input))
-    except Exception as exc:  # allow: exception-handling — gate fails open; logged via _log()
+    except Exception as exc:  # allow: exception-handling; gate fails open  # noqa: BLE001, RUF100
         _log(f"gate evaluation error, allowing by default: {exc}")
         sys.exit(0)
 

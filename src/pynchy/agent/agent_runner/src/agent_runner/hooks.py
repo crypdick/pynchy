@@ -151,7 +151,7 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
             else:
                 _hook_log(f"Hook '{name}' loaded but has no event handlers")
 
-        except Exception as exc:  # allow: exception-handling — one bad hook must not block others
+        except Exception as exc:  # allow: exception-handling; isolate  # noqa: BLE001, RUF100
             _hook_log(f"Failed to load hook '{name}': {exc}")
 
     return hooks

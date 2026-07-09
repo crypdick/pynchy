@@ -393,7 +393,7 @@ class ClaudeCLIAgentCore:
             except (TimeoutError, ProcessLookupError):
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
-            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
+            except Exception as exc:  # allow: exception-handling; cleanup; logged via _log()  # noqa: BLE001, RUF100
                 _log(f"error during process cleanup: {exc}")
             finally:
                 self._proc = None

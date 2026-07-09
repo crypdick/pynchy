@@ -46,7 +46,7 @@ def _disable_tracing() -> None:
 
         set_tracing_disabled(disabled=True)
         _log("Tracing disabled")
-    except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
+    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
         _log(f"Tracing disable skipped: {exc}")
 
 
@@ -137,7 +137,7 @@ def _make_shell_executor(
         except TimeoutError:
             proc.kill()
             return f"Command timed out after {timeout_s}s"
-        except Exception as exc:  # allow: exception-handling — returned to agent as output
+        except Exception as exc:  # allow: exception-handling; return  # noqa: BLE001, RUF100
             return f"Shell error: {exc}"
         else:
             output = stdout.decode(errors="replace")
@@ -184,7 +184,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
                 op.new_content or "",
             )
             return ApplyPatchResult(status="completed")
-        except Exception as exc:  # allow: exception-handling — surfaced as failed result
+        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -199,7 +199,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
             if not updated:
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
             return ApplyPatchResult(status="completed")
-        except Exception as exc:  # allow: exception-handling — surfaced as failed result
+        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -208,7 +208,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         try:
             await asyncio.to_thread(_delete_patch_file, Path(op.path))
             return ApplyPatchResult(status="completed")
-        except Exception as exc:  # allow: exception-handling — surfaced as failed result
+        except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
             return ApplyPatchResult(status="failed", output=str(exc))
 
 
@@ -414,7 +414,7 @@ class OpenAIAgentCore:
                 f"security_hooks={len(self._before_tool_hooks)}"
             )
             self._agent = self._make_agent(self._model_primary)
-        except Exception:
+        except Exception:  # allow: exception-handling; init cleanup  # noqa: BLE001, RUF100
             await self._mcp_stack.aclose()
             raise
 
@@ -479,7 +479,7 @@ class OpenAIAgentCore:
         """Clean up MCP server contexts."""
         try:
             await self._mcp_stack.aclose()
-        except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
+        except Exception as exc:  # allow: exception-handling; cleanup  # noqa: BLE001, RUF100
             _log(f"Error closing MCP server: {exc}")
         self._mcp_servers.clear()
         self._agent = None

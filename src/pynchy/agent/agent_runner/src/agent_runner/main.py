@@ -231,7 +231,7 @@ def _read_container_input() -> ContainerInput:
     """Read initial input from file (written by host before container start)."""
     try:
         container_input = read_initial_input()
-    except Exception as exc:  # allow: exception-handling — reported to host; exits
+    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
         write_output(ContainerOutput(status="error", error=f"Failed to read initial input: {exc}"))
         sys.exit(1)
     else:
@@ -284,7 +284,7 @@ async def _create_and_start_core(container_input: ContainerInput) -> AgentCore:
         core = create_agent_core(
             container_input.agent_core_module, container_input.agent_core_class, core_config
         )
-    except Exception as exc:  # allow: exception-handling — reported to host; exits
+    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         write_output(
             ContainerOutput(
@@ -295,7 +295,7 @@ async def _create_and_start_core(container_input: ContainerInput) -> AgentCore:
 
     try:
         await core.start()
-    except Exception as exc:  # allow: exception-handling — reported to host; exits
+    except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
         write_output(ContainerOutput(status="error", error=f"Failed to start agent core: {exc}"))
         sys.exit(1)
 
@@ -376,7 +376,7 @@ async def _run_conversation_loop(core: AgentCore, prompt: str, session_id: str |
             log(f"Got new message ({len(next_message)} chars), starting new query")
             prompt = next_message
 
-    except Exception as exc:  # allow: exception-handling — agent loop boundary; reported to host
+    except Exception as exc:  # allow: exception-handling; loop  # noqa: BLE001, RUF100
         error_message = str(exc)
         log(f"Agent error: {error_message}")
         write_output(
@@ -386,7 +386,7 @@ async def _run_conversation_loop(core: AgentCore, prompt: str, session_id: str |
     finally:
         try:
             await core.stop()
-        except Exception as exc:  # allow: exception-handling — cleanup; logged via log()
+        except Exception as exc:  # allow: exception-handling; cleanup  # noqa: BLE001, RUF100
             log(f"Error stopping core: {exc}")
 
 
