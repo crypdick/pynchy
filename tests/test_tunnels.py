@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pluggy
 
-import pynchy.plugins.tunnels as _tunnels_impl
+import pynchy.plugins.tunnels._api as _tunnels_impl
 import pynchy.plugins.tunnels.tailscale as _tailscale_impl
 from pynchy.plugins.tunnels import TunnelProvider, check_tunnels
 
