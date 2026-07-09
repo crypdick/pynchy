@@ -34,6 +34,9 @@ from pynchy.host.git_ops.utils import (
 )
 from pynchy.logger import logger
 
+_GIT_FETCH_FAILED = "git fetch failed: {stderr}"
+_GIT_WORKTREE_ADD_FAILED = "git worktree add failed: {stderr}"
+
 
 class WorktreeError(Exception):
     """Failed to create or sync a git worktree."""
@@ -162,7 +165,7 @@ def _create_new_worktree(
     # Fetch is required for initial creation
     fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
     if fetch.returncode != 0:
-        raise WorktreeError(f"git fetch failed: {fetch.stderr.strip()}")
+        raise WorktreeError(_GIT_FETCH_FAILED.format(stderr=fetch.stderr.strip()))
 
     repo_ctx.worktrees_dir.mkdir(parents=True, exist_ok=True)
 
@@ -180,7 +183,7 @@ def _create_new_worktree(
         cwd=repo_ctx.root,
     )
     if add.returncode != 0:
-        raise WorktreeError(f"git worktree add failed: {add.stderr.strip()}")
+        raise WorktreeError(_GIT_WORKTREE_ADD_FAILED.format(stderr=add.stderr.strip()))
 
     logger.info(
         "Worktree created",
