@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
+from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
 
@@ -130,8 +132,6 @@ class TestAskUserE2E:
         )
 
         # Step 1: Container sends ask_user:ask IPC request
-        from pynchy.host.container_manager.ipc import dispatch
-
         data = {
             "type": "ask_user:ask",
             "request_id": REQUEST_ID,
@@ -164,8 +164,6 @@ class TestAskUserE2E:
         assert updated_data["message_id"] == "msg-ts-123"
 
         # Step 2: Simulate user answering via channel callback
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         ask_user_deps = FakeAskUserDeps()
 
         # Mock get_session to return an alive session
@@ -218,8 +216,6 @@ class TestAskUserE2E:
         (pending_dir / f"{request_id}.json").write_text(json.dumps(pending_data))
 
         # Step 2: Answer arrives with container dead
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
         ask_user_deps = FakeAskUserDeps()
 
         with (
@@ -257,8 +253,6 @@ class TestAskUserE2E:
             groups={"chat@g.us": TEST_GROUP},
             channels=[channel],
         )
-
-        from pynchy.host.container_manager.ipc import dispatch
 
         data = {
             "type": "ask_user:ask",
