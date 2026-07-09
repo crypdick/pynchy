@@ -1,19 +1,16 @@
 """Tests for agent core protocol, registry, and events."""
 
+import sys
+from pathlib import Path
+
 import pytest
 
-# Import from container module (will be available in test environment)
+# Add container agent_runner to path for testing
+container_path = Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"
+if container_path.exists():
+    sys.path.insert(0, str(container_path))
+
 try:
-    import sys
-    from pathlib import Path
-
-    # Add container agent_runner to path for testing
-    container_path = (
-        Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"
-    )
-    if container_path.exists():
-        sys.path.insert(0, str(container_path))
-
     from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
     from agent_runner.hooks import AGNOSTIC_TO_CLAUDE, CLAUDE_HOOK_MAP, HookEvent
     from agent_runner.registry import create_agent_core

@@ -168,6 +168,29 @@ def _write_archive_file(file_path: Path, markdown: str) -> None:
     file_path.write_text(markdown, encoding="utf-8")
 
 
+async def _build_archive_payload(
+    transcript_path: str,
+    session_id: str,
+) -> tuple[Path, str] | None:
+    content = await asyncio.to_thread(_read_transcript, transcript_path)
+    messages = _parse_transcript(content)
+
+    if not messages:
+        _log("No messages to archive")
+        return None
+
+    summary = await asyncio.to_thread(_get_session_summary, session_id, transcript_path)
+    name = _sanitize_filename(summary) if summary else _generate_fallback_name()
+
+    await asyncio.to_thread(_ensure_conversations_dir)
+
+    date = datetime.now(UTC).strftime("%Y-%m-%d")
+    filename = f"{date}-{name}.md"
+    file_path = CONVERSATIONS_DIR / filename
+    markdown = _format_transcript_markdown(messages, summary)
+    return file_path, markdown
+
+
 async def archive_transcript(transcript_path: str, session_id: str) -> Path | None:
     """Archive a session transcript to markdown and structured memory.
 
@@ -179,25 +202,16 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
         return None
 
     try:
-        content = await asyncio.to_thread(_read_transcript, transcript_path)
-        messages = _parse_transcript(content)
-
-        if not messages:
-            _log("No messages to archive")
+        payload = await _build_archive_payload(transcript_path, session_id)
+        if payload is None:
             return None
 
-        summary = await asyncio.to_thread(_get_session_summary, session_id, transcript_path)
-        name = _sanitize_filename(summary) if summary else _generate_fallback_name()
-
-        await asyncio.to_thread(_ensure_conversations_dir)
-
-        date = datetime.now(UTC).strftime("%Y-%m-%d")
-        filename = f"{date}-{name}.md"
-        file_path = CONVERSATIONS_DIR / filename
-
-        markdown = _format_transcript_markdown(messages, summary)
+        file_path, markdown = payload
         await asyncio.to_thread(_write_archive_file, file_path, markdown)
-
+    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
+        _log(f"Failed to archive transcript: {exc}")
+        return None
+    else:
         _log(f"Archived conversation to {file_path}")
 
         # Best-effort: also save to structured memory for search
@@ -207,17 +221,13 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
             await ipc_service_request(
                 "save_memory",
                 {
-                    "key": f"conversation-{date}-{name}",
+                    "key": f"conversation-{file_path.stem}",
                     "content": markdown[:2000],
                     "category": "conversation",
                 },
             )
         except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
             _log(f"save_memory IPC failed (non-fatal): {exc}")
-    except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
-        _log(f"Failed to archive transcript: {exc}")
-        return None
-    else:
         return file_path
 
 

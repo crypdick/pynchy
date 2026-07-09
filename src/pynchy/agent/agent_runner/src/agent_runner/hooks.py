@@ -110,6 +110,26 @@ def _registered_hook_functions(module: object) -> dict[HookEvent, list[HookFn]]:
     return hooks
 
 
+def _merge_loaded_hook(
+    name: str,
+    module_path: str,
+    hooks: dict[HookEvent, list[HookFn]],
+) -> None:
+    module = _load_hook_module(name, module_path)
+    if module is None:
+        return
+
+    registered = _registered_hook_functions(module)
+    for event, funcs in registered.items():
+        hooks[event].extend(funcs)
+
+    if registered:
+        loaded_events = ", ".join(event.value for event in registered)
+        _hook_log(f"Loaded hook '{name}': {loaded_events}")
+    else:
+        _hook_log(f"Hook '{name}' loaded but has no event handlers")
+
+
 def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookFn]]:
     """Load hook functions from plugin module paths.
 
@@ -137,20 +157,7 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
             continue
 
         try:
-            module = _load_hook_module(name, module_path)
-            if module is None:
-                continue
-
-            registered = _registered_hook_functions(module)
-            for event, funcs in registered.items():
-                hooks[event].extend(funcs)
-
-            if registered:
-                loaded_events = ", ".join(event.value for event in registered)
-                _hook_log(f"Loaded hook '{name}': {loaded_events}")
-            else:
-                _hook_log(f"Hook '{name}' loaded but has no event handlers")
-
+            _merge_loaded_hook(name, module_path, hooks)
         except Exception as exc:  # allow: exception-handling; isolate  # noqa: BLE001, RUF100
             _hook_log(f"Failed to load hook '{name}': {exc}")
 

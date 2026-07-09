@@ -376,44 +376,47 @@ class OpenAIAgentCore:
             mcp_servers=self._mcp_servers,
         )
 
+    async def _initialize_runtime(self) -> None:
+        # Convert config.mcp_servers dict → MCPServer* instances
+        for name, spec in self.config.mcp_servers.items():
+            built = self._build_mcp_server(name, spec)
+            if built is not None:
+                self._mcp_servers.append(built)
+
+        # Enter MCP server async contexts
+        for server in self._mcp_servers:
+            await self._mcp_stack.enter_async_context(server)
+
+        # Build system instructions
+        instructions = (
+            "You are a helpful assistant running inside a container. "
+            "You have shell access and can edit files."
+        )
+        if self.config.system_prompt_append:
+            instructions += "\n\n" + self.config.system_prompt_append
+
+        model = self.config.extra.get("model", "openai/gpt-5.5")
+        self._model_primary = model
+        self._instructions = instructions
+
+        # Build security hooks list via the shared single-source roster so this
+        # core enforces exactly the same gate as the Claude/claude-cli cores.
+        from agent_runner.hooks import before_tool_use_roster, load_hooks
+
+        self._before_tool_hooks = before_tool_use_roster(load_hooks(self.config.plugin_hooks))
+
+        _log(
+            f"Creating agent with model={self._model_primary}, "
+            f"mcp_servers={len(self._mcp_servers)}, "
+            f"security_hooks={len(self._before_tool_hooks)}"
+        )
+        self._agent = self._make_agent(self._model_primary)
+
     async def start(self) -> None:
         """Initialize OpenAI Agent with tools and MCP servers."""
         _disable_tracing()
         try:
-            # Convert config.mcp_servers dict → MCPServer* instances
-            for name, spec in self.config.mcp_servers.items():
-                built = self._build_mcp_server(name, spec)
-                if built is not None:
-                    self._mcp_servers.append(built)
-
-            # Enter MCP server async contexts
-            for server in self._mcp_servers:
-                await self._mcp_stack.enter_async_context(server)
-
-            # Build system instructions
-            instructions = (
-                "You are a helpful assistant running inside a container. "
-                "You have shell access and can edit files."
-            )
-            if self.config.system_prompt_append:
-                instructions += "\n\n" + self.config.system_prompt_append
-
-            model = self.config.extra.get("model", "openai/gpt-5.5")
-            self._model_primary = model
-            self._instructions = instructions
-
-            # Build security hooks list via the shared single-source roster so this
-            # core enforces exactly the same gate as the Claude/claude-cli cores.
-            from agent_runner.hooks import before_tool_use_roster, load_hooks
-
-            self._before_tool_hooks = before_tool_use_roster(load_hooks(self.config.plugin_hooks))
-
-            _log(
-                f"Creating agent with model={self._model_primary}, "
-                f"mcp_servers={len(self._mcp_servers)}, "
-                f"security_hooks={len(self._before_tool_hooks)}"
-            )
-            self._agent = self._make_agent(self._model_primary)
+            await self._initialize_runtime()
         except Exception:  # allow: exception-handling; init cleanup  # noqa: BLE001, RUF100
             await self._mcp_stack.aclose()
             raise

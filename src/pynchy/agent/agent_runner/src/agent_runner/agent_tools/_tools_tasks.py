@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
 
 from agent_runner.agent_tools import _ipc
 from agent_runner.agent_tools._registry import ToolEntry, register, tool, tool_error
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # -- schedule_task --
 
@@ -242,6 +245,45 @@ def _scheduled_text(message: str) -> list[TextContent]:
     return [TextContent(type="text", text=message)]
 
 
+def _list_tasks_text(tasks_file: Path) -> list[TextContent]:
+    all_tasks = json.loads(tasks_file.read_text(encoding="utf-8"))
+    tasks = (
+        all_tasks
+        if _ipc.is_admin
+        else [t for t in all_tasks if t.get("groupFolder") == _ipc.group_folder]
+    )
+
+    if not tasks:
+        return [TextContent(type="text", text="No scheduled tasks found.")]
+
+    lines = []
+    for t in tasks:
+        task_type = t.get("type", "agent")
+        if task_type == "host":
+            label = t.get("name") or t.get("command", "")[:50]
+            lines.append(
+                f"- [{t['id']}] [host] {label} "
+                f"({t['schedule_type']}: {t['schedule_value']}) "
+                f"- {t['status']}, "
+                f"next: {t.get('next_run', 'N/A')}"
+            )
+        else:
+            prompt = t.get("prompt", "")[:50]
+            lines.append(
+                f"- [{t['id']}] [agent] {prompt}... "
+                f"({t['schedule_type']}: {t['schedule_value']}) "
+                f"- {t['status']}, "
+                f"next: {t.get('next_run', 'N/A')}"
+            )
+
+    return [
+        TextContent(
+            type="text",
+            text=f"Scheduled tasks:\n{chr(10).join(lines)}",
+        )
+    ]
+
+
 def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResult | None:
     """Return a CallToolResult error if validation fails, else None."""
     if schedule_type == "cron":
@@ -300,43 +342,7 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
         if not tasks_file.exists():
             return [TextContent(type="text", text="No scheduled tasks found.")]
 
-        all_tasks = json.loads(tasks_file.read_text())
-        tasks = (
-            all_tasks
-            if _ipc.is_admin
-            else [t for t in all_tasks if t.get("groupFolder") == _ipc.group_folder]
-        )
-
-        if not tasks:
-            return [TextContent(type="text", text="No scheduled tasks found.")]
-
-        lines = []
-        for t in tasks:
-            task_type = t.get("type", "agent")
-            if task_type == "host":
-                label = t.get("name") or t.get("command", "")[:50]
-                lines.append(
-                    f"- [{t['id']}] [host] {label} "
-                    f"({t['schedule_type']}: {t['schedule_value']}) "
-                    f"- {t['status']}, "
-                    f"next: {t.get('next_run', 'N/A')}"
-                )
-            else:
-                prompt = t.get("prompt", "")[:50]
-                lines.append(
-                    f"- [{t['id']}] [agent] {prompt}... "
-                    f"({t['schedule_type']}: {t['schedule_value']}) "
-                    f"- {t['status']}, "
-                    f"next: {t.get('next_run', 'N/A')}"
-                )
-
-        return [
-            TextContent(
-                type="text",
-                text=f"Scheduled tasks:\n{chr(10).join(lines)}",
-            )
-        ]
-
+        return _list_tasks_text(tasks_file)
     except (OSError, json.JSONDecodeError, KeyError) as exc:
         return [TextContent(type="text", text=f"Error reading tasks: {exc}")]
 

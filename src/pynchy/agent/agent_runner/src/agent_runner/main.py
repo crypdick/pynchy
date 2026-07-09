@@ -342,39 +342,44 @@ async def _run_single_query(
     return new_session_id, result_count, closed_during_query
 
 
+async def _drive_conversation_loop(core: AgentCore, prompt: str, session_id: str | None) -> None:
+    """Run the conversation loop until the host closes the IPC channel."""
+    while True:
+        new_session_id, result_count, closed_during_query = await _run_single_query(
+            core, prompt, session_id
+        )
+
+        # Update session ID from core after query
+        if core.session_id:
+            session_id = core.session_id
+        elif new_session_id:
+            session_id = new_session_id
+
+        log(f"Query done. Results: {result_count}, closedDuringQuery: {closed_during_query}")
+
+        # If _close was consumed during the query, exit immediately
+        if closed_during_query:
+            log("Close sentinel consumed during query, exiting")
+            break
+
+        # Emit session update so host can track it
+        write_output(ContainerOutput(status="success", result=None, new_session_id=session_id))
+
+        log("Query ended, waiting for next IPC message...")
+
+        next_message = await wait_for_ipc_message()
+        if next_message is None:
+            log("Close sentinel received, exiting")
+            break
+
+        log(f"Got new message ({len(next_message)} chars), starting new query")
+        prompt = next_message
+
+
 async def _run_conversation_loop(core: AgentCore, prompt: str, session_id: str | None) -> None:
     """Drive query → wait-for-next-message cycles until the host signals close."""
     try:
-        while True:
-            new_session_id, result_count, closed_during_query = await _run_single_query(
-                core, prompt, session_id
-            )
-
-            # Update session ID from core after query
-            if core.session_id:
-                session_id = core.session_id
-            elif new_session_id:
-                session_id = new_session_id
-
-            log(f"Query done. Results: {result_count}, closedDuringQuery: {closed_during_query}")
-
-            # If _close was consumed during the query, exit immediately
-            if closed_during_query:
-                log("Close sentinel consumed during query, exiting")
-                break
-
-            # Emit session update so host can track it
-            write_output(ContainerOutput(status="success", result=None, new_session_id=session_id))
-
-            log("Query ended, waiting for next IPC message...")
-
-            next_message = await wait_for_ipc_message()
-            if next_message is None:
-                log("Close sentinel received, exiting")
-                break
-
-            log(f"Got new message ({len(next_message)} chars), starting new query")
-            prompt = next_message
+        await _drive_conversation_loop(core, prompt, session_id)
 
     except Exception as exc:  # allow: exception-handling; loop  # noqa: BLE001, RUF100
         error_message = str(exc)
