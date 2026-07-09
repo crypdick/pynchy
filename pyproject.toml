@@ -229,7 +229,7 @@ ignore = [
 # risk that motivates ClassVar in production code.
 "tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "PLR0912", "PLR0913", "PLR0915", "RUF012", "S101", "SLF"]
 "**/tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "PLR0912", "PLR0913", "PLR0915", "RUF012", "S101", "SLF"]
-"scripts/**/*.py" = ["C901", "PLR0912", "PLR0913", "PLR0915", "S603", "S607", "T20"]
+"scripts/**/*.py" = ["C901", "PLR0912", "PLR0913", "PLR0915", "T20"]
 "src/pynchy/agent/agent_runner/src/agent_runner/agent_tools/_server.py" = ["F401"]
 "src/pynchy/host/container_manager/ipc/__init__.py" = ["F401"]
 "src/pynchy/host/orchestrator/config_jobs.py" = ["C901"]
