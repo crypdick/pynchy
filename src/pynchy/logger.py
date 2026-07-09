@@ -9,12 +9,15 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 import structlog
 
+if TYPE_CHECKING:
+    from structlog.typing import BindableLogger
 
-def _setup_logging() -> Any:
+
+def _setup_logging() -> object:
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
@@ -40,7 +43,7 @@ def _setup_logging() -> Any:
     return structlog.get_logger()
 
 
-logger = _setup_logging()
+logger = cast("BindableLogger", _setup_logging())
 
 
 def _uncaught_exception_handler(

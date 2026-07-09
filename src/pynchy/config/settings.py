@@ -89,7 +89,7 @@ class _FilteredDotenvSettingsSource(PydanticBaseSettingsSource):
         allowed = set(self.settings_cls.model_fields)
         return {key: value for key, value in data.items() if key in allowed}
 
-    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+    def get_field_value(self, field: object, field_name: str) -> tuple[object, str, bool]:
         return self._wrapped.get_field_value(field, field_name)
 
 

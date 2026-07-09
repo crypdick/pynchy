@@ -28,7 +28,7 @@ from pynchy.logger import logger
 _INTERVAL_POSITIVE_ERROR = "Interval must be positive"
 
 
-def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
+def write_json_atomic(path: Path, data: object, *, indent: int | None = None) -> None:
     """Write JSON data to a file using atomic rename (tmp → final).
 
     Ensures the target file is never partially written — a reader sees
@@ -175,7 +175,7 @@ def log_shell_result(
     result: ShellResult,
     *,
     label: str,
-    **extra: Any,
+    **extra: object,
 ) -> None:
     """Log the outcome of a shell command execution."""
     if result.start_error:
