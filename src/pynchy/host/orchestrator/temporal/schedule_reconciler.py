@@ -157,7 +157,7 @@ def _require_client(runtime: Any) -> Any:
 
 async def _start_once_agent_task(runtime: Any, task: ScheduledTask) -> None:
     workflow_id = agent_task_workflow_id(task)
-    await runtime._start_workflow(
+    await runtime.start_temporal_workflow(
         ScheduledAgentTaskWorkflow.run,
         task.id,
         workflow_id=workflow_id,
@@ -168,7 +168,7 @@ async def _start_once_agent_task(runtime: Any, task: ScheduledTask) -> None:
 
 async def _start_once_database_host_job(runtime: Any, job: HostJob) -> None:
     workflow_id = database_host_job_workflow_id(job)
-    await runtime._start_workflow(
+    await runtime.start_temporal_workflow(
         DatabaseHostJobWorkflow.run,
         job.id,
         workflow_id=workflow_id,

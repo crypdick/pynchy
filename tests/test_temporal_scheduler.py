@@ -499,6 +499,48 @@ class TestTemporalSchedulerRuntime:
         assert 0 < kwargs["start_delay"].total_seconds() <= 300
 
     @pytest.mark.asyncio
+    async def test_reconcile_starts_once_database_host_job_as_delayed_workflow(self, monkeypatch):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+        from pynchy.host.orchestrator.temporal.workflows import DatabaseHostJobWorkflow
+
+        due_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+        host_job = HostJob(
+            id="host/job one",
+            name="backup",
+            command="scripts/backup_runtime_dbs.sh",
+            schedule_type="once",
+            schedule_value=due_at,
+            created_by="admin-1",
+            status="active",
+            enabled=True,
+            next_run=due_at,
+        )
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(),
+            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+        )
+        runtime.client = client
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[host_job])
+        )
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, cron_jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert len(client.started_workflows) == 1
+        workflow, args, kwargs = client.started_workflows[0]
+        assert workflow == DatabaseHostJobWorkflow.run
+        assert args == (host_job.id,)
+        assert kwargs["id"].startswith("pynchy-host-job-host-job-one-")
+        assert kwargs["task_queue"] == "pynchy-test"
+        assert 0 < kwargs["start_delay"].total_seconds() <= 300
+
+    @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_database_host_job(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
         import pynchy.host.orchestrator.temporal.schedules as temporal_schedules

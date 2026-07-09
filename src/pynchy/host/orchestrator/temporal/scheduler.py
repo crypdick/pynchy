@@ -368,6 +368,25 @@ class TemporalSchedulerRuntime:
             get_host_jobs=get_all_host_jobs,
         )
 
+    async def start_temporal_workflow(
+        self,
+        workflow: Callable[..., Any],
+        *args: Any,
+        workflow_id: str,
+        status_id: str,
+        start_delay: timedelta | None = None,
+        id_reuse_policy: WorkflowIDReusePolicy = WorkflowIDReusePolicy.REJECT_DUPLICATE,
+    ) -> None:
+        """Start a Temporal workflow and update scheduler status consistently."""
+        await self._start_workflow(
+            workflow,
+            *args,
+            workflow_id=workflow_id,
+            status_id=status_id,
+            start_delay=start_delay,
+            id_reuse_policy=id_reuse_policy,
+        )
+
     async def _start_workflow(
         self,
         workflow: Callable[..., Any],
