@@ -61,7 +61,7 @@ class _ResponseWatcher(FileSystemEventHandler):
 def _read_response(response_file: Path) -> list[TextContent]:
     """Read and delete a response file, returning MCP TextContent."""
     try:
-        response = json.loads(response_file.read_text())
+        response = json.loads(response_file.read_text(encoding="utf-8"))
     finally:
         response_file.unlink(missing_ok=True)
 

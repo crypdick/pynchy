@@ -247,7 +247,7 @@ async def _handle_reset_handoff(
 
     s = get_settings()
     try:
-        reset_data = json.loads(reset_file.read_text())
+        reset_data = json.loads(reset_file.read_text(encoding="utf-8"))
         reset_file.unlink()
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning(

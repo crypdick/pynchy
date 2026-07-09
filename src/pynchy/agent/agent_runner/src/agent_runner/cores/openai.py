@@ -144,7 +144,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         try:
             path = Path(op.path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(op.new_content or "")
+            path.write_text(op.new_content or "", encoding="utf-8")
             return ApplyPatchResult(status="completed")
         except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
@@ -156,7 +156,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
             path = Path(op.path)
             if not path.exists():
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
-            path.write_text(op.new_content or "")
+            path.write_text(op.new_content or "", encoding="utf-8")
             return ApplyPatchResult(status="completed")
         except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))

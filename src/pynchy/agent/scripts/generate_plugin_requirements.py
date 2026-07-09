@@ -50,7 +50,7 @@ def _to_git_requirement(repo: str, ref: str) -> str:
 def generate_requirements(output_path: Path, config_path: Path) -> int:
     lines: list[str] = []
     if config_path.exists():
-        data = tomllib.loads(config_path.read_text())
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
         plugins = data.get("plugins", {})
         if isinstance(plugins, dict):
             for plugin_cfg in plugins.values():
@@ -73,7 +73,7 @@ def generate_requirements(output_path: Path, config_path: Path) -> int:
         "# Contains config-managed pynchy plugins to install into container image.",
     ]
     content = "\n".join([*header, "", *lines, ""])
-    output_path.write_text(content)
+    output_path.write_text(content, encoding="utf-8")
 
     print(f"Wrote {len(lines)} plugin requirement(s) to {output_path}")
     return 0

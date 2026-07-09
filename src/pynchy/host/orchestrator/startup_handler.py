@@ -73,7 +73,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     boot_warnings_path = s.data_dir / "boot_warnings.json"
     if boot_warnings_path.exists():
         try:
-            warnings = json.loads(boot_warnings_path.read_text())
+            warnings = json.loads(boot_warnings_path.read_text(encoding="utf-8"))
             boot_warnings_path.unlink()
             parts.extend(f"WARNING: {warning}" for warning in warnings)
         except (json.JSONDecodeError, OSError) as exc:
@@ -117,7 +117,7 @@ async def recover_pending_messages(deps: StartupDeps) -> None:
 async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
     """Roll back to the pre-deploy commit if startup fails after a deploy."""
     try:
-        continuation = json.loads(continuation_path.read_text())
+        continuation = json.loads(continuation_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as read_exc:
         logger.exception(
             "Failed to read continuation for rollback",
@@ -166,7 +166,7 @@ async def check_deploy_continuation(deps: StartupDeps) -> None:
         return
 
     try:
-        continuation = json.loads(continuation_path.read_text())
+        continuation = json.loads(continuation_path.read_text(encoding="utf-8"))
         continuation_path.unlink()
     except (json.JSONDecodeError, OSError) as exc:
         logger.error(

@@ -120,7 +120,7 @@ def serialize_qmd(nb: Any) -> str:
 def load_notebook(path: Path) -> Any:
     """Load a notebook from disk (.ipynb or .qmd)."""
     if path.suffix == ".qmd":
-        return parse_qmd(path.read_text())
+        return parse_qmd(path.read_text(encoding="utf-8"))
     return cast("NotebookNode", nbformat.read(str(path), as_version=4))
 
 
@@ -128,6 +128,6 @@ def save_notebook(nb: Any, path: Path) -> None:
     """Save a notebook to disk (.ipynb or .qmd)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.suffix == ".qmd":
-        path.write_text(serialize_qmd(nb))
+        path.write_text(serialize_qmd(nb), encoding="utf-8")
     else:
         nbformat.write(nb, str(path))

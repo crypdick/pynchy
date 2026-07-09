@@ -76,10 +76,10 @@ _OTEL_CONTENT_ENV = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
 def _load_or_create_persistent_key(path: Path, prefix: str = "") -> str:
     """Read a key from disk, or generate and persist one on first run."""
     if path.exists():
-        return path.read_text().strip()
+        return path.read_text(encoding="utf-8").strip()
     key = f"{prefix}{secrets.token_urlsafe(32)}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(key)
+    path.write_text(key, encoding="utf-8")
     return key
 
 
@@ -197,7 +197,7 @@ class LiteLLMGateway:
         Callers should pass the **filtered** config path so that env vars
         belonging to filtered-out model entries are not forwarded.
         """
-        text = config_path.read_text()
+        text = config_path.read_text(encoding="utf-8")
         var_names = set(re.findall(r"os\.environ/(\w+)", text))
         var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
 
@@ -218,14 +218,14 @@ class LiteLLMGateway:
     @staticmethod
     def _uses_chatgpt_provider(config_path: Path) -> bool:
         """Return True when the filtered config needs ChatGPT OAuth state."""
-        return "chatgpt/" in config_path.read_text()
+        return "chatgpt/" in config_path.read_text(encoding="utf-8")
 
     @staticmethod
     def _uses_phoenix_callback(config_path: Path) -> bool:
         """Return True when LiteLLM is configured to export traces to Phoenix."""
         import yaml
 
-        config = yaml.safe_load(config_path.read_text()) or {}
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         if not isinstance(config, dict):
             return False
         settings = config.get("litellm_settings") or {}

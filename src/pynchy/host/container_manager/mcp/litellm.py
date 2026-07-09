@@ -381,7 +381,7 @@ def load_teams_cache(
     if not cache_path.exists():
         return {}
     try:
-        data = json.loads(cache_path.read_text())
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
         return {
             folder: WorkspaceTeam(
                 team_id=team_data["team_id"],
@@ -404,4 +404,4 @@ def save_teams_cache(
         folder: {"team_id": team.team_id, "virtual_key": team.virtual_key}
         for folder, team in workspace_teams.items()
     }
-    cache_path.write_text(json.dumps(data, indent=2))
+    cache_path.write_text(json.dumps(data, indent=2), encoding="utf-8")

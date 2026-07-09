@@ -112,7 +112,7 @@ def _launchd_paths(label: str, project_root: Path) -> tuple[Path, Path]:
 def _render_launchd_plist(src: Path, *, project_root: Path, home: Path) -> str:
     uv_path = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
     rendered = (
-        src.read_text()
+        src.read_text(encoding="utf-8")
         .replace("$HOME/src/PERSONAL/pynchy", str(project_root))
         .replace("$HOME/.local/bin/uv", uv_path)
         .replace("$HOME", str(home))
@@ -124,7 +124,7 @@ def _render_launchd_plist(src: Path, *, project_root: Path, home: Path) -> str:
 
 
 def _launchd_file_changed(dest: Path, rendered: str) -> bool:
-    return not dest.exists() or dest.read_text() != rendered
+    return not dest.exists() or dest.read_text(encoding="utf-8") != rendered
 
 
 def _write_launchd_plist(
@@ -140,7 +140,7 @@ def _write_launchd_plist(
             capture_output=True,
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(rendered)
+    dest.write_text(rendered, encoding="utf-8")
     _remove_launchd_extended_attrs(dest)
     logger.info("Installed launchd plist", dest=str(dest))
 
@@ -230,10 +230,10 @@ Environment=PATH={home}/.local/bin:/usr/local/bin:/usr/bin:/bin
 WantedBy=default.target
 """
     dest = home / ".config" / "systemd" / "user" / "pynchy.service"
-    if dest.exists() and dest.read_text() == unit:
+    if dest.exists() and dest.read_text(encoding="utf-8") == unit:
         return  # already up to date
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(unit)
+    dest.write_text(unit, encoding="utf-8")
     logger.info("Installed systemd user service", dest=str(dest))
     subprocess.run(
         ["systemctl", "--user", "daemon-reload"],

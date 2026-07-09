@@ -24,7 +24,7 @@ def _read_todos() -> list[dict[str, Any]]:
     if not _TODOS_FILE.exists():
         return []
     try:
-        return cast("list[dict[str, Any]]", json.loads(_TODOS_FILE.read_text()))
+        return cast("list[dict[str, Any]]", json.loads(_TODOS_FILE.read_text(encoding="utf-8")))
     except (json.JSONDecodeError, OSError):
         return []
 
@@ -32,7 +32,7 @@ def _read_todos() -> list[dict[str, Any]]:
 def _write_todos(todos: list[dict[str, Any]]) -> None:
     _TODOS_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = _TODOS_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(todos, indent=2))
+    tmp.write_text(json.dumps(todos, indent=2), encoding="utf-8")
     tmp.rename(_TODOS_FILE)
 
 

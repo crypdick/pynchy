@@ -21,7 +21,7 @@ class LiteLLMConfigPreparer:
     required_models: tuple[str, ...] = ()
 
     def prepare(self, config_path: Path, output_dir: Path, env: dict[str, str]) -> Path:
-        config_text = config_path.read_text()
+        config_text = config_path.read_text(encoding="utf-8")
         config = yaml.safe_load(config_text)
 
         if not isinstance(config, dict):
@@ -59,7 +59,7 @@ def _copy_unvalidated_config(
         msg = f"LiteLLM config does not declare model_list for required model(s): {models}"
         raise RuntimeError(msg)
     out = output_dir / "litellm_config.yaml"
-    out.write_text(config_text)
+    out.write_text(config_text, encoding="utf-8")
     return out
 
 
@@ -178,5 +178,5 @@ def _model_route_matches(required_model: str, configured_name: Any) -> bool:
 
 def _write_filtered_config(output_dir: Path, config: dict[str, Any]) -> Path:
     out = output_dir / "litellm_config.yaml"
-    out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+    out.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False), encoding="utf-8")
     return out

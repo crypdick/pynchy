@@ -41,7 +41,7 @@ def _clear_cache():
 
 
 def _write_allowlist(path: Path, content: str) -> None:
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
 
 
 class TestHelpers:

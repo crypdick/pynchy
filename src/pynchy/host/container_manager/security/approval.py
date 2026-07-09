@@ -120,7 +120,7 @@ def generate_short_id(source_group: str) -> str:
     existing: set[str] = set()
     for filepath in pending_dir.glob("*.json"):
         try:
-            data = json.loads(filepath.read_text())
+            data = json.loads(filepath.read_text(encoding="utf-8"))
             if "short_id" in data:
                 existing.add(data["short_id"])
         except (json.JSONDecodeError, OSError):
@@ -212,7 +212,7 @@ def list_pending_approvals(group: str | None = None) -> list[dict[str, Any]]:
             continue
         for filepath in pending_dir.glob("*.json"):
             try:
-                data = json.loads(filepath.read_text())
+                data = json.loads(filepath.read_text(encoding="utf-8"))
                 results.append(data)
             except (json.JSONDecodeError, OSError) as exc:
                 logger.warning(
@@ -244,7 +244,7 @@ def find_pending_by_short_id(short_id: str) -> dict[str, Any] | None:
             continue
         for filepath in pending_dir.glob("*.json"):
             try:
-                data = json.loads(filepath.read_text())
+                data = json.loads(filepath.read_text(encoding="utf-8"))
                 if data.get("short_id") == short_id:
                     return cast("dict[str, Any]", data)
             except (json.JSONDecodeError, OSError):
@@ -301,7 +301,7 @@ async def _expired_pending_approval(
     now: datetime,
 ) -> dict[str, Any] | None:
     try:
-        data = cast("dict[str, Any]", json.loads(filepath.read_text()))
+        data = cast("dict[str, Any]", json.loads(filepath.read_text(encoding="utf-8")))
         timestamp = datetime.fromisoformat(data["timestamp"])
         age_seconds = (now - timestamp).total_seconds()
     except (json.JSONDecodeError, OSError, KeyError) as exc:

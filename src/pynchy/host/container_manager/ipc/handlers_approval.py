@@ -32,7 +32,7 @@ async def process_approval_decision(
 ) -> None:
     """Process an approval decision file — execute or deny the pending request."""
     try:
-        decision = json.loads(decision_file.read_text())
+        decision = json.loads(decision_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Failed to read decision file", path=str(decision_file), err=str(exc))
         decision_file.unlink(missing_ok=True)
@@ -54,7 +54,7 @@ async def process_approval_decision(
         return
 
     try:
-        pending = json.loads(pending_file.read_text())
+        pending = json.loads(pending_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Failed to read pending file", path=str(pending_file), err=str(exc))
         decision_file.unlink(missing_ok=True)

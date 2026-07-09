@@ -185,7 +185,9 @@ def test_sync_onecli_gateway_skill_writes_generated_skill(
         sync_onecli_gateway_skill(skills_dir)
 
     skill_dir = skills_dir / "onecli-gateway"
-    assert (skill_dir / "SKILL.md").read_text() == "---\nname: onecli-gateway\n---\nUse OneCLI.\n"
+    assert (skill_dir / "SKILL.md").read_text(
+        encoding="utf-8"
+    ) == "---\nname: onecli-gateway\n---\nUse OneCLI.\n"
     assert (skill_dir / ".pynchy-onecli-skill").exists()
 
 
@@ -289,8 +291,8 @@ def test_prepare_onecli_material_writes_ca_and_stubs(
 
     ca_mount = _mount_for_container_path(material, ca_container_path)
     assert ca_mount.readonly is True
-    assert Path(ca_mount.host_path).read_text() == payload["caCertificate"]
+    assert Path(ca_mount.host_path).read_text(encoding="utf-8") == payload["caCertificate"]
 
     stub_mount = _mount_for_container_path(material, "/home/agent/.codex/auth.json")
     assert stub_mount.readonly is True
-    assert Path(stub_mount.host_path).read_text() == '{"token":"onecli-managed"}'
+    assert Path(stub_mount.host_path).read_text(encoding="utf-8") == '{"token":"onecli-managed"}'

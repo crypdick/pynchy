@@ -51,7 +51,7 @@ def test_codex_plugin_registered_via_static_registry() -> None:
 
 def test_agent_dockerfile_installs_codex_as_agent_executable() -> None:
     """The image must not leave codex as an agent-inaccessible /root symlink."""
-    dockerfile = Path("src/pynchy/agent/Dockerfile").read_text()
+    dockerfile = Path("src/pynchy/agent/Dockerfile").read_text(encoding="utf-8")
 
     assert "readlink -f /usr/local/bin/codex" in dockerfile
     assert "chmod 0755 /usr/local/bin/codex" in dockerfile

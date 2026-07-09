@@ -47,7 +47,7 @@ async def _sync_worktree_handle(arguments: dict[str, Any]) -> list[TextContent] 
     while time.time() - start < timeout:
         if result_file.exists():
             try:
-                result = json.loads(result_file.read_text())
+                result = json.loads(result_file.read_text(encoding="utf-8"))
                 result_file.unlink()
             except (json.JSONDecodeError, OSError):
                 await asyncio.sleep(0.3)
@@ -65,7 +65,7 @@ def _exit_container() -> NoReturn:
     """Write the close sentinel and terminate the container process."""
     close_sentinel = Path("/workspace/ipc/input/_close")
     close_sentinel.parent.mkdir(parents=True, exist_ok=True)
-    close_sentinel.write_text("")
+    close_sentinel.write_text("", encoding="utf-8")
     os._exit(0)
 
 

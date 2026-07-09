@@ -140,7 +140,7 @@ def _get_session_summary(session_id: str, transcript_path: str) -> str | None:
         return None
 
     try:
-        index = json.loads(index_path.read_text())
+        index = json.loads(index_path.read_text(encoding="utf-8"))
         for entry in index.get("entries", []):
             if entry.get("sessionId") == session_id:
                 summary = entry.get("summary")
@@ -162,7 +162,7 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
         return None
 
     try:
-        content = Path(transcript_path).read_text()
+        content = Path(transcript_path).read_text(encoding="utf-8")
         messages = _parse_transcript(content)
 
         if not messages:
@@ -179,7 +179,7 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
         file_path = CONVERSATIONS_DIR / filename
 
         markdown = _format_transcript_markdown(messages, summary)
-        file_path.write_text(markdown)
+        file_path.write_text(markdown, encoding="utf-8")
 
         _log(f"Archived conversation to {file_path}")
 

@@ -53,7 +53,7 @@ def read_prompts(names: list[str], project_root: Path) -> str | None:
 def _read_file(path: Path) -> str | None:
     """Read a file, returning None on error or empty content."""
     try:
-        text = path.read_text().strip()
+        text = path.read_text(encoding="utf-8").strip()
         return text if text else None
     except OSError:
         logger.warning("Failed to read prompt file", path=str(path))

@@ -120,7 +120,7 @@ class TestApprovalE2E:
 
     @staticmethod
     def _short_id_from_pending(pending_path: Path) -> str:
-        pending_data = json.loads(pending_path.read_text())
+        pending_data = json.loads(pending_path.read_text(encoding="utf-8"))
         return pending_data["short_id"]
 
     @staticmethod
@@ -128,7 +128,7 @@ class TestApprovalE2E:
         decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
         decision_files = list(decisions_dir.glob("*.json"))
         assert len(decision_files) == 1
-        decision = json.loads(decision_files[0].read_text())
+        decision = json.loads(decision_files[0].read_text(encoding="utf-8"))
         assert decision["approved"] is True
         return decision_files[0], decision
 
@@ -144,7 +144,7 @@ class TestApprovalE2E:
         call_data = mock_handler.call_args[0][0]
         assert call_data["text"] == "Hello world"
         assert response_path.exists()
-        response = json.loads(response_path.read_text())
+        response = json.loads(response_path.read_text(encoding="utf-8"))
         assert response["result"]["status"] == "posted"
         assert not pending_path.exists()
         assert not decision_file.exists()
@@ -333,7 +333,7 @@ class TestApprovalE2E:
 
         # Read the actual short_id from the pending file
         pending_path = tmp_path / "ipc" / "mygroup" / "pending_approvals" / "ccdd556677889900.json"
-        pending_data = json.loads(pending_path.read_text())
+        pending_data = json.loads(pending_path.read_text(encoding="utf-8"))
         short_id = pending_data["short_id"]
 
         # Step 2: User denies
@@ -366,7 +366,7 @@ class TestApprovalE2E:
         # Verify: error response written
         response_path = tmp_path / "ipc" / "mygroup" / "responses" / "ccdd556677889900.json"
         assert response_path.exists()
-        response = json.loads(response_path.read_text())
+        response = json.loads(response_path.read_text(encoding="utf-8"))
         assert "error" in response
         assert "denied" in response["error"].lower()
 

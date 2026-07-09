@@ -22,7 +22,7 @@ from agent_runner.agent_tools._ipc import write_ipc_file
 
 def _read_request_file(path: Path) -> tuple[dict, dict]:
     """Read a canonical request envelope and return (envelope, payload)."""
-    envelope = json.loads(path.read_text())
+    envelope = json.loads(path.read_text(encoding="utf-8"))
     return envelope, envelope["payload"]
 
 
@@ -45,7 +45,7 @@ class TestWriteIpcFile:
         data = {"type": "message", "text": "hello"}
         write_ipc_file(tmp_path, data)
         files = list(tmp_path.glob("*.json"))
-        content = json.loads(files[0].read_text())
+        content = json.loads(files[0].read_text(encoding="utf-8"))
         assert content == data
 
     def test_filename_format(self, tmp_path):
@@ -359,7 +359,7 @@ class TestSendMessage:
 
         files = list((tmp_path / "messages").glob("*.json"))
         assert len(files) == 1
-        data = json.loads(files[0].read_text())
+        data = json.loads(files[0].read_text(encoding="utf-8"))
         assert data["text"] == "Hello world"
         assert data["chatJid"] == "test@g.us"
         assert data["type"] == "message"
@@ -376,7 +376,7 @@ class TestSendMessage:
             await call_tool("send_message", {"text": "Update", "sender": "Researcher"})
 
         files = list((tmp_path / "messages").glob("*.json"))
-        data = json.loads(files[0].read_text())
+        data = json.loads(files[0].read_text(encoding="utf-8"))
         assert data["sender"] == "Researcher"
 
 
@@ -642,7 +642,7 @@ class TestTodoTools:
         assert "done" in result[0].text.lower()
 
         # Verify the file was updated
-        updated = json.loads(todos_file.read_text())
+        updated = json.loads(todos_file.read_text(encoding="utf-8"))
         assert updated[0]["done"] is True
 
     @pytest.mark.asyncio

@@ -103,7 +103,7 @@ def parse_ipc_file(file_path: Path) -> dict[str, Any]:
     Returns the parsed data dict.
     Raises json.JSONDecodeError or OSError on failure.
     """
-    return cast("dict[str, Any]", json.loads(file_path.read_text()))
+    return cast("dict[str, Any]", json.loads(file_path.read_text(encoding="utf-8")))
 
 
 @dataclass(frozen=True)

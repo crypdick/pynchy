@@ -30,9 +30,9 @@ def mutate_config_toml(path: Path, mutate: Callable[[Any], None]) -> Settings:
     ``Settings``. Validation errors are allowed to propagate so callers do not
     silently persist an unreadable config.
     """
-    doc = tomlkit.parse(path.read_text()) if path.exists() else tomlkit.document()
+    doc = tomlkit.parse(path.read_text(encoding="utf-8")) if path.exists() else tomlkit.document()
     mutate(doc)
     rendered = tomlkit.dumps(doc)
     settings = parse_settings_toml(rendered)
-    path.write_text(rendered)
+    path.write_text(rendered, encoding="utf-8")
     return settings

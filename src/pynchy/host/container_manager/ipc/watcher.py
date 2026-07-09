@@ -193,7 +193,7 @@ async def _process_claimed_output_file(
     """Process an output file after this task has claimed handler delivery."""
     try:
         try:
-            json_str = file_path.read_text()
+            json_str = file_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             # Watchdog and the periodic runtime sweep can both discover the
             # same output file. Whichever loses that race should be a no-op.
