@@ -165,6 +165,7 @@ async def test_oauth_flow_waits_for_callback_thread_event_without_async_sleep(
             return None
 
     async def fail_sleep(_delay: float) -> None:
+        await asyncio.sleep(0)
         raise AssertionError("OAuth flow should wait on the callback event, not sleep-poll")
 
     def set_callback() -> None:
@@ -207,6 +208,7 @@ def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(
 
 
 async def _raise_login_failed(_page) -> None:
+    await asyncio.sleep(0)
     raise RuntimeError("login failed")
 
 

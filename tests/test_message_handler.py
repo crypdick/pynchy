@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -994,6 +995,7 @@ def _observe_at_run(deps):
     observed: dict = {}
 
     async def _capture(*_args, **_kwargs):
+        await asyncio.sleep(0)
         observed["dispatched"] = deps._dispatched_through.get("g@g.us")
         observed["cursor"] = deps.last_agent_timestamp.get("g@g.us")
         observed["saves"] = deps.save_state.await_count

@@ -156,6 +156,7 @@ class TestReconnectShutdownRace:
 
         # connect() will set _connected = True; mock it to avoid real Slack calls
         async def fake_connect() -> None:
+            await asyncio.sleep(0)
             ch._connected = True
 
         ch.connect = AsyncMock(side_effect=fake_connect)

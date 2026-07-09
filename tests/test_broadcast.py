@@ -242,6 +242,7 @@ async def _run_with_trace_sequence(
     driver = asyncio.create_task(schedule())
 
     async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
+        await asyncio.sleep(0)
         return fake_proc
 
     channel = FakeChannel()
@@ -465,6 +466,7 @@ class TestBroadcastConsistency:
         received: list[dict[str, Any]] = []
 
         async def sse_callback(data: dict[str, Any]) -> None:
+            await asyncio.sleep(0)
             received.append(data)
 
         # Wire up the SSE bridge like the HTTP server does
