@@ -354,25 +354,19 @@ class TestFilterAllowedMessages:
 class TestChannelOverrideConfig:
     def test_all_none_is_valid(self):
         cfg = ChannelOverrideConfig()
-        assert cfg.access is None
-        assert cfg.mode is None
-        assert cfg.trust is None
-        assert cfg.trigger is None
         assert cfg.allowed_users is None
 
-    def test_partial_override(self):
-        cfg = ChannelOverrideConfig(access="read", trust=False)
-        assert cfg.access == "read"
-        assert cfg.trust is False
-        assert cfg.mode is None
+    def test_allowed_users_override(self):
+        cfg = ChannelOverrideConfig(allowed_users=["slack:U04ABC"])
+        assert cfg.allowed_users == ["slack:U04ABC"]
 
-    def test_invalid_access_rejected(self):
-        with pytest.raises(ValueError, match="Input should be"):
-            ChannelOverrideConfig(access="invalid")
+    def test_deleted_access_rejected(self):
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            ChannelOverrideConfig(access="read")
 
-    def test_invalid_trigger_rejected(self):
-        with pytest.raises(ValueError, match="Input should be"):
-            ChannelOverrideConfig(trigger="invalid")
+    def test_deleted_trigger_rejected(self):
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            ChannelOverrideConfig(trigger="always")
 
 
 class TestConnectionsConfigGetConnection:
@@ -403,9 +397,9 @@ class TestConnectionsConfigGetConnection:
         assert connections.get_connection("slack", "other") is None
 
     def test_connection_chat_config_accepts_security_override(self):
-        cfg = ConnectionChatConfig(security=ChannelOverrideConfig(access="read"))
+        cfg = ConnectionChatConfig(security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]))
         assert cfg.security is not None
-        assert cfg.security.access == "read"
+        assert cfg.security.allowed_users == ["slack:U04ABC"]
 
     def test_slack_owner_alias_is_rejected(self):
         with pytest.raises(ValueError, match="owner aliases are only supported for WhatsApp"):

@@ -15,7 +15,7 @@ The admin channel is the admin/control group (typically your WhatsApp self-chat)
 
 | Capability | Admin | Non-Admin |
 |------------|-----|---------|
-| Sender filter | All channel members accepted | `allowed_users` (default: owner only) |
+| Sender filter | All channel members accepted | `allowed_users` when configured; otherwise all channel members accepted |
 | Schedule tasks for any group | Yes | Own group only |
 | View and manage all tasks | Yes | Own group only |
 | Configure additional directory mounts | Yes | No |

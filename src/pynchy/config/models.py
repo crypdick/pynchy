@@ -236,12 +236,8 @@ class OwnerConfig(_StrictModel):
 
 
 class ChannelOverrideConfig(_StrictModel):
-    """Per-channel config override — None fields inherit from workspace/defaults."""
+    """Per-connection or per-chat sender allowlist."""
 
-    access: Literal["read", "write", "readwrite"] | None = None
-    mode: Literal["agent", "chat"] | None = None
-    trust: bool | None = None
-    trigger: Literal["mention", "always"] | None = None
     allowed_users: list[str] | None = None
 
 
