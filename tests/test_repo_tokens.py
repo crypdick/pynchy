@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import datetime
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path, PurePosixPath
 from unittest.mock import MagicMock, patch
@@ -195,15 +196,11 @@ class TestTokenScrubbingInLogs:
 class TestEnsureRepoCloned:
     def test_existing_repo_returns_true(self, tmp_path: Path):
         """Existing repo directory short-circuits without cloning."""
-        from pynchy.host.git_ops.repo import ensure_repo_cloned
-
         repo_ctx = RepoContext(slug=REPO_SLUG, root=tmp_path, worktrees_dir=tmp_path / "wt")
         assert ensure_repo_cloned(repo_ctx) is True
 
     def test_clone_with_token(self, tmp_path: Path):
         """Clones with bare URL and env-based token auth, then resets remote URL."""
-        from pynchy.host.git_ops.repo import ensure_repo_cloned
-
         repo_root = tmp_path / "repo"
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
 
@@ -232,8 +229,6 @@ class TestEnsureRepoCloned:
 
     def test_clone_without_token(self, tmp_path: Path):
         """Clones with bare URL when no token available."""
-        from pynchy.host.git_ops.repo import ensure_repo_cloned
-
         repo_root = tmp_path / "repo"
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
 
@@ -255,8 +250,6 @@ class TestEnsureRepoCloned:
 
     def test_clone_failure_sanitizes_stderr(self, tmp_path: Path):
         """Failed clone logs sanitized stderr (no token leak)."""
-        from pynchy.host.git_ops.repo import ensure_repo_cloned
-
         repo_root = tmp_path / "repo"
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
 
@@ -459,8 +452,6 @@ class TestGitEnvWithToken:
 class TestCheckTokenExpiry:
     def test_warns_on_near_expiry(self):
         """Logs warning when token expires within 30 days."""
-        import datetime
-
         soon = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=15)
         expiry_str = soon.strftime("%Y-%m-%d %H:%M:%S UTC")
         headers = (
@@ -493,8 +484,6 @@ class TestCheckTokenExpiry:
 
     def test_ok_on_far_expiry(self):
         """No warning when token has plenty of time left."""
-        import datetime
-
         far = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=200)
         expiry_str = far.strftime("%Y-%m-%d %H:%M:%S UTC")
         headers = (
