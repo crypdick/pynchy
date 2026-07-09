@@ -56,6 +56,13 @@ from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 
 
+_DOCKER_IMAGE_REQUIRED = "Docker MCP servers require 'image'"
+_DOCKER_PORT_REQUIRED = "Docker MCP servers require 'port'"
+_SCRIPT_COMMAND_REQUIRED = "Script MCP servers require 'command'"
+_SCRIPT_PORT_REQUIRED = "Script MCP servers require 'port'"
+_URL_REQUIRED = "URL MCP servers require 'url'"
+
+
 class McpServerConfig(BaseModel):
     """Global MCP server definition."""
 
@@ -118,15 +125,15 @@ class McpServerConfig(BaseModel):
     def _validate_type_fields(self) -> McpServerConfig:
         if self.type == "docker":
             if not self.image:
-                raise ValueError("Docker MCP servers require 'image'")
+                raise ValueError(_DOCKER_IMAGE_REQUIRED)
             if self.port is None:
-                raise ValueError("Docker MCP servers require 'port'")
+                raise ValueError(_DOCKER_PORT_REQUIRED)
         elif self.type == "url":
             if not self.url:
-                raise ValueError("URL MCP servers require 'url'")
+                raise ValueError(_URL_REQUIRED)
         elif self.type == "script":
             if not self.command:
-                raise ValueError("Script MCP servers require 'command'")
+                raise ValueError(_SCRIPT_COMMAND_REQUIRED)
             if self.port is None:
-                raise ValueError("Script MCP servers require 'port'")
+                raise ValueError(_SCRIPT_PORT_REQUIRED)
         return self
