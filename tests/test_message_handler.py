@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
+from pynchy.config import AgentConfig, IntervalsConfig
 from pynchy.config.models import LearningConfig
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
@@ -27,6 +28,7 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     process_group_messages,
 )
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.utils import ShellResult
 
 # Commonly patched module paths — avoids repeating long strings and keeps
 # line lengths under 100 chars.
@@ -334,8 +336,6 @@ class TestExecuteDirectCommand:
 
     @pytest.mark.asyncio
     async def test_successful_command_broadcasts_output(self, tmp_path):
-        from pynchy.utils import ShellResult
-
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!echo hi")
@@ -356,8 +356,6 @@ class TestExecuteDirectCommand:
 
     @pytest.mark.asyncio
     async def test_failed_command_shows_error(self, tmp_path):
-        from pynchy.utils import ShellResult
-
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!false")
@@ -377,8 +375,6 @@ class TestExecuteDirectCommand:
 
     @pytest.mark.asyncio
     async def test_timeout_sends_host_message(self, tmp_path):
-        from pynchy.utils import ShellResult
-
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!sleep 99")
@@ -1188,8 +1184,6 @@ class TestHandleResetHandoff:
 
 def _loop_settings_mock():
     """Settings instance suitable for start_message_loop tests."""
-    from pynchy.config import AgentConfig, IntervalsConfig
-
     return make_settings(
         agent=AgentConfig(name="Pynchy"),
         intervals=IntervalsConfig(message_poll=0.0),  # no sleep between iterations
