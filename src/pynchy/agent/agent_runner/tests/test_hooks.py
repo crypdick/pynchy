@@ -3,6 +3,7 @@
 from agent_runner.hooks import (
     AGNOSTIC_TO_CLAUDE,
     CLAUDE_HOOK_MAP,
+    HookDecision,
     HookEvent,
     before_tool_use_roster,
     builtin_before_tool_hooks,
@@ -20,16 +21,12 @@ def test_before_tool_use_maps_to_claude_pre_tool_use():
 
 
 def test_hook_decision_defaults():
-    from agent_runner.hooks import HookDecision
-
     decision = HookDecision()
     assert decision.allowed is True
     assert decision.reason is None
 
 
 def test_hook_decision_deny():
-    from agent_runner.hooks import HookDecision
-
     decision = HookDecision(allowed=False, reason="blocked by policy")
     assert decision.allowed is False
     assert decision.reason == "blocked by policy"
