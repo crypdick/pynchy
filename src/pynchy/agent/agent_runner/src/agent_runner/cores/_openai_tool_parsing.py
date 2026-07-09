@@ -9,10 +9,13 @@ tuple so the streaming loop in ``openai.py`` stays clean.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+SdkMapping = dict[str, object]
+ToolPayload = object
 
 # ---------------------------------------------------------------------------
 # SDK object normalization
@@ -23,7 +26,7 @@ if TYPE_CHECKING:
 # to worry about the shape.
 
 
-def _as_mapping(obj: Any) -> dict[str, Any] | None:
+def _as_mapping(obj: object) -> SdkMapping | None:
     """Try to convert *obj* to a plain dict; return None on failure."""
     if obj is None:
         return None
@@ -43,7 +46,7 @@ def _as_mapping(obj: Any) -> dict[str, Any] | None:
     return None
 
 
-def _normalize_shell_action(action: Any) -> dict[str, Any] | None:
+def _normalize_shell_action(action: object) -> SdkMapping | None:
     """Normalize a shell action to a dict with ``commands`` key."""
     action_map = _as_mapping(action)
     if not action_map:
@@ -64,7 +67,7 @@ _UNKNOWN_NAMES = (None, "", "unknown_tool")
 # ---------------------------------------------------------------------------
 
 
-def _initial_name_and_input(item: Any, raw: Any) -> tuple[str | None, Any]:
+def _initial_name_and_input(item: object, raw: object) -> tuple[str | None, ToolPayload]:
     """First-pass tool_name/tool_input guess from direct SDK attributes."""
     tool_name: str | None = (
         getattr(item, "tool_name", None)
@@ -72,7 +75,7 @@ def _initial_name_and_input(item: Any, raw: Any) -> tuple[str | None, Any]:
         or getattr(raw, "tool_name", None)
         or getattr(raw, "name", None)
     )
-    tool_input: Any = (
+    tool_input: ToolPayload = (
         getattr(item, "arguments", None)
         or getattr(item, "input", None)
         or getattr(raw, "arguments", None)
@@ -81,8 +84,8 @@ def _initial_name_and_input(item: Any, raw: Any) -> tuple[str | None, Any]:
 
 
 def _fill_from_function_or_call_subobject(
-    raw: Any, tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    raw: object, tool_name: str | None, tool_input: ToolPayload
+) -> tuple[str | None, ToolPayload]:
     for attr in ("function", "call"):
         sub = getattr(raw, attr, None)
         if sub is not None:
@@ -92,8 +95,8 @@ def _fill_from_function_or_call_subobject(
 
 
 def _fill_from_shell_action(
-    raw: Any, tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    raw: object, tool_name: str | None, tool_input: ToolPayload
+) -> tuple[str | None, ToolPayload]:
     """Shell action may be nested under raw.data instead of directly on raw."""
     action = getattr(raw, "action", None)
     if action is None:
@@ -108,7 +111,7 @@ def _fill_from_shell_action(
     return tool_name, tool_input
 
 
-def _normalize_tool_input(raw: Any, tool_input: Any) -> Any:
+def _normalize_tool_input(raw: object, tool_input: ToolPayload) -> ToolPayload:
     if tool_input is None:
         tool_input = getattr(raw, "input", None)
     if isinstance(tool_input, str):
@@ -119,7 +122,7 @@ def _normalize_tool_input(raw: Any, tool_input: Any) -> Any:
     return tool_input
 
 
-def extract_tool_call(item: Any) -> tuple[str, Any]:
+def extract_tool_call(item: object) -> tuple[str, ToolPayload]:
     """Extract (tool_name, tool_input) from an OpenAI SDK tool_call_item.
 
     Tries every known attribute path in priority order and falls back to
@@ -152,7 +155,7 @@ def extract_tool_call(item: Any) -> tuple[str, Any]:
     return tool_name or "unknown_tool", tool_input
 
 
-def extract_tool_result(item: Any) -> tuple[str, str]:
+def extract_tool_result(item: object) -> tuple[str, str]:
     """Extract (tool_result_id, output) from an OpenAI SDK tool_call_output_item."""
     output = getattr(item, "output", "")
     raw = getattr(item, "raw_item", item)
@@ -173,8 +176,11 @@ def extract_tool_result(item: Any) -> tuple[str, str]:
 
 
 def _extract_shell_call(
-    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    raw: object,
+    raw_map: SdkMapping | None,
+    tool_name: str | None,
+    tool_input: ToolPayload,
+) -> tuple[str | None, ToolPayload]:
     tool_name = tool_name or "shell"
     if tool_input is None:
         am = (
@@ -186,8 +192,11 @@ def _extract_shell_call(
 
 
 def _extract_apply_patch_call(
-    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    raw: object,
+    raw_map: SdkMapping | None,
+    tool_name: str | None,
+    tool_input: ToolPayload,
+) -> tuple[str | None, ToolPayload]:
     tool_name = tool_name or "apply_patch"
     if tool_input is None:
         operation = (raw_map.get("operation") if raw_map else None) or getattr(
@@ -198,8 +207,11 @@ def _extract_apply_patch_call(
 
 
 def _extract_web_search_call(
-    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    raw: object,
+    raw_map: SdkMapping | None,
+    tool_name: str | None,
+    tool_input: ToolPayload,
+) -> tuple[str | None, ToolPayload]:
     tool_name = tool_name or "web_search"
     if tool_input is None:
         action = raw_map.get("action") if raw_map else getattr(raw, "action", None)
@@ -208,8 +220,11 @@ def _extract_web_search_call(
 
 
 def _extract_function_or_mcp_call(
-    raw: Any, raw_map: dict[str, Any] | None, tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    raw: object,
+    raw_map: SdkMapping | None,
+    tool_name: str | None,
+    tool_input: ToolPayload,
+) -> tuple[str | None, ToolPayload]:
     if tool_name in _UNKNOWN_NAMES:
         tool_name = (raw_map.get("name") if raw_map and raw_map.get("name") else None) or getattr(
             raw, "name", None
@@ -220,7 +235,11 @@ def _extract_function_or_mcp_call(
 
 
 _RAW_TYPE_EXTRACTORS: dict[
-    str, Callable[[Any, dict[str, Any] | None, str | None, Any], tuple[str | None, Any]]
+    str,
+    Callable[
+        [object, SdkMapping | None, str | None, ToolPayload],
+        tuple[str | None, ToolPayload],
+    ],
 ] = {
     "shell_call": _extract_shell_call,
     "local_shell_call": _extract_shell_call,
@@ -233,11 +252,11 @@ _RAW_TYPE_EXTRACTORS: dict[
 
 def _extract_by_raw_type(
     raw_type: str | None,
-    raw: Any,
-    raw_map: dict[str, Any] | None,
+    raw: object,
+    raw_map: SdkMapping | None,
     tool_name: str | None,
-    tool_input: Any,
-) -> tuple[str | None, Any]:
+    tool_input: ToolPayload,
+) -> tuple[str | None, ToolPayload]:
     """Refine tool_name/tool_input based on the ``raw_type`` field."""
     extractor = _RAW_TYPE_EXTRACTORS.get(raw_type) if raw_type else None
     if extractor is None:
@@ -245,7 +264,7 @@ def _extract_by_raw_type(
     return extractor(raw, raw_map, tool_name, tool_input)
 
 
-def _fallback_data_dump(raw: Any, raw_map: dict[str, Any] | None) -> dict[str, Any] | None:
+def _fallback_data_dump(raw: object, raw_map: SdkMapping | None) -> SdkMapping | None:
     """Best-effort dict view of the raw SDK object for mapping-based scanning."""
     if isinstance(raw_map, dict):
         return raw_map
@@ -256,13 +275,13 @@ def _fallback_data_dump(raw: Any, raw_map: dict[str, Any] | None) -> dict[str, A
     return None
 
 
-def _fallback_mappings(data_dump: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+def _fallback_mappings(data_dump: SdkMapping) -> tuple[SdkMapping, ...]:
     """Mappings to inspect during the final mapping scan."""
     nested_data = data_dump.get("data")
     return (data_dump, nested_data) if isinstance(nested_data, dict) else (data_dump,)
 
 
-def _fallback_tool_name(mapping: dict[str, Any], tool_name: str | None) -> str | None:
+def _fallback_tool_name(mapping: SdkMapping, tool_name: str | None) -> str | None:
     """Fill in the tool name from common mapping keys."""
     if tool_name not in _UNKNOWN_NAMES:
         return tool_name
@@ -273,7 +292,7 @@ def _fallback_tool_name(mapping: dict[str, Any], tool_name: str | None) -> str |
     return tool_name
 
 
-def _fallback_tool_input(mapping: dict[str, Any], tool_input: Any) -> Any:
+def _fallback_tool_input(mapping: SdkMapping, tool_input: ToolPayload) -> ToolPayload:
     """Fill in the tool input from common mapping keys."""
     if tool_input is not None:
         return tool_input
@@ -281,8 +300,8 @@ def _fallback_tool_input(mapping: dict[str, Any], tool_input: Any) -> Any:
 
 
 def _fallback_action_data(
-    mapping: dict[str, Any], tool_name: str | None, tool_input: Any
-) -> tuple[str | None, Any]:
+    mapping: SdkMapping, tool_name: str | None, tool_input: ToolPayload
+) -> tuple[str | None, ToolPayload]:
     """Extract shell-shaped info from nested action payloads."""
     action = mapping.get("action")
     if not isinstance(action, dict):
@@ -301,11 +320,11 @@ def _fallback_action_data(
 
 
 def _fallback_mapping_scan(
-    raw: Any,
-    raw_map: dict[str, Any] | None,
+    raw: object,
+    raw_map: SdkMapping | None,
     tool_name: str | None,
-    tool_input: Any,
-) -> tuple[str | None, Any]:
+    tool_input: ToolPayload,
+) -> tuple[str | None, ToolPayload]:
     """Scan the raw object's dict representation for tool name/input as a last resort."""
     data_dump = _fallback_data_dump(raw, raw_map)
     if data_dump is None:
@@ -319,7 +338,7 @@ def _fallback_mapping_scan(
     return tool_name, tool_input
 
 
-def _guess_from_type_name(raw: Any, raw_type: str | None) -> str:
+def _guess_from_type_name(raw: object, raw_type: str | None) -> str:
     """Guess tool name from the Python type name of the raw SDK object."""
     raw_type_name = type(raw).__name__.lower()
     if "shell" in raw_type_name:
@@ -331,7 +350,7 @@ def _guess_from_type_name(raw: Any, raw_type: str | None) -> str:
     return raw_type or getattr(raw, "type", None) or "unknown_tool"
 
 
-def _guess_from_input(tool_input: Any) -> str:
+def _guess_from_input(tool_input: ToolPayload) -> str:
     """Guess tool name from the shape of tool_input."""
     if not tool_input:
         return "shell"
