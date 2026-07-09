@@ -7,6 +7,16 @@ from pydantic import field_validator, model_validator
 
 from pynchy.config.models import _StrictModel
 
+_JOB_WORKSPACE_EMPTY_ERROR = "job workspace cannot be empty"
+_JOB_COMMAND_EMPTY_ERROR = "host job command cannot be empty"
+_JOB_TIMEOUT_SECONDS_ERROR = "timeout_seconds must be positive"
+_JOB_SHAPE_ERROR = "jobs require exactly one of schedule or at"
+_HOST_JOB_COMMAND_ERROR = "host jobs require command"
+_HOST_JOB_SCHEDULE_ERROR = "host jobs require schedule"
+_HOST_JOB_PROMPT_ERROR = "host jobs cannot set prompt or prompt_file"
+_AGENT_JOB_COMMAND_ERROR = "agent jobs cannot set command"
+_AGENT_JOB_PROMPT_ERROR = "agent jobs require prompt or prompt_file"
+
 
 class JobConfig(_StrictModel):
     """Config-backed scheduled job.
@@ -44,7 +54,7 @@ class JobConfig(_StrictModel):
     def validate_workspace(cls, v: str) -> str:
         value = v.strip()
         if not value:
-            raise ValueError("job workspace cannot be empty")
+            raise ValueError(_JOB_WORKSPACE_EMPTY_ERROR)
         return value
 
     @field_validator("command")
@@ -54,32 +64,32 @@ class JobConfig(_StrictModel):
             return None
         command = v.strip()
         if not command:
-            raise ValueError("host job command cannot be empty")
+            raise ValueError(_JOB_COMMAND_EMPTY_ERROR)
         return command
 
     @field_validator("timeout_seconds")
     @classmethod
     def validate_job_timeout_seconds(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
-            raise ValueError("timeout_seconds must be positive")
+            raise ValueError(_JOB_TIMEOUT_SECONDS_ERROR)
         return v
 
     @model_validator(mode="after")
     def validate_job_shape(self) -> JobConfig:
         if (self.schedule is None) == (self.at is None):
-            raise ValueError("jobs require exactly one of schedule or at")
+            raise ValueError(_JOB_SHAPE_ERROR)
 
         if self.is_host:
             if self.command is None:
-                raise ValueError("host jobs require command")
+                raise ValueError(_HOST_JOB_COMMAND_ERROR)
             if self.schedule is None:
-                raise ValueError("host jobs require schedule")
+                raise ValueError(_HOST_JOB_SCHEDULE_ERROR)
             if self.prompt is not None or self.prompt_file is not None:
-                raise ValueError("host jobs cannot set prompt or prompt_file")
+                raise ValueError(_HOST_JOB_PROMPT_ERROR)
             return self
 
         if self.command is not None:
-            raise ValueError("agent jobs cannot set command")
+            raise ValueError(_AGENT_JOB_COMMAND_ERROR)
         if (self.prompt is None) == (self.prompt_file is None):
-            raise ValueError("agent jobs require prompt or prompt_file")
+            raise ValueError(_AGENT_JOB_PROMPT_ERROR)
         return self
