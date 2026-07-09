@@ -8,6 +8,7 @@ unit-testing individual components.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -44,6 +45,7 @@ async def test_full_mcp_security_flow():
 
     # 1. Set up mock MCP backend
     async def backend_handler(request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
         return web.json_response(
             {
                 "jsonrpc": "2.0",
@@ -115,6 +117,7 @@ async def test_no_fencing_without_public_source():
     from pynchy.host.container_manager.mcp.proxy import create_proxy_app
 
     async def backend_handler(request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
         return web.json_response(
             {
                 "jsonrpc": "2.0",
@@ -165,7 +168,7 @@ async def test_no_fencing_without_public_source():
         await backend_server.close()
 
 
-async def test_gate_isolation_between_sessions():
+def test_gate_isolation_between_sessions():
     """Taint from one session shouldn't affect another."""
     security = WorkspaceSecurity(
         services={

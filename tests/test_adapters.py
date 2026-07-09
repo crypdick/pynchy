@@ -294,8 +294,9 @@ class TestEventBusAdapter:
         adapter.subscribe_events(lambda d: asyncio.coroutine(lambda: received.append(d))())
 
         # Subscribe and emit
-        async def callback(data: dict) -> None:
+        def callback(data: dict):
             received.append(data)
+            return asyncio.sleep(0)
 
         adapter.subscribe_events(callback)
         bus.emit(
@@ -322,8 +323,9 @@ class TestEventBusAdapter:
         adapter = EventBusAdapter(bus)
         received: list[dict] = []
 
-        async def callback(data: dict) -> None:
+        def callback(data: dict):
             received.append(data)
+            return asyncio.sleep(0)
 
         adapter.subscribe_events(callback)
         bus.emit(AgentActivityEvent(chat_jid="group@g.us", active=True))
@@ -338,8 +340,9 @@ class TestEventBusAdapter:
         adapter = EventBusAdapter(bus)
         received: list[dict] = []
 
-        async def callback(data: dict) -> None:
+        def callback(data: dict):
             received.append(data)
+            return asyncio.sleep(0)
 
         adapter.subscribe_events(callback)
         bus.emit(
@@ -362,8 +365,9 @@ class TestEventBusAdapter:
         adapter = EventBusAdapter(bus)
         received: list[dict] = []
 
-        async def callback(data: dict) -> None:
+        def callback(data: dict):
             received.append(data)
+            return asyncio.sleep(0)
 
         adapter.subscribe_events(callback)
         bus.emit(ChatClearedEvent(chat_jid="group@g.us"))
@@ -378,8 +382,9 @@ class TestEventBusAdapter:
         adapter = EventBusAdapter(bus)
         received: list[dict] = []
 
-        async def callback(data: dict) -> None:
+        def callback(data: dict):
             received.append(data)
+            return asyncio.sleep(0)
 
         unsub = adapter.subscribe_events(callback)
         unsub()

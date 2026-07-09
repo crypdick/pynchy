@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -44,6 +45,7 @@ async def mock_backend():
     """Start a mock MCP backend that echoes requests."""
 
     async def handle(request: web.Request) -> web.Response:
+        await asyncio.sleep(0)
         return web.json_response(
             {
                 "jsonrpc": "2.0",
@@ -386,9 +388,10 @@ class TestMcpProxyOutboundGating:
 
         approval_calls: list[tuple[str, str, str]] = []
 
-        async def mock_approval_fn(group, tool_name, data, request_id):
+        def mock_approval_fn(group, tool_name, data, request_id):
             approval_calls.append((group, tool_name, request_id))
             resolve_mcp_proxy_approval(request_id, True)
+            return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
         app = create_proxy_app({"email": backend_url}, approval_fn=mock_approval_fn)
@@ -422,10 +425,11 @@ class TestMcpProxyOutboundGating:
 
         approval_calls: list[tuple] = []
 
-        async def mock_approval_fn(group, tool_name, data, request_id):
+        def mock_approval_fn(group, tool_name, data, request_id):
             approval_calls.append((group, tool_name, request_id))
             # Simulate immediate human approval
             resolve_mcp_proxy_approval(request_id, True)
+            return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
         app = create_proxy_app(
@@ -462,9 +466,10 @@ class TestMcpProxyOutboundGating:
         )
         create_gate("test-ws", 1000.0, security)
 
-        async def mock_approval_fn(group, tool_name, data, request_id):
+        def mock_approval_fn(group, tool_name, data, request_id):
             # Simulate human denial
             resolve_mcp_proxy_approval(request_id, False)
+            return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
         app = create_proxy_app(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from unittest.mock import MagicMock, patch
 
@@ -112,8 +113,8 @@ class TestLiteLLMSyncRuntimeTypes:
 
         gateway = _make_gateway(tmp_path)
 
-        async def api_request(*_args, **_kwargs):
-            return []
+        def api_request(*_args, **_kwargs):
+            return asyncio.sleep(0, result=[])
 
         with (
             patch(
@@ -133,27 +134,30 @@ class TestLiteLLMSyncEndpoints:
         gateway = _make_gateway(tmp_path)
         calls: list[tuple[str, str, dict[str, object] | None]] = []
 
-        async def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+        def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
             calls.append((method, path, json_data))
             if method == "GET" and path == "/v1/mcp/server":
-                return [
-                    {
-                        "server_name": "gdrive_team",
-                        "url": "http://localhost:8931/mcp",
-                        "server_id": "keep",
-                    },
-                    {
-                        "server_name": "gdrive_team",
-                        "url": "http://stale-gdrive",
-                        "server_id": "drop-me",
-                    },
-                    {
-                        "server_name": "stale_service",
-                        "url": "http://stale-service",
-                        "server_id": "remove-me",
-                    },
-                ]
-            return True
+                return asyncio.sleep(
+                    0,
+                    result=[
+                        {
+                            "server_name": "gdrive_team",
+                            "url": "http://localhost:8931/mcp",
+                            "server_id": "keep",
+                        },
+                        {
+                            "server_name": "gdrive_team",
+                            "url": "http://stale-gdrive",
+                            "server_id": "drop-me",
+                        },
+                        {
+                            "server_name": "stale_service",
+                            "url": "http://stale-service",
+                            "server_id": "remove-me",
+                        },
+                    ],
+                )
+            return asyncio.sleep(0, result=True)
 
         instances = {
             "gdrive.team": _make_instance("gdrive", instance_id="gdrive.team"),
@@ -179,11 +183,11 @@ class TestLiteLLMSyncEndpoints:
         gateway = _make_gateway(tmp_path)
         calls: list[tuple[str, str, dict[str, object] | None]] = []
 
-        async def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
+        def api_request(_session, _gateway, method, path, *, json_data=None, **_kwargs):
             calls.append((method, path, json_data))
             if method == "GET" and path == "/v1/mcp/server":
-                return []
-            return True
+                return asyncio.sleep(0, result=[])
+            return asyncio.sleep(0, result=True)
 
         instance = _make_instance(
             "notebook",

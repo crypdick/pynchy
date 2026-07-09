@@ -3033,7 +3033,7 @@ class TestSessionStartOnlyStderr:
         proc = FakeProcess()
         runtime_running = True
 
-        async def fake_runtime_running(_container_name: str) -> bool:
+        def fake_runtime_running(_container_name: str) -> bool:
             return runtime_running
 
         with (
@@ -3071,10 +3071,10 @@ class TestSessionStartOnlyStderr:
         proc = FakeProcess()
         runtime_running = True
 
-        async def fake_runtime_running(_container_name: str) -> bool:
+        def fake_runtime_running(_container_name: str) -> bool:
             return runtime_running
 
-        async def fail_sleep(_delay: float) -> None:
+        def fail_sleep(_delay: float) -> None:
             raise AssertionError("runtime monitor should not use asyncio.sleep for polling")
 
         with (
@@ -3112,7 +3112,7 @@ class TestSessionStartOnlyStderr:
         proc = FakeProcess()
         runtime_running = True
 
-        async def fake_runtime_running(_container_name: str) -> bool:
+        def fake_runtime_running(_container_name: str) -> bool:
             return runtime_running
 
         with (
@@ -3150,7 +3150,7 @@ class TestSessionStartOnlyStderr:
         session = ContainerSession("apple-runtime-never-start-test", "pynchy-never-start")
         proc = FakeProcess()
 
-        async def fake_runtime_running(_container_name: str) -> bool:
+        def fake_runtime_running(_container_name: str) -> bool:
             return False
 
         with (
