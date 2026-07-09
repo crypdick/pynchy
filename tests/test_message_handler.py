@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -324,7 +323,7 @@ class TestExecuteDirectCommand:
     _P_SHELL = "pynchy.host.orchestrator.messaging.pipeline.run_shell_command"
 
     @pytest.mark.asyncio
-    async def test_successful_command_broadcasts_output(self):
+    async def test_successful_command_broadcasts_output(self, tmp_path):
         from pynchy.utils import ShellResult
 
         group = _make_group()
@@ -336,7 +335,7 @@ class TestExecuteDirectCommand:
             patch(_P_STORE, new_callable=AsyncMock),
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
-            mock_settings.return_value.groups_dir = Path("/tmp/groups")
+            mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(returncode=0, stdout="hi", stderr="")
             await execute_direct_command(deps, "g@g.us", group, msg, "echo hi")
 
@@ -346,7 +345,7 @@ class TestExecuteDirectCommand:
         assert "hi" in event.content
 
     @pytest.mark.asyncio
-    async def test_failed_command_shows_error(self):
+    async def test_failed_command_shows_error(self, tmp_path):
         from pynchy.utils import ShellResult
 
         group = _make_group()
@@ -358,7 +357,7 @@ class TestExecuteDirectCommand:
             patch(_P_STORE, new_callable=AsyncMock),
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
-            mock_settings.return_value.groups_dir = Path("/tmp/groups")
+            mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(returncode=1, stdout="", stderr="error msg")
             await execute_direct_command(deps, "g@g.us", group, msg, "false")
 
@@ -367,7 +366,7 @@ class TestExecuteDirectCommand:
         assert "error msg" in event.content
 
     @pytest.mark.asyncio
-    async def test_timeout_sends_host_message(self):
+    async def test_timeout_sends_host_message(self, tmp_path):
         from pynchy.utils import ShellResult
 
         group = _make_group()
@@ -378,7 +377,7 @@ class TestExecuteDirectCommand:
             patch(_P_SETTINGS) as mock_settings,
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
-            mock_settings.return_value.groups_dir = Path("/tmp/groups")
+            mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(
                 returncode=None, stdout="", stderr="", timed_out=True
             )

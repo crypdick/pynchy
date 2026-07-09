@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from pathlib import Path
 
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.claude_cli import ClaudeCLIAgentCore
@@ -18,7 +19,7 @@ from agent_runner.cores.claude_cli import ClaudeCLIAgentCore
 def _core(session_id: str | None = None) -> ClaudeCLIAgentCore:
     return ClaudeCLIAgentCore(
         AgentCoreConfig(
-            cwd="/tmp",
+            cwd=str(Path.cwd()),
             session_id=session_id,
             group_folder="g",
             chat_jid="j",

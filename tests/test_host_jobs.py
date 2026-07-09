@@ -36,15 +36,16 @@ def mock_ipc_deps():
 class TestHostJobScheduling:
     """Test host job scheduling through MCP and database."""
 
-    async def test_create_host_job_via_ipc_admin_group(self, mock_ipc_deps):
+    async def test_create_host_job_via_ipc_admin_group(self, mock_ipc_deps, tmp_path):
         """Admin group can schedule host jobs via IPC."""
+        cwd = str(tmp_path / "cwd")
         data = {
             "type": "schedule_host_job",
             "name": "test-backup",
             "command": "echo 'backup complete'",
             "schedule_type": "cron",
             "schedule_value": "0 2 * * *",
-            "cwd": "/tmp",
+            "cwd": cwd,
             "timeout_seconds": 300,
             "timestamp": datetime.now(UTC).isoformat(),
         }
@@ -57,7 +58,7 @@ class TestHostJobScheduling:
         assert job.command == "echo 'backup complete'"
         assert job.schedule_type == "cron"
         assert job.schedule_value == "0 2 * * *"
-        assert job.cwd == "/tmp"
+        assert job.cwd == cwd
         assert job.timeout_seconds == 300
         assert job.created_by == "admin-1"
         assert job.enabled is True
@@ -103,13 +104,14 @@ class TestHostJobScheduling:
         assert job.next_run == future_time
 
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
-    async def test_temporal_database_host_job_activity_executes_command(self, mock_shell):
+    async def test_temporal_database_host_job_activity_executes_command(self, mock_shell, tmp_path):
         """Temporal host-job activity executes due job commands."""
         from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
 
         mock_shell.return_value = ShellResult(returncode=0, stdout="Success", stderr="")
 
         past_time = "2020-01-01T00:00:00"
+        cwd = str(tmp_path / "cwd")
         await create_host_job(
             {
                 "id": "job-exec",
@@ -121,7 +123,7 @@ class TestHostJobScheduling:
                 "status": "active",
                 "created_at": datetime.now(UTC).isoformat(),
                 "created_by": "admin-1",
-                "cwd": "/tmp",
+                "cwd": cwd,
                 "timeout_seconds": 60,
                 "enabled": True,
             }
@@ -132,7 +134,7 @@ class TestHostJobScheduling:
         assert result == "completed"
         mock_shell.assert_awaited_once()
         call_kwargs = mock_shell.await_args.kwargs
-        assert call_kwargs["cwd"] == "/tmp"
+        assert call_kwargs["cwd"] == cwd
 
     async def test_host_job_validates_invalid_cron(self, mock_ipc_deps):
         """Host job creation rejects invalid cron expressions."""

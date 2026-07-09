@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 from agent_runner.core import AgentCoreConfig
@@ -13,7 +14,7 @@ from agent_runner.cores.claude import ClaudeAgentCore
 def _core(session_id: str | None = None) -> ClaudeAgentCore:
     return ClaudeAgentCore(
         AgentCoreConfig(
-            cwd="/tmp",
+            cwd=str(Path.cwd()),
             session_id=session_id,
             group_folder="g",
             chat_jid="j",

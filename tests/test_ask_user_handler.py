@@ -53,7 +53,7 @@ def pending_question():
 
 class TestPathAContainerAlive:
     @pytest.mark.asyncio
-    async def test_writes_ipc_response_when_alive(self, settings, pending_question):
+    async def test_writes_ipc_response_when_alive(self, settings, pending_question, tmp_path):
         """When the container is alive, write the answer as an IPC response file."""
         from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
@@ -63,6 +63,7 @@ class TestPathAContainerAlive:
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
         answer = {"auth_strategy": "JWT tokens"}
+        response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
 
         with (
             patch(
@@ -78,7 +79,7 @@ class TestPathAContainerAlive:
             ) as mock_write,
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
-                return_value=Path("/tmp/fake/responses/req-abc123.json"),
+                return_value=response_path,
             ) as mock_path,
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
         ):
@@ -86,14 +87,13 @@ class TestPathAContainerAlive:
 
         mock_path.assert_called_once_with("test-group", "req-abc123")
         mock_write.assert_called_once_with(
-            Path("/tmp/fake/responses/req-abc123.json"),
-            {"result": {"answers": {"auth_strategy": "JWT tokens"}}},
+            response_path, {"result": {"answers": {"auth_strategy": "JWT tokens"}}}
         )
         # Should NOT enqueue a message (container is alive)
         deps.enqueue_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_resolves_pending_question_when_alive(self, settings, pending_question):
+    async def test_resolves_pending_question_when_alive(self, settings, pending_question, tmp_path):
         """After writing IPC response, the pending question file should be resolved."""
         from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
@@ -114,7 +114,7 @@ class TestPathAContainerAlive:
             patch("pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"),
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
-                return_value=Path("/tmp/x"),
+                return_value=tmp_path / "x",
             ),
             patch(
                 "pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"

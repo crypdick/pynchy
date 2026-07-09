@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 from urllib.error import HTTPError
 
@@ -56,14 +56,14 @@ def _settings(tmp_path: Path, *, enabled: bool = True) -> object:
     )
 
 
-def _onecli_material_payload() -> dict[str, object]:
+def _onecli_material_payload(ca_container_path: str) -> dict[str, object]:
     return {
         "env": {
             "HTTPS_PROXY": "http://proxy",
-            "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
+            "SSL_CERT_FILE": ca_container_path,
         },
         "caCertificate": "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----\n",
-        "caCertificateContainerPath": "/tmp/onecli-ca.pem",
+        "caCertificateContainerPath": ca_container_path,
         "credentialStubs": [
             {
                 "containerPath": "/home/agent/.codex/auth.json",
@@ -154,8 +154,8 @@ def test_client_fetches_gateway_skill_with_framework() -> None:
     assert requests[0].get_header("Authorization") == "Bearer oc_test_key"
 
 
-def test_client_rejects_non_http_base_url_before_opening() -> None:
-    settings = make_settings(onecli=OneCliConfig(url="file:///tmp/onecli.sock"))
+def test_client_rejects_non_http_base_url_before_opening(tmp_path: Path) -> None:
+    settings = make_settings(onecli=OneCliConfig(url=(tmp_path / "onecli.sock").as_uri()))
     client = OneCliClient(config=settings.onecli, api_key="oc_test_key", project_id=None)
 
     with (
@@ -267,7 +267,8 @@ def test_prepare_onecli_material_writes_ca_and_stubs(
 ) -> None:
     settings = _settings(tmp_path)
     monkeypatch.setenv("ONECLI_API_KEY", "oc_test_key")
-    payload = _onecli_material_payload()
+    ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
+    payload = _onecli_material_payload(ca_container_path)
     requests = []
 
     def fake_urlopen(request, timeout):
@@ -286,7 +287,7 @@ def test_prepare_onecli_material_writes_ca_and_stubs(
     assert requests[0].full_url.endswith("/v1/container-config?agent=pynchy-research-group")
     assert requests[0].get_header("Authorization") == "Bearer oc_test_key"
 
-    ca_mount = _mount_for_container_path(material, "/tmp/onecli-ca.pem")
+    ca_mount = _mount_for_container_path(material, ca_container_path)
     assert ca_mount.readonly is True
     assert Path(ca_mount.host_path).read_text() == payload["caCertificate"]
 

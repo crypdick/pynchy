@@ -73,11 +73,12 @@ class TestWriteOutputCreatesFile:
         assert content["new_session_id"] == "sess-123"
 
     def test_tool_use_event_serialization(self, output_dir: Path) -> None:
+        tool_path = output_dir.parent / "foo"
         output = ContainerOutput(
             status="success",
             type="tool_use",
             tool_name="read_file",
-            tool_input={"path": "/tmp/foo"},
+            tool_input={"path": str(tool_path)},
         )
         write_output(output)
 

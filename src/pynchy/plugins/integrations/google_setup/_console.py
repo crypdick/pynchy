@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import tempfile
 import time
 from pathlib import Path
 
@@ -60,7 +61,8 @@ async def try_step(
     except Exception as exc:
         logger.warning("GCP automation step failed, falling back to manual", error=str(exc))
         with contextlib.suppress(Exception):
-            await page.screenshot(path="/tmp/gdrive-setup-debug.png")
+            debug_screenshot = Path(tempfile.gettempdir()) / "gdrive-setup-debug.png"
+            await page.screenshot(path=str(debug_screenshot))
 
     logger.info("Manual step required", instructions=fallback_msg)
 

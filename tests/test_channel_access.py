@@ -388,13 +388,13 @@ class TestConnectionsConfigGetConnection:
         assert isinstance(result, SlackConnectionConfig)
         assert result.bot_token_env == slack_bot_env
 
-    def test_whatsapp_lookup(self):
+    def test_whatsapp_lookup(self, tmp_path):
         connections = ConnectionsConfig(
-            whatsapp={"phone1": WhatsAppConnectionConfig(auth_db_path="/tmp/wa.db")}
+            whatsapp={"phone1": WhatsAppConnectionConfig(auth_db_path=str(tmp_path / "wa.db"))}
         )
         result = connections.get_connection("whatsapp", "phone1")
         assert isinstance(result, WhatsAppConnectionConfig)
-        assert result.auth_db_path == "/tmp/wa.db"
+        assert result.auth_db_path == str(tmp_path / "wa.db")
 
     def test_unknown_platform_returns_none(self):
         connections = ConnectionsConfig()

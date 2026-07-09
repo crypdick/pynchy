@@ -12,7 +12,7 @@ Covers:
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import MagicMock, patch
 
 from conftest import make_settings
@@ -412,15 +412,17 @@ class TestGitEnvWithToken:
 
     def test_onecli_enabled_uses_proxy_env_without_raw_token(self, tmp_path: Path):
         """OneCLI enabled -> host git uses proxy/CA env and never resolves raw tokens."""
+        ca_host_path = tmp_path / "onecli-ca.pem"
+        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
         material = OneCliMaterial(
             env_vars={
                 "HTTPS_PROXY": "http://onecli-proxy",
-                "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
+                "SSL_CERT_FILE": ca_container_path,
             },
             mounts=[
                 VolumeMount(
-                    host_path=str(tmp_path / "onecli-ca.pem"),
-                    container_path="/tmp/onecli-ca.pem",
+                    host_path=str(ca_host_path),
+                    container_path=ca_container_path,
                     readonly=True,
                 )
             ],
@@ -442,7 +444,7 @@ class TestGitEnvWithToken:
 
         assert env is not None
         assert env["HTTPS_PROXY"] == "http://onecli-proxy"
-        assert env["SSL_CERT_FILE"] == str(tmp_path / "onecli-ca.pem")
+        assert env["SSL_CERT_FILE"] == str(ca_host_path)
         assert env["GIT_TERMINAL_PROMPT"] == "0"
         assert "GH_TOKEN" not in env
         assert "GIT_CONFIG_VALUE_1" not in env

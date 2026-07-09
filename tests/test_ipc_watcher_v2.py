@@ -692,11 +692,11 @@ class TestIpcEventHandler:
         """Run the event loop briefly to execute pending callbacks."""
         loop.run_until_complete(asyncio.sleep(0))
 
-    def test_only_json_files_are_queued(self):
+    def test_only_json_files_are_queued(self, tmp_path: Path):
         """Non-JSON files should be ignored."""
         loop = asyncio.new_event_loop()
         queue: asyncio.Queue[Path] = asyncio.Queue()
-        ipc_dir = Path("/tmp/test-ipc")
+        ipc_dir = tmp_path / "test-ipc"
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
@@ -714,11 +714,11 @@ class TestIpcEventHandler:
 
         loop.close()
 
-    def test_files_outside_group_subdirs_are_ignored(self):
+    def test_files_outside_group_subdirs_are_ignored(self, tmp_path: Path):
         """Files not in a group's watched IPC subdirs should be ignored."""
         loop = asyncio.new_event_loop()
         queue: asyncio.Queue[Path] = asyncio.Queue()
-        ipc_dir = Path("/tmp/test-ipc")
+        ipc_dir = tmp_path / "test-ipc"
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
@@ -741,11 +741,11 @@ class TestIpcEventHandler:
 
         loop.close()
 
-    def test_output_files_are_queued(self):
+    def test_output_files_are_queued(self, tmp_path: Path):
         """Files in output/ subdirectory should be enqueued."""
         loop = asyncio.new_event_loop()
         queue: asyncio.Queue[Path] = asyncio.Queue()
-        ipc_dir = Path("/tmp/test-ipc")
+        ipc_dir = tmp_path / "test-ipc"
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
@@ -761,11 +761,11 @@ class TestIpcEventHandler:
 
         loop.close()
 
-    def test_moved_output_files_are_queued(self):
+    def test_moved_output_files_are_queued(self, tmp_path: Path):
         """Atomic writes (tmp -> .json rename) in output/ should be enqueued."""
         loop = asyncio.new_event_loop()
         queue: asyncio.Queue[Path] = asyncio.Queue()
-        ipc_dir = Path("/tmp/test-ipc")
+        ipc_dir = tmp_path / "test-ipc"
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 

@@ -418,7 +418,7 @@ class TestBroadcastConsistency:
                     "type": "tool_use",
                     "status": "success",
                     "tool_name": "Read",
-                    "tool_input": {"file_path": "/tmp/test.py"},
+                    "tool_input": {"file_path": str(tmp_path / "test.py")},
                 },
                 {
                     "type": "result",

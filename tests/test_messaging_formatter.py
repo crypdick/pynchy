@@ -120,38 +120,42 @@ class TestFormatToolPreview:
         assert result == "Edit"
 
     # --- Write (with content preview) ---
-    def test_write_path_only(self):
-        result = format_tool_preview("Write", {"file_path": "/tmp/out.txt"})
-        assert result == "Write: /tmp/out.txt"
+    def test_write_path_only(self, tmp_path):
+        path = tmp_path / "out.txt"
+        result = format_tool_preview("Write", {"file_path": str(path)})
+        assert result == f"Write: {path}"
 
-    def test_write_shows_content(self):
+    def test_write_shows_content(self, tmp_path):
+        path = tmp_path / "out.txt"
         result = format_tool_preview(
             "Write",
             {
-                "file_path": "/tmp/out.txt",
+                "file_path": str(path),
                 "content": "hello world\nsecond line",
             },
         )
-        assert "Write: /tmp/out.txt" in result
+        assert f"Write: {path}" in result
         assert "+ hello world" in result
         assert "+ second line" in result
         assert "```" in result
 
-    def test_write_shows_all_content_lines(self):
+    def test_write_shows_all_content_lines(self, tmp_path):
+        path = tmp_path / "big.txt"
         content = "\n".join(f"line_{i}" for i in range(20))
         result = format_tool_preview(
             "Write",
             {
-                "file_path": "/tmp/big.txt",
+                "file_path": str(path),
                 "content": content,
             },
         )
         assert "line_19" in result
         assert "more lines" not in result
 
-    def test_write_without_content_shows_path_only(self):
-        result = format_tool_preview("Write", {"file_path": "/tmp/out.txt"})
-        assert result == "Write: /tmp/out.txt"
+    def test_write_without_content_shows_path_only(self, tmp_path):
+        path = tmp_path / "out.txt"
+        result = format_tool_preview("Write", {"file_path": str(path)})
+        assert result == f"Write: {path}"
 
     def test_write_missing_path(self):
         result = format_tool_preview("Write", {})

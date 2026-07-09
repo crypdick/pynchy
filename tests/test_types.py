@@ -44,12 +44,13 @@ class TestContainerConfig:
         config = ContainerConfig.from_dict({"timeout": 600.0})
         assert config.timeout == 600
 
-    def test_from_dict_with_mounts(self):
+    def test_from_dict_with_mounts(self, tmp_path):
+        cache_path = tmp_path / "cache"
         config = ContainerConfig.from_dict(
             {
                 "additional_mounts": [
                     {"host_path": "/data/models", "container_path": "/models", "readonly": True},
-                    {"host_path": "/tmp/cache"},
+                    {"host_path": str(cache_path)},
                 ]
             }
         )
@@ -58,7 +59,7 @@ class TestContainerConfig:
         assert config.additional_mounts[0].container_path == "/models"
         assert config.additional_mounts[0].readonly is True
         # Second mount uses defaults
-        assert config.additional_mounts[1].host_path == "/tmp/cache"
+        assert config.additional_mounts[1].host_path == str(cache_path)
         assert config.additional_mounts[1].container_path is None
         assert config.additional_mounts[1].readonly is True
 
@@ -97,8 +98,12 @@ class TestAdditionalMount:
         assert mount.container_path is None
         assert mount.readonly is True
 
-    def test_writable_mount(self):
-        mount = AdditionalMount(host_path="/tmp", container_path="/workspace/tmp", readonly=False)
+    def test_writable_mount(self, tmp_path):
+        mount = AdditionalMount(
+            host_path=str(tmp_path / "tmp"),
+            container_path="/workspace/tmp",
+            readonly=False,
+        )
         assert mount.readonly is False
         assert mount.container_path == "/workspace/tmp"
 

@@ -256,9 +256,10 @@ class TestFormatToolPreview:
         result = format_tool_preview("Edit", {"file_path": "/src/main.py"})
         assert result == "Edit: /src/main.py"
 
-    def test_write_with_path(self):
-        result = format_tool_preview("Write", {"file_path": "/tmp/output.txt"})
-        assert result == "Write: /tmp/output.txt"
+    def test_write_with_path(self, tmp_path):
+        path = tmp_path / "output.txt"
+        result = format_tool_preview("Write", {"file_path": str(path)})
+        assert result == f"Write: {path}"
 
     def test_read_truncates_long_paths(self):
         long_path = "/very/long/" + "deep/" * 40 + "file.txt"

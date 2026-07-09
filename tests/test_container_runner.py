@@ -9,7 +9,7 @@ import logging
 import shutil
 import signal
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pluggy
@@ -617,7 +617,8 @@ class TestContainerArgs:
     def test_apple_readonly_file_mount_uses_volume_flag(self, tmp_path: Path):
         host_file = tmp_path / "onecli-ca.pem"
         host_file.write_text("ca")
-        mounts = [VolumeMount(str(host_file), "/tmp/onecli-ca.pem", readonly=True)]
+        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
+        mounts = [VolumeMount(str(host_file), ca_container_path, readonly=True)]
         runtime = MagicMock(name="runtime")
         runtime.name = "apple"
 
@@ -625,7 +626,7 @@ class TestContainerArgs:
             args = build_container_args(mounts, "test-container")
 
         assert "-v" in args
-        assert f"{host_file}:/tmp/onecli-ca.pem:ro" in args
+        assert f"{host_file}:{ca_container_path}:ro" in args
         assert "--mount" not in args
 
     def test_includes_name_and_image(self):
@@ -1043,12 +1044,13 @@ class TestMountBuilding:
     ):
         """OneCLI material is mounted and raw GitHub tokens stay out of env files."""
         ca_host_path = tmp_path / "onecli-ca.pem"
+        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
         material = OneCliMaterial(
             env_vars={
                 "HTTPS_PROXY": "http://proxy",
-                "SSL_CERT_FILE": "/tmp/onecli-ca.pem",
+                "SSL_CERT_FILE": ca_container_path,
             },
-            mounts=[VolumeMount(str(ca_host_path), "/tmp/onecli-ca.pem", readonly=True)],
+            mounts=[VolumeMount(str(ca_host_path), ca_container_path, readonly=True)],
             warnings=[],
         )
         with (
@@ -1071,11 +1073,11 @@ class TestMountBuilding:
             )
             mounts = build_volume_mounts(group, is_admin=True)
 
-        assert any(m.container_path == "/tmp/onecli-ca.pem" for m in mounts)
+        assert any(m.container_path == ca_container_path for m in mounts)
         env_file = tmp_path / "data" / "env" / "admin-1" / "env"
         content = env_file.read_text()
         assert "HTTPS_PROXY='http://proxy'" in content
-        assert "SSL_CERT_FILE='/tmp/onecli-ca.pem'" in content
+        assert f"SSL_CERT_FILE='{ca_container_path}'" in content
         assert "GH_TOKEN" not in content
 
 
@@ -1695,7 +1697,7 @@ class TestAgentRunnerPreContainerHelpers:
 
     def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
         repo_ctx = MagicMock()
-        repo_ctx.worktrees_dir = Path("/tmp/worktrees")
+        repo_ctx.worktrees_dir = Path.cwd() / "worktrees"
 
         with (
             patch(
