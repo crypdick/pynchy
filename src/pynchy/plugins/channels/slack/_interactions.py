@@ -60,7 +60,7 @@ class SlackInteractions:
             {"type": "context", "elements": [{"type": "mrkdwn", "text": context_text}]}
         )
         try:
-            await self._channel._app.client.chat_update(
+            await self._channel.slack_app.client.chat_update(
                 channel=channel_id, ts=message_ts, text=fallback, blocks=kept_blocks
             )
         except Exception as exc:  # noqa: BLE001, RUF100 - interactive message updates are best-effort UX.
@@ -79,7 +79,7 @@ class SlackInteractions:
         channel_id = body.get("channel", {}).get("id", "")
 
         # Guard: only process interactions from allowed channels.
-        if channel_id and not ch.allowlist._is_allowed_channel(channel_id):
+        if channel_id and not ch.is_allowed_channel(channel_id):
             return
 
         # Ignore bare checkbox toggles — wait for submit.
@@ -108,14 +108,14 @@ class SlackInteractions:
             "message_ts": message_ts,
         }
 
-        if ch._on_ask_user_answer:
-            ch._on_ask_user_answer(request_id, answer_dict)
+        if ch.on_ask_user_answer:
+            ch.on_ask_user_answer(request_id, answer_dict)
 
         # Update the question message to show the answer and remove interactivity
         if channel_id and message_ts:
             answered_text = f"Answered: *{answer}*"
             try:
-                await ch._app.client.chat_update(
+                await ch.slack_app.client.chat_update(
                     channel=channel_id,
                     ts=message_ts,
                     text=answered_text,
@@ -140,7 +140,7 @@ class SlackInteractions:
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")
 
-        if channel_id and not ch.allowlist._is_allowed_channel(channel_id):
+        if channel_id and not ch.is_allowed_channel(channel_id):
             return
 
         # Parse action_id: cop_{approve|deny}_{short_id}
@@ -155,9 +155,9 @@ class SlackInteractions:
         user_name = body.get("user", {}).get("username", user_id)
 
         # Invoke the approval decision callback
-        if ch._on_approval_decision and channel_id:
+        if ch.on_approval_decision and channel_id:
             jid = slack_jid(channel_id)
-            ch._on_approval_decision(jid, decision, short_id, user_id)
+            ch.on_approval_decision(jid, decision, short_id, user_id)
 
         verb = "Approved" if decision == "approve" else "Denied"
         await self._finalize_decision(
@@ -189,7 +189,7 @@ class SlackInteractions:
         action_id = action.get("action_id", "")
         channel_id = body.get("channel", {}).get("id", "")
 
-        if channel_id and not ch.allowlist._is_allowed_channel(channel_id):
+        if channel_id and not ch.is_allowed_channel(channel_id):
             return
 
         # Parse action_id: agent_stop_{group_name}
@@ -202,8 +202,8 @@ class SlackInteractions:
         user_name = body.get("user", {}).get("username", user_id)
 
         # Signal cancellation to the agent execution loop
-        if ch._on_agent_stop:
-            ch._on_agent_stop(group_name, user_id)
+        if ch.on_agent_stop:
+            ch.on_agent_stop(group_name, user_id)
 
         await self._finalize_decision(
             body,
