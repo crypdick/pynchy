@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pluggy
 import pytest
 
+from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
 
 
@@ -73,10 +75,6 @@ class TestPluginManager:
 
     def test_disabled_plugin_not_loaded(self):
         """Plugin with enabled=False in config is not loaded."""
-        from types import SimpleNamespace
-
-        from pynchy.config import PluginConfig
-
         settings = SimpleNamespace(
             plugins={"tailscale": PluginConfig(enabled=False)},
         )
