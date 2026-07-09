@@ -92,7 +92,7 @@ def has_api_credentials() -> bool:
     """Check whether LLM API credentials are available for containers.
 
     Pure check with no filesystem side effects — use this instead of
-    calling :func:`_write_env_file` with a dummy group folder.
+    calling :func:`write_env_file` with a dummy group folder.
     """
     from pynchy.host.container_manager.gateway import get_gateway
 
@@ -208,7 +208,7 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
     return {}
 
 
-def _write_env_file(
+def write_env_file(
     *,
     is_admin: bool,
     group_folder: str,

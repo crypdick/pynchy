@@ -25,33 +25,33 @@ from pynchy.config.models import (
     WorkspaceConfig,
 )
 from pynchy.host.container_manager.credentials import (
-    _write_env_file,  # allow: private-test-imports
     shell_quote,
+    write_env_file,
 )
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.onecli import OneCliMaterial
 from pynchy.host.container_manager.orchestrator import (
-    _write_initial_input,  # allow: private-test-imports
     resolve_agent_core,
+    write_initial_input,
 )
 from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
 from pynchy.host.container_manager.session_prep import (
-    _sync_skills,  # allow: private-test-imports
-    _write_settings_json,  # allow: private-test-imports
     is_skill_selected,
     parse_skill_tier,
+    sync_skills,
+    write_settings_json,
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.orchestrator.agent_runner import (
-    _build_admin_system_notices,  # allow: private-test-imports
-    _build_container_input,  # allow: private-test-imports
-    _PreContainerResult,  # allow: private-test-imports
     _session_model_mismatch,  # allow: private-test-imports
-    _session_tracking_output_handler,  # allow: private-test-imports
+    PreContainerResult,
+    build_admin_system_notices,
+    build_container_input,
+    session_tracking_output_handler,
 )
 from pynchy.types import (
     ContainerInput,
@@ -456,7 +456,7 @@ class TestInputSerialization:
 
 
 class TestWriteInitialInput:
-    """Tests for _write_initial_input — atomic file write of ContainerInput."""
+    """Tests for write_initial_input — atomic file write of ContainerInput."""
 
     def test_creates_initial_json_with_correct_content(self, tmp_path: Path):
         inp = ContainerInput(
@@ -466,7 +466,7 @@ class TestWriteInitialInput:
             is_admin=False,
         )
         input_dir = tmp_path / "ipc" / "test-group" / "input"
-        _write_initial_input(inp, input_dir)
+        write_initial_input(inp, input_dir)
 
         filepath = input_dir / "initial.json"
         assert filepath.exists()
@@ -485,7 +485,7 @@ class TestWriteInitialInput:
         )
         input_dir = tmp_path / "a" / "b" / "c" / "input"
         assert not input_dir.exists()
-        _write_initial_input(inp, input_dir)
+        write_initial_input(inp, input_dir)
         assert (input_dir / "initial.json").exists()
 
     def test_atomic_write_no_tmp_left_behind(self, tmp_path: Path):
@@ -496,7 +496,7 @@ class TestWriteInitialInput:
             is_admin=False,
         )
         input_dir = tmp_path / "input"
-        _write_initial_input(inp, input_dir)
+        write_initial_input(inp, input_dir)
 
         # Only initial.json should exist — no .tmp file
         files = list(input_dir.iterdir())
@@ -518,8 +518,8 @@ class TestWriteInitialInput:
             chat_jid="c",
             is_admin=True,
         )
-        _write_initial_input(inp1, input_dir)
-        _write_initial_input(inp2, input_dir)
+        write_initial_input(inp1, input_dir)
+        write_initial_input(inp2, input_dir)
 
         data = json.loads((input_dir / "initial.json").read_text())
         assert data["messages"][0]["content"] == "second"
@@ -537,7 +537,7 @@ class TestWriteInitialInput:
             system_notices=["notice1"],
         )
         input_dir = tmp_path / "input"
-        _write_initial_input(inp, input_dir)
+        write_initial_input(inp, input_dir)
 
         data = json.loads((input_dir / "initial.json").read_text())
         assert data["session_id"] == "sess-42"
@@ -1094,7 +1094,7 @@ class TestMountBuilding:
 
 
 class TestWriteEnvFile:
-    """Tests for _write_env_file with auto-discovery of Claude, GitHub, and git credentials."""
+    """Tests for write_env_file with auto-discovery of Claude, GitHub, and git credentials."""
 
     def _patch_env(self, tmp_path: Path, gh_token=None, git_name=None, git_email=None):
         """Return a combined context manager patching dirs and subprocess auto-discovery."""
@@ -1109,7 +1109,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
@@ -1127,7 +1127,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
@@ -1147,7 +1147,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(
+            env_dir = write_env_file(
                 is_admin=True,
                 group_folder="test",
                 extra_env_vars=proxy_env,
@@ -1171,7 +1171,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            assert _write_env_file(is_admin=True, group_folder="test") is None
+            assert write_env_file(is_admin=True, group_folder="test") is None
 
     def test_auto_discovers_gh_token_for_admin(self, tmp_path: Path):
         """GH_TOKEN is auto-discovered from gh CLI for admin containers."""
@@ -1182,7 +1182,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='gho_abc123'" in content
@@ -1196,7 +1196,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_abc123"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_admin=False, group_folder="untrusted")
+            env_dir = write_env_file(is_admin=False, group_folder="untrusted")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN" not in content
@@ -1211,7 +1211,7 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="auto-token"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='explicit-token'" in content
@@ -1229,7 +1229,7 @@ class TestWriteEnvFile:
                 return_value=("Jane Doe", "jane@example.com"),
             ),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GIT_AUTHOR_NAME='Jane Doe'" in content
@@ -1249,7 +1249,7 @@ class TestWriteEnvFile:
                 return_value=("Bob", "bob@test.com"),
             ),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert f"ANTHROPIC_BASE_URL='{gw.base_url}'" in content
@@ -1268,8 +1268,8 @@ class TestWriteEnvFile:
             patch(f"{_CR_CREDS}._read_gh_token", return_value="gho_xyz"),
             patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
         ):
-            admin_dir = _write_env_file(is_admin=True, group_folder="admin-group")
-            nonadmin_dir = _write_env_file(is_admin=False, group_folder="other-group")
+            admin_dir = write_env_file(is_admin=True, group_folder="admin-group")
+            nonadmin_dir = write_env_file(is_admin=False, group_folder="other-group")
             assert admin_dir != nonadmin_dir
             assert "GH_TOKEN" in (admin_dir / "env").read_text()
             assert "GH_TOKEN" not in (nonadmin_dir / "env").read_text()
@@ -1286,7 +1286,7 @@ class TestWriteEnvFile:
                 return_value=("O'Brien Smith", None),
             ),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # Shell quoting escapes single quotes: O'Brien → 'O'\''Brien Smith'
@@ -1324,7 +1324,7 @@ class TestReadGhToken:
 
 
 class TestReadGitIdentity:
-    """Git identity discovery, observed via the env file _write_env_file writes.
+    """Git identity discovery, observed via the env file write_env_file writes.
 
     A gateway provider is present so the env file is written; git config is
     faked via subprocess.run so the GIT_* vars reflect the discovered identity.
@@ -1345,7 +1345,7 @@ class TestReadGitIdentity:
             patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GIT_AUTHOR_NAME='Alice'" in content
@@ -1361,7 +1361,7 @@ class TestReadGitIdentity:
             patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}.subprocess.run", return_value=mock_result),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GIT_AUTHOR_NAME" not in content
@@ -1379,7 +1379,7 @@ class TestReadGitIdentity:
             patch(f"{_GATEWAY}.get_gateway", return_value=gw),
             patch(f"{_CR_CREDS}.subprocess.run", side_effect=mock_run),
         ):
-            env_dir = _write_env_file(is_admin=True, group_folder="test")
+            env_dir = write_env_file(is_admin=True, group_folder="test")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GIT_AUTHOR_NAME='Bob'" in content
@@ -1573,8 +1573,8 @@ class TestContainerInputAgentCoreConfig:
     """Test model configuration passed from host settings into agent cores."""
 
     @staticmethod
-    def _ctx() -> _PreContainerResult:
-        return _PreContainerResult(
+    def _ctx() -> PreContainerResult:
+        return PreContainerResult(
             is_admin=False,
             repo_access=None,
             repo_accesses=[],
@@ -1598,7 +1598,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
         assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex"}
 
@@ -1606,7 +1606,7 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings()
 
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
         assert result.agent_core_config is None
 
@@ -1630,7 +1630,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=settings,
             ),
         ):
-            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
         assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
 
@@ -1654,7 +1654,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=settings,
             ),
         ):
-            result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
         assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
 
@@ -1716,7 +1716,7 @@ class TestAgentRunnerPreContainerHelpers:
             "pynchy.host.orchestrator._agent_runner_preflight.set_session",
             new_callable=AsyncMock,
         ) as persist:
-            handler = _session_tracking_output_handler(deps, "test-group", on_output)
+            handler = session_tracking_output_handler(deps, "test-group", on_output)
             await handler(output)
 
         assert deps.sessions == {"test-group": "codex:thread-1"}
@@ -1741,7 +1741,7 @@ class TestAgentRunnerPreContainerHelpers:
                 return_value=2,
             ),
         ):
-            notices = _build_admin_system_notices(
+            notices = build_admin_system_notices(
                 "test-group",
                 is_admin=True,
                 repo_access="owner/repo",
@@ -1753,7 +1753,7 @@ class TestAgentRunnerPreContainerHelpers:
 
 
 # ---------------------------------------------------------------------------
-# _sync_skills tests
+# sync_skills tests
 # ---------------------------------------------------------------------------
 
 
@@ -1772,7 +1772,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, workspace_skills=["*"])
 
         skills_dst = session_dir / "skills" / "my-skill"
         assert skills_dst.exists()
@@ -1785,7 +1785,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir)
+            sync_skills(session_dir)
 
         # skills/ directory should still be created (empty)
         assert (session_dir / "skills").exists()
@@ -1799,7 +1799,7 @@ class TestSyncSkills:
             _patch_settings(tmp_path),
             patch("pynchy.host.container_manager.session_prep.sync_onecli_gateway_skill") as sync,
         ):
-            _sync_skills(session_dir)
+            sync_skills(session_dir)
 
         sync.assert_called_once_with(session_dir / "skills")
 
@@ -1823,7 +1823,7 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -1850,9 +1850,9 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
             skill_md.write_text("# External Skill\nsecond")
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
@@ -1880,7 +1880,7 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
 
@@ -1909,7 +1909,7 @@ class TestSyncSkills:
 
         caplog.set_level(logging.ERROR)
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -1944,7 +1944,7 @@ class TestSyncSkills:
             _patch_settings(tmp_path),
             pytest.raises(ValueError, match="collision"),
         ):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
     def test_plugin_skill_path_matching_builtin_source_is_safe(self, tmp_path: Path):
         """Plugin hooks may expose a built-in skill source already copied."""
@@ -1968,7 +1968,7 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
         copied_skill = session_dir / "skills" / "computer-use" / "SKILL.md"
         assert copied_skill.read_text() == (
@@ -1992,7 +1992,7 @@ class TestSyncSkills:
 
         with _patch_settings(tmp_path):
             # Should not crash
-            _sync_skills(session_dir, plugin_manager=FakePM())
+            sync_skills(session_dir, plugin_manager=FakePM())
 
     def test_ignores_files_in_skills_dir(self, tmp_path: Path):
         """Files (not directories) in agent/skills/ are ignored."""
@@ -2004,7 +2004,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir)
+            sync_skills(session_dir)
 
         # Only the skills/ directory should exist, no README.md copied
         assert not (session_dir / "skills" / "README.md").exists()
@@ -2020,7 +2020,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
@@ -2040,7 +2040,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["*"],
                 learned_skill_paths=[learned_skill],
@@ -2061,7 +2061,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=None,
                 learned_skill_paths=[learned_skill],
@@ -2088,7 +2088,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["community"],
                 learned_skill_paths=[learned_skill],
@@ -2115,7 +2115,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
@@ -2136,7 +2136,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["remember-routing"],
                 learned_skill_paths=[learned_skill],
@@ -2163,7 +2163,7 @@ class TestSyncSkills:
 
         caplog.set_level(logging.WARNING)
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["*"],
                 learned_skill_paths=[learned_skill],
@@ -2186,13 +2186,13 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
             notes.write_text("second version")
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
@@ -2214,13 +2214,13 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
             shutil.rmtree(learned_skill)
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[],
@@ -2243,12 +2243,12 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=workspace_skills,
                 learned_skill_paths=[learned_skill],
@@ -2280,12 +2280,12 @@ class TestSyncSkills:
 
         caplog.set_level(logging.WARNING)
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[],
             )
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
@@ -2318,7 +2318,7 @@ class TestSyncSkills:
                 side_effect=OSError("copy denied"),
             ),
         ):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
@@ -2357,7 +2357,7 @@ class TestSyncSkills:
 
         caplog.set_level(logging.WARNING)
         with _patch_settings(tmp_path):
-            _sync_skills(
+            sync_skills(
                 session_dir,
                 plugin_manager=FakePM(),
                 workspace_skills=["*"],
@@ -2470,7 +2470,7 @@ class TestIsSkillSelected:
 
 
 class TestSyncSkillsFiltering:
-    """Test _sync_skills with workspace_skills filtering."""
+    """Test sync_skills with workspace_skills filtering."""
 
     def _create_skill(self, base: Path, name: str, tier: str) -> None:
         skill_dir = base / name
@@ -2488,7 +2488,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=None)
+            sync_skills(session_dir, workspace_skills=None)
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser"}
@@ -2504,7 +2504,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["core"])
+            sync_skills(session_dir, workspace_skills=["core"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser"}
@@ -2520,7 +2520,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["core", "dev"])
+            sync_skills(session_dir, workspace_skills=["core", "dev"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
@@ -2536,7 +2536,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["core", "extra"])
+            sync_skills(session_dir, workspace_skills=["core", "extra"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "extra"}
@@ -2551,7 +2551,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, workspace_skills=["*"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
@@ -2578,7 +2578,7 @@ class TestSyncSkillsFiltering:
                 pass
 
         with _patch_settings(tmp_path):
-            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core"])
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core"])
 
         # Plugin skill is community tier, should be excluded
         assert not (session_dir / "skills" / "ext-tool").exists()
@@ -2605,15 +2605,13 @@ class TestSyncSkillsFiltering:
                 pass
 
         with _patch_settings(tmp_path):
-            _sync_skills(
-                session_dir, plugin_manager=FakePM(), workspace_skills=["core", "ext-tool"]
-            )
+            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core", "ext-tool"])
 
         assert (session_dir / "skills" / "ext-tool").exists()
 
 
 # ---------------------------------------------------------------------------
-# _write_settings_json tests
+# write_settings_json tests
 # ---------------------------------------------------------------------------
 
 
@@ -2625,7 +2623,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _write_settings_json(session_dir)
+            write_settings_json(session_dir)
 
         settings_file = session_dir / "settings.json"
         assert settings_file.exists()
@@ -2657,7 +2655,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _write_settings_json(session_dir)
+            write_settings_json(session_dir)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "hooks" in settings
@@ -2673,7 +2671,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            _write_settings_json(session_dir)
+            write_settings_json(session_dir)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         # Should still have env but no hooks
@@ -2687,7 +2685,7 @@ class TestWriteSettingsJson:
         (session_dir / "settings.json").write_text('{"stale": true}')
 
         with _patch_settings(tmp_path):
-            _write_settings_json(session_dir)
+            write_settings_json(session_dir)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "stale" not in settings

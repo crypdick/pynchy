@@ -10,10 +10,10 @@ if TYPE_CHECKING:
     import pluggy
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.credentials import _write_env_file
+from pynchy.host.container_manager.credentials import write_env_file
 from pynchy.host.container_manager.onecli import prepare_onecli_material
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
-from pynchy.host.container_manager.session_prep import _sync_skills, _write_settings_json
+from pynchy.host.container_manager.session_prep import sync_skills, write_settings_json
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.paths import LearningConfigError, resolve_learning_paths
 from pynchy.host.learning.skills import iter_learned_skill_dirs
@@ -80,7 +80,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     )
 
     codex_home = _prepare_codex_home(group.folder)
-    _sync_skills(
+    sync_skills(
         codex_home,
         plugin_manager,
         workspace_skills=learning.workspace_skills,
@@ -102,7 +102,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
         mounts.extend(onecli_material.mounts)
 
     # Environment file directory (per-group, GH_TOKEN scoped to admin only)
-    env_dir = _write_env_file(
+    env_dir = write_env_file(
         is_admin=is_admin,
         group_folder=group.folder,
         extra_env_vars=onecli_material.env_vars if onecli_material else None,
@@ -205,8 +205,8 @@ def _add_claude_session_mount(
 ) -> None:
     session_dir = data_dir / "sessions" / group_folder / ".claude"
     session_dir.mkdir(parents=True, exist_ok=True)
-    _write_settings_json(session_dir)
-    _sync_skills(
+    write_settings_json(session_dir)
+    sync_skills(
         session_dir,
         plugin_manager,
         workspace_skills=learning.workspace_skills,

@@ -21,7 +21,7 @@ from pynchy.types import ContainerOutput, GroupFolder, SessionId, WorkspaceProfi
 
 
 @dataclass
-class _PreContainerResult:
+class PreContainerResult:
     """Values produced by _pre_container_setup, consumed by warm/cold/scheduled paths."""
 
     is_admin: bool
@@ -81,7 +81,7 @@ def session_id_from_output(output: ContainerOutput) -> str | None:
     return session_id if isinstance(session_id, str) and session_id else None
 
 
-async def _pre_container_setup(request: _PreContainerSetupRequest) -> _PreContainerResult:
+async def _pre_container_setup(request: _PreContainerSetupRequest) -> PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
     is_admin, repo_access, repo_accesses, system_prompt_append, session_id = (
         _resolved_pre_container_context(
@@ -99,11 +99,11 @@ async def _pre_container_setup(request: _PreContainerSetupRequest) -> _PreContai
         request.group.folder,
         is_admin=is_admin,
     )
-    wrapped_on_output = _session_tracking_output_handler(
+    wrapped_on_output = session_tracking_output_handler(
         request.deps, request.group.folder, request.on_output
     )
     system_notices = _merged_system_notices(
-        _build_admin_system_notices(
+        build_admin_system_notices(
             request.group.folder, is_admin=is_admin, repo_access=repo_access
         ),
         request.extra_system_notices,
@@ -113,7 +113,7 @@ async def _pre_container_setup(request: _PreContainerSetupRequest) -> _PreContai
     agent_core_module, agent_core_class = resolve_agent_core(request.deps.plugin_manager)
     config_timeout = resolve_container_timeout(request.group)
 
-    return _PreContainerResult(
+    return PreContainerResult(
         is_admin=is_admin,
         repo_access=repo_access,
         repo_accesses=repo_accesses,
@@ -176,7 +176,7 @@ async def _write_container_snapshots(
     return (time.monotonic() - snapshot_start) * 1000
 
 
-def _session_tracking_output_handler(
+def session_tracking_output_handler(
     deps: _PreflightDeps,
     group_folder: str,
     on_output: OnOutput | None,
@@ -193,7 +193,7 @@ def _session_tracking_output_handler(
     return wrapped_on_output
 
 
-def _build_admin_system_notices(
+def build_admin_system_notices(
     group_folder: str,
     *,
     is_admin: bool,

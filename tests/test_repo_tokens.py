@@ -298,7 +298,7 @@ class TestContainerCredentialInjection:
                 return_value=(None, None),
             ),
         ):
-            env_dir = credentials._write_env_file(is_admin=True, group_folder="admin")
+            env_dir = credentials.write_env_file(is_admin=True, group_folder="admin")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert BROAD_CREDENTIAL in content
@@ -325,7 +325,7 @@ class TestContainerCredentialInjection:
                 return_value=fake_resolved,
             ),
         ):
-            env_dir = credentials._write_env_file(is_admin=False, group_folder="code-improver")
+            env_dir = credentials.write_env_file(is_admin=False, group_folder="code-improver")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # Gets the scoped token, not the broad one
@@ -354,7 +354,7 @@ class TestContainerCredentialInjection:
                 return_value=fake_resolved,
             ),
         ):
-            env_dir = credentials._write_env_file(is_admin=False, group_folder="basic-group")
+            env_dir = credentials.write_env_file(is_admin=False, group_folder="basic-group")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN" not in content
@@ -381,7 +381,7 @@ class TestContainerCredentialInjection:
                 return_value=fake_resolved,
             ),
         ):
-            env_dir = credentials._write_env_file(is_admin=False, group_folder="code-improver")
+            env_dir = credentials.write_env_file(is_admin=False, group_folder="code-improver")
             assert env_dir is not None
             content = (env_dir / "env").read_text()
             # No token injected — repo_access without a scoped token

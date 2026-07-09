@@ -54,10 +54,10 @@ class _FakeDeps:
 
 
 def _make_pre_container_result():
-    """Build a fake _PreContainerResult with all required fields."""
+    """Build a fake PreContainerResult with all required fields."""
     from pynchy.host.orchestrator import agent_runner
 
-    return agent_runner._PreContainerResult(
+    return agent_runner.PreContainerResult(
         is_admin=False,
         repo_access=None,
         repo_accesses=[],
@@ -100,7 +100,7 @@ def _make_container_input() -> MagicMock:
 
 
 # Patch targets — at the call site (pynchy.host.orchestrator.agent_runner).
-_P_BUILD = "pynchy.host.orchestrator.agent_runner._build_container_input"
+_P_BUILD = "pynchy.host.orchestrator.agent_runner.build_container_input"
 _P_SPAWN = "pynchy.host.orchestrator.agent_runner._spawn_container"
 _P_CREATE = "pynchy.host.orchestrator.agent_runner.create_session"
 _P_DESTROY = "pynchy.host.orchestrator.agent_runner.destroy_session"

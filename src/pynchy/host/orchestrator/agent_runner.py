@@ -38,12 +38,12 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
-_PreContainerResult = _preflight._PreContainerResult
+PreContainerResult = _preflight.PreContainerResult
 _pre_container_setup = _preflight._pre_container_setup
 _resolved_pre_container_context = _preflight._resolved_pre_container_context
 _write_container_snapshots = _preflight._write_container_snapshots
-_session_tracking_output_handler = _preflight._session_tracking_output_handler
-_build_admin_system_notices = _preflight._build_admin_system_notices
+session_tracking_output_handler = _preflight.session_tracking_output_handler
+build_admin_system_notices = _preflight.build_admin_system_notices
 _merged_system_notices = _preflight._merged_system_notices
 session_id_from_output = _preflight.session_id_from_output
 
@@ -83,7 +83,7 @@ class _SpawnAndAwaitRequest:
     chat_jid: str
     input_data: ContainerInput
     container_name: str
-    ctx: _PreContainerResult
+    ctx: PreContainerResult
     idle_timeout: float
     label: str
 
@@ -95,7 +95,7 @@ class _WarmQueryRequest:
     chat_jid: str
     session: ContainerSession
     messages: list[dict[str, Any]]
-    ctx: _PreContainerResult
+    ctx: PreContainerResult
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +136,9 @@ def _format_messages_for_ipc(
     return "\n".join(parts)
 
 
-def _build_container_input(
+def build_container_input(
     messages: list[dict[str, Any]],
-    ctx: _PreContainerResult,
+    ctx: PreContainerResult,
     chat_jid: str,
     group: WorkspaceProfile,
     *,
@@ -317,11 +317,11 @@ async def _cold_start(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict[str, Any]],
-    ctx: _PreContainerResult,
+    ctx: PreContainerResult,
 ) -> str:
     """Spawn a container, create a persistent session, and wait for the first query."""
     container_name = stable_container_name(group.folder)
-    input_data = _build_container_input(messages, ctx, chat_jid, group)
+    input_data = build_container_input(messages, ctx, chat_jid, group)
 
     # Remove stale container with the same name before spawning.
     # After a service restart or container crash, a dead Docker container may
@@ -463,7 +463,7 @@ async def _run_scheduled_task(
     group: WorkspaceProfile,
     chat_jid: str,
     messages: list[dict[str, Any]],
-    ctx: _PreContainerResult,
+    ctx: PreContainerResult,
 ) -> str:
     """Run a scheduled task in a one-shot container with real-time output streaming.
 
@@ -473,7 +473,7 @@ async def _run_scheduled_task(
     On CancelledError (deploy SIGTERM), the session is preserved so
     deploy_continuation can resume the task on restart.
     """
-    input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
+    input_data = build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
     container_name = oneshot_container_name(group.folder)
     interrupted = False
 

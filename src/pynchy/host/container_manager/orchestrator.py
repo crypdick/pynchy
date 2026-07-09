@@ -100,7 +100,7 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
 # ---------------------------------------------------------------------------
 
 
-def _write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
+def write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     """Write ContainerInput as initial.json for the container to read on startup.
 
     Uses atomic write (write to .tmp then rename) so the container's file
@@ -201,7 +201,7 @@ async def _spawn_container(
 
     # --- Write initial input as file (container reads on startup) ---
     ipc_input_dir = s.data_dir / "ipc" / group.folder / "input"
-    _write_initial_input(input_data, ipc_input_dir)
+    write_initial_input(input_data, ipc_input_dir)
 
     pre_spawn_ms = (time.monotonic() - start_time) * 1000
     logger.info(

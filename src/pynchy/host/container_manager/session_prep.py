@@ -92,7 +92,7 @@ def is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) 
 # ---------------------------------------------------------------------------
 
 
-def _sync_skills(
+def sync_skills(
     session_dir: Path,
     plugin_manager: pluggy.PluginManager | None = None,
     *,
@@ -424,7 +424,7 @@ def _validated_direct_learned_files(skill_dir: Path, resolved_skill_dir: Path) -
     return files
 
 
-def _write_settings_json(session_dir: Path) -> None:
+def write_settings_json(session_dir: Path) -> None:
     """Write Claude Code settings.json, merging hook config from scripts/.
 
     Always regenerates to pick up hook config changes (e.g. guard_git).
