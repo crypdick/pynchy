@@ -235,6 +235,26 @@ def test_command_center_references_new_connection_names() -> None:
     assert settings.command_center.connection == "synapse"
 
 
+@pytest.mark.parametrize(
+    "name, config",
+    [
+        (
+            "slack-main",
+            {
+                "type": "slack",
+                "bot_token_env": "SLACK_BOT_TOKEN",
+                "app_token_env": "SLACK_APP_TOKEN",
+            },
+        ),
+        ("whatsapp-main", {"type": "whatsapp", "auth_db_path": "data/wa.db"}),
+    ],
+)
+def test_connections_accept_all_builtin_channel_types(name: str, config: dict[str, str]) -> None:
+    settings = _settings_from_dict({"connections": {name: config}})
+
+    assert settings.connections[name].type == config["type"]
+
+
 def test_command_center_rejects_old_connection_refs() -> None:
     with pytest.raises(ValidationError):
         _settings_from_dict(

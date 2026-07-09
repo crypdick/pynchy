@@ -253,6 +253,7 @@ class ConnectionChatConfig(_StrictModel):
 class SlackConnectionConfig(_StrictModel):
     """Slack connection config (tokens are read from env vars)."""
 
+    type: Literal["slack"] = "slack"
     bot_token_env: str
     app_token_env: str
     security: ChannelOverrideConfig | None = None
@@ -262,6 +263,7 @@ class SlackConnectionConfig(_StrictModel):
 class WhatsAppConnectionConfig(_StrictModel):
     """WhatsApp connection config (auth state stored in sqlite)."""
 
+    type: Literal["whatsapp"] = "whatsapp"
     auth_db_path: str | None = None
     security: ChannelOverrideConfig | None = None
     chat: dict[str, ConnectionChatConfig] = {}
@@ -305,6 +307,7 @@ class DiscordConnectionConfig(_StrictModel):
     threads.
     """
 
+    type: Literal["discord"] = "discord"
     bot_token_env: str
     application_id: str | None = None
     processing_ack_emoji: str | None = "🦞"
@@ -492,16 +495,10 @@ ToolConfig = Annotated[
 ]
 
 
-class DiscordConnectionTomlConfig(_StrictModel):
-    type: Literal["discord"]
-    bot_token_env: str
-    application_id: str | None = None
-    dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
-    allow_from: list[str] = []
-    group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
-
-
-ConnectionConfig = DiscordConnectionTomlConfig
+ConnectionConfig = Annotated[
+    SlackConnectionConfig | WhatsAppConnectionConfig | DiscordConnectionConfig,
+    Field(discriminator="type"),
+]
 
 
 class _ResetWords(_StrictModel):

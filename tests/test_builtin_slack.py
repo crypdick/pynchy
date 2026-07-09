@@ -8,8 +8,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import make_settings
 
 import pynchy.plugins.channels.slack._ids as slack_ids
+from pynchy.config.models import CommandCenterConfig, SlackConnectionConfig
 from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
 from pynchy.plugins.channels.slack._ui import split_text
 
@@ -406,9 +408,7 @@ class TestSlackChannelPlugin:
         context = MagicMock()
 
         with patch("pynchy.plugins.channels.slack.get_settings") as mock_settings:
-            cfg = MagicMock()
-            cfg.connection.slack = {}
-            mock_settings.return_value = cfg
+            mock_settings.return_value = make_settings(connections={})
 
             result = plugin.pynchy_create_channel(context=context)
 
@@ -422,15 +422,16 @@ class TestSlackChannelPlugin:
             patch("pynchy.plugins.channels.slack.get_settings") as mock_settings,
             patch.dict(os.environ, {"BOT": "xoxb-test", "APP": "xapp-test"}, clear=False),
         ):
-            cfg = MagicMock()
-            cfg.command_center.connection = "connection.slack.main"
-            cfg.connection.slack = {
-                "main": MagicMock(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
-                    chat={"general": MagicMock()},
-                )
-            }
+            cfg = make_settings(
+                command_center=CommandCenterConfig(connection="main"),
+                connections={
+                    "main": SlackConnectionConfig(
+                        bot_token_env="BOT",
+                        app_token_env="APP",
+                        chat={"general": {}},
+                    )
+                },
+            )
             mock_settings.return_value = cfg
 
             result = plugin.pynchy_create_channel(context=context)
@@ -439,7 +440,7 @@ class TestSlackChannelPlugin:
         assert isinstance(result, list)
         assert len(result) == 1
         assert isinstance(result[0], SlackChannel)
-        assert result[0].name == "connection.slack.main"
+        assert result[0].name == "main"
 
 
 # ------------------------------------------------------------------

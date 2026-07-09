@@ -21,7 +21,7 @@ class WhatsAppPlugin:
     @hookimpl
     def pynchy_create_channel(self, context: Any) -> Any | None:
         s = get_settings()
-        configs = s.connection.whatsapp
+        configs = {name: cfg for name, cfg in s.connections.items() if cfg.type == "whatsapp"}
         if not configs:
             logger.debug("WhatsApp channel skipped — no connections configured")
             return None
@@ -34,7 +34,7 @@ class WhatsAppPlugin:
         channels: list[WhatsAppChannel] = []
         seen_paths: dict[str, str] = {}
         for name, cfg in configs.items():
-            connection_name = f"connection.whatsapp.{name}"
+            connection_name = name
             if cfg.auth_db_path:
                 auth_db_path = Path(cfg.auth_db_path)
                 if not auth_db_path.is_absolute():
