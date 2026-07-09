@@ -16,7 +16,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves Path annotations at runtime.
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
@@ -39,7 +39,7 @@ class _ApiRequestContext:
     headers: dict[str, str]
     json_data: dict[str, Any] | None
     log_event: str
-    log_kwargs: dict[str, Any]
+    log_kwargs: dict[str, object]
 
 
 async def api_request(  # noqa: PLR0913, RUF100 - stable request helper; call sites already pass these transport knobs explicitly.
@@ -50,8 +50,8 @@ async def api_request(  # noqa: PLR0913, RUF100 - stable request helper; call si
     *,
     json_data: dict[str, Any] | None = None,
     log_event: str = "",
-    **log_kwargs: Any,
-) -> Any:
+    **log_kwargs: object,
+) -> object | None:
     """Make a LiteLLM API request with standard error handling.
 
     Returns parsed JSON on 2xx, ``None`` on failure.  Pass *log_event*
@@ -80,7 +80,7 @@ async def api_request(  # noqa: PLR0913, RUF100 - stable request helper; call si
 
 async def _api_response_data(
     request: _ApiRequestContext,
-) -> Any:
+) -> object | None:
     async with request.session.request(
         request.method,
         request.url,
@@ -114,7 +114,7 @@ class _EndpointRegistration:
     url: str
 
 
-def _registered_endpoints(data: Any) -> dict[str, list[_EndpointRegistration]]:
+def _registered_endpoints(data: object) -> dict[str, list[_EndpointRegistration]]:
     endpoints: dict[str, list[_EndpointRegistration]] = {}
     if not isinstance(data, list):
         return endpoints
@@ -153,7 +153,7 @@ def _registration_partition(
 
 
 async def _delete_registrations(
-    session: Any,
+    session: object,
     gateway: LiteLLMGateway,
     *,
     server_ids: list[str],
@@ -163,7 +163,12 @@ async def _delete_registrations(
     for server_id in server_ids:
         if not server_id:
             continue
-        if await api_request(session, gateway, "DELETE", f"/v1/mcp/server/{server_id}"):
+        if await api_request(
+            cast("aiohttp.ClientSession", session),
+            gateway,
+            "DELETE",
+            f"/v1/mcp/server/{server_id}",
+        ):
             logger.info(log_event, server_id=server_id, **log_kwargs)
 
 
@@ -191,13 +196,14 @@ def _registration_payload(instance_id: str, instance: McpInstance) -> dict[str, 
 
 
 async def _sync_instance_endpoint(
-    session: Any,
+    session: object,
     gateway: LiteLLMGateway,
     *,
     instance_id: str,
     instance: McpInstance,
     existing: dict[str, list[_EndpointRegistration]],
 ) -> None:
+    session_client = cast("aiohttp.ClientSession", session)
     sanitized_id = _sanitized_instance_id(instance_id)
     registrations = existing.pop(sanitized_id, [])
     keep, to_delete = _registration_partition(registrations, instance.endpoint_url)
@@ -214,7 +220,7 @@ async def _sync_instance_endpoint(
         return
 
     result = await api_request(
-        session,
+        session_client,
         gateway,
         "POST",
         "/v1/mcp/server",
@@ -227,7 +233,7 @@ async def _sync_instance_endpoint(
 
 
 async def _delete_stale_endpoints(
-    session: Any,
+    session: object,
     gateway: LiteLLMGateway,
     existing: dict[str, list[_EndpointRegistration]],
 ) -> None:
