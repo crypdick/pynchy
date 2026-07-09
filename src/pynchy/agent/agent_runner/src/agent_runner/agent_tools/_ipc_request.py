@@ -76,6 +76,14 @@ def _read_response(response_file: Path) -> list[TextContent]:
     ]
 
 
+def _ensure_responses_dir() -> None:
+    RESPONSES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _response_file_exists(response_file: Path) -> bool:
+    return response_file.exists()
+
+
 async def _wait_for_response_file(
     response_file: Path,
     wakeup: asyncio.Event,
@@ -86,7 +94,7 @@ async def _wait_for_response_file(
     deadline = loop.time() + response_timeout_seconds
 
     while True:
-        if response_file.exists():
+        if await asyncio.to_thread(_response_file_exists, response_file):
             return
 
         remaining = deadline - loop.time()
@@ -129,7 +137,7 @@ async def ipc_service_request(
     request_kind = type_override or f"service:{tool_name}"
 
     response_file = RESPONSES_DIR / f"{request_id}.json"
-    RESPONSES_DIR.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(_ensure_responses_dir)
 
     loop = asyncio.get_running_loop()
     wakeup = asyncio.Event()
@@ -149,7 +157,7 @@ async def ipc_service_request(
 
     try:
         # Double-check: response might already exist (race with host)
-        if response_file.exists():
+        if await asyncio.to_thread(_response_file_exists, response_file):
             return _read_response(response_file)
 
         # Write request to requests/ (picked up by host IPC watcher).
@@ -158,7 +166,7 @@ async def ipc_service_request(
 
         # Second check: host may have responded between observer.start()
         # and now (especially fast in tests or local setups)
-        if response_file.exists():
+        if await asyncio.to_thread(_response_file_exists, response_file):
             return _read_response(response_file)
 
         # Watchdog should wake this promptly; polling covers missed/unavailable events.

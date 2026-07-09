@@ -151,35 +151,51 @@ def _get_session_summary(session_id: str, transcript_path: str) -> str | None:
     return None
 
 
+def _transcript_exists(transcript_path: str) -> bool:
+    return Path(transcript_path).exists()
+
+
+def _read_transcript(transcript_path: str) -> str:
+    return Path(transcript_path).read_text(encoding="utf-8")
+
+
+def _ensure_conversations_dir() -> None:
+    CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _write_archive_file(file_path: Path, markdown: str) -> None:
+    file_path.write_text(markdown, encoding="utf-8")
+
+
 async def archive_transcript(transcript_path: str, session_id: str) -> Path | None:
     """Archive a session transcript to markdown and structured memory.
 
     Returns the written file path, or ``None`` if there was nothing to archive.
     Never raises: archival is best-effort and must not disrupt compaction.
     """
-    if not transcript_path or not Path(transcript_path).exists():
+    if not transcript_path or not await asyncio.to_thread(_transcript_exists, transcript_path):
         _log("No transcript found for archiving")
         return None
 
     try:
-        content = Path(transcript_path).read_text(encoding="utf-8")
+        content = await asyncio.to_thread(_read_transcript, transcript_path)
         messages = _parse_transcript(content)
 
         if not messages:
             _log("No messages to archive")
             return None
 
-        summary = _get_session_summary(session_id, transcript_path)
+        summary = await asyncio.to_thread(_get_session_summary, session_id, transcript_path)
         name = _sanitize_filename(summary) if summary else _generate_fallback_name()
 
-        CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(_ensure_conversations_dir)
 
         date = datetime.now(UTC).strftime("%Y-%m-%d")
         filename = f"{date}-{name}.md"
         file_path = CONVERSATIONS_DIR / filename
 
         markdown = _format_transcript_markdown(messages, summary)
-        file_path.write_text(markdown, encoding="utf-8")
+        await asyncio.to_thread(_write_archive_file, file_path, markdown)
 
         _log(f"Archived conversation to {file_path}")
 

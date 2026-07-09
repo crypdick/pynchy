@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
+from pathlib import Path
 from typing import Any, cast
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
@@ -150,6 +151,22 @@ def _make_shell_executor(
 # ---------------------------------------------------------------------------
 
 
+def _create_patch_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def _update_patch_file(path: Path, content: str) -> bool:
+    if not path.exists():
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def _delete_patch_file(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
 class _ContainerPatchEditor(ApplyPatchEditor):
     """Applies patches to files on the container filesystem."""
 
@@ -157,9 +174,11 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         from pathlib import Path
 
         try:
-            path = Path(op.path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(op.new_content or "", encoding="utf-8")
+            await asyncio.to_thread(
+                _create_patch_file,
+                Path(op.path),
+                op.new_content or "",
+            )
             return ApplyPatchResult(status="completed")
         except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
@@ -168,10 +187,13 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         from pathlib import Path
 
         try:
-            path = Path(op.path)
-            if not path.exists():
+            updated = await asyncio.to_thread(
+                _update_patch_file,
+                Path(op.path),
+                op.new_content or "",
+            )
+            if not updated:
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
-            path.write_text(op.new_content or "", encoding="utf-8")
             return ApplyPatchResult(status="completed")
         except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
@@ -180,7 +202,7 @@ class _ContainerPatchEditor(ApplyPatchEditor):
         from pathlib import Path
 
         try:
-            Path(op.path).unlink(missing_ok=True)
+            await asyncio.to_thread(_delete_patch_file, Path(op.path))
             return ApplyPatchResult(status="completed")
         except Exception as exc:  # allow: exception-handling — surfaced as failed result
             return ApplyPatchResult(status="failed", output=str(exc))
