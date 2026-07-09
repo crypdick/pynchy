@@ -14,6 +14,10 @@ from pynchy.host.container_manager.labels import (
     AGENT_CONTAINER_LABEL_VALUE,
 )
 
+_APPLE_CONTAINER_START_FAILURE_MESSAGE = (
+    "Apple Container system is required but failed to start"
+)
+
 
 @dataclass(frozen=True)
 class RuntimeContainer:
@@ -103,9 +107,7 @@ class AppleContainerRuntime:
                     timeout=30,
                 )
             except (subprocess.SubprocessError, OSError) as exc:
-                raise RuntimeError(
-                    "Apple Container system is required but failed to start"
-                ) from exc
+                raise RuntimeError(_APPLE_CONTAINER_START_FAILURE_MESSAGE) from exc
 
     def list_containers(self, prefix: str = "pynchy-") -> list[RuntimeContainer]:
         result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.

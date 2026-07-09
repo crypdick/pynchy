@@ -13,6 +13,11 @@ from typing import Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
 
+_NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE = (
+    "No container runtime plugins available. "
+    "Ensure the Docker or Apple runtime plugin is enabled in config.toml."
+)
+
 
 @runtime_checkable
 class RuntimeProvider(Protocol):
@@ -112,10 +117,7 @@ def detect_runtime() -> RuntimeProvider:
     override = (get_settings().container.runtime or "").lower()
     candidates = _runtime_candidates()
     if not candidates:
-        raise RuntimeError(
-            "No container runtime plugins available. "
-            "Ensure the Docker or Apple runtime plugin is enabled in config.toml."
-        )
+        raise RuntimeError(_NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE)
 
     selected = _resolve_override(override, candidates)
     if selected is not None:
