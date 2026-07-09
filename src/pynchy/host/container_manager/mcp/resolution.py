@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
+import subprocess  # noqa: S404, RUF100 - used for subprocess exception types in MCP resolution.
 from dataclasses import dataclass, field
 from typing import Any
 

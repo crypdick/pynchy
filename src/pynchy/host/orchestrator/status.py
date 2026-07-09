@@ -8,7 +8,7 @@ asyncio.gather() for fast response times (~200ms budget).
 from __future__ import annotations
 
 import asyncio
-import subprocess
+import subprocess  # noqa: S404, RUF100 - used for subprocess exception types in status collection.
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path

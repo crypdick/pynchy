@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # noqa: S404, RUF100 - shared git helper uses fixed no-shell argv.
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -44,8 +44,8 @@ def run_git(
             ls-remote). Local-only git calls don't need this. When provided,
             overrides the inherited environment.
     """
-    return subprocess.run(
-        ["git", *args],
+    return subprocess.run(  # noqa: S603, RUF100 - git args are passed as argv by internal helper call sites; no shell.
+        ["git", *args],  # noqa: S607, RUF100 - git is the trusted host VCS executable.
         cwd=str(cwd or get_settings().project_root),
         capture_output=True,
         text=True,

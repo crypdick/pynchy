@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell Docker/open argv.
 import sys
 import time
 
@@ -22,7 +22,7 @@ class DockerContainerRuntime:
 
     def ensure_running(self) -> None:
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
                 [self.cli, "info"],
                 capture_output=True,
                 check=True,
@@ -37,7 +37,7 @@ class DockerContainerRuntime:
                 ) from exc
 
     def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
             [self.cli, "ps", "--format", "{{json .}}"],
             capture_output=True,
             text=True,
@@ -61,7 +61,7 @@ class DockerContainerRuntime:
         logger.info("Docker not running, attempting to start Docker Desktop...")
         try:
             subprocess.run(
-                ["open", "-a", "Docker"],
+                ["open", "-a", "Docker"],  # noqa: S607, RUF100 - macOS open is a trusted platform launcher and argv is fixed.
                 capture_output=True,
                 check=True,
             )
@@ -74,7 +74,7 @@ class DockerContainerRuntime:
         for i in range(30):
             try:
                 subprocess.run(
-                    ["docker", "info"],
+                    ["docker", "info"],  # noqa: S607, RUF100 - docker is the trusted runtime CLI and argv is fixed.
                     capture_output=True,
                     check=True,
                 )

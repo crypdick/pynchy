@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import subprocess
+import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any, Protocol, runtime_checkable

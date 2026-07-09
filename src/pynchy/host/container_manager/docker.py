@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - Docker helpers use fixed no-shell argv.
 import time
 
 import aiohttp
@@ -30,8 +30,8 @@ def _run_docker_sync(
     timeout: int = 30,
 ) -> subprocess.CompletedProcess[str]:
     """Run a ``docker`` CLI command (blocking — internal only)."""
-    return subprocess.run(
-        ["docker", *args],
+    return subprocess.run(  # noqa: S603, RUF100 - args are constrained by internal Docker helper call sites; no shell.
+        ["docker", *args],  # noqa: S607, RUF100 - docker is the trusted runtime CLI for this helper.
         capture_output=True,
         text=True,
         timeout=timeout,

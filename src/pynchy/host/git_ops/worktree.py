@@ -15,7 +15,7 @@ Merge and push operations live in ``_worktree_merge.py``.
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - worktree helper uses fixed no-shell uv/pre-commit argv.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -200,7 +200,7 @@ def install_pre_commit_hooks(repo_root: Path) -> None:
 
     try:
         result = subprocess.run(
-            ["uv", "run", "pre-commit", "install"],
+            ["uv", "run", "pre-commit", "install"],  # noqa: S607, RUF100 - uv is the trusted project tool runner and argv is fixed.
             cwd=str(repo_root),
             capture_output=True,
             text=True,

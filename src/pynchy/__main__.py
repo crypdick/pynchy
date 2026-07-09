@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import subprocess
+import subprocess  # noqa: S404, RUF100 - fixed no-shell container runtime argv below.
 import sys
 from pathlib import Path
 
@@ -58,7 +58,7 @@ def _build() -> None:
         sys.exit(1)
 
     _stdout_line(f"Building {s.container.image} with {runtime.cli}...")
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
         [runtime.cli, "build", "-t", s.container.image, "."],
         cwd=str(container_dir),
         check=False,

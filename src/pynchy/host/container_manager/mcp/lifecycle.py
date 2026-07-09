@@ -12,7 +12,7 @@ import asyncio
 import contextlib
 import os
 import signal
-import subprocess
+import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
 from pathlib import Path
 
 from pynchy.config.mcp import McpServerConfig
@@ -125,7 +125,7 @@ def _start_script_process(
     cmd: list[str],
     env: dict[str, str],
 ) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(
+    return subprocess.Popen(  # noqa: S603, RUF100 - MCP script command comes from trusted config and runs without a shell.
         cmd,
         env=env,
         stdout=subprocess.DEVNULL,

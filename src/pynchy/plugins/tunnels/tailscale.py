@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - tunnel detection uses fixed no-shell tailscale argv.
 
 import pluggy
 
@@ -35,7 +35,7 @@ class _TailscaleTunnel:
         self._fetched = True
         try:
             result = subprocess.run(
-                ["tailscale", "status", "--json"],
+                ["tailscale", "status", "--json"],  # noqa: S607, RUF100 - tailscale is a trusted host CLI and argv is fixed.
                 capture_output=True,
                 text=True,
                 timeout=5,

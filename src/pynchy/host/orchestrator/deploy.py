@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import subprocess
+import subprocess  # noqa: S404, RUF100 - deploy helper invokes the repo-local build script without a shell.
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -36,7 +36,7 @@ def build_container_image(*, timeout: int = 600) -> BuildResult:
         return BuildResult(success=True, skipped=True)
 
     logger.info("Rebuilding container image...")
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603, RUF100 - executable is the repo-local build.sh path and no shell is used.
         [str(build_script)],
         cwd=str(get_settings().project_root / "src" / "pynchy" / "agent"),
         capture_output=True,

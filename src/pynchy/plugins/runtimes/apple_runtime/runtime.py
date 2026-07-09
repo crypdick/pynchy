@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell container CLI argv.
 
 
 class AppleContainerRuntime:
@@ -17,14 +17,14 @@ class AppleContainerRuntime:
 
     def ensure_running(self) -> None:
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
                 [self.cli, "system", "status"],
                 capture_output=True,
                 check=True,
             )
         except (subprocess.CalledProcessError, FileNotFoundError):
             try:
-                subprocess.run(
+                subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
                     [self.cli, "system", "start"],
                     capture_output=True,
                     check=True,
@@ -36,7 +36,7 @@ class AppleContainerRuntime:
                 ) from exc
 
     def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
             [self.cli, "ls", "--format", "json"],
             capture_output=True,
             text=True,

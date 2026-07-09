@@ -6,7 +6,7 @@ API credentials.  Real keys never leave the host process.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -24,7 +24,7 @@ def _read_gh_token() -> str | None:
     """Read GitHub token from the host's gh CLI."""
     try:
         result = subprocess.run(
-            ["gh", "auth", "token"],
+            ["gh", "auth", "token"],  # noqa: S607, RUF100 - gh is a trusted host CLI and argv is fixed.
             capture_output=True,
             text=True,
             timeout=5,
@@ -42,8 +42,8 @@ def _read_git_identity() -> tuple[str | None, str | None]:
     name = email = None
     for key in ("user.name", "user.email"):
         try:
-            r = subprocess.run(
-                ["git", "config", key],
+            r = subprocess.run(  # noqa: S603, RUF100 - git config key is selected from a fixed tuple; no shell.
+                ["git", "config", key],  # noqa: S607, RUF100 - git is a trusted host CLI and argv shape is constrained.
                 capture_output=True,
                 text=True,
                 timeout=5,

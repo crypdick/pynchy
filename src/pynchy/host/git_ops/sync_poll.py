@@ -30,7 +30,7 @@ def get_local_head_sha(repo_root: Path | None = None) -> str:
 
 def _host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
-    import subprocess
+    import subprocess  # noqa: S404, RUF100 - used only for subprocess exception types.
 
     try:
         main = detect_main_branch(cwd=repo_root)

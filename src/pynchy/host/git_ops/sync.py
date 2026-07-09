@@ -10,7 +10,7 @@ containers can't read host state (logs, config, etc.).
 from __future__ import annotations
 
 import dataclasses
-import subprocess
+import subprocess  # noqa: S404, RUF100 - PR helpers use fixed no-shell gh argv.
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -282,8 +282,8 @@ def host_create_pr_from_worktree(
 
     # 2. Check if a PR already exists for this branch
     # env includes GH_TOKEN which gh CLI respects
-    pr_check = subprocess.run(
-        ["gh", "pr", "view", ctx.branch_name, "--json", "url", "--jq", ".url"],
+    pr_check = subprocess.run(  # noqa: S603, RUF100 - branch name comes from validated worktree context and no shell is used.
+        ["gh", "pr", "view", ctx.branch_name, "--json", "url", "--jq", ".url"],  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
         cwd=str(repo_ctx.root),
         capture_output=True,
         text=True,
@@ -318,8 +318,8 @@ def host_create_pr_from_worktree(
         f"### Commits\n{body_result.stdout.strip()}"
     )
 
-    pr_create = subprocess.run(
-        [
+    pr_create = subprocess.run(  # noqa: S603, RUF100 - PR fields are argv elements, not shell-interpreted.
+        [  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
             "gh",
             "pr",
             "create",

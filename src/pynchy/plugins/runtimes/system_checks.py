@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-import subprocess
+import subprocess  # noqa: S404, RUF100 - system checks use fixed no-shell runtime CLI argv.
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
@@ -18,7 +18,7 @@ def ensure_container_system_running() -> None:
     # Auto-build container image if missing
     s = get_settings()
     image = s.container.image
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
         [runtime.cli, "image", "inspect", image],
         capture_output=True,
         check=False,
@@ -31,7 +31,7 @@ def ensure_container_system_running() -> None:
                 f"no Dockerfile at {container_dir / 'Dockerfile'}"
             )
         logger.info("Container image not found, building...", image=image)
-        build = subprocess.run(
+        build = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
             [runtime.cli, "build", "-t", image, "."],
             cwd=str(container_dir),
             check=False,
@@ -43,7 +43,7 @@ def ensure_container_system_running() -> None:
     orphans = runtime.list_running_containers("pynchy-")
     for name in orphans:
         with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.run(
+            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
                 [runtime.cli, "stop", name],
                 capture_output=True,
                 check=False,

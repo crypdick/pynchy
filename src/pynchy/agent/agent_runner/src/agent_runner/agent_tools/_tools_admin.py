@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
+import subprocess  # noqa: S404, RUF100 - deploy helper uses fixed no-shell git argv.
 from pathlib import Path
 from typing import Any
 
@@ -115,7 +115,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
         head_sha = (
             await asyncio.to_thread(
                 subprocess.run,
-                ["git", "rev-parse", "HEAD"],
+                ["git", "rev-parse", "HEAD"],  # noqa: S607, RUF100 - git is a trusted workspace executable; no shell or user-controlled argv.
                 cwd=Path("/workspace/project"),
                 capture_output=True,
                 text=True,

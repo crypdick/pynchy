@@ -8,7 +8,7 @@ external repo configured under [repos."owner/repo"] in config.toml.
 from __future__ import annotations
 
 import datetime
-import subprocess
+import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -120,8 +120,8 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     clone_url = f"https://github.com/{repo_ctx.slug}"
 
     logger.info("Cloning repo", slug=repo_ctx.slug, dest=str(repo_ctx.root))
-    result = subprocess.run(
-        ["git", "clone", clone_url, str(repo_ctx.root)],
+    result = subprocess.run(  # noqa: S603, RUF100 - clone URL is a validated repo slug URL and argv is fixed.
+        ["git", "clone", clone_url, str(repo_ctx.root)],  # noqa: S607, RUF100 - git is the trusted host VCS executable.
         capture_output=True,
         text=True,
         env=env,
@@ -133,8 +133,8 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
         return False
 
     # Keep the remote URL bare. Future fetch/push operations use env-based auth.
-    subprocess.run(
-        ["git", "remote", "set-url", "origin", f"https://github.com/{repo_ctx.slug}"],
+    subprocess.run(  # noqa: S603, RUF100 - remote URL is derived from repo slug and no shell is used.
+        ["git", "remote", "set-url", "origin", f"https://github.com/{repo_ctx.slug}"],  # noqa: S607, RUF100 - git is the trusted host VCS executable.
         cwd=str(repo_ctx.root),
         capture_output=True,
         check=False,
@@ -169,8 +169,8 @@ def check_token_expiry(slug: str, token: str) -> None:
     try:
         # Use the /rate_limit endpoint with -i to get response headers
         # The github-authentication-token-expiration header reveals PAT expiry
-        result = subprocess.run(
-            [
+        result = subprocess.run(  # noqa: S603, RUF100 - fixed gh API argv with token passed as a header; no shell.
+            [  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
                 "gh",
                 "api",
                 "/rate_limit",
