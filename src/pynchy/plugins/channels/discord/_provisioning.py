@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pynchy.config.discord_refs import (
     DiscordChatTarget,
@@ -36,15 +36,16 @@ MULTIPLE_DISCORD_GUILDS_AVAILABLE = (
 )
 
 
-def _require_client(client: Any) -> Any:
+def _require_client(client: object) -> object:
     if client is None:
         raise RuntimeError(DISCORD_CLIENT_NOT_CONNECTED)
     return client
 
 
-async def create_discord_group(channel: Any, name: str) -> str:
+async def create_discord_group(channel: object, name: str) -> str:
     """Create or reuse a Discord text channel and return its JID."""
-    _require_client(channel.client)
+    channel_like = cast("Any", channel)
+    _require_client(channel_like.client)
     target = parse_discord_chat_target(name)
     if target is None:
         return await _create_workspace_channel(channel, name)
@@ -57,12 +58,15 @@ async def create_discord_group(channel: Any, name: str) -> str:
     return await _create_configured_channel(channel, target)
 
 
-async def _create_configured_channel(channel: Any, target: DiscordChatTarget) -> str:
-    existing = await channel.find_configured_channel(target)
+async def _create_configured_channel(
+    channel: object, target: DiscordChatTarget
+) -> str:
+    channel_like = cast("Any", channel)
+    existing = await channel_like.find_configured_channel(target)
     if existing is not None:
         return channel_jid(str(existing.id))
 
-    guild = await channel.find_configured_guild(target)
+    guild = await channel_like.find_configured_guild(target)
     if guild is None:
         raise RuntimeError(
             DISCORD_GUILD_NOT_FOUND_FOR_CONFIGURED_CHAT.format(
@@ -70,17 +74,18 @@ async def _create_configured_channel(channel: Any, target: DiscordChatTarget) ->
             )
         )
 
-    channel_name = channel.configured_channel_name(target)
+    channel_name = channel_like.configured_channel_name(target)
     created = await guild.create_text_channel(
         channel_name,
         reason="Pynchy configured workspace channel",
     )
-    _log_created_channel(channel, guild, channel_name, created)
+    _log_created_channel(channel_like, guild, channel_name, created)
     return channel_jid(str(created.id))
 
 
-async def _create_workspace_channel(channel: Any, name: str) -> str:
-    guild = await _find_workspace_provisioning_guild(channel)
+async def _create_workspace_channel(channel: object, name: str) -> str:
+    channel_like = cast("Any", channel)
+    guild = await _find_workspace_provisioning_guild(channel_like)
     channel_name = normalize_discord_channel_name(name)
     existing = _find_guild_channel_by_name(guild, channel_name)
     if existing is not None:
@@ -90,18 +95,19 @@ async def _create_workspace_channel(channel: Any, name: str) -> str:
         channel_name,
         reason="Pynchy configured workspace channel",
     )
-    _log_created_channel(channel, guild, channel_name, created)
+    _log_created_channel(channel_like, guild, channel_name, created)
     return channel_jid(str(created.id))
 
 
-async def _find_workspace_provisioning_guild(channel: Any) -> Any:
-    if channel.config.group_policy == "disabled":
+async def _find_workspace_provisioning_guild(channel: object) -> object:
+    channel_like = cast("Any", channel)
+    if channel_like.config.group_policy == "disabled":
         raise ValueError(DISCORD_GUILD_MESSAGES_DISABLED)
 
-    configured_guilds = list(channel.config.chat)
+    configured_guilds = list(channel_like.config.chat)
     if len(configured_guilds) == 1:
         target = DiscordChatTarget(kind="channel", guild_id=configured_guilds[0], target_id="")
-        guild = await channel.find_configured_guild(target)
+        guild = await channel_like.find_configured_guild(target)
         if guild is not None:
             return guild
         raise RuntimeError(
@@ -110,7 +116,7 @@ async def _find_workspace_provisioning_guild(channel: Any) -> Any:
     if len(configured_guilds) > 1:
         raise RuntimeError(MULTIPLE_DISCORD_GUILDS_CONFIGURED)
 
-    guilds = list(getattr(_require_client(channel.client), "guilds", []) or [])
+    guilds = list(getattr(_require_client(channel_like.client), "guilds", []) or [])
     if len(guilds) == 1:
         return guilds[0]
     if not guilds:
@@ -118,22 +124,30 @@ async def _find_workspace_provisioning_guild(channel: Any) -> Any:
     raise RuntimeError(MULTIPLE_DISCORD_GUILDS_AVAILABLE)
 
 
-def _find_guild_channel_by_name(guild: Any, channel_name: str) -> Any | None:
+def _find_guild_channel_by_name(
+    guild: object, channel_name: str
+) -> object | None:
+    guild_like = cast("Any", guild)
     return next(
         (
             channel
-            for channel in getattr(guild, "text_channels", [])
+            for channel in getattr(guild_like, "text_channels", [])
             if same_name(getattr(channel, "name", None), channel_name)
         ),
         None,
     )
 
 
-def _log_created_channel(channel: Any, guild: Any, channel_name: str, created: Any) -> None:
+def _log_created_channel(
+    channel: object, guild: object, channel_name: str, created: object
+) -> None:
+    channel_like = cast("Any", channel)
+    guild_like = cast("Any", guild)
+    created_like = cast("Any", created)
     logger.info(
         "Created Discord channel",
-        connection=channel.name,
-        guild=getattr(guild, "name", None),
+        connection=channel_like.name,
+        guild=getattr(guild_like, "name", None),
         channel=channel_name,
-        channel_id=str(created.id),
+        channel_id=str(created_like.id),
     )
