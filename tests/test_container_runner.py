@@ -17,13 +17,15 @@ import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config import GatewayConfig
+from pynchy.config import AgentConfig, GatewayConfig
 from pynchy.config.models import (
     LearningConfig,
     ObsidianLearningConfig,
     ProfileConfig,
     WorkspaceConfig,
 )
+from pynchy.host.container_manager import process as process_mod
+from pynchy.host.container_manager import session as session_mod
 from pynchy.host.container_manager.credentials import (
     shell_quote,
     write_env_file,
@@ -37,6 +39,7 @@ from pynchy.host.container_manager.orchestrator import (
     write_initial_input,
 )
 from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
+from pynchy.host.container_manager.session import SessionDiedError
 from pynchy.host.container_manager.session_prep import (
     is_skill_selected,
     parse_skill_tier,
@@ -282,10 +285,6 @@ class CompletedProcess:
 class TestContainerProcessHelpers:
     async def test_reap_apple_runtime_orphans_signals_exact_runtime_match(self):
         """Only the runtime process for the exact Apple container UUID is reaped."""
-        from pynchy.host.container_manager.process import (
-            reap_apple_runtime_orphans,
-        )
-
         runtime = MagicMock(cli="container")
         runtime.name = "apple"
         container_root = "/Users/me/Library/Application Support/com.apple.container/containers"
@@ -318,17 +317,13 @@ class TestContainerProcessHelpers:
             ),
             patch("pynchy.host.container_manager.process.os.kill", side_effect=fake_kill),
         ):
-            reaped = await reap_apple_runtime_orphans("pynchy-code-improver")
+            reaped = await process_mod.reap_apple_runtime_orphans("pynchy-code-improver")
 
         assert reaped is True
         assert signals == [(123, signal.SIGTERM)]
 
     async def test_force_remove_times_out_and_kills_hung_runtime_cli(self):
         """Apple Container cleanup can hang on stopped containers with orphaned runtimes."""
-        from pynchy.host.container_manager.process import (
-            docker_rm_force,
-        )
-
         proc = HangingProcess()
 
         with (
@@ -343,7 +338,7 @@ class TestContainerProcessHelpers:
             patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
             patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
         ):
-            await docker_rm_force("pynchy-code-improver")
+            await process_mod.docker_rm_force("pynchy-code-improver")
 
         assert proc.killed is True
         create_proc.assert_awaited_once_with(
@@ -357,10 +352,6 @@ class TestContainerProcessHelpers:
 
     async def test_force_remove_reaps_apple_runtime_orphan_after_quick_return(self):
         """Apple delete can return while the stopped container runtime remains alive."""
-        from pynchy.host.container_manager.process import (
-            docker_rm_force,
-        )
-
         completed_delete = FakeProcess()
         completed_delete.close(code=1)
         retry_delete = FakeProcess()
@@ -376,17 +367,13 @@ class TestContainerProcessHelpers:
                 new=AsyncMock(return_value=True),
             ) as reap_orphan,
         ):
-            await docker_rm_force("pynchy-code-improver")
+            await process_mod.docker_rm_force("pynchy-code-improver")
 
         reap_orphan.assert_awaited_once_with("pynchy-code-improver")
         assert create_proc.await_count == 2
 
     async def test_force_remove_retries_after_reaping_apple_runtime_orphan(self):
         """If Apple delete hangs, reap the orphaned runtime and retry cleanup once."""
-        from pynchy.host.container_manager.process import (
-            docker_rm_force,
-        )
-
         hung_delete = HangingProcess()
         completed_delete = FakeProcess()
         completed_delete.close(code=1)
@@ -403,7 +390,7 @@ class TestContainerProcessHelpers:
             patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
             patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
         ):
-            await docker_rm_force("pynchy-code-improver")
+            await process_mod.docker_rm_force("pynchy-code-improver")
 
         assert hung_delete.killed is True
         reap_orphan.assert_awaited_once_with("pynchy-code-improver")
@@ -1589,8 +1576,6 @@ class TestContainerInputAgentCoreConfig:
         )
 
     def test_agent_model_settings_flow_to_core_config(self):
-        from pynchy.config import AgentConfig
-
         settings = make_settings(
             agent=AgentConfig(
                 model="chatgpt/gpt-5.3-codex",
@@ -1611,8 +1596,6 @@ class TestContainerInputAgentCoreConfig:
         assert result.agent_core_config is None
 
     def test_workspace_model_overrides_global_agent_model(self):
-        from pynchy.config import AgentConfig
-
         profiles, workspace = _profile_workspace(
             "codex-workspace",
             model="chatgpt/gpt-5.3-codex-spark",
@@ -1635,8 +1618,6 @@ class TestContainerInputAgentCoreConfig:
         assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
 
     def test_workspace_model_override_replaces_global_model(self):
-        from pynchy.config import AgentConfig
-
         profiles, workspace = _profile_workspace(
             "codex-workspace",
             model="chatgpt/gpt-5.3-codex-spark",
@@ -1671,8 +1652,6 @@ class TestContainerInputAgentCoreConfig:
     async def test_run_agent_resets_only_incompatible_codex_sessions(
         self, session_id: str, should_reset: bool
     ):
-        from pynchy.config import AgentConfig
-
         class _Deps:
             def __init__(self) -> None:
                 self.sessions = {TEST_GROUP.folder: session_id}
@@ -2952,9 +2931,7 @@ class TestContainerSessionSignalQueryDone:
 
     async def test_signal_query_done_sets_event(self):
         """signal_query_done() should set the _query_done event."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("test-group", "pynchy-test-group")
+        session = session_mod.ContainerSession("test-group", "pynchy-test-group")
         assert not session._query_done.is_set()
 
         session.signal_query_done()
@@ -2963,9 +2940,7 @@ class TestContainerSessionSignalQueryDone:
 
     async def test_signal_query_done_clears_output_handler(self):
         """signal_query_done() should clear the active output callback."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("test-group", "pynchy-test-group")
+        session = session_mod.ContainerSession("test-group", "pynchy-test-group")
         session.set_output_handler(AsyncMock())
 
         session.signal_query_done()
@@ -2978,9 +2953,7 @@ class TestContainerSessionSignalQueryDone:
         With idle_timeout=0, _reset_idle_timer cancels any existing handle
         but does not schedule a new one.
         """
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("test-group", "pynchy-test-group")
+        session = session_mod.ContainerSession("test-group", "pynchy-test-group")
         session.set_idle_timeout(0.0)
 
         # Create a real timer handle to verify cancellation
@@ -2997,9 +2970,7 @@ class TestContainerSessionSignalQueryDone:
     async def test_idle_callback_called_on_expiry(self):
         """When the idle timer expires, the on_idle_expire callback should
         be called before the session is destroyed."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("idle-cb-test", "pynchy-idle-cb-test")
+        session = session_mod.ContainerSession("idle-cb-test", "pynchy-idle-cb-test")
         callback = AsyncMock()
         session.set_idle_callback(callback)
 
@@ -3019,9 +2990,7 @@ class TestContainerSessionSignalQueryDone:
 
     async def test_signal_query_done_after_set_output_handler(self):
         """Full cycle: set handler, signal done, verify state reset."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("test-group", "pynchy-test-group")
+        session = session_mod.ContainerSession("test-group", "pynchy-test-group")
         handler = AsyncMock()
 
         # Simulate a query in progress
@@ -3051,44 +3020,38 @@ class TestGetSessionOutputHandler:
 
     async def test_returns_handler_when_session_active(self):
         """Should return the session's _on_output when an active session exists."""
-        from pynchy.host.container_manager.session import (
-            create_session,
-            destroy_session,
-            get_session_output_handler,
+        session = await session_mod.create_session(
+            "handler-test",
+            "pynchy-handler-test",
+            FakeProcess(),
         )
-
-        session = await create_session("handler-test", "pynchy-handler-test", FakeProcess())
         handler = AsyncMock()
         session.set_output_handler(handler)
 
         try:
-            result = get_session_output_handler("handler-test")
+            result = session_mod.get_session_output_handler("handler-test")
             assert result is handler
         finally:
-            await destroy_session("handler-test")
+            await session_mod.destroy_session("handler-test")
 
     def test_returns_none_when_no_session(self):
         """Should return None when no session exists for the group."""
-        from pynchy.host.container_manager.session import get_session_output_handler
-
-        result = get_session_output_handler("nonexistent-group")
+        result = session_mod.get_session_output_handler("nonexistent-group")
         assert result is None
 
     async def test_returns_none_when_no_handler_set(self):
         """Should return None when session exists but no handler is set."""
-        from pynchy.host.container_manager.session import (
-            create_session,
-            destroy_session,
-            get_session_output_handler,
+        await session_mod.create_session(
+            "no-handler-test",
+            "pynchy-no-handler-test",
+            FakeProcess(),
         )
 
-        await create_session("no-handler-test", "pynchy-no-handler-test", FakeProcess())
-
         try:
-            result = get_session_output_handler("no-handler-test")
+            result = session_mod.get_session_output_handler("no-handler-test")
             assert result is None
         finally:
-            await destroy_session("no-handler-test")
+            await session_mod.destroy_session("no-handler-test")
 
 
 class TestSessionStartOnlyStderr:
@@ -3111,9 +3074,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_start_creates_stderr_task(self):
         """start() should create a stderr reader task."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("start-test", "pynchy-start-test")
+        session = session_mod.ContainerSession("start-test", "pynchy-start-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -3126,9 +3087,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_start_creates_proc_monitor_task(self):
         """start() should create a proc monitor task."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("monitor-test", "pynchy-monitor-test")
+        session = session_mod.ContainerSession("monitor-test", "pynchy-monitor-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -3141,9 +3100,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_start_does_not_create_stdout_task(self):
         """start() should NOT create a stdout reader task (output is via IPC files now)."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("no-stdout-test", "pynchy-no-stdout-test")
+        session = session_mod.ContainerSession("no-stdout-test", "pynchy-no-stdout-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -3156,9 +3113,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_proc_monitor_detects_death_during_query(self):
         """When the container dies mid-query, proc monitor should set _died_before_pulse."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("death-test", "pynchy-death-test")
+        session = session_mod.ContainerSession("death-test", "pynchy-death-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -3178,9 +3133,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_proc_monitor_removes_exited_container_record(self):
         """Exited containers should be removed even when no teardown command runs."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("record-cleanup-test", "pynchy-record-cleanup-test")
+        session = session_mod.ContainerSession("record-cleanup-test", "pynchy-record-cleanup-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -3191,9 +3144,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_proc_monitor_clean_exit_no_died_before_pulse(self):
         """A clean exit (code 0) during query should NOT set _died_before_pulse."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("clean-exit-test", "pynchy-clean-exit-test")
+        session = session_mod.ContainerSession("clean-exit-test", "pynchy-clean-exit-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
@@ -3213,9 +3164,7 @@ class TestSessionStartOnlyStderr:
 
     async def test_runtime_container_survives_cli_process_exit(self):
         """Apple Container can keep the container alive after the CLI process exits."""
-        from pynchy.host.container_manager.session import ContainerSession
-
-        session = ContainerSession("apple-cli-test", "pynchy-apple-cli-test")
+        session = session_mod.ContainerSession("apple-cli-test", "pynchy-apple-cli-test")
         proc = FakeProcess()
         runtime_running = True
 
@@ -3251,8 +3200,6 @@ class TestSessionStartOnlyStderr:
 
     async def test_runtime_monitor_waits_without_async_sleep(self):
         """Runtime polling should use an async wait primitive, not sleep-polling."""
-        from pynchy.host.container_manager import session as session_mod
-
         session = session_mod.ContainerSession("apple-runtime-wait-test", "pynchy-runtime-wait")
         proc = FakeProcess()
         runtime_running = True
@@ -3293,9 +3240,10 @@ class TestSessionStartOnlyStderr:
 
     async def test_runtime_container_stop_unblocks_query_when_cli_process_hangs(self):
         """Apple Container can stop the container while the CLI process keeps hanging."""
-        from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
-
-        session = ContainerSession("apple-runtime-stop-test", "pynchy-apple-runtime-stop-test")
+        session = session_mod.ContainerSession(
+            "apple-runtime-stop-test",
+            "pynchy-apple-runtime-stop-test",
+        )
         proc = FakeProcess()
         runtime_running = True
 
@@ -3332,9 +3280,10 @@ class TestSessionStartOnlyStderr:
 
     async def test_runtime_container_never_starts_unblocks_query_when_cli_process_hangs(self):
         """Apple Container can leave ``container run`` alive after startup failure."""
-        from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
-
-        session = ContainerSession("apple-runtime-never-start-test", "pynchy-never-start")
+        session = session_mod.ContainerSession(
+            "apple-runtime-never-start-test",
+            "pynchy-never-start",
+        )
         proc = FakeProcess()
 
         def fake_runtime_running(_container_name: str) -> bool:
