@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -118,8 +119,9 @@ class TestGroupQueue:
         await asyncio.sleep(0.02)
 
         # While active, enqueue both a task and pending messages
-        async def task_fn():
+        def task_fn() -> Awaitable[None]:
             execution_order.append("task")
+            return asyncio.sleep(0)
 
         queue.enqueue_task("group1@g.us", "task-1", task_fn)
         queue.enqueue_message_check("group1@g.us")
@@ -136,10 +138,10 @@ class TestGroupQueue:
     async def test_retries_with_exponential_backoff(self, queue: GroupQueue):
         call_count = 0
 
-        async def process_messages(group_jid: str) -> bool:
+        def process_messages(group_jid: str) -> Awaitable[bool]:
             nonlocal call_count
             call_count += 1
-            return False  # failure
+            return asyncio.sleep(0, result=False)  # failure
 
         queue.set_process_messages_fn(process_messages)
         queue.enqueue_message_check("group1@g.us")
@@ -223,9 +225,10 @@ class TestEnqueueTask:
         # Enqueue the same task twice while group is active
         task_calls = 0
 
-        async def task_fn():
+        def task_fn() -> Awaitable[None]:
             nonlocal task_calls
             task_calls += 1
+            return asyncio.sleep(0)
 
         assert queue.enqueue_task("group1@g.us", "task-1", task_fn) is True
         assert queue.enqueue_task("group1@g.us", "task-1", task_fn) is False
@@ -254,11 +257,13 @@ class TestEnqueueTask:
 
         task_ids_run: list[str] = []
 
-        async def task_a():
+        def task_a() -> Awaitable[None]:
             task_ids_run.append("a")
+            return asyncio.sleep(0)
 
-        async def task_b():
+        def task_b() -> Awaitable[None]:
             task_ids_run.append("b")
+            return asyncio.sleep(0)
 
         queue.enqueue_task("group1@g.us", "task-a", task_a)
         queue.enqueue_task("group1@g.us", "task-b", task_b)
@@ -277,9 +282,10 @@ class TestEnqueueTask:
 
         task_called = False
 
-        async def task_fn():
+        def task_fn() -> Awaitable[None]:
             nonlocal task_called
             task_called = True
+            return asyncio.sleep(0)
 
         queue.enqueue_task("group1@g.us", "task-1", task_fn)
         await asyncio.sleep(0.05)
@@ -290,7 +296,7 @@ class TestEnqueueTask:
 class TestSendMessage:
     """Tests for send_message: IPC file write for active containers."""
 
-    async def test_returns_false_when_group_not_active(self, queue: GroupQueue):
+    def test_returns_false_when_group_not_active(self, queue: GroupQueue):
         assert queue.send_message("group1@g.us", "hello") is False
 
     async def test_returns_false_when_no_group_folder(self, queue: GroupQueue):
@@ -406,10 +412,10 @@ class TestGroupQueueRetry:
             queue = GroupQueue()
             call_count = 0
 
-            async def process_messages(group_jid: str) -> bool:
+            def process_messages(group_jid: str) -> Awaitable[bool]:
                 nonlocal call_count
                 call_count += 1
-                return False
+                return asyncio.sleep(0, result=False)
 
             queue.set_process_messages_fn(process_messages)
             queue.enqueue_message_check("group1@g.us")
@@ -431,10 +437,10 @@ class TestGroupQueueRetry:
             queue = GroupQueue()
             call_count = 0
 
-            async def process_messages(group_jid: str) -> bool:
+            def process_messages(group_jid: str) -> Awaitable[bool]:
                 nonlocal call_count
                 call_count += 1
-                return False
+                return asyncio.sleep(0, result=False)
 
             queue.set_process_messages_fn(process_messages)
             queue.enqueue_message_check("group1@g.us")
@@ -450,7 +456,7 @@ class TestGroupQueueRetry:
 class TestSnapshot:
     """Tests for snapshot(): read-only view of queue state."""
 
-    async def test_empty_queue_snapshot(self, queue: GroupQueue):
+    def test_empty_queue_snapshot(self, queue: GroupQueue):
         """Empty queue returns only _meta with zero counts."""
         snap = queue.snapshot()
         assert snap == {"_meta": {"active_count": 0, "waiting_count": 0}}
@@ -525,8 +531,8 @@ class TestSnapshot:
         queue.enqueue_message_check("group1@g.us")
         await asyncio.sleep(0.02)
 
-        async def task_fn():
-            pass
+        def task_fn() -> Awaitable[None]:
+            return asyncio.sleep(0)
 
         queue.enqueue_task("group1@g.us", "task-1", task_fn)
         queue.enqueue_task("group1@g.us", "task-2", task_fn)
@@ -604,7 +610,7 @@ class TestCloseStdin:
 class TestIsActiveTask:
     """Tests for is_active_task: checking whether a scheduled task is active."""
 
-    async def test_returns_false_when_group_not_active(self, queue: GroupQueue):
+    def test_returns_false_when_group_not_active(self, queue: GroupQueue):
         """Not active when no container is running for the group."""
         assert queue.is_active_task("group1@g.us") is False
 
@@ -647,8 +653,8 @@ class TestIsActiveTask:
     async def test_returns_false_after_task_completes(self, queue: GroupQueue):
         """is_active_task returns False after a task completes."""
 
-        async def task_fn():
-            pass  # completes immediately
+        def task_fn() -> Awaitable[None]:
+            return asyncio.sleep(0)
 
         queue.enqueue_task("group1@g.us", "task-1", task_fn)
         await asyncio.sleep(0.1)
@@ -662,7 +668,7 @@ class TestTaskExceptionHandling:
     async def test_task_exception_does_not_crash_queue(self, queue: GroupQueue):
         """An exception in a task should be caught and not crash the queue."""
 
-        async def failing_task():
+        def failing_task() -> Awaitable[None]:
             raise RuntimeError("task exploded")
 
         queue.enqueue_task("group1@g.us", "task-crash", failing_task)
@@ -677,12 +683,12 @@ class TestTaskExceptionHandling:
         """When process_messages raises, the queue schedules a retry."""
         call_count = 0
 
-        async def process_messages(group_jid: str) -> bool:
+        def process_messages(group_jid: str) -> Awaitable[bool]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise RuntimeError("boom")
-            return True
+            return asyncio.sleep(0, result=True)
 
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.05):
             queue.set_process_messages_fn(process_messages)
@@ -703,7 +709,7 @@ class TestTaskAcceptance:
     """Tests for enqueue_task acceptance reporting."""
 
     async def test_rejects_task_when_queue_is_shutting_down(self, queue: GroupQueue):
-        async def task_fn():
+        def task_fn() -> Awaitable[None]:
             raise AssertionError("rejected task should not run")
 
         queue._shutting_down = True
@@ -818,7 +824,7 @@ class TestClearPendingTasks:
         completions[0].set()
         await asyncio.sleep(0.05)
 
-    async def test_noop_when_no_pending_tasks(self, queue: GroupQueue):
+    def test_noop_when_no_pending_tasks(self, queue: GroupQueue):
         """clear_pending_tasks does nothing when there are no pending tasks."""
         queue.clear_pending_tasks("group1@g.us")
         state = queue._get_group("group1@g.us")
@@ -849,8 +855,9 @@ class TestDrainGroupTaskOrdering:
             await asyncio.sleep(0.02)
 
             # Queue a task for a different group while at limit
-            async def task_fn():
+            def task_fn() -> Awaitable[None]:
                 execution.append("task-group2")
+                return asyncio.sleep(0)
 
             queue.enqueue_task("group2@g.us", "task-1", task_fn)
 

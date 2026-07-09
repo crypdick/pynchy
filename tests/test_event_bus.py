@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 
@@ -29,8 +31,9 @@ class TestEventBus:
         """Test subscribing to and emitting a MessageEvent."""
         received: list[MessageEvent] = []
 
-        async def listener(event: MessageEvent) -> None:
+        def listener(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(MessageEvent, listener)
 
@@ -54,8 +57,9 @@ class TestEventBus:
         """Test subscribing to and emitting an AgentActivityEvent."""
         received: list[AgentActivityEvent] = []
 
-        async def listener(event: AgentActivityEvent) -> None:
+        def listener(event: AgentActivityEvent) -> Coroutine[Any, Any, None]:
             received.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(AgentActivityEvent, listener)
 
@@ -72,8 +76,9 @@ class TestEventBus:
         """Test subscribing to and emitting an AgentTraceEvent."""
         received: list[AgentTraceEvent] = []
 
-        async def listener(event: AgentTraceEvent) -> None:
+        def listener(event: AgentTraceEvent) -> Coroutine[Any, Any, None]:
             received.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(AgentTraceEvent, listener)
 
@@ -94,8 +99,9 @@ class TestEventBus:
         """Test subscribing to and emitting a ChatClearedEvent."""
         received: list[ChatClearedEvent] = []
 
-        async def listener(event: ChatClearedEvent) -> None:
+        def listener(event: ChatClearedEvent) -> Coroutine[Any, Any, None]:
             received.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(ChatClearedEvent, listener)
 
@@ -113,11 +119,13 @@ class TestEventBus:
         received_1: list[MessageEvent] = []
         received_2: list[MessageEvent] = []
 
-        async def listener1(event: MessageEvent) -> None:
+        def listener1(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received_1.append(event)
+            return asyncio.sleep(0)
 
-        async def listener2(event: MessageEvent) -> None:
+        def listener2(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received_2.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(MessageEvent, listener1)
         bus.subscribe(MessageEvent, listener2)
@@ -144,11 +152,13 @@ class TestEventBus:
         message_received: list[MessageEvent] = []
         activity_received: list[AgentActivityEvent] = []
 
-        async def message_listener(event: MessageEvent) -> None:
+        def message_listener(event: MessageEvent) -> Coroutine[Any, Any, None]:
             message_received.append(event)
+            return asyncio.sleep(0)
 
-        async def activity_listener(event: AgentActivityEvent) -> None:
+        def activity_listener(event: AgentActivityEvent) -> Coroutine[Any, Any, None]:
             activity_received.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(MessageEvent, message_listener)
         bus.subscribe(AgentActivityEvent, activity_listener)
@@ -177,8 +187,9 @@ class TestEventBus:
         """Test that unsubscribe function works correctly."""
         received: list[MessageEvent] = []
 
-        async def listener(event: MessageEvent) -> None:
+        def listener(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received.append(event)
+            return asyncio.sleep(0)
 
         unsubscribe = bus.subscribe(MessageEvent, listener)
 
@@ -230,11 +241,12 @@ class TestEventBus:
         """Test that exceptions in listeners don't propagate or affect other listeners."""
         received_good: list[MessageEvent] = []
 
-        async def bad_listener(event: MessageEvent) -> None:
+        def bad_listener(event: MessageEvent) -> None:
             raise ValueError("Intentional error")
 
-        async def good_listener(event: MessageEvent) -> None:
+        def good_listener(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received_good.append(event)
+            return asyncio.sleep(0)
 
         bus.subscribe(MessageEvent, bad_listener)
         bus.subscribe(MessageEvent, good_listener)
@@ -254,13 +266,13 @@ class TestEventBus:
         assert len(received_good) == 1
         assert received_good[0] == event
 
-    @pytest.mark.asyncio
-    async def test_multiple_unsubscribe_calls(self, bus: EventBus) -> None:
+    def test_multiple_unsubscribe_calls(self, bus: EventBus) -> None:
         """Test that calling unsubscribe multiple times doesn't cause errors."""
         received: list[MessageEvent] = []
 
-        async def listener(event: MessageEvent) -> None:
+        def listener(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received.append(event)
+            return asyncio.sleep(0)
 
         unsubscribe = bus.subscribe(MessageEvent, listener)
 
