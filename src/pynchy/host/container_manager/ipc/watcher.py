@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC watcher paths at runtime.
 
 from watchdog.observers import Observer
@@ -31,9 +32,16 @@ from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.logger import logger
 
 _ipc_watcher_lock = asyncio.Lock()
-_ipc_watcher_running = False
-_ipc_runtime_sweep_task: asyncio.Task[None] | None = None
 IPC_RUNTIME_SWEEP_INTERVAL_SECONDS = 5.0
+
+
+@dataclass
+class _WatcherState:
+    running: bool = False
+    runtime_sweep_task: asyncio.Task[None] | None = None
+
+
+_state = _WatcherState()
 
 
 def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
@@ -483,12 +491,11 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     1. Performs a startup sweep to process files written while the process was down.
     2. Starts a watchdog Observer for event-driven processing.
     """
-    global _ipc_runtime_sweep_task, _ipc_watcher_running
     async with _ipc_watcher_lock:
-        if _ipc_watcher_running:
+        if _state.running:
             logger.debug("IPC watcher already running, skipping duplicate start")
             return
-        _ipc_watcher_running = True
+        _state.running = True
 
     s = get_settings()
     ipc_base_dir = s.data_dir / "ipc"
@@ -510,6 +517,6 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     observer.start()
     logger.info("IPC watcher started (watchdog mode)", path=str(ipc_base_dir))
 
-    _ipc_runtime_sweep_task = asyncio.create_task(_runtime_sweep_loop(ipc_base_dir, deps))
+    _state.runtime_sweep_task = asyncio.create_task(_runtime_sweep_loop(ipc_base_dir, deps))
 
     await _process_queue(queue, ipc_base_dir, deps)

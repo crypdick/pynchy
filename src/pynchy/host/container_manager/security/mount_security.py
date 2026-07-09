@@ -5,10 +5,12 @@ Allowlist location: ~/.config/pynchy/mount-allowlist.toml
 
 from __future__ import annotations
 
+import sys
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
@@ -28,9 +30,9 @@ class _ParsedAllowlist:
 
 def _reset_cache() -> None:  # pyright: ignore[reportUnusedFunction]
     """Reset allowlist cache (for tests)."""
-    global _cached_allowlist, _allowlist_load_error
-    _cached_allowlist = None
-    _allowlist_load_error = None
+    module = sys.modules[__name__]
+    module.__dict__["_cached_allowlist"] = None
+    module.__dict__["_allowlist_load_error"] = None
 
 
 def _required_list(table: Mapping[str, object], key: str) -> list[object]:
@@ -126,12 +128,12 @@ def load_mount_allowlist() -> MountAllowlist | None:
     Returns None if the file doesn't exist or is invalid.
     Result is cached in memory for the lifetime of the process.
     """
-    global _cached_allowlist, _allowlist_load_error
+    module = sys.modules[__name__]
+    cached_allowlist = cast("MountAllowlist | None", module.__dict__["_cached_allowlist"])
+    if cached_allowlist is not None:
+        return cached_allowlist
 
-    if _cached_allowlist is not None:
-        return _cached_allowlist
-
-    if _allowlist_load_error is not None:
+    if cast("str | None", module.__dict__["_allowlist_load_error"]) is not None:
         return None
 
     s = get_settings()
@@ -139,7 +141,9 @@ def load_mount_allowlist() -> MountAllowlist | None:
 
     try:
         if not allowlist_path.exists():
-            _allowlist_load_error = f"Mount allowlist not found at {allowlist_path}"
+            module.__dict__["_allowlist_load_error"] = (
+                f"Mount allowlist not found at {allowlist_path}"
+            )
             logger.warning(
                 "Mount allowlist not found - additional mounts will be BLOCKED. "
                 "Create the file to enable additional mounts.",
@@ -155,7 +159,8 @@ def load_mount_allowlist() -> MountAllowlist | None:
             default_blocked_patterns=s.security.blocked_patterns,
         )
 
-        _cached_allowlist = allowlist
+        module.__dict__["_cached_allowlist"] = allowlist
+        module.__dict__["_allowlist_load_error"] = None
         logger.info(
             "Mount allowlist loaded successfully",
             path=str(allowlist_path),
@@ -163,15 +168,15 @@ def load_mount_allowlist() -> MountAllowlist | None:
             blocked_patterns=len(allowlist.blocked_patterns),
         )
     except Exception as exc:
-        _allowlist_load_error = str(exc)
+        module.__dict__["_allowlist_load_error"] = str(exc)
         logger.error(
             "Failed to load mount allowlist - additional mounts will be BLOCKED",
             path=str(allowlist_path),
-            error=_allowlist_load_error,
+            error=module.__dict__["_allowlist_load_error"],
         )
         return None
     else:
-        return _cached_allowlist
+        return cast("MountAllowlist | None", module.__dict__["_cached_allowlist"])
 
 
 def _expand_path(p: str) -> str:

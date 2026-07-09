@@ -17,6 +17,7 @@ are in :mod:`_mcp_litellm`.
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 
 from pynchy.config import Settings, get_settings
@@ -331,5 +332,4 @@ def get_mcp_manager() -> McpManager | None:
 
 def set_mcp_manager(manager: McpManager | None) -> None:
     """Set the module-level MCP manager singleton."""
-    global _mcp_manager
-    _mcp_manager = manager
+    sys.modules[__name__].__dict__["_mcp_manager"] = manager

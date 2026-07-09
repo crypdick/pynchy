@@ -7,6 +7,7 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
@@ -40,9 +41,9 @@ class _ServiceRequest:
 
 def _get_plugin_handlers() -> dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]:
     """Collect and cache tool handlers from all MCP server plugins."""
-    global _plugin_handlers
-    if _plugin_handlers is not None:
-        return _plugin_handlers
+    handlers = _plugin_handlers
+    if handlers is not None:
+        return handlers
 
     pm = get_plugin_manager()
     merged: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {}
@@ -50,14 +51,13 @@ def _get_plugin_handlers() -> dict[str, Callable[[dict[str, Any]], Awaitable[dic
         tools = result.get("tools", {})
         merged.update(tools)
 
-    _plugin_handlers = merged
-    return _plugin_handlers
+    sys.modules[__name__].__dict__["_plugin_handlers"] = merged
+    return merged
 
 
 def clear_plugin_handler_cache() -> None:
     """Clear the cached plugin handler mapping (for tests or config reload)."""
-    global _plugin_handlers
-    _plugin_handlers = None
+    sys.modules[__name__].__dict__["_plugin_handlers"] = None
 
 
 def _write_response(source_group: str, request_id: str, response: dict[str, Any]) -> None:

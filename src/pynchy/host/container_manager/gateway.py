@@ -31,6 +31,7 @@ Implementation lives in:
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
@@ -89,6 +90,10 @@ _gateway: LiteLLMGateway | BuiltinGateway | None = None
 def get_gateway() -> LiteLLMGateway | BuiltinGateway | None:
     """Return the active gateway, or ``None`` if not started."""
     return _gateway
+
+
+def _set_gateway(gateway: LiteLLMGateway | BuiltinGateway | None) -> None:
+    sys.modules[__name__].__dict__["_gateway"] = gateway
 
 
 def resolve_container_host(container_host: str) -> str:
@@ -183,7 +188,6 @@ async def start_gateway(
     *plugin_manager* is optional — when provided, plugin-supplied MCP server
     specs (via ``pynchy_mcp_server_spec``) are merged into the MCP manager.
     """
-    global _gateway
     s = get_settings()
     container_host = resolve_container_host(s.gateway.container_host)
 
@@ -193,7 +197,7 @@ async def start_gateway(
             raise ValueError(
                 "GATEWAY__MASTER_KEY is required when using LiteLLM mode. Set it in .env."
             )
-        _gateway = LiteLLMGateway(
+        gateway: LiteLLMGateway | BuiltinGateway = LiteLLMGateway(
             config_path=s.gateway.litellm_config,
             port=s.gateway.port,
             container_host=container_host,
@@ -208,13 +212,14 @@ async def start_gateway(
         )
     else:
         logger.info("Using builtin gateway mode (no litellm_config set)")
-        _gateway = BuiltinGateway(
+        gateway = BuiltinGateway(
             port=s.gateway.port,
             host=s.gateway.host,
             container_host=container_host,
         )
 
-    await _gateway.start()
+    _set_gateway(gateway)
+    await gateway.start()
 
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with config.toml.
@@ -236,12 +241,11 @@ async def start_gateway(
         set_mcp_manager(mcp_mgr)
         await mcp_mgr.sync()
 
-    return _gateway
+    return gateway
 
 
 async def stop_gateway() -> None:
     """Stop the gateway if running."""
-    global _gateway
 
     # Stop MCP containers before stopping the gateway
     from pynchy.host.container_manager.mcp.manager import get_mcp_manager, set_mcp_manager
@@ -253,4 +257,4 @@ async def stop_gateway() -> None:
 
     if _gateway is not None:
         await _gateway.stop()
-        _gateway = None
+        _set_gateway(None)

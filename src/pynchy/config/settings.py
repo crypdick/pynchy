@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import warnings
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
     Iterable,
@@ -28,7 +29,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotat
 from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import Field, model_validator
 from pydantic_settings import (
@@ -473,13 +474,14 @@ _settings: Settings | None = None
 
 def get_settings() -> Settings:
     """Lazy cached singleton."""
-    global _settings
-    if _settings is None:
-        _settings = Settings()
-    return _settings
+    module = sys.modules[__name__]
+    settings = cast("Settings | None", module.__dict__["_settings"])
+    if settings is None:
+        settings = Settings()
+        module.__dict__["_settings"] = settings
+    return settings
 
 
 def reset_settings() -> None:
     """Clear the cached singleton (for tests)."""
-    global _settings
-    _settings = None
+    sys.modules[__name__].__dict__["_settings"] = None
