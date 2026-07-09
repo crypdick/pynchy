@@ -35,7 +35,8 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
 from ._allowlist import SlackAllowlist
 from ._cache import TtlCache
 from ._events import SlackEvents
-from ._ids import JID_PREFIX, _channel_id_from_jid, _jid
+from ._ids import JID_PREFIX, channel_id_from_jid
+from ._ids import jid as slack_jid
 from ._interactions import SlackInteractions
 from ._lifecycle import SlackLifecycle
 from ._ui import build_ask_user_blocks, normalize_chat_name, split_text
@@ -174,7 +175,7 @@ class SlackChannel:
         if not self._app or not self.owns_jid(jid):
             return
         rendered = self.formatter.render(event)
-        channel_id = _channel_id_from_jid(jid)
+        channel_id = channel_id_from_jid(jid)
         if rendered.blocks:
             await self._app.client.chat_postMessage(
                 channel=channel_id, text=rendered.text, blocks=rendered.blocks
@@ -189,7 +190,7 @@ class SlackChannel:
         if not self._app or not self.owns_jid(jid):
             return None
         rendered = self.formatter.render(event)
-        channel_id = _channel_id_from_jid(jid)
+        channel_id = channel_id_from_jid(jid)
         kwargs: dict[str, Any] = {"channel": channel_id, "text": rendered.text}
         if rendered.blocks:
             kwargs["blocks"] = rendered.blocks
@@ -201,7 +202,7 @@ class SlackChannel:
         if not self._app or not self.owns_jid(jid):
             return
         rendered = self.formatter.render(event)
-        channel_id = _channel_id_from_jid(jid)
+        channel_id = channel_id_from_jid(jid)
         kwargs: dict[str, Any] = {"channel": channel_id, "ts": message_id, "text": rendered.text}
         if rendered.blocks:
             kwargs["blocks"] = rendered.blocks
@@ -210,7 +211,7 @@ class SlackChannel:
     def owns_jid(self, jid: str) -> bool:
         if not jid.startswith(JID_PREFIX):
             return False
-        return self._is_allowed_channel(_channel_id_from_jid(jid))
+        return self._is_allowed_channel(channel_id_from_jid(jid))
 
     async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
@@ -252,7 +253,7 @@ class SlackChannel:
                 message_id=message_id,
             )
             return
-        channel_id = _channel_id_from_jid(jid)
+        channel_id = channel_id_from_jid(jid)
         # Convert Unicode emoji to Slack name, or strip colons from name format
         emoji_name = self._UNICODE_TO_SLACK_NAME.get(emoji, emoji.strip(":"))
         try:
@@ -279,7 +280,7 @@ class SlackChannel:
         """
         if not self._app or not self.owns_jid(jid):
             return None
-        channel_id = _channel_id_from_jid(jid)
+        channel_id = channel_id_from_jid(jid)
 
         blocks = build_ask_user_blocks(request_id, questions)
         # Plain text for notifications / clients that don't render blocks
@@ -327,7 +328,7 @@ class SlackChannel:
         sender_name = await self._resolve_user_name(user_id)
         return NewMessage(
             id=f"slack-{ts}",
-            chat_jid=_jid(channel_id),
+            chat_jid=slack_jid(channel_id),
             sender=user_id,
             sender_name=sender_name,
             content=self._normalize_bot_mention(text),
@@ -438,7 +439,7 @@ class SlackChannel:
             return InboundFetchResult(messages=[])
         if not self.owns_jid(channel_jid):
             return InboundFetchResult(messages=[])
-        channel_id = _channel_id_from_jid(channel_jid)
+        channel_id = channel_id_from_jid(channel_jid)
         # conversations.history `oldest` is inclusive (ts >= oldest), so add
         # a 1μs epsilon to make it exclusive and prevent the cursor from
         # stalling on the boundary message every reconciliation cycle.

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
 
-from ._ids import _jid
+from ._ids import jid as slack_jid
 from ._ui import extract_checkbox_values, extract_text_input_value
 
 if TYPE_CHECKING:
@@ -156,7 +156,7 @@ class SlackInteractions:
 
         # Invoke the approval decision callback
         if ch._on_approval_decision and channel_id:
-            jid = _jid(channel_id)
+            jid = slack_jid(channel_id)
             ch._on_approval_decision(jid, decision, short_id, user_id)
 
         verb = "Approved" if decision == "approve" else "Denied"

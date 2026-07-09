@@ -9,8 +9,7 @@ import pytest
 
 slack_bolt = pytest.importorskip("slack_bolt", reason="slack optional extra not installed")
 
-from pynchy.plugins.channels.slack import SlackChannel  # noqa: E402
-from pynchy.plugins.channels.slack._ui import ASK_USER_ACTION_RE  # noqa: E402
+from pynchy.plugins.channels.slack import ASK_USER_ACTION_RE, SlackChannel  # noqa: E402
 
 if TYPE_CHECKING:
     import re

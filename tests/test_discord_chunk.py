@@ -8,7 +8,7 @@ renders the halves as broken markdown.
 
 from __future__ import annotations
 
-from pynchy.plugins.channels.discord._chunk import chunk_discord_text
+from pynchy.plugins.channels.discord import chunk_discord_text
 
 FENCE = "```"
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from pynchy.plugins.channels.discord._ids import (
+from pynchy.plugins.channels.discord import (
     JID_PREFIX,
     DiscordJid,
     channel_jid,

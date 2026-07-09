@@ -19,7 +19,7 @@ from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 
-from ._ids import _jid
+from ._ids import jid as slack_jid
 from ._ui import AGENT_STOP_ACTION_RE, ASK_USER_ACTION_RE, COP_APPROVAL_ACTION_RE
 
 if TYPE_CHECKING:
@@ -133,7 +133,7 @@ class SlackEvents:
             if not ch.allowlist._is_allowed_channel(channel_id):
                 return
 
-            jid = _jid(channel_id)
+            jid = slack_jid(channel_id)
             sender_name = await ch._resolve_user_name(user_id)
             timestamp = datetime.now(UTC).isoformat()
 
@@ -214,7 +214,7 @@ class SlackEvents:
         if self._dedup_ts(ts):
             return
 
-        jid = _jid(channel_id)
+        jid = slack_jid(channel_id)
 
         # Rewrite the bot's Slack-native @mention as the canonical
         # trigger word so the downstream trigger pattern still matches.
@@ -266,5 +266,5 @@ class SlackEvents:
         if not ch.allowlist._is_allowed_channel(channel_id):
             return
 
-        jid = _jid(channel_id)
+        jid = slack_jid(channel_id)
         ch._on_reaction(jid, message_ts, user_id, reaction)

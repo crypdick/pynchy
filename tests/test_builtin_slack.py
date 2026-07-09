@@ -10,10 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-import pynchy.plugins.channels.slack._ids as slack_ids
 from pynchy.config.models import CommandCenterConfig, SlackConnectionConfig
-from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
-from pynchy.plugins.channels.slack._ui import split_text
+from pynchy.plugins.channels.slack import (
+    SlackChannel,
+    SlackChannelPlugin,
+    channel_id_from_jid,
+    jid,
+    split_text,
+)
 
 SLACK_BOT_VALUE = "xoxb-fake"
 SLACK_APP_VALUE = "xapp-fake"
@@ -27,13 +31,13 @@ SLACK_APP_ENV = "APP"
 
 class TestJidHelpers:
     def test_jid_prefixes_channel_id(self) -> None:
-        assert slack_ids._jid("C12345") == "slack:C12345"
+        assert jid("C12345") == "slack:C12345"
 
     def test_channel_id_from_jid_strips_prefix(self) -> None:
-        assert slack_ids._channel_id_from_jid("slack:C12345") == "C12345"
+        assert channel_id_from_jid("slack:C12345") == "C12345"
 
     def test_roundtrip(self) -> None:
-        assert slack_ids._channel_id_from_jid(slack_ids._jid("C999")) == "C999"
+        assert channel_id_from_jid(jid("C999")) == "C999"
 
 
 # ------------------------------------------------------------------

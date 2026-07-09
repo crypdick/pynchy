@@ -1,39 +1,85 @@
-"""Tests for the Discord inbound access-control decision tree.
-
-``DiscordAccess.decide`` is a pure function over an ``InboundContext`` (fields
-already extracted from a ``discord.Message``) plus the connection config. It
-returns ``"allow"``, ``"deny"``, or ``"pairing"``. v1 has no pairing flow, so
-the DM-not-on-allowlist case denies; the ``"pairing"`` value is reserved so a
-pairing collaborator can slot in later without changing callers.
-"""
+"""Discord inbound access policy as observed through channel delivery."""
 
 from __future__ import annotations
 
-from pynchy.config.models import DiscordConnectionConfig
-from pynchy.plugins.channels.discord._access import DiscordAccess, InboundContext
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
+from pynchy.config.models import DiscordConnectionConfig
+from pynchy.plugins.channels.discord import DiscordChannel
+
+if TYPE_CHECKING:
+    from pynchy.types import NewMessage
+
+BOT_ID = "999"
 DISCORD_BOT_ENV = "X"
+
+
+def _user(
+    uid: str,
+    *,
+    bot: bool = False,
+    roles: tuple[str, ...] = (),
+    display_name: str | None = None,
+    global_name: str | None = None,
+    name: str | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uid,
+        bot=bot,
+        roles=[SimpleNamespace(id=r) for r in roles],
+        display_name=display_name,
+        global_name=global_name,
+        name=name,
+    )
+
+
+def _message(
+    *,
+    author: SimpleNamespace,
+    guild_id: str | None,
+    channel_id: str,
+    guild_name: str | None = None,
+    channel_name: str | None = None,
+    parent_id: str | None = None,
+    parent_name: str | None = None,
+    mentions: tuple[str, ...] = (),
+) -> SimpleNamespace:
+    guild = None if guild_id is None else SimpleNamespace(id=guild_id, name=guild_name)
+    parent = None
+    if parent_id is not None:
+        parent = SimpleNamespace(id=parent_id, name=parent_name)
+    channel = SimpleNamespace(id=channel_id, name=channel_name, parent=parent)
+    if parent_id is not None:
+        channel.parent_id = parent_id
+    return SimpleNamespace(
+        id=f"m-{author.id}-{channel_id}",
+        author=author,
+        guild=guild,
+        channel=channel,
+        content="hello",
+        attachments=[],
+        reference=None,
+        message_snapshots=[],
+        mentions=[_user(m) for m in mentions],
+    )
 
 
 def _dm(
     author_id: str = "1",
     *,
-    author_names: frozenset[str] = frozenset(),
+    author_names: tuple[str, ...] = (),
     is_bot: bool = False,
-) -> InboundContext:
-    return InboundContext(
-        is_dm=True,
-        author_id=author_id,
-        author_is_bot=is_bot,
+) -> SimpleNamespace:
+    return _message(
+        author=_user(
+            author_id,
+            bot=is_bot,
+            display_name=author_names[0] if author_names else None,
+            name=author_names[-1] if author_names else None,
+        ),
         guild_id=None,
-        guild_name=None,
         channel_id="dm-chan",
-        channel_name=None,
-        parent_channel_id=None,
-        parent_channel_name=None,
-        author_role_ids=frozenset(),
-        mentions_bot=False,
-        author_names=author_names,
     )
 
 
@@ -46,116 +92,149 @@ def _guild(
     parent_channel_id: str | None = None,
     parent_channel_name: str | None = None,
     author_id: str = "u1",
-    author_names: frozenset[str] = frozenset(),
-    author_role_ids: frozenset[str] = frozenset(),
+    author_names: tuple[str, ...] = (),
+    author_role_ids: tuple[str, ...] = (),
     mentions_bot: bool = False,
     is_bot: bool = False,
-) -> InboundContext:
-    return InboundContext(
-        is_dm=False,
-        author_id=author_id,
-        author_is_bot=is_bot,
+) -> SimpleNamespace:
+    return _message(
+        author=_user(
+            author_id,
+            bot=is_bot,
+            roles=author_role_ids,
+            display_name=author_names[0] if author_names else None,
+            name=author_names[-1] if author_names else None,
+        ),
         guild_id=guild_id,
         guild_name=guild_name,
         channel_id=channel_id,
         channel_name=channel_name,
-        parent_channel_id=parent_channel_id,
-        parent_channel_name=parent_channel_name,
-        author_role_ids=author_role_ids,
-        mentions_bot=mentions_bot,
-        author_names=author_names,
+        parent_id=parent_channel_id,
+        parent_name=parent_channel_name,
+        mentions=(BOT_ID,) if mentions_bot else (),
     )
 
 
-def _access(**cfg_kwargs) -> DiscordAccess:
-    return DiscordAccess(DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs))
+async def _delivered_messages(
+    msg: SimpleNamespace,
+    **cfg_kwargs: Any,
+) -> list[tuple[str, NewMessage]]:
+    delivered: list[tuple[str, NewMessage]] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs),
+        "token",
+        lambda jid, new_message: delivered.append((jid, new_message)),
+        lambda _jid, _timestamp, _chat_name: None,
+    )
+    channel.bot_user_id = BOT_ID
+
+    await channel.events.handle_message(msg)
+
+    return delivered
+
+
+async def _is_delivered(msg: SimpleNamespace, **cfg_kwargs: Any) -> bool:
+    return bool(await _delivered_messages(msg, **cfg_kwargs))
 
 
 # --- bot filtering -----------------------------------------------------------
 
 
-def test_bot_author_denied_even_when_dm_open():
-    access = _access(dm_policy="open")
-    assert access.decide(_dm(is_bot=True)) == "deny"
+async def test_bot_author_denied_even_when_dm_open():
+    assert await _is_delivered(_dm(is_bot=True), dm_policy="open") is False
 
 
 # --- DM policy ---------------------------------------------------------------
 
 
-def test_dm_open_allows_anyone():
-    assert _access(dm_policy="open").decide(_dm("999")) == "allow"
+async def test_dm_open_allows_anyone():
+    assert await _is_delivered(_dm("777"), dm_policy="open") is True
 
 
-def test_dm_disabled_denies():
-    assert _access(dm_policy="disabled").decide(_dm("1")) == "deny"
+async def test_dm_disabled_denies():
+    assert await _is_delivered(_dm("1"), dm_policy="disabled") is False
 
 
-def test_dm_allowlist_allows_listed_user():
-    access = _access(dm_policy="allowlist", allow_from=["discord:1"])
-    assert access.decide(_dm("1")) == "allow"
+async def test_dm_allowlist_allows_listed_user():
+    assert await _is_delivered(_dm("1"), dm_policy="allowlist", allow_from=["discord:1"])
 
 
-def test_dm_allowlist_denies_unlisted_user():
-    access = _access(dm_policy="allowlist", allow_from=["discord:1"])
-    assert access.decide(_dm("2")) == "deny"
+async def test_dm_allowlist_denies_unlisted_user():
+    assert await _is_delivered(_dm("2"), dm_policy="allowlist", allow_from=["discord:1"]) is False
 
 
-def test_dm_allowlist_wildcard_allows_anyone():
-    assert _access(dm_policy="allowlist", allow_from=["*"]).decide(_dm("7")) == "allow"
+async def test_dm_allowlist_wildcard_allows_anyone():
+    assert await _is_delivered(_dm("7"), dm_policy="allowlist", allow_from=["*"])
 
 
-def test_allow_from_accepts_bare_snowflake():
-    assert _access(dm_policy="allowlist", allow_from=["1"]).decide(_dm("1")) == "allow"
+async def test_allow_from_accepts_bare_snowflake():
+    assert await _is_delivered(_dm("1"), dm_policy="allowlist", allow_from=["1"])
 
 
-def test_dm_allowlist_accepts_human_user_name():
-    access = _access(dm_policy="allowlist", allow_from=["alice"])
-
-    assert access.decide(_dm("1", author_names=frozenset({"Alice", "asmith"}))) == "allow"
+async def test_dm_allowlist_accepts_human_user_name():
+    assert await _is_delivered(
+        _dm("1", author_names=("Alice", "asmith")),
+        dm_policy="allowlist",
+        allow_from=["alice"],
+    )
 
 
 # --- guild / group policy ----------------------------------------------------
 
 
-def test_group_disabled_denies_guild_message():
-    access = _access(group_policy="disabled")
-    assert access.decide(_guild(mentions_bot=True)) == "deny"
+async def test_group_disabled_denies_guild_message():
+    assert await _is_delivered(_guild(mentions_bot=True), group_policy="disabled") is False
 
 
-def test_group_allowlist_denies_unconfigured_guild():
-    access = _access(group_policy="allowlist")  # no guilds configured
-    assert access.decide(_guild(mentions_bot=True)) == "deny"
+async def test_group_allowlist_denies_unconfigured_guild():
+    assert await _is_delivered(_guild(mentions_bot=True), group_policy="allowlist") is False
 
 
-def test_group_open_allows_mentioned_message_in_unconfigured_guild():
-    access = _access(group_policy="open")
-    assert access.decide(_guild(mentions_bot=True)) == "allow"
+async def test_group_open_allows_mentioned_message_in_unconfigured_guild():
+    assert await _is_delivered(_guild(mentions_bot=True), group_policy="open")
 
 
-def test_group_open_denies_unmentioned_message_by_default():
-    access = _access(group_policy="open")
-    assert access.decide(_guild(mentions_bot=False)) == "deny"
+async def test_group_open_denies_unmentioned_message_by_default():
+    assert await _is_delivered(_guild(mentions_bot=False), group_policy="open") is False
 
 
 # --- require_mention ---------------------------------------------------------
 
 
-def test_configured_guild_requires_mention_by_default():
-    access = _access(group_policy="allowlist", chat={"g1": {}})
-    assert access.decide(_guild(mentions_bot=False)) == "deny"
-    assert access.decide(_guild(mentions_bot=True)) == "allow"
+async def test_configured_guild_requires_mention_by_default():
+    assert (
+        await _is_delivered(
+            _guild(mentions_bot=False),
+            group_policy="allowlist",
+            chat={"g1": {}},
+        )
+        is False
+    )
+    assert await _is_delivered(
+        _guild(mentions_bot=True),
+        group_policy="allowlist",
+        chat={"g1": {}},
+    )
 
 
-def test_channel_require_mention_false_overrides_guild():
-    access = _access(
+async def test_channel_require_mention_false_overrides_guild():
+    assert await _is_delivered(
+        _guild(channel_id="c1", mentions_bot=False),
         group_policy="allowlist",
         chat={"g1": {"require_mention": True, "channels": {"c1": {"require_mention": False}}}},
     )
-    assert access.decide(_guild(channel_id="c1", mentions_bot=False)) == "allow"
 
 
-def test_name_configured_guild_channel_allows_message():
-    access = _access(
+async def test_name_configured_guild_channel_allows_message():
+    assert await _is_delivered(
+        _guild(
+            guild_id="123",
+            guild_name="Synapse",
+            channel_id="456",
+            channel_name="code-improver",
+            mentions_bot=False,
+        ),
         group_policy="allowlist",
         chat={
             "synapse": {
@@ -171,85 +250,76 @@ def test_name_configured_guild_channel_allows_message():
         },
     )
 
-    assert (
-        access.decide(
-            _guild(
-                guild_id="123",
-                guild_name="Synapse",
-                channel_id="456",
-                channel_name="code-improver",
-                mentions_bot=False,
-            )
-        )
-        == "allow"
-    )
-
 
 # --- channel enable / allowlist ----------------------------------------------
 
 
-def test_disabled_channel_denies():
-    access = _access(
-        group_policy="allowlist",
-        chat={"g1": {"channels": {"c1": {"enabled": False}}}},
+async def test_disabled_channel_denies():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c1", mentions_bot=True),
+            group_policy="allowlist",
+            chat={"g1": {"channels": {"c1": {"enabled": False}}}},
+        )
+        is False
     )
-    assert access.decide(_guild(channel_id="c1", mentions_bot=True)) == "deny"
 
 
-def test_channel_not_in_configured_allowlist_denies():
-    access = _access(
-        group_policy="allowlist",
-        chat={"g1": {"channels": {"c1": {}}}},
+async def test_channel_not_in_configured_allowlist_denies():
+    assert (
+        await _is_delivered(
+            _guild(channel_id="c2", mentions_bot=True),
+            group_policy="allowlist",
+            chat={"g1": {"channels": {"c1": {}}}},
+        )
+        is False
     )
-    # message in c2, but only c1 is allowed
-    assert access.decide(_guild(channel_id="c2", mentions_bot=True)) == "deny"
 
 
 # --- threads inherit parent-channel config -----------------------------------
 
 
-def test_thread_inherits_parent_channel_config():
-    access = _access(
+async def test_thread_inherits_parent_channel_config():
+    assert await _is_delivered(
+        _guild(channel_id="t1", parent_channel_id="c1", mentions_bot=False),
         group_policy="allowlist",
         chat={"g1": {"channels": {"c1": {"require_mention": False}}}},
     )
-    # message is in thread t1 whose parent is the configured channel c1
-    ctx = _guild(channel_id="t1", parent_channel_id="c1", mentions_bot=False)
-    assert access.decide(ctx) == "allow"
 
 
 # --- member / role allowlists ------------------------------------------------
 
 
-def test_member_users_allowlist_permits_listed_sender():
-    access = _access(
+async def test_member_users_allowlist_permits_listed_sender():
+    assert await _is_delivered(
+        _guild(author_id="u1"),
         group_policy="allowlist",
         chat={"g1": {"require_mention": False, "users": ["discord:u1"]}},
     )
-    assert access.decide(_guild(author_id="u1")) == "allow"
 
 
-def test_member_users_allowlist_permits_human_user_name():
-    access = _access(
+async def test_member_users_allowlist_permits_human_user_name():
+    assert await _is_delivered(
+        _guild(author_names=("Alice",)),
         group_policy="allowlist",
         chat={"g1": {"require_mention": False, "users": ["alice"]}},
     )
 
-    assert access.decide(_guild(author_names=frozenset({"Alice"}))) == "allow"
 
-
-def test_member_users_allowlist_denies_unlisted_sender():
-    access = _access(
-        group_policy="allowlist",
-        chat={"g1": {"require_mention": False, "users": ["discord:u1"]}},
+async def test_member_users_allowlist_denies_unlisted_sender():
+    assert (
+        await _is_delivered(
+            _guild(author_id="u2"),
+            group_policy="allowlist",
+            chat={"g1": {"require_mention": False, "users": ["discord:u1"]}},
+        )
+        is False
     )
-    assert access.decide(_guild(author_id="u2")) == "deny"
 
 
-def test_member_role_allowlist_permits_sender_with_matching_role():
-    access = _access(
+async def test_member_role_allowlist_permits_sender_with_matching_role():
+    assert await _is_delivered(
+        _guild(author_id="u9", author_role_ids=("r1",)),
         group_policy="allowlist",
         chat={"g1": {"require_mention": False, "roles": ["role:r1"]}},
     )
-    ctx = _guild(author_id="u9", author_role_ids=frozenset({"r1"}))
-    assert access.decide(ctx) == "allow"

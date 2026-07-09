@@ -15,7 +15,7 @@ SLACK_APP_VALUE = "xapp-test"
 @pytest.fixture
 def slack_channel():
     """Create a SlackChannel with mocked Slack app."""
-    from pynchy.plugins.channels.slack._channel import SlackChannel
+    from pynchy.plugins.channels.slack import SlackChannel
 
     ch = SlackChannel(
         connection_name="test",
@@ -195,6 +195,6 @@ async def test_update_event_includes_blocks_from_blocks_formatter(slack_channel)
 
 def test_formatter_is_slack_blocks_formatter(slack_channel):
     """SlackChannel should use SlackBlocksFormatter."""
-    from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
+    from pynchy.plugins.channels.slack import SlackBlocksFormatter
 
     assert isinstance(slack_channel.formatter, SlackBlocksFormatter)

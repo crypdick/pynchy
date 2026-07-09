@@ -6,7 +6,7 @@ and that batch rendering respects Slack's 50-block-per-message limit.
 
 from __future__ import annotations
 
-from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
+from pynchy.plugins.channels.slack import SlackBlocksFormatter
 from pynchy.types import OutboundEvent, OutboundEventType
 
 

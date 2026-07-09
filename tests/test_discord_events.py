@@ -1,23 +1,19 @@
-"""Tests for extracting inbound context from a Discord message.
-
-``build_inbound_context`` and ``jid_for`` are the pure boundary between
-discord.py's message objects and the access/routing layers. They are tested
-with duck-typed fakes so no gateway is needed.
-"""
+"""Discord inbound messages as emitted by the public channel adapter."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
-from pynchy.plugins.channels.discord._events import (
-    build_inbound_context,
-    build_message_metadata,
-    jid_for,
-    normalized_message_content,
-)
+from pynchy.config.models import DiscordConnectionConfig
+from pynchy.plugins.channels.discord import DiscordChannel
+
+if TYPE_CHECKING:
+    from pynchy.types import NewMessage
 
 BOT_ID = "999"
+DISCORD_BOT_ENV = "X"
 
 
 def _user(
@@ -29,8 +25,6 @@ def _user(
     global_name: str | None = None,
     name: str | None = None,
 ) -> SimpleNamespace:
-    # Real Discord ids are numeric snowflakes; the extraction only ever str()s
-    # them, so string ids are fine for these pure-function tests.
     return SimpleNamespace(
         id=uid,
         bot=bot,
@@ -99,156 +93,131 @@ def _attachment(
     )
 
 
-def test_dm_context():
-    msg = _message(author=_user("1"), guild_id=None, channel_id="dm1")
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert ctx.is_dm is True
-    assert ctx.author_id == "1"
-    assert ctx.guild_id is None
-
-
-def test_guild_context():
-    msg = _message(author=_user("7"), guild_id="g1", channel_id="c1")
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert ctx.is_dm is False
-    assert ctx.guild_id == "g1"
-    assert ctx.channel_id == "c1"
-    assert ctx.parent_channel_id is None
-
-
-def test_guild_context_carries_names():
-    msg = _message(
-        author=_user("7"),
-        guild_id="g1",
-        guild_name="Synapse",
-        channel_id="c1",
-        channel_name="code-improver",
+async def _deliver(
+    msg: SimpleNamespace,
+    **cfg_kwargs: Any,
+) -> tuple[str, NewMessage, list[tuple[str, str, str | None]]]:
+    delivered: list[tuple[str, NewMessage]] = []
+    metadata: list[tuple[str, str, str | None]] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs),
+        "token",
+        lambda jid, new_message: delivered.append((jid, new_message)),
+        lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
     )
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert ctx.guild_name == "Synapse"
-    assert ctx.channel_name == "code-improver"
+    channel.bot_user_id = BOT_ID
+
+    await channel.events.handle_message(msg)
+
+    assert len(delivered) == 1
+    jid, new_message = delivered[0]
+    return jid, new_message, metadata
 
 
-def test_context_carries_author_names():
-    msg = _message(
-        author=_user("7", display_name="Alice", global_name="asmith", name="alice-local"),
-        guild_id="g1",
-        channel_id="c1",
+async def test_dm_message_keys_chat_off_sender_user_id():
+    jid, msg, metadata = await _deliver(
+        _message(
+            author=_user("5", display_name="Alice"),
+            guild_id=None,
+            channel_id="dm1",
+            content="hello",
+        ),
+        dm_policy="open",
     )
 
-    assert {"Alice", "asmith", "alice-local"} <= build_inbound_context(msg, BOT_ID).author_names
+    assert jid == "discord:direct:5"
+    assert msg.chat_jid == jid
+    assert msg.sender == "5"
+    assert msg.sender_name == "Alice"
+    assert msg.content == "hello"
+    assert metadata[0][0] == jid
+    assert metadata[0][2] == "Alice"
 
 
-def test_thread_context_carries_parent():
-    msg = _message(
-        author=_user("7"),
-        guild_id="g1",
-        channel_id="t1",
-        channel_name="run-123",
-        parent_id="c1",
-        parent_name="code-improver",
+async def test_guild_message_keys_chat_off_channel_id():
+    jid, msg, metadata = await _deliver(
+        _message(
+            author=_user("5", display_name="Alice"),
+            guild_id="g1",
+            channel_id="c1",
+            channel_name="code-improver",
+            mentions=(BOT_ID,),
+            content="hello",
+        ),
+        group_policy="open",
     )
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert ctx.channel_id == "t1"
-    assert ctx.parent_channel_id == "c1"
-    assert ctx.parent_channel_name == "code-improver"
+
+    assert jid == "discord:channel:c1"
+    assert msg.chat_jid == jid
+    assert msg.metadata["discord_channel_name"] == "code-improver"
+    assert metadata[0][2] == "code-improver"
 
 
-def test_bot_author_flagged():
-    msg = _message(author=_user("2", bot=True), guild_id="g1", channel_id="c1")
-    assert build_inbound_context(msg, BOT_ID).author_is_bot is True
-
-
-def test_mentions_bot_detected():
-    msg = _message(author=_user("7"), guild_id="g1", channel_id="c1", mentions=(BOT_ID,))
-    assert build_inbound_context(msg, BOT_ID).mentions_bot is True
-
-
-def test_mentions_other_not_bot():
-    msg = _message(author=_user("7"), guild_id="g1", channel_id="c1", mentions=("42",))
-    assert build_inbound_context(msg, BOT_ID).mentions_bot is False
-
-
-def test_role_ids_extracted():
-    msg = _message(author=_user("7", roles=("r1", "r2")), guild_id="g1", channel_id="c1")
-    assert build_inbound_context(msg, BOT_ID).author_role_ids == frozenset({"r1", "r2"})
-
-
-def test_jid_for_dm_keys_off_user():
-    msg = _message(author=_user("5"), guild_id=None, channel_id="dm1")
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert jid_for(ctx) == "discord:direct:5"
-
-
-def test_jid_for_guild_channel_keys_off_channel():
-    msg = _message(author=_user("5"), guild_id="g1", channel_id="c1")
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert jid_for(ctx) == "discord:channel:c1"
-
-
-def test_jid_for_thread_uses_thread_snowflake():
-    msg = _message(author=_user("5"), guild_id="g1", channel_id="t1", parent_id="c1")
-    ctx = build_inbound_context(msg, BOT_ID)
-    assert jid_for(ctx) == "discord:channel:t1"
-
-
-def test_build_message_metadata_for_thread_carries_parent_jid_and_names():
-    msg = _message(
-        author=_user("5"),
-        guild_id="g1",
-        channel_id="t1",
-        channel_name="run-123",
-        parent_id="c1",
-        parent_name="admin",
+async def test_thread_message_uses_thread_jid_and_parent_metadata():
+    jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="t1",
+            channel_name="run-123",
+            parent_id="c1",
+            parent_name="admin",
+            content="thread update",
+        ),
+        group_policy="allowlist",
+        chat={"g1": {"channels": {"c1": {"require_mention": False}}}},
     )
-    ctx = build_inbound_context(msg, BOT_ID)
 
-    metadata = build_message_metadata(msg, ctx)
-
-    assert metadata["discord_message_id"] == "m1"
-    assert metadata["discord_parent_chat_jid"] == "discord:channel:c1"
-    assert metadata["discord_channel_name"] == "run-123"
-    assert metadata["discord_parent_channel_name"] == "admin"
+    assert jid == "discord:channel:t1"
+    assert msg.metadata["discord_message_id"] == "m1"
+    assert msg.metadata["discord_parent_chat_jid"] == "discord:channel:c1"
+    assert msg.metadata["discord_channel_name"] == "run-123"
+    assert msg.metadata["discord_parent_channel_name"] == "admin"
 
 
-def test_build_message_metadata_extracts_reply_context():
+async def test_reply_context_is_preserved_in_message_metadata():
     replied_author = SimpleNamespace(id="42", display_name="Alice")
     replied = SimpleNamespace(id="reply-1", author=replied_author, content="Original message")
     reference = SimpleNamespace(message_id="reply-1", resolved=replied)
-    msg = _message(
-        author=_user("5"),
-        guild_id="g1",
-        channel_id="c1",
-        content="Following up",
-        reference=reference,
-    )
-
-    metadata = build_message_metadata(msg)
-
-    assert metadata["discord_message_id"] == "m1"
-    assert metadata["reply_to_message_id"] == "reply-1"
-    assert metadata["reply_to_sender"] == "Alice"
-    assert metadata["reply_to_text"] == "Original message"
-
-
-def test_build_message_metadata_preserves_attachments():
-    msg = _message(
-        author=_user("5"),
-        guild_id="g1",
-        channel_id="c1",
-        content="See attached",
-        attachments=(
-            _attachment(
-                attachment_id="a1",
-                filename="design.txt",
-                description="Architecture sketch",
-            ),
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            content="Following up",
+            reference=reference,
+            mentions=(BOT_ID,),
         ),
+        group_policy="open",
     )
 
-    metadata = build_message_metadata(msg)
+    assert msg.metadata["discord_message_id"] == "m1"
+    assert msg.metadata["reply_to_message_id"] == "reply-1"
+    assert msg.metadata["reply_to_sender"] == "Alice"
+    assert msg.metadata["reply_to_text"] == "Original message"
 
-    assert metadata["attachments"] == [
+
+async def test_attachments_are_preserved_in_message_metadata():
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            content="See attached",
+            attachments=(
+                _attachment(
+                    attachment_id="a1",
+                    filename="design.txt",
+                    description="Architecture sketch",
+                ),
+            ),
+            mentions=(BOT_ID,),
+        ),
+        group_policy="open",
+    )
+
+    assert msg.metadata["attachments"] == [
         {
             "id": "a1",
             "filename": "design.txt",
@@ -262,7 +231,7 @@ def test_build_message_metadata_preserves_attachments():
     ]
 
 
-def test_forwarded_snapshot_text_falls_back_when_message_content_missing():
+async def test_forwarded_snapshot_text_falls_back_when_message_content_missing():
     snapshot = SimpleNamespace(
         type="default",
         content="Forwarded content",
@@ -278,17 +247,19 @@ def test_forwarded_snapshot_text_falls_back_when_message_content_missing():
             )
         ],
     )
-    msg = _message(
-        author=_user("5"),
-        guild_id="g1",
-        channel_id="c1",
-        message_snapshots=(snapshot,),
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            message_snapshots=(snapshot,),
+            mentions=(BOT_ID,),
+        ),
+        group_policy="open",
     )
 
-    assert normalized_message_content(msg) == "Forwarded content"
-
-    metadata = build_message_metadata(msg)
-    assert metadata["forwarded_messages"] == [
+    assert msg.content == "Forwarded content"
+    assert msg.metadata["forwarded_messages"] == [
         {
             "content": "Forwarded content",
             "created_at": "2026-07-07T00:00:00+00:00",

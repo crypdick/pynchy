@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import pynchy.plugins.channels.discord._channel as discord_channel_module
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.state import init_test_database, store_chat_metadata
@@ -417,7 +416,7 @@ async def test_typing_loop_refreshes_until_cancelled(monkeypatch: pytest.MonkeyP
             raise asyncio.CancelledError
 
     ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
-    monkeypatch.setattr(discord_channel_module.asyncio, "sleep", _fake_sleep)
+    monkeypatch.setattr(asyncio, "sleep", _fake_sleep)
 
     with pytest.raises(asyncio.CancelledError):
         await ch._typing_loop("discord:channel:1")

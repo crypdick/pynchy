@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.logger import logger
 
-from ._ids import _channel_id_from_jid, _jid
+from ._ids import channel_id_from_jid
+from ._ids import jid as slack_jid
 from ._ui import normalize_chat_name
 
 if TYPE_CHECKING:
@@ -75,7 +76,7 @@ class SlackAllowlist:
             if channel_id is None:
                 if ch._allow_create:
                     jid = await self.create_group(name)
-                    channel_id = _channel_id_from_jid(jid)
+                    channel_id = channel_id_from_jid(jid)
                 else:
                     logger.warning(
                         "Slack chat not found; skipping",
@@ -97,7 +98,7 @@ class SlackAllowlist:
         ch = self._channel
         normalized = normalize_chat_name(chat_name)
         if normalized in ch._chat_name_to_id:
-            return _jid(ch._chat_name_to_id[normalized])
+            return slack_jid(ch._chat_name_to_id[normalized])
 
         channel_id = await self._find_channel_by_name(normalized)
         if channel_id is None:
@@ -107,7 +108,7 @@ class SlackAllowlist:
 
         await self._ensure_joined(channel_id, normalized)
         self._register_allowed_channel(normalized, channel_id)
-        return _jid(channel_id)
+        return slack_jid(channel_id)
 
     async def create_group(self, name: str) -> str:
         """Create a Slack channel and return its pynchy JID.
@@ -146,7 +147,7 @@ class SlackAllowlist:
             logger.info("Reusing existing Slack channel", name=slack_name, channel_id=channel_id)
         ch._chat_names.add(slack_name)
         self._register_allowed_channel(slack_name, channel_id)
-        return _jid(channel_id)
+        return slack_jid(channel_id)
 
     async def _find_channel_by_name(self, name: str) -> str | None:
         """Find a Slack channel by name, returning its ID or None."""
