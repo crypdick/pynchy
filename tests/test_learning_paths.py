@@ -22,7 +22,6 @@ def _settings(*, tmp_path: Path, learning: LearningConfig, workspaces: dict | No
     return make_settings(
         learning=learning,
         workspaces=workspaces or {},
-        sandbox_profiles={},
         project_root=tmp_path,
         data_dir=tmp_path / "data",
     )
@@ -67,7 +66,7 @@ def test_workspace_profile_resolves_profile_root(tmp_path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
-        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
@@ -90,7 +89,7 @@ def test_vault_root_expands_home_directory(tmp_path, monkeypatch):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(Path("~/vault")),
-        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
@@ -106,7 +105,7 @@ def test_custom_mount_path_is_used_for_mounted_paths(tmp_path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault, mount_path="/mnt/obsidian"),
-        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
@@ -124,7 +123,7 @@ def test_resolver_does_not_create_directories(tmp_path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
-        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
@@ -146,7 +145,7 @@ def test_symlink_escape_through_profile_root_is_rejected(tmp_path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault, default_profile_root="profiles/{profile}"),
-        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with (
@@ -174,13 +173,30 @@ def test_workspace_without_profile_resolves_default_profile(tmp_path):
     assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/default"
 
 
+def test_workspace_with_multiple_profiles_uses_first_profile_for_learning_context(tmp_path):
+    vault = tmp_path / "vault"
+    settings = _settings(
+        tmp_path=tmp_path,
+        learning=_enabled_learning(vault),
+        workspaces={"team": WorkspaceConfig(profiles=["base", "ops"])},
+    )
+
+    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+        assert profile_name_for_group("team") == "base"
+        paths = resolve_learning_paths("team")
+
+    assert paths is not None
+    assert paths.profile == "base"
+    assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/base"
+
+
 def test_profile_slug_is_path_safe_but_original_profile_is_preserved(tmp_path):
     vault = tmp_path / "vault"
     profile = "Shopping List!! / 2026"
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
-        workspaces={"shopping-group": WorkspaceConfig(profile=profile)},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=[profile])},
     )
 
     with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
@@ -197,7 +213,7 @@ def test_profile_override_wins_over_workspace_profile_and_is_slugged(tmp_path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
-        workspaces={"shopping-group": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping-group": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
