@@ -22,11 +22,21 @@ Agents work with notebooks only through MCP tools, which handle kernel lifecycle
 
 ## Enabling notebooks
 
-Add `"notebook"` to a workspace's MCP server list:
+Add the notebook tool to a profile, then select that profile from the workspace:
 
 ```toml
+[tools.notebook]
+type = "mcp"
+public_source = false
+secret_data = false
+public_sink = false
+dangerous_writes = false
+
+[profiles.research-tools]
+tools = ["notebook"]
+
 [workspaces.research]
-mcp_servers = ["notebook"]
+profiles = ["research-tools"]
 ```
 
 No per-workspace config needed. The server scopes notebooks to `groups/<workspace>/notebooks/` and sets the kernel's working directory to `groups/<workspace>/`, so the agent references workspace files naturally (e.g., `pd.read_csv("mydata.csv")`).
@@ -55,7 +65,7 @@ To work with .ipynb files instead, include the extension in the notebook name (e
 
 ## MCP tools
 
-All tools are available once the workspace includes `"notebook"` in its server list.
+All tools are available once the workspace includes a profile that selects `"notebook"`.
 
 ### Kernel lifecycle
 

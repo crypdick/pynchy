@@ -1,19 +1,14 @@
-"""Tests for channel access mode resolution — the cascade logic in config/access.py.
-
-Covers:
-- resolve_channel_config: defaults → connection → chat → workspace
-- resolve_allowed_users: group expansion, owner resolution, wildcard, cycle detection
-- is_user_allowed: sender matching with platform-specific owner checks
-"""
+"""Tests for channel access helpers that remain valid under profile composition."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from conftest import make_settings
 
-from pynchy.config import Settings
 from pynchy.config.access import (
+    filter_allowed_messages,
     is_user_allowed,
     resolve_allowed_users,
     resolve_channel_config,
@@ -23,200 +18,71 @@ from pynchy.config.models import (
     ConnectionChatConfig,
     ConnectionsConfig,
     OwnerConfig,
-    SandboxProfileConfig,
+    ProfileConfig,
     SlackConnectionConfig,
     WhatsAppConnectionConfig,
     WorkspaceConfig,
 )
+from pynchy.config.settings import Settings
+from pynchy.types import NewMessage, WorkspaceProfile
 
 
-def _settings_with(
-    *,
-    defaults: SandboxProfileConfig | None = None,
-    workspaces: dict[str, WorkspaceConfig] | None = None,
-    owner: OwnerConfig | None = None,
-    user_groups: dict[str, list[str]] | None = None,
-    connections: ConnectionsConfig | None = None,
-    sandbox_profiles: dict[str, SandboxProfileConfig] | None = None,
-) -> MagicMock:
-    """Create a Settings mock for resolve_channel_config tests."""
-    s = MagicMock(spec=Settings)
-    s.universal = defaults or SandboxProfileConfig()
-    s.profiles = sandbox_profiles or {}
-    s.sandbox_universal = s.universal
-    s.sandbox_profiles = s.profiles
-    s.workspaces = workspaces or {}
-    s.owner = owner or OwnerConfig()
-    s.user_groups = user_groups or {}
-    s.connection = connections or ConnectionsConfig()
-    return s
-
-
-# ---------------------------------------------------------------------------
-# resolve_channel_config — cascade tests
-# ---------------------------------------------------------------------------
+def _message(sender: str, sender_name: str = "User") -> NewMessage:
+    return NewMessage(
+        id=f"msg-{sender}",
+        chat_jid="slack:C123",
+        sender=sender,
+        sender_name=sender_name,
+        content="hello",
+        timestamp="2026-01-01T00:00:00Z",
+    )
 
 
 class TestResolveChannelConfig:
-    """Test the 4-level resolution cascade."""
+    """resolve_channel_config returns composable workspace profile resolution."""
 
     def test_defaults_when_no_workspace(self):
-        """Unknown workspace → all defaults."""
-        with patch("pynchy.config.access.get_settings", return_value=_settings_with()):
+        with patch("pynchy.config.access.get_settings", return_value=make_settings()):
             result = resolve_channel_config("nonexistent")
 
-        assert result.access == "readwrite"
-        assert result.mode == "agent"
-        assert result.trust is True
-        assert result.trigger == "mention"
-        assert result.allowed_users == ["owner"]
+        assert result.prompts == []
+        assert result.skills == []
+        assert result.tools == []
+        assert result.repo == []
+        assert result.model is None
+        assert result.is_admin is False
+        assert result.contains_secrets is False
 
-    def test_custom_defaults(self):
-        """Custom sandbox_universal propagate."""
-        defaults = SandboxProfileConfig(
-            access="read",
-            mode="chat",
-            trust=False,
-            trigger="always",
-            allowed_users=["*"],
+    def test_selected_profiles_are_composed(self):
+        settings = make_settings(
+            profiles={
+                "base": ProfileConfig(prompts=["base"], repo=["owner/base"]),
+                "admin": ProfileConfig(
+                    includes=["base"],
+                    prompts=["admin"],
+                    repo=["owner/admin"],
+                    is_admin=True,
+                    contains_secrets=True,
+                ),
+            },
+            workspaces={"ops": WorkspaceConfig(profiles=["admin"])},
         )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(defaults=defaults),
-        ):
-            result = resolve_channel_config("nonexistent")
 
-        assert result.access == "read"
-        assert result.mode == "chat"
-        assert result.trust is False
-        assert result.trigger == "always"
-        assert result.allowed_users == ["*"]
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            result = resolve_channel_config("ops")
 
-    def test_workspace_overrides_defaults(self):
-        """Workspace-level fields override defaults."""
-        ws = WorkspaceConfig(
-            name="test",
-            access="read",
-            trigger="always",
-            allowed_users=["*"],
-        )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"lurker": ws}),
-        ):
-            result = resolve_channel_config("lurker")
-
-        assert result.access == "read"
-        assert result.trigger == "always"
-        assert result.allowed_users == ["*"]
-        # Unset fields inherit defaults
-        assert result.mode == "agent"
-        assert result.trust is True
-
-    def test_workspace_partial_override(self):
-        """Only set fields override — None fields inherit."""
-        ws = WorkspaceConfig(name="test", mode="chat")
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"chat-ws": ws}),
-        ):
-            result = resolve_channel_config("chat-ws")
-
-        assert result.mode == "chat"
-        assert result.access == "readwrite"  # inherited
-        assert result.trigger == "mention"  # inherited
-
-    def test_connection_security_overrides_defaults(self):
-        """Connection-level security overrides defaults."""
-        ws = WorkspaceConfig(name="test", chat="connection.slack.main.chat.general")
-        connections = ConnectionsConfig(
-            slack={
-                "main": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
-                    security=ChannelOverrideConfig(access="read", trust=False),
-                    chat={"general": ConnectionChatConfig()},
-                )
-            }
-        )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
-        ):
-            result = resolve_channel_config("ws")
-
-        assert result.access == "read"
-        assert result.trust is False
-
-    def test_chat_security_overrides_connection(self):
-        """Chat-level security overrides connection-level."""
-        ws = WorkspaceConfig(name="test", chat="connection.slack.main.chat.general")
-        connections = ConnectionsConfig(
-            slack={
-                "main": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
-                    security=ChannelOverrideConfig(access="read"),
-                    chat={
-                        "general": ConnectionChatConfig(
-                            security=ChannelOverrideConfig(access="readwrite", mode="chat")
-                        )
-                    },
-                )
-            }
-        )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
-        ):
-            result = resolve_channel_config("ws")
-
-        assert result.access == "readwrite"
-        assert result.mode == "chat"
-
-    def test_chat_security_overrides_workspace(self):
-        """Chat-level security overrides win over workspace settings."""
-        ws = WorkspaceConfig(
-            name="test",
-            chat="connection.slack.main.chat.general",
-            access="write",
-        )
-        connections = ConnectionsConfig(
-            slack={
-                "main": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
-                    chat={
-                        "general": ConnectionChatConfig(
-                            security=ChannelOverrideConfig(access="read")
-                        )
-                    },
-                )
-            }
-        )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
-        ):
-            result = resolve_channel_config("ws")
-
-        # Chat security is more specific than workspace in the new cascade
-        assert result.access == "read"
-
-
-# ---------------------------------------------------------------------------
-# resolve_allowed_users — group expansion
-# ---------------------------------------------------------------------------
+        assert result.prompts == ["base", "admin"]
+        assert result.repo == ["owner/base", "owner/admin"]
+        assert result.is_admin is True
+        assert result.contains_secrets is True
 
 
 class TestResolveAllowedUsers:
     def test_wildcard_returns_none(self):
-        """'*' in allowed_users → None (everyone allowed)."""
         result = resolve_allowed_users(["*"], {}, OwnerConfig())
         assert result is None
 
     def test_wildcard_with_other_entries(self):
-        """'*' anywhere in the list → still None."""
         result = resolve_allowed_users(
             ["owner", "*", "slack:U123"],
             {},
@@ -225,7 +91,6 @@ class TestResolveAllowedUsers:
         assert result is None
 
     def test_literal_user_ids(self):
-        """Strings with ':' are literal user IDs."""
         result = resolve_allowed_users(
             ["slack:U04ABC", "whatsapp:1234@s.whatsapp.net"],
             {},
@@ -234,7 +99,6 @@ class TestResolveAllowedUsers:
         assert result == {"slack:U04ABC", "whatsapp:1234@s.whatsapp.net"}
 
     def test_owner_resolution_slack(self):
-        """'owner' resolves to slack ID when channel is slack."""
         owner = OwnerConfig(slack="U04MYID")
         result = resolve_allowed_users(
             ["owner"],
@@ -245,7 +109,6 @@ class TestResolveAllowedUsers:
         assert result == {"slack:U04MYID"}
 
     def test_owner_resolution_slack_name(self):
-        """'owner' can resolve to a human Slack name when channel is slack."""
         owner = OwnerConfig(slack="ricardo")
         result = resolve_allowed_users(
             ["owner"],
@@ -256,7 +119,6 @@ class TestResolveAllowedUsers:
         assert result == {"slack:ricardo"}
 
     def test_owner_resolution_whatsapp(self):
-        """'owner' resolves to whatsapp:owner sentinel for WhatsApp."""
         result = resolve_allowed_users(
             ["owner"],
             {},
@@ -266,7 +128,6 @@ class TestResolveAllowedUsers:
         assert result == {"whatsapp:owner"}
 
     def test_group_expansion(self):
-        """Group names expand to their members."""
         groups = {
             "engineering": ["slack:U04ALICE", "slack:U04BOB"],
         }
@@ -278,7 +139,6 @@ class TestResolveAllowedUsers:
         assert result == {"slack:U04ALICE", "slack:U04BOB"}
 
     def test_nested_group_expansion(self):
-        """Groups can reference other groups."""
         groups = {
             "engineering": ["slack:U04ALICE", "slack:U04BOB"],
             "leads": ["slack:U04CAROL"],
@@ -296,7 +156,6 @@ class TestResolveAllowedUsers:
         }
 
     def test_cycle_detection(self):
-        """Circular group references don't cause infinite recursion."""
         groups = {
             "a": ["b"],
             "b": ["a", "slack:U04X"],
@@ -305,7 +164,6 @@ class TestResolveAllowedUsers:
         assert result == {"slack:U04X"}
 
     def test_mixed_entries(self):
-        """Combination of owner, literal IDs, and group refs."""
         owner = OwnerConfig(slack="U04OWNER")
         groups = {
             "team": ["slack:U04A", "slack:U04B"],
@@ -324,7 +182,6 @@ class TestResolveAllowedUsers:
         }
 
     def test_unknown_group_ignored(self):
-        """Referencing a non-existent group is silently ignored."""
         result = resolve_allowed_users(
             ["nonexistent_group"],
             {},
@@ -333,24 +190,17 @@ class TestResolveAllowedUsers:
         assert result == set()
 
     def test_empty_list(self):
-        """Empty allowed_users → empty set (nobody allowed)."""
         result = resolve_allowed_users([], {}, OwnerConfig())
         assert result == set()
 
     def test_owner_without_config_returns_empty(self):
-        """'owner' with no config for the platform → no resolution."""
         result = resolve_allowed_users(
             ["owner"],
             {},
-            OwnerConfig(),  # no slack configured
+            OwnerConfig(),
             channel_plugin_name="slack",
         )
         assert result == set()
-
-
-# ---------------------------------------------------------------------------
-# is_user_allowed — sender matching
-# ---------------------------------------------------------------------------
 
 
 class TestIsUserAllowed:
@@ -398,7 +248,6 @@ class TestIsUserAllowed:
         )
 
     def test_pre_qualified_sender(self):
-        """Sender already contains platform prefix."""
         allowed = {"slack:U04ABC"}
         assert is_user_allowed("slack:U04ABC", None, allowed) is True
 
@@ -406,109 +255,121 @@ class TestIsUserAllowed:
         assert is_user_allowed("anyone", "slack", set()) is False
 
 
-# ---------------------------------------------------------------------------
-# Composed behavior — use cases from the design doc
-# ---------------------------------------------------------------------------
-
-
-class TestComposedBehavior:
-    """Test the use cases from the composed behavior matrix."""
-
-    def test_personal_assistant(self):
-        """1-on-1, no trigger needed."""
-        ws = WorkspaceConfig(name="test", trigger="always")
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"assistant": ws}),
-        ):
-            result = resolve_channel_config("assistant")
-
-        assert result.access == "readwrite"
-        assert result.mode == "agent"
-        assert result.trigger == "always"
-        assert result.allowed_users == ["owner"]
-
-    def test_lurk_and_summarize(self):
-        """Read-only channel."""
-        ws = WorkspaceConfig(name="test", access="read")
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"lurker": ws}),
-        ):
-            result = resolve_channel_config("lurker")
-
-        assert result.access == "read"
-
-    def test_announcement_bot(self):
-        """Write-only channel."""
-        ws = WorkspaceConfig(name="test", access="write")
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"standup": ws}),
-        ):
-            result = resolve_channel_config("standup")
-
-        assert result.access == "write"
-
-    def test_team_group_chat(self):
-        """Team chat with tools disabled."""
-        ws = WorkspaceConfig(
-            name="test",
-            mode="chat",
-            trust=False,
-            trigger="mention",
-            allowed_users=["*"],
+class TestFilterAllowedMessages:
+    def test_filters_non_admin_messages_by_connection_security(self):
+        settings = make_settings(
+            connections={
+                "synapse": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]),
+                )
+            }
         )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"team": ws}),
-        ):
-            result = resolve_channel_config("team")
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04ABC"), _message("U04OTHER")]
 
-        assert result.mode == "chat"
-        assert result.trust is False
-        assert result.trigger == "mention"
-        assert result.allowed_users == ["*"]
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
 
+        assert [msg.sender for msg in filtered] == ["U04ABC"]
 
-# ---------------------------------------------------------------------------
-# Pydantic model validation
-# ---------------------------------------------------------------------------
+    def test_admin_bypasses_connection_security(self):
+        settings = make_settings(
+            connections={
+                "synapse": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]),
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Admin",
+            folder="admin",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+            is_admin=True,
+        )
+        messages = [_message("U04ABC"), _message("U04OTHER")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert filtered == messages
+
+    def test_missing_connection_policy_allows_messages(self):
+        settings = make_settings()
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04OTHER")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert filtered == messages
+
+    def test_chat_security_overrides_connection_security(self):
+        settings = make_settings(
+            connections={
+                "synapse": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04CONNECTION"]),
+                    chat={
+                        "C123": ConnectionChatConfig(
+                            security=ChannelOverrideConfig(allowed_users=["slack:U04CHAT"])
+                        )
+                    },
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04CONNECTION"), _message("U04CHAT")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert [msg.sender for msg in filtered] == ["U04CHAT"]
 
 
 class TestChannelOverrideConfig:
     def test_all_none_is_valid(self):
-        """A completely empty override is valid (inherits everything)."""
         cfg = ChannelOverrideConfig()
-        assert cfg.access is None
-        assert cfg.mode is None
-        assert cfg.trust is None
-        assert cfg.trigger is None
         assert cfg.allowed_users is None
 
-    def test_partial_override(self):
-        cfg = ChannelOverrideConfig(access="read", trust=False)
-        assert cfg.access == "read"
-        assert cfg.trust is False
-        assert cfg.mode is None  # not set
+    def test_allowed_users_override(self):
+        cfg = ChannelOverrideConfig(allowed_users=["slack:U04ABC"])
+        assert cfg.allowed_users == ["slack:U04ABC"]
 
-    def test_invalid_access_rejected(self):
-        with pytest.raises(ValueError, match="Input should be"):
-            ChannelOverrideConfig(access="invalid")
+    def test_deleted_access_rejected(self):
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            ChannelOverrideConfig(access="read")
 
-    def test_invalid_trigger_rejected(self):
-        with pytest.raises(ValueError, match="Input should be"):
-            ChannelOverrideConfig(trigger="invalid")
-
-
-# ---------------------------------------------------------------------------
-# ConnectionsConfig.get_connection — generic lookup
-# ---------------------------------------------------------------------------
+    def test_deleted_trigger_rejected(self):
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            ChannelOverrideConfig(trigger="always")
 
 
 class TestConnectionsConfigGetConnection:
-    """Test the platform-generic connection lookup."""
-
     def test_slack_lookup(self):
         slack_bot_env = "SLACK_BOT_ENV"
         slack_app_env = "SLACK_APP_ENV"
@@ -549,22 +410,30 @@ class TestConnectionsConfigGetConnection:
         )
         assert connections.get_connection("slack", "other") is None
 
-    def test_cascade_with_whatsapp_connection(self):
-        """Connection security cascade works for WhatsApp (not just Slack)."""
-        ws = WorkspaceConfig(name="test", chat="connection.whatsapp.phone1.chat.group1")
-        connections = ConnectionsConfig(
-            whatsapp={
-                "phone1": WhatsAppConnectionConfig(
-                    security=ChannelOverrideConfig(access="read", trust=False),
-                    chat={"group1": ConnectionChatConfig()},
+    def test_connection_chat_config_accepts_security_override(self):
+        cfg = ConnectionChatConfig(security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]))
+        assert cfg.security is not None
+        assert cfg.security.allowed_users == ["slack:U04ABC"]
+
+    def test_slack_owner_alias_is_rejected(self):
+        with pytest.raises(ValueError, match="owner aliases are only supported for WhatsApp"):
+            Settings(
+                connections={
+                    "synapse": SlackConnectionConfig(
+                        bot_token_env="BOT",
+                        app_token_env="APP",
+                        security=ChannelOverrideConfig(allowed_users=["owner"]),
+                    )
+                }
+            )
+
+    def test_whatsapp_owner_alias_does_not_need_owner_config(self):
+        settings = Settings(
+            connections={
+                "phone": WhatsAppConnectionConfig(
+                    security=ChannelOverrideConfig(allowed_users=["owner"])
                 )
             }
         )
-        with patch(
-            "pynchy.config.access.get_settings",
-            return_value=_settings_with(workspaces={"ws": ws}, connections=connections),
-        ):
-            result = resolve_channel_config("ws")
 
-        assert result.access == "read"
-        assert result.trust is False
+        assert settings.connections["phone"].security.allowed_users == ["owner"]

@@ -280,11 +280,12 @@ class ContainerInput:
     session_id: str | None = None
     is_scheduled_task: bool = False
     system_notices: list[str] | None = None
-    repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
+    repo_access: str | None = None  # Primary cwd repo slug; None = no worktree
+    repo_accesses: list[str] = field(default_factory=list)  # All mounted repo slugs
     agent_core_module: str = "agent_runner.cores.openai"  # Module path for agent core
     agent_core_class: str = "OpenAIAgentCore"  # Class name for agent core
     agent_core_config: dict[str, Any] | None = None  # Core-specific settings
-    system_prompt_append: str | None = None  # Resolved directives for agent system prompt
+    system_prompt_append: str | None = None  # Resolved prompts for agent system prompt
     invocation_ts: float = 0.0  # Monotonic timestamp of container spawn (for SecurityGate keying)
     mcp_gateway_url: str | None = None  # LiteLLM MCP gateway URL (SSE transport)
     mcp_gateway_key: str | None = None  # LiteLLM virtual key for workspace's MCP team

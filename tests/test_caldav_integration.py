@@ -5,17 +5,14 @@ from __future__ import annotations
 import json
 import os
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import NullIpcDeps
 
-from pynchy.config.models import (
-    CalDAVConfig,
-    CalDAVServerConfig,
-    WorkspaceConfig,
-    WorkspaceSecurityTomlConfig,
-)
+from pynchy.config.caldav import CalDAVConfig, CalDAVServerConfig
+from pynchy.config.models import CalDAVTool
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
@@ -92,12 +89,15 @@ def _make_settings(caldav_cfg=CALDAV_CONFIG, ws_security=None):
 
     class FakeSettings:
         def __init__(self):
-            self.caldav = caldav_cfg
+            self.tools = {
+                "caldav": CalDAVTool(
+                    type="caldav",
+                    default_server=caldav_cfg.default_server,
+                    servers=caldav_cfg.servers,
+                )
+            }
             self.workspaces = {
-                "test-ws": WorkspaceConfig(
-                    name="test",
-                    security=ws_security or WorkspaceSecurityTomlConfig(),
-                ),
+                "test-ws": SimpleNamespace(security=ws_security or WorkspaceSecurity()),
             }
 
     return FakeSettings()

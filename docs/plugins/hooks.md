@@ -344,7 +344,7 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `name` | `str` | Server identifier (used as the `mcp_servers` key) |
+| `name` | `str` | Server identifier matched by MCP-backed tool names |
 | `type` | `str` | `"docker"`, `"script"`, or `"url"` (default `"script"`) |
 | `image` | `str` | Docker image name (required for `type="docker"`) |
 | `dockerfile` | `str \| None` | Relative path to a local Dockerfile — auto-built by the MCP manager |
@@ -361,8 +361,12 @@ def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
 **Instance expansion:** Users don't configure the base spec. They declare *instances* in `config.toml` that reference the plugin-provided template:
 
 ```toml
-[mcp.gdrive.anyscale]
-chrome_profile = "anyscale"
+[tools."gdrive.anyscale"]
+type = "mcp"
+
+[tools."gdrive.anyscale".mcp]
+runtime = "docker"
+volumes = ["data/chrome-profiles/anyscale:/home/chrome"]
 ```
 
 The MCP manager merges this with the plugin-provided base spec, auto-assigns ports, and mounts chrome profile directories. See [MCP Servers](../usage/mcp.md) for user-facing config details.
@@ -379,10 +383,7 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
     return {
         "folder": "code-improver",
         "config": {
-            "pynchy_repo_access": True,
-            "schedule": "0 4 * * *",
-            "prompt": "Run scheduled code improvements",
-            "context_mode": "isolated",
+            "profiles": ["code-improver"],
         },
     }
 ```
@@ -394,7 +395,7 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
 | `folder` | `str` | Workspace folder name |
 | `config` | `dict[str, Any]` | `WorkspaceConfig`-compatible fields |
 
-Agent instructions are now delivered via [directives](../usage/directives.md) rather than seeded CLAUDE.md files. The `claude_md` field is ignored.
+Agent instructions are now delivered via [prompts](../usage/prompts.md) rather than seeded CLAUDE.md files. The `claude_md` field is ignored.
 
 ## Multi-Category Plugins
 

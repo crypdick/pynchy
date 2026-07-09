@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pynchy.config.settings import Settings
 from pynchy.plugins.integrations.browser import project_root
 
 # ---------------------------------------------------------------------------
@@ -78,18 +79,19 @@ def download_dir() -> Path:
 def compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
     """Compute the union of OAuth scopes and API IDs for a chrome profile.
 
-    Checks which MCP server instances reference this profile across all
-    workspaces.  Returns (space-separated scopes, sorted API IDs).
+    Checks which resolved MCP tool names reference this profile across all
+    workspaces. Returns (space-separated scopes, sorted API IDs).
     """
     from pynchy.config import get_settings
 
+    settings = get_settings()
     scopes: set[str] = set()
     apis: set[str] = set()
 
     for svc, (svc_scopes, api_id) in SERVER_SCOPES.items():
         instance_name = f"{svc}.{profile_name}"
-        for ws in get_settings().workspaces.values():
-            if instance_name in (ws.mcp_servers or []):
+        for workspace_name in settings.workspaces:
+            if _workspace_selects_mcp_tool(settings, workspace_name, instance_name):
                 scopes.update(svc_scopes)
                 apis.add(api_id)
                 break
@@ -101,18 +103,28 @@ def compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
 
 
 def workspace_chrome_profiles(source_group: str) -> set[str]:
-    """Return the set of chrome profiles attached to a workspace's MCP servers."""
+    """Return the chrome profiles selected by a workspace's MCP tools."""
     from pynchy.config import get_settings
 
     s = get_settings()
-    ws = s.workspaces.get(source_group)
-    if not ws or not ws.mcp_servers:
+    resolved = s.resolved_workspace_config(source_group)
+    if not resolved:
         return set()
 
     profiles: set[str] = set()
-    for entry in ws.mcp_servers:
-        if "." in entry:
-            _, inst_name = entry.split(".", 1)
-            if inst_name in s.chrome_profiles:
-                profiles.add(inst_name)
+    for entry in resolved.tools:
+        tool = s.tools.get(entry)
+        if tool is None or tool.type != "mcp" or "." not in entry:
+            continue
+        _, inst_name = entry.split(".", 1)
+        if inst_name in s.chrome_profiles:
+            profiles.add(inst_name)
     return profiles
+
+
+def _workspace_selects_mcp_tool(settings: Settings, workspace_name: str, tool_name: str) -> bool:
+    resolved = settings.resolved_workspace_config(workspace_name)
+    if resolved is None or tool_name not in resolved.tools:
+        return False
+    tool = settings.tools.get(tool_name)
+    return tool is not None and tool.type == "mcp"

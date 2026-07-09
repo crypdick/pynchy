@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from pynchy.config.jobs import JobConfig
-from pynchy.config.merge import ResolvedSandboxConfig
+from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.config.settings import Settings
 from pynchy.logger import logger
 from pynchy.state import create_task, get_task_by_id, update_task
@@ -42,7 +42,7 @@ def _job_schedule(
 @dataclass(frozen=True)
 class _AgentJobContext:
     group: WorkspaceProfile
-    resolved: ResolvedSandboxConfig
+    resolved: ResolvedWorkspaceConfig
 
 
 async def _pause_disabled_job(task_id: str) -> None:
@@ -55,7 +55,7 @@ def _resolve_agent_job_context(
     job_name: str,
     job: JobConfig,
     folder_to_group: dict[str, WorkspaceProfile],
-    resolve_config: Callable[[str], ResolvedSandboxConfig | None],
+    resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
 ) -> _AgentJobContext | None:
     group = folder_to_group.get(job.workspace)
     if group is None:
@@ -83,12 +83,11 @@ async def _create_agent_job_task(
     task_id: str,
     job: JobConfig,
     group: WorkspaceProfile,
-    resolved: ResolvedSandboxConfig,
     prompt: str,
     schedule_type: Literal["cron", "once"],
     schedule_value: str,
     next_run: str | None,
-    context_mode: Literal["group", "isolated"],
+    context_mode: Literal["isolated"],
 ) -> None:
     await create_task(
         ScheduledTask(
@@ -99,7 +98,6 @@ async def _create_agent_job_task(
             schedule_type=schedule_type,
             schedule_value=schedule_value,
             context_mode=context_mode,
-            repo_access=resolved.repo_access,
             next_run=next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
@@ -111,12 +109,11 @@ def _agent_job_updates(
     *,
     existing: ScheduledTask,
     group: WorkspaceProfile,
-    resolved: ResolvedSandboxConfig,
     prompt: str,
     schedule_type: Literal["cron", "once"],
     schedule_value: str,
     next_run: str | None,
-    context_mode: Literal["group", "isolated"],
+    context_mode: Literal["isolated"],
 ) -> dict[str, Any]:
     updates: dict[str, Any] = {}
     if existing.chat_jid != group.jid:
@@ -130,8 +127,8 @@ def _agent_job_updates(
         updates["next_run"] = next_run
     if existing.context_mode != context_mode:
         updates["context_mode"] = context_mode
-    if existing.repo_access != resolved.repo_access:
-        updates["repo_access"] = resolved.repo_access
+    if existing.repo_access is not None:
+        updates["repo_access"] = None
     if existing.status != "active":
         updates["status"] = "active"
     return updates
@@ -140,7 +137,7 @@ def _agent_job_updates(
 async def reconcile_agent_jobs(
     workspaces: dict[str, WorkspaceProfile],
     settings: Settings,
-    resolve_config: Callable[[str], ResolvedSandboxConfig | None],
+    resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
 ) -> set[str]:
     """Create or update scheduled tasks declared under [jobs.*]."""
     desired_task_ids: set[str] = set()
@@ -160,10 +157,7 @@ async def reconcile_agent_jobs(
 
         schedule_type, schedule_value, next_run = _job_schedule(job_name, settings)
         prompt = _job_prompt(job_name, settings)
-        context_mode = cast(
-            'Literal["group", "isolated"]',
-            job.context_mode or context.resolved.context_mode,
-        )
+        context_mode: Literal["isolated"] = "isolated"
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)
 
@@ -172,7 +166,6 @@ async def reconcile_agent_jobs(
                 task_id=task_id,
                 job=job,
                 group=context.group,
-                resolved=context.resolved,
                 prompt=prompt,
                 schedule_type=schedule_type,
                 schedule_value=schedule_value,
@@ -185,7 +178,6 @@ async def reconcile_agent_jobs(
         updates = _agent_job_updates(
             existing=existing,
             group=context.group,
-            resolved=context.resolved,
             prompt=prompt,
             schedule_type=schedule_type,
             schedule_value=schedule_value,

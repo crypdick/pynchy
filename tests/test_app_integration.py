@@ -422,14 +422,13 @@ class TestProcessGroupMessages:
         assert result is True
         _assert_trace_order(_sent_texts(channel))
 
-    async def test_skips_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
-        """Messages without @pynchy trigger should be skipped for non-main groups."""
+    async def test_processes_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
+        """Workspace config no longer gates non-admin groups on mention triggers."""
         msg = _make_message(content="just a regular message without trigger")
         await store_message(msg)
 
         result = await app._process_group_messages("group@g.us")
-        assert result is True
-        # No container should have been spawned (no trigger)
+        assert result is False
 
     async def test_rolls_back_cursor_on_error(self, app: PynchyApp, tmp_path: Path):
         """On agent error (before any output), cursor should roll back for retry."""

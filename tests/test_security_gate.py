@@ -10,6 +10,7 @@ from pynchy.host.container_manager.security.gate import (
     destroy_gate,
     get_gate,
     get_gate_for_group,
+    resolve_security,
 )
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
@@ -99,6 +100,36 @@ class TestSecurityGateTaintPersistence:
         assert gate1.policy.corruption_tainted
         assert not gate2.policy.corruption_tainted
 
+    def test_admin_resolved_trust_keeps_forbidden_writes(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "admin": {
+                        "is_admin": True,
+                        "tools": ["linear"],
+                    }
+                },
+                "workspaces": {"admin": {"profiles": ["admin"]}},
+                "tools": {
+                    "linear": {
+                        "type": "linear",
+                        "public_source": False,
+                        "secret_data": False,
+                        "public_sink": False,
+                        "dangerous_writes": "forbidden",
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        gate = SecurityGate(resolve_security("admin", is_admin=True))
+
+        decision = gate.evaluate_write("linear", {})
+        assert decision.allowed is False
+
 
 class TestGetGateForGroup:
     """Tests for get_gate_for_group — lookup by group folder only."""
@@ -157,6 +188,113 @@ class TestSecurityGateEvaluate:
         gate = SecurityGate(security)
         result = gate.evaluate_read("blocked")
         assert not result.allowed
+
+
+class TestResolveSecurity:
+    def test_resolves_selected_tool_trust(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"worker": {"tools": ["safe-tool"]}},
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {
+                    "safe-tool": {
+                        "type": "builtin",
+                        "name": "safe-tool",
+                        "public_source": False,
+                        "secret_data": False,
+                        "public_sink": False,
+                        "dangerous_writes": False,
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security("research")
+
+        assert security.services == {
+            "safe-tool": ServiceTrustConfig(
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            )
+        }
+        assert security.capabilities == {}
+
+    def test_preserves_contains_secrets_from_resolved_profiles(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"worker": {"contains_secrets": True}},
+                "workspaces": {"research": {"profiles": ["worker"]}},
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security("research")
+
+        assert security.contains_secrets is True
+        assert security.services == {}
+
+    def test_dynamic_thread_uses_parent_workspace_security(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+        from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "worker": {
+                        "contains_secrets": True,
+                        "tools": ["linear"],
+                    }
+                },
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {
+                    "linear": {
+                        "type": "linear",
+                        "public_source": False,
+                        "secret_data": False,
+                        "public_sink": False,
+                        "dangerous_writes": False,
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security(dynamic_thread_folder("research", "thread:123"))
+
+        assert security.contains_secrets is True
+        assert security.services == {
+            "linear": ServiceTrustConfig(
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            )
+        }
+
+    def test_admin_resolution_preserves_contains_secrets(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "admin": {"is_admin": True, "contains_secrets": True},
+                },
+                "workspaces": {"admin": {"profiles": ["admin"]}},
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security("admin", is_admin=True)
+
+        assert security.contains_secrets is True
+        assert security.services == {}
 
 
 # ---------------------------------------------------------------------------

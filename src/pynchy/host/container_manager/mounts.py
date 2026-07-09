@@ -14,7 +14,7 @@ from pynchy.host.container_manager.credentials import _write_env_file
 from pynchy.host.container_manager.onecli import prepare_onecli_material
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.container_manager.session_prep import _sync_skills, _write_settings_json
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.paths import LearningConfigError, resolve_learning_paths
 from pynchy.host.learning.skills import iter_learned_skill_dirs
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
@@ -46,6 +46,7 @@ def build_volume_mounts(
     plugin_manager: pluggy.PluginManager | None = None,
     repo_ctx: RepoContext | None = None,
     worktree_path: Path | None = None,
+    repo_mounts: list[tuple[RepoContext, Path]] | None = None,
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
 
@@ -53,8 +54,9 @@ def build_volume_mounts(
         group: The registered group configuration
         is_admin: Whether this is the admin group
         plugin_manager: Optional pluggy.PluginManager for plugin MCP mounts
-        repo_ctx: Resolved repo context when group has repo_access; None otherwise
-        worktree_path: Pre-resolved worktree path for repo_access groups
+        repo_ctx: Single resolved repo, paired with ``worktree_path`` when provided
+        worktree_path: Single worktree path, paired with ``repo_ctx`` when provided
+        repo_mounts: Resolved repo/worktree pairs for every configured repo
 
     Returns:
         List of volume mounts for the container
@@ -64,9 +66,10 @@ def build_volume_mounts(
 
     group_dir = s.groups_dir / group.folder
     group_dir.mkdir(parents=True, exist_ok=True)
+    effective_repo_mounts = _effective_repo_mounts(repo_ctx, worktree_path, repo_mounts)
 
     learning = _add_learning_mounts(mounts, group.folder)
-    _add_workspace_mounts(mounts, group_dir, repo_ctx, worktree_path)
+    _add_workspace_mounts(mounts, group_dir, effective_repo_mounts)
     _add_claude_session_mount(
         mounts,
         data_dir=s.data_dir,
@@ -111,11 +114,23 @@ def build_volume_mounts(
     agent_runner_src = s.project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
-    _add_raw_repo_mount(mounts, is_admin, repo_ctx)
+    _add_raw_repo_mount(mounts, is_admin, [repo_ctx for repo_ctx, _ in effective_repo_mounts])
 
     _add_validated_additional_mounts(mounts, group, is_admin)
 
     return mounts
+
+
+def _effective_repo_mounts(
+    repo_ctx: RepoContext | None,
+    worktree_path: Path | None,
+    repo_mounts: list[tuple[RepoContext, Path]] | None,
+) -> list[tuple[RepoContext, Path]]:
+    if repo_mounts is not None:
+        return repo_mounts
+    if repo_ctx is not None and worktree_path is not None:
+        return [(repo_ctx, worktree_path)]
+    return []
 
 
 def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _LearningMountContext:
@@ -162,11 +177,12 @@ def _should_scan_learned_skills(workspace_skills: list[str] | None) -> bool:
 def _add_workspace_mounts(
     mounts: list[VolumeMount],
     group_dir: Path,
-    repo_ctx: RepoContext | None,
-    worktree_path: Path | None,
+    repo_mounts: list[tuple[RepoContext, Path]],
 ) -> None:
-    if worktree_path is not None and repo_ctx is not None:
-        mounts.append(VolumeMount(str(worktree_path), "/workspace/project", readonly=False))
+    for repo_ctx, worktree_path in repo_mounts:
+        mounts.append(
+            VolumeMount(str(worktree_path), repo_container_path(repo_ctx.slug), readonly=False)
+        )
         # Worktree .git file references the main repo's .git dir via absolute path.
         # Mount it at the same host path so git resolves the reference inside the container.
         git_dir = repo_ctx.root / ".git"
@@ -204,20 +220,23 @@ def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str)
 def _add_raw_repo_mount(
     mounts: list[VolumeMount],
     is_admin: bool,
-    repo_ctx: RepoContext | None,
+    repo_contexts: list[RepoContext],
 ) -> None:
     # Admin groups get a read-write mount of the actual host repo root.
     # This gives them direct access to config.toml, data/, other worktrees, etc.
     # without going through the git sync workflow.  The path is intentionally
     # alarming so agents default to their worktree for normal work.
-    if not is_admin or repo_ctx is None:
+    if not is_admin:
         return
-    mounts.append(
-        VolumeMount(
-            str(repo_ctx.root),
-            "/danger/raw-host-repo-mount-prefer-your-worktree",
-            readonly=False,
-        )
+    mounts.extend(
+        [
+            VolumeMount(
+                str(repo_ctx.root),
+                f"/danger/raw-host-repos/{repo_ctx.slug}",
+                readonly=False,
+            )
+            for repo_ctx in repo_contexts
+        ]
     )
 
 

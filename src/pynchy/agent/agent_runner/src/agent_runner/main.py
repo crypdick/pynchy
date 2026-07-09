@@ -124,12 +124,12 @@ def _build_mcp_servers(container_input: ContainerInput) -> dict[str, dict[str, A
 
 
 def _agent_cwd(container_input: ContainerInput) -> str:
-    """Pick the container cwd based on project-repo availability."""
-    # Default cwd to the mounted project repo when available, so agents start
-    # in the codebase they're working on rather than the group metadata dir.
-    # Admin always has /workspace/project; non-admin gets it via repo_access.
-    has_repo_mount = container_input.is_admin or bool(container_input.repo_access)
-    return "/workspace/project" if has_repo_mount else "/workspace/group"
+    """Pick the container cwd based on mounted repo availability."""
+    primary_repo = (container_input.repo_accesses or [container_input.repo_access or ""])[0]
+    if primary_repo:
+        owner, repo_name = primary_repo.split("/", 1)
+        return f"/workspace/repos/{owner}/{repo_name}"
+    return "/workspace/group"
 
 
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:

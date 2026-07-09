@@ -180,7 +180,7 @@ class ClaudeCLIAgentCore:
         >>> INJECTION SEAM (input) <<<
         Rewrite or wrap ``prompt`` here before it reaches the model -- the
         turn-by-turn input control the Agent SDK does not expose. You can inject
-        context, prepend directives, or attach content blocks.
+        context, prepend prompts, or attach content blocks.
         """
         payload = {
             "type": "user",

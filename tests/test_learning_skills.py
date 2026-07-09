@@ -29,7 +29,6 @@ def _settings(*, tmp_path: Path, learning: LearningConfig, workspaces: dict | No
     return make_settings(
         learning=learning,
         workspaces=workspaces or {},
-        sandbox_profiles={},
         project_root=tmp_path,
         data_dir=tmp_path / "data",
     )
@@ -65,7 +64,7 @@ def test_iter_returns_empty_when_skills_root_is_missing(tmp_path: Path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
-        workspaces={"shopping": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with _patch_learning_settings(settings):
@@ -110,7 +109,7 @@ def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
-        workspaces={"shopping": WorkspaceConfig(profile="shopping")},
+        workspaces={"shopping": WorkspaceConfig(profiles=["shopping"])},
     )
 
     with _patch_learning_settings(settings):

@@ -12,7 +12,8 @@ from uuid import uuid4
 import pytest
 from conftest import make_settings
 
-from pynchy.config import CronJobConfig, RepoConfig, SchedulerConfig, WorkspaceConfig
+from pynchy.config import CronJobConfig, ProfileConfig, RepoConfig, SchedulerConfig, WorkspaceConfig
+from pynchy.config.models import ReposConfig
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
@@ -603,8 +604,9 @@ class TestTemporalSchedulerRuntime:
             timezone="UTC",
             scheduler=SchedulerConfig(),
             cron_jobs={},
-            repos={"owner/project": RepoConfig(path=str(repo_root))},
-            workspaces={"worker": WorkspaceConfig(repo_access="owner/project")},
+            repos=ReposConfig(overrides={"owner/project": RepoConfig(path=str(repo_root))}),
+            profiles={"worker": ProfileConfig(repo="owner/project")},
+            workspaces={"worker": WorkspaceConfig(profiles=["worker"])},
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))

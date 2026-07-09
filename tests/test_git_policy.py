@@ -1,9 +1,8 @@
-"""Tests for workspace git policy: merge-to-main vs pull-request.
+"""Tests for worktree merge and direct PR creation helpers.
 
 Covers:
-- resolve_git_policy() resolution logic
 - host_create_pr_from_worktree() behavior
-- IPC handler routing based on policy
+- IPC sync handler routing
 - merge_worktree_with_policy() and background_merge_worktree() dispatch
 """
 
@@ -18,12 +17,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
-from pynchy.config import WorkspaceConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import (
     GIT_POLICY_MERGE,
-    GIT_POLICY_PR,
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
@@ -82,7 +79,6 @@ def git_env(tmp_path: Path):
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.host.git_ops.sync.get_settings", return_value=s))
         yield {
             "origin": origin,
             "project": project,
@@ -99,52 +95,8 @@ def git_env(tmp_path: Path):
 
 class TestResolveGitPolicy:
     def test_default_is_merge_to_main(self):
-        """No git_policy configured → merge-to-main."""
-        s = make_settings(workspaces={})
-        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
-            assert resolve_git_policy("nonexistent") == GIT_POLICY_MERGE
-
-    def test_none_resolves_to_merge(self):
-        """git_policy=None → merge-to-main."""
-        s = make_settings(
-            workspaces={
-                "agent-1": WorkspaceConfig(
-                    name="Agent 1",
-                    is_admin=False,
-                    git_policy=None,
-                ),
-            }
-        )
-        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
-            assert resolve_git_policy("agent-1") == GIT_POLICY_MERGE
-
-    def test_merge_to_main_explicit(self):
-        """git_policy="merge-to-main" → merge-to-main."""
-        s = make_settings(
-            workspaces={
-                "agent-1": WorkspaceConfig(
-                    name="Agent 1",
-                    is_admin=False,
-                    git_policy="merge-to-main",
-                ),
-            }
-        )
-        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
-            assert resolve_git_policy("agent-1") == GIT_POLICY_MERGE
-
-    def test_pull_request_policy(self):
-        """git_policy="pull-request" → pull-request."""
-        s = make_settings(
-            workspaces={
-                "experimental": WorkspaceConfig(
-                    name="Experimental",
-                    is_admin=False,
-                    git_policy="pull-request",
-                ),
-            }
-        )
-        with patch("pynchy.host.git_ops.sync.get_settings", return_value=s):
-            assert resolve_git_policy("experimental") == GIT_POLICY_PR
+        """Worktree sync has one config-driven policy: merge-to-main."""
+        assert resolve_git_policy("nonexistent") == GIT_POLICY_MERGE
 
 
 # ---------------------------------------------------------------------------
@@ -376,10 +328,10 @@ async def deps():
 
 
 class TestIpcPolicyRouting:
-    """Tests that the IPC handler routes to the correct function based on policy."""
+    """Tests that the IPC handler syncs worktrees into main."""
 
     async def test_merge_policy_calls_host_sync(self, deps: MockDeps, tmp_path: Path):
-        """merge-to-main policy calls host_sync_worktree."""
+        """sync_worktree_to_main calls host_sync_worktree."""
         merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
         merge_results_dir.mkdir(parents=True)
         fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
@@ -390,20 +342,13 @@ class TestIpcPolicyRouting:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
-                return_value=GIT_POLICY_MERGE,
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
                 return_value={"success": True, "message": "Merged 1 commit(s)"},
             ) as mock_sync,
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
-            ) as mock_pr,
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
                 new_callable=AsyncMock,
@@ -417,15 +362,14 @@ class TestIpcPolicyRouting:
             )
 
         mock_sync.assert_called_once()
-        mock_pr.assert_not_called()
 
         result_file = merge_results_dir / "req-1.json"
         assert result_file.exists()
         data = json.loads(result_file.read_text())
         assert data["success"] is True
 
-    async def test_pr_policy_calls_host_create_pr(self, deps: MockDeps, tmp_path: Path):
-        """pull-request policy calls host_create_pr_from_worktree."""
+    async def test_successful_sync_notifies_worktrees(self, deps: MockDeps, tmp_path: Path):
+        """Successful sync notifies sibling worktrees."""
         merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
         merge_results_dir.mkdir(parents=True)
         fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
@@ -436,58 +380,12 @@ class TestIpcPolicyRouting:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
-                return_value=GIT_POLICY_PR,
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-            ) as mock_sync,
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
-                return_value={"success": True, "message": "Pushed 1 commit(s) and opened PR"},
-            ) as mock_pr,
-        ):
-            await dispatch(
-                {"type": "sync_worktree_to_main", "request_id": "req-2"},
-                "agent-1",
-                False,
-                deps,
-            )
-
-        mock_pr.assert_called_once()
-        mock_sync.assert_not_called()
-
-        result_file = merge_results_dir / "req-2.json"
-        assert result_file.exists()
-        data = json.loads(result_file.read_text())
-        assert data["success"] is True
-
-    async def test_pr_policy_skips_worktree_notifications(self, deps: MockDeps, tmp_path: Path):
-        """PR policy doesn't notify other worktrees (main didn't change)."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=make_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
-                return_value=GIT_POLICY_PR,
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
-                return_value={"success": True, "message": "Pushed"},
+                return_value={"success": True, "message": "Merged"},
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
@@ -501,10 +399,10 @@ class TestIpcPolicyRouting:
                 deps,
             )
 
-        mock_notify.assert_not_called()
+        mock_notify.assert_awaited_once()
 
-    async def test_pr_policy_skips_deploy_check(self, deps: MockDeps, tmp_path: Path):
-        """PR policy doesn't trigger deploy (main didn't change)."""
+    async def test_failed_sync_does_not_trigger_deploy(self, deps: MockDeps, tmp_path: Path):
+        """Failed sync writes the result and does not trigger deploy."""
         merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
         merge_results_dir.mkdir(parents=True)
         fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
@@ -515,16 +413,12 @@ class TestIpcPolicyRouting:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.resolve_git_policy",
-                return_value=GIT_POLICY_PR,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
-                return_value={"success": True, "message": "Pushed"},
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
+                return_value={"success": False, "message": "conflict"},
             ),
         ):
             await dispatch(
@@ -546,16 +440,12 @@ class TestMergeWorktreeWithPolicy:
     """Tests for the awaitable merge_worktree_with_policy()."""
 
     async def test_merge_policy_calls_merge_and_push(self):
-        """merge-to-main policy dispatches to merge_and_push_worktree."""
+        """merge_worktree_with_policy dispatches to merge_and_push_worktree."""
         mock_repo = MagicMock()
         with (
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=mock_repo,
-            ),
-            patch(
-                "pynchy.host.git_ops.sync.resolve_git_policy",
-                return_value=GIT_POLICY_MERGE,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[mock_repo],
             ),
             patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
         ):
@@ -565,40 +455,15 @@ class TestMergeWorktreeWithPolicy:
 
         mock_merge.assert_called_once_with("agent-1", mock_repo)
 
-    async def test_pr_policy_calls_pr_workflow(self):
-        """pull-request policy dispatches to host_create_pr_from_worktree."""
-        mock_repo = MagicMock()
-        with (
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=mock_repo,
-            ),
-            patch(
-                "pynchy.host.git_ops.sync.resolve_git_policy",
-                return_value=GIT_POLICY_PR,
-            ),
-            patch("pynchy.host.git_ops.sync.host_create_pr_from_worktree") as mock_pr,
-        ):
-            from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
-
-            await merge_worktree_with_policy("agent-1")
-
-        mock_pr.assert_called_once_with("agent-1", mock_repo)
-
     async def test_no_repo_access_does_nothing(self):
         """Groups without repo_access skip entirely."""
-        with (
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=None,
-            ),
-            patch("pynchy.host.git_ops.sync.resolve_git_policy") as mock_policy,
+        with patch(
+            "pynchy.host.git_ops.repo.resolve_repos_for_group",
+            return_value=[],
         ):
             from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 
             await merge_worktree_with_policy("no-repo")
-
-        mock_policy.assert_not_called()
 
 
 class TestBackgroundMergePolicy:

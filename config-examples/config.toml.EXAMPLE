@@ -6,7 +6,7 @@
 #
 # Most settings have sensible defaults and can be omitted.
 # Environment variables override TOML values using __ as the nested delimiter:
-#   AGENT__NAME=mybot  →  [agent] name = "mybot"
+#   AGENT__DEFAULT_CORE=codex  →  [agent] default_core = "codex"
 # ============================================================================
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -14,22 +14,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 [agent]
-# Name of the assistant (used in trigger detection and message attribution)
-# name = "pynchy"
-
-# Trigger aliases (used in addition to agent name for @mentions)
-# trigger_aliases = ["ghost"]
-
 # Agent core: "openai" (default), "claude", "claude-cli", or "codex"
-# core = "openai"
-
-# Model name passed to the selected core. Default: "gpt-5.5".
-# Use a model_name from litellm_config.yaml; the default expects a
-# "gpt-5.5" alias there.
-# model = "gpt-5.5"
-
-# Optional fallback model for cores that support fallback retries.
-# fallback_model = "gpt-5.5-mini"
+# default_core = "openai"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials
@@ -182,27 +168,17 @@
 # auto-creating chats (when needed). Set to "tui" for local-only mode.
 
 [command_center]
-# connection = "connection.slack.synapse"
+# connection = "synapse"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Connections
 # ─────────────────────────────────────────────────────────────────────────────
 # Define which external connections pynchy is allowed to use.
 
-# [connection.slack.synapse]
-# bot_token_env = "SLACK__BOT_TOKEN"
-# app_token_env = "SLACK__APP_TOKEN"
-#
-# # Connection-level security — applies to all workspaces on this connection
-# # unless overridden at the chat or workspace level.
-# [connection.slack.synapse.security]
-# allowed_users = ["*"]
-#
-# [connection.slack.synapse.chat.admin-1]
-# # Optional per-chat security overrides:
-# # [connection.slack.synapse.chat.admin-1.security]
-# # access = "readwrite"
-# # trigger = "mention"
+# [connections.synapse]
+# type = "discord"
+# bot_token_env = "DISCORD_BOT_TOKEN"
+# application_id = "123456789012345678"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Plugin Overrides
@@ -216,71 +192,64 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles, Workspaces, and Jobs
 # ─────────────────────────────────────────────────────────────────────────────
-# These values apply to every workspace. Workspace and profile values override.
-# List fields (tags, directives, skills, mcp_servers) are unioned across tiers.
-# Scalar fields use most-specific-wins semantics. Capability maps merge by
-# capability ID, with more-specific tiers replacing less-specific entries.
-#
-# [universal]
-# tags = ["base"]
-# directives = ["base", "idle-escape"]
-# context_mode = "group"
-# access = "readwrite"   # "read", "write", "readwrite"
-# mode = "agent"         # "agent" or "chat"
-# trust = true
-# trigger = "mention"    # "mention" or "always"
-# allowed_users = ["owner"]  # owner, user names/IDs, group refs, or "*"
+# Profiles compose with `includes = [...]`; workspaces select profiles by name.
+# List fields (prompts, skills, tools, repo) are unioned in composition order.
+# Scalar fields such as model use later-profile-wins semantics.
 
 # [profiles.pynchy-admin]
-# tags = ["pynchy", "pynchy-admin", "browser"]
+# prompts = ["pynchy-admin-ops"]
+# skills = ["core", "ops"]
+# tools = ["browser"]
+# repo = ["crypdick/pynchy"]
 # is_admin = true
 # contains_secrets = true
-# idle_terminate = false
-# repo_access = "crypdick/pynchy"
 # model = "chatgpt/gpt-5.3-codex"
 
 # [profiles.pynchy-worker]
-# tags = ["pynchy"]
+# prompts = ["pynchy-code-improver"]
+# skills = ["core"]
+# tools = []
+# repo = ["crypdick/pynchy"]
 # is_admin = false
 # contains_secrets = false
-# idle_terminate = true
-# repo_access = "crypdick/pynchy"
 
-# Each [workspaces.<name>] binds a configured Discord/Slack channel to a profile.
-# Discord threads under that channel become dynamic isolated contexts that
-# inherit the workspace profile.
+# Each [workspaces.<name>] selects one or more composable profiles.
 
 # [workspaces.admin]
-# profile = "pynchy-admin"
-# chat = "connection.slack.synapse.chat.admin-1"
+# profiles = ["pynchy-admin"]
 
 # [workspaces.code-improver]
-# profile = "pynchy-worker"
-# chat = "connection.slack.synapse.chat.pynchy-core-code-improver"
+# profiles = ["pynchy-worker"]
 
-# CLEAN ROOM POLICY: Admin workspaces cannot have MCP servers with public_source = true.
-# Any MCP not declared in [services] defaults to public_source = true.
+# CLEAN ROOM POLICY: Admin workspaces cannot select tools with public_source = true.
+# Tools default to public_source = true unless configured otherwise.
 # Pynchy refuses to start if this constraint is violated.
 # See: https://pynchy.ricardodecal.com/usage/security/#admin-clean-room
 
-# Example profile with Google MCP (dot-syntax instance names):
+# Example profile with Google MCP tool names:
 # [profiles.mycompany-worker]
-# tags = ["mycompany", "gdrive"]
-# mcp_servers = ["gdrive.mycompany", "gcal.mycompany"]
+# tools = ["gdrive.mycompany", "gcal.mycompany"]
 # contains_secrets = true
 
-# Example workspace with MCP access and per-MCP kwargs:
+# [tools."gdrive.mycompany"]
+# type = "mcp"
+# public_source = false
+# [tools."gdrive.mycompany".mcp]
+# runtime = "docker"
+# image = "pynchy-mcp-gdrive:latest"
+# port = 3000
+#
+# [tools."gcal.mycompany"]
+# type = "mcp"
+# public_source = false
+# [tools."gcal.mycompany".mcp]
+# runtime = "docker"
+# image = "pynchy-mcp-gcal:latest"
+# port = 3000
+
+# Example workspace selecting the profile:
 # [workspaces.research]
-# profile = "mycompany-worker"
-# chat = "connection.slack.synapse.chat.research"
-#
-# [workspaces.research.mcp.playwright]
-# presets = ["dev-research"]                   # expands + merges with explicit values
-# allowed-origins = "internal.example.com"     # merged with preset domains
-#
-# Per-workspace capability exception:
-# [workspaces.research.capabilities."mcp.email.send"]
-# decision = "deny"                            # "allow", "deny", or "needs_human"
+# profiles = ["mycompany-worker"]
 
 # Daily Pynchy operations triage. Replace the chat ref with the explicit
 # Pynchy channel/topic that should receive the memo.
@@ -351,10 +320,15 @@
 # Agents reference calendars as "server/calendar_name" or just "calendar_name"
 # (resolved against the default server). "primary" maps to default_calendar.
 
-# [caldav]
+# [tools.caldav]
+# type = "caldav"
 # default_server = "work"  # which server when no prefix given
+# public_source = false
+# secret_data = false
+# public_sink = false
+# dangerous_writes = false
 
-# [caldav.servers.work]
+# [tools.caldav.servers.work]
 # url = "https://work.nextcloud.com/remote.php/dav/"
 # username = "user@work.com"
 # password_env = "CALDAV_WORK_PASSWORD"  # env var in .env; see config-examples/.env.EXAMPLE  # pragma: allowlist secret
@@ -362,7 +336,7 @@
 # allow = ["meetings", "standup"]  # optional: only expose these calendars
 # ignore = ["trash"]               # optional: hide these (ignored if allow is set)
 
-# [caldav.servers.personal]
+# [tools.caldav.servers.personal]
 # url = "https://personal.nextcloud.com/remote.php/dav/"
 # username = "me@example.com"
 # password_env = "CALDAV_PERSONAL_PASSWORD"  # pragma: allowlist secret
@@ -371,7 +345,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Chrome Profiles
 # ─────────────────────────────────────────────────────────────────────────────
-# Generic list of profile names. Any MCP server can attach to a chrome profile.
+# Generic list of profile names. MCP-backed Google tools can attach to a chrome profile.
 # Each profile maps to a host directory at data/chrome-profiles/{name}/.
 # Auth artifacts (OAuth keys, tokens) are stored there and auto-mounted into
 # containers that reference the profile.
@@ -379,96 +353,10 @@
 # chrome_profiles = ["mycompany", "work"]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MCP Server Definitions
+# Tool Definitions
 # ─────────────────────────────────────────────────────────────────────────────
-# Define MCP servers that agents can access. Docker-based MCPs start on-demand
-# and stop after idle_timeout. URL MCPs are always available.
-# Requires LiteLLM gateway mode (see [gateway] above).
-#
-# Google services (gdrive, gcal) — base specs are provided by the built-in
-# GoogleMcpPlugin. Declare instances with chrome_profile attachment:
-#
-# [mcp.gdrive.mycompany]
-# chrome_profile = "mycompany"
-#
-# [mcp.gdrive.work]
-# chrome_profile = "work"
-#
-# [mcp.gcal.mycompany]
-# chrome_profile = "mycompany"
-#
-# Each instance is 2 lines. The plugin provides everything else (Docker image,
-# port, transport, Dockerfile). Ports auto-assign from the base. Volume
-# auto-mounts from the chrome_profile.
-#
-# The agent sees tools as mcp__gdrive_mycompany__search (dots → underscores).
-
-# Docker-based MCP (container managed by pynchy):
-# [mcp.playwright]
-# type = "docker"
-# image = "mcp/playwright:latest"
-# args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]
-# port = 8931
-# transport = "sse"
-# idle_timeout = 600          # seconds; 0 = never stop
-# env = { DISPLAY = ":99" }                            # static env vars
-# onecli = true                                        # preferred for credentials
-# onecli_agent = "workspace"                           # use workspace-scoped OneCLI agent
-# env_forward = ["MY_SECRET"]                           # native fallback for host vars
-# env_forward = { CONTAINER_VAR = "HOST_VAR" }          # native fallback mapping
-
-# Slack MCP (read-only Slack access via browser tokens):
-# One entry per Slack workspace — each gets its own container and tokens.
-# [mcp.slack_mcp_acme]
-# type = "docker"
-# image = "ghcr.io/korotovsky/slack-mcp-server:latest"
-# port = 8080
-# transport = "http"
-# env = { SLACK_MCP_HOST = "0.0.0.0", SLACK_MCP_PORT = "8080" }
-# onecli = true
-# env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME" }
-
-# Remote URL-based MCP:
-# [mcp.remote-api]
-# type = "url"
-# url = "https://api.example.com/mcp"
-# transport = "streamable_http"
-# auth_value_env = "SOME_API_KEY"    # env var name (never inline secrets)
-
-# Host script MCP (subprocess managed by pynchy):
-# [mcp.my_custom_tool]
-# type = "script"
-# command = "uv"
-# args = ["run", "scripts/my-tool.py"]
-# port = 8080
-# transport = "streamable_http"
-# idle_timeout = 600
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MCP Groups — named sets of servers for convenience
-# ─────────────────────────────────────────────────────────────────────────────
-
-# [mcp_groups]
-# dev-tools = ["playwright", "github-mcp"]
-# social = ["twitter-mcp", "linkedin-mcp"]
-# google_mycompany = ["gdrive.mycompany", "gcal.mycompany"]
-# "*" is built-in — refers to every defined mcp_server
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MCP Presets — reusable kwarg bundles (resolved at config load time)
-# ─────────────────────────────────────────────────────────────────────────────
-
-# [mcp_presets.dev-research]
-# allowed-origins = "github.com;stackoverflow.com;docs.python.org;pypi.org"
-
-# [mcp_presets.social-media]
-# allowed-origins = "twitter.com;x.com;reddit.com;linkedin.com"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Service Trust Declarations (Lethal Trifecta Defenses)
-# ─────────────────────────────────────────────────────────────────────────────
-# Each service declares four trust properties that control how the security
-# policy gates agent access. See docs/usage/security.md for details.
+# Define tools that profiles can select. The security policy reads the trust
+# fields from selected tools. See docs/usage/security.md for details.
 #
 # Properties:
 #   public_source     — Can this service deliver content from untrusted parties?
@@ -478,36 +366,53 @@
 #
 # Values: false (safe), true (risky — gated), "forbidden" (blocked entirely)
 #
-# Unknown services default to all-true (maximum gating). Declare a service
-# here to loosen its policy.
+# Tools default to all-true (maximum gating). Set fields to false only when the
+# property does not apply.
 
-# Personal calendar (fully trusted — no gating):
-# [services.caldav]
-# public_source = false
-# secret_data = false
-# public_sink = false
-# dangerous_writes = false
-
-# Web browser (untrusted source and sink — full gating):
-# [services.playwright]
+# Built-in browser-like tool:
+# [tools.playwright]
+# type = "mcp"
 # public_source = true
 # secret_data = false
 # public_sink = true
 # dangerous_writes = true
+# [tools.playwright.mcp]
+# runtime = "docker"
+# image = "mcr.microsoft.com/playwright/mcp:latest"
+# port = 8931
+
+# Personal calendar (fully trusted, no gating):
+# [tools.caldav]
+# type = "builtin"
+# name = "caldav"
+# public_source = false
+# secret_data = false
+# public_sink = false
+# dangerous_writes = false
 
 # Corporate Slack (untrusted input, sensitive data, can send messages):
-# [services.slack_mcp_acme]
+# [tools.slack_mcp_acme]
+# type = "mcp"
 # public_source = true
 # secret_data = true
 # public_sink = true
 # dangerous_writes = true
+# [tools.slack_mcp_acme.mcp]
+# runtime = "docker"
+# image = "ghcr.io/korotovsky/slack-mcp-server:latest"
+# port = 8080
 
-# Google Drive (sensitive corporate data, but you control what's in it):
-# [services.gdrive]
+# Google Drive (sensitive corporate data, controlled source):
+# [tools."gdrive.mycompany"]
+# type = "mcp"
 # public_source = false
 # secret_data = true
 # public_sink = false
 # dangerous_writes = false
+# [tools."gdrive.mycompany".mcp]
+# runtime = "docker"
+# image = "pynchy-mcp-gdrive:latest"
+# port = 3000
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mount Security
@@ -521,31 +426,23 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles (reusable workspace config bundles)
 # ─────────────────────────────────────────────────────────────────────────────
-# Profiles bundle directives, skills, MCP servers, and other config.
-# Workspaces reference a profile via `profile = "<name>"`.
-# Effective config = universal ∪ profile ∪ workspace.
+# Profiles bundle prompts, skills, tools, repos, and model choices.
+# Workspaces select profiles with `profiles = ["<name>"]`.
+# Effective config follows profile composition order.
 #
-# List fields (directives, skills, mcp_servers) are unioned across tiers.
-# Scalar fields use most-specific-wins semantics.
-# Capability maps merge by capability ID. MCP tool capability IDs use:
-# mcp.<server-or-instance>.<tool-name>, with trailing wildcards supported.
+# List fields (prompts, skills, tools, repo) are unioned across profiles.
+# Scalar fields such as model use later-profile-wins semantics.
 #
-# Directives use convention-based resolution: name "base" → directives/base.md.
+# Prompts use convention-based resolution: name "base" -> prompts/base.md.
 
 # [profiles.pynchy-dev]
-# directives = ["pynchy-admin-ops", "pynchy-code-improver"]
+# prompts = ["pynchy-admin-ops", "pynchy-code-improver"]
 # skills = ["core", "ops"]
-# repo_access = "owner/repo"
-# idle_terminate = false
-# trigger = "always"
-#
-# [profiles.pynchy-dev.capabilities."mcp.email.*"]
-# decision = "needs_human"
-#
-# [profiles.pynchy-dev.capabilities."mcp.email.preview"]
-# decision = "allow"      # exact match overrides the wildcard above
+# tools = ["playwright"]
+# repo = ["owner/repo"]
+# model = "chatgpt/gpt-5.3-codex"
 
 # [profiles.ray-bench]
-# directives = ["ray-bench"]
-# repo_access = "owner/ray-bench"
-# mcp_servers = ["notebook"]
+# prompts = ["ray-bench"]
+# repo = ["owner/ray-bench"]
+# tools = ["notebook"]

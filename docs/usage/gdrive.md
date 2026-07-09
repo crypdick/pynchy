@@ -20,24 +20,38 @@ Add `CHROME_PATH` to `.env`:
 CHROME_PATH=/usr/bin/google-chrome-stable
 ```
 
-## 1. Define chrome profile and instance
+## 1. Define chrome profile and tool
 
-Add a chrome profile and gdrive instance to `config.toml`:
+Add a chrome profile and Google Drive tool to `config.toml`:
 
 ```toml
 chrome_profiles = ["mycompany"]
 
-[mcp.gdrive.mycompany]
-chrome_profile = "mycompany"
-```
+[tools."gdrive.mycompany"]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = false
 
-The plugin provides the base spec (Docker image, port, transport, Dockerfile). You only declare the instance with its chrome profile attachment.
+[tools."gdrive.mycompany".mcp]
+runtime = "docker"
+image = "pynchy-mcp-gdrive:latest"
+dockerfile = "src/pynchy/agent/mcp/gdrive.Dockerfile"
+port = 3100
+transport = "streamable_http"
+env = { GDRIVE_OAUTH_PATH = "/home/chrome/gcp-oauth.keys.json" }
+volumes = ["data/chrome-profiles/mycompany:/home/chrome"]
+```
 
 ## 2. Grant workspace access
 
 ```toml
+[profiles.mycompany-google]
+tools = ["gdrive.mycompany"]
+
 [workspaces.mycompany-1]
-mcp_servers = ["gdrive.mycompany"]
+profiles = ["mycompany-google"]
 ```
 
 ## 3. First-time setup
@@ -67,14 +81,43 @@ Each chrome profile maps to one Google account. To access Drive from multiple ac
 ```toml
 chrome_profiles = ["mycompany", "work"]
 
-[mcp.gdrive.mycompany]
-chrome_profile = "mycompany"
+[tools."gdrive.mycompany"]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = false
 
-[mcp.gdrive.work]
-chrome_profile = "work"
+[tools."gdrive.mycompany".mcp]
+runtime = "docker"
+image = "pynchy-mcp-gdrive:latest"
+dockerfile = "src/pynchy/agent/mcp/gdrive.Dockerfile"
+port = 3100
+transport = "streamable_http"
+env = { GDRIVE_OAUTH_PATH = "/home/chrome/gcp-oauth.keys.json" }
+volumes = ["data/chrome-profiles/mycompany:/home/chrome"]
+
+[tools."gdrive.work"]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = false
+
+[tools."gdrive.work".mcp]
+runtime = "docker"
+image = "pynchy-mcp-gdrive:latest"
+dockerfile = "src/pynchy/agent/mcp/gdrive.Dockerfile"
+port = 3101
+transport = "streamable_http"
+env = { GDRIVE_OAUTH_PATH = "/home/chrome/gcp-oauth.keys.json" }
+volumes = ["data/chrome-profiles/work:/home/chrome"]
+
+[profiles.google]
+tools = ["gdrive.mycompany", "gdrive.work"]
 
 [workspaces.mycompany-1]
-mcp_servers = ["gdrive.mycompany", "gdrive.work"]
+profiles = ["google"]
 ```
 
 The agent sees separate tool namespaces: `mcp__gdrive_mycompany__search` and `mcp__gdrive_work__search`.
@@ -101,9 +144,9 @@ rm -f data/playwright-profiles/google/SingletonSocket
 rm -f data/playwright-profiles/google/SingletonCookie
 ```
 
-## Migration from old gdrive setup
+## Migration from earlier gdrive setup
 
-If you previously used the old `[mcp.gdrive]` config with Docker named volumes:
+If you previously used a Docker named volume for Google Drive credentials:
 
 1. Create the chrome profile directory and move credentials:
    ```bash
@@ -113,9 +156,9 @@ If you previously used the old `[mcp.gdrive]` config with Docker named volumes:
 
 2. Update `config.toml`:
    - Add `chrome_profiles = ["mycompany"]`
-   - Remove the old `[mcp.gdrive]` section (plugin provides it now)
-   - Add instance: `[mcp.gdrive.mycompany]` with `chrome_profile = "mycompany"`
-   - Update workspace: `mcp_servers = ["gdrive.mycompany"]`
+   - Add `[tools."gdrive.mycompany"]` and `[tools."gdrive.mycompany".mcp]`
+   - Mount `data/chrome-profiles/mycompany:/home/chrome`
+   - Select the tool through a profile: `tools = ["gdrive.mycompany"]`
 
 3. Re-authorize (tokens in the old Docker volume won't carry over):
    ```

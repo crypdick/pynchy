@@ -34,6 +34,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
+from pynchy.config.models import McpTool
 
 if TYPE_CHECKING:
     import pluggy
@@ -113,13 +114,10 @@ def _required_litellm_models(
     *,
     agent_core: str,
     model: str | None,
-    fallback_model: str | None,
 ) -> tuple[str, ...]:
     """Return LiteLLM model aliases that the active core can request directly."""
-    if agent_core == "codex":
+    if agent_core in {"codex", "openai"}:
         return (model,) if model else ()
-    if agent_core == "openai":
-        return tuple(m for m in (model, fallback_model) if m)
     return ()
 
 
@@ -204,9 +202,8 @@ async def start_gateway(
             data_dir=s.data_dir,
             master_key=s.gateway.master_key.get_secret_value(),
             required_models=_required_litellm_models(
-                agent_core=s.agent.core,
+                agent_core=s.agent.default_core,
                 model=s.agent.model,
-                fallback_model=s.agent.fallback_model,
             ),
         )
     else:
@@ -222,7 +219,11 @@ async def start_gateway(
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
     # Collect plugin-provided MCP server specs and merge with config.toml.
     plugin_mcp_servers, plugin_trust_defaults = collect_plugin_mcp_servers(plugin_manager)
-    has_servers = s.mcp_servers or s.mcp_server_instances or plugin_mcp_servers
+    has_servers = (
+        any(isinstance(tool, McpTool) for tool in s.tools.values())
+        or getattr(s, "mcp_server_instances", {})
+        or plugin_mcp_servers
+    )
     if isinstance(_gateway, LiteLLMGateway) and has_servers:
         from pynchy.host.container_manager.mcp.manager import McpManager, set_mcp_manager
 

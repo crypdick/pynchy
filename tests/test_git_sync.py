@@ -76,7 +76,6 @@ def git_env(tmp_path: Path):
 
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
-        stack.enter_context(patch("pynchy.host.git_ops.sync.get_settings", return_value=s))
         stack.enter_context(patch("pynchy.host.git_ops.sync_poll.get_settings", return_value=s))
         yield {
             "origin": origin,

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.host.git_ops.repo import RepoContext
+
 from pynchy.config import get_settings
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.serialization import input_to_dict
@@ -76,7 +78,10 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
     class_name = "OpenAIAgentCore"
     if plugin_manager:
         cores = plugin_manager.hook.pynchy_agent_core_info()
-        core_info = next((c for c in cores if c["name"] == get_settings().agent.core), None)
+        core_info = next(
+            (c for c in cores if c["name"] == get_settings().agent.default_core),
+            None,
+        )
         if core_info is None and cores:
             core_info = cores[0]
         if core_info:
@@ -136,16 +141,21 @@ async def _spawn_container(
 
     # --- Resolve worktree ---
     phase_start = time.monotonic()
-    worktree_path: Path | None = None
-    repo_ctx = None
-    if input_data.repo_access:
-        from pynchy.host.git_ops.repo import resolve_repo_for_group
+    repo_mounts: list[tuple[RepoContext, Path]] = []
+    if input_data.repo_accesses:
+        from pynchy.host.git_ops.repo import get_repo_context, resolve_repos_for_group
         from pynchy.host.git_ops.worktree import ensure_worktree
 
-        repo_ctx = resolve_repo_for_group(group.folder)
-        if repo_ctx is not None:
+        repo_contexts = resolve_repos_for_group(group.folder)
+        if not repo_contexts:
+            repo_contexts = [
+                repo_ctx
+                for slug in input_data.repo_accesses
+                if (repo_ctx := get_repo_context(slug)) is not None
+            ]
+        for repo_ctx in repo_contexts:
             wt_result = ensure_worktree(group.folder, repo_ctx)
-            worktree_path = wt_result.path
+            repo_mounts.append((repo_ctx, wt_result.path))
             if wt_result.notices:
                 if input_data.system_notices is None:
                     input_data.system_notices = []
@@ -155,7 +165,7 @@ async def _spawn_container(
     # --- Build mounts ---
     phase_start = time.monotonic()
     mounts = build_volume_mounts(
-        group, input_data.is_admin, plugin_manager, repo_ctx, worktree_path
+        group, input_data.is_admin, plugin_manager, repo_mounts=repo_mounts
     )
     mounts_ms = (time.monotonic() - phase_start) * 1000
 

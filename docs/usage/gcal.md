@@ -6,34 +6,37 @@ Gives agents access to your Google Calendar. Agents can list calendars, read eve
 
 Same as [Google Drive](gdrive.md#prerequisites) — system Chrome and virtual display packages on the host.
 
-## 1. Define chrome profile and instance
+## 1. Define chrome profile and tool
 
-Add a chrome profile and gcal instance to `config.toml`:
+Add a chrome profile and Google Calendar tool to `config.toml`:
 
 ```toml
 chrome_profiles = ["mycompany"]
 
-[mcp.gcal.mycompany]
-chrome_profile = "mycompany"
-```
+[tools."gcal.mycompany"]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = false
 
-The plugin provides the base spec (Docker image, port, transport). You only declare the instance with its chrome profile attachment.
+[tools."gcal.mycompany".mcp]
+runtime = "docker"
+image = "pynchy-mcp-gcal:latest"
+dockerfile = "src/pynchy/agent/mcp/gcal.Dockerfile"
+port = 3200
+transport = "streamable_http"
+volumes = ["data/chrome-profiles/mycompany:/home/chrome"]
+```
 
 ## 2. Grant workspace access
 
 ```toml
-[workspaces.mycompany-1]
-mcp_servers = ["gcal.mycompany"]
-```
-
-Use `mcp_groups` for convenience when combining multiple Google services:
-
-```toml
-[mcp_groups]
-google_mycompany = ["gdrive.mycompany", "gcal.mycompany"]
+[profiles.google-mycompany]
+tools = ["gdrive.mycompany", "gcal.mycompany"]
 
 [workspaces.mycompany-1]
-mcp_servers = ["google_mycompany"]
+profiles = ["google-mycompany"]
 ```
 
 ## 3. First-time setup
@@ -61,14 +64,41 @@ Each chrome profile maps to one Google account. To access calendars from multipl
 ```toml
 chrome_profiles = ["mycompany", "personal"]
 
-[mcp.gcal.mycompany]
-chrome_profile = "mycompany"
+[tools."gcal.mycompany"]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = false
 
-[mcp.gcal.personal]
-chrome_profile = "personal"
+[tools."gcal.mycompany".mcp]
+runtime = "docker"
+image = "pynchy-mcp-gcal:latest"
+dockerfile = "src/pynchy/agent/mcp/gcal.Dockerfile"
+port = 3200
+transport = "streamable_http"
+volumes = ["data/chrome-profiles/mycompany:/home/chrome"]
+
+[tools."gcal.personal"]
+type = "mcp"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = false
+
+[tools."gcal.personal".mcp]
+runtime = "docker"
+image = "pynchy-mcp-gcal:latest"
+dockerfile = "src/pynchy/agent/mcp/gcal.Dockerfile"
+port = 3201
+transport = "streamable_http"
+volumes = ["data/chrome-profiles/personal:/home/chrome"]
+
+[profiles.google-calendars]
+tools = ["gcal.mycompany", "gcal.personal"]
 
 [workspaces.mycompany-1]
-mcp_servers = ["gcal.mycompany", "gcal.personal"]
+profiles = ["google-calendars"]
 ```
 
 The agent sees separate tool namespaces: `mcp__gcal_mycompany__list_events` and `mcp__gcal_personal__list_events`.

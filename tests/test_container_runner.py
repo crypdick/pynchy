@@ -18,7 +18,12 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config import GatewayConfig
-from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
+from pynchy.config.models import (
+    LearningConfig,
+    ObsidianLearningConfig,
+    ProfileConfig,
+    WorkspaceConfig,
+)
 from pynchy.host.container_manager.credentials import (
     _write_env_file,  # allow: private-test-imports
     shell_quote,
@@ -162,6 +167,16 @@ def _apply_secret_overrides(
         setattr(settings.secrets, key, SecretStr(value))
 
 
+def _profile_workspace(
+    profile_name: str = "test-profile",
+    *,
+    skills: list[str] | None = None,
+    model: str | None = None,
+):
+    profile = ProfileConfig(skills=skills or [], model=model)
+    return {profile_name: profile}, WorkspaceConfig(profiles=[profile_name])
+
+
 @contextlib.contextmanager
 def _patch_settings(
     tmp_path: Path | None = None,
@@ -184,14 +199,14 @@ def _patch_settings(
     )
     s = make_settings(**overrides)
     if core is not None:
-        s.agent.core = core
+        s.agent.default_core = core
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
     with contextlib.ExitStack() as stack:
         for mod in _SETTINGS_MODULES:
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
-        yield
+        yield s
 
 
 class FakeProcess(asyncio.subprocess.Process):
@@ -665,9 +680,15 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!")}
+        profiles, workspace = _profile_workspace("Deep Work!!")
+        workspaces = {"test-group": workspace}
 
-        with _patch_settings(tmp_path, learning=learning, workspaces=workspaces):
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             build_volume_mounts(TEST_GROUP, is_admin=False)
@@ -710,15 +731,17 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=[])}
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=[])
+        workspaces = {"test-group": workspace}
 
         with (
-            _patch_settings(tmp_path, learning=learning, workspaces=workspaces),
+            _patch_settings(tmp_path, learning=learning, workspaces=workspaces) as settings,
             patch(
                 "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
                 side_effect=AssertionError("unexpected scan"),
             ),
         ):
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
@@ -739,9 +762,15 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        workspaces = {"test-group": WorkspaceConfig(profile="Deep Work!!", skills=["learned"])}
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["learned"])
+        workspaces = {"test-group": workspace}
 
-        with _patch_settings(tmp_path, learning=learning, workspaces=workspaces):
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             build_volume_mounts(TEST_GROUP, is_admin=False)
@@ -766,8 +795,10 @@ class TestMountBuilding:
             def __init__(self):
                 pass
 
-        workspaces = {"test-group": WorkspaceConfig(skills=["calendar-caldav"])}
-        with _patch_settings(tmp_path, workspaces=workspaces):
+        profiles, workspace = _profile_workspace(skills=["calendar-caldav"])
+        workspaces = {"test-group": workspace}
+        with _patch_settings(tmp_path, workspaces=workspaces) as settings:
+            settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             build_volume_mounts(TEST_GROUP, is_admin=False, plugin_manager=FakePM())
@@ -798,7 +829,7 @@ class TestMountBuilding:
         ):
             build_volume_mounts(TEST_GROUP, is_admin=False)
 
-    def test_admin_group_has_project_mount(self, tmp_path: Path):
+    def test_admin_group_has_repo_mount(self, tmp_path: Path):
         worktree_path = tmp_path / "worktrees" / "admin-1"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
@@ -820,9 +851,8 @@ class TestMountBuilding:
             )
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project" in paths
+            assert "/workspace/repos/owner/pynchy" in paths
             assert "/workspace/group" in paths
-            # God should NOT have /workspace/global
             assert "/workspace/global" not in paths
 
     def test_nonadmin_group_has_no_global_mount(self, tmp_path: Path):
@@ -846,12 +876,12 @@ class TestMountBuilding:
             mounts = build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project" not in paths
+            assert "/workspace/repos/owner/pynchy" not in paths
             assert "/workspace/group" in paths
             assert "/workspace/global" not in paths
 
     def test_nonadmin_repo_access_uses_worktree_path(self, tmp_path: Path):
-        """Non-admin group with repo_access + worktree_path mounts the worktree."""
+        """Non-admin group with repo access mounts the worktree under /workspace/repos."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
@@ -873,9 +903,11 @@ class TestMountBuilding:
                 group, is_admin=False, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
-            project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
-            assert project_mount.host_path == str(worktree_path)
-            assert project_mount.readonly is False
+            repo_mount = next(
+                m for m in mounts if m.container_path == "/workspace/repos/owner/pynchy"
+            )
+            assert repo_mount.host_path == str(worktree_path)
+            assert repo_mount.readonly is False
 
             # .git dir mounted at host path so worktree gitdir reference resolves
             git_mount = next(m for m in mounts if m.host_path == str(tmp_path / ".git"))
@@ -903,9 +935,11 @@ class TestMountBuilding:
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
-            project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
-            assert project_mount.host_path == str(worktree_path)
-            assert project_mount.readonly is False
+            repo_mount = next(
+                m for m in mounts if m.container_path == "/workspace/repos/owner/pynchy"
+            )
+            assert repo_mount.host_path == str(worktree_path)
+            assert repo_mount.readonly is False
 
     def test_admin_gets_raw_host_repo_mount(self, tmp_path: Path):
         """Admin group gets a raw host repo mount when repo_ctx is provided."""
@@ -928,12 +962,41 @@ class TestMountBuilding:
             )
 
             raw_mount = next(
-                m
-                for m in mounts
-                if m.container_path == "/danger/raw-host-repo-mount-prefer-your-worktree"
+                m for m in mounts if m.container_path == "/danger/raw-host-repos/owner/pynchy"
             )
             assert raw_mount.host_path == str(tmp_path)
             assert raw_mount.readonly is False
+
+    def test_repo_mounts_support_multiple_repos(self, tmp_path: Path):
+        repo_a = RepoContext(
+            slug="owner/pynchy", root=tmp_path / "repo-a", worktrees_dir=tmp_path / "wt-a"
+        )
+        repo_b = RepoContext(
+            slug="owner/tools", root=tmp_path / "repo-b", worktrees_dir=tmp_path / "wt-b"
+        )
+        wt_a = tmp_path / "worktrees" / "pynchy"
+        wt_b = tmp_path / "worktrees" / "tools"
+        for path in (repo_a.root / ".git", repo_b.root / ".git", wt_a, wt_b):
+            path.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            (tmp_path / "groups" / "multi").mkdir(parents=True)
+            group = WorkspaceProfile(
+                jid="multi@g.us",
+                name="Multi",
+                folder="multi",
+                trigger="@pynchy",
+                added_at="2024-01-01",
+            )
+            mounts = build_volume_mounts(
+                group,
+                is_admin=False,
+                repo_mounts=[(repo_a, wt_a), (repo_b, wt_b)],
+            )
+
+        by_container = {m.container_path: m.host_path for m in mounts}
+        assert by_container["/workspace/repos/owner/pynchy"] == str(wt_a)
+        assert by_container["/workspace/repos/owner/tools"] == str(wt_b)
 
     def test_nonadmin_does_not_get_raw_host_repo_mount(self, tmp_path: Path):
         """Non-admin groups never get the raw host repo mount."""
@@ -956,7 +1019,7 @@ class TestMountBuilding:
             )
 
             paths = [m.container_path for m in mounts]
-            assert "/danger/raw-host-repo-mount-prefer-your-worktree" not in paths
+            assert "/danger/raw-host-repos/owner/pynchy" not in paths
 
     def test_admin_no_config_toml_when_missing(self, tmp_path: Path):
         """Admin group doesn't get config.toml mount if the file doesn't exist."""
@@ -972,7 +1035,7 @@ class TestMountBuilding:
             mounts = build_volume_mounts(group, is_admin=True)
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project/config.toml" not in paths
+            assert "/workspace/repos/owner/pynchy/config.toml" not in paths
 
     def test_onecli_material_adds_mounts_env_and_suppresses_gh_token(
         self,
@@ -1505,6 +1568,7 @@ class TestContainerInputAgentCoreConfig:
         return _PreContainerResult(
             is_admin=False,
             repo_access=None,
+            repo_accesses=[],
             system_prompt_append=None,
             session_id=None,
             system_notices=[],
@@ -1521,17 +1585,13 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings(
             agent=AgentConfig(
                 model="chatgpt/gpt-5.3-codex",
-                fallback_model="chatgpt/gpt-5.3-codex-spark",
             )
         )
 
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {
-            "model": "chatgpt/gpt-5.3-codex",
-            "fallback_model": "chatgpt/gpt-5.3-codex-spark",
-        }
+        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex"}
 
     def test_default_agent_model_flows_to_core_config(self):
         settings = make_settings()
@@ -1539,20 +1599,19 @@ class TestContainerInputAgentCoreConfig:
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {"model": "gpt-5.5"}
+        assert result.agent_core_config is None
 
     def test_workspace_model_overrides_global_agent_model(self):
         from pynchy.config import AgentConfig
-        from pynchy.config.models import WorkspaceConfig
 
+        profiles, workspace = _profile_workspace(
+            "codex-workspace",
+            model="chatgpt/gpt-5.3-codex-spark",
+        )
         settings = make_settings(
             agent=AgentConfig(model="chatgpt/gpt-5.3-codex"),
-            workspaces={
-                TEST_GROUP.folder: WorkspaceConfig(
-                    model="chatgpt/gpt-5.3-codex-spark",
-                    fallback_model="chatgpt/gpt-5.3-codex-mini",
-                )
-            },
+            profiles=profiles,
+            workspaces={TEST_GROUP.folder: workspace},
         )
 
         with (
@@ -1564,21 +1623,19 @@ class TestContainerInputAgentCoreConfig:
         ):
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {
-            "model": "chatgpt/gpt-5.3-codex-spark",
-            "fallback_model": "chatgpt/gpt-5.3-codex-mini",
-        }
+        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
 
-    def test_workspace_model_override_does_not_inherit_global_fallback(self):
+    def test_workspace_model_override_replaces_global_model(self):
         from pynchy.config import AgentConfig
-        from pynchy.config.models import WorkspaceConfig
 
+        profiles, workspace = _profile_workspace(
+            "codex-workspace",
+            model="chatgpt/gpt-5.3-codex-spark",
+        )
         settings = make_settings(
-            agent=AgentConfig(
-                model="chatgpt/gpt-5.3-codex",
-                fallback_model="chatgpt/gpt-5.3-codex",
-            ),
-            workspaces={TEST_GROUP.folder: WorkspaceConfig(model="chatgpt/gpt-5.3-codex-spark")},
+            agent=AgentConfig(model="chatgpt/gpt-5.3-codex"),
+            profiles=profiles,
+            workspaces={TEST_GROUP.folder: workspace},
         )
 
         with (

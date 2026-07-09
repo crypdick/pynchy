@@ -1,221 +1,123 @@
-"""Tests for admin clean room policy — reject public_source MCPs in admin workspaces.
-
-Admin workspaces are the most privileged and must never be corruption-tainted by
-public_source MCPs. The validator rejects at startup if any MCP server reachable
-from an admin workspace has public_source=True (or is undeclared in [services],
-which defaults to public_source=True).
-"""
+"""Tests for admin clean-room policy over resolved tools."""
 
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config import Settings
-from pynchy.config.mcp import McpServerConfig
-from pynchy.config.models import (
-    ConnectionChatConfig,
-    ConnectionsConfig,
-    ProfileConfig,
-    ServiceTrustTomlConfig,
-    WhatsAppConnectionConfig,
-    WorkspaceConfig,
-)
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.settings import validate_settings_mapping
 
 
-def _base_connection() -> ConnectionsConfig:
-    """Minimal valid connection for Settings construction."""
-    return ConnectionsConfig(
-        whatsapp={
-            "wa1": WhatsAppConnectionConfig(
-                auth_db_path="/tmp/test.db",
-                chat={"mychat": ConnectionChatConfig()},
-            )
-        }
-    )
+def _settings_data(
+    *,
+    profile: ProfileConfig,
+    tools: dict[str, dict],
+    workspace_profile: str = "admin",
+) -> dict:
+    return {
+        "profiles": {workspace_profile: profile.model_dump(exclude_defaults=True)},
+        "workspaces": {"admin-ws": WorkspaceConfig(profiles=[workspace_profile]).model_dump()},
+        "tools": tools,
+    }
 
 
-def _ws(*, profile: str) -> WorkspaceConfig:
-    """Minimal workspace config with explicit non-exempt fields."""
-    return WorkspaceConfig(
-        chat="connection.whatsapp.wa1.chat.mychat",
-        profile=profile,
-    )
-
-
-def _profile(*, is_admin: bool, mcp_servers: list[str] | None = None) -> ProfileConfig:
-    return ProfileConfig(is_admin=is_admin, mcp_servers=mcp_servers)
-
-
-def _docker_mcp(name: str = "test-mcp") -> dict[str, McpServerConfig]:
-    """Single Docker MCP server definition."""
-    return {name: McpServerConfig(type="docker", image="test:latest", port=8080)}
+def _mcp_tool(*, public_source=True) -> dict:
+    return {
+        "type": "mcp",
+        "public_source": public_source,
+        "mcp": {"runtime": "docker", "image": "mcp/admin-test:latest", "port": 8080},
+    }
 
 
 class TestAdminCleanRoomRejectsPublicSource:
-    """Admin workspace with an MCP declared public_source=True must be rejected."""
-
     def test_rejects_explicit_public_source_true(self):
         with pytest.raises(ValidationError, match="public_source"):
-            Settings(
-                connection=_base_connection(),
-                profiles={"admin": _profile(is_admin=True, mcp_servers=["tainted-mcp"])},
-                workspaces={"admin-ws": _ws(profile="admin")},
-                mcp=_docker_mcp("tainted-mcp"),
-                services={
-                    "tainted-mcp": ServiceTrustTomlConfig(
-                        public_source=True,
-                        secret_data=False,
-                        public_sink=False,
-                        dangerous_writes=False,
-                    ),
-                },
+            validate_settings_mapping(
+                _settings_data(
+                    profile=ProfileConfig(is_admin=True, tools=["tainted-mcp"]),
+                    tools={"tainted-mcp": _mcp_tool(public_source=True)},
+                )
+            )
+
+    def test_rejects_forbidden_public_source(self):
+        with pytest.raises(ValidationError, match="public_source"):
+            validate_settings_mapping(
+                _settings_data(
+                    profile=ProfileConfig(is_admin=True, tools=["forbidden-mcp"]),
+                    tools={"forbidden-mcp": _mcp_tool(public_source="forbidden")},
+                )
+            )
+
+    def test_rejects_default_public_source(self):
+        with pytest.raises(ValidationError, match="public_source"):
+            validate_settings_mapping(
+                _settings_data(
+                    profile=ProfileConfig(is_admin=True, tools=["default-mcp"]),
+                    tools={
+                        "default-mcp": {
+                            "type": "mcp",
+                            "mcp": {
+                                "runtime": "docker",
+                                "image": "mcp/admin-test:latest",
+                                "port": 8080,
+                            },
+                        }
+                    },
+                )
             )
 
 
-class TestAdminCleanRoomRejectsUndeclared:
-    """Admin workspace with an MCP missing from [services] must be rejected.
-
-    An undeclared service defaults to public_source=True (maximally cautious),
-    so it should also be blocked by the clean room policy.
-    """
-
-    def test_rejects_undeclared_service(self):
-        with pytest.raises(ValidationError, match="public_source"):
-            Settings(
-                connection=_base_connection(),
-                profiles={"admin": _profile(is_admin=True, mcp_servers=["undeclared-mcp"])},
-                workspaces={"admin-ws": _ws(profile="admin")},
-                mcp=_docker_mcp("undeclared-mcp"),
-                # No services entry for undeclared-mcp → defaults to public_source=True
-                services={},
+class TestAdminCleanRoomRejectsUnknown:
+    def test_rejects_unknown_tool_reference(self):
+        with pytest.raises(ValidationError, match="unknown tool"):
+            validate_settings_mapping(
+                _settings_data(
+                    profile=ProfileConfig(is_admin=True, tools=["missing-mcp"]),
+                    tools={},
+                )
             )
 
 
 class TestAdminCleanRoomAllowsSafe:
-    """Admin workspace with only public_source=False MCPs must be allowed."""
-
     def test_allows_safe_mcp(self):
-        s = Settings(
-            connection=_base_connection(),
-            profiles={"admin": _profile(is_admin=True, mcp_servers=["safe-mcp"])},
-            workspaces={"admin-ws": _ws(profile="admin")},
-            mcp=_docker_mcp("safe-mcp"),
-            services={
-                "safe-mcp": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-            },
-        )
-        assert s.resolved_workspace_config("admin-ws").is_admin is True
-        assert s.resolved_workspace_config("admin-ws").mcp_servers == ["safe-mcp"]
-
-
-class TestAdminCleanRoomGroupExpansion:
-    """MCP group references in admin workspaces are expanded and checked."""
-
-    def test_rejects_group_containing_public_source(self):
-        with pytest.raises(ValidationError, match="public_source"):
-            Settings(
-                connection=_base_connection(),
-                profiles={"admin": _profile(is_admin=True, mcp_servers=["my-group"])},
-                workspaces={"admin-ws": _ws(profile="admin")},
-                mcp={
-                    "safe-mcp": McpServerConfig(type="docker", image="s:latest", port=8080),
-                    "tainted-mcp": McpServerConfig(type="docker", image="t:latest", port=8081),
-                },
-                mcp_groups={"my-group": ["safe-mcp", "tainted-mcp"]},
-                services={
-                    "safe-mcp": ServiceTrustTomlConfig(
-                        public_source=False,
-                        secret_data=False,
-                        public_sink=False,
-                        dangerous_writes=False,
-                    ),
-                    "tainted-mcp": ServiceTrustTomlConfig(
-                        public_source=True,
-                        secret_data=False,
-                        public_sink=False,
-                        dangerous_writes=False,
-                    ),
-                },
+        s = validate_settings_mapping(
+            _settings_data(
+                profile=ProfileConfig(is_admin=True, tools=["safe-mcp"]),
+                tools={"safe-mcp": _mcp_tool(public_source=False)},
             )
-
-    def test_allows_group_all_safe(self):
-        s = Settings(
-            connection=_base_connection(),
-            profiles={"admin": _profile(is_admin=True, mcp_servers=["my-group"])},
-            workspaces={"admin-ws": _ws(profile="admin")},
-            mcp={
-                "mcp-a": McpServerConfig(type="docker", image="a:latest", port=8080),
-                "mcp-b": McpServerConfig(type="docker", image="b:latest", port=8081),
-            },
-            mcp_groups={"my-group": ["mcp-a", "mcp-b"]},
-            services={
-                "mcp-a": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-                "mcp-b": ServiceTrustTomlConfig(
-                    public_source=False,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-            },
         )
-        assert s.resolved_workspace_config("admin-ws").is_admin is True
+        resolved = s.resolved_workspace_config("admin-ws")
+        assert resolved is not None
+        assert resolved.is_admin is True
+        assert resolved.tools == ["safe-mcp"]
 
-
-class TestAdminCleanRoomAllKeyword:
-    """The '*' wildcard expands to all MCP servers."""
-
-    def test_rejects_all_when_any_public_source(self):
-        with pytest.raises(ValidationError, match="public_source"):
-            Settings(
-                connection=_base_connection(),
-                profiles={"admin": _profile(is_admin=True, mcp_servers=["*"])},
-                workspaces={"admin-ws": _ws(profile="admin")},
-                mcp={
-                    "safe-mcp": McpServerConfig(type="docker", image="s:latest", port=8080),
-                    "tainted-mcp": McpServerConfig(type="docker", image="t:latest", port=8081),
+    def test_allows_composed_safe_tools(self):
+        s = validate_settings_mapping(
+            {
+                "profiles": {
+                    "base": {"tools": ["mcp-a"]},
+                    "admin": {"includes": ["base"], "is_admin": True, "tools": ["mcp-b"]},
                 },
-                services={
-                    "safe-mcp": ServiceTrustTomlConfig(
-                        public_source=False,
-                        secret_data=False,
-                        public_sink=False,
-                        dangerous_writes=False,
-                    ),
-                    "tainted-mcp": ServiceTrustTomlConfig(
-                        public_source=True,
-                        secret_data=False,
-                        public_sink=False,
-                        dangerous_writes=False,
-                    ),
+                "workspaces": {"admin-ws": {"profiles": ["admin"]}},
+                "tools": {
+                    "mcp-a": _mcp_tool(public_source=False),
+                    "mcp-b": _mcp_tool(public_source=False),
                 },
-            )
+            }
+        )
+        resolved = s.resolved_workspace_config("admin-ws")
+        assert resolved is not None
+        assert resolved.tools == ["mcp-a", "mcp-b"]
 
 
 class TestAdminCleanRoomNonAdmin:
-    """Non-admin workspaces are not subject to the clean room policy."""
-
     def test_non_admin_allows_public_source(self):
-        s = Settings(
-            connection=_base_connection(),
-            profiles={"normal": _profile(is_admin=False, mcp_servers=["tainted-mcp"])},
-            workspaces={"normal-ws": _ws(profile="normal")},
-            mcp=_docker_mcp("tainted-mcp"),
-            services={
-                "tainted-mcp": ServiceTrustTomlConfig(
-                    public_source=True,
-                    secret_data=False,
-                    public_sink=False,
-                    dangerous_writes=False,
-                ),
-            },
+        s = validate_settings_mapping(
+            {
+                "profiles": {"normal": {"is_admin": False, "tools": ["tainted-mcp"]}},
+                "workspaces": {"normal-ws": {"profiles": ["normal"]}},
+                "tools": {"tainted-mcp": _mcp_tool(public_source=True)},
+            }
         )
-        assert s.resolved_workspace_config("normal-ws").is_admin is False
+        resolved = s.resolved_workspace_config("normal-ws")
+        assert resolved is not None
+        assert resolved.is_admin is False

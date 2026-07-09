@@ -100,35 +100,7 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
 
-Admin workspaces bypass all policy gates. Admin workspaces are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)). See [Service Trust](../usage/security.md) for configuration.
-
-### 5a. Capability Policy
-
-Pynchy is the source of truth for semantic capability permissions. Capability
-rules answer whether a workspace may invoke a named action at all, before the
-lower-level service trust policy evaluates taint and payload risk.
-
-Capability IDs use dotted names. MCP tool calls use:
-
-```text
-mcp.<server-or-instance>.<tool-name>
-```
-
-For example, a call to the `send` tool on an `email` MCP server maps to
-`mcp.email.send`. Rules support trailing wildcard segments such as
-`mcp.email.*`; exact rules take precedence over wildcard rules.
-
-Each rule decision is:
-
-| Decision | Effect |
-|----------|--------|
-| `allow` | Allow the capability and continue to service-trust evaluation |
-| `needs_human` | Require human approval before the call proceeds |
-| `deny` | Block the capability |
-
-Capability maps merge through the same workspace cascade as profiles:
-`universal` < `profiles.<name>` < `workspaces.<name>`. More
-specific entries replace less specific entries with the same capability ID.
+Admin workspaces use the same tool trust declarations at runtime. They are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)), which prevents admin workspaces from selecting public-source tools. See [Tool Trust](../usage/security.md) for configuration.
 
 ### 5b. Bash Security Gate
 
@@ -187,7 +159,7 @@ The Cop always inspects. Humans only get pulled in when the Cop detects somethin
 
 ### 5d. Admin Clean Room
 
-Admin workspaces cannot have `public_source=true` MCP servers assigned. This is enforced at config validation (startup). If an admin workspace references an MCP with `public_source=true` (or an MCP not declared in `[services]`, which defaults to `public_source=true`), Pynchy refuses to start.
+Admin workspaces cannot select tools with `public_source=true`. This is enforced at config validation (startup). Tools default to `public_source=true`, so admin profiles must select only tools explicitly marked `public_source = false`.
 
 This prevents the most privileged workspace from ever being corruption-tainted, eliminating prompt injection as a threat vector for admin operations.
 
@@ -261,7 +233,7 @@ Without OneCLI, **non-LLM credentials** get written directly to per-group env fi
 
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|
-| `GH_TOKEN` | Yes (broad) | **Repo-scoped** (if configured) | Admin gets the host's broad token. Non-admin containers with `repo_access` get a fine-grained PAT scoped to their designated repo (configured via `repos."owner/repo".token`). Non-admin containers without `repo_access` get no token. |
+| `GH_TOKEN` | Yes (broad) | **Repo-scoped** (if configured) | Admin gets the host's broad token. Non-admin containers with profile `repo` get a fine-grained PAT scoped to their designated repo (configured via `repos.overrides."owner/repo".token`). Non-admin containers without a repo get no token. |
 | `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
 | `GIT_COMMITTER_NAME` | Yes | Yes | |
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
@@ -307,9 +279,9 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 
 | Capability | Admin Group | Non-Admin Group |
 |------------|------------|----------------|
-| Project root access | `/workspace/project` (rw) | Via `repo_access` (worktree, rw) |
+| Repo access | `/workspace/repos/<owner>/<repo>` (rw) | Via profile `repo` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
-| System prompt directives | Scoped via config | Scoped via config |
+| System prompts | Scoped via config | Scoped via config |
 | `config.toml` | Mounted read-write | Not mounted |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |

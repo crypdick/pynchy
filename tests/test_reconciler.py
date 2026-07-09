@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pynchy.config.models import OwnerConfig, SandboxProfileConfig, WorkspaceConfig
+from pynchy.config.models import OwnerConfig, WorkspaceConfig
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
 from pynchy.state import (
     get_channel_cursor,
@@ -90,13 +90,8 @@ def _reset_cooldowns():
 
 @pytest.fixture(autouse=True)
 def _permissive_sender_defaults(monkeypatch):
-    """Default to wildcard allowed_users so tests that don't care about sender
-    filtering are unaffected.  Tests in TestSenderFilter override this with
-    restrictive settings via monkeypatch."""
-    monkeypatch.setattr(
-        "pynchy.config.settings._settings",
-        make_settings(sandbox_universal=SandboxProfileConfig(allowed_users=["*"])),
-    )
+    """Default to current composable workspace settings."""
+    monkeypatch.setattr("pynchy.config.settings._settings", make_settings())
 
 
 # ---------------------------------------------------------------------------
@@ -312,24 +307,21 @@ ADMIN_GROUP = WorkspaceProfile(
 )
 
 
-def _owner_settings(
-    *, workspace_folder: str = "test", owner: OwnerConfig | None = None, **ws_overrides
-):
-    """Settings with owner-only allowed_users for a workspace."""
-    ws_kwargs = {"name": workspace_folder, "allowed_users": ["owner"], **ws_overrides}
+def _owner_settings(*, workspace_folder: str = "test", owner: OwnerConfig | None = None):
+    """Settings with owner identity and a current-schema workspace."""
     return make_settings(
         owner=owner or OwnerConfig(slack="U04OWNER"),
-        workspaces={workspace_folder: WorkspaceConfig(**ws_kwargs)},
+        workspaces={workspace_folder: WorkspaceConfig()},
     )
 
 
 @pytest.mark.usefixtures("_db")
 class TestSenderFilter:
-    """Reconciler must apply the sender filter — disallowed senders are not ingested."""
+    """Reconciler sender policy follows the current profile-composition bridge."""
 
     @pytest.mark.asyncio
-    async def test_disallowed_sender_not_ingested(self, monkeypatch):
-        """Recovered messages from disallowed senders are skipped."""
+    async def test_sender_filter_is_permissive_during_schema_cutover(self, monkeypatch):
+        """Recovered messages are ingested without deleted allowed_users fields."""
         msg = NewMessage(
             id="msg-intruder",
             chat_jid="slack:C123",
@@ -348,7 +340,7 @@ class TestSenderFilter:
 
         await reconcile_all_channels(deps)
 
-        deps._ingest_user_message.assert_not_awaited()
+        deps._ingest_user_message.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_allowed_sender_ingested(self, monkeypatch):
@@ -419,7 +411,7 @@ class TestSenderFilter:
         # Even with restrictive owner-only settings, admin groups pass everything
         monkeypatch.setattr(
             "pynchy.config.settings._settings",
-            _owner_settings(workspace_folder="admin", is_admin=True),
+            _owner_settings(workspace_folder="admin"),
         )
 
         await reconcile_all_channels(deps)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from mcp.types import CallToolResult, TextContent
@@ -110,7 +111,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
     try:
         head_sha = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd="/workspace/project",
+            cwd=Path.cwd(),
             capture_output=True,
             text=True,
             check=True,

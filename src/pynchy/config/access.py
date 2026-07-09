@@ -1,121 +1,43 @@
-"""Channel access resolution — walk the config cascade at runtime.
+"""Workspace access helpers for composable profile config.
 
-Resolves the effective access mode, trigger, trust, and allowed users
-for a given workspace by walking a 5-level cascade:
-
-1. ``[universal]``                          (global defaults)
-2. ``[profiles.<name>]``                    (profile defaults)
-3. ``[workspaces.<name>]``                  (workspace overrides)
-4. ``[connection.<type>.<name>].security``  (connection-level overrides)
-5. ``[connection.<type>.<name>.chat.*]``    (chat-level overrides, most specific)
-
-Layers 1-3 use merge_sandbox_config() (three-tier merge with union/override
-semantics).  Layers 4-5 apply connection and chat security overrides on top.
+Workspace identity resolves through profiles. Sender gating comes from
+connection-level channel security, not workspace/profile config.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import Any
-
-from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
-from pynchy.config.models import OwnerConfig, ProfileConfig, WorkspaceConfig
-from pynchy.config.refs import (
-    channel_platform_from_name,
-    connection_ref_from_parts,
-    parse_chat_ref,
-)
-from pynchy.config.settings import Settings, get_settings
+from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
+from pynchy.config.models import ChannelOverrideConfig, ConnectionConfig, OwnerConfig
+from pynchy.config.refs import channel_platform_from_name
+from pynchy.config.settings import get_settings
 from pynchy.types import NewMessage
 
-# The fields that participate in the connection/chat override cascade
-# (layers 4-5).  The workspace merge (layers 1-3) handles these fields
-# via merge_sandbox_config().
-_CASCADE_FIELDS = ("access", "mode", "trust", "trigger", "allowed_users")
-
-
-def _collect_overrides(overrides: dict[str, Any], source: object) -> None:
-    """Collect non-None cascade fields from *source* into *overrides*.
-
-    Works with any object exposing the standard cascade fields
-    (e.g. ChannelOverrideConfig).  Later calls shadow earlier ones,
-    giving most-specific-wins semantics.
-    """
-    for field in _CASCADE_FIELDS:
-        value = getattr(source, field, None)
-        if value is not None:
-            overrides[field] = value
+_KNOWN_CHANNEL_PLATFORMS = {"slack", "whatsapp", "discord"}
 
 
 def resolve_workspace_connection_name(workspace_name: str) -> str | None:
-    """Return the owning connection name for a workspace, if configured."""
-    s = get_settings()
-    ws = s.workspaces.get(workspace_name)
-    if ws is None:
-        return None
-    chat_ref = parse_chat_ref(ws.chat)
-    if chat_ref is None:
-        return None
-    return connection_ref_from_parts(chat_ref.platform, chat_ref.name)
+    """Return the owning connection name for a workspace, if configured.
 
-
-def _workspace_profile(
-    settings: Settings, workspace: WorkspaceConfig | None
-) -> ProfileConfig | None:
-    if workspace is None or not workspace.profile:
-        return None
-    return settings.profiles.get(workspace.profile)
-
-
-def _connection_and_chat_overrides(
-    settings: Settings, workspace: WorkspaceConfig | None
-) -> dict[str, Any]:
-    if workspace is None:
-        return {}
-    chat_ref = parse_chat_ref(workspace.chat)
-    if chat_ref is None:
-        return {}
-
-    conn_cfg = settings.connection.get_connection(chat_ref.platform, chat_ref.name)
-    if conn_cfg is None:
-        return {}
-
-    overrides: dict[str, Any] = {}
-    if conn_cfg.security:
-        _collect_overrides(overrides, conn_cfg.security)
-    chat_cfg = conn_cfg.chat.get(chat_ref.chat)
-    if chat_cfg and chat_cfg.security:
-        _collect_overrides(overrides, chat_cfg.security)
-    return overrides
+    Current WorkspaceConfig carries profile selections only, so this layer has
+    no connection reference to resolve.
+    """
+    assert workspace_name is not None
+    return None
 
 
 def resolve_channel_config(
     workspace_name: str,
     channel_jid: str | None = None,
     channel_plugin_name: str | None = None,
-) -> ResolvedSandboxConfig:
-    """Walk the resolution cascade and return a fully-resolved config.
-
-    Cascade (most specific wins):
-    1. connection.<type>.<name>.chat.*.security (chat-level overrides)
-    2. connection.<type>.<name>.security (connection-level overrides)
-    3. workspaces.<name>.* (workspace overrides)
-    4. profiles.<name>.* (profile defaults)
-    5. universal.* (global defaults)
-
-    Layers 3-5 are resolved by :func:`merge_sandbox_config`; the connection-
-    and chat-level overrides (layers 1-2) are then applied on top of the
-    resulting :class:`ResolvedSandboxConfig`.
-    """
+) -> ResolvedWorkspaceConfig:
+    """Return the composable profile resolution for a workspace."""
+    assert channel_jid is None or isinstance(channel_jid, str)
+    assert channel_plugin_name is None or isinstance(channel_plugin_name, str)
     s = get_settings()
-    ws = s.workspaces.get(workspace_name)
-    merged = merge_sandbox_config(
-        s.universal,
-        _workspace_profile(s, ws),
-        ws or WorkspaceConfig(),
-    )
-    overrides = _connection_and_chat_overrides(s, ws)
-    return replace(merged, **overrides) if overrides else merged
+    resolved = s.resolved_workspace_config(workspace_name)
+    if resolved is not None:
+        return resolved
+    return merge_workspace_profiles([])
 
 
 # ---------------------------------------------------------------------------
@@ -215,41 +137,84 @@ def filter_allowed_messages(
     Returns:
         Filtered list — only messages from allowed senders.
     """
+    assert group is not None
+    assert channel_plugin_name is None or isinstance(channel_plugin_name, str)
     if getattr(group, "is_admin", False):
         return messages
 
-    s = get_settings()
-    resolved = resolve_channel_config(
-        getattr(group, "folder", ""),
-        channel_plugin_name=channel_plugin_name,
-    )
-    allowed = resolve_allowed_users(
-        resolved.allowed_users,
-        s.user_groups,
-        s.owner,
-        channel_plugin_name=channel_plugin_name,
-    )
+    security = _message_security(channel_plugin_name, messages)
+    if security is None or security.allowed_users is None:
+        return messages
 
-    from pynchy.logger import logger
-
-    filtered = []
-    for m in messages:
+    settings = get_settings()
+    policy_channel_name = _policy_channel_name(channel_plugin_name)
+    resolved_users = resolve_allowed_users(
+        security.allowed_users,
+        settings.user_groups,
+        OwnerConfig(),
+        policy_channel_name,
+    )
+    return [
+        msg
+        for msg in messages
         if is_user_allowed(
-            m.sender,
-            channel_plugin_name,
-            allowed,
-            m.is_from_me,
-            sender_name=m.sender_name,
-        ):
-            filtered.append(m)
-        else:
-            logger.info(
-                "filter_allowed_messages",
-                step="skip_sender",
-                group=getattr(group, "name", "?"),
-                sender=m.sender,
-            )
-    return filtered
+            msg.sender,
+            policy_channel_name,
+            resolved_users,
+            is_from_me=msg.is_from_me,
+            sender_name=msg.sender_name,
+        )
+    ]
+
+
+def _message_security(
+    channel_plugin_name: str | None, messages: list[NewMessage]
+) -> ChannelOverrideConfig | None:
+    connection = _connection_config(channel_plugin_name)
+    if connection is None:
+        return None
+    for msg in messages:
+        if security := _chat_security(connection, msg.chat_jid):
+            return security
+    return connection.security
+
+
+def _connection_config(channel_plugin_name: str | None) -> ConnectionConfig | None:
+    if channel_plugin_name is None:
+        return None
+    return get_settings().connections.get(channel_plugin_name)
+
+
+def _chat_security(connection: ConnectionConfig, chat_jid: str) -> ChannelOverrideConfig | None:
+    for chat_name, chat_cfg in connection.chat.items():
+        if not _chat_name_matches_jid(chat_name, chat_jid):
+            continue
+        security = chat_cfg.security
+        if security is not None:
+            return security
+    return None
+
+
+def _chat_name_matches_jid(chat_name: str, chat_jid: str) -> bool:
+    lowered_name = chat_name.casefold()
+    lowered_jid = chat_jid.casefold()
+    if lowered_name == lowered_jid:
+        return True
+    if lowered_jid.startswith("slack:") and lowered_jid[6:] == lowered_name:
+        return True
+    return lowered_jid.endswith(f":{lowered_name}")
+
+
+def _policy_channel_name(channel_plugin_name: str | None) -> str | None:
+    if channel_plugin_name is None:
+        return None
+    platform = channel_platform_from_name(channel_plugin_name)
+    if platform in _KNOWN_CHANNEL_PLATFORMS:
+        return platform
+    connection = _connection_config(channel_plugin_name)
+    if connection is None:
+        return channel_plugin_name
+    return connection.type
 
 
 def is_user_allowed(

@@ -606,10 +606,10 @@ class TestRunScheduledAgent:
         assert run["messages"][0]["sender"] == "scheduled_task"
 
     @pytest.mark.asyncio
-    async def test_passes_repo_access_override(
+    async def test_scheduled_agent_resolves_workspace_repo_config(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should pass repo_access from task as repo_access_override."""
+        """Scheduled agents use workspace profile repos, not stale task repo state."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.repo_access = "owner/pynchy"
 
@@ -625,7 +625,7 @@ class TestRunScheduledAgent:
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert len(mock_deps.agent_runs) == 1
-        assert mock_deps.agent_runs[0]["repo_access_override"] == "owner/pynchy"
+        assert mock_deps.agent_runs[0]["repo_access_override"] is None
 
     @pytest.mark.asyncio
     async def test_sends_start_notification(self, mock_deps, sample_task, sample_group, tmp_path):

@@ -19,13 +19,13 @@ from agent_runner.cores.codex import CodexCLIAgentCore
 def _core(session_id: str | None = None) -> CodexCLIAgentCore:
     return CodexCLIAgentCore(
         AgentCoreConfig(
-            cwd="/workspace/project",
+            cwd="/workspace/repos/owner/project",
             session_id=session_id,
             group_folder="g",
             chat_jid="j",
             is_admin=False,
             is_scheduled_task=False,
-            system_prompt_append="Follow the local Pynchy directives.",
+            system_prompt_append="Follow the local Pynchy prompts.",
             mcp_servers={
                 "pynchy": {
                     "command": "python",
@@ -141,7 +141,7 @@ def test_build_args_for_new_session(tmp_path, monkeypatch):
     args = core._build_args()
 
     assert args[:2] == [core._codex_path, "--cd"]
-    assert "/workspace/project" in args
+    assert "/workspace/repos/owner/project" in args
     assert "--ask-for-approval" in args
     assert "never" in args
     assert "--sandbox" in args
@@ -212,7 +212,7 @@ def test_build_args_ignores_foreign_session_id(tmp_path, monkeypatch):
 
 def test_build_stdin_includes_system_prompt():
     assert _core()._build_stdin("hello").decode() == (
-        "Follow the local Pynchy directives.\n\nUser message:\nhello\n"
+        "Follow the local Pynchy prompts.\n\nUser message:\nhello\n"
     )
 
 

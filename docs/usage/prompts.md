@@ -1,0 +1,62 @@
+# Prompts
+
+Prompts customize the instructions agents receive in their system prompt without editing code.
+
+## What Prompts Are
+
+Prompts are markdown files injected into an agent's system prompt. They contain behavioral instructions, persona definitions, tool usage guidance, and anything else that shapes how the agent operates. Different workspaces can receive different prompt sets through their profiles, so admin agents and regular group agents can get different instructions.
+
+## Convention-Based Resolution
+
+Prompt names map to files by convention:
+
+```text
+"base"           ->  prompts/base.md
+"idle-escape"    ->  prompts/idle-escape.md
+"pynchy-dev"     ->  prompts/pynchy-dev.md
+```
+
+No registry or config mapping exists. The name **is** the path. Place your prompt file at `prompts/<name>.md` and reference it by name in your config.
+
+## Assigning Prompts
+
+Prompts are assigned through reusable workspace profiles in `config.toml`.
+
+```toml
+[profiles.pynchy-dev]
+prompts = ["base", "idle-escape", "pynchy-code-improver"]
+
+[workspaces.my-agent]
+profiles = ["pynchy-dev"]
+```
+
+### How Profiles Merge
+
+When a workspace lists multiple profiles, prompt lists are unioned with order-preserved dedup. Given this config:
+
+```toml
+[profiles.base]
+prompts = ["base", "idle-escape"]
+
+[profiles.ops]
+prompts = ["base", "pynchy-admin-ops"]
+
+[workspaces.admin]
+profiles = ["base", "ops"]
+```
+
+The `admin` workspace receives `["base", "idle-escape", "pynchy-admin-ops"]`. First occurrence wins on duplicates.
+
+## File Location and Format
+
+Prompt files live under `prompts/` in the project root. Plain markdown works best. Multiple matching prompts are concatenated with `---` separators.
+
+Files ending in `.EXAMPLE` are ignored because they are repo templates.
+
+## Relationship to CLAUDE.md
+
+Prompts stack on top of the project's `CLAUDE.md`. Admin and repo workspaces set `cwd` to the mounted project, so Claude Code finds the project-root `CLAUDE.md` natively. Prompts carry the instructions that do not belong in the project `CLAUDE.md`, such as persona, communication style, and operational procedures.
+
+## KV Cache Considerations
+
+Prompt content stays stable across session resumes. The system prompt does not change between runs, so the API's KV cache is preserved. Do not put ephemeral or frequently changing content in prompts. Use system notices for per-run context.

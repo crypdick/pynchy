@@ -41,12 +41,13 @@ Connects via Slack's Socket Mode using the Bolt library. Maps Slack channels and
 **Setup:**
 
 1. Create a Slack app with Socket Mode enabled
-2. Add bot token and app token to `config.toml`:
+2. Add bot token and app token environment variable names to `config.toml`:
 
 ```toml
-[slack]
-bot_token = "xoxb-..."
-app_token = "xapp-..."
+[connections.synapse]
+type = "slack"
+bot_token_env = "SLACK__BOT_TOKEN"
+app_token_env = "SLACK__APP_TOKEN"
 ```
 
 3. Install dependencies:
@@ -91,41 +92,24 @@ DISCORD_BOT_TOKEN=<bot token>
    Discord messages:
 
 ```toml
-[connection.discord.mybot]
+[connections.mybot]
+type = "discord"
 bot_token_env = "DISCORD_BOT_TOKEN"   # name of the env var holding the token
 dm_policy = "allowlist"               # open | allowlist | disabled
-allow_from = ["ricardo"]                 # DM allowlist by Discord display/user name; "*" = open
+allow_from = ["ricardo"]              # DM allowlist by Discord display/user name
 group_policy = "allowlist"            # open | disabled | allowlist
 
-[connection.discord.mybot.chat.synapse]
-name = "Synapse"                       # Discord server name; omit when the table key matches
-require_mention = true                 # guild default; require an @mention to respond
-users = ["ricardo"]                    # sender allowlist by Discord display/user name
-roles = ["role:<role-id>"]             # optional role allowlist
-
-[connection.discord.mybot.chat.synapse.channels.code-improver]
-name = "code-improver"                 # Discord channel name; created if missing
-enabled = true
-require_mention = false                # safe for a dedicated allowlisted channel
-
 [workspaces.discord-admin]
-profile = "pynchy-dev"
-chat = "connection.discord.mybot.chat.synapse.channels.code-improver"
-is_admin = true
+profiles = ["pynchy-dev"]
 
 [workspaces.discord-dm]
-profile = "pynchy-dev"
-chat = "connection.discord.mybot.chat.direct.ricardo"
-is_admin = true
+profiles = ["pynchy-dev"]
 ```
 
-Set `profile` or `repo_access` on Discord workspaces the same way you set it on
-Slack or TUI workspaces. Repo-backed agent cores need the project worktree mount.
-After startup reconciliation, Pynchy stores the concrete Discord channel
-snowflake in workspace state as `discord:channel:<id>` or `discord:direct:<id>`.
-Keep config human-facing: use names unless you intentionally need a legacy ID
-ref. Name-based DMs can resolve once the bot has seen that user through a DM,
-guild membership cache, or inbound message.
+Set `profiles` on Discord workspaces the same way you set it on Slack or TUI
+workspaces. Repo-backed agent cores need a profile with `repo = "owner/repo"`.
+After startup reconciliation, Pynchy stores the concrete Discord channel or DM
+identifier in workspace state as `discord:channel:<id>` or `discord:direct:<id>`.
 Discord threads under a configured channel become dynamic isolated contexts and
 inherit the parent workspace profile.
 

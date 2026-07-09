@@ -79,8 +79,8 @@ Common configurations:
 - **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
 - **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
 - **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`. For a single-host macOS service, use the `launchd/com.pynchy.temporal.plist` template and back up `data/temporal.db` with `scripts/backup_runtime_dbs.sh`; see [Scheduled Tasks](usage/scheduled-tasks.md#single-host-macos-service).
-- **Claude SDK core:** Set `[agent] core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
-- **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] core = "codex"` and `[agent] model` to that LiteLLM `model_name`. Codex model traffic routes through the same gateway as the OpenAI core.
+- **Claude SDK core:** Set `[agent] default_core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
+- **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] default_core = "codex"` and profile `model` to that LiteLLM `model_name`. Codex model traffic routes through the same gateway as the OpenAI core.
 
 #### LiteLLM Gateway (recommended)
 
@@ -128,7 +128,9 @@ For ChatGPT Subscription routing, the model names must match LiteLLM's
 
 ```toml
 [agent]
-core = "codex"
+default_core = "codex"
+
+[profiles.admin]
 model = "chatgpt/gpt-5.3-codex"
 ```
 
@@ -137,23 +139,26 @@ model = "chatgpt/gpt-5.3-codex"
 To give agents access to external MCP tool servers (e.g., Playwright for web browsing), add definitions to `config.toml`:
 
 ```toml
-[mcp.playwright]
-type = "docker"
-image = "mcp/playwright:latest"
-args = ["--headless", "--port", "8931", "--host", "0.0.0.0"]
+[tools.playwright]
+type = "mcp"
+public_source = true
+secret_data = false
+public_sink = false
+dangerous_writes = false
+
+[tools.playwright.mcp]
+runtime = "docker"
+image = "mcr.microsoft.com/playwright/mcp:latest"
 port = 8931
-transport = "sse"
-idle_timeout = 600
+
+[profiles.browser]
+tools = ["playwright"]
 
 [workspaces.my-workspace]
-mcp_servers = ["playwright"]
-
-# Optional: per-workspace restrictions (passed as Docker flags)
-[workspaces.my-workspace.mcp.playwright]
-allowed-origins = "github.com;stackoverflow.com"
+profiles = ["browser"]
 ```
 
-Docker MCP containers start on-demand and stop after `idle_timeout`. See [MCP servers](usage/mcp.md) for configuration details.
+See [MCP servers](usage/mcp.md) for profile and tool selection details.
 
 ### 3. Build Container Image
 
@@ -181,9 +186,9 @@ its database from config unless you explicitly need LiteLLM internal history.
 
 The migrated `data/` directory can also contain runtime-only host state such as
 `data/worktrees/`, `data/repos/`, and old `messages.db` rows. If startup hangs
-on `git fetch` or repo-access workspaces because the new host cannot reach
+on `git fetch` or repo-mounted workspaces because the new host cannot reach
 GitHub over SSH yet, move those runtime directories aside or temporarily remove
-the affected `repo_access` entries from `config.toml`. Old message history is
+the affected `repo` entries from `config.toml`. Old message history is
 useful but not required for a successful cutover; prioritize one healthy service
 instance over perfectly preserving historical rows.
 

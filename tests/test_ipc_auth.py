@@ -554,11 +554,11 @@ class TestScheduleTaskTypes:
         assert len(await get_all_tasks()) == 0
 
 
-# --- context_mode ---
+# --- scheduled task isolation ---
 
 
-class TestContextMode:
-    async def test_accepts_group_context(self, deps):
+class TestScheduledTaskIsolation:
+    async def test_ignores_group_context(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
@@ -574,7 +574,7 @@ class TestContextMode:
         )
 
         tasks = await get_all_tasks()
-        assert tasks[0].context_mode == "group"
+        assert tasks[0].context_mode == "isolated"
 
     async def test_accepts_isolated_context(self, deps):
         await dispatch(

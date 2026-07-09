@@ -134,6 +134,7 @@ def _build_container_input(
         system_notices=ctx.system_notices or None,
         is_scheduled_task=is_scheduled_task,
         repo_access=ctx.repo_access,
+        repo_accesses=ctx.repo_accesses,
         system_prompt_append=ctx.system_prompt_append,
         agent_core_module=ctx.agent_core_module,
         agent_core_class=ctx.agent_core_class,
@@ -144,23 +145,16 @@ def _build_container_input(
 def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, str] | None:
     s = get_settings()
     resolved_model = s.agent.model
-    resolved_fallback_model = s.agent.fallback_model
     if group_folder is not None:
         from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
-        sandbox_config = load_resolved_config(group_folder)
-        if sandbox_config is not None:
-            if sandbox_config.model:
-                resolved_model = sandbox_config.model
-                resolved_fallback_model = sandbox_config.fallback_model
-            elif sandbox_config.fallback_model:
-                resolved_fallback_model = sandbox_config.fallback_model
+        workspace_config = load_resolved_config(group_folder)
+        if workspace_config is not None and workspace_config.model:
+            resolved_model = workspace_config.model
 
     result: dict[str, str] = {}
     if resolved_model:
         result["model"] = resolved_model
-    if resolved_fallback_model:
-        result["fallback_model"] = resolved_fallback_model
     return result or None
 
 
@@ -294,14 +288,7 @@ async def _cold_start(
 
     await _docker_rm_force(container_name)
 
-    # Determine idle timeout from workspace config
-    from pynchy.host.orchestrator.workspace_config import load_workspace_config
-
-    ws_config = load_workspace_config(group.folder)
-    idle_enabled = (
-        ws_config.idle_terminate if ws_config and ws_config.idle_terminate is not None else True
-    )
-    idle_timeout = get_settings().idle_timeout if idle_enabled else 0.0
+    idle_timeout = get_settings().idle_timeout
 
     return await _spawn_and_await(
         deps,
@@ -429,7 +416,7 @@ async def _run_scheduled_task(
             input_data,
             container_name,
             ctx,
-            idle_timeout=0.0,
+            idle_timeout=get_settings().idle_timeout,
             label="scheduled task",
         )
     except asyncio.CancelledError:

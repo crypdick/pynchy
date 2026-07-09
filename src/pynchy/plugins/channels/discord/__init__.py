@@ -5,8 +5,8 @@ maps guild channels, threads, and DMs to pynchy conversations. Each Discord
 conversation is a jid of the form ``discord:<kind>:<snowflake>`` (see
 ``_ids``), so it coexists with other channel plugins.
 
-Activation: define ``[connection.discord.<name>]`` entries in config.toml with
-a ``bot_token_env`` naming the env var that holds the bot token. The plugin
+Activation: define ``[connections.<name>]`` entries with ``type = "discord"``
+and a ``bot_token_env`` naming the env var that holds the bot token. The plugin
 returns ``None`` when no Discord connections are configured, so it never
 interferes with installations that don't use Discord.
 
@@ -64,7 +64,7 @@ def _build_channel(
     workspaces: Any,
 ) -> DiscordChannel | None:
     """Build one DiscordChannel or log why that connection was skipped."""
-    connection_name = f"connection.discord.{name}"
+    connection_name = name
     token_env = (cfg.bot_token_env or "").strip()
     if not token_env:
         logger.warning(
@@ -100,7 +100,7 @@ class DiscordChannelPlugin:
     @hookimpl
     def pynchy_create_channel(self, context: Any) -> list[DiscordChannel] | None:
         settings = get_settings()
-        configs = settings.connection.discord
+        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "discord"}
         if not configs:
             logger.debug("Discord channel skipped — no connections configured")
             return None

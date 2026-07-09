@@ -18,7 +18,7 @@ This lets agents interact with host resources (calendars, databases, network ser
 
 All service tool requests pass through `SecurityPolicy` before reaching the plugin handler. Each service declares four trust properties (`public_source`, `secret_data`, `public_sink`, `dangerous_writes`) that control gating based on taint tracking.
 
-Admin workspaces bypass all policy gates. Non-admin workspaces are gated by service trust declarations — see [Service Trust Policy](security.md#5-service-trust-policy-lethal-trifecta-defenses) for the architecture and [Service Trust](../usage/security.md) for configuration.
+All workspaces are gated by tool trust declarations. Admin workspaces are additionally protected by the clean-room rule that forbids public-source tools — see [Service Trust Policy](security.md#5-service-trust-policy-lethal-trifecta-defenses) for the architecture and [Tool Trust](../usage/security.md) for configuration.
 
 ## Handler Contract
 

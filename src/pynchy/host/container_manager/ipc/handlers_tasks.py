@@ -30,7 +30,6 @@ class _ScheduledTaskRequest:
     schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
     target_folder: GroupFolder
-    context_mode: Literal["group", "isolated"]
 
 
 @dataclass(frozen=True)
@@ -136,7 +135,7 @@ async def _handle_schedule_task(
             prompt=request.prompt,
             schedule_type=request.schedule_type,
             schedule_value=request.schedule_value,
-            context_mode=request.context_mode,
+            context_mode="isolated",
             next_run=next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
@@ -147,7 +146,7 @@ async def _handle_schedule_task(
         task_id=task_id,
         source_group=source_group,
         target_folder=request.target_folder,
-        context_mode=request.context_mode,
+        context_mode="isolated",
     )
 
 
@@ -167,7 +166,6 @@ def _scheduled_task_request(data: dict[str, Any]) -> _ScheduledTaskRequest | Non
         schedule_type=parsed_schedule_type,
         schedule_value=schedule_value,
         target_folder=target_folder,
-        context_mode=_context_mode(data.get("context_mode")),
     )
 
 
@@ -217,12 +215,6 @@ def _schedule_type(value: Any) -> Literal["cron", "interval", "once"] | None:
     if value in ("cron", "interval", "once"):
         return cast(Literal["cron", "interval", "once"], value)
     return None
-
-
-def _context_mode(value: Any) -> Literal["group", "isolated"]:
-    if value == "group":
-        return "group"
-    return "isolated"
 
 
 def _target_jid_for_folder(

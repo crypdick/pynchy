@@ -9,8 +9,8 @@ Planning, Ready, In Progress, and Done.
 ## Configure access
 
 Create a Linear personal API key, then store it in the host environment as
-`LINEAR_API_KEY`. If that key can see exactly one Linear team, no other config is
-needed. Pynchy creates missing workspace projects and workflow states on boot.
+`LINEAR_API_KEY`. Pynchy uses that key only as a credential; it does not grant
+workspace access to Linear tools by itself.
 
 If the key can see multiple teams, set `LINEAR_TEAM_KEY` to the team key, team
 ID, or exact team name Pynchy should use:
@@ -20,10 +20,38 @@ LINEAR_API_KEY=lin_api_...
 LINEAR_TEAM_KEY=SYN
 ```
 
-The plugin supplies the `[mcp.linear]` definition automatically. When
-`LINEAR_API_KEY` is present, Pynchy also attaches the Linear MCP server to every
-workspace by default, so individual workspace config does not need
-`mcp_servers = ["linear"]`.
+Select the Linear capability through a profile. For Pynchy's workspace todo-board
+integration, declare a Linear tool and select it from the profile:
+
+```toml
+[tools.linear]
+type = "linear"
+public_source = false
+secret_data = false
+public_sink = true
+dangerous_writes = false
+
+[profiles.project]
+tools = ["linear"]
+
+[workspaces.code-improver]
+profiles = ["project"]
+```
+
+To expose the Linear MCP tools directly to agents, select the plugin-provided
+MCP runtime by declaring and granting the `linear` tool:
+
+```toml
+[tools.linear]
+type = "linear"
+project_per_workspace = true
+
+[profiles.project]
+tools = ["linear"]
+
+[workspaces.code-improver]
+profiles = ["project"]
+```
 
 Editing `.env` triggers the normal Pynchy auto-restart; do not restart the
 service manually unless the health check shows it is stuck.

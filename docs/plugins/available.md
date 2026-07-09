@@ -12,10 +12,10 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `agent_openai` | Agent Core | OpenAI Agents SDK alternative. | `PYNCHY_AGENT_CORE=openai` | [Agent cores](../usage/agent-cores.md) |
 | `agent_codex` | Agent Core | OpenAI Codex CLI core routed through the LLM gateway. | `PYNCHY_AGENT_CORE=codex` | [Agent cores](../usage/agent-cores.md) |
 | `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth | [Channels](../usage/channels.md) |
-| `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
+| `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[connections.<name>] type = "slack"` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
 | `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active | [Channels](../usage/channels.md) |
 | `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active | [Memory](../usage/memory.md) |
-| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
+| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[tools.caldav]` server config + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
 | `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) | [Container isolation](../architecture/container-isolation.md) |
 | `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) | [Container isolation](../architecture/container-isolation.md) |
 | `google-setup` | Service Handler + MCP Server | Google Drive and Calendar setup — GCP project creation, API enablement, OAuth authorization. Provides base MCP server specs for `gdrive` and `gcal`. | Always active | [Google Drive](../usage/gdrive.md) |
@@ -24,7 +24,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `playwright-browser` | MCP Server | General browser-control tools backed by `@playwright/mcp`; runs headed by default on the host. | `PYNCHY_BROWSER_HEADLESS=true` for headless hosts | [MCP servers](../usage/mcp.md) |
 | `slack-token-extractor` | Service Handler | Extracts fresh Slack browser tokens (xoxc/xoxd) from persistent browser sessions. | Always active | — |
 | `x-integration` | Service Handler | Post tweets, like, reply, retweet, and quote on X (Twitter) via browser automation. | Always active | — |
-| `linear` | MCP Server | Linear task-tracking tools for listing teams/issues and creating issues. | `LINEAR_API_KEY` + workspace `mcp_servers = ["linear"]` | [Linear](../usage/linear.md) |
+| `linear` | MCP Server | Linear task-tracking tools for listing teams/issues and creating issues. | `LINEAR_API_KEY` | [Linear](../usage/linear.md) |
 | `notebook-server` | MCP Server | JupyterLab notebook execution server for running Python notebooks in agent containers. | Always active | [Notebooks](../usage/notebooks.md) |
 | `sqlite-observer` | Observer | Persists operational EventBus summaries to a dedicated `events` table. | Always active | [Observers](../architecture/observers.md) |
 | `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) | [Tunnels](../architecture/tunnels.md) |

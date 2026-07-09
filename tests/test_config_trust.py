@@ -1,115 +1,173 @@
 """Tests for trust-model config parsing."""
 
 import pytest
-from conftest import make_settings
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from pynchy.config.merge import merge_sandbox_config
 from pynchy.config.models import (
-    CapabilityTomlConfig,
-    ProfileConfig,
-    ServiceTrustTomlConfig,
-    WorkspaceConfig,
-    WorkspaceSecurityTomlConfig,
-    WorkspaceServiceOverride,
+    BuiltinTool,
+    McpTool,
+    ToolConfig,
 )
+from pynchy.config.settings import validate_settings_mapping
+from pynchy.host.container_manager.mcp.resolution import merged_mcp_servers
 
 
-def test_service_trust_toml_defaults():
-    """Unpopulated service trust config is maximally cautious."""
-    cfg = ServiceTrustTomlConfig()
+def test_tool_trust_defaults_are_maximally_cautious():
+    """Unpopulated tool trust config is maximally cautious."""
+    cfg = TypeAdapter(ToolConfig).validate_python({"type": "builtin"})
+    assert isinstance(cfg, BuiltinTool)
     assert cfg.public_source is True
     assert cfg.secret_data is True
     assert cfg.public_sink is True
     assert cfg.dangerous_writes is True
 
 
-def test_service_trust_toml_all_false():
-    """All-false config parses correctly."""
-    cfg = ServiceTrustTomlConfig(
-        public_source=False,
-        secret_data=False,
-        public_sink=False,
-        dangerous_writes=False,
+def test_tool_trust_all_false():
+    """All-false tool trust config parses correctly."""
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "builtin",
+            "public_source": False,
+            "secret_data": False,
+            "public_sink": False,
+            "dangerous_writes": False,
+        }
     )
     assert cfg.public_source is False
     assert cfg.dangerous_writes is False
 
 
-def test_service_trust_toml_forbidden():
+def test_tool_trust_forbidden():
     """Forbidden string value parses correctly."""
-    cfg = ServiceTrustTomlConfig(
-        public_source="forbidden",
-        public_sink="forbidden",
-        dangerous_writes="forbidden",
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "builtin",
+            "public_source": "forbidden",
+            "public_sink": "forbidden",
+            "dangerous_writes": "forbidden",
+        }
     )
     assert cfg.public_source == "forbidden"
 
 
-def test_service_trust_toml_invalid_value():
+def test_tool_trust_invalid_value():
     """Invalid value raises ValidationError."""
     with pytest.raises(ValidationError):
-        ServiceTrustTomlConfig(public_source="maybe")
+        TypeAdapter(ToolConfig).validate_python({"type": "builtin", "public_source": "maybe"})
 
 
-def test_workspace_security_toml_defaults():
-    cfg = WorkspaceSecurityTomlConfig()
-    assert cfg.services == {}
-
-
-def test_workspace_service_override_only_forbidden():
-    """Workspace overrides only accept 'forbidden' values."""
-    override = WorkspaceServiceOverride(public_sink="forbidden")
-    assert override.public_sink == "forbidden"
-
-
-def test_workspace_service_override_rejects_non_forbidden():
-    """Workspace overrides reject values other than 'forbidden' or None."""
-    with pytest.raises(ValidationError):
-        WorkspaceServiceOverride(public_sink=True)
-
-
-def test_workspace_config_has_security():
-    """WorkspaceConfig accepts the new security config."""
-    cfg = WorkspaceConfig(
-        security=WorkspaceSecurityTomlConfig(
-            services={"email": ServiceTrustTomlConfig(public_source=True)},
-        ),
-    )
-    assert cfg.security is not None
-    assert "email" in cfg.security.services
-
-
-def test_profile_contains_secrets_feeds_runtime_security(monkeypatch):
-    from pynchy.host.container_manager.security.gate import resolve_security
-
-    settings = make_settings(
-        profiles={"worker": ProfileConfig(contains_secrets=True)},
-        workspaces={"research": WorkspaceConfig(profile="worker")},
-    )
-    monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
-
-    assert resolve_security("research").contains_secrets is True
-
-
-def test_capability_config_accepts_decisions():
-    cfg = CapabilityTomlConfig(decision="needs_human")
-    assert cfg.decision == "needs_human"
-
-
-def test_sandbox_capabilities_merge_by_name_with_workspace_winning():
-    universal = ProfileConfig(
-        capabilities={
-            "mcp.email.send": CapabilityTomlConfig(decision="needs_human"),
-            "mcp.browser.*": CapabilityTomlConfig(decision="deny"),
+def test_mcp_tool_provider_config_parses_credentials_path():
+    cfg = TypeAdapter(ToolConfig).validate_python(
+        {
+            "type": "mcp",
+            "public_source": False,
+            "secret_data": True,
+            "public_sink": False,
+            "dangerous_writes": False,
+            "mcp": {
+                "runtime": "docker",
+                "image": "mcp/gdrive:latest",
+                "port": 8080,
+                "credentials_path": "/gdrive-server/credentials.json",
+            },
         }
     )
-    profile = ProfileConfig(capabilities={"mcp.email.send": CapabilityTomlConfig(decision="deny")})
-    sandbox = WorkspaceConfig(
-        capabilities={"mcp.email.send": CapabilityTomlConfig(decision="allow")}
+
+    assert isinstance(cfg, McpTool)
+    assert cfg.mcp.credentials_path == "/gdrive-server/credentials.json"
+
+
+def test_mcp_tool_rejects_missing_provider_config() -> None:
+    with pytest.raises(ValidationError, match="mcp"):
+        TypeAdapter(ToolConfig).validate_python({"type": "mcp"})
+
+
+def test_mcp_tool_provider_config_rejects_implicit_partial_docker_config() -> None:
+    with pytest.raises(ValidationError, match="Docker MCP tools require 'port'"):
+        TypeAdapter(ToolConfig).validate_python(
+            {"type": "mcp", "mcp": {"image": "mcp/example:latest"}}
+        )
+
+
+def test_valid_docker_mcp_tool_config_parses_and_resolves() -> None:
+    settings = validate_settings_mapping(
+        {
+            "profiles": {"worker": {"tools": ["docs"]}},
+            "workspaces": {"research": {"profiles": ["worker"]}},
+            "tools": {
+                "docs": {
+                    "type": "mcp",
+                    "mcp": {
+                        "runtime": "docker",
+                        "image": "mcp/docs:latest",
+                        "port": 8080,
+                    },
+                }
+            },
+        }
     )
 
-    resolved = merge_sandbox_config(universal, profile, sandbox)
+    servers = merged_mcp_servers(settings, {})
 
-    assert resolved.capabilities["mcp.email.send"].decision == "allow"
-    assert resolved.capabilities["mcp.browser.*"].decision == "deny"
+    assert servers["docs"].type == "docker"
+    assert servers["docs"].image == "mcp/docs:latest"
+    assert servers["docs"].port == 8080
+
+
+@pytest.mark.parametrize(
+    ("mcp_config", "error"),
+    [
+        ({"runtime": "script", "port": 8080}, "Script MCP tools require 'command'"),
+        ({"runtime": "script", "command": "uv"}, "Script MCP tools require 'port'"),
+        ({"runtime": "docker", "port": 8080}, "Docker MCP tools require 'image'"),
+        ({"runtime": "docker", "image": "mcp/example:latest"}, "Docker MCP tools require 'port'"),
+        ({"runtime": "url"}, "URL MCP tools require 'url'"),
+        ({"image": "mcp/example:latest"}, "Docker MCP tools require 'port'"),
+        ({"port": 8080}, "Docker MCP tools require 'image'"),
+    ],
+)
+def test_mcp_tool_provider_config_rejects_incomplete_runtime_config(
+    mcp_config: dict[str, object], error: str
+) -> None:
+    with pytest.raises(ValidationError, match=error):
+        TypeAdapter(ToolConfig).validate_python({"type": "mcp", "mcp": mcp_config})
+
+
+def test_profile_selecting_unknown_tool_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="unknown tool"):
+        validate_settings_mapping(
+            {
+                "profiles": {"worker": {"tools": ["missing"]}},
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {},
+            }
+        )
+
+
+def test_legacy_service_trust_toml_is_not_user_facing_config():
+    """The old [services] trust shape is rejected at the Settings boundary."""
+    with pytest.raises(ValidationError, match="Legacy config sections"):
+        validate_settings_mapping({"services": {"browser": {"public_source": True}}})
+
+
+def test_admin_profile_with_public_source_tool_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="Admin workspace"):
+        validate_settings_mapping(
+            {
+                "profiles": {"admin": {"is_admin": True, "tools": ["browser"]}},
+                "workspaces": {"admin": {"profiles": ["admin"]}},
+                "tools": {"browser": {"type": "builtin", "name": "browser", "public_source": True}},
+            }
+        )
+
+
+def test_admin_profile_with_non_public_source_tool_passes() -> None:
+    settings = validate_settings_mapping(
+        {
+            "profiles": {"admin": {"is_admin": True, "tools": ["shell"]}},
+            "workspaces": {"admin": {"profiles": ["admin"]}},
+            "tools": {"shell": {"type": "builtin", "name": "shell", "public_source": False}},
+        }
+    )
+
+    assert settings.resolved_workspace_config("admin").tools == ["shell"]

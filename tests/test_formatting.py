@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from conftest import make_settings
 
+from pynchy.config.models import AgentConfig
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
     format_tool_preview,
@@ -53,6 +54,15 @@ class TestTriggerPattern:
 
     def test_ghost_alias_does_not_match_when_not_at_start(self):
         assert not TRIGGER_PATTERN.search("hello @ghost")
+
+    def test_custom_agent_name_and_aliases_drive_pattern(self):
+        pattern = make_settings(
+            agent=AgentConfig(name="hermes", trigger_aliases=["ghost", "runner"])
+        ).trigger_pattern
+
+        assert pattern.search("@hermes hello")
+        assert pattern.search("@runner hello")
+        assert not pattern.search("@pynchy hello")
 
 
 # --- stripInternalTags ---

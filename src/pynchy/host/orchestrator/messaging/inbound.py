@@ -2,7 +2,7 @@
 
 Decides whether to enqueue a container run, pipe messages to an
 active container, interrupt a running scheduled task, or skip the group
-entirely (trigger/access rules, system-notice filtering, special commands).
+entirely (channel filtering, system-notice filtering, special commands).
 
 The processing pipeline itself lives in :mod:`message_handler` — this
 module only handles *how* messages arrive and get dispatched.
@@ -14,7 +14,6 @@ import asyncio
 from collections.abc import Callable
 
 from pynchy.config import get_settings
-from pynchy.host.orchestrator.messaging.commands import is_any_magic_command
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
     _mark_dispatched,
@@ -36,7 +35,7 @@ async def _route_incoming_group(
 
     Decides whether to enqueue a container run, pipe messages to an
     active container, or interrupt a running scheduled task.  Early-returns
-    when the group should be skipped (access/trigger rules, system-notice
+    when the group should be skipped (channel filtering, system-notice
     filtering, special commands).
     """
     group_messages = _allowed_group_messages(deps, group_jid, group, group_messages)
@@ -63,39 +62,14 @@ def _allowed_group_messages(
     group: WorkspaceProfile,
     group_messages: list[NewMessage],
 ) -> list[NewMessage]:
-    s = get_settings()
-    from pynchy.config.access import filter_allowed_messages, resolve_channel_config
+    from pynchy.config.access import filter_allowed_messages
 
     channel_plugin_name = _channel_plugin_name(deps, group_jid)
-    resolved = resolve_channel_config(
-        group.folder,
-        channel_jid=group_jid,
-        channel_plugin_name=channel_plugin_name,
-    )
-
-    if resolved.access in ("read", "write"):
-        logger.info("route_trace", step="skip_access", group=group.name, access=resolved.access)
-        return []
-
     filtered_messages = filter_allowed_messages(group_messages, group, channel_plugin_name)
     if not filtered_messages:
         logger.info("route_trace", step="skip_all_filtered", group=group.name)
         return []
-
-    if _needs_trigger(group, resolved.trigger) and not _has_group_trigger(s, filtered_messages):
-        logger.info("route_trace", step="skip_no_trigger", group=group.name)
-        return []
     return filtered_messages
-
-
-def _needs_trigger(group: WorkspaceProfile, trigger: str) -> bool:
-    return not group.is_admin and trigger == "mention"
-
-
-def _has_group_trigger(settings: object, group_messages: list[NewMessage]) -> bool:
-    has_trigger = any(settings.trigger_pattern.search(m.content.strip()) for m in group_messages)
-    last_content = group_messages[-1].content.strip()
-    return has_trigger or is_any_magic_command(last_content)
 
 
 def _routing_cursor(deps: MessageHandlerDeps, group_jid: str) -> str:

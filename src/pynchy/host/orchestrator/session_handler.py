@@ -213,10 +213,11 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
 
     await _ensure_dynamic_thread_workspace(deps, msg)
 
-    # Check channel access mode — skip inbound from write-only channels
+    # Check channel ownership. Inbound handling is permissive once the channel
+    # owns this workspace.
     group = deps.workspaces.get(msg.chat_jid)
     if group and source_channel:
-        from pynchy.config.access import resolve_channel_config, resolve_workspace_connection_name
+        from pynchy.config.access import resolve_workspace_connection_name
 
         expected = resolve_workspace_connection_name(group.folder)
         if expected and expected != source_channel:
@@ -228,28 +229,12 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
             )
             return
 
-        resolved = resolve_channel_config(
-            group.folder,
-            channel_jid=msg.chat_jid,
-            channel_plugin_name=source_channel,
+        from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
+
+        create_background_task(
+            send_reaction_to_channels(deps, msg.chat_jid, msg.id, msg.sender, "eyes"),
+            name=f"read-receipt-{msg.id}",
         )
-        if resolved.access == "write":
-            logger.debug(
-                "Ignoring inbound from write-only channel",
-                channel=source_channel,
-                chat_jid=msg.chat_jid,
-            )
-            return
-
-        # Read receipt: react with 👀 so the sender knows pynchy received
-        # the message.  Only on channels with write access (readwrite).
-        if resolved.access == "readwrite":
-            from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
-
-            create_background_task(
-                send_reaction_to_channels(deps, msg.chat_jid, msg.id, msg.sender, "eyes"),
-                name=f"read-receipt-{msg.id}",
-            )
 
     await ingest_user_message(deps, msg, source_channel=source_channel)
 

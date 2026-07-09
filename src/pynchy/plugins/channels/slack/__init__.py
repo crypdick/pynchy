@@ -4,8 +4,8 @@ Connects to Slack via Socket Mode (bolt) and maps Slack channels/DMs to
 pynchy workspaces.  Each Slack conversation is identified by a JID of the
 form ``slack:<CHANNEL_ID>`` so it coexists with other channel plugins.
 
-Activation: define ``[connection.slack.<name>]`` entries in config.toml and
-provide token env var names (e.g. ``SLACK__BOT_TOKEN`` / ``SLACK__APP_TOKEN``).
+Activation: define ``[connections.<name>]`` entries with ``type = "slack"``
+and provide token env var names (e.g. ``SLACK__BOT_TOKEN`` / ``SLACK__APP_TOKEN``).
 The plugin returns ``None`` when no Slack connections are configured, so it
 never interferes with installations that don't use Slack.
 
@@ -70,7 +70,7 @@ def _build_channel(
     on_ask_user_answer: Any,
 ) -> SlackChannel | None:
     """Build one SlackChannel or log why that connection was skipped."""
-    connection_name = f"connection.slack.{name}"
+    connection_name = name
     bot_env = (cfg.bot_token_env or "").strip()
     app_env = (cfg.app_token_env or "").strip()
     if not bot_env or not app_env:
@@ -120,7 +120,7 @@ class SlackChannelPlugin:
     @hookimpl
     def pynchy_create_channel(self, context: Any) -> list[SlackChannel] | None:
         settings = get_settings()
-        configs = settings.connection.slack
+        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "slack"}
         if not configs:
             logger.debug("Slack channel skipped — no connections configured")
             return None

@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
 from pynchy.config import Settings
 from pynchy.config.mcp import McpServerConfig
-from pynchy.config.merge import ResolvedSandboxConfig, merge_sandbox_config
+from pynchy.config.merge import ResolvedWorkspaceConfig
+from pynchy.config.models import McpTool
 from pynchy.logger import logger
 from pynchy.types import ServiceTrustConfig
 
@@ -86,39 +86,54 @@ class _SyncState:
 def _resolved_workspace_config(
     settings: Settings,
     group_folder: str,
-) -> ResolvedSandboxConfig | None:
-    """Resolve workspace config before reading MCP server declarations."""
-    ws_config = settings.workspaces.get(group_folder)
-    if ws_config is None:
-        return None
+) -> ResolvedWorkspaceConfig | None:
+    """Resolve workspace config before reading selected MCP tool declarations."""
+    return settings.resolved_workspace_config(group_folder)
 
-    profile = settings.profiles.get(ws_config.profile) if ws_config.profile else None
-    return merge_sandbox_config(settings.universal, profile, ws_config)
+
+def _mcp_runtime_updates(tool: McpTool) -> dict[str, Any]:
+    fields = set(tool.mcp.model_fields_set)
+    fields.discard("credentials_path")
+    if not fields:
+        return {}
+
+    updates = tool.mcp.model_dump(include=fields, exclude_none=True)
+    if "runtime" in updates:
+        updates["type"] = updates.pop("runtime")
+    return updates
 
 
 def merged_mcp_servers(
     settings: Settings,
     plugin_mcp_servers: dict[str, McpServerConfig],
 ) -> dict[str, McpServerConfig]:
-    """Config.toml servers + plugin-provided servers, with instance expansion.
+    """Tool-declared MCP runtime configs + plugin-provided servers.
 
-    Instance expansion: for each template in ``mcp_server_instances``,
+    Instance expansion: for each template in internal ``mcp_server_instances``,
     the bare template is consumed (dropped from result) and expanded into
     one entry per instance with auto-assigned port, chrome-profile volume
     mount, and PORT env var.
     """
     result = dict(plugin_mcp_servers)
-    for name, override in settings.mcp_servers.items():
+
+    for name, tool in settings.tools.items():
+        if not isinstance(tool, McpTool):
+            continue
+        updates = _mcp_runtime_updates(tool)
+        if not updates:
+            continue
         base = result.get(name)
         if base is None:
-            result[name] = override
+            if "type" not in updates:
+                updates["type"] = tool.mcp.runtime
+            result[name] = McpServerConfig(**updates)
             continue
         result[name] = base.model_copy(
-            update=override.model_dump(include=override.model_fields_set),
+            update=updates,
         )
 
     # Expand template x instance pairs
-    for template, instances in settings.mcp_server_instances.items():
+    for template, instances in getattr(settings, "mcp_server_instances", {}).items():
         base = result.pop(template, None)
         if base is None:
             logger.warning(
@@ -133,17 +148,17 @@ def merged_mcp_servers(
             chrome_profile = overrides.get("chrome_profile")
 
             # Build merged config updates
-            updates: dict[str, Any] = {"port": port}
+            instance_updates: dict[str, Any] = {"port": port}
 
             if chrome_profile:
                 vol = f"data/chrome-profiles/{chrome_profile}:/home/chrome"
-                updates["volumes"] = [*base.volumes, vol]
+                instance_updates["volumes"] = [*base.volumes, vol]
 
             merged_env = dict(base.env)
             merged_env["PORT"] = str(port)
-            updates["env"] = merged_env
+            instance_updates["env"] = merged_env
 
-            result[qualified] = base.model_copy(update=updates)
+            result[qualified] = base.model_copy(update=instance_updates)
 
     return result
 
@@ -153,20 +168,18 @@ def resolve_workspace_servers(
     all_servers: dict[str, McpServerConfig],
     group_folder: str,
 ) -> list[str]:
-    """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
+    """Expand resolved MCP tool names into concrete server names."""
     ws_config = _resolved_workspace_config(settings, group_folder)
     if not ws_config:
         return []
 
-    configured_servers = list(ws_config.mcp_servers or [])
-    if os.environ.get("LINEAR_API_KEY") and "linear" in all_servers:
-        configured_servers.append("linear")
+    configured_servers = [name for name in ws_config.tools if name in all_servers]
 
     servers: set[str] = set()
     for entry in configured_servers:
         if entry == "all":
             servers.update(all_servers.keys())
-        elif entry in settings.mcp_groups:
+        elif entry in getattr(settings, "mcp_groups", {}):
             servers.update(settings.mcp_groups[entry])
         elif entry in all_servers:
             servers.add(entry)
@@ -184,18 +197,18 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
 
     Expands presets and merges with explicit values.
     """
-    ws_config = settings.workspaces.get(group_folder)
-    if not ws_config:
+    if group_folder not in settings.workspaces:
         return {}
+    assert server_name
 
-    raw_kwargs: dict[str, Any] = dict(ws_config.mcp.get(server_name, {}))
+    raw_kwargs: dict[str, Any] = {}
 
     # Extract and expand presets
     preset_names: list[str] = raw_kwargs.pop("presets", [])
     merged: dict[str, str] = {}
 
     for preset_name in preset_names:
-        preset = settings.mcp_presets.get(preset_name, {})
+        preset = getattr(settings, "mcp_presets", {}).get(preset_name, {})
         for key, value in preset.items():
             if key in merged:
                 # Merge values with semicolons (for domain lists, etc.)
@@ -289,13 +302,24 @@ def resolve_all_instances(
 def build_trust_map(
     instances: dict[str, McpInstance],
     plugin_trust_defaults: dict[str, ServiceTrustConfig],
+    settings: Settings | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build trust metadata for each instance (used by proxy for fencing decisions).
 
-    Priority: plugin defaults, else a safe default.
+    Priority: configured tool trust, plugin defaults, else a safe default.
     """
     trust_map: dict[str, dict[str, Any]] = {}
     for iid, instance in instances.items():
+        tool = settings.tools.get(instance.server_name) if settings else None
+        if tool:
+            trust_map[iid] = {
+                "public_source": tool.public_source,
+                "secret_data": tool.secret_data,
+                "public_sink": tool.public_sink,
+                "dangerous_writes": tool.dangerous_writes,
+            }
+            continue
+
         plugin_trust = plugin_trust_defaults.get(instance.server_name)
         if plugin_trust:
             trust_map[iid] = {

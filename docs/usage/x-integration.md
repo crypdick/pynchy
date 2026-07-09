@@ -41,11 +41,22 @@ enabled = true
 
 ## 2. Grant workspace access
 
-Add the `x_integration` MCP server to a workspace:
+Add the `x_integration` tool to a profile, then select that profile from the workspace:
 
 ```toml
+[tools.x_integration]
+type = "builtin"
+name = "x_integration"
+public_source = true
+secret_data = true
+public_sink = true
+dangerous_writes = true
+
+[profiles.x-admin]
+tools = ["x_integration"]
+
 [workspaces.admin]
-mcp_servers = ["x_integration"]
+profiles = ["x-admin"]
 ```
 
 ## 3. First-time authentication

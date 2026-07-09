@@ -126,8 +126,8 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
@@ -152,7 +152,7 @@ class TestSyncWorktreeToMain:
         assert result_file.exists()
         data = json.loads(result_file.read_text())
         assert data["success"] is True
-        assert "Merged" in data["message"]
+        assert "Merged" in data["repos"]["owner/pynchy"]["message"]
 
     async def test_writes_result_file_on_failure(self, deps: MockDeps, tmp_path: Path):
         """Failure result should also be written so the MCP tool can read it."""
@@ -202,8 +202,8 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
@@ -275,8 +275,8 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",

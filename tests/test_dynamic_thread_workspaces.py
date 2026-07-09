@@ -62,12 +62,7 @@ async def test_unknown_discord_thread_registers_inherited_workspace(db, monkeypa
     settings = make_settings(
         groups_dir=tmp_path / "groups",
         profiles={"admin": ProfileConfig(is_admin=True)},
-        workspaces={
-            "admin": WorkspaceConfig(
-                profile="admin",
-                chat="connection.discord.main.chat.synapse.channels.admin",
-            )
-        },
+        workspaces={"admin": WorkspaceConfig(profiles=["admin"])},
     )
     monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings)
     deps = _Deps()
@@ -96,17 +91,12 @@ async def test_unknown_discord_thread_registers_inherited_workspace(db, monkeypa
 
 def test_dynamic_thread_folder_resolves_parent_workspace_config(monkeypatch):
     settings = make_settings(
-        profiles={"admin": ProfileConfig(repo_access="crypdick/pynchy")},
-        workspaces={
-            "admin": WorkspaceConfig(
-                profile="admin",
-                chat="connection.discord.main.chat.synapse.channels.admin",
-            )
-        },
+        profiles={"admin": ProfileConfig(repo="crypdick/pynchy")},
+        workspaces={"admin": WorkspaceConfig(profiles=["admin"])},
     )
     monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings)
 
     resolved = load_resolved_config(dynamic_thread_folder("admin", "discord:channel:thread"))
 
     assert resolved is not None
-    assert resolved.repo_access == "crypdick/pynchy"
+    assert resolved.repo == ["crypdick/pynchy"]

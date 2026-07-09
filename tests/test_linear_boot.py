@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from conftest import make_settings
+
+from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_boot import (
     create_linear_workspace_todo,
@@ -41,6 +44,14 @@ async def test_reconcile_linear_workspace_boards_uses_env_defaults(monkeypatch):
     reconcile = AsyncMock(return_value={"alpha": fake_board})
 
     with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=make_settings(
+                profiles={"linear": ProfileConfig(tools=["linear"])},
+                workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+                tools={"linear": LinearTool(type="linear")},
+            ),
+        ),
         patch("pynchy.plugins.integrations.linear_boot.LinearClient", return_value=fake_client),
         patch("pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards", reconcile),
     ):

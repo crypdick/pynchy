@@ -14,11 +14,18 @@ You should already understand how pynchy manages MCP servers. If not, read the [
 
 ## 1. Define the server in `config.toml`
 
-Each Slack workspace gets its own server entry with its own token mapping:
+Each Slack workspace gets its own tool entry with its own token mapping:
 
 ```toml
-[mcp.slack_mcp_acme]
-type = "docker"
+[tools.slack_mcp_acme]
+type = "mcp"
+public_source = true
+secret_data = true
+public_sink = true
+dangerous_writes = true
+
+[tools.slack_mcp_acme.mcp]
+runtime = "docker"
 image = "ghcr.io/korotovsky/slack-mcp-server:latest"
 port = 8080
 transport = "http"
@@ -70,8 +77,11 @@ The variable names must match the right-hand side of your `env_forward` mapping 
 ## 4. Grant workspace access
 
 ```toml
+[profiles.acme-slack]
+tools = ["slack_mcp_acme"]
+
 [workspaces.acme-1]
-mcp_servers = ["slack_mcp_acme"]
+profiles = ["acme-slack"]
 ```
 
 The Docker container starts on-demand when an agent first needs it. Tools like `channels_list`, `channels_history`, and `users_list` become available to the agent.
@@ -84,11 +94,22 @@ The approach: log into Slack once via a visible browser (handling CAPTCHA, magic
 
 ### Setup
 
-1. Grant the `slack_token_extractor` MCP server to a workspace (typically admin):
+1. Grant the `slack_token_extractor` tool to a workspace (typically admin):
 
 ```toml
+[tools.slack_token_extractor]
+type = "builtin"
+name = "slack_token_extractor"
+public_source = false
+secret_data = true
+public_sink = false
+dangerous_writes = true
+
+[profiles.slack-admin]
+tools = ["slack_token_extractor"]
+
 [workspaces.admin]
-mcp_servers = ["slack_token_extractor"]
+profiles = ["slack-admin"]
 ```
 
 2. Install Playwright browsers on the host (one-time):
@@ -132,11 +153,17 @@ The tool navigates to Slack using the saved session, extracts fresh tokens, and 
 For unattended operation, configure a periodic workspace that calls the tool on a schedule:
 
 ```toml
+[profiles.token-refresh]
+tools = ["slack_token_extractor"]
+
 [workspaces.token-refresh]
-is_periodic = true
+profiles = ["token-refresh"]
+
+[jobs.refresh-slack-tokens]
+enabled = true
 schedule = "0 4 * * 1"  # weekly, Monday 4am
+workspace = "token-refresh"
 prompt = "Refresh Slack tokens for ACME workspace using the slack_token_extractor tool."
-mcp_servers = ["slack_token_extractor"]
 ```
 
 When the persistent session expires (Slack rotates sessions periodically), the scheduled refresh fails with "Not logged in". Run `setup_slack_session` again to re-establish the session.

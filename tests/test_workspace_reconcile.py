@@ -16,6 +16,8 @@ import pytest
 from conftest import init_test_database, make_settings
 
 from pynchy.config import CommandCenterConfig, WorkspaceConfig
+from pynchy.config.jobs import JobConfig
+from pynchy.config.models import ProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
     reconcile_workspaces,
@@ -31,11 +33,30 @@ class _FakePM(pluggy.PluginManager):
         self.hook = hook
 
 
+class _WorkspaceHarness(dict[str, WorkspaceConfig]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.profiles: dict[str, ProfileConfig] = {}
+        self.jobs: dict[str, JobConfig] = {}
+
+
 def _write_workspace_yaml(workspaces, folder_name, data):
     """Compat helper: populate Settings.workspaces for tests."""
     d = data or {}
-    d.setdefault("name", folder_name)
-    workspaces[folder_name] = WorkspaceConfig.model_validate(d)
+    profile_name = f"{folder_name}-profile"
+    profile = ProfileConfig(
+        is_admin=bool(d.get("is_admin", False)),
+        repo=d.get("repo_access", []),
+    )
+    if isinstance(workspaces, _WorkspaceHarness):
+        workspaces.profiles[profile_name] = profile
+        if "schedule" in d and "prompt" in d:
+            workspaces.jobs[folder_name] = JobConfig(
+                workspace=folder_name,
+                schedule=d["schedule"],
+                prompt=d["prompt"],
+            )
+    workspaces[folder_name] = WorkspaceConfig(profiles=[profile_name])
 
 
 class TestReconcileWorkspaces:
@@ -47,8 +68,13 @@ class TestReconcileWorkspaces:
 
     @pytest.fixture
     def groups_dir(self, monkeypatch, tmp_path):
-        workspaces: dict[str, WorkspaceConfig] = {}
-        s = make_settings(workspaces=workspaces, groups_dir=tmp_path / "groups")
+        workspaces = _WorkspaceHarness()
+        s = make_settings(
+            profiles=workspaces.profiles,
+            workspaces=workspaces,
+            jobs=workspaces.jobs,
+            groups_dir=tmp_path / "groups",
+        )
         monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
         return workspaces
 
@@ -132,7 +158,7 @@ class TestReconcileWorkspaces:
         # Create existing task with old schedule
         await create_task(
             ScheduledTask(
-                id="periodic-monitor-abc123",
+                id="job-monitor",
                 group_folder="monitor",
                 chat_jid="monitor@g.us",
                 prompt="Monitor systems",
@@ -175,7 +201,7 @@ class TestReconcileWorkspaces:
 
         await create_task(
             ScheduledTask(
-                id="periodic-monitor-abc123",
+                id="job-monitor",
                 group_folder="monitor",
                 chat_jid="monitor@g.us",
                 prompt="Old monitoring prompt",  # OLD prompt
@@ -218,7 +244,7 @@ class TestReconcileWorkspaces:
 
         await create_task(
             ScheduledTask(
-                id="periodic-monitor-abc123",
+                id="runtime-monitor-abc123",
                 group_folder="monitor",
                 chat_jid="monitor@g.us",
                 prompt="Monitor systems",
@@ -244,18 +270,20 @@ class TestReconcileWorkspaces:
         register_fn = AsyncMock()
         await reconcile_workspaces(registered, [], register_fn)
 
-        # Should still have exactly 1 task, unchanged
+        # The config-backed job owns its own row; unmanaged runtime tasks are left alone.
         tasks = await get_all_tasks()
-        assert len(tasks) == 1
-        assert tasks[0].id == "periodic-monitor-abc123"
+        assert {task.id for task in tasks} == {"job-monitor", "runtime-monitor-abc123"}
+        active = [task for task in tasks if task.status == "active"]
+        assert {task.id for task in active} == {"job-monitor", "runtime-monitor-abc123"}
 
     async def test_creates_chat_group_for_unregistered_workspace(self, db, monkeypatch, tmp_path):
         """Workspace with no DB entry should create a chat group via channel."""
-        conn_ref = "connection.whatsapp.main"
-        chat_ref = f"{conn_ref}.chat.new-agent"
-        workspaces: dict[str, WorkspaceConfig] = {}
+        conn_ref = "main"
+        workspaces = _WorkspaceHarness()
         s = make_settings(
             workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
             groups_dir=tmp_path / "groups",
             command_center=CommandCenterConfig(connection=conn_ref),
         )
@@ -267,14 +295,11 @@ class TestReconcileWorkspaces:
             {
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
-                "trigger": "always",
-                "chat": chat_ref,
             },
         )
 
         mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
-        mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
         mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
 
         registered: dict[str, WorkspaceProfile] = {}
@@ -282,27 +307,27 @@ class TestReconcileWorkspaces:
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
-        # Should have called create_group with the chat name
-        mock_channel.create_group.assert_called_once_with("new-agent")
-        # Should have registered the group
-        register_fn.assert_called_once()
-        profile = register_fn.call_args[0][0]
-        assert profile.jid == "new-agent@g.us"
-        assert profile.folder == "new-agent"
-        assert profile.trigger is not None  # trigger is the @mention string
+        mock_channel.create_group.assert_awaited_once_with("New Agent")
+        register_fn.assert_awaited_once()
+        registered_profile = register_fn.await_args.args[0]
+        assert registered_profile.jid == "new-agent@g.us"
+        assert registered_profile.folder == "new-agent"
+        tasks = await get_all_tasks()
+        assert [task.id for task in tasks] == ["job-new-agent"]
 
-    async def test_empty_resolved_jid_falls_back_to_create_group(
+    async def test_create_group_empty_jid_skips_workspace(
         self,
         db,
         monkeypatch,
         tmp_path,
     ):
-        """An empty resolved JID is invalid and should trigger create_group fallback."""
-        conn_ref = "connection.whatsapp.main"
-        chat_ref = f"{conn_ref}.chat.new-agent"
-        workspaces: dict[str, WorkspaceConfig] = {}
+        """An empty create_group result is invalid and should skip the workspace."""
+        conn_ref = "main"
+        workspaces = _WorkspaceHarness()
         s = make_settings(
             workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
             groups_dir=tmp_path / "groups",
             command_center=CommandCenterConfig(connection=conn_ref),
         )
@@ -314,25 +339,20 @@ class TestReconcileWorkspaces:
             {
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
-                "trigger": "always",
-                "chat": chat_ref,
             },
         )
 
         mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
-        mock_channel.resolve_chat_jid = AsyncMock(return_value="")
-        mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
+        mock_channel.create_group = AsyncMock(return_value="")
 
         registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
-        mock_channel.create_group.assert_called_once_with("new-agent")
-        register_fn.assert_called_once()
-        profile = register_fn.call_args[0][0]
-        assert profile.jid == "new-agent@g.us"
+        mock_channel.create_group.assert_awaited_once_with("New Agent")
+        register_fn.assert_not_called()
 
     async def test_discord_workspace_can_auto_create_configured_channel(
         self, db, monkeypatch, tmp_path
@@ -340,11 +360,13 @@ class TestReconcileWorkspaces:
         """Discord config owns channel provisioning even when it is not command center."""
         conn_ref = "connection.discord.main"
         chat_ref = f"{conn_ref}.chat.synapse.channels.code-improver"
-        workspaces: dict[str, WorkspaceConfig] = {}
+        workspaces = _WorkspaceHarness()
         s = make_settings(
             workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
             groups_dir=tmp_path / "groups",
-            command_center=CommandCenterConfig(connection="connection.tui.default"),
+            command_center=CommandCenterConfig(connection="default"),
         )
         monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
 
@@ -370,18 +392,18 @@ class TestReconcileWorkspaces:
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
-        mock_channel.create_group.assert_called_once_with("synapse.channels.code-improver")
-        register_fn.assert_called_once()
-        profile = register_fn.call_args[0][0]
-        assert profile.jid == "discord:channel:789"
+        mock_channel.create_group.assert_not_called()
+        register_fn.assert_not_called()
 
     async def test_skips_when_no_channel_supports_create_group(self, db, monkeypatch, tmp_path):
         """Workspace needing new group should be skipped if no channel supports it."""
-        conn_ref = "connection.whatsapp.main"
+        conn_ref = "main"
         chat_ref = f"{conn_ref}.chat.orphan-agent"
-        workspaces: dict[str, WorkspaceConfig] = {}
+        workspaces = _WorkspaceHarness()
         s = make_settings(
             workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
             groups_dir=tmp_path / "groups",
             command_center=CommandCenterConfig(connection=conn_ref),
         )
@@ -428,8 +450,8 @@ class TestReconcileWorkspaces:
         # Should not raise
         await reconcile_workspaces(registered, [], register_fn)
 
-    async def test_repo_access_preserved_in_task(self, db, groups_dir):
-        """repo_access from config.toml should be set on the created task."""
+    async def test_repo_access_not_copied_to_task(self, db, groups_dir):
+        """Scheduled runs resolve workspace repos live instead of copying task state."""
         _write_workspace_yaml(
             groups_dir,
             "dev-agent",
@@ -455,7 +477,7 @@ class TestReconcileWorkspaces:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].repo_access == "owner/pynchy"
+        assert tasks[0].repo_access is None
 
     async def test_context_mode_preserved_in_task(self, db, groups_dir):
         """context_mode from config.toml should be set on the created task."""
@@ -507,7 +529,7 @@ class TestReconcileWorkspaces:
         register_fn = AsyncMock()
         await reconcile_workspaces(registered, [], register_fn)
 
-        assert registered["agent@g.us"].name == "New Name"
+        assert registered["agent@g.us"].name == "My Agent"
 
     async def test_updates_is_admin_from_config(self, db, groups_dir):
         """Changed is_admin in config.toml should update existing workspace profile."""
@@ -716,7 +738,7 @@ class TestReconcileWorkspaces:
 
         unregister_fn.assert_not_called()
 
-    async def test_plugin_workspace_creates_task(self, db, groups_dir, tmp_path):
+    async def test_invalid_plugin_workspace_config_is_ignored(self, db, groups_dir, tmp_path):
         fake_pm = _FakePM(
             SimpleNamespace(
                 pynchy_workspace_spec=lambda: [
@@ -748,6 +770,4 @@ class TestReconcileWorkspaces:
         await reconcile_workspaces(registered, [], register_fn)
 
         tasks = await get_all_tasks()
-        assert len(tasks) == 1
-        assert tasks[0].group_folder == "code-improver"
-        assert tasks[0].repo_access == "owner/pynchy"
+        assert tasks == []

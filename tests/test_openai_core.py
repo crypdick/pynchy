@@ -84,7 +84,7 @@ class TestOpenAICoreInstantiation:
 
     def _make_config(self, **overrides) -> AgentCoreConfig:
         defaults = {
-            "cwd": "/workspace/project",
+            "cwd": "/workspace/repos/owner/project",
             "session_id": None,
             "group_folder": "admin-1",
             "chat_jid": "test@g.us",
@@ -134,7 +134,7 @@ class TestMCPServerConversion:
 
         return OpenAIAgentCore(
             AgentCoreConfig(
-                cwd="/workspace/project",
+                cwd="/workspace/repos/owner/project",
                 session_id=None,
                 group_folder="admin-1",
                 chat_jid="test@g.us",
@@ -152,7 +152,7 @@ class TestMCPServerConversion:
             pytest.skip("openai-agents not installed")
 
         config = AgentCoreConfig(
-            cwd="/workspace/project",
+            cwd="/workspace/repos/owner/project",
             session_id=None,
             group_folder="admin-1",
             chat_jid="test@g.us",
@@ -304,8 +304,8 @@ class TestOpenAIToolParsing:
 
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
-class TestOpenAIQueryFallback:
-    """Retry behavior for primary/fallback OpenAI models."""
+class TestOpenAIQueryModel:
+    """OpenAI query behavior for the configured model."""
 
     def _make_core(self):
         try:
@@ -315,19 +315,18 @@ class TestOpenAIQueryFallback:
 
         core = OpenAIAgentCore(
             AgentCoreConfig(
-                cwd="/workspace/project",
+                cwd="/workspace/repos/owner/project",
                 session_id=None,
                 group_folder="admin-1",
                 chat_jid="test@g.us",
                 is_admin=True,
                 is_scheduled_task=False,
                 mcp_servers={},
-                extra={"model": "primary-model", "fallback_model": "fallback-model"},
+                extra={"model": "primary-model"},
             )
         )
         core._agent = object()
         core._model_primary = "primary-model"
-        core._model_fallback = "fallback-model"
         return core
 
     @staticmethod
@@ -335,22 +334,27 @@ class TestOpenAIQueryFallback:
         return [event async for event in core.query(prompt)]
 
     @pytest.mark.asyncio
-    async def test_retries_with_fallback_before_any_output(self, monkeypatch):
+    async def test_model_failure_is_not_retried(self, monkeypatch):
         core = self._make_core()
         calls: list[str] = []
 
-        async def fake_run_streamed(prompt: str, model: str):
-            calls.append(model)
-            if model == "primary-model":
+        class FailingStream:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
                 raise RuntimeError("model_not_found")
-            yield AgentEvent(type="text", data={"text": prompt})
+
+        def fake_run_streamed(_prompt: str, model: str):
+            calls.append(model)
+            return FailingStream()
 
         monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
 
-        events = await self._collect_events(core, "hello")
+        with pytest.raises(RuntimeError, match="model_not_found"):
+            await self._collect_events(core, "hello")
 
-        assert calls == ["primary-model", "fallback-model"]
-        assert [event.type for event in events] == ["text"]
+        assert calls == ["primary-model"]
 
     @pytest.mark.asyncio
     async def test_does_not_retry_after_emitting_primary_output(self, monkeypatch):
@@ -382,18 +386,14 @@ class TestDefaultAgentCoreConfig:
         """Default agent core comes from Settings with valid value."""
         from pynchy.config import get_settings
 
-        assert get_settings().agent.core == "openai"
+        assert get_settings().agent.default_core == "openai"
 
     def test_env_override(self):
-        """Nested env override maps to settings.agent.core."""
+        """Nested env override maps to settings.agent.default_core."""
         from pynchy.config import Settings
 
-        # Provide the full agent section via env — the explicit-fields
-        # validator requires all fields when a section is partially set.
         env = {
-            "AGENT__CORE": "openai",
-            "AGENT__NAME": "pynchy",
-            "AGENT__TRIGGER_ALIASES": '["ghost"]',
+            "AGENT__DEFAULT_CORE": "openai",
         }
         with patch.dict("os.environ", env, clear=False):
-            assert Settings().agent.core == "openai"
+            assert Settings().agent.default_core == "openai"
