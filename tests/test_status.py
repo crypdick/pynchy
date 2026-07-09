@@ -8,7 +8,7 @@ status dict rather than importing the private per-section collectors.
 from __future__ import annotations
 
 import contextlib
-import subprocess
+import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 import time
 from pathlib import Path
 from types import SimpleNamespace

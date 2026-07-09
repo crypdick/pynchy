@@ -5,7 +5,7 @@ Tests container system bootstrap logic.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from unittest.mock import MagicMock, patch
 
 import pytest

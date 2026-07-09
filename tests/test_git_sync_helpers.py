@@ -7,7 +7,7 @@ covered by the existing integration tests.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,8 +26,8 @@ from pynchy.host.git_ops.sync_poll import (
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
+    return subprocess.run(  # noqa: S603, S607, RUF100 - test helper runs fixed git argv against temp repos
+        ["git", *args],  # noqa: S607, RUF100 - test helper deliberately resolves git from PATH
         cwd=str(cwd),
         capture_output=True,
         text=True,

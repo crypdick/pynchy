@@ -7,7 +7,7 @@ with retry logic and error recovery that warrant thorough testing.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from unittest.mock import patch
 

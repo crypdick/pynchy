@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-import subprocess
+import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch

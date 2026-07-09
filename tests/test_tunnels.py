@@ -119,7 +119,7 @@ class TestTailscaleTunnel:
             assert t.status_summary() == "CLI not found"
 
     def test_is_connected_timeout(self):
-        import subprocess
+        import subprocess  # noqa: S404, RUF100 - test helper imports timeout exception
 
         with patch(
             "pynchy.plugins.tunnels.tailscale.subprocess.run",

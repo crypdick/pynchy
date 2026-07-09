@@ -8,7 +8,7 @@ import json
 import logging
 import shutil
 import signal
-import subprocess
+import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
 from pathlib import Path, PurePosixPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
