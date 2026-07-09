@@ -26,7 +26,7 @@ async def run_database_host_job(job_id: str) -> str:
 
     try:
         await _run_database_host_job(job)
-    except Exception as exc:  # allow: exception-handling - record activity failure
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(job_id, "error", str(exc))
         raise
     _record_activity_result(job_id, "completed")
@@ -57,7 +57,7 @@ async def run_config_host_cron_job(job_name: str) -> str:
         )
         if not (job.quiet_on_success and result.returncode == 0):
             log_shell_result(result, label="Config host cron job", job=job_name)
-    except Exception as exc:  # allow: exception-handling - record activity failure
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(job_name, "error", str(exc))
         raise
     _record_activity_result(job_name, "completed")

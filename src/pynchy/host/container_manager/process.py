@@ -75,7 +75,7 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
                 proc.kill()
                 with contextlib.suppress(OSError):
                     await proc.wait()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - cleanup boundary; any stop failure falls back to force kill.
         logger.exception(
             "Graceful stop failed, force killing",
             container=container_name,

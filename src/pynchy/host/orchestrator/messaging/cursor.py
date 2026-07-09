@@ -25,6 +25,6 @@ async def advance_cursor(
     deps.last_agent_timestamp[chat_jid] = new_cursor
     try:
         await deps.save_state()
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - cursor save is a state boundary; roll back the optimistic advance.
         deps.last_agent_timestamp[chat_jid] = previous_cursor
         raise

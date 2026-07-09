@@ -353,7 +353,7 @@ async def _check_temporal_cluster_health(address: str, namespace: str) -> dict[s
     try:
         client = await Client.connect(address, namespace=namespace, lazy=True)
         healthy = await client.service_client.check_health(timeout=timedelta(seconds=2))
-    except Exception as exc:  # allow: exception-handling - degraded status
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; degraded status is intentional.
         logger.debug(
             "Temporal cluster health check failed",
             address=address,
@@ -405,7 +405,7 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
                 result["database"] = data.get("db")
                 if "litellm_version" in data:
                     result["litellm_version"] = data["litellm_version"]
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
             logger.debug("Gateway health check failed", err=str(exc))
             result["ready"] = None
 

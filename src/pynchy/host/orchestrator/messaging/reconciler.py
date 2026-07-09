@@ -148,7 +148,7 @@ async def _fetch_inbound_result(
 ) -> InboundFetchResult | None:
     try:
         return await ch.fetch_inbound_since(target_jid, inbound_cursor)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - channel fetch is a remote boundary; treat failures as retryable skip.
         logger.warning(
             "fetch_inbound_since failed", channel=ch.name, jid=canonical_jid, error=str(exc)
         )
@@ -233,7 +233,7 @@ async def _retry_outbound(
             if row.timestamp > new_outbound_cursor:
                 new_outbound_cursor = row.timestamp
             retried += 1
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - outbound retry is best-effort and stops after the first delivery failure.
             logger.warning(
                 "outbound retry failed", channel=ch.name, ledger_id=row.ledger_id, error=str(exc)
             )

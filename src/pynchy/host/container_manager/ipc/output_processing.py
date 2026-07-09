@@ -85,7 +85,7 @@ async def _process_claimed_output_file(
         if handler is not None:
             try:
                 await handler(output)
-            except Exception:
+            except Exception:  # noqa: BLE001, RUF100 - output handler is a delivery boundary; keep the file alive.
                 logger.exception(
                     "Output handler callback failed",
                     group=source_group,
@@ -101,7 +101,7 @@ async def _process_claimed_output_file(
         if handler is not None:
             with contextlib.suppress(FileNotFoundError):
                 await asyncio.to_thread(_unlink_path, file_path)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - output file processing is an isolation boundary.
         logger.exception(
             "Error processing output file",
             file=file_path.name,

@@ -67,7 +67,7 @@ async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
         admin_jid = find_admin_jid(app.workspaces) or None
         if admin_jid and app.channels:
             await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - shutdown notification is best-effort and must not block teardown.
         logger.debug("Shutdown notification failed", exc_info=True)
 
 
@@ -325,7 +325,7 @@ async def run_app(app: PynchyApp) -> None:
 
     try:
         await _initialize_core(app)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - startup rollback boundary; any init failure should trigger rollback.
         if continuation_path.exists():
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
@@ -348,7 +348,7 @@ async def run_app(app: PynchyApp) -> None:
 
     try:
         await _setup_channels(app)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - startup rollback boundary; any channel setup failure should trigger rollback.
         if continuation_path.exists():
             await startup_handler.auto_rollback(continuation_path, exc)
         raise

@@ -49,7 +49,7 @@ def _write_boot_warning(message: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         warnings = json.loads(path.read_text()) if path.exists() else []
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError) as exc:
         logger.debug("Failed to read boot warnings file, starting fresh", err=str(exc))
         warnings = []
     warnings.append(message)

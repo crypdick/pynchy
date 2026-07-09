@@ -156,7 +156,7 @@ async def warm_image_cache(instances: dict[str, McpInstance]) -> None:
         try:
             await _ensure_mcp_image(cfg)
             logger.info("Warmed MCP image cache", image=cfg.image)
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - image warm-up is best-effort and must not block boot.
             logger.exception("Failed to warm MCP image", image=cfg.image)
 
 

@@ -50,7 +50,7 @@ async def _record_to_ledger(
         return await record_outbound(
             ChatJid(chat_jid), text, source, [ChannelName(c) for c in channel_names]
         )
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - outbound ledger write is best-effort and must not block delivery.
         logger.debug("Outbound ledger write failed (fire-and-forget fallback)")
         return None
 
@@ -62,7 +62,7 @@ async def _mark_success(ledger_id: int | None, channel_name: str) -> None:
         from pynchy.state import mark_delivered
 
         await mark_delivered(ledger_id, channel_name)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - ledger success marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivered failed (best-effort)", channel=channel_name)
 
 
@@ -73,7 +73,7 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
         from pynchy.state import mark_delivery_error
 
         await mark_delivery_error(ledger_id, channel_name, error)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - ledger error marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivery_error failed (best-effort)", channel=channel_name)
 
 
@@ -274,7 +274,7 @@ async def _deliver_stream_targets(
         try:
             await ch.update_event(target_jid, msg_id, event)
             await _mark_success(ledger_id, ch.name)
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - stream update retry keeps delivery moving.
             logger.warning("Stream update failed, falling back to send_event", channel=ch.name)
             try:
                 await ch.send_event(target_jid, event)

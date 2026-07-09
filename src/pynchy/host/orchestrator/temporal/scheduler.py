@@ -207,7 +207,7 @@ async def run_scheduled_agent_task(task_id: str) -> str:
 
     try:
         completed = await _run_scheduled_agent(task, _require_scheduler_deps())
-    except Exception as exc:  # allow: exception-handling - record activity failure
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
     if completed is False:
@@ -263,7 +263,7 @@ class TemporalSchedulerRuntime:
                 workflow_runner=scheduler_workflow_runner(),
             )
             await self._worker_stack.enter_async_context(self._worker)
-        except BaseException as exc:  # allow: exception-handling - startup cleanup then re-raise
+        except BaseException as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; startup cleanup then re-raise.
             await self._worker_stack.aclose()
             bind_scheduler_deps(None)
             _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
@@ -406,7 +406,7 @@ class TemporalSchedulerRuntime:
                 workflow_id=workflow_id,
             )
             return
-        except Exception as exc:  # allow: exception-handling - record dispatch failure
+        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record dispatch failure.
             _update_temporal_scheduler_status(
                 last_workflow_id=workflow_id,
                 last_task_id=status_id,

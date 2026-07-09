@@ -26,7 +26,7 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
         if not handled:
             _record_activity_result(chat_jid, "retry_requested")
             raise RuntimeError("Interactive message turn requested retry")
-    except Exception as exc:  # allow: exception-handling - record activity failure
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(chat_jid, "error", str(exc))
         raise
     _record_activity_result(chat_jid, "completed")

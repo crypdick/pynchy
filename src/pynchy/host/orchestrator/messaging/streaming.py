@@ -143,7 +143,7 @@ async def _deliver_stream_update(ch: Channel, target_jid: str, state: StreamStat
             await _post_stream_message(ch, target_jid, state, ch_name)
             return
         await ch.update_event(target_jid, msg_id, state.event)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - stream delivery failure is scoped to the current channel update.
         logger.warning("Stream post/update failed", channel=ch_name, err=str(exc))
 
 

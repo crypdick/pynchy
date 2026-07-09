@@ -21,6 +21,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _require_scheduler_deps,
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
+from pynchy.logger import logger
 
 
 def learning_review_workflow_id(packet: LearningPacket) -> str:
@@ -34,7 +35,7 @@ async def run_learning_review(packet_payload: dict[str, Any]) -> str:
     packet = packet_from_payload(packet_payload)
     try:
         result = await _run_learning_review(packet, _require_scheduler_deps())
-    except Exception as exc:  # allow: exception-handling - record activity failure
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(packet.job_id, "error", str(exc))
         raise
     _record_activity_result(packet.job_id, result)
@@ -66,7 +67,8 @@ async def _run_agent_via_queue(
             if not result_future.done():
                 result_future.cancel()
             raise
-        except Exception as exc:  # allow: exception-handling - propagate queued run failure
+        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; propagate queued run failure.
+            logger.exception("Queued learning run failed", err=str(exc))
             if not result_future.done():
                 result_future.set_exception(exc)
         else:

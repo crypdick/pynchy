@@ -165,7 +165,7 @@ def load_mount_allowlist() -> MountAllowlist | None:
             allowed_roots=len(allowlist.allowed_roots),
             blocked_patterns=len(allowlist.blocked_patterns),
         )
-    except Exception as exc:
+    except (OSError, tomllib.TOMLDecodeError, TypeError, ValueError) as exc:
         _state.allowlist_load_error = str(exc)
         logger.error(
             "Failed to load mount allowlist - additional mounts will be BLOCKED",

@@ -259,7 +259,7 @@ class LiteLLMGateway:
                     return
                 msg = f"Phoenix health check failed at {health_url}: HTTP {response.status}"
                 raise RuntimeError(msg)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - startup health check converts gateway failure into a required-host error.
             msg = f"Phoenix is required but not reachable at {health_url}: {exc}"
             raise RuntimeError(msg) from exc
 

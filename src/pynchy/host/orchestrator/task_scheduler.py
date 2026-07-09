@@ -165,7 +165,7 @@ async def _run_scheduler_loop(
     while True:
         try:
             await temporal_runtime.reconcile_schedules()
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - scheduler loop is a long-lived reconcile boundary.
             logger.exception("Error in scheduler loop")
 
         await asyncio.sleep(get_settings().scheduler.poll_interval)
@@ -352,7 +352,7 @@ async def _run_task_agent(
         if agent_result == "error":
             error = error or "Agent returned error"
         await _merge_scheduled_task_worktree(task, error=error)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - task execution is a boundary; record the failure and continue.
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
         return result, error

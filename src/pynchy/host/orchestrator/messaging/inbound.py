@@ -322,7 +322,7 @@ async def start_message_loop(
                             group=group.name,
                         )
 
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - message loop is the routing boundary; keep polling after a failure.
             logger.exception("Error in message loop")
 
         await asyncio.sleep(s.intervals.message_poll)

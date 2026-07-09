@@ -177,7 +177,7 @@ async def _execute_service_approval(
                 request_id=request_id,
                 tool_name=tool_name,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - approved handler execution is an IPC boundary.
             logger.error(
                 "Approved request failed",
                 request_id=request_id,
@@ -227,7 +227,7 @@ async def _execute_ipc_approval(
             request_id=request_id,
             task_type=request_data.get("type"),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - approved IPC dispatch is an IPC boundary.
         logger.error(
             "Approved IPC request failed",
             request_id=request_id,

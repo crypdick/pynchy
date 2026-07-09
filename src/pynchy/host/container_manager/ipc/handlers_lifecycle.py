@@ -85,7 +85,7 @@ async def _handle_reset_context(
 
     try:
         await merge_worktree_with_policy(group_folder)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - worktree sync failure must not block the reset_context boundary.
         logger.exception("Worktree sync failed during context reset")
 
     await deps.clear_session(group_folder)

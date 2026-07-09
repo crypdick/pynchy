@@ -222,7 +222,7 @@ async def _inspect(
             flagged=verdict.flagged,
             reason=verdict.reason,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - caller-facing Cop conversion treats any inspection failure as allow.
         # Fail open: if the Cop can't run, log and allow
         logger.error("Cop inspection failed, allowing operation", context=context, err=str(exc))
         return CopVerdict(flagged=False, reason=f"Cop error: {exc}")

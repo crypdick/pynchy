@@ -314,7 +314,7 @@ class McpManager:
             await asyncio.sleep(60)
             try:
                 await self.stop_idle()
-            except Exception:
+            except Exception:  # noqa: BLE001, RUF100 - idle checker is a background cleanup boundary.
                 logger.exception("Error in MCP idle checker")
 
 

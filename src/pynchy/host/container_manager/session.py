@@ -81,7 +81,7 @@ async def _runtime_container_running(container_name: str) -> bool:
 
     try:
         return await asyncio.to_thread(_check)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - best-effort runtime probe should degrade to not running.
         logger.debug(
             "Failed to inspect runtime container state",
             container=container_name,
@@ -257,7 +257,7 @@ class ContainerSession:
             if self._on_idle_expire is not None:
                 try:
                     await self._on_idle_expire()
-                except Exception:
+                except Exception:  # noqa: BLE001, RUF100 - idle callback is best-effort teardown and must not block destroy.
                     logger.exception(
                         "Idle callback failed",
                         group=self.group_folder,

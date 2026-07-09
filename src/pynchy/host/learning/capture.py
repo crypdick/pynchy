@@ -22,7 +22,7 @@ def is_after_turn_learning_enabled(settings: Settings) -> bool:
 def observe_learning_output(summary: LearningRunSummary, output: ContainerOutput) -> None:
     try:
         learning_packets.observe_container_output(summary, output)
-    except Exception as exc:  # allow: exception-handling - learning must never block user output
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must never block user output.
         logger.exception(
             "Failed to observe learning output",
             err=str(exc),
@@ -46,7 +46,7 @@ async def messages_for_learning_packet(
 
     try:
         expanded_messages = await fetch_messages_since(chat_jid, initial_last_timestamp)
-    except Exception as exc:  # allow: exception-handling - learning fetch is best-effort
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning fetch is best-effort.
         logger.exception(
             "Skipped learning packet because expanded message fetch failed",
             group=group.name,
@@ -110,7 +110,7 @@ async def start_completed_turn_learning_review(
             final_cursor=final_cursor,
             summary=summary,
         )
-    except Exception as exc:  # allow: exception-handling - learning must not fail user turns
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
         logger.exception(
             "Failed to capture completed turn learning packet",
             group=group.name,

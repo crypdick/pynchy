@@ -151,7 +151,7 @@ async def start_learning_review_workflow(
         )
 
         await _start_temporal_learning_review(packet)
-    except Exception as exc:  # allow: exception-handling — learning must not fail user turns
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
         logger.exception(
             "Failed to start learning review workflow",
             group=group.name,

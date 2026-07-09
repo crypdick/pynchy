@@ -129,7 +129,7 @@ async def _process_message_file(
                     source_group=source_group,
                 )
         await asyncio.to_thread(_unlink_path, file_path)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - IPC message handling is an isolation boundary; move failures to error dir.
         logger.exception(
             "Error processing IPC message",
             file=file_path.name,
@@ -168,7 +168,7 @@ async def _process_request_file(
         if _claim_request_for_execution(envelope, ipc_base_dir):
             await dispatch(envelope, source_group, is_admin=is_admin, deps=deps)
         await asyncio.to_thread(_unlink_path, file_path)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - IPC request handling is an isolation boundary; move failures to error dir.
         logger.exception(
             "Error processing IPC request",
             file=file_path.name,
@@ -476,7 +476,7 @@ async def _process_queue(
                 )
 
                 await process_approval_decision(file_path, source_group, deps=deps)
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - queued IPC file errors stay scoped to one file.
             logger.exception(
                 "Error processing queued IPC file",
                 file=str(file_path),

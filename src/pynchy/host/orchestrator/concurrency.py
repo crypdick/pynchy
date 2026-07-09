@@ -315,7 +315,7 @@ class GroupQueue:
                 group_jid=group_jid,
                 err=str(exc),
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - message-processing is a task boundary; retry happens on drain.
             logger.exception(
                 "Error processing messages for group",
                 group_jid=group_jid,
@@ -342,7 +342,7 @@ class GroupQueue:
 
         try:
             await task.fn()
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - task execution is a queue boundary and failures stay scoped.
             logger.exception(
                 "Error running task",
                 group_jid=group_jid,
