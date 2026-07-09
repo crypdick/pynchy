@@ -293,7 +293,7 @@ class TestCursorGC:
 
         await reconcile_all_channels(deps)
 
-        assert await get_channel_cursor("dead-channel", "group@g.us", "inbound") == ""
+        assert not await get_channel_cursor("dead-channel", "group@g.us", "inbound")
         assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01"
 
 

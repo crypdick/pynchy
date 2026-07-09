@@ -686,8 +686,8 @@ class TestProcessGroupMessages:
             "g@g.us", "msg-42", msg.sender, "🦞"
         )
         assert deps.set_typing_on_channels.await_count == 2
-        deps.set_typing_on_channels.assert_any_await("g@g.us", True)
-        deps.set_typing_on_channels.assert_any_await("g@g.us", False)
+        deps.set_typing_on_channels.assert_any_await("g@g.us", is_typing=True)
+        deps.set_typing_on_channels.assert_any_await("g@g.us", is_typing=False)
 
     @pytest.mark.asyncio
     async def test_custom_processing_ack_emoji_used_when_configured(self, tmp_path):

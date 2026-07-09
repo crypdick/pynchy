@@ -242,8 +242,8 @@ class TestIpcApprovalDispatch:
         dispatched_data = call_args.args[0]
         assert dispatched_data["_cop_approved"] is True
         assert call_args.args[1] == "grp"  # source_group
-        assert call_args.args[2] is True  # is_admin
-        assert call_args.args[3] is mock_deps  # deps
+        assert call_args.kwargs["is_admin"] is True
+        assert call_args.kwargs["deps"] is mock_deps
 
         # Cleaned up
         assert not (ipc_dir / "grp" / "pending_approvals" / "ipc-req1.json").exists()

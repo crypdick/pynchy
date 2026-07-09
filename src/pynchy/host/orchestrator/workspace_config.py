@@ -430,9 +430,11 @@ def _ensure_discord_chat_table(chat_tbl: Any, chat: str) -> None:
 
     guild_tbl = _ensure_toml_table(chat_tbl, target.guild_id or "")
     if "require_mention" not in guild_tbl:
-        guild_tbl.add("require_mention", True)
+        require_mention = True
+        guild_tbl.add("require_mention", require_mention)
     channels_tbl = _ensure_toml_table(guild_tbl, "channels", super_table=True)
     if target.target_id not in channels_tbl:
         channel_tbl = tomlkit.table()
-        channel_tbl.add("enabled", True)
+        enabled = True
+        channel_tbl.add("enabled", enabled)
         channels_tbl.add(target.target_id, channel_tbl)

@@ -178,7 +178,7 @@ def test_render_batch_empty_events():
     """Batch rendering with no events should return empty text."""
     fmt = SlackBlocksFormatter()
     result = fmt.render_batch([])
-    assert result.text == ""
+    assert not result.text
 
 
 def test_render_text_without_cursor():

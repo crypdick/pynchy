@@ -87,7 +87,7 @@ class ContainerInput:
     def __post_init__(self) -> None:
         # Normalize empty string to None (JSON has no null distinction for
         # missing-vs-empty in TOML, and the host may send "" for unset).
-        if self.repo_access == "":
+        if not self.repo_access:
             self.repo_access = None
 
     @classmethod

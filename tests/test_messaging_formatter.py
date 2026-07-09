@@ -426,10 +426,10 @@ class TestStripInternalTags:
         assert "after" in result
 
     def test_empty_string(self):
-        assert strip_internal_tags("") == ""
+        assert not strip_internal_tags("")
 
     def test_only_internal_content(self):
-        assert strip_internal_tags("<internal>everything</internal>") == ""
+        assert not strip_internal_tags("<internal>everything</internal>")
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +463,7 @@ class TestParseHostTag:
     def test_empty_host_tag(self):
         is_host, content = parse_host_tag("<host></host>")
         assert is_host is True
-        assert content == ""
+        assert not content
 
     def test_multiline_host_content(self):
         text = "<host>line1\nline2</host>"

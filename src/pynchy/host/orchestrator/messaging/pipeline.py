@@ -366,7 +366,7 @@ async def _announce_processing_start(
         await deps.send_reaction_to_channels(chat_jid, last_msg.id, last_msg.sender, ack_emoji)
 
     # Set typing indicator on all channels that support it
-    await deps.set_typing_on_channels(chat_jid, True)
+    await deps.set_typing_on_channels(chat_jid, is_typing=True)
 
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=True))
 
@@ -509,7 +509,7 @@ async def process_group_messages(
     )
 
     process_ms = (time.monotonic() - process_start) * 1000
-    await deps.set_typing_on_channels(chat_jid, False)
+    await deps.set_typing_on_channels(chat_jid, is_typing=False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
     _register_idle_zzz_callback(deps, chat_jid, group, output_sent_to_user)
 

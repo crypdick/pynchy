@@ -65,7 +65,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
             )
             done.set()
 
-        def log_message(self, *args):
+        def log_message(self, *args: object) -> None:
             pass
 
     server = HTTPServer(("0.0.0.0", OAUTH_CALLBACK_PORT), Handler)

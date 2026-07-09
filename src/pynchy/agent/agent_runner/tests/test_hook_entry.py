@@ -106,7 +106,7 @@ def test_main_allows_tool_the_plugin_permits(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("PYNCHY_PLUGIN_HOOKS", json.dumps([spec]))
 
     # Read passes the plugin gate and both builtins (non-Bash -> allow).
-    assert _run_main(monkeypatch, capsys, tool_name="Read") == ""
+    assert not _run_main(monkeypatch, capsys, tool_name="Read")
 
 
 def test_extract_tool_call_accepts_codex_camel_case_payload():

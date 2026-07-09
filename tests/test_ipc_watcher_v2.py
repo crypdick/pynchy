@@ -200,7 +200,7 @@ class TestStartupSweep:
             processed = await watcher._sweep_directory(ipc_dir, deps)
 
         assert processed == 1
-        deps.sync_group_metadata.assert_called_once_with(True)
+        deps.sync_group_metadata.assert_called_once_with(force=True)
 
     async def test_sweep_empty_directory_returns_zero(self, deps, tmp_path: Path):
         """Sweep of an empty IPC directory should return 0."""
@@ -356,7 +356,7 @@ class TestSignalHandling:
 
         await watcher._handle_signal("refresh_groups", "admin-1", True, deps)
 
-        deps.sync_group_metadata.assert_called_once_with(True)
+        deps.sync_group_metadata.assert_called_once_with(force=True)
         assert len(deps.snapshot_calls) == 1
 
     async def test_refresh_groups_signal_blocked_for_non_admin(self, deps):

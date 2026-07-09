@@ -222,7 +222,7 @@ class TestScheduledTask:
         assert task.last_run is None
         assert task.last_result is None
         assert task.status == "active"
-        assert task.created_at == ""
+        assert not task.created_at
         assert task.repo_access is None
 
     def test_cancelled_status_is_valid(self):

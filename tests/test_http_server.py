@@ -108,13 +108,13 @@ def test_get_head_commit_message_failure():
     """get_head_commit_message returns empty string on failure."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = _cp(returncode=1, stdout="")
-        assert get_head_commit_message() == ""
+        assert not get_head_commit_message()
 
 
 def test_get_head_commit_message_exception():
     """get_head_commit_message returns empty string when subprocess raises."""
     with patch("subprocess.run", side_effect=OSError):
-        assert get_head_commit_message() == ""
+        assert not get_head_commit_message()
 
 
 # ---------------------------------------------------------------------------

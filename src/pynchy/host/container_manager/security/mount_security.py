@@ -218,7 +218,7 @@ def _is_valid_container_path(container_path: str) -> bool:
         return False
     if container_path.startswith("/"):
         return False
-    return bool(container_path and container_path.strip() != "")
+    return bool(container_path and container_path.strip())
 
 
 @dataclass

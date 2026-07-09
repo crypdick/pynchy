@@ -72,7 +72,7 @@ class TestStripInternalTags:
         assert strip_internal_tags("<internal>a</internal>hello<internal>b</internal>") == "hello"
 
     def test_returns_empty_when_only_internal_tags(self):
-        assert strip_internal_tags("<internal>only this</internal>") == ""
+        assert not strip_internal_tags("<internal>only this</internal>")
 
 
 # --- formatInternalTags ---
@@ -187,7 +187,7 @@ class TestParseHostTag:
     def test_returns_false_for_empty_string(self):
         is_host, content = parse_host_tag("")
         assert is_host is False
-        assert content == ""
+        assert not content
 
     def test_handles_whitespace_around_tags(self):
         is_host, content = parse_host_tag("  <host>message</host>  ")
@@ -197,7 +197,7 @@ class TestParseHostTag:
     def test_empty_host_tag(self):
         is_host, content = parse_host_tag("<host></host>")
         assert is_host is True
-        assert content == ""
+        assert not content
 
     def test_preserves_internal_xml(self):
         is_host, content = parse_host_tag("<host>Message with <b>bold</b> text</host>")

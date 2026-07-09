@@ -159,7 +159,7 @@ class TestStoreMessage:
 
         messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
-        assert messages[0].content == ""
+        assert not messages[0].content
 
     async def test_stores_is_from_me_flag(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
@@ -313,7 +313,7 @@ class TestGetNewMessages:
     async def test_returns_empty_for_no_groups(self):
         messages, new_ts = await get_new_messages([], "")
         assert len(messages) == 0
-        assert new_ts == ""
+        assert not new_ts
 
 
 # --- storeChatMetadata ---

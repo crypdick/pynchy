@@ -475,7 +475,7 @@ async def test_fetch_inbound_since_filters_bot_and_self():
     result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
     ids = [m.id for m in result.messages]
     assert ids == ["discord-1"]  # bot + own filtered out
-    assert result.high_water_mark != ""
+    assert result.high_water_mark
 
 
 def test_plugin_returns_none_without_context():

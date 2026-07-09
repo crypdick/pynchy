@@ -87,10 +87,10 @@ class TestFindAdminJid:
             "a@g.us": _group(jid="a@g.us", name="A"),
             "b@g.us": _group(jid="b@g.us", name="B"),
         }
-        assert find_admin_jid(groups) == ""
+        assert not find_admin_jid(groups)
 
     def test_returns_empty_string_when_no_groups(self):
-        assert find_admin_jid({}) == ""
+        assert not find_admin_jid({})
 
     def test_returns_first_admin_group_if_multiple(self):
         """If somehow multiple admin groups exist, return the first one found."""

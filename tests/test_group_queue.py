@@ -562,7 +562,7 @@ class TestCloseStdin:
 
         close_file = tmp_path / "ipc" / "test-group" / "input" / "_close"
         assert close_file.exists()
-        assert close_file.read_text() == ""
+        assert not close_file.read_text()
 
         completions[0].set()
         await asyncio.sleep(0.05)

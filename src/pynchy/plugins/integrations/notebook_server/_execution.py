@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 class KernelSession:
     """Tracks a running kernel and its associated notebook."""
 
-    def __init__(self, kernel_id: str, km: KernelManager, client: Any, name: str):
+    def __init__(self, kernel_id: str, km: KernelManager, client: Any, name: str) -> None:
         self.kernel_id = kernel_id
         self.km = km
         self.client = client  # must already have start_channels() called

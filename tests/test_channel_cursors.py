@@ -23,7 +23,7 @@ class TestGetChannelCursor:
     @pytest.mark.asyncio
     async def test_returns_empty_string_when_no_cursor(self):
         result = await get_channel_cursor("slack", "group@g.us", "inbound")
-        assert result == ""
+        assert not result
 
     @pytest.mark.asyncio
     async def test_returns_value_after_set(self):
@@ -91,8 +91,8 @@ class TestAdvanceCursorsAtomic:
         """No cursors are written when both values are None."""
         await advance_cursors_atomic("slack", "group@g.us", inbound=None, outbound=None)
 
-        assert await get_channel_cursor("slack", "group@g.us", "inbound") == ""
-        assert await get_channel_cursor("slack", "group@g.us", "outbound") == ""
+        assert not await get_channel_cursor("slack", "group@g.us", "inbound")
+        assert not await get_channel_cursor("slack", "group@g.us", "outbound")
 
     @pytest.mark.asyncio
     async def test_never_regresses_cursor(self):
@@ -121,7 +121,7 @@ class TestPruneStaleCursors:
         pruned = await prune_stale_cursors({"active-channel"})
 
         assert pruned == 1
-        assert await get_channel_cursor("old-channel", "group@g.us", "inbound") == ""
+        assert not await get_channel_cursor("old-channel", "group@g.us", "inbound")
         assert await get_channel_cursor("active-channel", "group@g.us", "inbound") == "2024-06-01"
 
     @pytest.mark.asyncio

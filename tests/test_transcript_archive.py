@@ -64,11 +64,11 @@ class TestSanitizeFilename:
 
     def test_empty_input(self):
         result = _sanitize_filename("")
-        assert result == ""
+        assert not result
 
     def test_only_special_chars(self):
         result = _sanitize_filename("!@#$%^&*()")
-        assert result == ""
+        assert not result
 
     def test_numbers_preserved(self):
         result = _sanitize_filename("version 2.0 release")

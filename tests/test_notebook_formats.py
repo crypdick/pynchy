@@ -87,7 +87,7 @@ class TestParseQmd:
         nb = parse_qmd(text)
         assert len(nb.cells) == 1
         assert nb.cells[0].cell_type == "code"
-        assert nb.cells[0].source == ""
+        assert not nb.cells[0].source
 
     def test_consecutive_code_cells(self):
         text = "```{python}\na = 1\n```\n\n```{python}\nb = 2\n```"
@@ -120,7 +120,7 @@ class TestSerializeQmd:
     def test_empty_notebook(self):
         nb = new_notebook()
         text = serialize_qmd(nb)
-        assert text.strip() == ""
+        assert not text.strip()
 
     def test_markdown_cell(self):
         nb = new_notebook()

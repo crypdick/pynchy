@@ -138,7 +138,7 @@ class TestGetLocalHeadSha:
         """Should return empty string when get_head_sha returns 'unknown'."""
         with patch("pynchy.host.git_ops.sync_poll.get_head_sha", return_value="unknown"):
             result = get_local_head_sha()
-            assert result == ""
+            assert not result
 
 
 # ---------------------------------------------------------------------------

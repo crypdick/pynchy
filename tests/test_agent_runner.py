@@ -191,7 +191,7 @@ class TestBuildSdkMessages:
     """Test message list to XML conversion."""
 
     def test_empty_list(self):
-        assert build_sdk_messages([]) == ""
+        assert not build_sdk_messages([])
 
     def test_single_message(self):
         msgs = [

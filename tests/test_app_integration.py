@@ -464,7 +464,7 @@ class TestProcessGroupMessages:
         await driver
         assert result is False  # Error → should return False for retry
         # Cursor should NOT have been advanced (rolled back)
-        assert app.last_agent_timestamp.get("group@g.us", "") == ""
+        assert not app.last_agent_timestamp.get("group@g.us", "")
 
     async def test_main_group_processes_without_trigger(self, app: PynchyApp, tmp_path: Path):
         """Admin group processes all messages without requiring a trigger mention."""

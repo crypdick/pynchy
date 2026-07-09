@@ -133,7 +133,7 @@ class TestAutoRollback:
         # Continuation should be rewritten with rollback info
         updated = json.loads(cont_path.read_text())
         assert "ROLLBACK" in updated["resume_prompt"]
-        assert updated["previous_commit_sha"] == ""  # prevents loop
+        assert not updated["previous_commit_sha"]  # prevents loop
 
     @pytest.mark.asyncio
     async def test_returns_when_git_reset_fails(self, tmp_path):

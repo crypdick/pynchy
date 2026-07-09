@@ -196,7 +196,7 @@ async def _execute_ipc_approval(
 
     try:
         request_data["_cop_approved"] = True
-        await dispatch(request_data, source_group, True, deps)
+        await dispatch(request_data, source_group, is_admin=True, deps=deps)
         # Note: the IPC handler writes its own response file on success.
         # We write one here only on failure to ensure the container unblocks.
         logger.info(
