@@ -1,4 +1,4 @@
-"""Regression tests for the shared Claude tool roster (cores/_tools.py).
+"""Regression tests for the shared Claude tool roster (cores/tools.py).
 
 Both Claude cores (SDK and claude-cli) draw their built-in tool menu from the
 same constants, so parity holds by construction. These tests pin the one policy
@@ -10,7 +10,7 @@ next resume on a stale tip.
 
 from __future__ import annotations
 
-from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+from agent_runner.cores import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 # Native multi-agent tools that let the claude binary spawn transcript-writing
 # child processes. Unsafe until teammates get per-teammate session isolation.

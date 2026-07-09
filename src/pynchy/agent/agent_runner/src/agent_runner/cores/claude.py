@@ -33,7 +33,7 @@ from agent_runner.hooks import (
 )
 from agent_runner.transcript_archive import archive_transcript
 
-from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable

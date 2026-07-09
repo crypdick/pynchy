@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_runner.agent_tools._tools_ask_user import _ask_user_handle
+from agent_runner.agent_tools import call_tool
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,7 +101,7 @@ class TestAskUserIPCRequest:
         ):
             questions = [{"question": "Continue?"}]
             await asyncio.wait_for(
-                _ask_user_handle({"questions": questions}),
+                call_tool("ask_user", {"questions": questions}),
                 timeout=10.0,
             )
 
@@ -148,7 +148,7 @@ class TestAskUserIPCRequest:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                _ask_user_handle({"questions": [{"question": "Should I proceed?"}]}),
+                call_tool("ask_user", {"questions": [{"question": "Should I proceed?"}]}),
                 timeout=10.0,
             )
             await task
@@ -158,16 +158,15 @@ class TestAskUserIPCRequest:
         assert response_data["answers"] == [{"text": "yes, go ahead"}]
 
     @pytest.mark.asyncio
-    async def test_timeout_returns_error(self, ipc_dirs: dict[str, Path]) -> None:
+    async def test_timeout_returns_error(
+        self,
+        ipc_dirs: dict[str, Path],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Verify timeout produces a descriptive error."""
-        from agent_runner.agent_tools._ipc_request import ipc_service_request
+        monkeypatch.setattr("agent_runner.agent_tools._tools_ask_user.ASK_USER_TIMEOUT", 1.0)
 
-        result = await ipc_service_request(
-            "ask_user",
-            {"questions": [{"question": "Hello?"}]},
-            response_timeout_seconds=1.0,
-            type_override="ask_user:ask",
-        )
+        result = await call_tool("ask_user", {"questions": [{"question": "Hello?"}]})
 
         assert len(result) == 1
         assert "timed out" in result[0].text.lower()
@@ -208,7 +207,7 @@ class TestAskUserIPCRequest:
                 }
             ]
             await asyncio.wait_for(
-                _ask_user_handle({"questions": questions}),
+                call_tool("ask_user", {"questions": questions}),
                 timeout=10.0,
             )
 
@@ -222,14 +221,14 @@ class TestAskUserHandler:
     @pytest.mark.asyncio
     async def test_empty_questions_returns_error(self) -> None:
         """Empty questions list should return an error without making an IPC call."""
-        result = await _ask_user_handle({"questions": []})
+        result = await call_tool("ask_user", {"questions": []})
         assert result.isError is True
         assert "non-empty" in result.content[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_missing_questions_returns_error(self) -> None:
         """Missing questions key should return an error."""
-        result = await _ask_user_handle({})
+        result = await call_tool("ask_user", {})
         assert result.isError is True
         assert "non-empty" in result.content[0].text.lower()
 
@@ -260,7 +259,7 @@ class TestAskUserHandler:
             side_effect=capture_write,
         ):
             result = await asyncio.wait_for(
-                _ask_user_handle({"questions": [{"question": "What is the answer?"}]}),
+                call_tool("ask_user", {"questions": [{"question": "What is the answer?"}]}),
                 timeout=10.0,
             )
 
@@ -308,7 +307,8 @@ class TestAskUserErrorResponse:
 
             task = asyncio.create_task(write_error_response())
             result = await asyncio.wait_for(
-                _ask_user_handle(
+                call_tool(
+                    "ask_user",
                     {"questions": [{"question": "Hello?"}]},
                 ),
                 timeout=10.0,
@@ -358,7 +358,7 @@ class TestResponseFileCleanup:
 
             task = asyncio.create_task(write_response_after_delay())
             await asyncio.wait_for(
-                _ask_user_handle({"questions": [{"question": "Done?"}]}),
+                call_tool("ask_user", {"questions": [{"question": "Done?"}]}),
                 timeout=10.0,
             )
             await task

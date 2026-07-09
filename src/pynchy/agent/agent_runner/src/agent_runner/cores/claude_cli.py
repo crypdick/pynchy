@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 
-from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
