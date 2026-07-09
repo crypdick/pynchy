@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
+from pynchy.config import access
 from pynchy.logger import logger
 from pynchy.state import (
     advance_cursors_atomic,
@@ -84,10 +85,8 @@ def _should_skip_pair(
     ch: Channel, canonical_jid: str, group: WorkspaceProfile | None, now: datetime
 ) -> bool:
     """Gate a (channel, jid) pair: connection mismatch, non-ownership, or cooldown."""
-    from pynchy.config.access import resolve_workspace_connection_name
-
     if group is not None:
-        expected = resolve_workspace_connection_name(group.folder)
+        expected = access.resolve_workspace_connection_name(group.folder)
         if expected and expected != ch.name:
             logger.debug(
                 "connection_gate_skip",
@@ -194,8 +193,6 @@ async def _ingest_remote_message(
     msg: NewMessage,
     new_inbound_cursor: str,
 ) -> tuple[str, bool]:
-    from pynchy.config.access import filter_allowed_messages
-
     # Remap chat_jid to canonical (the channel returned channel-native JIDs)
     msg.chat_jid = request.canonical_jid
     exists = await message_exists(msg.id, request.canonical_jid)
@@ -211,7 +208,7 @@ async def _ingest_remote_message(
     if exists:
         return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
 
-    if not filter_allowed_messages([msg], request.group, request.ch.name):
+    if not access.filter_allowed_messages([msg], request.group, request.ch.name):
         logger.debug(
             "reconciler_skip_sender",
             channel=request.ch.name,
