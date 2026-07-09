@@ -7,11 +7,16 @@ from their subsystem packages and wires up hook functionality.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.config import PluginConfig
+from pynchy.event_bus import AgentTraceEvent, EventBus, MessageEvent
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.observers import attach_observers
+from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
 
 
 class TestInRepoPluginDiscovery:
@@ -54,10 +59,6 @@ class TestInRepoPluginDiscovery:
 
     def test_disabled_plugin_skipped(self):
         """Plugin disabled via config.toml is not loaded."""
-        from types import SimpleNamespace
-
-        from pynchy.config import PluginConfig
-
         settings = SimpleNamespace(
             plugins={"claude": PluginConfig(enabled=False)},
         )
@@ -79,17 +80,11 @@ class TestObserverPluginRuntimeTypes:
 
     def test_attach_observers_accepts_event_bus(self):
         """attach_observers should not crash resolving the EventBus annotation."""
-        from pynchy.event_bus import EventBus
-        from pynchy.plugins.observers import attach_observers
-
         with patch("pynchy.plugins.collect_hook_results", return_value=[]):
             assert attach_observers(EventBus()) == []
 
     def test_sqlite_observer_subscribes_to_event_bus(self):
         """SqliteEventObserver.subscribe should accept a real EventBus."""
-        from pynchy.event_bus import EventBus
-        from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
-
         observer = SqliteEventObserver()
 
         observer.subscribe(EventBus())
@@ -97,11 +92,6 @@ class TestObserverPluginRuntimeTypes:
     @pytest.mark.asyncio
     async def test_sqlite_observer_ignores_trace_event_payloads(self):
         """LiteLLM/Phoenix owns trace persistence; SQLite keeps operational events."""
-        from unittest.mock import AsyncMock
-
-        from pynchy.event_bus import AgentTraceEvent, EventBus, MessageEvent
-        from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
-
         bus = EventBus()
         observer = SqliteEventObserver()
         observer.subscribe(bus)
@@ -137,8 +127,6 @@ class TestSlackPluginFunctionality:
 
     async def test_slack_returns_none_without_tokens(self):
         """Slack plugin returns None when no tokens are configured."""
-        from unittest.mock import MagicMock
-
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
             pm = get_plugin_manager()
 
