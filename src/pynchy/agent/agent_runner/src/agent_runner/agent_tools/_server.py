@@ -15,6 +15,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 import agent_runner.agent_tools._tools_admin
 import agent_runner.agent_tools._tools_ask_user
 import agent_runner.agent_tools._tools_calendar
+import agent_runner.agent_tools._tools_desktop_screenshot
 import agent_runner.agent_tools._tools_google_setup
 import agent_runner.agent_tools._tools_lifecycle
 import agent_runner.agent_tools._tools_memory
