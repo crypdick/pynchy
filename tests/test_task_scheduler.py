@@ -22,6 +22,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CronJobConfig, SchedulerConfig
+from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.task_scheduler import start_scheduler_loop
 from pynchy.types import (
@@ -86,8 +87,6 @@ async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
     has focused tests here; scheduler tests separately prove the Temporal
     handoff.
     """
-    import pynchy.host.orchestrator.task_scheduler as ts_mod
-
     if isinstance(ts_mod.get_task_run_logs, Mock):
         await ts_mod._run_scheduled_agent(task, deps)
         return
@@ -102,8 +101,6 @@ async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
 
 async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
     """Drive the public scheduler loop through one Temporal reconciliation poll."""
-    import pynchy.host.orchestrator.task_scheduler as ts_mod
-
     ts_mod._state.scheduler_running = False
 
     def stop_after_poll(delay):
