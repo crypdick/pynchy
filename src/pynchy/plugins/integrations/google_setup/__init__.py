@@ -1,4 +1,10 @@
-"""Built-in Google Setup plugin — MCP specs + service handlers."""
+"""Built-in Google Setup plugin and public setup helpers."""
 
-from pynchy.plugins.integrations.google_setup._plugin import GoogleMcpPlugin as GoogleMcpPlugin
-from pynchy.plugins.integrations.google_setup._plugin import GoogleSetupPlugin as GoogleSetupPlugin
+from pynchy.plugins.integrations.google_setup._oauth import run_oauth_flow
+from pynchy.plugins.integrations.google_setup._plugin import GoogleMcpPlugin, GoogleSetupPlugin
+
+__all__ = [
+    "GoogleMcpPlugin",
+    "GoogleSetupPlugin",
+    "run_oauth_flow",
+]

@@ -14,9 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import init_test_database
 
-from pynchy.host.container_manager.ipc.watcher import (
-    _process_output_file,  # allow: private-test-imports
-)
+from pynchy.host.container_manager.ipc.output_processing import process_output_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,7 +42,7 @@ def _write_output_file(base_dir: Path, group: str, data: dict, filename: str = "
 
 
 class TestOutputFileProcessing:
-    """Tests for _process_output_file — parsing, dispatch, and cleanup."""
+    """Tests for process_output_file — parsing, dispatch, and cleanup."""
 
     pytestmark = pytest.mark.usefixtures("_db")
 
@@ -66,7 +64,7 @@ class TestOutputFileProcessing:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         handler.assert_called_once()
         output: ContainerOutput = handler.call_args[0][0]
@@ -92,7 +90,7 @@ class TestOutputFileProcessing:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         assert not file_path.exists()
 
@@ -113,7 +111,7 @@ class TestOutputFileProcessing:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=None,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         assert file_path.exists(), "File should be preserved for one-shot container collection"
 
@@ -135,7 +133,7 @@ class TestOutputFileProcessing:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         output: ContainerOutput = handler.call_args[0][0]
         assert output.type == "thinking"
@@ -160,7 +158,7 @@ class TestOutputFileProcessing:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         output: ContainerOutput = handler.call_args[0][0]
         assert output.type == "tool_use"
@@ -202,7 +200,7 @@ class TestQueryDonePulse:
                 "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
             ) as mock_signal,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         mock_signal.assert_called_once_with("test-group")
         assert not file_path.exists()
@@ -229,7 +227,7 @@ class TestQueryDonePulse:
                 "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
             ) as mock_signal,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         mock_signal.assert_not_called()
 
@@ -257,7 +255,7 @@ class TestQueryDonePulse:
                 "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
             ) as mock_signal,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         # is_query_done_pulse requires error=None
         mock_signal.assert_not_called()
@@ -285,7 +283,7 @@ class TestQueryDonePulse:
                 "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
             ) as mock_signal,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         # is_query_done_pulse requires result=None
         mock_signal.assert_not_called()
@@ -312,7 +310,7 @@ class TestQueryDonePulse:
             ),
             patch("pynchy.host.container_manager.ipc.output_processing._signal_query_done"),
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         # Handler should still have been called
         handler.assert_called_once()
@@ -331,7 +329,7 @@ class TestOutputFileErrors:
         ipc_dir = tmp_path / "ipc"
         file_path = ipc_dir / "test-group" / "output" / "already-gone.json"
 
-        await _process_output_file(file_path, "test-group", ipc_dir)
+        await process_output_file(file_path, "test-group", ipc_dir)
 
         assert not (ipc_dir / "errors").exists()
 
@@ -356,7 +354,7 @@ class TestOutputFileErrors:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         handler.assert_called_once()
         assert not file_path.exists()
@@ -384,8 +382,8 @@ class TestOutputFileErrors:
             return_value=handler,
         ):
             await asyncio.gather(
-                _process_output_file(file_path, "test-group", ipc_dir),
-                _process_output_file(file_path, "test-group", ipc_dir),
+                process_output_file(file_path, "test-group", ipc_dir),
+                process_output_file(file_path, "test-group", ipc_dir),
             )
 
         handler.assert_called_once()
@@ -400,7 +398,7 @@ class TestOutputFileErrors:
         bad_file = target_dir / "bad.json"
         bad_file.write_text("not valid json {{{")
 
-        await _process_output_file(bad_file, "test-group", ipc_dir)
+        await process_output_file(bad_file, "test-group", ipc_dir)
 
         assert not bad_file.exists()
         assert (ipc_dir / "errors" / "test-group-bad.json").exists()
@@ -417,7 +415,7 @@ class TestOutputFileErrors:
             },
         )
 
-        await _process_output_file(file_path, "test-group", ipc_dir)
+        await process_output_file(file_path, "test-group", ipc_dir)
 
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "test-group-test.json").exists()
@@ -440,7 +438,7 @@ class TestOutputFileErrors:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file_path, "test-group", ipc_dir)
+            await process_output_file(file_path, "test-group", ipc_dir)
 
         # File should be deleted even though handler raised
         assert not file_path.exists()
@@ -468,8 +466,8 @@ class TestOutputFileErrors:
             "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
             return_value=handler,
         ):
-            await _process_output_file(file1, "test-group", ipc_dir)
-            await _process_output_file(file2, "test-group", ipc_dir)
+            await process_output_file(file1, "test-group", ipc_dir)
+            await process_output_file(file2, "test-group", ipc_dir)
 
         assert handler.call_count == 2
         texts = [call.args[0].text for call in handler.call_args_list]
