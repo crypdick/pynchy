@@ -428,15 +428,15 @@ class TestBuildCoreConfig:
         }
         return ContainerInput.from_dict(data)
 
-    def test_admin_group_cwd(self):
+    def test_admin_without_repo_access_cwd(self):
         ci = self._make_input(is_admin=True)
         config = build_core_config(ci)
-        assert config.cwd == "/workspace/project"
+        assert config.cwd == "/workspace/group"
 
     def test_non_admin_with_repo_access_cwd(self):
         ci = self._make_input(is_admin=False, repo_access="owner/pynchy")
         config = build_core_config(ci)
-        assert config.cwd == "/workspace/project"
+        assert config.cwd == "/workspace/repos/owner/pynchy"
 
     def test_non_admin_without_repo_access_cwd(self):
         ci = self._make_input(is_admin=False)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config.merge import ResolvedWorkspaceConfig
@@ -43,21 +44,57 @@ async def ensure_workspace_registered(
     settings: Settings,
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
 ) -> str | None:
-    """Return an existing registration for a configured workspace, if present.
-
-    WorkspaceConfig carries profile selections only. Channel provisioning belongs
-    to connection/channel runtime plumbing, so reconciliation can update stored
-    rows but cannot infer a JID from WorkspaceConfig alone.
-    """
+    """Return or create the concrete chat JID for a configured workspace."""
     assert config
     assert resolved
     assert channels is not None
     assert settings is not None
     assert register_fn is not None
     jid = folder_to_jid.get(folder)
-    if jid is None:
-        logger.debug("Workspace has no registered JID; skipping registration", folder=folder)
-    return jid
+    if jid is not None:
+        return jid
+
+    channel = _workspace_creation_channel(channels, settings.command_center.connection)
+    if channel is None:
+        logger.warning(
+            "Workspace has no registered JID and no creation-capable command center",
+            folder=folder,
+            command_center=settings.command_center.connection,
+        )
+        return None
+
+    created_jid = await channel.create_group(display_name)
+    if not isinstance(created_jid, str) or not created_jid:
+        logger.warning("Workspace channel creation returned no JID", folder=folder)
+        return None
+
+    profile = WorkspaceProfile(
+        jid=created_jid,
+        name=display_name,
+        folder=folder,
+        trigger=f"@{settings.agent.name}",
+        added_at=datetime.now(UTC).isoformat(),
+        is_admin=resolved.is_admin,
+        security=_workspace_security(config, resolved),
+    )
+    workspaces[created_jid] = profile
+    folder_to_jid[folder] = created_jid
+    await register_fn(profile)
+    logger.info("Registered configured workspace", folder=folder, jid=created_jid)
+    return created_jid
+
+
+def _workspace_creation_channel(channels: list[Channel], command_center: str | None) -> Any | None:
+    if not command_center:
+        return None
+    return next(
+        (
+            channel
+            for channel in channels
+            if channel.name == command_center and hasattr(channel, "create_group")
+        ),
+        None,
+    )
 
 
 async def sync_workspace_profile(

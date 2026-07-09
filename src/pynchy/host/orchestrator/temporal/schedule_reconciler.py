@@ -201,9 +201,7 @@ async def _delete_stale_schedules(client: Any, desired_schedule_ids: set[str]) -
 
 def _repo_root_for_slug(settings: Any, repo_slug: str) -> Path | None:
     repo_cfg = settings.repos.overrides.get(repo_slug)
-    if repo_cfg is None:
-        return None
-    if repo_cfg.path:
+    if repo_cfg and repo_cfg.path:
         return Path(repo_cfg.path)
     try:
         owner, repo_name = repo_slug.split("/", 1)

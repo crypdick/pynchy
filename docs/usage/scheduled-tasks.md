@@ -8,14 +8,7 @@ Two kinds: **agent tasks** (run a Claude agent in a container) and **host tasks*
 
 Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, etc.), as if a user had sent the message. Config-backed jobs target a named workspace.
 
-### Context Modes
-
-| Mode | Behavior |
-|------|----------|
-| `group` | Runs in the group's current session (shares conversation history) |
-| `isolated` | Runs in a fresh session each time |
-
-Agent tasks can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the task has `pynchy_repo_access`, worktree commits merge and push after a successful run.
+Agent tasks always run in a dedicated isolated thread for the target workspace. They can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the workspace profile selects a repo, worktree commits merge and push after a successful run.
 
 ### Daily Triage Memo
 
@@ -24,12 +17,10 @@ A daily triage memo is a config-backed periodic agent that posts a short status 
 ```toml
 [profiles.pynchy-admin]
 is_admin = true
-context_mode = "isolated"
 model = "chatgpt/gpt-5.3-codex-spark"
 
 [workspaces.admin]
-profile = "pynchy-admin"
-chat = "connection.slack.synapse.chat.pynchy"
+profiles = ["pynchy-admin"]
 
 [jobs.daily-triage]
 enabled = true

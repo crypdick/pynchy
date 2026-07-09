@@ -1,6 +1,6 @@
 # Coordinated Git Sync
 
-How Pynchy coordinates git operations between containers and the host. Use this page to configure `pynchy_repo_access` groups and troubleshoot merge conflicts in worktrees.
+How Pynchy coordinates git operations between containers and the host. Use this page to configure profile `repo` access and troubleshoot merge conflicts in worktrees.
 
 ## Design Principles
 

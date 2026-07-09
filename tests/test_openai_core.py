@@ -84,7 +84,7 @@ class TestOpenAICoreInstantiation:
 
     def _make_config(self, **overrides) -> AgentCoreConfig:
         defaults = {
-            "cwd": "/workspace/project",
+            "cwd": "/workspace/repos/owner/project",
             "session_id": None,
             "group_folder": "admin-1",
             "chat_jid": "test@g.us",
@@ -134,7 +134,7 @@ class TestMCPServerConversion:
 
         return OpenAIAgentCore(
             AgentCoreConfig(
-                cwd="/workspace/project",
+                cwd="/workspace/repos/owner/project",
                 session_id=None,
                 group_folder="admin-1",
                 chat_jid="test@g.us",
@@ -152,7 +152,7 @@ class TestMCPServerConversion:
             pytest.skip("openai-agents not installed")
 
         config = AgentCoreConfig(
-            cwd="/workspace/project",
+            cwd="/workspace/repos/owner/project",
             session_id=None,
             group_folder="admin-1",
             chat_jid="test@g.us",
@@ -315,7 +315,7 @@ class TestOpenAIQueryModel:
 
         core = OpenAIAgentCore(
             AgentCoreConfig(
-                cwd="/workspace/project",
+                cwd="/workspace/repos/owner/project",
                 session_id=None,
                 group_folder="admin-1",
                 chat_jid="test@g.us",

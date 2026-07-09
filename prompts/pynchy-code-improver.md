@@ -30,8 +30,8 @@ When you run tests or code, you're executing inside the agent container, which i
 
 ## Working Directory
 
-The project source is at /workspace/project. Always work from there.
-Treat `/workspace/project` as the pynchy core repo.
+The project source is at `/workspace/repos/crypdick/pynchy`. Always work from there.
+Treat `/workspace/repos/crypdick/pynchy` as the pynchy core repo.
 
 ## Scheduled Run Workflow
 

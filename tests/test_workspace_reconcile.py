@@ -280,7 +280,6 @@ class TestReconcileWorkspaces:
     async def test_creates_chat_group_for_unregistered_workspace(self, db, monkeypatch, tmp_path):
         """Workspace with no DB entry should create a chat group via channel."""
         conn_ref = "main"
-        chat_ref = f"{conn_ref}.chat.new-agent"
         workspaces = _WorkspaceHarness()
         s = make_settings(
             workspaces=workspaces,
@@ -297,14 +296,11 @@ class TestReconcileWorkspaces:
             {
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
-                "trigger": "always",
-                "chat": chat_ref,
             },
         )
 
         mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
-        mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
         mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
 
         registered: dict[str, WorkspaceProfile] = {}
@@ -312,18 +308,22 @@ class TestReconcileWorkspaces:
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
-        mock_channel.create_group.assert_not_called()
-        register_fn.assert_not_called()
+        mock_channel.create_group.assert_awaited_once_with("New Agent")
+        register_fn.assert_awaited_once()
+        registered_profile = register_fn.await_args.args[0]
+        assert registered_profile.jid == "new-agent@g.us"
+        assert registered_profile.folder == "new-agent"
+        tasks = await get_all_tasks()
+        assert [task.id for task in tasks] == ["job-new-agent"]
 
-    async def test_empty_resolved_jid_falls_back_to_create_group(
+    async def test_create_group_empty_jid_skips_workspace(
         self,
         db,
         monkeypatch,
         tmp_path,
     ):
-        """An empty resolved JID is invalid and should trigger create_group fallback."""
+        """An empty create_group result is invalid and should skip the workspace."""
         conn_ref = "main"
-        chat_ref = f"{conn_ref}.chat.new-agent"
         workspaces = _WorkspaceHarness()
         s = make_settings(
             workspaces=workspaces,
@@ -340,22 +340,19 @@ class TestReconcileWorkspaces:
             {
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
-                "trigger": "always",
-                "chat": chat_ref,
             },
         )
 
         mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
-        mock_channel.resolve_chat_jid = AsyncMock(return_value="")
-        mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
+        mock_channel.create_group = AsyncMock(return_value="")
 
         registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
-        mock_channel.create_group.assert_not_called()
+        mock_channel.create_group.assert_awaited_once_with("New Agent")
         register_fn.assert_not_called()
 
     async def test_discord_workspace_can_auto_create_configured_channel(

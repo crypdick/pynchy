@@ -383,10 +383,7 @@ def pynchy_workspace_spec(self) -> dict[str, Any]:
     return {
         "folder": "code-improver",
         "config": {
-            "pynchy_repo_access": True,
-            "schedule": "0 4 * * *",
-            "prompt": "Run scheduled code improvements",
-            "context_mode": "isolated",
+            "profiles": ["code-improver"],
         },
     }
 ```

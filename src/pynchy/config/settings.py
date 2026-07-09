@@ -325,7 +325,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def trigger_pattern(self) -> re.Pattern[str]:
-        names = [re.escape("pynchy"), re.escape("ghost")]
+        names = [re.escape(name) for name in [self.agent.name, *self.agent.trigger_aliases]]
         return re.compile(rf"^@({'|'.join(names)})\b", re.IGNORECASE)
 
     @cached_property

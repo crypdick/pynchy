@@ -17,7 +17,7 @@ class AgentCoreConfig:
     """Configuration for initializing an agent core.
 
     Attributes:
-        cwd: Working directory for the agent (/workspace/group or /workspace/project)
+        cwd: Working directory for the agent (/workspace/group or /workspace/repos/owner/repo)
         session_id: Optional session ID for resuming (core-specific semantics)
         group_folder: Group folder name
         chat_jid: Canonical chat identifier

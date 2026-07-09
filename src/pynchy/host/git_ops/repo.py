@@ -44,22 +44,31 @@ def _slug_to_parts(slug: str) -> tuple[str, str]:
 
 
 def get_repo_context(slug: str) -> RepoContext | None:
-    """Resolve a slug to its RepoContext from [repos.*] config.
+    """Resolve a slug to its RepoContext.
 
-    Returns None if the slug is not listed under [repos.*].
-    When path is omitted from config, the repo is auto-managed at data/repos/<owner>/<repo>/.
+    Per-repo overrides are optional. A profile can name ``repo = "owner/repo"``
+    and Pynchy resolves it under ``repos.root`` unless an explicit override
+    supplies a different path or token.
     """
     from pynchy.config import get_settings
 
     s = get_settings()
     repo_cfg = s.repos.overrides.get(slug)
-    if repo_cfg is None:
-        return None
 
     owner, repo_name = _slug_to_parts(slug)
-    root = Path(repo_cfg.path) if repo_cfg.path is not None else s.repos.root / owner / repo_name
+    root = (
+        Path(repo_cfg.path)
+        if repo_cfg and repo_cfg.path is not None
+        else (s.repos.root / owner / repo_name)
+    )
     worktrees_dir = s.worktrees_dir / owner / repo_name
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
+
+
+def repo_container_path(slug: str) -> str:
+    """Return the stable in-container mount point for a repo slug."""
+    owner, repo_name = _slug_to_parts(slug)
+    return f"/workspace/repos/{owner}/{repo_name}"
 
 
 def get_repo_token(slug: str) -> str | None:
@@ -134,12 +143,18 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
 
 def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
     """Return the first resolved repo context for a workspace, if configured."""
+    repo_contexts = resolve_repos_for_group(group_folder)
+    return repo_contexts[0] if repo_contexts else None
+
+
+def resolve_repos_for_group(group_folder: str) -> list[RepoContext]:
+    """Return every resolved repo context for a workspace, preserving profile order."""
     from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
     resolved = load_resolved_config(group_folder)
     if resolved is None or not resolved.repo:
-        return None
-    return get_repo_context(resolved.repo[0])
+        return []
+    return [repo_ctx for slug in resolved.repo if (repo_ctx := get_repo_context(slug))]
 
 
 def check_token_expiry(slug: str, token: str) -> None:

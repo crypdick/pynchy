@@ -829,7 +829,7 @@ class TestMountBuilding:
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
             build_volume_mounts(TEST_GROUP, is_admin=False)
 
-    def test_admin_group_has_project_mount(self, tmp_path: Path):
+    def test_admin_group_has_repo_mount(self, tmp_path: Path):
         worktree_path = tmp_path / "worktrees" / "admin-1"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
@@ -851,9 +851,8 @@ class TestMountBuilding:
             )
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project" in paths
+            assert "/workspace/repos/owner/pynchy" in paths
             assert "/workspace/group" in paths
-            # God should NOT have /workspace/global
             assert "/workspace/global" not in paths
 
     def test_nonadmin_group_has_no_global_mount(self, tmp_path: Path):
@@ -877,12 +876,12 @@ class TestMountBuilding:
             mounts = build_volume_mounts(group, is_admin=False)
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project" not in paths
+            assert "/workspace/repos/owner/pynchy" not in paths
             assert "/workspace/group" in paths
             assert "/workspace/global" not in paths
 
     def test_nonadmin_repo_access_uses_worktree_path(self, tmp_path: Path):
-        """Non-admin group with repo_access + worktree_path mounts the worktree."""
+        """Non-admin group with repo access mounts the worktree under /workspace/repos."""
         worktree_path = tmp_path / "worktrees" / "code-improver"
         worktree_path.mkdir(parents=True)
         repo_ctx = RepoContext(
@@ -904,9 +903,11 @@ class TestMountBuilding:
                 group, is_admin=False, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
-            project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
-            assert project_mount.host_path == str(worktree_path)
-            assert project_mount.readonly is False
+            repo_mount = next(
+                m for m in mounts if m.container_path == "/workspace/repos/owner/pynchy"
+            )
+            assert repo_mount.host_path == str(worktree_path)
+            assert repo_mount.readonly is False
 
             # .git dir mounted at host path so worktree gitdir reference resolves
             git_mount = next(m for m in mounts if m.host_path == str(tmp_path / ".git"))
@@ -934,9 +935,11 @@ class TestMountBuilding:
                 group, is_admin=True, repo_ctx=repo_ctx, worktree_path=worktree_path
             )
 
-            project_mount = next(m for m in mounts if m.container_path == "/workspace/project")
-            assert project_mount.host_path == str(worktree_path)
-            assert project_mount.readonly is False
+            repo_mount = next(
+                m for m in mounts if m.container_path == "/workspace/repos/owner/pynchy"
+            )
+            assert repo_mount.host_path == str(worktree_path)
+            assert repo_mount.readonly is False
 
     def test_admin_gets_raw_host_repo_mount(self, tmp_path: Path):
         """Admin group gets a raw host repo mount when repo_ctx is provided."""
@@ -959,12 +962,41 @@ class TestMountBuilding:
             )
 
             raw_mount = next(
-                m
-                for m in mounts
-                if m.container_path == "/danger/raw-host-repo-mount-prefer-your-worktree"
+                m for m in mounts if m.container_path == "/danger/raw-host-repos/owner/pynchy"
             )
             assert raw_mount.host_path == str(tmp_path)
             assert raw_mount.readonly is False
+
+    def test_repo_mounts_support_multiple_repos(self, tmp_path: Path):
+        repo_a = RepoContext(
+            slug="owner/pynchy", root=tmp_path / "repo-a", worktrees_dir=tmp_path / "wt-a"
+        )
+        repo_b = RepoContext(
+            slug="owner/tools", root=tmp_path / "repo-b", worktrees_dir=tmp_path / "wt-b"
+        )
+        wt_a = tmp_path / "worktrees" / "pynchy"
+        wt_b = tmp_path / "worktrees" / "tools"
+        for path in (repo_a.root / ".git", repo_b.root / ".git", wt_a, wt_b):
+            path.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            (tmp_path / "groups" / "multi").mkdir(parents=True)
+            group = WorkspaceProfile(
+                jid="multi@g.us",
+                name="Multi",
+                folder="multi",
+                trigger="@pynchy",
+                added_at="2024-01-01",
+            )
+            mounts = build_volume_mounts(
+                group,
+                is_admin=False,
+                repo_mounts=[(repo_a, wt_a), (repo_b, wt_b)],
+            )
+
+        by_container = {m.container_path: m.host_path for m in mounts}
+        assert by_container["/workspace/repos/owner/pynchy"] == str(wt_a)
+        assert by_container["/workspace/repos/owner/tools"] == str(wt_b)
 
     def test_nonadmin_does_not_get_raw_host_repo_mount(self, tmp_path: Path):
         """Non-admin groups never get the raw host repo mount."""
@@ -987,7 +1019,7 @@ class TestMountBuilding:
             )
 
             paths = [m.container_path for m in mounts]
-            assert "/danger/raw-host-repo-mount-prefer-your-worktree" not in paths
+            assert "/danger/raw-host-repos/owner/pynchy" not in paths
 
     def test_admin_no_config_toml_when_missing(self, tmp_path: Path):
         """Admin group doesn't get config.toml mount if the file doesn't exist."""
@@ -1003,7 +1035,7 @@ class TestMountBuilding:
             mounts = build_volume_mounts(group, is_admin=True)
 
             paths = [m.container_path for m in mounts]
-            assert "/workspace/project/config.toml" not in paths
+            assert "/workspace/repos/owner/pynchy/config.toml" not in paths
 
     def test_onecli_material_adds_mounts_env_and_suppresses_gh_token(
         self,

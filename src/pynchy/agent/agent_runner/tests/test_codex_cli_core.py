@@ -19,7 +19,7 @@ from agent_runner.cores.codex import CodexCLIAgentCore
 def _core(session_id: str | None = None) -> CodexCLIAgentCore:
     return CodexCLIAgentCore(
         AgentCoreConfig(
-            cwd="/workspace/project",
+            cwd="/workspace/repos/owner/project",
             session_id=session_id,
             group_folder="g",
             chat_jid="j",
@@ -141,7 +141,7 @@ def test_build_args_for_new_session(tmp_path, monkeypatch):
     args = core._build_args()
 
     assert args[:2] == [core._codex_path, "--cd"]
-    assert "/workspace/project" in args
+    assert "/workspace/repos/owner/project" in args
     assert "--ask-for-approval" in args
     assert "never" in args
     assert "--sandbox" in args

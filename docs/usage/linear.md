@@ -43,7 +43,8 @@ MCP runtime by declaring and granting the `linear` tool:
 
 ```toml
 [tools.linear]
-type = "mcp"
+type = "linear"
+project_per_workspace = true
 
 [profiles.project]
 tools = ["linear"]

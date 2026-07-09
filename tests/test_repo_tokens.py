@@ -26,7 +26,9 @@ from pynchy.host.git_ops.repo import (
     RepoContext,
     check_token_expiry,
     ensure_repo_cloned,
+    get_repo_context,
     get_repo_token,
+    repo_container_path,
 )
 from pynchy.host.git_ops.utils import git_env_with_token
 from pynchy.types import VolumeMount
@@ -52,6 +54,25 @@ GH_CLI_TOKEN = "gho_cli_token_789"
 
 def _repos(overrides: dict[str, RepoConfig] | None = None) -> ReposConfig:
     return ReposConfig(overrides=overrides or {})
+
+
+class TestRepoContext:
+    def test_repo_slug_without_override_resolves_under_default_root(self, tmp_path: Path):
+        repos_root = tmp_path / "repos"
+        worktrees_root = tmp_path / "worktrees"
+        s = make_settings(repos=ReposConfig(root=repos_root), worktrees_dir=worktrees_root)
+
+        with patch("pynchy.config.get_settings", return_value=s):
+            repo_ctx = get_repo_context("owner/project")
+
+        assert repo_ctx == RepoContext(
+            slug="owner/project",
+            root=repos_root / "owner" / "project",
+            worktrees_dir=worktrees_root / "owner" / "project",
+        )
+
+    def test_repo_container_path_uses_workspace_repos_pattern(self):
+        assert repo_container_path("owner/project") == "/workspace/repos/owner/project"
 
 
 # ---------------------------------------------------------------------------

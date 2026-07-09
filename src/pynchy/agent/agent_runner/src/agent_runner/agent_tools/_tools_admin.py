@@ -110,7 +110,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
     try:
         head_sha = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd="/workspace/project",
+            cwd=os.getcwd(),
             capture_output=True,
             text=True,
             check=True,

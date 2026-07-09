@@ -128,6 +128,11 @@ public_source = true
 secret_data = false
 public_sink = true
 dangerous_writes = true
+
+[tools.playwright.mcp]
+runtime = "docker"
+image = "mcr.microsoft.com/playwright/mcp:latest"
+port = 8931
 ```
 
 Result: reading web content taints the agent. Any later write to a public sink or dangerous service requires approval.
@@ -143,6 +148,11 @@ public_source = true
 secret_data = true
 public_sink = true
 dangerous_writes = true
+
+[tools.slack_mcp_acme.mcp]
+runtime = "docker"
+image = "ghcr.io/korotovsky/slack-mcp-server:latest"
+port = 8080
 ```
 
 Result: full gating. Reading messages sets both taint flags. Sending messages requires human approval (the lethal trifecta: untrusted input + sensitive data + untrusted output).
@@ -158,6 +168,11 @@ public_source = false
 secret_data = true
 public_sink = false
 dangerous_writes = false
+
+[tools.gdrive.mcp]
+runtime = "docker"
+image = "pynchy-mcp-gdrive:latest"
+port = 3000
 ```
 
 Result: reading Drive files sets the secret taint but not the corruption taint. Writes to Drive are ungated. But if the agent *also* read from an untrusted source (a Slack message, web page), then writing to a public sink requires approval — both taints are set.

@@ -234,10 +234,18 @@
 # [tools."gdrive.mycompany"]
 # type = "mcp"
 # public_source = false
+# [tools."gdrive.mycompany".mcp]
+# runtime = "docker"
+# image = "pynchy-mcp-gdrive:latest"
+# port = 3000
 #
 # [tools."gcal.mycompany"]
 # type = "mcp"
 # public_source = false
+# [tools."gcal.mycompany".mcp]
+# runtime = "docker"
+# image = "pynchy-mcp-gcal:latest"
+# port = 3000
 
 # Example workspace selecting the profile:
 # [workspaces.research]
@@ -363,6 +371,10 @@
 # secret_data = false
 # public_sink = true
 # dangerous_writes = true
+# [tools.playwright.mcp]
+# runtime = "docker"
+# image = "mcr.microsoft.com/playwright/mcp:latest"
+# port = 8931
 
 # Personal calendar (fully trusted, no gating):
 # [tools.caldav]
@@ -380,6 +392,10 @@
 # secret_data = true
 # public_sink = true
 # dangerous_writes = true
+# [tools.slack_mcp_acme.mcp]
+# runtime = "docker"
+# image = "ghcr.io/korotovsky/slack-mcp-server:latest"
+# port = 8080
 
 # Google Drive (sensitive corporate data, controlled source):
 # [tools."gdrive.mycompany"]
@@ -388,6 +404,10 @@
 # secret_data = true
 # public_sink = false
 # dangerous_writes = false
+# [tools."gdrive.mycompany".mcp]
+# runtime = "docker"
+# image = "pynchy-mcp-gdrive:latest"
+# port = 3000
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mount Security

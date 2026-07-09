@@ -13,6 +13,11 @@ public_source = true
 secret_data = false
 public_sink = false
 dangerous_writes = false
+
+[tools.playwright.mcp]
+runtime = "docker"
+image = "mcr.microsoft.com/playwright/mcp:latest"
+port = 8931
 ```
 
 Then grant workspace access:
@@ -39,12 +44,20 @@ secret_data = true
 public_sink = true
 dangerous_writes = true
 
+[tools.example_acme.mcp]
+runtime = "url"
+url = "https://acme.example.com/mcp"
+
 [tools.example_personal]
 type = "mcp"
 public_source = false
 secret_data = true
 public_sink = false
 dangerous_writes = false
+
+[tools.example_personal.mcp]
+runtime = "url"
+url = "https://personal.example.com/mcp"
 
 [profiles.work]
 tools = ["example_acme"]

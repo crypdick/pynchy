@@ -20,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.git_ops.utils import (
     count_commits,
     detect_main_branch,
@@ -110,7 +110,7 @@ def _sync_existing_worktree(
     if status.returncode == 0 and status.stdout.strip():
         notices.append(
             "Your worktree has uncommitted changes from a previous run. "
-            "Review with `git status` and `git diff` in /workspace/project — "
+            f"Review with `git status` and `git diff` in {repo_container_path(repo_ctx.slug)} — "
             "commit or discard them before starting new work."
         )
         logger.info("Worktree has uncommitted changes", group=group_folder)
@@ -137,7 +137,8 @@ def _sync_existing_worktree(
             if head_before != head_after:
                 notices.append(
                     f"Auto-pulled remote changes from origin/{main_branch} into your worktree. "
-                    "Run `git log --oneline` in /workspace/project to see what changed."
+                    f"Run `git log --oneline` in {repo_container_path(repo_ctx.slug)} "
+                    "to see what changed."
                 )
             logger.info("Worktree synced", group=group_folder, path=str(worktree_path))
 

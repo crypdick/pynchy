@@ -1,16 +1,18 @@
 """Workspace access helpers for composable profile config.
 
-Workspace identity resolves through profiles. Sender gating is permissive here
-because connection/channel access policy lives outside this schema slice.
+Workspace identity resolves through profiles. Sender gating comes from
+connection-level channel security, not workspace/profile config.
 """
 
 from __future__ import annotations
 
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
-from pynchy.config.models import OwnerConfig
+from pynchy.config.models import ChannelOverrideConfig, OwnerConfig
 from pynchy.config.refs import channel_platform_from_name
 from pynchy.config.settings import get_settings
 from pynchy.types import NewMessage
+
+_KNOWN_CHANNEL_PLATFORMS = {"slack", "whatsapp", "discord"}
 
 
 def resolve_workspace_connection_name(workspace_name: str) -> str | None:
@@ -137,7 +139,53 @@ def filter_allowed_messages(
     """
     assert group is not None
     assert channel_plugin_name is None or isinstance(channel_plugin_name, str)
-    return messages
+    if getattr(group, "is_admin", False):
+        return messages
+
+    security = _connection_security(channel_plugin_name)
+    if security is None or security.allowed_users is None:
+        return messages
+
+    settings = get_settings()
+    policy_channel_name = _policy_channel_name(channel_plugin_name)
+    resolved_users = resolve_allowed_users(
+        security.allowed_users,
+        settings.user_groups,
+        settings.owner,
+        policy_channel_name,
+    )
+    return [
+        msg
+        for msg in messages
+        if is_user_allowed(
+            msg.sender,
+            policy_channel_name,
+            resolved_users,
+            is_from_me=msg.is_from_me,
+            sender_name=msg.sender_name,
+        )
+    ]
+
+
+def _connection_security(channel_plugin_name: str | None) -> ChannelOverrideConfig | None:
+    if channel_plugin_name is None:
+        return None
+    connection = get_settings().connections.get(channel_plugin_name)
+    if connection is None:
+        return None
+    return connection.security
+
+
+def _policy_channel_name(channel_plugin_name: str | None) -> str | None:
+    if channel_plugin_name is None:
+        return None
+    platform = channel_platform_from_name(channel_plugin_name)
+    if platform in _KNOWN_CHANNEL_PLATFORMS:
+        return platform
+    connection = get_settings().connections.get(channel_plugin_name)
+    if connection is None:
+        return channel_plugin_name
+    return connection.type
 
 
 def is_user_allowed(

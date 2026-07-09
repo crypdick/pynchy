@@ -261,7 +261,7 @@ Without OneCLI, **non-LLM credentials** get written directly to per-group env fi
 
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|
-| `GH_TOKEN` | Yes (broad) | **Repo-scoped** (if configured) | Admin gets the host's broad token. Non-admin containers with `repo_access` get a fine-grained PAT scoped to their designated repo (configured via `repos."owner/repo".token`). Non-admin containers without `repo_access` get no token. |
+| `GH_TOKEN` | Yes (broad) | **Repo-scoped** (if configured) | Admin gets the host's broad token. Non-admin containers with profile `repo` get a fine-grained PAT scoped to their designated repo (configured via `repos.overrides."owner/repo".token`). Non-admin containers without a repo get no token. |
 | `GIT_AUTHOR_NAME` | Yes | Yes | Needed for git commits in worktrees |
 | `GIT_COMMITTER_NAME` | Yes | Yes | |
 | `GIT_AUTHOR_EMAIL` | Yes | Yes | |
@@ -307,7 +307,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 
 | Capability | Admin Group | Non-Admin Group |
 |------------|------------|----------------|
-| Project root access | `/workspace/project` (rw) | Via `repo_access` (worktree, rw) |
+| Repo access | `/workspace/repos/<owner>/<repo>` (rw) | Via profile `repo` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | System prompts | Scoped via config | Scoped via config |
 | `config.toml` | Mounted read-write | Not mounted |

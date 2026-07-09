@@ -146,6 +146,11 @@ secret_data = false
 public_sink = false
 dangerous_writes = false
 
+[tools.playwright.mcp]
+runtime = "docker"
+image = "mcr.microsoft.com/playwright/mcp:latest"
+port = 8931
+
 [profiles.browser]
 tools = ["playwright"]
 

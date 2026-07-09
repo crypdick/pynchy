@@ -86,7 +86,7 @@ class _StrictModel(BaseModel):
 
 class AgentConfig(_StrictModel):
     name: str = "pynchy"
-    trigger_aliases: list[str] = []
+    trigger_aliases: list[str] = ["ghost"]
     default_core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
     model: str | None = None
 

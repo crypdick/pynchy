@@ -8,6 +8,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.access import (
+    filter_allowed_messages,
     is_user_allowed,
     resolve_allowed_users,
     resolve_channel_config,
@@ -22,6 +23,18 @@ from pynchy.config.models import (
     WhatsAppConnectionConfig,
     WorkspaceConfig,
 )
+from pynchy.types import NewMessage, WorkspaceProfile
+
+
+def _message(sender: str, sender_name: str = "User") -> NewMessage:
+    return NewMessage(
+        id=f"msg-{sender}",
+        chat_jid="slack:C123",
+        sender=sender,
+        sender_name=sender_name,
+        content="hello",
+        timestamp="2026-01-01T00:00:00Z",
+    )
 
 
 class TestResolveChannelConfig:
@@ -239,6 +252,73 @@ class TestIsUserAllowed:
 
     def test_empty_allowed_set(self):
         assert is_user_allowed("anyone", "slack", set()) is False
+
+
+class TestFilterAllowedMessages:
+    def test_filters_non_admin_messages_by_connection_security(self):
+        settings = make_settings(
+            connections={
+                "synapse": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]),
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04ABC"), _message("U04OTHER")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert [msg.sender for msg in filtered] == ["U04ABC"]
+
+    def test_admin_bypasses_connection_security(self):
+        settings = make_settings(
+            connections={
+                "synapse": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]),
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Admin",
+            folder="admin",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+            is_admin=True,
+        )
+        messages = [_message("U04ABC"), _message("U04OTHER")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert filtered == messages
+
+    def test_missing_connection_policy_allows_messages(self):
+        settings = make_settings()
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04OTHER")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert filtered == messages
 
 
 class TestChannelOverrideConfig:

@@ -12,17 +12,17 @@ from typing import Any
 from agent_runner.hooks import HookDecision
 
 _BLOCKED_GIT_OPS = re.compile(r"\bgit\s+(push|pull|rebase)\b")
-_RAW_HOST_REPO_MOUNT = "/danger/raw-host-repo-mount-prefer-your-worktree"
+_RAW_HOST_REPO_MOUNT = "/danger/raw-host-repos/"
 
 _REASON = (
     "Direct git push/pull/rebase is blocked. Use the sync_worktree_to_main "
     "tool instead — it coordinates with the host to publish your changes "
-    "(either merging into main or opening a PR, depending on workspace policy). "
+    "(merging into main through the host-side git workflow). "
     "Commit your changes first, then call sync_worktree_to_main."
 )
 _WORKTREE_REASON = (
     "Do not work in the raw host checkout mount. Use the isolated worktree at "
-    "/workspace/project instead; Pynchy coordinates publication through "
+    "/workspace/repos/<owner>/<repo> instead; Pynchy coordinates publication through "
     "sync_worktree_to_main."
 )
 

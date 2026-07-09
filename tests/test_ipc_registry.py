@@ -22,7 +22,7 @@ from agent_runner.registry import create_agent_core
 
 def _make_config(**overrides: object) -> AgentCoreConfig:
     defaults = {
-        "cwd": "/workspace/project",
+        "cwd": "/workspace/repos/owner/project",
         "session_id": None,
         "group_folder": "test",
         "chat_jid": "test@g.us",
