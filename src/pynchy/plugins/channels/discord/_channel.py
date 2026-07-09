@@ -19,7 +19,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Iterable,
 )
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
@@ -44,13 +44,18 @@ from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
 from ._provisioning import create_discord_group
 
+if TYPE_CHECKING:
+    from pynchy.config.models import DiscordConnectionConfig
+else:
+    DiscordConnectionConfig = object
+
 _MESSAGE_ID_PREFIX = "discord-"
 _TYPING_REFRESH_SECONDS = 8.0
 _DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
 _DISCORD_MESSAGE_TOO_LONG = "Discord message exceeds 2000 chars; falling back to chunked send"
 
 
-def _require_client(client: Any) -> Any:
+def _require_client(client: object | None) -> object:
     if client is None:
         raise RuntimeError(_DISCORD_CLIENT_NOT_CONNECTED)
     return client
@@ -65,12 +70,12 @@ class DiscordChannel:
     def __init__(  # noqa: PLR0913, RUF100 - channel constructor is a boundary surface for plugin wiring.
         self,
         connection_name: str,
-        config: Any,
+        config: DiscordConnectionConfig,
         bot_token: str,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
-        on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None = None,
+        on_ask_user_answer: Callable[[str, dict[str, object]], None] | None = None,
         workspaces: Callable[[], dict[str, WorkspaceProfile]] | None = None,
     ) -> None:
         self.name = connection_name
@@ -84,11 +89,11 @@ class DiscordChannel:
         self.on_ask_user_answer = on_ask_user_answer
         self.workspaces = workspaces
         self.bot_user_id: str = ""
-        self.client: discord.Client | None = None
+        self.client: object | None = None
         self._connected = False
         self._shutting_down = False
-        self._typing_tasks: dict[str, asyncio.Task[Any]] = {}
-        self._dm_channels: dict[str, Any] = {}
+        self._typing_tasks: dict[str, asyncio.Task[None]] = {}
+        self._dm_channels: dict[str, object] = {}
         self._ask_user_views: dict[str, discord.ui.View] = {}
 
         self.access = DiscordAccess(config)
@@ -96,7 +101,7 @@ class DiscordChannel:
         self.lifecycle = DiscordLifecycle(self)
 
     @property
-    def config(self) -> Any:
+    def config(self) -> DiscordConnectionConfig:
         return self._config
 
     @property
@@ -177,29 +182,31 @@ class DiscordChannel:
         if self.client is not None:
             channel = await self.find_configured_channel(target)
             if channel is not None:
-                return channel_jid(str(channel.id))
+                return channel_jid(str(cast("Any", channel).id))
         if not target.target_id.isdecimal():
             return None
         return channel_jid(target.target_id)
 
-    def _known_users(self) -> Iterable[Any]:
+    def _known_users(self) -> Iterable[object]:
         if self.client is None:
             return ()
-        cached_users = tuple(getattr(self.client, "users", ()) or ())
-        members: list[Any] = []
-        get_all_members = getattr(self.client, "get_all_members", None)
+        client = cast("Any", self.client)
+        cached_users = tuple(getattr(client, "users", ()) or ())
+        members: list[object] = []
+        get_all_members = getattr(client, "get_all_members", None)
         if callable(get_all_members):
             members.extend(get_all_members())
         else:
-            for guild in getattr(self.client, "guilds", []) or []:
+            for guild in getattr(client, "guilds", []) or []:
                 members.extend(getattr(guild, "members", []) or [])
         return (*cached_users, *members)
 
-    def _find_configured_user(self, user_key: str) -> Any | None:
+    def _find_configured_user(self, user_key: str) -> object | None:
         if self.client is None:
             return None
+        client = cast("Any", self.client)
         if user_key.isdecimal():
-            return self.client.get_user(int(user_key))
+            return client.get_user(int(user_key))
         return next(
             (
                 user
@@ -228,14 +235,16 @@ class DiscordChannel:
     async def create_group(self, name: str) -> str:
         return await create_discord_group(self, name)
 
-    async def find_configured_channel(self, target: DiscordChatTarget) -> Any | None:
+    async def find_configured_channel(self, target: DiscordChatTarget) -> object | None:
         guild = await self.find_configured_guild(target)
         if guild is None:
             return None
         channel_key = target.target_id
         if channel_key.isdecimal():
             existing = (
-                self.client.get_channel(int(channel_key)) if self.client is not None else None
+                cast("Any", self.client).get_channel(int(channel_key))
+                if self.client is not None
+                else None
             )
             if existing is not None:
                 return existing
@@ -247,8 +256,8 @@ class DiscordChannel:
                 return channel
         return None
 
-    async def find_configured_guild(self, target: DiscordChatTarget) -> Any | None:
-        client = _require_client(self.client)
+    async def find_configured_guild(self, target: DiscordChatTarget) -> object | None:
+        client = cast("Any", _require_client(self.client))
         guild_key = target.guild_id or ""
         if guild_key.isdecimal():
             guild = client.get_guild(int(guild_key))
@@ -275,9 +284,9 @@ class DiscordChannel:
         raw = channel_cfg.name if channel_cfg and channel_cfg.name else target.target_id
         return normalize_discord_channel_name(raw)
 
-    async def _resolve_channel(self, jid: str) -> Any:
+    async def _resolve_channel(self, jid: str) -> object:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
-        client = _require_client(self.client)
+        client = cast("Any", _require_client(self.client))
         parsed = parse_jid(jid)
         snowflake = int(parsed.snowflake)
         if parsed.kind == "direct":
@@ -285,7 +294,8 @@ class DiscordChannel:
             if cached_dm is not None:
                 return cached_dm
             user = client.get_user(snowflake) or await client.fetch_user(snowflake)
-            dm_channel = user.dm_channel or await user.create_dm()
+            user_like = cast("Any", user)
+            dm_channel = user_like.dm_channel or await user_like.create_dm()
             self._dm_channels[parsed.snowflake] = dm_channel
             return dm_channel
         channel = client.get_channel(snowflake)
@@ -293,15 +303,16 @@ class DiscordChannel:
             channel = await client.fetch_channel(snowflake)
         return channel
 
-    async def resolve_channel(self, jid: str) -> Any:
+    async def resolve_channel(self, jid: str) -> object:
         return await self._resolve_channel(jid)
 
     def forget_ask_user_view(self, message_id: str) -> None:
         self._ask_user_views.pop(message_id, None)
 
-    async def _send_text(self, channel: Any, text: str) -> None:
+    async def _send_text(self, channel: object, text: str) -> None:
+        channel_like = cast("Any", channel)
         for chunk in chunk_discord_text(text):
-            await channel.send(
+            await channel_like.send(
                 chunk,
                 allowed_mentions=discord.AllowedMentions.none(),
                 suppress_embeds=True,
@@ -339,7 +350,7 @@ class DiscordChannel:
             return None
         try:
             channel = await self._resolve_channel(jid)
-            message = await channel.send(
+            message = await cast("Any", channel).send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none(),
                 suppress_embeds=True,
@@ -363,9 +374,11 @@ class DiscordChannel:
         if len(text) > DISCORD_LIMIT:
             raise ValueError(_DISCORD_MESSAGE_TOO_LONG)
         raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
-        channel = await self._resolve_channel(jid)
+        channel = cast("Any", await self._resolve_channel(jid))
         message = await channel.fetch_message(int(raw_id))
-        await message.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
+        await cast("Any", message).edit(
+            content=text, allowed_mentions=discord.AllowedMentions.none()
+        )
 
     async def send_reaction(self, jid: str, message_id: str, _sender: str, emoji: str) -> None:
         if self.client is None or not self.owns_jid(jid):
@@ -374,9 +387,9 @@ class DiscordChannel:
             return  # not a Discord-originated message id
         raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
         try:
-            channel = await self._resolve_channel(jid)
+            channel = cast("Any", await self._resolve_channel(jid))
             message = await channel.fetch_message(int(raw_id))
-            await message.add_reaction(emoji)
+            await cast("Any", message).add_reaction(emoji)
         except discord.DiscordException as exc:
             logger.debug("Discord reaction failed", err=str(exc))
 
@@ -435,7 +448,7 @@ class DiscordChannel:
             self._cancel_typing_task(jid)
 
     async def send_ask_user(
-        self, jid: str, request_id: str, questions: list[dict[str, Any]]
+        self, jid: str, request_id: str, questions: list[dict[str, object]]
     ) -> str | None:
         """Post an ask_user prompt, using buttons when the prompt shape fits."""
         if self.client is None or not self.owns_jid(jid):
@@ -470,26 +483,28 @@ class DiscordChannel:
         return discord.Object(id=discord.utils.time_snowflake(datetime.fromisoformat(since)))
 
     @staticmethod
-    def _history_high_water_mark(message: Any, current: str) -> str:
-        timestamp = message.created_at.isoformat() if message.created_at else ""
+    def _history_high_water_mark(message: object, current: str) -> str:
+        message_like = cast("Any", message)
+        timestamp = message_like.created_at.isoformat() if message_like.created_at else ""
         if timestamp > current:
             return timestamp
         return current
 
-    def _history_message(self, channel_jid: str, message: Any) -> NewMessage | None:
-        author = message.author
+    def _history_message(self, channel_jid: str, message: object) -> NewMessage | None:
+        message_like = cast("Any", message)
+        author = message_like.author
         if getattr(author, "bot", False) or str(author.id) == self.bot_user_id:
             return None
-        timestamp = message.created_at.isoformat() if message.created_at else ""
+        timestamp = message_like.created_at.isoformat() if message_like.created_at else ""
         return NewMessage(
-            id=f"{_MESSAGE_ID_PREFIX}{message.id}",
+            id=f"{_MESSAGE_ID_PREFIX}{message_like.id}",
             chat_jid=channel_jid,
             sender=str(author.id),
             sender_name=getattr(author, "display_name", None) or str(author),
-            content=normalized_message_content(message),
+            content=normalized_message_content(message_like),
             timestamp=timestamp or datetime.now(UTC).isoformat(),
             is_from_me=False,
-            metadata=build_message_metadata(message),
+            metadata=build_message_metadata(message_like),
         )
 
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
