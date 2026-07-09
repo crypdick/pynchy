@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
+from collections.abc import Sequence
 from functools import cached_property
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -33,7 +33,6 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from pynchy.config.discord_refs import discord_chat_ref_error
 from pynchy.config.jobs import JobConfig
 from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import (
@@ -45,7 +44,6 @@ from pynchy.config.models import (
     ConnectionsConfig,
     ContainerConfig,
     CronJobConfig,
-    DiscordConnectionConfig,
     GatewayConfig,
     IntervalsConfig,
     LearningConfig,
@@ -63,144 +61,31 @@ from pynchy.config.models import (
     ServiceTrustTomlConfig,
     ToolConfig,
     WorkspaceConfig,
-    _StrictModel,
 )
-from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref, parse_connection_ref
-
-# ---------------------------------------------------------------------------
-# Explicit-fields validation
-# ---------------------------------------------------------------------------
-
-
-def _is_exempt_field(model_cls: type[BaseModel], field_name: str) -> bool:
-    """Check if a field is exempt from the explicit-ness requirement.
-
-    Exempt fields:
-    - X | None: "inherit from parent" sentinel — TOML has no null type.
-    - dict/list with empty default: container types where {} / [] means "none configured."
-    """
-    import types
-    import typing
-
-    field_info = model_cls.model_fields[field_name]
-    annotation = field_info.annotation
-
-    # Optional (X | None) — TOML can't express null
-    if isinstance(annotation, types.UnionType) and type(None) in annotation.__args__:
-        return True
-    origin = getattr(annotation, "__origin__", None)
-    if origin is typing.Union and type(None) in annotation.__args__:
-        return True
-    if annotation is type(None):
-        return True
-
-    # dict/list with empty default — forgetting {} or [] doesn't cause bugs
-    return field_info.default in ([], {})
-
-
-def _collect_implicit_fields(model: BaseModel, path: str) -> list[str]:
-    """Recursively find _StrictModel fields that were not explicitly set.
-
-    Only descends into sub-models that were present in the parsed input
-    (via model_fields_set). This means:
-    - Entire sections omitted from config.toml → not checked (known defaults).
-    - Sections present in config.toml → every field must be spelled out.
-    - Dict-of-models (e.g., workspaces) → each entry is checked individually.
-    - Optional fields (X | None) are skipped — TOML has no null type, so these
-      use None as "inherit from parent" and can't be made explicit.
-    """
-    errors: list[str] = []
-    for child_path, child in _strict_model_children(model, path):
-        child_missing = _missing_explicit_fields(child)
-        if child_missing:
-            errors.append(f"{child_path}: missing {child_missing}")
-        errors.extend(_collect_implicit_fields(child, child_path))
-    return errors
-
-
-def _strict_model_children(model: BaseModel, path: str) -> Iterator[tuple[str, _StrictModel]]:
-    cls = type(model)
-    for field_name in cls.model_fields:
-        value = getattr(model, field_name)
-        if isinstance(value, dict):
-            yield from _strict_dict_children(path, field_name, value)
-            continue
-        if isinstance(value, _StrictModel) and field_name in model.model_fields_set:
-            yield _join_path(path, field_name), value
-
-
-def _strict_dict_children(
-    path: str, field_name: str, value: dict[Any, Any]
-) -> Iterator[tuple[str, _StrictModel]]:
-    field_path = _join_path(path, field_name)
-    for key, item in value.items():
-        if isinstance(item, _StrictModel):
-            yield _join_path(field_path, str(key)), item
-
-
-def _missing_explicit_fields(model: _StrictModel) -> list[str]:
-    model_cls = type(model)
-    return sorted(
-        field_name
-        for field_name in model_cls.model_fields
-        if field_name not in model.model_fields_set and not _is_exempt_field(model_cls, field_name)
-    )
-
-
-def _join_path(path: str, child: str) -> str:
-    return f"{path}.{child}" if path else child
-
-
-def _resolved_workspace_mcp_servers(settings: Settings, workspace: WorkspaceConfig) -> set[str]:
-    # TODO(config-schema-cutover): tools now own MCP selection. This helper remains for
-    # runtime code until MCP/tool plumbing reads tool selections directly.
-    resolved: set[str] = set()
-    return resolved
 
 
 def _assert_admin_clean_room(
     settings: Settings, *, workspace_name: str, workspace: WorkspaceConfig
 ) -> None:
-    # TODO(config-schema-cutover): restore this check against [tools.*] once the
-    # tool/MCP runtime migration defines trust metadata for tool declarations.
-    return
+    resolved = settings.resolved_workspace_config(workspace_name)
+    if resolved is None:
+        return
+    for tool_name in resolved.tools:
+        tool = settings.tools[tool_name]
+        if tool.public_source is not False:
+            raise ValueError(
+                f"Admin workspace '{workspace_name}' has tool '{tool_name}' "
+                f"with public_source={tool.public_source!r}. Admin workspaces "
+                "cannot use public-source tools."
+            )
 
 
 def _validated_command_center_connection(settings: Settings) -> None:
     connection = settings.command_center.connection
     if not connection:
         return
-    ref = parse_connection_ref(connection)
-    assert ref is not None  # guaranteed by ValidatedConnectionRef
-    if settings.connection.get_connection(ref.platform, ref.name) is None:
-        raise ValueError(
-            f"command_center.connection references unknown connection: "
-            f"{connection_ref_from_parts(ref.platform, ref.name)}"
-        )
-
-
-def _validate_workspace_chat_ref(
-    settings: Settings, *, folder: str, workspace: WorkspaceConfig
-) -> None:
-    if workspace.chat is None:
-        raise ValueError(
-            f"workspaces.{folder}.chat must be connection.<platform>.<name>.chat.<chat>"
-        )
-    chat_ref = parse_chat_ref(workspace.chat)
-    assert chat_ref is not None  # guaranteed by ValidatedChatRef
-    conn = settings.connection.get_connection(chat_ref.platform, chat_ref.name)
-    if conn is None:
-        raise ValueError(
-            f"workspaces.{folder}.chat references unknown connection: "
-            f"{connection_ref_from_parts(chat_ref.platform, chat_ref.name)}"
-        )
-    if isinstance(conn, DiscordConnectionConfig):
-        error = discord_chat_ref_error(conn, chat_ref.chat)
-        if error is not None:
-            raise ValueError(f"workspaces.{folder}.chat {error}: {workspace.chat}")
-        return
-    if chat_ref.chat not in conn.chat:
-        raise ValueError(f"workspaces.{folder}.chat references unknown chat: {workspace.chat}")
+    if connection not in settings.connections:
+        raise ValueError(f"command_center.connection references unknown connection: {connection}")
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +242,12 @@ class Settings(BaseSettings):
             raise ValueError("'host' is reserved and cannot be a workspace name")
         for profile_name in self.profiles:
             self._expanded_profile_names(profile_name)
+        for profile_name, profile in self.profiles.items():
+            for tool_name in profile.tools:
+                if tool_name not in self.tools:
+                    raise ValueError(
+                        f"profiles.{profile_name}.tools references unknown tool: {tool_name}"
+                    )
         for folder, ws in self.workspaces.items():
             for profile_name in ws.profiles:
                 if profile_name not in self.profiles:
@@ -435,12 +326,10 @@ class Settings(BaseSettings):
         workspace = self.workspaces.get(workspace_name)
         if workspace is None:
             return None
-        profile_names: list[str] = []
-        for selected in workspace.profiles:
-            profile_names.extend(self._expanded_profile_names(selected))
+        profile_names = self._expanded_selected_profile_names(workspace.profiles)
         return merge_workspace_profiles([self.profiles[name] for name in profile_names])
 
-    def _expanded_profile_names(self, profile_name: str) -> list[str]:
+    def _expanded_selected_profile_names(self, profile_names: Sequence[str]) -> list[str]:
         ordered: list[str] = []
         visiting: list[str] = []
         visited: set[str] = set()
@@ -460,8 +349,12 @@ class Settings(BaseSettings):
             visited.add(name)
             ordered.append(name)
 
-        visit(profile_name)
+        for name in profile_names:
+            visit(name)
         return ordered
+
+    def _expanded_profile_names(self, profile_name: str) -> list[str]:
+        return self._expanded_selected_profile_names([profile_name])
 
     @classmethod
     def settings_customise_sources(

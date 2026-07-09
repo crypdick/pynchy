@@ -43,6 +43,12 @@ def _validated_connection_ref(v: str) -> ConnectionRefStr:
     return ConnectionRefStr(v)
 
 
+def _validated_connection_name(v: str) -> str:
+    if v.startswith("connection.") or "." in v:
+        raise ValueError("command_center.connection must be a [connections.<name>] name")
+    return _validated_name(v)
+
+
 def _validated_chat_ref(v: str) -> ChatRefStr:
     if parse_chat_ref(v) is None:
         raise ValueError("chat must be connection.<platform>.<name>.chat.<chat>")
@@ -65,6 +71,7 @@ def _validated_repo_slug(v: str) -> RepoSlug:
 # is skipped on None. The validator returns the NewType so the field's static type
 # carries the parse result — no downstream re-validation.
 ValidatedConnectionRef = Annotated[ConnectionRefStr, AfterValidator(_validated_connection_ref)]
+ValidatedConnectionName = Annotated[str, AfterValidator(_validated_connection_name)]
 ValidatedChatRef = Annotated[ChatRefStr, AfterValidator(_validated_chat_ref)]
 ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
 ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
@@ -334,7 +341,7 @@ class ConnectionsConfig(_StrictModel):
 class CommandCenterConfig(_StrictModel):
     """Which connection is the dedicated command center."""
 
-    connection: ValidatedConnectionRef | None = None
+    connection: ValidatedConnectionName | None = None
 
 
 class ProfileConfig(_StrictModel):
@@ -426,16 +433,27 @@ class ReposConfig(_StrictModel):
 class BuiltinToolConfig(_StrictModel):
     type: Literal["builtin"]
     name: str
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
 
 
 class LinearToolConfig(_StrictModel):
     type: Literal["linear"]
     workspace: str | None = None
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
 
 
 class McpToolConfig(_StrictModel):
     type: Literal["mcp"]
-    server: str
+    public_source: bool | Literal["forbidden"] = True
+    secret_data: bool = True
+    public_sink: bool | Literal["forbidden"] = True
+    dangerous_writes: bool | Literal["forbidden"] = True
 
 
 ToolConfig = Annotated[

@@ -32,6 +32,7 @@ def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
                 model="chatgpt/gpt-5.3-codex-spark",
             )
         },
+        tools={"shell": {"type": "builtin", "name": "shell", "public_source": False}},
     )
 
     assert settings.profiles["admin"].contains_secrets is True
