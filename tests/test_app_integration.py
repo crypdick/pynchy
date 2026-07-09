@@ -16,8 +16,14 @@ import pytest
 from conftest import NullChannel, make_settings
 
 from pynchy import state
+from pynchy.host.container_manager import serialization
+from pynchy.host.container_manager.process import is_query_done_pulse
+from pynchy.host.container_manager.session import destroy_all_sessions, get_session
+from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.state import get_chat_history, store_message
+from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
+from pynchy.plugins.channel_runtime import ChannelPluginContext
+from pynchy.state import get_chat_history, set_router_state, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -158,9 +164,6 @@ class FakeProcess(asyncio.subprocess.Process):
         and query-done pulse through the session API (mirroring the IPC
         watcher's behavior), then simulates a clean process exit.
         """
-        from pynchy.host.container_manager import serialization
-        from pynchy.host.container_manager.session import get_session
-
         # Wait for the session to be created and have an output handler
         session = None
         for _ in range(200):
@@ -234,10 +237,6 @@ async def _schedule_outputs_via_session(
     that triggers query completion.  If no output has new_session_id, a
     query-done pulse is appended automatically.
     """
-    from pynchy.host.container_manager import serialization
-    from pynchy.host.container_manager.process import is_query_done_pulse
-    from pynchy.host.container_manager.session import get_session
-
     # Wait for session to have an output handler
     for _ in range(100):
         session = get_session(group_folder)
@@ -334,8 +333,6 @@ async def app(tmp_path: Path):
     }
     yield a
     # Clean up any persistent sessions created during the test
-    from pynchy.host.container_manager.session import destroy_all_sessions
-
     await destroy_all_sessions()
 
 
@@ -349,7 +346,7 @@ class TestAppImports:
 
     def test_channel_runtime_import(self):
         """Channel runtime helper import in app.run() must resolve."""
-        from pynchy.plugins.channel_runtime import ChannelPluginContext  # noqa: F401
+        assert ChannelPluginContext is not None
 
 
 class TestFirstRunBootstrap:
@@ -357,8 +354,6 @@ class TestFirstRunBootstrap:
 
     async def test_creates_tui_admin_workspace_without_channel(self, app: PynchyApp):
         app.workspaces = {}
-
-        from pynchy.host.orchestrator import startup_handler
 
         await startup_handler.setup_admin_group(app, default_channel=None)
 
@@ -582,8 +577,6 @@ class TestRecoverPendingMessages:
     """Test startup crash recovery."""
 
     async def test_enqueues_groups_with_pending_messages(self, app: PynchyApp):
-        from pynchy.host.orchestrator import startup_handler
-
         # Store a message but don't advance the cursor
         msg = _make_message(content="missed message")
         await store_message(msg)
@@ -600,8 +593,6 @@ class TestRecoverPendingMessages:
         assert "group@g.us" in started
 
     async def test_skips_groups_with_no_pending_messages(self, app: PynchyApp):
-        from pynchy.host.orchestrator import startup_handler
-
         # No messages stored at all
         started = []
 
@@ -630,8 +621,6 @@ class TestStatePersistence:
         assert app2.last_agent_timestamp == {"group@g.us": "2024-06-01T11:00:00Z"}
 
     async def test_load_state_handles_corrupted_json(self, app: PynchyApp):
-        from pynchy.state import set_router_state
-
         await set_router_state("last_agent_timestamp", "not valid json")
 
         app2 = PynchyApp()
@@ -844,7 +833,6 @@ class TestDeployContinuationResume:
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
-            from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 
             await check_deploy_continuation(app)
 
@@ -889,7 +877,6 @@ class TestDeployContinuationResume:
             s = MagicMock()
             s.data_dir = data_dir
             mock_settings.return_value = s
-            from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 
             await check_deploy_continuation(app)
 
