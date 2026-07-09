@@ -70,7 +70,7 @@ async def try_step(
     """Attempt an automated Console step; use the manual + noVNC path when needed."""
     try:
         await step_fn(page)
-    except Exception as exc:  # noqa: BLE001, RUF100 - UI automation fallback is best-effort by design.
+    except Exception as exc:  # noqa: BLE001, RUF100 - UI automation can require manual noVNC completion.
         logger.warning("GCP automation step failed; using manual path", error=str(exc))
         with contextlib.suppress(Exception):
             debug_screenshot = Path(tempfile.gettempdir()) / "gdrive-setup-debug.png"
