@@ -279,7 +279,11 @@ def _effective_readonly(
     return False
 
 
-def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationResult:
+def validate_mount(
+    mount: AdditionalMount,
+    *,
+    is_admin: bool,
+) -> MountValidationResult:
     """Validate a single additional mount against the allowlist."""
     s = get_settings()
     allowlist = load_mount_allowlist()
@@ -337,7 +341,10 @@ def validate_mount(mount: AdditionalMount, is_admin: bool) -> MountValidationRes
 
 
 def validate_additional_mounts(
-    mounts: list[AdditionalMount], group_name: str, is_admin: bool
+    mounts: list[AdditionalMount],
+    group_name: str,
+    *,
+    is_admin: bool,
 ) -> list[dict[str, str | bool]]:
     """Validate all additional mounts for a group.
 
@@ -346,7 +353,7 @@ def validate_additional_mounts(
     validated: list[dict[str, str | bool]] = []
 
     for mount in mounts:
-        result = validate_mount(mount, is_admin)
+        result = validate_mount(mount, is_admin=is_admin)
 
         if result.allowed:
             if result.real_host_path is None:

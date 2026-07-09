@@ -69,7 +69,7 @@ def register_mcp_proxy_approval(request_id: str) -> asyncio.Future[bool]:
     return fut
 
 
-def resolve_mcp_proxy_approval(request_id: str, approved: bool) -> bool:
+def resolve_mcp_proxy_approval(request_id: str, approved: bool) -> bool:  # noqa: FBT001, RUF100 - IPC handler and tests call this positionally.
     """Resolve a pending MCP proxy approval Future.
 
     Returns True if a matching Future was found and resolved, False otherwise.

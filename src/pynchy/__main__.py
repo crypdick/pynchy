@@ -66,7 +66,7 @@ def _build() -> None:
     sys.exit(result.returncode)
 
 
-def _prune_migration_backups(path: str | None, keep: int, apply: bool) -> None:
+def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> None:
     from pynchy.config import get_settings
     from pynchy.host.migration_backups import prune_migration_backups
 

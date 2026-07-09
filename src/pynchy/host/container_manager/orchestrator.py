@@ -170,7 +170,10 @@ async def _spawn_container(
     # --- Build mounts ---
     phase_start = time.monotonic()
     mounts = build_volume_mounts(
-        group, input_data.is_admin, plugin_manager, repo_mounts=repo_mounts
+        group,
+        is_admin=input_data.is_admin,
+        plugin_manager=plugin_manager,
+        repo_mounts=repo_mounts,
     )
     mounts_ms = (time.monotonic() - phase_start) * 1000
 

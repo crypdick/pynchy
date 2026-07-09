@@ -13,9 +13,9 @@ from pynchy.config import get_settings
 from pynchy.utils import write_json_atomic
 
 
-def write_tasks_snapshot(
+def write_tasks_snapshot(  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
     folder: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
     tasks: list[dict[str, Any]],
     *,
     host_jobs: list[dict[str, Any]] | None = None,
@@ -36,9 +36,9 @@ def write_tasks_snapshot(
     write_json_atomic(path, filtered, indent=2)
 
 
-def write_groups_snapshot(
+def write_groups_snapshot(  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
     folder: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
     groups: list[dict[str, Any]],
     _registered_jids: set[str],
 ) -> None:

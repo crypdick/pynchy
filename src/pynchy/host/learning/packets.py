@@ -84,7 +84,10 @@ def build_learning_packet(
     summary: LearningRunSummary,
 ) -> LearningPacket | None:
     settings = get_settings()
-    profile = _resolve_learning_profile(settings.learning.enabled, group.folder)
+    profile = _resolve_learning_profile(
+        enabled=settings.learning.enabled,
+        group_folder=group.folder,
+    )
     if profile is None:
         return None
     max_chars = settings.learning.packet_max_chars
@@ -209,7 +212,7 @@ def _is_recovered_tool_error(output: ContainerOutput) -> bool:
     )
 
 
-def _resolve_learning_profile(enabled: bool, group_folder: str) -> str | None:
+def _resolve_learning_profile(*, enabled: bool, group_folder: str) -> str | None:
     if not enabled:
         return None
 

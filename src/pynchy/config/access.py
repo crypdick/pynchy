@@ -222,6 +222,7 @@ def is_user_allowed(
     sender: str,
     channel_plugin_name: str | None,
     resolved_users: set[str] | None,
+    *,
     is_from_me: bool | None = None,
     sender_name: str | None = None,
 ) -> bool:

@@ -132,7 +132,10 @@ class SecurityPolicy:
             return forbidden
 
         scan_result = scan_payload_for_secrets(data)
-        needs_cop, needs_human = self._write_gate_flags(trust, scan_result.secrets_found)
+        needs_cop, needs_human = self._write_gate_flags(
+            trust,
+            payload_has_secrets=scan_result.secrets_found,
+        )
         reason = self._write_reason(
             needs_cop=needs_cop,
             needs_human=needs_human,
@@ -172,6 +175,7 @@ class SecurityPolicy:
     def _write_gate_flags(
         self,
         trust: ServiceTrustConfig,
+        *,
         payload_has_secrets: bool,
     ) -> tuple[bool, bool]:
         needs_cop = self._corruption_tainted

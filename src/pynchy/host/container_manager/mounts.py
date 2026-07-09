@@ -42,6 +42,7 @@ def _prepare_codex_home(group_folder: str) -> Path:
 
 def build_volume_mounts(
     group: WorkspaceProfile,
+    *,
     is_admin: bool,
     plugin_manager: pluggy.PluginManager | None = None,
     repo_ctx: RepoContext | None = None,
@@ -114,9 +115,13 @@ def build_volume_mounts(
     agent_runner_src = s.project_root / "src" / "pynchy" / "agent" / "agent_runner" / "src"
     mounts.append(VolumeMount(str(agent_runner_src), "/app/src", readonly=True))
 
-    _add_raw_repo_mount(mounts, is_admin, [repo_ctx for repo_ctx, _ in effective_repo_mounts])
+    _add_raw_repo_mount(
+        mounts,
+        [repo_ctx for repo_ctx, _ in effective_repo_mounts],
+        is_admin=is_admin,
+    )
 
-    _add_validated_additional_mounts(mounts, group, is_admin)
+    _add_validated_additional_mounts(mounts, group, is_admin=is_admin)
 
     return mounts
 
@@ -219,8 +224,9 @@ def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str)
 
 def _add_raw_repo_mount(
     mounts: list[VolumeMount],
-    is_admin: bool,
     repo_contexts: list[RepoContext],
+    *,
+    is_admin: bool,
 ) -> None:
     # Admin groups get a read-write mount of the actual host repo root.
     # This gives them direct access to config.toml, data/, other worktrees, etc.
@@ -243,13 +249,16 @@ def _add_raw_repo_mount(
 def _add_validated_additional_mounts(
     mounts: list[VolumeMount],
     group: WorkspaceProfile,
+    *,
     is_admin: bool,
 ) -> None:
     if group.container_config is None or not group.container_config.additional_mounts:
         return
 
     validated = validate_additional_mounts(
-        group.container_config.additional_mounts, group.name, is_admin
+        group.container_config.additional_mounts,
+        group.name,
+        is_admin=is_admin,
     )
     mounts.extend(
         [
