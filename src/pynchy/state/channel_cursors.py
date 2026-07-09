@@ -77,8 +77,9 @@ async def prune_stale_cursors(active_channel_names: set[ChannelName]) -> int:
         return 0
     db = _get_db()
     placeholders = ",".join("?" for _ in active_channel_names)
+    # S608 audit: only the number of SQLite value placeholders is dynamic.
     cursor = await db.execute(
-        f"DELETE FROM channel_cursors WHERE channel_name NOT IN ({placeholders})",
+        f"DELETE FROM channel_cursors WHERE channel_name NOT IN ({placeholders})",  # noqa: S608, RUF100
         tuple(active_channel_names),
     )
     await db.commit()

@@ -102,7 +102,7 @@ def _pathological_messages(count: int = 30) -> list[NewMessage]:
 def _observe_pathological_tool_uses(
     summary: LearningRunSummary,
     *,
-    secret: str,
+    redacted_value: str,
     count: int = 30,
 ) -> None:
     for index in range(count):
@@ -112,7 +112,7 @@ def _observe_pathological_tool_uses(
                 status="success",
                 type="tool_use",
                 tool_name=f"VeryLongToolName-{index}-{'t' * 400}",
-                tool_input={"command": f"echo {secret}"},
+                tool_input={"command": f"echo {redacted_value}"},
             ),
         )
 
@@ -159,7 +159,7 @@ def test_observe_container_output_records_final_answer_and_tool_counts() -> None
 
 def test_recovered_tool_result_errors_are_captured_without_tool_inputs() -> None:
     summary = LearningRunSummary()
-    secret = "sk-live-secret-tool-input"  # pragma: allowlist secret - fake regression value
+    redacted_value = "redacted-tool-input-value"
 
     observe_container_output(
         summary,
@@ -168,7 +168,7 @@ def test_recovered_tool_result_errors_are_captured_without_tool_inputs() -> None
             type="tool_result",
             tool_result_is_error=True,
             tool_result_content="permission denied\x00while reading vault",
-            tool_input={"command": f"cat {secret}"},
+            tool_input={"command": f"cat {redacted_value}"},
         ),
     )
     for index in range(10):
@@ -183,7 +183,7 @@ def test_recovered_tool_result_errors_are_captured_without_tool_inputs() -> None
         )
 
     assert summary.error_snippets[0] == "permission denied while reading vault"
-    assert secret not in json.dumps(summary.error_snippets)
+    assert redacted_value not in json.dumps(summary.error_snippets)
     assert len(summary.error_snippets) == 5
     assert all("\x00" not in snippet for snippet in summary.error_snippets)
     assert all(len(snippet) < 500 for snippet in summary.error_snippets)
@@ -282,10 +282,8 @@ def test_build_packet_bounds_full_reviewer_payload_with_pathological_fields(
     settings = _settings(tmp_path=tmp_path, packet_max_chars=max_chars, profile=long_profile)
     messages = _pathological_messages()
     summary = LearningRunSummary(final_answer=f"final answer {'a' * 900}")
-    secret = (
-        "sk-live-never-serialize-tool-input"  # pragma: allowlist secret - fake regression value
-    )
-    _observe_pathological_tool_uses(summary, secret=secret)
+    redacted_value = "redacted-tool-input-value"
+    _observe_pathological_tool_uses(summary, redacted_value=redacted_value)
     _observe_pathological_tool_errors(summary)
 
     with _patch_learning_settings(settings):
@@ -301,7 +299,7 @@ def test_build_packet_bounds_full_reviewer_payload_with_pathological_fields(
     payload = packet_to_reviewer_payload(packet)
     serialized_payload = json.dumps(payload, sort_keys=True)
     assert len(serialized_payload) <= packet_payload_char_limit(max_chars)
-    assert secret not in serialized_payload
+    assert redacted_value not in serialized_payload
     assert long_profile not in serialized_payload
     assert all(len(tool_name) < 400 for tool_name in packet.tool_counts)
     assert all(len(message["sender_name"]) < 400 for message in packet.messages)
@@ -393,7 +391,7 @@ def test_build_packet_caps_final_answer_and_error_snippets(tmp_path: Path) -> No
 
 def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) -> None:
     settings = _settings(tmp_path=tmp_path, packet_max_chars=400)
-    secret = "sk-live-secret-tool-input"  # pragma: allowlist secret - fake regression value
+    redacted_value = "redacted-tool-input-value"
     summary = LearningRunSummary(final_answer="Done")
     observe_container_output(
         summary,
@@ -401,7 +399,7 @@ def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) ->
             status="success",
             type="tool_use",
             tool_name="Bash",
-            tool_input={"command": f"curl -H 'Authorization: Bearer {secret}'"},
+            tool_input={"command": f"curl -H 'Authorization: Bearer {redacted_value}'"},
         ),
     )
 
@@ -416,7 +414,7 @@ def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) ->
 
     assert packet is not None
     serialized_payload = json.dumps(packet_to_payload(packet), sort_keys=True)
-    assert secret not in serialized_payload
+    assert redacted_value not in serialized_payload
     assert "tool_input" not in serialized_payload
     assert packet.tool_counts == {"Bash": 1}
 

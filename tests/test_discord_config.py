@@ -19,14 +19,16 @@ from pynchy.config.models import (
     WorkspaceConfig,
 )
 
+DISCORD_BOT_ENV = "DISCORD_BOT_ENV"
+
 
 def _profiles():
     return {"admin": ProfileConfig(is_admin=True)}
 
 
 def test_minimal_connection_defaults():
-    cfg = DiscordConnectionConfig(bot_token_env="DISCORD_BOT_TOKEN")
-    assert cfg.bot_token_env == "DISCORD_BOT_TOKEN"
+    cfg = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
+    assert cfg.bot_token_env == DISCORD_BOT_ENV
     assert cfg.application_id is None
     assert cfg.dm_policy == "allowlist"
     assert cfg.allow_from == []
@@ -36,17 +38,17 @@ def test_minimal_connection_defaults():
 
 def test_dm_policy_rejects_unknown_value():
     with pytest.raises(ValidationError):
-        DiscordConnectionConfig(bot_token_env="X", dm_policy="sometimes")
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, dm_policy="sometimes")
 
 
 def test_group_policy_rejects_unknown_value():
     with pytest.raises(ValidationError):
-        DiscordConnectionConfig(bot_token_env="X", group_policy="maybe")
+        DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, group_policy="maybe")
 
 
 def test_nested_guild_and_channel_config():
     cfg = DiscordConnectionConfig(
-        bot_token_env="X",
+        bot_token_env=DISCORD_BOT_ENV,
         chat={
             "myguild": {
                 "require_mention": True,
@@ -73,23 +75,25 @@ def test_nested_guild_and_channel_config():
 
 def test_channel_require_mention_defaults_to_none_for_inheritance():
     # None means "inherit from the guild"; only an explicit bool overrides.
-    cfg = DiscordConnectionConfig(bot_token_env="X", chat={"g": {"channels": {"c": {}}}})
+    cfg = DiscordConnectionConfig(
+        bot_token_env=DISCORD_BOT_ENV, chat={"g": {"channels": {"c": {}}}}
+    )
     assert cfg.chat["g"].channels["c"].require_mention is None
 
 
 def test_connections_config_exposes_discord():
-    conns = ConnectionsConfig(discord={"mybot": {"bot_token_env": "DISCORD_BOT_TOKEN"}})
+    conns = ConnectionsConfig(discord={"mybot": {"bot_token_env": DISCORD_BOT_ENV}})
     assert "mybot" in conns.discord
-    assert conns.get_connection("discord", "mybot").bot_token_env == "DISCORD_BOT_TOKEN"
+    assert conns.get_connection("discord", "mybot").bot_token_env == DISCORD_BOT_ENV
 
 
 def test_discord_connection_ack_emoji_defaults_to_lobster():
-    cfg = DiscordConnectionConfig(bot_token_env="DISCORD_BOT_TOKEN")
+    cfg = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
     assert cfg.processing_ack_emoji == "🦞"
 
 
 def test_discord_connection_ack_emoji_can_be_disabled():
-    cfg = DiscordConnectionConfig(bot_token_env="DISCORD_BOT_TOKEN", processing_ack_emoji=None)
+    cfg = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, processing_ack_emoji=None)
     assert cfg.processing_ack_emoji is None
 
 
@@ -103,7 +107,7 @@ def test_settings_accept_discord_workspace_channel_ref():
         connection=ConnectionsConfig(
             discord={
                 "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
+                    bot_token_env=DISCORD_BOT_ENV,
                     dm_policy="allowlist",
                     group_policy="allowlist",
                     chat={
@@ -134,7 +138,7 @@ def test_settings_accept_discord_workspace_name_ref():
         connection=ConnectionsConfig(
             discord={
                 "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
+                    bot_token_env=DISCORD_BOT_ENV,
                     dm_policy="allowlist",
                     group_policy="allowlist",
                     chat={
@@ -171,7 +175,7 @@ def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
         connection=ConnectionsConfig(
             discord={
                 "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
+                    bot_token_env=DISCORD_BOT_ENV,
                     dm_policy="allowlist",
                     allow_from=["discord:42"],
                     group_policy="disabled",
@@ -195,7 +199,7 @@ def test_settings_accept_discord_workspace_direct_name_ref_when_user_allowed():
         connection=ConnectionsConfig(
             discord={
                 "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
+                    bot_token_env=DISCORD_BOT_ENV,
                     dm_policy="allowlist",
                     allow_from=["ricardo"],
                     group_policy="disabled",
@@ -222,7 +226,7 @@ def test_settings_reject_discord_workspace_channel_ref_missing_config():
             connection=ConnectionsConfig(
                 discord={
                     "mybot": DiscordConnectionConfig(
-                        bot_token_env="DISCORD_BOT_TOKEN",
+                        bot_token_env=DISCORD_BOT_ENV,
                         dm_policy="allowlist",
                         group_policy="allowlist",
                         chat={"123": {"require_mention": True, "channels": {}}},

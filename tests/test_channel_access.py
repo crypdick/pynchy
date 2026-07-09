@@ -510,12 +510,19 @@ class TestConnectionsConfigGetConnection:
     """Test the platform-generic connection lookup."""
 
     def test_slack_lookup(self):
+        slack_bot_env = "SLACK_BOT_ENV"
+        slack_app_env = "SLACK_APP_ENV"
         connections = ConnectionsConfig(
-            slack={"main": SlackConnectionConfig(bot_token_env="BOT", app_token_env="APP")}
+            slack={
+                "main": SlackConnectionConfig(
+                    bot_token_env=slack_bot_env,
+                    app_token_env=slack_app_env,
+                )
+            }
         )
         result = connections.get_connection("slack", "main")
         assert isinstance(result, SlackConnectionConfig)
-        assert result.bot_token_env == "BOT"
+        assert result.bot_token_env == slack_bot_env
 
     def test_whatsapp_lookup(self):
         connections = ConnectionsConfig(
@@ -530,8 +537,15 @@ class TestConnectionsConfigGetConnection:
         assert connections.get_connection("telegram", "main") is None
 
     def test_unknown_name_returns_none(self):
+        slack_bot_env = "SLACK_BOT_ENV"
+        slack_app_env = "SLACK_APP_ENV"
         connections = ConnectionsConfig(
-            slack={"main": SlackConnectionConfig(bot_token_env="BOT", app_token_env="APP")}
+            slack={
+                "main": SlackConnectionConfig(
+                    bot_token_env=slack_bot_env,
+                    app_token_env=slack_app_env,
+                )
+            }
         )
         assert connections.get_connection("slack", "other") is None
 

@@ -126,10 +126,14 @@ async def gc_delivered(max_age_hours: int = 24) -> int:
         return 0
 
     placeholders = ",".join("?" * len(ids))
+    # S608 audit: only the number of SQLite value placeholders is dynamic.
     async with atomic_write() as wdb:
         await wdb.execute(
-            f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})",
+            f"DELETE FROM outbound_deliveries WHERE ledger_id IN ({placeholders})",  # noqa: S608, RUF100
             ids,
         )
-        await wdb.execute(f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})", ids)
+        await wdb.execute(
+            f"DELETE FROM outbound_ledger WHERE id IN ({placeholders})",  # noqa: S608, RUF100
+            ids,
+        )
     return len(ids)

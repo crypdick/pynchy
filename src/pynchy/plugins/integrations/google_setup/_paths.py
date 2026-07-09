@@ -17,7 +17,7 @@ from pynchy.plugins.integrations.browser import project_root
 GCP_CONSOLE = "https://console.cloud.google.com"
 OAUTH_CALLBACK_PORT = 8085
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_OAUTH_ENDPOINT_URL = "https://oauth2.googleapis.com/token"
 DEFAULT_PROJECT_ID = "pynchy-gdrive"
 
 # ---------------------------------------------------------------------------

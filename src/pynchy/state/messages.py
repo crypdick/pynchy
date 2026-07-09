@@ -107,6 +107,7 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
 
     db = _get_db()
     placeholders = ",".join("?" for _ in jids)
+    # S608 audit: only the number of SQLite value placeholders is dynamic.
     sql = f"""
         SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
                message_type, metadata
@@ -114,7 +115,7 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
         WHERE timestamp > ? AND chat_jid IN ({placeholders})
               AND is_from_me = 0
         ORDER BY timestamp
-    """
+    """  # noqa: S608, RUF100
     cursor = await db.execute(sql, [last_timestamp, *jids])
     rows = await cursor.fetchall()
 

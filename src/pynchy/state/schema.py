@@ -203,16 +203,12 @@ async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
 
     Only copies where the destination is 0 and the source is 1, so re-running is safe.
     """
-    migrations = [
-        ("registered_groups", "is_god", "is_admin"),
-    ]
-    for table, old_col, new_col in migrations:
-        cursor = await database.execute(f"PRAGMA table_info({table})")
-        cols = {row[1] for row in await cursor.fetchall()}
-        if old_col in cols and new_col in cols:
-            await database.execute(
-                f"UPDATE {table} SET {new_col} = {old_col} WHERE {new_col} = 0 AND {old_col} = 1"
-            )
+    cursor = await database.execute("PRAGMA table_info(registered_groups)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    if "is_god" in cols and "is_admin" in cols:
+        await database.execute(
+            "UPDATE registered_groups SET is_admin = is_god WHERE is_admin = 0 AND is_god = 1"
+        )
     await database.commit()
 
 

@@ -7,6 +7,7 @@ Schema definition and migrations live in :mod:`schema`.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -30,6 +31,16 @@ _db: aiosqlite.Connection | None = None
 # Any write path that spans multiple DML statements MUST use atomic_write()
 # so no concurrent coroutine can interleave.
 _write_lock: asyncio.Lock | None = None
+
+_SQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_UPDATE_TABLES = frozenset({"scheduled_tasks", "host_jobs"})
+
+
+def _safe_update_identifier(identifier: str, *, allowed: frozenset[str]) -> str:
+    """Return an allowlisted SQL identifier, rejecting fragments."""
+    if identifier not in allowed or not _SQL_IDENTIFIER.fullmatch(identifier):
+        raise ValueError(f"Unsafe SQL identifier: {identifier!r}")
+    return identifier
 
 
 @asynccontextmanager
@@ -76,9 +87,13 @@ async def _update_by_id(
     fields: list[str] = []
     values: list[Any] = []
 
+    allowed_update_fields = frozenset(allowed_fields)
+    table_name = _safe_update_identifier(table, allowed=_UPDATE_TABLES)
+
     for key, value in updates.items():
-        if key in allowed_fields:
-            fields.append(f"{key} = ?")
+        if key in allowed_update_fields:
+            field_name = _safe_update_identifier(key, allowed=allowed_update_fields)
+            fields.append(f"{field_name} = ?")
             values.append(value)
 
     if not fields:
@@ -86,8 +101,9 @@ async def _update_by_id(
 
     values.append(row_id)
     db = _get_db()
+    # S608 audit: table and field names are allowlisted and identifier-validated above.
     await db.execute(
-        f"UPDATE {table} SET {', '.join(fields)} WHERE id = ?",
+        f"UPDATE {table_name} SET {', '.join(fields)} WHERE id = ?",  # noqa: S608, RUF100
         values,
     )
     await db.commit()

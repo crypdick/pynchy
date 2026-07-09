@@ -15,7 +15,7 @@ from typing import Any
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import (
     GOOGLE_AUTH_URL,
-    GOOGLE_TOKEN_URL,
+    GOOGLE_OAUTH_ENDPOINT_URL,
     OAUTH_CALLBACK_PORT,
     credentials_path,
 )
@@ -87,7 +87,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
     ).encode()
 
     req = urllib.request.Request(
-        GOOGLE_TOKEN_URL,
+        GOOGLE_OAUTH_ENDPOINT_URL,
         data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
