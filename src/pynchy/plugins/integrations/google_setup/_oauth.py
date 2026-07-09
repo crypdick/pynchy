@@ -137,13 +137,11 @@ async def run_oauth_flow(page, kp: Path, scopes: str) -> dict[str, Any]:
 
     logger.info("Waiting for OAuth consent (click Allow in the browser)")
 
-    deadline = time.time() + 300  # 5 minutes
-    while not done_event.is_set() and time.time() < deadline:
-        await asyncio.sleep(0.5)
+    callback_received = await asyncio.to_thread(done_event.wait, 300)
 
     callback_server.shutdown()
 
-    if not auth_codes:
+    if not callback_received or not auth_codes:
         raise RuntimeError(
             "OAuth callback not received within 5 minutes. "
             "Make sure you clicked 'Allow' in the browser."

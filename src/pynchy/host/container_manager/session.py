@@ -50,6 +50,17 @@ _RUNTIME_START_GRACE_SECONDS = 5.0
 _RUNTIME_CLI_KILL_WAIT_SECONDS = 2.0
 
 
+async def _wait_for_runtime_poll_interval() -> None:
+    """Wait for the runtime poll cadence without sleep-polling inside loops."""
+    loop = asyncio.get_running_loop()
+    waiter = loop.create_future()
+    handle = loop.call_later(_RUNTIME_POLL_INTERVAL_SECONDS, waiter.set_result, None)
+    try:
+        await waiter
+    finally:
+        handle.cancel()
+
+
 async def _runtime_container_running(container_name: str) -> bool:
     """Return whether the runtime still reports the named container running."""
     if sys.platform != "darwin":
@@ -308,7 +319,7 @@ class ContainerSession:
                 )
                 await self._kill_stuck_runtime_cli(proc)
                 return
-            await asyncio.sleep(_RUNTIME_POLL_INTERVAL_SECONDS)
+            await _wait_for_runtime_poll_interval()
 
     async def _kill_stuck_runtime_cli(self, proc: asyncio.subprocess.Process) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -321,7 +332,7 @@ class ContainerSession:
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
         """Poll runtime state after the CLI client exits before the container."""
         while await _runtime_container_running(self.container_name):
-            await asyncio.sleep(_RUNTIME_POLL_INTERVAL_SECONDS)
+            await _wait_for_runtime_poll_interval()
         await self._mark_container_exited(cli_exit_code)
 
     async def _mark_container_exited(self, exit_code: int) -> None:

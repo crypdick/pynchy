@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -144,6 +146,45 @@ def test_oauth_callback_server_binds_to_localhost(monkeypatch: pytest.MonkeyPatc
     google_oauth.start_callback_server()
 
     assert calls == [(google_oauth.OAUTH_CALLBACK_HOST, google_oauth.OAUTH_CALLBACK_PORT)]
+
+
+@pytest.mark.asyncio
+async def test_oauth_flow_waits_for_callback_thread_event_without_async_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    keys_file = tmp_path / "gcp-oauth.keys.json"
+    keys_file.write_text(
+        '{"installed":{"client_id":"123.apps.googleusercontent.com","client_secret":"secret"}}'
+    )
+    done = threading.Event()
+    auth_codes: list[str] = []
+
+    class FakeServer:
+        def shutdown(self) -> None:
+            return None
+
+    async def fail_sleep(_delay: float) -> None:
+        raise AssertionError("OAuth flow should wait on the callback event, not sleep-poll")
+
+    def set_callback() -> None:
+        auth_codes.append("auth-code")
+        done.set()
+
+    monkeypatch.setattr(
+        google_oauth,
+        "start_callback_server",
+        lambda: (done, auth_codes, FakeServer()),
+    )
+    monkeypatch.setattr(google_oauth.asyncio, "sleep", fail_sleep)
+    monkeypatch.setattr(google_oauth, "exchange_code_for_tokens", lambda *_args: {"ok": True})
+
+    loop = asyncio.get_running_loop()
+    loop.call_soon(set_callback)
+
+    tokens = await google_oauth.run_oauth_flow(_FakePage(), keys_file, "scope-a")
+
+    assert tokens == {"ok": True}
 
 
 def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(

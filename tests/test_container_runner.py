@@ -3063,6 +3063,47 @@ class TestSessionStartOnlyStderr:
         assert session._died_before_pulse is False
         assert session._query_done.is_set()
 
+    async def test_runtime_monitor_waits_without_async_sleep(self):
+        """Runtime polling should use an async wait primitive, not sleep-polling."""
+        from pynchy.host.container_manager import session as session_mod
+
+        session = session_mod.ContainerSession("apple-runtime-wait-test", "pynchy-runtime-wait")
+        proc = FakeProcess()
+        runtime_running = True
+
+        async def fake_runtime_running(_container_name: str) -> bool:
+            return runtime_running
+
+        async def fail_sleep(_delay: float) -> None:
+            raise AssertionError("runtime monitor should not use asyncio.sleep for polling")
+
+        with (
+            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
+            patch(
+                "pynchy.host.container_manager.session._runtime_container_running",
+                side_effect=fake_runtime_running,
+            ),
+            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
+            patch.object(session_mod.asyncio, "sleep", side_effect=fail_sleep),
+        ):
+            session.start(proc)  # type: ignore[arg-type]
+            session.set_output_handler(AsyncMock())
+
+            proc.close(code=1)
+            await asyncio.wait_for(session._runtime_monitor_task, timeout=0.5)
+
+            assert session.is_alive is True
+            assert session._dead is False
+            assert not session._query_done.is_set()
+
+            session.signal_query_done()
+            runtime_running = False
+            await asyncio.wait_for(session._proc_monitor_task, timeout=0.5)
+
+        assert session._dead is True
+        assert session._died_before_pulse is False
+        assert session._query_done.is_set()
+
     async def test_runtime_container_stop_unblocks_query_when_cli_process_hangs(self):
         """Apple Container can stop the container while the CLI process keeps hanging."""
         from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
