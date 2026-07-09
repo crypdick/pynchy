@@ -73,7 +73,7 @@ class ReconcilerDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
-    async def _ingest_user_message(
+    async def ingest_user_message(
         self, msg: NewMessage, *, source_channel: str | None = None
     ) -> None: ...
 
@@ -221,7 +221,7 @@ async def _ingest_remote_message(
         return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
 
     logger.debug("reconciler_trace", step="ingesting", jid=request.canonical_jid, msg_id=msg.id)
-    await request.deps._ingest_user_message(msg, source_channel=request.ch.name)
+    await request.deps.ingest_user_message(msg, source_channel=request.ch.name)
     await request.deps.start_interactive_turn(request.canonical_jid)
     return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), True
 

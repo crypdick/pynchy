@@ -190,7 +190,7 @@ class FakeDeps:
         self.broadcast_host_message = AsyncMock()
         self.broadcast_system_notice = AsyncMock()
         self.start_interactive_turn = AsyncMock()
-        self._register_workspace = AsyncMock()
+        self.register_workspace = AsyncMock()
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:

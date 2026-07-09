@@ -67,7 +67,7 @@ def _make_deps(
     deps.channels = channels or []
     deps.workspaces = workspaces or {}
     deps.queue = MagicMock()
-    deps._ingest_user_message = AsyncMock()
+    deps.ingest_user_message = AsyncMock()
     deps.start_interactive_turn = AsyncMock()
     return deps
 
@@ -120,8 +120,8 @@ class TestInboundReconciliation:
 
         await reconcile_all_channels(deps)
 
-        deps._ingest_user_message.assert_awaited_once()
-        ingested_msg = deps._ingest_user_message.call_args[0][0]
+        deps.ingest_user_message.assert_awaited_once()
+        ingested_msg = deps.ingest_user_message.call_args[0][0]
         assert ingested_msg.chat_jid == "group@g.us"  # remapped to canonical
         deps.start_interactive_turn.assert_awaited_once_with("group@g.us")
         deps.queue.enqueue_message_check.assert_not_called()
@@ -340,7 +340,7 @@ class TestSenderFilter:
 
         await reconcile_all_channels(deps)
 
-        deps._ingest_user_message.assert_awaited_once()
+        deps.ingest_user_message.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_allowed_sender_ingested(self, monkeypatch):
@@ -363,7 +363,7 @@ class TestSenderFilter:
 
         await reconcile_all_channels(deps)
 
-        deps._ingest_user_message.assert_awaited_once()
+        deps.ingest_user_message.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_allowed_sender_name_ingested(self, monkeypatch):
@@ -389,7 +389,7 @@ class TestSenderFilter:
 
         await reconcile_all_channels(deps)
 
-        deps._ingest_user_message.assert_awaited_once()
+        deps.ingest_user_message.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_admin_group_bypasses_sender_filter(self, monkeypatch):
@@ -416,4 +416,4 @@ class TestSenderFilter:
 
         await reconcile_all_channels(deps)
 
-        deps._ingest_user_message.assert_awaited_once()
+        deps.ingest_user_message.assert_awaited_once()

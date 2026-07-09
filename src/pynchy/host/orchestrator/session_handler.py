@@ -44,7 +44,7 @@ class SessionDeps(Protocol):
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
-    async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
+    async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
     async def save_state(self) -> None: ...
 
@@ -266,7 +266,7 @@ async def _ensure_dynamic_thread_workspace(deps: SessionDeps, msg: NewMessage) -
         is_admin=parent.is_admin,
         added_at=datetime.now(UTC).isoformat(),
     )
-    await deps._register_workspace(profile)
+    await deps.register_workspace(profile)
     logger.info(
         "Registered dynamic thread workspace",
         jid=msg.chat_jid,

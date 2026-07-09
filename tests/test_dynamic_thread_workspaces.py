@@ -41,7 +41,7 @@ class _Deps:
         self.registered = []
         self.emitted = []
 
-    async def _register_workspace(self, profile: WorkspaceProfile) -> None:
+    async def register_workspace(self, profile: WorkspaceProfile) -> None:
         self.workspaces[profile.jid] = profile
         self.registered.append(profile)
 

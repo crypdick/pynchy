@@ -42,7 +42,7 @@ class StartupDeps(Protocol):
 
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
-    async def _register_workspace(self, profile: WorkspaceProfile) -> None: ...
+    async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
 
 async def send_boot_notification(deps: StartupDeps) -> None:
@@ -279,7 +279,7 @@ async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> N
         # Admin workspace: no service-level gating needed — fully trusted.
         security=WorkspaceSecurity(),
     )
-    await deps._register_workspace(profile)
+    await deps.register_workspace(profile)
     logger.info("Admin workspace created", group=group_name, jid=jid)
 
 
