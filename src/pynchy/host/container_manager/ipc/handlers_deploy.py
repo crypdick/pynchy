@@ -8,13 +8,14 @@ from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves deploy handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.orchestrator import adapters
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.logger import logger
 
 
 async def start_deploy_workflow(request: DeployRequest) -> None:
     """Start deploy workflow lazily so IPC imports do not import the scheduler."""
-    from pynchy.host.orchestrator.temporal.scheduler import (
+    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - keep scheduler import lazy for IPC startup.
         start_deploy_workflow as _start_deploy_workflow,
     )
 
@@ -51,9 +52,8 @@ async def _handle_deploy(
 
     if not chat_jid:
         groups = deps.workspaces()
-        from pynchy.host.orchestrator.adapters import find_admin_jid
 
-        chat_jid = find_admin_jid(groups)
+        chat_jid = adapters.find_admin_jid(groups)
         if not chat_jid:
             logger.error("Deploy request missing chatJid and no admin group registered")
             return
