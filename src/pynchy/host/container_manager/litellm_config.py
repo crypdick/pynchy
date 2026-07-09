@@ -49,7 +49,7 @@ class LiteLLMConfigPreparer:
 
 
 def _copy_unvalidated_config(
-    config_path: Path,
+    _config_path: Path,
     output_dir: Path,
     config_text: str,
     required_models: tuple[str, ...],

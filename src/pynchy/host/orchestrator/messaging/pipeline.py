@@ -164,7 +164,7 @@ async def execute_direct_command(
     deps: MessageHandlerDeps,
     chat_jid: str,
     group: types.WorkspaceProfile,
-    message: types.NewMessage,
+    _message: types.NewMessage,
     command: str,
 ) -> None:
     """Execute a user command directly without LLM approval."""
@@ -313,8 +313,8 @@ async def _should_skip_batch(
     chat_jid: str,
     group: types.WorkspaceProfile,
     missed_messages: list[types.NewMessage],
-    is_admin_group: bool,
-    s: Settings,
+    _is_admin_group: bool,
+    _s: Settings,
 ) -> bool:
     """True if this batch needs no agent activation (already handled or gated)."""
     if not missed_messages:

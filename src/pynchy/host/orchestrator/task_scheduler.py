@@ -152,7 +152,7 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
 
 
 async def _run_scheduler_loop(
-    deps: SchedulerDependencies, temporal_runtime: TemporalRuntime
+    _deps: SchedulerDependencies, temporal_runtime: TemporalRuntime
 ) -> None:
     """Reconcile desired scheduled work into Temporal-owned schedules."""
     while True:

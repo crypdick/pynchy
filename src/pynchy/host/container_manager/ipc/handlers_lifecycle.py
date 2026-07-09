@@ -67,7 +67,7 @@ def _aggregate_sync_results(
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    _is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -115,7 +115,7 @@ async def _handle_reset_context(
 async def _handle_finished_work(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    _is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -139,7 +139,7 @@ async def _handle_finished_work(
 async def _handle_sync_worktree_to_main(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    _is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     import asyncio

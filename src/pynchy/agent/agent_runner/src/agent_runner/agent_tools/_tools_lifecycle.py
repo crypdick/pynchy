@@ -30,7 +30,7 @@ from agent_runner.agent_tools._registry import tool, tool_error
     ),
     {"type": "object", "properties": {}},
 )
-async def _sync_worktree_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
     request_id = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}"
     _ipc.write_request_file(
         "sync_worktree_to_main",
@@ -89,7 +89,7 @@ def _exit_container() -> NoReturn:
     {"type": "object", "properties": {}},
     visible=lambda: _ipc.is_scheduled_task,
 )
-async def _finished_work_handle(arguments: dict[str, Any]) -> list[TextContent]:
+async def _finished_work_handle(_arguments: dict[str, Any]) -> list[TextContent]:
     _ipc.write_request_file(
         "finished_work",
         {

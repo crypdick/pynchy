@@ -294,7 +294,7 @@ async def _create_team(
     session: aiohttp.ClientSession,
     gateway: LiteLLMGateway,
     folder: str,
-    instance_ids: list[str],
+    _instance_ids: list[str],
 ) -> str | None:
     """Create a LiteLLM team.  Returns team_id or None on failure."""
     data = await api_request(

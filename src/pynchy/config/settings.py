@@ -72,6 +72,7 @@ _HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
 def _assert_admin_clean_room(
     settings: Settings, *, workspace_name: str, workspace: WorkspaceConfig
 ) -> None:
+    _ = workspace  # Preserve the keyword-only call contract for beartype.
     resolved = settings.resolved_workspace_config(workspace_name)
     if resolved is None:
         return

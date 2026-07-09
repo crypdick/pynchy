@@ -160,6 +160,7 @@ class WhatsAppChannel:
     async def connect(self) -> None:
         @self._client.event.qr  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_qr(_client: NewAClient, qr_data: bytes) -> None:
+            _ = qr_data  # neonize supplies the QR payload for this event.
             logger.error("WhatsApp authentication required. Run: uv run pynchy-whatsapp-auth")
             await asyncio.sleep(1)
             sys.exit(1)

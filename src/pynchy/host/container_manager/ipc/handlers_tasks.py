@@ -312,7 +312,7 @@ async def _handle_pause_task(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,
-    deps: IpcDeps,
+    _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
     update = update_host_job if task_id.startswith("host-") else update_task
@@ -329,7 +329,7 @@ async def _handle_resume_task(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,
-    deps: IpcDeps,
+    _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
     update = update_host_job if task_id.startswith("host-") else update_task
@@ -346,7 +346,7 @@ async def _handle_cancel_task(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,
-    deps: IpcDeps,
+    _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
     action = delete_host_job if task_id.startswith("host-") else delete_task

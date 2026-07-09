@@ -26,7 +26,7 @@ from pynchy.logger import logger
 async def _handle_ask_user_request(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    _is_admin: bool,
     deps: IpcDeps,
 ) -> None:
     """Handle an ask_user:ask IPC request from a container."""

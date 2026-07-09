@@ -40,7 +40,7 @@ def write_groups_snapshot(
     folder: str,
     is_admin: bool,
     groups: list[dict[str, Any]],
-    registered_jids: set[str],
+    _registered_jids: set[str],
 ) -> None:
     """Write available_groups.json to the group's IPC directory."""
     # Admin sees all groups; others see nothing (they can't activate groups)

@@ -59,8 +59,8 @@ def _create_pre_compact_hook() -> Callable[
 
     async def hook(
         input_data: dict[str, Any],
-        tool_use_id: str | None,
-        context: HookContext,
+        _tool_use_id: str | None,
+        _context: HookContext,
     ) -> dict[str, Any]:
         await archive_transcript(
             input_data.get("transcript_path", ""),
@@ -87,8 +87,8 @@ def _wrap_before_tool_use(
 
     async def wrapper(
         input_data: dict[str, Any],
-        tool_use_id: str | None,
-        context: HookContext,
+        _tool_use_id: str | None,
+        _context: HookContext,
     ) -> dict[str, Any]:
         tool_name = input_data.get("tool_name", "")
         tool_input = input_data.get("tool_input", {})

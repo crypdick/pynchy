@@ -314,7 +314,7 @@ def reconcile_worktrees_at_startup(
 
 
 def _startup_repo_context(
-    settings,
+    _settings,
     slug: str,
     get_repo_context: Callable[[str], RepoContext | None],
 ) -> RepoContext | None:

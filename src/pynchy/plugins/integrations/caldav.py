@@ -183,7 +183,7 @@ def _parse_event(component) -> dict[str, Any]:
 
 
 @service_tool
-async def _handle_list_calendars(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:
     """Discover all visible calendars across all configured servers."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):

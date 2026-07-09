@@ -214,7 +214,7 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
 # ---------------------------------------------------------------------------
 
 
-def resolve_git_policy(group_folder: str) -> str:
+def resolve_git_policy(_group_folder: str) -> str:
     """Resolve the effective git policy for a workspace.
 
     The config schema exposes one first-class git policy: merge to main.

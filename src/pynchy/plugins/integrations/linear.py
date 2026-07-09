@@ -233,7 +233,7 @@ def build_app(*, workspace: str | None = None) -> Any:
     return app
 
 
-async def _handle_health(request: Any) -> Any:
+async def _handle_health(_request: Any) -> Any:
     return web.json_response({"status": "ok", "service": "pynchy-linear"})
 
 
@@ -305,8 +305,8 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
 
 async def _tool_list_teams(
     client: Any,
-    arguments: dict[str, Any],
-    workspace: str | None,
+    _arguments: dict[str, Any],
+    _workspace: str | None,
 ) -> list[dict[str, Any]]:
     return cast("list[dict[str, Any]]", await client.list_teams())
 
@@ -314,7 +314,7 @@ async def _tool_list_teams(
 async def _tool_list_issues(
     client: Any,
     arguments: dict[str, Any],
-    workspace: str | None,
+    _workspace: str | None,
 ) -> list[dict[str, Any]]:
     first = arguments.get("first", 50)
     if not isinstance(first, int):
@@ -328,7 +328,7 @@ async def _tool_list_issues(
 async def _tool_create_issue(
     client: Any,
     arguments: dict[str, Any],
-    workspace: str | None,
+    _workspace: str | None,
 ) -> dict[str, Any]:
     team_id = _required_str(arguments, "team_id")
     title = _required_str(arguments, "title")

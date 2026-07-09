@@ -289,7 +289,7 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
     ),
     {"type": "object", "properties": {}},
 )
-async def _list_tasks_handle(arguments: dict[str, Any]) -> list[TextContent]:
+async def _list_tasks_handle(_arguments: dict[str, Any]) -> list[TextContent]:
     tasks_file = _ipc.IPC_DIR / "current_tasks.json"
 
     try:
