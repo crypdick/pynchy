@@ -30,7 +30,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
 import sys
 import time
 from pathlib import Path
@@ -171,12 +171,43 @@ def profile_dir(name: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_executable(name: str) -> str:
+    """Return an absolute executable path from PATH or raise a clear error."""
+    path = shutil.which(name)
+    if path is None:
+        raise RuntimeError(name)
+    return path
+
+
+def _resolve_executables(*names: str) -> dict[str, str]:
+    """Return absolute executable paths, collecting all missing tools."""
+    resolved: dict[str, str] = {}
+    missing: list[str] = []
+    for name in names:
+        path = shutil.which(name)
+        if path is None:
+            missing.append(name)
+        else:
+            resolved[name] = path
+    if missing:
+        raise RuntimeError(", ".join(missing))
+    return resolved
+
+
 def has_display() -> bool:
     """Return True if a working X display is available."""
     if not os.environ.get("DISPLAY"):
         return False
+    xdpyinfo = shutil.which("xdpyinfo")
+    if xdpyinfo is None:
+        return False
     try:
-        r = subprocess.run(["xdpyinfo"], capture_output=True, timeout=5, check=False)
+        r = subprocess.run(  # noqa: S603, RUF100 - fixed argv to resolved xdpyinfo path.
+            [xdpyinfo],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
     else:
@@ -185,9 +216,12 @@ def has_display() -> bool:
 
 def display_is_live(display: str) -> bool:
     """Check if a specific X display is already responding."""
+    xdpyinfo = shutil.which("xdpyinfo")
+    if xdpyinfo is None:
+        return False
     try:
-        r = subprocess.run(
-            ["xdpyinfo"],
+        r = subprocess.run(  # noqa: S603, RUF100 - fixed argv to resolved xdpyinfo path.
+            [xdpyinfo],
             capture_output=True,
             timeout=3,
             env={**os.environ, "DISPLAY": display},
@@ -201,7 +235,17 @@ def display_is_live(display: str) -> bool:
 
 def _is_process_running(name: str) -> bool:
     """Check if a process with the given name is running (via pgrep)."""
-    return subprocess.run(["pgrep", "-x", name], capture_output=True, check=False).returncode == 0
+    pgrep = shutil.which("pgrep")
+    if pgrep is None:
+        return False
+    return (
+        subprocess.run(  # noqa: S603, RUF100 - fixed argv to resolved pgrep path.
+            [pgrep, "-x", name],
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -230,9 +274,10 @@ def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
     procs: list[subprocess.Popen[bytes]] = []
 
     if not _is_process_running("x11vnc"):
-        p = subprocess.Popen(
+        x11vnc_path = _resolve_executable("x11vnc")
+        p = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
             [
-                "x11vnc",
+                x11vnc_path,
                 "-display",
                 _XVFB_DISPLAY,
                 "-forever",
@@ -248,10 +293,15 @@ def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
         time.sleep(0.5)
 
     if not _is_process_running("websockify"):
-        ws_cmd = ["websockify", str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
+        websockify_path = _resolve_executable("websockify")
+        ws_cmd = [websockify_path, str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        p = subprocess.Popen(ws_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved websockify path.
+            ws_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         procs.append(p)
         time.sleep(0.5)
 
@@ -266,12 +316,12 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
 
     Requires system packages: ``apt install xvfb x11vnc novnc``
     """
-    missing = [t for t in ("Xvfb", "x11vnc", "websockify") if not shutil.which(t)]
-    if missing:
+    try:
+        tool_paths = _resolve_executables("Xvfb", "x11vnc", "websockify")
+    except RuntimeError as exc:
         raise RuntimeError(
-            f"Headless display requires: {', '.join(missing)}. "
-            "Install with: apt install xvfb x11vnc novnc"
-        )
+            f"Headless display requires: {exc}. Install with: apt install xvfb x11vnc novnc"
+        ) from exc
 
     novnc_url = _resolve_novnc_url()
 
@@ -283,8 +333,8 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
 
     procs: list[subprocess.Popen[bytes]] = []
     try:
-        xvfb = subprocess.Popen(
-            ["Xvfb", _XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
+        xvfb = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
+            [tool_paths["Xvfb"], _XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -293,9 +343,9 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
         if xvfb.poll() is not None:
             raise RuntimeError(f"Xvfb exited immediately (code {xvfb.returncode})")
 
-        x11vnc = subprocess.Popen(
+        x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
             [
-                "x11vnc",
+                tool_paths["x11vnc"],
                 "-display",
                 _XVFB_DISPLAY,
                 "-forever",
@@ -312,10 +362,10 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
         if x11vnc.poll() is not None:
             raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
 
-        ws_cmd = ["websockify", str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
+        ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        websockify_proc = subprocess.Popen(
+        websockify_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved path.
             ws_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

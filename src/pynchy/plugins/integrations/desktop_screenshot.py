@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import platform
 import re
-import subprocess
+import subprocess  # noqa: S404, RUF100 - uses PIPE constants with fixed screencapture argv.
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any

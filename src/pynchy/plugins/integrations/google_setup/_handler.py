@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - tracks trusted display helper Popen handles only.
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any

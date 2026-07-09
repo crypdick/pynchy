@@ -9,7 +9,7 @@ from __future__ import annotations
 import atexit
 import os
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
 import time
 from pathlib import Path
 
@@ -25,6 +25,29 @@ _NOVNC_WEB_DIR = "/usr/share/novnc"
 _xvfb_proc: subprocess.Popen[bytes] | None = None
 
 
+def _resolve_executable(name: str) -> str:
+    """Return an absolute executable path from PATH or raise a clear error."""
+    path = shutil.which(name)
+    if path is None:
+        raise RuntimeError(name)
+    return path
+
+
+def _resolve_executables(*names: str) -> dict[str, str]:
+    """Return absolute executable paths, collecting all missing tools."""
+    resolved: dict[str, str] = {}
+    missing: list[str] = []
+    for name in names:
+        path = shutil.which(name)
+        if path is None:
+            missing.append(name)
+        else:
+            resolved[name] = path
+    if missing:
+        raise RuntimeError(", ".join(missing))
+    return resolved
+
+
 def ensure_xvfb() -> None:
     """Ensure Xvfb is running. X needs headed mode to avoid bot detection.
 
@@ -38,13 +61,15 @@ def ensure_xvfb() -> None:
     if _xvfb_proc is not None and _xvfb_proc.poll() is None:
         os.environ["DISPLAY"] = XVFB_DISPLAY
         return
-    if not shutil.which("Xvfb"):
+    try:
+        xvfb_path = _resolve_executable("Xvfb")
+    except RuntimeError as exc:
         raise RuntimeError(
             "No display available and Xvfb not installed. X automation requires "
             "headed mode to avoid bot detection. Install with: apt install xvfb"
-        )
-    _xvfb_proc = subprocess.Popen(
-        ["Xvfb", XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
+        ) from exc
+    _xvfb_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
+        [xvfb_path, XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -61,16 +86,17 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
 
     Returns (processes, novnc_url).  Call ``ensure_xvfb()`` first.
     """
-    missing = [t for t in ("x11vnc", "websockify") if not shutil.which(t)]
-    if missing:
+    try:
+        tool_paths = _resolve_executables("x11vnc", "websockify")
+    except RuntimeError as exc:
         raise RuntimeError(
-            f"VNC layer requires: {', '.join(missing)}. Install with: apt install x11vnc novnc"
-        )
+            f"VNC layer requires: {exc}. Install with: apt install x11vnc novnc"
+        ) from exc
     procs: list[subprocess.Popen[bytes]] = []
     try:
-        x11vnc = subprocess.Popen(
+        x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
             [
-                "x11vnc",
+                tool_paths["x11vnc"],
                 "-display",
                 XVFB_DISPLAY,
                 "-forever",
@@ -87,10 +113,10 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
         if x11vnc.poll() is not None:
             raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
 
-        ws_cmd = ["websockify", str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
+        ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
-        websockify_proc = subprocess.Popen(
+        websockify_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved path.
             ws_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -7,7 +7,7 @@ import json
 import platform
 import re
 import shutil
-import subprocess
+import subprocess  # noqa: S404, RUF100 - uses PIPE constants with resolved cua-driver argv.
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
