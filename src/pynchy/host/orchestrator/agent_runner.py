@@ -379,7 +379,7 @@ async def run_agent(
         if session is not None and session.is_alive:
             return await _warm_query(deps, group, chat_jid, session, messages, ctx)
         return await _cold_start(deps, group, chat_jid, messages, ctx)
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
         return "error"
 
@@ -425,7 +425,7 @@ async def _run_scheduled_task(
         # so the session_id is already in deploy_continuation.json.
         interrupted = True
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"
         logger.exception("Scheduled task error", group=group.name)
         return "error"
     finally:
