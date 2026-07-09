@@ -19,6 +19,8 @@ from pynchy.plugins.channels.slack._ui import ASK_USER_ACTION_RE  # noqa: E402
 CHANNEL_ID = "C12345"
 JID = f"slack:{CHANNEL_ID}"
 REQUEST_ID = "req-abc-123"
+SLACK_BOT_VALUE = "xoxb-fake"
+SLACK_APP_VALUE = "xapp-fake"
 
 
 def _make_channel(
@@ -29,8 +31,8 @@ def _make_channel(
     """Create a SlackChannel with mocked internals for testing."""
     ch = SlackChannel(
         connection_name="test-conn",
-        bot_token="xoxb-fake",
-        app_token="xapp-fake",
+        bot_token=SLACK_BOT_VALUE,
+        app_token=SLACK_APP_VALUE,
         chat_names=["general"],
         allow_create=False,
         on_message=MagicMock(),
@@ -506,8 +508,8 @@ class TestOnAskUserAnswerCallback:
         """on_ask_user_answer should default to None."""
         ch = SlackChannel(
             connection_name="test",
-            bot_token="xoxb-fake",
-            app_token="xapp-fake",
+            bot_token=SLACK_BOT_VALUE,
+            app_token=SLACK_APP_VALUE,
             chat_names=[],
             allow_create=False,
             on_message=MagicMock(),

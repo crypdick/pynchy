@@ -15,6 +15,11 @@ from pynchy.config.models import CommandCenterConfig, SlackConnectionConfig
 from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
 from pynchy.plugins.channels.slack._ui import split_text
 
+SLACK_BOT_VALUE = "xoxb-fake"
+SLACK_APP_VALUE = "xapp-fake"
+SLACK_BOT_ENV = "BOT"
+SLACK_APP_ENV = "APP"
+
 # ------------------------------------------------------------------
 # JID helpers
 # ------------------------------------------------------------------
@@ -70,8 +75,8 @@ def _make_channel(
 ) -> SlackChannel:
     ch = SlackChannel(
         connection_name="connection.slack.main",
-        bot_token="xoxb-fake",
-        app_token="xapp-fake",
+        bot_token=SLACK_BOT_VALUE,
+        app_token=SLACK_APP_VALUE,
         chat_names=["general"],
         allow_create=False,
         on_message=on_message or MagicMock(),
@@ -426,8 +431,8 @@ class TestSlackChannelPlugin:
                 command_center=CommandCenterConfig(connection="main"),
                 connections={
                     "main": SlackConnectionConfig(
-                        bot_token_env="BOT",
-                        app_token_env="APP",
+                        bot_token_env=SLACK_BOT_ENV,
+                        app_token_env=SLACK_APP_ENV,
                         chat={"general": {}},
                     )
                 },

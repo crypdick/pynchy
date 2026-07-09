@@ -12,6 +12,8 @@ from __future__ import annotations
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord._access import DiscordAccess, InboundContext
 
+DISCORD_BOT_ENV = "X"
+
 
 def _dm(
     author_id: str = "1",
@@ -66,7 +68,7 @@ def _guild(
 
 
 def _access(**cfg_kwargs) -> DiscordAccess:
-    return DiscordAccess(DiscordConnectionConfig(bot_token_env="X", **cfg_kwargs))
+    return DiscordAccess(DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, **cfg_kwargs))
 
 
 # --- bot filtering -----------------------------------------------------------

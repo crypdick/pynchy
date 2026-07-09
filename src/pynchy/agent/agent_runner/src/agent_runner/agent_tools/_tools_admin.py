@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 from pathlib import Path
@@ -109,12 +110,15 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
         return tool_error("Only the admin group can deploy.")
 
     try:
-        head_sha = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=Path.cwd(),
-            capture_output=True,
-            text=True,
-            check=True,
+        head_sha = (
+            await asyncio.to_thread(
+                subprocess.run,
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path("/workspace/project"),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
         ).stdout.strip()
     except subprocess.CalledProcessError:
         head_sha = ""

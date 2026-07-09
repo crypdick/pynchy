@@ -17,6 +17,10 @@ from pynchy.config.models import (
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
 
+SLACK_BOT_ENV = "BOT"
+SLACK_APP_ENV = "APP"
+DISCORD_BOT_ENV = "DISCORD"
+
 _NEONIZE_MODULES = [
     "neonize",
     "neonize.aioze",
@@ -53,11 +57,11 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
         command_center=CommandCenterConfig(connection="synapse"),
         connections={
             "synapse": SlackConnectionConfig(
-                bot_token_env="BOT",
-                app_token_env="APP",
+                bot_token_env=SLACK_BOT_ENV,
+                app_token_env=SLACK_APP_ENV,
                 chat={"general": {}},
             ),
-            "discord-main": DiscordConnectionConfig(bot_token_env="DISCORD"),
+            "discord-main": DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
         },
     )
 
@@ -77,10 +81,10 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
 def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
     settings = make_settings(
         connections={
-            "synapse": DiscordConnectionConfig(bot_token_env="DISCORD"),
+            "synapse": DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
             "slack-main": SlackConnectionConfig(
-                bot_token_env="BOT",
-                app_token_env="APP",
+                bot_token_env=SLACK_BOT_ENV,
+                app_token_env=SLACK_APP_ENV,
                 chat={"general": {}},
             ),
         }
@@ -104,7 +108,7 @@ def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:
         data_dir=tmp_path / "data",
         connections={
             "phone": WhatsAppConnectionConfig(auth_db_path="phone.db"),
-            "synapse": DiscordConnectionConfig(bot_token_env="DISCORD"),
+            "synapse": DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
         },
     )
 

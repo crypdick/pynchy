@@ -134,7 +134,8 @@ async def _handle_deploy(request: Any) -> Any:
     # 4. Validate import (only when the pull changed HEAD)
     if has_new_code:
         s = get_settings()
-        validate = subprocess.run(
+        validate = await asyncio.to_thread(
+            subprocess.run,
             ["uv", "run", "python", "-c", "import pynchy"],
             cwd=str(s.project_root),
             capture_output=True,

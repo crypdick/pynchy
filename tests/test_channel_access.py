@@ -26,6 +26,9 @@ from pynchy.config.models import (
 from pynchy.config.settings import Settings
 from pynchy.types import NewMessage, WorkspaceProfile
 
+SLACK_BOT_ENV = "BOT"
+SLACK_APP_ENV = "APP"
+
 
 def _message(sender: str, sender_name: str = "User") -> NewMessage:
     return NewMessage(
@@ -260,8 +263,8 @@ class TestFilterAllowedMessages:
         settings = make_settings(
             connections={
                 "synapse": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]),
                 )
             }
@@ -284,8 +287,8 @@ class TestFilterAllowedMessages:
         settings = make_settings(
             connections={
                 "synapse": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]),
                 )
             }
@@ -325,8 +328,8 @@ class TestFilterAllowedMessages:
         settings = make_settings(
             connections={
                 "synapse": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     security=ChannelOverrideConfig(allowed_users=["slack:U04CONNECTION"]),
                     chat={
                         "C123": ConnectionChatConfig(
@@ -420,8 +423,8 @@ class TestConnectionsConfigGetConnection:
             Settings(
                 connections={
                     "synapse": SlackConnectionConfig(
-                        bot_token_env="BOT",
-                        app_token_env="APP",
+                        bot_token_env=SLACK_BOT_ENV,
+                        app_token_env=SLACK_APP_ENV,
                         security=ChannelOverrideConfig(allowed_users=["owner"]),
                     )
                 }

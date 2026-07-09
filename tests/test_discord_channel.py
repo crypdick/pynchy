@@ -21,12 +21,15 @@ from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
+DISCORD_BOT_ENV = "X"
+DISCORD_BOT_VALUE = "token"
+
 
 def _channel() -> DiscordChannel:
     return DiscordChannel(
         connection_name="connection.discord.test",
-        config=DiscordConnectionConfig(bot_token_env="X"),
-        bot_token="token",
+        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -160,12 +163,12 @@ async def test_resolve_chat_jid_maps_configured_guild_channel_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             group_policy="allowlist",
             chat={"123": {"require_mention": False, "channels": {"456": {"enabled": True}}}},
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -178,12 +181,12 @@ async def test_resolve_chat_jid_maps_allowed_direct_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             allow_from=["discord:42"],
             group_policy="disabled",
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -196,12 +199,12 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             allow_from=["ricardo"],
             group_policy="disabled",
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -218,12 +221,12 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata(
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             allow_from=["ricardo"],
             group_policy="disabled",
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -236,12 +239,12 @@ async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             group_policy="allowlist",
             chat={"123": {"require_mention": False, "channels": {}}},
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -254,7 +257,7 @@ async def test_resolve_chat_jid_maps_configured_name_ref_to_existing_channel():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             group_policy="allowlist",
             chat={
@@ -264,7 +267,7 @@ async def test_resolve_chat_jid_maps_configured_name_ref_to_existing_channel():
                 }
             },
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
@@ -280,7 +283,7 @@ async def test_create_group_creates_named_discord_channel():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X",
+            bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
             group_policy="allowlist",
             chat={
@@ -290,7 +293,7 @@ async def test_create_group_creates_named_discord_channel():
                 }
             },
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )

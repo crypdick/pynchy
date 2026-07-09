@@ -8,6 +8,9 @@ import pytest
 
 from pynchy.types import OutboundEvent, OutboundEventType
 
+SLACK_BOT_VALUE = "xoxb-test"
+SLACK_APP_VALUE = "xapp-test"
+
 
 @pytest.fixture
 def slack_channel():
@@ -16,8 +19,8 @@ def slack_channel():
 
     ch = SlackChannel(
         connection_name="test",
-        bot_token="xoxb-test",
-        app_token="xapp-test",
+        bot_token=SLACK_BOT_VALUE,
+        app_token=SLACK_APP_VALUE,
         chat_names=["general"],
         allow_create=False,
         on_message=MagicMock(),
