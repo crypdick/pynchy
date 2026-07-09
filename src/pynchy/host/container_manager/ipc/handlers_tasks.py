@@ -207,20 +207,20 @@ def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:
     )
 
 
-def _required_str(value: Any) -> str | None:
+def _required_str(value: object) -> str | None:
     if isinstance(value, str) and value:
         return value
     return None
 
 
-def _group_folder(value: Any) -> GroupFolder | None:
+def _group_folder(value: object) -> GroupFolder | None:
     parsed = _required_str(value)
     if parsed is None:
         return None
     return GroupFolder(parsed)
 
 
-def _schedule_type(value: Any) -> Literal["cron", "interval", "once"] | None:
+def _schedule_type(value: object) -> Literal["cron", "interval", "once"] | None:
     if value in ("cron", "interval", "once"):
         return cast("Literal['cron', 'interval', 'once']", value)
     return None

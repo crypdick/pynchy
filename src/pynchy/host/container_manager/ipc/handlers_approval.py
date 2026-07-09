@@ -48,7 +48,7 @@ def _unlink_all_missing_ok(*paths: Path) -> None:
 
 
 async def process_approval_decision(
-    decision_file: Path, source_group: str, *, deps: Any = None
+    decision_file: Path, source_group: str, *, deps: object | None = None
 ) -> None:
     """Process an approval decision file — execute or deny the pending request."""
     try:
@@ -194,7 +194,7 @@ async def _execute_ipc_approval(
     request_data: dict[str, Any],
     source_group: str,
     request_id: str,
-    deps: Any,
+    deps: object | None,
 ) -> None:
     """Dispatch an approved IPC request through the registry.
 

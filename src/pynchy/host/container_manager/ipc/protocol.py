@@ -217,26 +217,26 @@ def _require_envelope_fields(data: dict[str, Any]) -> None:
         raise ValueError(MISSING_ENVELOPE_FIELDS_MESSAGE.format(fields=", ".join(missing)))
 
 
-def _envelope_schema_version(value: Any) -> int:
+def _envelope_schema_version(value: object) -> int:
     if value != IPC_SCHEMA_VERSION:
         raise ValueError(UNSUPPORTED_SCHEMA_VERSION_MESSAGE.format(value=value))
     return IPC_SCHEMA_VERSION
 
 
-def _request_kind(value: Any) -> str:
+def _request_kind(value: object) -> str:
     kind = _required_string_field("IPC request envelope kind", value)
     if not _is_known_request_kind(kind):
         raise ValueError(UNKNOWN_REQUEST_KIND_MESSAGE.format(kind=kind))
     return kind
 
 
-def _required_string_field(label: str, value: Any) -> str:
+def _required_string_field(label: str, value: object) -> str:
     if isinstance(value, str) and value:
         return value
     raise ValueError(NON_EMPTY_STRING_MESSAGE.format(label=label))
 
 
-def _optional_string_field(label: str, value: Any) -> str | None:
+def _optional_string_field(label: str, value: object) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
@@ -244,7 +244,7 @@ def _optional_string_field(label: str, value: Any) -> str | None:
     raise ValueError(STRING_OR_NULL_MESSAGE.format(label=label))
 
 
-def _payload_object(value: Any) -> dict[str, Any]:
+def _payload_object(value: object) -> dict[str, Any]:
     if isinstance(value, dict):
         return cast("dict[str, Any]", value)
     raise ValueError(PAYLOAD_OBJECT_MESSAGE)

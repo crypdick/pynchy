@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 
@@ -45,11 +45,11 @@ class IpcEventHandler(FileSystemEventHandler):
         except (ValueError, IndexError):
             pass  # File not under IPC base dir or malformed path — ignore
 
-    def on_created(self, event: Any) -> None:
+    def on_created(self, event: object) -> None:
         if isinstance(event, FileCreatedEvent):
             self._enqueue_if_ipc(os.fsdecode(event.src_path))
 
-    def on_moved(self, event: Any) -> None:
+    def on_moved(self, event: object) -> None:
         # Atomic writes (tmp → .json rename) generate moved events, not created
         if isinstance(event, FileMovedEvent):
             self._enqueue_if_ipc(os.fsdecode(event.dest_path))
