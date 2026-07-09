@@ -38,12 +38,19 @@ from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 # stream-json lines can carry large tool results; lift the asyncio reader limit
 # well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
+_CORE_NAME = "claude-cli"
 
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
     sys.stderr.write(f"[claude-cli-core] {message}\n")
     sys.stderr.flush()
+
+
+def _require_stream[TStream](stream: TStream | None, stream_name: str) -> TStream:
+    if stream is None:
+        raise RuntimeError(f"{_CORE_NAME} subprocess missing {stream_name} stream after creation")
+    return stream
 
 
 class ClaudeCLIAgentCore:
@@ -204,17 +211,17 @@ class ClaudeCLIAgentCore:
             limit=_STREAM_LINE_LIMIT,
         )
         self._proc = proc
-        assert proc.stdin is not None
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+        stdin = _require_stream(proc.stdin, "stdin")
+        stdout = _require_stream(proc.stdout, "stdout")
+        stderr = _require_stream(proc.stderr, "stderr")
 
         # Send the single user message, then EOF so the CLI stops reading input.
-        proc.stdin.write(self._build_stdin(prompt))
-        await proc.stdin.drain()
-        proc.stdin.close()
+        stdin.write(self._build_stdin(prompt))
+        await stdin.drain()
+        stdin.close()
 
         saw_result = False
-        async for raw in proc.stdout:
+        async for raw in stdout:
             line = raw.decode(errors="replace").strip()
             if not line:
                 continue
@@ -228,7 +235,7 @@ class ClaudeCLIAgentCore:
                     saw_result = True
                 yield event
 
-        stderr_text = (await proc.stderr.read()).decode(errors="replace")
+        stderr_text = (await stderr.read()).decode(errors="replace")
         return_code = await proc.wait()
         self._proc = None
 

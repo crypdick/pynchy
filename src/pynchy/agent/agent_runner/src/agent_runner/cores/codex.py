@@ -27,12 +27,19 @@ from agent_runner.cores._codex_config import (
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CODEX_SESSION_PREFIX = "codex:"
+_CORE_NAME = "codex-cli"
 
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
     sys.stderr.write(f"[codex-cli-core] {message}\n")
     sys.stderr.flush()
+
+
+def _require_stream[TStream](stream: TStream | None, stream_name: str) -> TStream:
+    if stream is None:
+        raise RuntimeError(f"{_CORE_NAME} subprocess missing {stream_name} stream after creation")
+    return stream
 
 
 def _codex_home() -> Path:
@@ -213,16 +220,16 @@ class CodexCLIAgentCore:
         return proc
 
     async def _write_prompt(self, proc: asyncio.subprocess.Process, prompt: str) -> None:
-        assert proc.stdin is not None
-        assert proc.stdout is not None
-        assert proc.stderr is not None
-        proc.stdin.write(self._build_stdin(prompt))
-        await proc.stdin.drain()
-        proc.stdin.close()
+        stdin = _require_stream(proc.stdin, "stdin")
+        _ = _require_stream(proc.stdout, "stdout")
+        _ = _require_stream(proc.stderr, "stderr")
+        stdin.write(self._build_stdin(prompt))
+        await stdin.drain()
+        stdin.close()
 
     async def _stream_events(self, proc: asyncio.subprocess.Process) -> AsyncIterator[AgentEvent]:
-        assert proc.stdout is not None
-        async for raw in proc.stdout:
+        stdout = _require_stream(proc.stdout, "stdout")
+        async for raw in stdout:
             line = raw.decode(errors="replace").strip()
             if not line:
                 continue
@@ -238,8 +245,8 @@ class CodexCLIAgentCore:
         return self._map_event(obj) if isinstance(obj, dict) else []
 
     async def _finish_process(self, proc: asyncio.subprocess.Process) -> tuple[str, int]:
-        assert proc.stderr is not None
-        stderr_text = (await proc.stderr.read()).decode(errors="replace")
+        stderr = _require_stream(proc.stderr, "stderr")
+        stderr_text = (await stderr.read()).decode(errors="replace")
         return_code = await proc.wait()
         self._proc = None
         return stderr_text, return_code
