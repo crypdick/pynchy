@@ -30,6 +30,9 @@ from pynchy.logger import logger
 
 _ipc_watcher_lock = asyncio.Lock()
 IPC_RUNTIME_SWEEP_INTERVAL_SECONDS = 5.0
+_IPC_SOURCE_GROUP_MISMATCH_ERROR = (
+    "IPC request source_group does not match directory ({actual!r} != {expected!r})"
+)
 
 
 @dataclass
@@ -144,8 +147,10 @@ async def _handle_request_file(
     envelope = parse_request_envelope(file_path)
     if envelope.source_group != source_group:
         raise ValueError(
-            "IPC request source_group does not match directory "
-            f"({envelope.source_group!r} != {source_group!r})"
+            _IPC_SOURCE_GROUP_MISMATCH_ERROR.format(
+                actual=envelope.source_group,
+                expected=source_group,
+            )
         )
 
     if envelope.kind == "refresh_groups":

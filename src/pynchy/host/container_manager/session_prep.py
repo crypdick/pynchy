@@ -26,6 +26,12 @@ _DEFAULT_TIER = "community"
 _LEARNED_TIER = "learned"
 _PLUGIN_SKILL_MARKER = ".pynchy-plugin-skill"
 _LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
+_SKILL_NAME_COLLISION_ERROR = (
+    "Skill name collision: skill '{skill_name}' conflicts with an existing skill. "
+    "Rename the plugin skill directory to avoid shadowing built-in or other plugin skills."
+)
+_LEARNED_SKILL_SYMLINK_ERROR = "learned skill file is a symlink: {path}"
+_LEARNED_SKILL_ESCAPE_ERROR = "learned skill file escapes skill dir: {path}"
 
 
 class _LearnedSkillSyncError(Exception):
@@ -219,9 +225,7 @@ def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
         shutil.rmtree(dst_dir)
     if dst_dir.exists():
         raise ValueError(
-            f"Skill name collision: skill '{skill_path.name}' conflicts with "
-            f"an existing skill. Rename the plugin skill directory to "
-            f"avoid shadowing built-in or other plugin skills."
+            _SKILL_NAME_COLLISION_ERROR.format(skill_name=skill_path.name)
         )
 
     shutil.copytree(skill_path, dst_dir)
@@ -411,7 +415,7 @@ def _validated_direct_learned_files(skill_dir: Path, resolved_skill_dir: Path) -
         if f.name == _LEARNED_SKILL_MARKER:
             continue
         if f.is_symlink():
-            raise _LearnedSkillSyncError(f"learned skill file is a symlink: {f}")
+            raise _LearnedSkillSyncError(_LEARNED_SKILL_SYMLINK_ERROR.format(path=f))
         if f.is_dir():
             continue
         if not f.is_file():
@@ -419,7 +423,7 @@ def _validated_direct_learned_files(skill_dir: Path, resolved_skill_dir: Path) -
         try:
             f.resolve(strict=True).relative_to(resolved_skill_dir)
         except (OSError, ValueError) as exc:
-            raise _LearnedSkillSyncError(f"learned skill file escapes skill dir: {f}") from exc
+            raise _LearnedSkillSyncError(_LEARNED_SKILL_ESCAPE_ERROR.format(path=f)) from exc
         files.append(f)
     return files
 

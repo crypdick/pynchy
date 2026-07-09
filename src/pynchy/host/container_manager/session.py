@@ -53,6 +53,8 @@ class SessionDiedError(Exception):
 _RUNTIME_POLL_INTERVAL_SECONDS = 0.5
 _RUNTIME_START_GRACE_SECONDS = 5.0
 _RUNTIME_CLI_KILL_WAIT_SECONDS = 2.0
+_MISSING_STDERR_PIPE_ERROR = "Container {container_name} spawned without stderr pipe"
+_CONTAINER_DIED_DURING_QUERY_ERROR = "Container {container_name} died during query"
 
 
 async def _wait_for_runtime_poll_interval() -> None:
@@ -145,7 +147,9 @@ class ContainerSession:
         self._dead = False
         self._runtime_alive_after_proc_exit = False
         if proc.stderr is None:
-            raise RuntimeError(f"Container {self.container_name} spawned without stderr pipe")
+            raise RuntimeError(
+                _MISSING_STDERR_PIPE_ERROR.format(container_name=self.container_name)
+            )
         self._stderr_task = create_background_task(
             self._read_stderr(proc.stderr),
             name=f"stderr-{self.container_name}",
@@ -204,7 +208,9 @@ class ContainerSession:
             raise
 
         if self._died_before_pulse:
-            raise SessionDiedError(f"Container {self.container_name} died during query")
+            raise SessionDiedError(
+                _CONTAINER_DIED_DURING_QUERY_ERROR.format(container_name=self.container_name)
+            )
 
     async def stop(self) -> None:
         """Stop the container and clean up resources."""
