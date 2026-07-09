@@ -21,6 +21,18 @@ from pynchy.plugins.integrations.linear_workspace_names import (
     workspace_project_name,
 )
 
+_TEAM_PAYLOAD_NOT_OBJECT = "Linear team payload was not an object"
+_TEAM_PAYLOAD_MISSING_ID = "Linear team payload missing string id"
+_TEAM_KEY_NOT_VISIBLE = "LINEAR_TEAM_KEY did not match a visible Linear team: {team_key}"
+_NO_VISIBLE_TEAMS = "Linear API key cannot see any teams"
+_LINEAR_PROJECT_MISSING = "Linear response did not include project"
+_LINEAR_TEAM_MISSING = "Linear response did not include team"
+_UNKNOWN_TODO_STATUS = "Unknown todo status '{status}'. Expected one of: {allowed}"
+_LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
+_LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
+_LINEAR_PAYLOAD_INCOMPLETE = "Linear did not complete {payload_key}"
+_LINEAR_ENTITY_MISSING = "Linear {payload_key} response did not include {entity_key}"
+
 
 class LinearBoardError(RuntimeError):
     """Raised when Linear board reconciliation cannot continue."""
@@ -64,11 +76,11 @@ class _VisibleLinearTeam:
     @classmethod
     def from_payload(cls, payload: object) -> _VisibleLinearTeam:
         if not isinstance(payload, dict):
-            raise LinearBoardError("Linear team payload was not an object")
+            raise LinearBoardError(_TEAM_PAYLOAD_NOT_OBJECT)
 
         team_id = payload.get("id")
         if not isinstance(team_id, str) or not team_id:
-            raise LinearBoardError("Linear team payload missing string id")
+            raise LinearBoardError(_TEAM_PAYLOAD_MISSING_ID)
 
         key = payload.get("key")
         name = payload.get("name")
@@ -115,12 +127,12 @@ async def select_team(
         team = _matching_team(teams, team_key)
         if team is not None:
             return team.raw
-        raise LinearBoardError(f"LINEAR_TEAM_KEY did not match a visible Linear team: {team_key}")
+        raise LinearBoardError(_TEAM_KEY_NOT_VISIBLE.format(team_key=team_key))
 
     if len(teams) == 1:
         return teams[0].raw
     if not teams:
-        raise LinearBoardError("Linear API key cannot see any teams")
+        raise LinearBoardError(_NO_VISIBLE_TEAMS)
     raise LinearBoardError(
         "Multiple Linear teams are visible; set LINEAR_TEAM_KEY to one of: "
         + _visible_team_choices(teams)
@@ -266,7 +278,7 @@ async def list_workspace_todos(
     )
     project = data.get("project")
     if not isinstance(project, dict):
-        raise LinearBoardError("Linear response did not include project")
+        raise LinearBoardError(_LINEAR_PROJECT_MISSING)
     issues = _nodes(project, "issues")
     if include_done:
         return issues
@@ -294,7 +306,7 @@ async def _load_team_resources(
     )
     team = data.get("team")
     if not isinstance(team, dict):
-        raise LinearBoardError("Linear response did not include team")
+        raise LinearBoardError(_LINEAR_TEAM_MISSING)
     return {
         "projects": _nodes(team, "projects"),
         "states": _nodes(team, "states"),
@@ -450,7 +462,7 @@ def _normalize_status(status: str) -> str:
     key = status.strip().lower().replace("-", "_").replace(" ", "_")
     if key not in LINEAR_TODO_STATUSES:
         allowed = ", ".join(LINEAR_TODO_STATUSES)
-        raise LinearBoardError(f"Unknown todo status '{status}'. Expected one of: {allowed}")
+        raise LinearBoardError(_UNKNOWN_TODO_STATUS.format(status=status, allowed=allowed))
     return key
 
 
@@ -461,18 +473,20 @@ def _norm_name(value: Any) -> str:
 def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
     connection = data.get(key)
     if not isinstance(connection, dict):
-        raise LinearBoardError(f"Linear response did not include {key}")
+        raise LinearBoardError(_LINEAR_CONNECTION_MISSING.format(key=key))
     nodes = connection.get("nodes")
     if not isinstance(nodes, list):
-        raise LinearBoardError(f"Linear response did not include {key}.nodes")
+        raise LinearBoardError(_LINEAR_NODES_MISSING.format(key=key))
     return [node for node in nodes if isinstance(node, dict)]
 
 
 def _payload_entity(data: dict[str, Any], payload_key: str, entity_key: str) -> dict[str, Any]:
     payload = data.get(payload_key)
     if not isinstance(payload, dict) or not payload.get("success"):
-        raise LinearBoardError(f"Linear did not complete {payload_key}")
+        raise LinearBoardError(_LINEAR_PAYLOAD_INCOMPLETE.format(payload_key=payload_key))
     entity = payload.get(entity_key)
     if not isinstance(entity, dict):
-        raise LinearBoardError(f"Linear {payload_key} response did not include {entity_key}")
+        raise LinearBoardError(
+            _LINEAR_ENTITY_MISSING.format(payload_key=payload_key, entity_key=entity_key)
+        )
     return entity
