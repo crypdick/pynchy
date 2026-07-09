@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_runner.agent_tools._ipc_request import ipc_service_request
+from agent_runner.agent_tools import call_tool
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,6 +62,10 @@ def _write_response(
 # ---------------------------------------------------------------------------
 
 
+async def _call_ipc_tool():
+    return await call_tool("take_screenshot", {})
+
+
 class TestWatchdogPicksUpResponse:
     """Watchdog detects the response file and unblocks the coroutine."""
 
@@ -100,7 +104,7 @@ class TestWatchdogPicksUpResponse:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
+                _call_ipc_tool(),
                 timeout=10.0,
             )
             await task
@@ -115,7 +119,11 @@ class TestWatchdogTimeout:
 
     @pytest.mark.asyncio
     async def test_timeout_returns_error(self, ipc_dirs: dict[str, Path]) -> None:
-        result = await ipc_service_request("test_tool", {}, response_timeout_seconds=1.0)
+        with patch(
+            "agent_runner.agent_tools._ipc_request._wait_for_response_file",
+            side_effect=TimeoutError,
+        ):
+            result = await _call_ipc_tool()
 
         assert len(result) == 1
         assert "timed out" in result[0].text.lower()
@@ -162,7 +170,7 @@ class TestWatchdogFallback:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
+                _call_ipc_tool(),
                 timeout=10.0,
             )
             await task
@@ -206,7 +214,7 @@ class TestResponseFileCleanedUp:
 
             task = asyncio.create_task(write_response_after_delay())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
+                _call_ipc_tool(),
                 timeout=10.0,
             )
             await task
@@ -256,7 +264,7 @@ class TestErrorResponse:
 
             task = asyncio.create_task(write_error_response())
             result = await asyncio.wait_for(
-                ipc_service_request("test_tool", {}, response_timeout_seconds=5.0),
+                _call_ipc_tool(),
                 timeout=10.0,
             )
             await task
