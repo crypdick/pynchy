@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import (
@@ -21,6 +21,14 @@ from pynchy.plugins.integrations.google_setup._paths import (
 )
 
 OAUTH_CALLBACK_HOST = "localhost"
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
+else:
+    try:
+        from playwright.async_api import Page
+    except ImportError:
+        Page = Any
 
 
 def parse_client_credentials(kp: Path) -> tuple[str, str]:
@@ -127,7 +135,7 @@ def save_credentials_to_profile(tokens: dict[str, Any], profile_name: str) -> Pa
     return dest
 
 
-async def run_oauth_flow(page, kp: Path, scopes: str) -> dict[str, Any]:
+async def run_oauth_flow(page: Page, kp: Path, scopes: str) -> dict[str, Any]:
     """Run the OAuth consent + token exchange flow."""
     client_id, client_secret = parse_client_credentials(kp)
     done_event, auth_codes, callback_server = start_callback_server()

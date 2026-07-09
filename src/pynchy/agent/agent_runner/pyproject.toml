@@ -130,7 +130,6 @@ select = [
     "YTT",
 ]
 ignore = [
-    "ANN001",
     "ANN002",
     "ANN204",
     "ANN401",

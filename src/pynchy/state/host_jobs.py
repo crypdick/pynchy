@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aiosqlite import Row
+else:
+    Row = Any
 
 from pynchy.state.connection import _get_db, _update_by_id
 from pynchy.types import HostJob
 
 
-def _row_to_host_job(row) -> HostJob:
+def _row_to_host_job(row: Row) -> HostJob:
     return HostJob(
         id=row["id"],
         name=row["name"],

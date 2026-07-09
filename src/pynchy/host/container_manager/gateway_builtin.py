@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Mapping
+from typing import Any
 
 import aiohttp
 from aiohttp import web
@@ -129,7 +130,7 @@ class BuiltinGateway:
 
     # Avoid annotating this as web.Request: beartype inspects aiohttp's
     # typing.MutableMapping base and emits a PEP 585 warning.
-    async def _proxy_handler(self, request) -> web.StreamResponse:
+    async def _proxy_handler(self, request: Any) -> web.StreamResponse:
         path = f"/{request.match_info.get('path', '')}"
 
         if not self._validate_auth(request.headers):

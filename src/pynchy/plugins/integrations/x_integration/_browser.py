@@ -11,7 +11,7 @@ from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files,
 from pynchy.plugins.integrations.x_integration._display import ensure_xvfb
 
 if TYPE_CHECKING:
-    from playwright.async_api import Page
+    from playwright.async_api import Locator, Page
 else:
     # playwright is an optional dependency (the "browser" extra) — this module
     # must stay importable without it.  Fall back to Any so beartype's runtime
@@ -22,6 +22,10 @@ else:
         from playwright.async_api import Page
     except ImportError:
         Page = Any
+    try:
+        from playwright.async_api import Locator
+    except ImportError:
+        Locator = Any
 
 # X UI selectors (data-testid based).  These match X's React component
 # test IDs and are the same ones the archived TS implementation used.
@@ -64,7 +68,7 @@ _BROWSER_ARGS = [
 ]
 
 
-async def is_visible(locator) -> bool:
+async def is_visible(locator: Locator) -> bool:
     """Check locator visibility without raising on detached elements."""
     try:
         return cast("bool", await locator.is_visible())

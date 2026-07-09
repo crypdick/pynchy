@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aiosqlite import Row
+else:
+    Row = Any
 
 from pynchy.state.connection import _get_db
 from pynchy.types import NewMessage
 
 
-def _row_to_message(row) -> NewMessage:
+def _row_to_message(row: Row) -> NewMessage:
     """Convert a database row to a NewMessage."""
     metadata_str = row["metadata"]
 

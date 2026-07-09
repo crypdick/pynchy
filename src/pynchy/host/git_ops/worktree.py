@@ -20,6 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pynchy.config import Settings
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -314,7 +315,7 @@ def reconcile_worktrees_at_startup(
 
 
 def _startup_repo_context(
-    _settings,
+    _settings: Settings,
     slug: str,
     get_repo_context: Callable[[str], RepoContext | None],
 ) -> RepoContext | None:
@@ -325,10 +326,10 @@ def _startup_repo_context(
 
 
 def _warn_if_repo_token_missing(
-    settings,
+    settings: Settings,
     slug: str,
-    check_token_expiry,
-    get_repo_token,
+    check_token_expiry: Callable[[str, str], None],
+    get_repo_token: Callable[[str], str | None],
 ) -> None:
     repo_cfg = settings.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.token:
@@ -345,7 +346,7 @@ def _warn_if_repo_token_missing(
 def _prepare_repo_for_startup(
     repo_ctx: RepoContext,
     slug: str,
-    ensure_repo_cloned,
+    ensure_repo_cloned: Callable[[RepoContext], bool],
     old_base: Path,
     project_root: Path,
 ) -> bool:

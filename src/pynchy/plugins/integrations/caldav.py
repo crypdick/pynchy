@@ -152,7 +152,7 @@ def _resolve_calendar(
     raise ValueError(msg)
 
 
-def _parse_event(component) -> dict[str, Any]:
+def _parse_event(component: Any) -> dict[str, Any]:
     """Extract event fields from an iCalendar VEVENT component."""
 
     def _get(key: str) -> str | None:

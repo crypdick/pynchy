@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aiosqlite import Row
+else:
+    Row = Any
 
 from pynchy.state.connection import _get_db, _update_by_id, atomic_write
 from pynchy.types import ScheduledTask, TaskRunLog
 
 
-def _row_to_task(row) -> ScheduledTask:
+def _row_to_task(row: Row) -> ScheduledTask:
     return ScheduledTask(
         id=row["id"],
         group_folder=row["group_folder"],
@@ -27,7 +32,7 @@ def _row_to_task(row) -> ScheduledTask:
     )
 
 
-def _row_to_task_run_log(row) -> TaskRunLog:
+def _row_to_task_run_log(row: Row) -> TaskRunLog:
     return TaskRunLog(
         task_id=row["task_id"],
         run_at=row["run_at"],

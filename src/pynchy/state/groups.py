@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from aiosqlite import Row
+else:
+    Row = Any
 
 from pynchy.state.connection import _get_db
 from pynchy.types import (
@@ -14,7 +20,7 @@ from pynchy.types import (
 )
 
 
-def _row_to_workspace_profile(row) -> WorkspaceProfile:
+def _row_to_workspace_profile(row: Row) -> WorkspaceProfile:
     """Convert database row to WorkspaceProfile."""
     container_config = None
     if row["container_config"]:

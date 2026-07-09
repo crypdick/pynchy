@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable
 from datetime import timedelta
+from types import TracebackType
 from typing import Any
 
 from temporalio import activity
@@ -258,7 +260,12 @@ class TemporalSchedulerRuntime:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc, _tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        _tb: TracebackType | None,
+    ) -> None:
         global _active_runtime
         await self._worker_stack.aclose()
         bind_scheduler_deps(None)
@@ -346,7 +353,7 @@ class TemporalSchedulerRuntime:
 
     async def _start_workflow(
         self,
-        workflow,
+        workflow: Callable[..., Any],
         *args: Any,
         workflow_id: str,
         status_id: str,
