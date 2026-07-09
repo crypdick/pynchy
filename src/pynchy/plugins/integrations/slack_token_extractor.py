@@ -44,6 +44,12 @@ if TYPE_CHECKING:
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
+_NOT_LOGGED_IN_ERROR = (
+    "Not logged in — persistent session expired or never set up. "
+    "Run setup_slack_session first to complete manual login."
+)
+_FAILED_TO_EXTRACT_XOXD_ERROR = "Failed to extract xoxd cookie (d)"
+
 
 @dataclass(frozen=True)
 class _SlackSetupRequest:
@@ -143,12 +149,9 @@ async def _extract_tokens(
         await context.close()
 
         if not xoxc:
-            raise RuntimeError(
-                "Not logged in — persistent session expired or never set up. "
-                "Run setup_slack_session first to complete manual login."
-            )
+            raise RuntimeError(_NOT_LOGGED_IN_ERROR)
         if not xoxd:
-            raise RuntimeError("Failed to extract xoxd cookie (d)")
+            raise RuntimeError(_FAILED_TO_EXTRACT_XOXD_ERROR)
 
         return {"xoxc": xoxc, "xoxd": xoxd}
 
