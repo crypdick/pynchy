@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,6 +22,9 @@ from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_hand
 from pynchy.host.container_manager.security import gate
 from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture(autouse=True)

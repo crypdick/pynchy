@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config import Settings
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.config.settings import validate_settings_mapping
+
+if TYPE_CHECKING:
+    from pynchy.config import Settings
 
 
 def _settings(**overrides) -> Settings:

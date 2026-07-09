@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,7 +17,11 @@ from conftest import init_test_database
 from pynchy.host.container_manager.ipc.watcher import (
     _process_output_file,  # allow: private-test-imports
 )
-from pynchy.types import ContainerOutput
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pynchy.types import ContainerOutput
 
 
 @pytest.fixture

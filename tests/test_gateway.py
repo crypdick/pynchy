@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,6 +17,9 @@ from pynchy.host.container_manager.gateway import (
     start_gateway,
 )
 from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # LiteLLMGateway — unit tests (Docker calls mocked)

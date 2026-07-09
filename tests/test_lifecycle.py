@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pluggy
 import pytest
@@ -16,6 +15,9 @@ from pynchy.config.models import LearningConfig
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.types import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Coroutine
 
 
 class StopAfterArgumentValidationError(Exception):

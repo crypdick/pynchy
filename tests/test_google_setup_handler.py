@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
@@ -16,6 +16,9 @@ from pynchy.plugins.integrations.google_setup import (
 from pynchy.plugins.integrations.google_setup import (
     _rest_api as google_rest_api,  # allow: private-test-imports - URL safety is module-local.
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _FakePage:

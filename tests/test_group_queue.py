@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,6 +12,9 @@ from conftest import make_settings
 
 from pynchy.config import ContainerConfig, QueueConfig
 from pynchy.host.orchestrator.concurrency import GroupQueue
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 
 @contextlib.contextmanager

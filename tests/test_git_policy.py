@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,6 +25,9 @@ from pynchy.host.git_ops.sync import (
     resolve_git_policy,
 )
 from pynchy.types import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers

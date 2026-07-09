@@ -5,8 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 from aiohttp import web
@@ -22,6 +21,9 @@ from pynchy.host.git_ops.utils import (
 from pynchy.host.orchestrator import http_server
 from pynchy.host.orchestrator.http_server import deps_key
 from pynchy.types import NewMessage
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _cp(

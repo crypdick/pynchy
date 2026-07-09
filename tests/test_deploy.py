@@ -11,13 +11,16 @@ import contextlib
 import json
 import os
 import signal
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator.deploy import finalize_deploy
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @contextlib.contextmanager

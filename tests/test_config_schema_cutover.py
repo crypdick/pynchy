@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config import Settings
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.config.toml_io import parse_settings_toml
+
+if TYPE_CHECKING:
+    from pynchy.config import Settings
 
 
 def _settings_from_toml(source: str) -> Settings:

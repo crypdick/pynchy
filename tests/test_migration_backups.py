@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
 
 from pynchy.host.migration_backups import prune_migration_backups
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _backup_dir(root: Path, name: str, mtime: int) -> Path:

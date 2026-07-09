@@ -10,8 +10,7 @@ import asyncio
 import contextlib
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +20,9 @@ from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.state import init_test_database
 from pynchy.types import NewMessage, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Channel stubs — each mimics the real channel's protocol surface

@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +20,9 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
 from pynchy.state import store_message
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 

@@ -8,7 +8,7 @@ covered by the existing integration tests.
 from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from conftest import make_settings
@@ -19,6 +19,9 @@ from pynchy.host.git_ops.sync_poll import (
     host_source_files_changed,
     host_update_main,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Helpers

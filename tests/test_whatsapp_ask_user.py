@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -38,6 +37,10 @@ for _mod_name in _NEONIZE_MODULES:
 
 # Now it's safe to import
 from pynchy.plugins.channels.whatsapp.channel import WhatsAppChannel  # noqa: E402
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from types import ModuleType
 
 # ---------------------------------------------------------------------------
 # Constants

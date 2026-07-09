@@ -14,7 +14,7 @@ Three scenarios:
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,6 +22,9 @@ from conftest import NullIpcDeps, make_settings
 
 from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture(autouse=True)

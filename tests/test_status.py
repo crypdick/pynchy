@@ -10,9 +10,8 @@ from __future__ import annotations
 import contextlib
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 import time
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -23,6 +22,9 @@ from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import status_deps_key
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.types import HostJob, ScheduledTask, TaskRunLog
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _S = "pynchy.host.orchestrator.status"
 

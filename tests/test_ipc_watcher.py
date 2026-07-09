@@ -8,7 +8,7 @@ where a bug could leak messages across groups or silently drop data.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,6 +20,9 @@ from pynchy.host.container_manager.ipc.watcher import (
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 ADMIN_GROUP = WorkspaceProfile(
     jid="admin-1@g.us",

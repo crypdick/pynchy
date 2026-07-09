@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from conftest import make_settings
 
 from pynchy.config.models import AgentConfig
@@ -11,7 +13,9 @@ from pynchy.host.orchestrator.messaging.formatter import (
     parse_host_tag,
     strip_internal_tags,
 )
-from pynchy.types import NewMessage
+
+if TYPE_CHECKING:
+    from pynchy.types import NewMessage
 
 s = make_settings()
 TRIGGER_PATTERN = s.trigger_pattern

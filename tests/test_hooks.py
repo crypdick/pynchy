@@ -8,9 +8,12 @@ missing paths, and function discovery that warrants thorough testing.
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from agent_runner.hooks import HookEvent, load_hooks
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class TestLoadHooks:

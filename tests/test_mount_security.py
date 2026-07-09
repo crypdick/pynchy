@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -24,6 +24,9 @@ from pynchy.host.container_manager.security.mount_security import (
     validate_mount,
 )
 from pynchy.types import AdditionalMount
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _test_settings(allowlist_path: Path):

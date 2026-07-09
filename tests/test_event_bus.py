@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -15,6 +14,9 @@ from pynchy.event_bus import (
     EventBus,
     MessageEvent,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 
 @pytest.fixture

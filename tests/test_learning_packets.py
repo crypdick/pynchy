@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -27,6 +26,10 @@ from pynchy.host.learning.packets import (
     start_learning_review_workflow,
 )
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 def _settings(

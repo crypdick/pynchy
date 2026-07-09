@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +13,9 @@ from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import PREFIX_HANDLERS
 from pynchy.types import Channel, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

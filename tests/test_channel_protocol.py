@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import inspect
 import sys
-from types import ModuleType
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 # ---------------------------------------------------------------------------
 # Protocol shape tests

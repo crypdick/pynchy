@@ -9,7 +9,7 @@ valid payloads.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -25,6 +25,9 @@ from pynchy.host.container_manager.ipc.protocol import (
     request_requires_idempotency_ledger,
     validate_signal,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # validate_signal — Tier 1 signal identification

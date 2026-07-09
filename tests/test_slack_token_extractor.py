@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
 
 from pynchy.plugins.integrations import slack_token_extractor
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _FakePage:

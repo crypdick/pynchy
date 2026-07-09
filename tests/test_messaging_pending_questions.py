@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 from conftest import make_settings
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

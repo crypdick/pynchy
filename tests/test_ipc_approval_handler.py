@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import init_test_database, make_settings
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

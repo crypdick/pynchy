@@ -10,7 +10,7 @@ Tests critical business logic:
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 import pytest
@@ -21,6 +21,9 @@ from pynchy.host.orchestrator.service_installer import (
     is_launchd_loaded,
     is_launchd_managed,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _test_settings(*, project_root: Path):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -14,6 +14,9 @@ from conftest import make_settings
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"

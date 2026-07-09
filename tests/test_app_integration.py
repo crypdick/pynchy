@@ -9,9 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from collections.abc import Awaitable
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,6 +19,10 @@ from pynchy import state
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.state import get_chat_history, store_message
 from pynchy.types import NewMessage, WorkspaceProfile
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+    from pathlib import Path
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
