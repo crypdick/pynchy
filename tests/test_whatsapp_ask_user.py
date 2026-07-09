@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -93,8 +94,6 @@ def _pending_data(
     questions: list[dict] | None = None,
     timestamp: str | None = None,
 ) -> dict:
-    from datetime import UTC, datetime
-
     return {
         "request_id": request_id,
         "short_id": request_id[:8],
