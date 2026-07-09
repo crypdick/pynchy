@@ -366,9 +366,6 @@ class ProfileConfig(_StrictModel):
         return v
 
 
-SandboxProfileConfig = ProfileConfig
-
-
 class ServiceTrustTomlConfig(_StrictModel):
     """Per-service trust config in config.toml [services.<name>]."""
 

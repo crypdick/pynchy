@@ -37,6 +37,7 @@ from pydantic_settings import (
 
 from pynchy.config.jobs import JobConfig
 from pynchy.config.mcp import McpServerConfig
+from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
     CalDAVConfig,
@@ -304,20 +305,8 @@ class Settings(BaseSettings):
             _assert_admin_clean_room(self, workspace_name=ws_name, workspace=ws)
         return self
 
-    @property
-    def sandbox_universal(self) -> ProfileConfig:
-        """Internal alias for modules that use the profile cascade."""
-        return self.universal
-
-    @property
-    def sandbox_profiles(self) -> dict[str, ProfileConfig]:
-        """Internal alias for modules that use the profile cascade."""
-        return self.profiles
-
-    def resolved_workspace_config(self, workspace_name: str):
+    def resolved_workspace_config(self, workspace_name: str) -> ResolvedWorkspaceConfig | None:
         """Return the merged config for a configured workspace."""
-        from pynchy.config.merge import merge_workspace_profiles
-
         workspace = self.workspaces.get(workspace_name)
         if workspace is None:
             return None
