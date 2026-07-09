@@ -241,7 +241,7 @@ class TestInstallLaunchdService:
         src_dir.mkdir()
         (src_dir / "com.pynchy.plist").write_text(
             "<string>$HOME/.local/bin/uv</string>\n"
-            "<string>$HOME/src/PERSONAL/pynchy</string>\n"
+            "<string>$PYNCHY_PROJECT_ROOT</string>\n"
             "<string>$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin</string>\n"
             "<string>$HOME</string>\n"
         )

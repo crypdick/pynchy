@@ -81,6 +81,11 @@ ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
 CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - agent containers must reach the host gateway through the configured container_host.
 
 
+def _default_repos_root() -> Path:
+    """Use the directory containing the Pynchy checkout for sibling repo clones."""
+    return Path.cwd().parent.resolve()
+
+
 class _StrictModel(BaseModel):
     """Base for all config sub-models — reject unknown keys so typos fail loudly."""
 
@@ -393,8 +398,16 @@ class WorkspaceConfig(_StrictModel):
 
 
 class ReposConfig(_StrictModel):
-    root: Path = Path("/Users/ricardo/src/PERSONAL")
+    root: Path = Field(default_factory=_default_repos_root)
     overrides: dict[str, RepoConfig] = Field(default_factory=dict)
+
+    @field_validator("root", mode="before")
+    @classmethod
+    def resolve_root(cls, v: str | Path) -> Path:
+        p = Path(v).expanduser()
+        if not p.is_absolute():
+            p = Path.cwd() / p
+        return p.resolve()
 
     @model_validator(mode="before")
     @classmethod

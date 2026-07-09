@@ -109,9 +109,9 @@ def test_allow_from_accepts_bare_snowflake():
 
 
 def test_dm_allowlist_accepts_human_user_name():
-    access = _access(dm_policy="allowlist", allow_from=["ricardo"])
+    access = _access(dm_policy="allowlist", allow_from=["alice"])
 
-    assert access.decide(_dm("1", author_names=frozenset({"Ricardo", "rdecal"}))) == "allow"
+    assert access.decide(_dm("1", author_names=frozenset({"Alice", "asmith"}))) == "allow"
 
 
 # --- guild / group policy ----------------------------------------------------
@@ -232,10 +232,10 @@ def test_member_users_allowlist_permits_listed_sender():
 def test_member_users_allowlist_permits_human_user_name():
     access = _access(
         group_policy="allowlist",
-        chat={"g1": {"require_mention": False, "users": ["ricardo"]}},
+        chat={"g1": {"require_mention": False, "users": ["alice"]}},
     )
 
-    assert access.decide(_guild(author_names=frozenset({"Ricardo"}))) == "allow"
+    assert access.decide(_guild(author_names=frozenset({"Alice"}))) == "allow"
 
 
 def test_member_users_allowlist_denies_unlisted_sender():

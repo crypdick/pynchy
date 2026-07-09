@@ -130,7 +130,7 @@ def _render_launchd_plist(src: Path, *, project_root: Path, home: Path) -> str:
     uv_path = shutil.which("uv") or str(home / ".local" / "bin" / "uv")
     rendered = (
         src.read_text(encoding="utf-8")
-        .replace("$HOME/src/PERSONAL/pynchy", str(project_root))
+        .replace("$PYNCHY_PROJECT_ROOT", str(project_root))
         .replace("$HOME/.local/bin/uv", uv_path)
         .replace("$HOME", str(home))
     )

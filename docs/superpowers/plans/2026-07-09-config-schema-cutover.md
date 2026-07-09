@@ -19,7 +19,7 @@ trigger_aliases = ["ghost"]
 default_core = "codex"
 
 [repos]
-root = "/Users/ricardo/src/PERSONAL"
+root = "~/src/projects" # optional; defaults to the parent of the Pynchy checkout
 
 [profiles.base]
 prompts = ["base", "idle-escape"]
@@ -107,6 +107,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from pathlib import Path
 
 from pynchy.config.toml_io import parse_settings_toml
 
@@ -116,9 +117,6 @@ MINIMAL_CONFIG = """
 name = "pynchy"
 trigger_aliases = ["ghost"]
 default_core = "codex"
-
-[repos]
-root = "/Users/ricardo/src/PERSONAL"
 
 [profiles.base]
 prompts = ["base", "idle-escape"]
@@ -159,7 +157,7 @@ def test_new_schema_parses_minimal_config():
     resolved = settings.resolved_workspace_config("dev")
 
     assert settings.agent.default_core == "codex"
-    assert settings.repos.root == "/Users/ricardo/src/PERSONAL"
+    assert settings.repos.root == Path.cwd().parent.resolve()
     assert settings.workspaces["dev"].profiles == ["dev"]
     assert resolved is not None
     assert resolved.prompts == ["base", "idle-escape"]
@@ -183,7 +181,7 @@ def test_new_schema_parses_minimal_config():
         "[workspaces.dev]\\ntrigger = 'mention'\\n",
         "[workspaces.dev]\\nallowed_users = ['*']\\n",
         "[profiles.dev]\\nfallback_model = 'gpt-5-mini'\\n",
-        "[owner]\\nslack = 'Ricardo'\\n",
+        "[owner]\\nslack = 'Alice'\\n",
         "[tools.browser]\\ntype = 'mcp'\\npublic_source = true\\n",
         "[tools.browser.mcp]\\nruntime = 'docker'\\n",
     ],
@@ -234,7 +232,7 @@ class AgentConfig(_StrictModel):
 
 
 class ReposConfig(_StrictModel):
-    root: str = "/Users/ricardo/src/PERSONAL"
+    root: Path = Field(default_factory=_default_repos_root)
     overrides: dict[str, RepoConfig] = {}
 
 

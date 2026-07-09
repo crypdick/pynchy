@@ -224,7 +224,7 @@
 # CLEAN ROOM POLICY: Admin workspaces cannot select tools with public_source = true.
 # Tools default to public_source = true unless configured otherwise.
 # Pynchy refuses to start if this constraint is violated.
-# See: https://pynchy.ricardodecal.com/usage/security/#admin-clean-room
+# See: docs/usage/security.md#admin-clean-room
 
 # Example profile with Google MCP tool names:
 # [profiles.mycompany-worker]

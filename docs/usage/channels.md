@@ -96,7 +96,7 @@ DISCORD_BOT_TOKEN=<bot token>
 type = "discord"
 bot_token_env = "DISCORD_BOT_TOKEN"   # name of the env var holding the token
 dm_policy = "allowlist"               # open | allowlist | disabled
-allow_from = ["ricardo"]              # DM allowlist by Discord display/user name
+allow_from = ["alice"]                # DM allowlist by Discord display/user name
 group_policy = "allowlist"            # open | disabled | allowlist
 
 [workspaces.discord-admin]

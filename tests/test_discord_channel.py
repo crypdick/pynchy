@@ -201,29 +201,29 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
-            allow_from=["ricardo"],
+            allow_from=["alice"],
             group_policy="disabled",
         ),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
     )
-    user = _FakeDiscordUser(42, "rdecal", display_name="Ricardo")
+    user = _FakeDiscordUser(42, "asmith", display_name="Alice")
     ch.client = _FakeDiscordClient([], users=[user])
 
-    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
+    assert await ch.resolve_chat_jid("direct.alice") == "discord:direct:42"
 
 
 @pytest.mark.asyncio
 async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata():
     await init_test_database()
-    await store_chat_metadata("discord:direct:42", "2026-07-08T00:00:00+00:00", "Ricardo")
+    await store_chat_metadata("discord:direct:42", "2026-07-08T00:00:00+00:00", "Alice")
     ch = DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
             bot_token_env=DISCORD_BOT_ENV,
             dm_policy="allowlist",
-            allow_from=["ricardo"],
+            allow_from=["alice"],
             group_policy="disabled",
         ),
         bot_token=DISCORD_BOT_VALUE,
@@ -231,7 +231,7 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata(
         on_chat_metadata=lambda jid, ts, name: None,
     )
 
-    assert await ch.resolve_chat_jid("direct.ricardo") == "discord:direct:42"
+    assert await ch.resolve_chat_jid("direct.alice") == "discord:direct:42"
 
 
 @pytest.mark.asyncio

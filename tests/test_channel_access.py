@@ -112,14 +112,14 @@ class TestResolveAllowedUsers:
         assert result == {"slack:U04MYID"}
 
     def test_owner_resolution_slack_name(self):
-        owner = OwnerConfig(slack="ricardo")
+        owner = OwnerConfig(slack="alice")
         result = resolve_allowed_users(
             ["owner"],
             {},
             owner,
             channel_plugin_name="slack",
         )
-        assert result == {"slack:ricardo"}
+        assert result == {"slack:alice"}
 
     def test_owner_resolution_whatsapp(self):
         result = resolve_allowed_users(
@@ -219,11 +219,11 @@ class TestIsUserAllowed:
         assert is_user_allowed("U04OTHER", "slack", allowed) is False
 
     def test_sender_name_match(self):
-        allowed = {"slack:ricardo"}
-        assert is_user_allowed("U04ABC", "slack", allowed, sender_name="Ricardo") is True
+        allowed = {"slack:alice"}
+        assert is_user_allowed("U04ABC", "slack", allowed, sender_name="Alice") is True
 
     def test_sender_name_no_match(self):
-        allowed = {"slack:ricardo"}
+        allowed = {"slack:alice"}
         assert is_user_allowed("U04ABC", "slack", allowed, sender_name="Someone Else") is False
 
     def test_whatsapp_owner_via_is_from_me(self):

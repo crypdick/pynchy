@@ -70,7 +70,7 @@ async def test_unknown_discord_thread_registers_inherited_workspace(db, monkeypa
         id="discord-msg-1",
         chat_jid="discord:channel:thread",
         sender="42",
-        sender_name="Ricardo",
+        sender_name="Alice",
         content="start",
         timestamp=datetime.now(UTC).isoformat(),
         metadata={

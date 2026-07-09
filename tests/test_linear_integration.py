@@ -78,14 +78,14 @@ class TestLinearClient:
     async def test_query_sends_linear_authorization_header(self):
         response = MagicMock()
         response.raise_for_status.return_value = None
-        response.json = AsyncMock(return_value={"data": {"viewer": {"name": "Ricardo"}}})
+        response.json = AsyncMock(return_value={"data": {"viewer": {"name": "Alice"}}})
         session = MagicMock()
         session.post.return_value = FakePostContext(response)
         client = LinearClient(api_key="lin_api_test", session=session)
 
         result = await client.query("query Viewer { viewer { name } }")
 
-        assert result == {"viewer": {"name": "Ricardo"}}
+        assert result == {"viewer": {"name": "Alice"}}
         session.post.assert_called_once()
         _, kwargs = session.post.call_args
         assert kwargs["headers"]["Authorization"] == "lin_api_test"

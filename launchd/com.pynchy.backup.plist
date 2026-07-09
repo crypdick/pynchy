@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Replace $HOME with an absolute home directory before installing; launchd
-     does not expand shell variables in plist string values. -->
+<!-- Replace $HOME and $PYNCHY_PROJECT_ROOT with absolute paths before installing;
+     launchd does not expand shell variables in plist string values. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>com.pynchy.backup</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$HOME/src/PERSONAL/pynchy/scripts/backup_runtime_dbs.sh</string>
+        <string>$PYNCHY_PROJECT_ROOT/scripts/backup_runtime_dbs.sh</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$HOME/src/PERSONAL/pynchy</string>
+    <string>$PYNCHY_PROJECT_ROOT</string>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>

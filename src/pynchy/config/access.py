@@ -60,7 +60,7 @@ def resolve_allowed_users(
     Resolution rules:
     - "*" -> short-circuit, allow everyone (returns None)
     - "owner" -> resolved via OwnerConfig for the channel platform
-    - strings containing ":" -> literal user refs (e.g., "slack:ricardo")
+    - strings containing ":" -> literal user refs (e.g., "slack:alice")
     - everything else -> group name lookup (recursive, with cycle detection)
     """
     if "*" in raw_list:

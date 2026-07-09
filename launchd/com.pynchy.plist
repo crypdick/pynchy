@@ -14,7 +14,7 @@
         <string>pynchy</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$HOME/src/PERSONAL/pynchy</string>
+    <string>$PYNCHY_PROJECT_ROOT</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -29,8 +29,8 @@
         <string>$HOME</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>$HOME/src/PERSONAL/pynchy/logs/pynchy.log</string>
+    <string>$PYNCHY_PROJECT_ROOT/logs/pynchy.log</string>
     <key>StandardErrorPath</key>
-    <string>$HOME/src/PERSONAL/pynchy/logs/pynchy.error.log</string>
+    <string>$PYNCHY_PROJECT_ROOT/logs/pynchy.error.log</string>
 </dict>
 </plist>

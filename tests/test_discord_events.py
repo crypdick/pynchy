@@ -131,12 +131,12 @@ def test_guild_context_carries_names():
 
 def test_context_carries_author_names():
     msg = _message(
-        author=_user("7", display_name="Ricardo", global_name="rdecal", name="ricardo-local"),
+        author=_user("7", display_name="Alice", global_name="asmith", name="alice-local"),
         guild_id="g1",
         channel_id="c1",
     )
 
-    assert {"Ricardo", "rdecal", "ricardo-local"} <= build_inbound_context(msg, BOT_ID).author_names
+    assert {"Alice", "asmith", "alice-local"} <= build_inbound_context(msg, BOT_ID).author_names
 
 
 def test_thread_context_carries_parent():

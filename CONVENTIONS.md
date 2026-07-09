@@ -117,7 +117,7 @@ wrapping of every scalar — don't retrofit the whole codebase in one pass.
 
 ## Keep code and its documentation coupled
 
-pynchy has a published docs site (`docs/`, mkdocs → pynchy.ricardodecal.com). When a
+pynchy has a published docs site generated from `docs/` with MkDocs. When a
 concrete value in code is *also* stated in prose (the security trust model,
 `MountAllowlist` blocked patterns, config keys, the architecture page), the two drift out
 of sync unless they reference each other.

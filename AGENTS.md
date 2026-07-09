@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](https://pynchy.ricardodecal.com/install/) for installation. See [architecture](https://pynchy.ricardodecal.com/architecture/) for architecture. See [CONVENTIONS.md](CONVENTIONS.md) for design principles (composition over inheritance, parse-don't-validate, semantic types, code/doc coupling) — apply them when writing or reviewing code.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](docs/install.md) for installation. See [architecture](docs/architecture/index.md) for architecture. See [CONVENTIONS.md](CONVENTIONS.md) for design principles (composition over inheritance, parse-don't-validate, semantic types, code/doc coupling) — apply them when writing or reviewing code.
 
 ## Deployment Awareness
 
@@ -12,7 +12,7 @@ Python process that connects to messaging channels (WhatsApp, Slack, etc. via pl
 
 ## Key Files
 
-Where code lives. For how it works, see the [architecture overview](https://pynchy.ricardodecal.com/architecture/).
+Where code lives. For how it works, see the [architecture overview](docs/architecture/index.md).
 
 | File | Purpose |
 |------|---------|
@@ -43,11 +43,11 @@ Where code lives. For how it works, see the [architecture overview](https://pync
 
 | Guide | When to Read |
 |-------|-------------|
-| [Architecture](https://pynchy.ricardodecal.com/architecture/) | System design, container isolation, message routing, groups, tasks |
-| [Security model](https://pynchy.ricardodecal.com/architecture/security/) | Trust model, security boundaries, credential handling |
-| [Plugin authoring](https://pynchy.ricardodecal.com/plugins/) | Writing plugins: hooks, packaging, distribution |
-| [Worktree isolation](https://pynchy.ricardodecal.com/usage/worktrees/) | How non-admin groups get isolated git worktrees |
-| [Style guide](https://pynchy.ricardodecal.com/contributing/contributing-docs/) | Documentation philosophy, information architecture, code comments |
+| [Architecture](docs/architecture/index.md) | System design, container isolation, message routing, groups, tasks |
+| [Security model](docs/architecture/security.md) | Trust model, security boundaries, credential handling |
+| [Plugin authoring](docs/plugins/index.md) | Writing plugins: hooks, packaging, distribution |
+| [Worktree isolation](docs/usage/worktrees.md) | How non-admin groups get isolated git worktrees |
+| [Style guide](docs/contributing/contributing-docs.md) | Documentation philosophy, information architecture, code comments |
 
 ## Expert Pushback Policy
 

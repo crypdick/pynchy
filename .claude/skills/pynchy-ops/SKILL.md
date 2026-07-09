@@ -5,7 +5,7 @@ description: Use when managing the pynchy service on the server — deploying ch
 
 # Pynchy Ops
 
-The live Pynchy host is deployment-specific. Public repo instructions must not assume a private hostname. Set `PYNCHY_HOST` from local memory, environment, or the operator before running remote commands.
+The live Pynchy host and checkout path are deployment-specific. Public repo instructions must not assume a private hostname or home-directory layout. Set `PYNCHY_HOST` and `PYNCHY_REMOTE_ROOT` from local memory, environment, or the operator before running remote commands.
 
 ## Auto-deploy: Never Restart Manually
 
@@ -47,13 +47,13 @@ docker ps --filter name=pynchy
 docker ps -a --filter name=pynchy
 
 # 4. Recent errors in service log?
-tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.error.log
+tail -n 100 "$PYNCHY_REMOTE_ROOT/logs/pynchy.error.log"
 
 # 5. Is Slack/WhatsApp connected?
-tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep -E 'Connected to|Connection closed|Slack'
+tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.log" | grep -E 'Connected to|Connection closed|Slack'
 
 # 6. Are groups loaded?
-tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep groupCount
+tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.log" | grep groupCount
 ```
 
 ## Deploy & Observe
@@ -62,12 +62,13 @@ tail -n 200 ~/src/PERSONAL/pynchy/logs/pynchy.log | grep groupCount
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
 PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
 PYNCHY_PORT="${PYNCHY_PORT:-8484}"
+PYNCHY_REMOTE_ROOT="${PYNCHY_REMOTE_ROOT:?set the live checkout path}"
 curl -s -X POST "http://$PYNCHY_HOST:$PYNCHY_PORT/deploy"
 
 # Observe (always safe)
 ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy'
-ssh "$PYNCHY_HOST" 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.log'
-ssh "$PYNCHY_HOST" 'tail -n 100 ~/src/PERSONAL/pynchy/logs/pynchy.error.log'
+ssh "$PYNCHY_HOST" "tail -n 100 '$PYNCHY_REMOTE_ROOT/logs/pynchy.log'"
+ssh "$PYNCHY_HOST" "tail -n 100 '$PYNCHY_REMOTE_ROOT/logs/pynchy.error.log'"
 ssh "$PYNCHY_HOST" 'docker ps --filter name=pynchy'
 
 # Manual restart — ONLY for unhealthy/stuck service
@@ -80,17 +81,17 @@ ssh "$PYNCHY_HOST" 'launchctl kickstart -k gui/$(id -u)/com.pynchy'
 
 ```bash
 # Recent activity for a specific group (replace <JID> with e.g. slack:C0AFR6DB0FK)
-ssh "$PYNCHY_HOST" 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
+ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && sqlite3 data/messages.db \"
   SELECT timestamp, message_type, substr(content, 1, 120)
-  FROM messages WHERE chat_jid = '\''<JID>'\''
+  FROM messages WHERE chat_jid = '<JID>'
   ORDER BY timestamp DESC LIMIT 15;
-"'
+\""
 
 # All recent activity across all groups
-ssh "$PYNCHY_HOST" 'cd ~/src/PERSONAL/pynchy && sqlite3 data/messages.db "
+ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && sqlite3 data/messages.db \"
   SELECT timestamp, chat_jid, message_type, substr(content, 1, 80)
   FROM messages ORDER BY timestamp DESC LIMIT 15;
-"'
+\""
 ```
 
 ## Temporal Scheduler
@@ -103,7 +104,7 @@ macOS launchd deployment:
 |------|-------|
 | LaunchAgent | `~/Library/LaunchAgents/com.pynchy.temporal.plist` |
 | Address | `127.0.0.1:7233` |
-| DB | `~/src/PERSONAL/pynchy/data/temporal.db` |
+| DB | `$PYNCHY_REMOTE_ROOT/data/temporal.db` |
 | Logs | `~/Library/Logs/pynchy/temporal.log`, `~/Library/Logs/pynchy/temporal.err.log` |
 
 Safe checks:
@@ -207,12 +208,12 @@ Verify: `container run -i --rm --entrypoint python pynchy-agent:latest -c "impor
 
 Runs as `pynchy-litellm` Docker container with PostgreSQL sidecar (`pynchy-litellm-db`). Access at `http://localhost:4000` on the Pynchy host, or via Tailscale at port 4000.
 
-Master key lookup: `ssh "$PYNCHY_HOST" 'grep master_key ~/src/PERSONAL/pynchy/config.toml'`
+Master key lookup: `ssh "$PYNCHY_HOST" "grep master_key '$PYNCHY_REMOTE_ROOT/config.toml'"`
 Pass as: `Authorization: Bearer <key>`
 
 If `master_key` is not in `config.toml`, it may be injected via `.env` or container env. Prefer a scripted lookup that **does not print the key**, e.g. using it inline for a request (see `references/litellm-diagnostics.md` for examples).
 
-Config: `~/src/PERSONAL/pynchy/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
+Config: `$PYNCHY_REMOTE_ROOT/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
 
 Dashboard: `http://$PYNCHY_HOST:4000/ui/`
 
@@ -245,7 +246,7 @@ All databases live in `data/`:
 | `data/neonize.db` | WhatsApp auth state (Neonize credentials) |
 | `data/memories.db` | BM25-ranked memory store (sqlite-memory plugin) |
 
-Quick inspection (run on the live host or prefix with `ssh "$PYNCHY_HOST" 'cd ~/src/PERSONAL/pynchy && ...'`):
+Quick inspection (run on the live host or prefix with `ssh "$PYNCHY_HOST" "cd '$PYNCHY_REMOTE_ROOT' && ..."`):
 
 ```bash
 # List registered groups

@@ -108,7 +108,7 @@ mkdir -p ~/Library/Logs/pynchy data
 cp launchd/com.pynchy.temporal.plist ~/Library/LaunchAgents/com.pynchy.temporal.plist
 ```
 
-Before loading the plist, replace `$HOME` in `~/Library/LaunchAgents/com.pynchy.temporal.plist` with your absolute home directory. `launchd` does not expand shell variables inside plist string values.
+Before loading the plist, replace `$HOME` with your absolute home directory and `$PYNCHY_PROJECT_ROOT` with the absolute path to this checkout. `launchd` does not expand shell variables inside plist string values.
 
 ```bash
 plutil -lint ~/Library/LaunchAgents/com.pynchy.temporal.plist
@@ -139,7 +139,7 @@ The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db
 cp launchd/com.pynchy.backup.plist ~/Library/LaunchAgents/com.pynchy.backup.plist
 ```
 
-Before loading the plist, replace `$HOME` in `~/Library/LaunchAgents/com.pynchy.backup.plist` with your absolute home directory.
+Before loading the plist, replace `$HOME` with your absolute home directory and `$PYNCHY_PROJECT_ROOT` with the absolute path to this checkout.
 
 ```bash
 plutil -lint ~/Library/LaunchAgents/com.pynchy.backup.plist

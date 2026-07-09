@@ -30,14 +30,14 @@ Everyone is writing their own AI assistant. Why write another one? Mainly becaus
   - Rate limiting
   - MCP gateway — manages external MCP tool servers with per-workspace access control and on-demand Docker lifecycle.
   - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
-- [Eight types of plugins](https://pynchy.ricardodecal.com/plugins/) — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
+- [Eight types of plugins](docs/plugins/index.md) — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
 - Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
 - Recurring tasks scheduled at specific times or intervals.
 - Policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
 
 ## Integrations
 
-Built-in plugins provide integrations with external services, and they're all pluggable — see [plugin authoring](https://pynchy.ricardodecal.com/plugins/) to add your own.
+Built-in plugins provide integrations with external services, and they're all pluggable — see [plugin authoring](docs/plugins/index.md) to add your own.
 
 | Integration | What it does |
 |-------------|-------------|
@@ -50,29 +50,29 @@ Built-in plugins provide integrations with external services, and they're all pl
 
 ## Getting Started
 
-See the **[installation guide](https://pynchy.ricardodecal.com/install/)**.
+See the **[installation guide](docs/install.md)**.
 
 ## Documentation
 
-Full documentation at **[pynchy.ricardodecal.com](https://pynchy.ricardodecal.com/)**.
+Full documentation lives in [docs/](docs/).
 
 | Section | What it covers |
 |---------|---------------|
-| [Usage](https://pynchy.ricardodecal.com/usage/) | Day-to-day operation, groups, scheduled tasks |
-| [Plugin authoring](https://pynchy.ricardodecal.com/plugins/) | Writing plugins: channels, skills, MCP servers |
-| [Architecture & Design](https://pynchy.ricardodecal.com/architecture/) | Container isolation, message routing, IPC, security |
-| [Contributing](https://pynchy.ricardodecal.com/contributing/contributing-code/) | How to contribute — plugins, fixes, docs, and more |
+| [Usage](docs/usage/index.md) | Day-to-day operation, groups, scheduled tasks |
+| [Plugin authoring](docs/plugins/index.md) | Writing plugins: channels, skills, MCP servers |
+| [Architecture & Design](docs/architecture/index.md) | Container isolation, message routing, IPC, security |
+| [Contributing](docs/contributing/contributing-code.md) | How to contribute — plugins, fixes, docs, and more |
 
 ## FAQ
 
 **What messaging channels are supported?**
-WhatsApp and Slack have first-party plugins. Channels are pluggable — write a [plugin](https://pynchy.ricardodecal.com/plugins/) to add new ones.
+WhatsApp and Slack have first-party plugins. Channels are pluggable — write a [plugin](docs/plugins/index.md) to add new ones.
 
 **Why Apple Container instead of Docker?**
 On macOS, Apple Container is lightweight and optimized for Apple silicon. Docker works too and is used as a fallback. On Linux, Docker is the only option.
 
 **Is this secure?**
-Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. See [the security model](https://pynchy.ricardodecal.com/architecture/security/) for details.
+Agents run in containers, not behind application-level permission checks. They can only access explicitly mounted directories. See [the security model](docs/architecture/security.md) for details.
 
 **How do I debug issues?**
 Ask Pynchy. "Why isn't the scheduler running?" "What's in the recent logs?"

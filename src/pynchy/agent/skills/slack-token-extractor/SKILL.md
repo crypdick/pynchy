@@ -39,7 +39,7 @@ On **headless server** (no X display), tool auto-start virtual display with noVN
 **Hardware security keys (YubiKey, FIDO2):** noVNC cannot forward WebAuthn challenges — key must physically connect to machine running browser. If Slack login need hardware key, run `setup_slack_session` on local machine with key attached, then rsync profile to server:
 
 ```bash
-rsync -az data/playwright-profiles/acme/ server:~/src/PERSONAL/pynchy/data/playwright-profiles/acme/
+rsync -az data/playwright-profiles/acme/ server:/path/to/pynchy/data/playwright-profiles/acme/
 ```
 
 ## Refreshing tokens

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Replace $HOME with an absolute home directory before installing; launchd
-     does not expand shell variables in plist string values. -->
+<!-- Replace $HOME and $PYNCHY_PROJECT_ROOT with absolute paths before installing;
+     launchd does not expand shell variables in plist string values. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -17,12 +17,12 @@
         <string>7233</string>
         <string>--headless</string>
         <string>--db-filename</string>
-        <string>$HOME/src/PERSONAL/pynchy/data/temporal.db</string>
+        <string>$PYNCHY_PROJECT_ROOT/data/temporal.db</string>
         <string>--log-level</string>
         <string>warn</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$HOME/src/PERSONAL/pynchy</string>
+    <string>$PYNCHY_PROJECT_ROOT</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

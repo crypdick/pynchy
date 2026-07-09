@@ -10,6 +10,12 @@ import pytest
 from pynchy.plugins import get_plugin_manager
 
 
+@pytest.fixture(autouse=True)
+def _disable_host_entrypoint_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep plugin discovery tests independent of locally installed plugins."""
+    monkeypatch.setattr(pluggy.PluginManager, "load_setuptools_entrypoints", lambda *_: 0)
+
+
 class TestPluginManager:
     """Tests for plugin manager initialization and discovery."""
 

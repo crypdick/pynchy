@@ -372,7 +372,7 @@ class TestSenderFilter:
             id="msg-owner-name",
             chat_jid="slack:C123",
             sender="U04OWNER",
-            sender_name="Ricardo",
+            sender_name="Alice",
             content="hello",
             timestamp="2024-06-01T00:00:00",
         )
@@ -384,7 +384,7 @@ class TestSenderFilter:
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
         monkeypatch.setattr(
             "pynchy.config.settings._state.settings",
-            _owner_settings(owner=OwnerConfig(slack="ricardo")),
+            _owner_settings(owner=OwnerConfig(slack="alice")),
         )
 
         await reconcile_all_channels(deps)

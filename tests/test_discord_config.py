@@ -161,7 +161,7 @@ def test_settings_accept_discord_dm_name_allowlist_with_workspace_profile():
                 "type": "discord",
                 "bot_token_env": "DISCORD_BOT_TOKEN",
                 "dm_policy": "allowlist",
-                "allow_from": ["ricardo"],
+                "allow_from": ["alice"],
                 "group_policy": "disabled",
             }
         },
@@ -169,7 +169,7 @@ def test_settings_accept_discord_dm_name_allowlist_with_workspace_profile():
         workspaces={"discord-dm": WorkspaceConfig(profiles=["admin"])},
     )
 
-    assert settings.connections["mybot"].allow_from == ["ricardo"]
+    assert settings.connections["mybot"].allow_from == ["alice"]
 
 
 def test_workspace_chat_ref_is_not_part_of_config_schema():

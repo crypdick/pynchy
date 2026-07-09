@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,8 +12,6 @@ from pynchy.config.settings import validate_settings_mapping
 from pynchy.config.toml_io import parse_settings_toml
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pynchy.config import Settings
 
 
@@ -118,7 +117,7 @@ def test_new_schema_parses_minimal_config() -> None:
     )
 
     assert settings.agent.default_core == "codex"
-    assert str(settings.repos.root) == "/Users/ricardo/src/PERSONAL"
+    assert settings.repos.root == Path.cwd().parent.resolve()
     assert settings.profiles["base"].repo == ["owner/project"]
     assert settings.workspaces["engineering"].profiles == ["base"]
     assert settings.tools["shell"].type == "builtin"
@@ -127,6 +126,30 @@ def test_new_schema_parses_minimal_config() -> None:
     assert settings.tools["docs"].type == "mcp"
     assert settings.connections["synapse"].type == "discord"
     assert settings.command_center.connection == "synapse"
+
+
+def test_repos_root_defaults_to_parent_of_project_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = tmp_path / "pynchy"
+    project_root.mkdir()
+    monkeypatch.chdir(project_root)
+
+    settings = _settings_from_dict({})
+
+    assert settings.repos.root == tmp_path.resolve()
+
+
+def test_repos_root_config_resolves_relative_to_project_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = tmp_path / "pynchy"
+    project_root.mkdir()
+    monkeypatch.chdir(project_root)
+
+    settings = _settings_from_dict({"repos": {"root": "repos"}})
+
+    assert settings.repos.root == (project_root / "repos").resolve()
 
 
 @pytest.mark.parametrize(

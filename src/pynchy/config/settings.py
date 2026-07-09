@@ -174,7 +174,7 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = GatewayConfig()
     onecli: OneCliConfig = OneCliConfig()
     learning: LearningConfig = LearningConfig()
-    repos: ReposConfig = ReposConfig()
+    repos: ReposConfig = Field(default_factory=ReposConfig)
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
