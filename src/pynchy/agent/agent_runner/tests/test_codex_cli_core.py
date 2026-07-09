@@ -60,6 +60,7 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
     expected_top_level = {
+        "model": "gpt-5.2-codex",
         "model_provider": "pynchy_litellm",
         "approval_policy": "never",
         "sandbox_mode": "danger-full-access",

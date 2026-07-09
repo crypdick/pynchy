@@ -104,6 +104,7 @@ def write_codex_config(
     mcp_servers: dict[str, dict[str, Any]],
     *,
     gateway_base_url: str,
+    model: str | None = None,
 ) -> None:
     """Write the Pynchy-managed Codex CLI config for this per-group home."""
     codex_home.mkdir(parents=True, exist_ok=True)
@@ -112,28 +113,34 @@ def write_codex_config(
         'approval_policy = "never"',
         f"sandbox_mode = {_toml_value(DEFAULT_CODEX_SANDBOX_MODE)}",
         f"model_provider = {_toml_value(_PYNCHY_LITELLM_PROVIDER)}",
-        "",
-        f"[model_providers.{_PYNCHY_LITELLM_PROVIDER}]",
-        'name = "Pynchy LiteLLM Gateway"',
-        f"base_url = {_toml_value(gateway_base_url)}",
-        'wire_api = "responses"',
-        'env_key = "OPENAI_API_KEY"',
-        "",
-        "[features]",
-        "hooks = true",
-        "",
-        "[sandbox_workspace_write]",
-        "network_access = true",
-        "",
-        "[[hooks.PreToolUse]]",
-        'matcher = "*"',
-        "",
-        "[[hooks.PreToolUse.hooks]]",
-        'type = "command"',
-        f"command = {_toml_value(f'{sys.executable} -m agent_runner.security.hook_entry')}",
-        "timeout = 30",
-        'statusMessage = "Checking Pynchy security policy"',
     ]
+    if model:
+        lines.append(f"model = {_toml_value(model)}")
+    lines.extend(
+        [
+            "",
+            f"[model_providers.{_PYNCHY_LITELLM_PROVIDER}]",
+            'name = "Pynchy LiteLLM Gateway"',
+            f"base_url = {_toml_value(gateway_base_url)}",
+            'wire_api = "responses"',
+            'env_key = "OPENAI_API_KEY"',
+            "",
+            "[features]",
+            "hooks = true",
+            "",
+            "[sandbox_workspace_write]",
+            "network_access = true",
+            "",
+            "[[hooks.PreToolUse]]",
+            'matcher = "*"',
+            "",
+            "[[hooks.PreToolUse.hooks]]",
+            'type = "command"',
+            f"command = {_toml_value(f'{sys.executable} -m agent_runner.security.hook_entry')}",
+            "timeout = 30",
+            'statusMessage = "Checking Pynchy security policy"',
+        ]
+    )
 
     for name, spec in sorted(mcp_servers.items()):
         lines.extend(_mcp_server_lines(name, spec))

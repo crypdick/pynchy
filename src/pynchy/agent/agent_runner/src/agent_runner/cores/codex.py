@@ -76,6 +76,11 @@ def _pynchy_session_id(thread_id: str) -> str:
     return f"{_CODEX_SESSION_PREFIX}{thread_id}"
 
 
+def _configured_model(extra: dict[str, Any]) -> str | None:
+    model = extra.get("model")
+    return str(model) if model else None
+
+
 def _item_text(item: dict[str, Any]) -> str:
     """Extract display text from common Codex JSONL item shapes."""
     text = item.get("text") or item.get("message") or item.get("summary") or item.get("output")
@@ -142,6 +147,7 @@ class CodexCLIAgentCore:
             codex_home,
             self.config.mcp_servers,
             gateway_base_url=gateway_base_url,
+            model=_configured_model(self.config.extra),
         )
 
         self._env = os.environ.copy()
@@ -180,8 +186,8 @@ class CodexCLIAgentCore:
             args.append("resume")
         args += ["--json", "--skip-git-repo-check"]
 
-        if model := self.config.extra.get("model"):
-            args += ["--model", str(model)]
+        if model := _configured_model(self.config.extra):
+            args += ["--model", model]
         if thread_id:
             args.append(thread_id)
         args.append("-")
