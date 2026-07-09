@@ -271,6 +271,18 @@ class SlackChannel:
         await self.allowlist.sync_allowed_channels()
 
     @property
+    def on_ask_user_answer(self) -> Callable[[str, dict[str, Any]], None] | None:
+        return self._on_ask_user_answer
+
+    @property
+    def on_approval_decision(self) -> Callable[[str, str, str, str], None] | None:
+        return self._on_approval_decision
+
+    @property
+    def on_agent_stop(self) -> Callable[[str, str], None] | None:
+        return self._on_agent_stop
+
+    @property
     def allow_create(self) -> bool:
         return self._allow_create
 
