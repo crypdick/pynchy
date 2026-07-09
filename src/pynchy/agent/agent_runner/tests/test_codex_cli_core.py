@@ -198,6 +198,17 @@ def test_build_args_for_resumed_session(tmp_path, monkeypatch):
     ]
 
 
+def test_build_args_for_model_tagged_resumed_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
+    core = _core(session_id="codex:gpt-5.2-codex:thread-019c6e27")
+    asyncio.run(core.start())
+
+    args = core._build_args()
+
+    assert args[-2:] == ["thread-019c6e27", "-"]
+
+
 def test_build_args_ignores_foreign_session_id(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     _set_gateway_env(monkeypatch)
@@ -223,8 +234,8 @@ def test_thread_started_captures_session_id():
     events = core._map_event({"type": "thread.started", "thread_id": "thread-1"})
 
     assert [e.type for e in events] == ["system"]
-    assert core.session_id == "codex:thread-1"
-    assert events[0].data["system_data"]["session_id"] == "codex:thread-1"
+    assert core.session_id == "codex:gpt-5.2-codex:thread-1"
+    assert events[0].data["system_data"]["session_id"] == "codex:gpt-5.2-codex:thread-1"
 
 
 def test_agent_message_maps_to_text_and_last_result():

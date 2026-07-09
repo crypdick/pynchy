@@ -68,11 +68,15 @@ def _codex_thread_id(session_id: str | None) -> str | None:
     if not session_id or not session_id.startswith(_CODEX_SESSION_PREFIX):
         return None
     thread_id = session_id.removeprefix(_CODEX_SESSION_PREFIX)
+    if ":" in thread_id:
+        _model, thread_id = thread_id.split(":", maxsplit=1)
     return thread_id or None
 
 
-def _pynchy_session_id(thread_id: str) -> str:
+def _pynchy_session_id(thread_id: str, model: str | None = None) -> str:
     """Namespace Codex thread ids so other cores never try to resume them."""
+    if model:
+        return f"{_CODEX_SESSION_PREFIX}{model}:{thread_id}"
     return f"{_CODEX_SESSION_PREFIX}{thread_id}"
 
 
@@ -303,7 +307,7 @@ class CodexCLIAgentCore:
     def _map_thread_started(self, obj: dict[str, Any]) -> list[AgentEvent]:
         sid = obj.get("thread_id") or obj.get("threadId")
         if isinstance(sid, str) and sid:
-            self._session_id = _pynchy_session_id(sid)
+            self._session_id = _pynchy_session_id(sid, _configured_model(self.config.extra))
         system_data = dict(obj)
         if self._session_id:
             system_data["session_id"] = self._session_id

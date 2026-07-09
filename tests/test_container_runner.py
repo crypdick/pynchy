@@ -50,6 +50,7 @@ from pynchy.host.orchestrator.agent_runner import (
     _build_admin_system_notices,  # allow: private-test-imports
     _build_container_input,  # allow: private-test-imports
     _PreContainerResult,  # allow: private-test-imports
+    _session_model_mismatch,  # allow: private-test-imports
     _session_tracking_output_handler,  # allow: private-test-imports
 )
 from pynchy.types import (
@@ -1656,6 +1657,27 @@ class TestContainerInputAgentCoreConfig:
             result = _build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
         assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
+
+    def test_codex_session_without_model_tag_mismatches_configured_model(self):
+        assert _session_model_mismatch(
+            "codex:019f47ec-2cc1-7920-84e7-64e85277a1ad",
+            {"model": "gpt-5.5"},
+        )
+
+    def test_codex_session_with_matching_model_tag_is_compatible(self):
+        assert not _session_model_mismatch(
+            "codex:gpt-5.5:019f47ec-2cc1-7920-84e7-64e85277a1ad",
+            {"model": "gpt-5.5"},
+        )
+
+    def test_codex_session_with_different_model_tag_mismatches(self):
+        assert _session_model_mismatch(
+            "codex:gpt-5.6-sol:019f47ec-2cc1-7920-84e7-64e85277a1ad",
+            {"model": "gpt-5.5"},
+        )
+
+    def test_non_codex_session_compatibility_is_not_model_gated(self):
+        assert not _session_model_mismatch("claude-session-1", {"model": "gpt-5.5"})
 
 
 class TestAgentRunnerPreContainerHelpers:

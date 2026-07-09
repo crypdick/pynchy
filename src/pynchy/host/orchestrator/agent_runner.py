@@ -47,6 +47,8 @@ _build_admin_system_notices = _preflight._build_admin_system_notices
 _merged_system_notices = _preflight._merged_system_notices
 session_id_from_output = _preflight.session_id_from_output
 
+_CODEX_SESSION_PREFIX = "codex:"
+
 
 @runtime_checkable
 class AgentRunnerDeps(Protocol):
@@ -179,6 +181,27 @@ def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[st
     if resolved_model:
         result["model"] = resolved_model
     return result or None
+
+
+def _codex_session_model(session_id: str) -> str | None:
+    if not session_id.startswith(_CODEX_SESSION_PREFIX):
+        return None
+    body = session_id.removeprefix(_CODEX_SESSION_PREFIX)
+    if ":" not in body:
+        return None
+    model, _thread_id = body.split(":", maxsplit=1)
+    return model or None
+
+
+def _session_model_mismatch(
+    session_id: str | None,
+    agent_core_config: dict[str, str] | None,
+) -> bool:
+    """Return True when a stored Codex session cannot safely resume this model."""
+    if not session_id or not session_id.startswith(_CODEX_SESSION_PREFIX):
+        return False
+    resolved_model = (agent_core_config or {}).get("model")
+    return _codex_session_model(session_id) != resolved_model
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +408,19 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
 
     # --- Interactive messages: warm/cold session path ---
+    agent_core_config = _agent_core_config_from_settings(group.folder)
+    if _session_model_mismatch(ctx.session_id, agent_core_config):
+        logger.info(
+            "Stored Codex session model changed; starting fresh session",
+            group=group.name,
+            session_id=ctx.session_id,
+            model=(agent_core_config or {}).get("model"),
+        )
+        await destroy_session(group.folder)
+        await clear_session(GroupFolder(group.folder))
+        deps.sessions.pop(group.folder, None)
+        ctx.session_id = None
+
     session = get_session(GroupFolder(group.folder))
 
     pre_container_ms = (time.monotonic() - run_agent_start) * 1000
