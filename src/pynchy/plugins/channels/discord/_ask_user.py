@@ -117,13 +117,13 @@ class AskUserSelect(discord.ui.Select["DiscordAskUserView"]):
 
     async def callback(self, interaction: Any) -> None:
         view = _require_ask_user_view(self.view)
-        if not view._interaction_allowed(interaction):
+        if not view.is_interaction_allowed(interaction):
             await interaction.response.send_message(
                 "You are not allowed to answer this prompt.",
                 ephemeral=True,
             )
             return
-        view._selected_answers = list(self.values)
+        view.record_selected_answers(self.values)
         await interaction.response.send_message(
             "Selection recorded. Press Submit to finish.",
             ephemeral=True,
@@ -153,7 +153,7 @@ class AskUserTextButton(discord.ui.Button["DiscordAskUserView"]):
 
     async def callback(self, interaction: Any) -> None:
         view = _require_ask_user_view(self.view)
-        if not view._interaction_allowed(interaction):
+        if not view.is_interaction_allowed(interaction):
             await interaction.response.send_message(
                 "You are not allowed to answer this prompt.",
                 ephemeral=True,
@@ -166,7 +166,7 @@ class AskUserTextModal(discord.ui.Modal):
     """Modal prompt for free-text ask_user answers."""
 
     def __init__(self, view: DiscordAskUserView) -> None:
-        question = view._questions[0]
+        question = view.primary_question()
         raw_header = question.get("header")
         header = raw_header if isinstance(raw_header, str) else "Answer question"
         super().__init__(title=header[:45], custom_id=_TEXT_MODAL_CUSTOM_ID)
@@ -234,6 +234,12 @@ class DiscordAskUserView(discord.ui.View):
     def bind_message_id(self, message_id: str) -> None:
         self._message_id = message_id
 
+    def primary_question(self) -> dict[str, Any]:
+        return self._questions[0]
+
+    def record_selected_answers(self, answers: list[str]) -> None:
+        self._selected_answers = list(answers)
+
     def _question_prompt(self) -> str:
         prompt = self._questions[0].get("question", "")
         return prompt if isinstance(prompt, str) else str(prompt)
@@ -255,7 +261,7 @@ class DiscordAskUserView(discord.ui.View):
         await self.finalize_answer(interaction, selected_answers)
 
     async def finalize_answer(self, interaction: Any, answer_value: str | list[str]) -> None:
-        if not self._interaction_allowed(interaction):
+        if not self.is_interaction_allowed(interaction):
             await interaction.response.send_message(
                 "You are not allowed to answer this prompt.",
                 ephemeral=True,
@@ -294,7 +300,7 @@ class DiscordAskUserView(discord.ui.View):
             for item in self.children:
                 item.disabled = True
             try:
-                channel = await self._channel._resolve_channel(self._jid)
+                channel = await self._channel.resolve_channel(self._jid)
                 message = await channel.fetch_message(int(self._message_id))
                 await message.edit(
                     content=(
@@ -310,9 +316,9 @@ class DiscordAskUserView(discord.ui.View):
 
     def _forget(self) -> None:
         if self._message_id is not None:
-            self._channel._ask_user_views.pop(self._message_id, None)
+            self._channel.forget_ask_user_view(self._message_id)
 
-    def _interaction_allowed(self, interaction: Any) -> bool:
+    def is_interaction_allowed(self, interaction: Any) -> bool:
         user = interaction.user
         channel = interaction.channel
         guild = interaction.guild

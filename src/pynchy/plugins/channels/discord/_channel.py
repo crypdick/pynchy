@@ -291,6 +291,12 @@ class DiscordChannel:
             channel = await client.fetch_channel(snowflake)
         return channel
 
+    async def resolve_channel(self, jid: str) -> Any:
+        return await self._resolve_channel(jid)
+
+    def forget_ask_user_view(self, message_id: str) -> None:
+        self._ask_user_views.pop(message_id, None)
+
     async def _send_text(self, channel: Any, text: str) -> None:
         for chunk in chunk_discord_text(text):
             await channel.send(
@@ -442,7 +448,7 @@ class DiscordChannel:
                 questions=questions,
             )
         try:
-            channel = await self._resolve_channel(jid)
+            channel = await self.resolve_channel(jid)
             message = await channel.send(
                 text,
                 view=view,

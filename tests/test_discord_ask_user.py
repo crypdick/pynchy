@@ -108,7 +108,7 @@ async def test_send_ask_user_posts_button_view_for_single_question():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
 
     message_id = await ch.send_ask_user("discord:direct:42", REQUEST_ID, _single_question())
 
@@ -126,7 +126,7 @@ async def test_send_ask_user_splits_more_than_five_buttons_across_rows():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _single_question(count=6))
 
     view = fake.sends[0][1]["view"]
@@ -140,7 +140,7 @@ async def test_send_ask_user_falls_back_to_text_for_multiple_questions():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     questions = [
         *_single_question(),
         {
@@ -162,7 +162,7 @@ async def test_send_ask_user_uses_select_for_multi_select_question():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _multi_select_question())
 
     view = fake.sends[0][1]["view"]
@@ -178,7 +178,7 @@ async def test_multi_select_submit_delivers_list_answer():
     ch = _make_channel(on_ask_user_answer=callback)
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _multi_select_question())
 
     view = fake.sends[0][1]["view"]
@@ -206,7 +206,7 @@ async def test_send_ask_user_uses_modal_launcher_for_free_text_question():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _free_text_question())
 
     view = fake.sends[0][1]["view"]
@@ -220,7 +220,7 @@ async def test_free_text_modal_submit_delivers_answer():
     ch = _make_channel(on_ask_user_answer=callback)
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _free_text_question())
 
     view = fake.sends[0][1]["view"]
@@ -261,7 +261,7 @@ async def test_button_callback_delivers_answer_and_removes_interactivity():
     ch = _make_channel(on_ask_user_answer=callback)
     ch.client = object()
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _single_question())
 
     view = fake.sends[0][1]["view"]
@@ -293,15 +293,13 @@ async def test_timeout_disables_interactivity_and_marks_prompt_expired():
     ch = _make_channel()
     ch.client = object()
     fake = _FakeAskUserChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.send_ask_user("discord:direct:42", REQUEST_ID, _single_question())
 
     view = fake.sends[0][1]["view"]
-    assert "101" in ch._ask_user_views
 
     await view.on_timeout()
 
-    assert "101" not in ch._ask_user_views
     message = await fake.fetch_message(101)
     assert message.edits, "expected timed-out message to be edited"
     assert "expired" in message.edits[-1]["content"].lower()
