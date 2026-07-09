@@ -14,7 +14,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.host.container_manager import orchestrator as container_orchestrator
 from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
+from pynchy.host.orchestrator import agent_runner
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.types import ContainerInput, WorkspaceProfile
 
@@ -55,8 +57,6 @@ class _FakeDeps:
 
 def _make_pre_container_result():
     """Build a fake PreContainerResult with all required fields."""
-    from pynchy.host.orchestrator import agent_runner
-
     return agent_runner.PreContainerResult(
         is_admin=False,
         repo_access=None,
@@ -125,8 +125,6 @@ class TestScheduledTaskUsesSession:
 
     async def _call(self):
         """Call _run_scheduled_task with standard mocks."""
-        from pynchy.host.orchestrator import agent_runner
-
         return await agent_runner._run_scheduled_task(
             self.deps,
             self.group,
@@ -182,9 +180,7 @@ class TestScheduledTaskUsesSession:
 
     def test_run_container_agent_fully_removed(self):
         """run_container_agent was removed — ensure it doesn't reappear."""
-        import pynchy.host.container_manager.orchestrator as orch
-
-        assert not hasattr(orch, "run_container_agent"), (
+        assert not hasattr(container_orchestrator, "run_container_agent"), (
             "run_container_agent was removed — scheduled tasks use session-based streaming"
         )
 
