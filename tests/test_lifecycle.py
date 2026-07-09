@@ -22,10 +22,22 @@ class StopAfterArgumentValidationError(Exception):
     """Sentinel raised once run_app reaches its first startup phase."""
 
 
+def _completed_awaitable(value: Any = None) -> Awaitable[Any]:
+    future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    future.set_result(value)
+    return future
+
+
+def _failed_awaitable(exc: Exception) -> Awaitable[Any]:
+    future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    future.set_exception(exc)
+    return future
+
+
 @pytest.mark.asyncio
 async def test_run_app_resolves_pynchyapp_runtime_annotation(monkeypatch):
-    async def stop_before_startup(app: PynchyApp) -> None:
-        raise StopAfterArgumentValidationError
+    def stop_before_startup(app: PynchyApp) -> Awaitable[None]:
+        return _failed_awaitable(StopAfterArgumentValidationError())
 
     monkeypatch.setattr(lifecycle, "_initialize_core", stop_before_startup)
 
@@ -50,8 +62,8 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_can_finish = asyncio.Event()
     shutdown_finished = asyncio.Event()
 
-    async def noop_phase(*_args: Any, **_kwargs: Any) -> dict[str, list[str]] | None:
-        return {}
+    def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[dict[str, list[str]] | None]:
+        return _completed_awaitable({})
 
     async def fake_start_message_loop(
         _deps: Any,
@@ -110,9 +122,10 @@ async def test_channel_history_catch_up_defers_until_temporal_runtime(monkeypatc
     app = PynchyApp()
     start_called = False
 
-    async def fail_if_started() -> None:
+    def fail_if_started() -> Awaitable[None]:
         nonlocal start_called
         start_called = True
+        return _completed_awaitable()
 
     monkeypatch.setattr(app, "start_channel_reconciliation", fail_if_started)
     monkeypatch.setattr(
@@ -148,8 +161,8 @@ async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled
         def cancel(self) -> None:
             self.cancelled = True
 
-    async def fake_stop_gateway() -> None:
-        return None
+    def fake_stop_gateway() -> Awaitable[None]:
+        return _completed_awaitable()
 
     monkeypatch.setattr(lifecycle.threading, "Timer", FakeTimer)
     monkeypatch.setattr("pynchy.host.container_manager.gateway.stop_gateway", fake_stop_gateway)
@@ -180,8 +193,8 @@ async def test_shutdown_app_exits_zero_after_cleanup_when_requested(monkeypatch)
         def cancel(self) -> None:
             return None
 
-    async def fake_stop_gateway() -> None:
-        return None
+    def fake_stop_gateway() -> Awaitable[None]:
+        return _completed_awaitable()
 
     def fake_exit(code: int) -> None:
         exit_codes.append(code)
@@ -216,10 +229,7 @@ class _HttpRunner:
 
 
 def _noop_coroutine() -> Coroutine[Any, Any, None]:
-    async def _noop() -> None:
-        return None
-
-    return _noop()
+    return asyncio.sleep(0)
 
 
 @pytest.mark.parametrize(
@@ -258,8 +268,8 @@ async def test_start_subsystems_does_not_start_local_learning_worker(
     def fake_loop(*_args: Any, **_kwargs: Any) -> Coroutine[Any, Any, None]:
         return _noop_coroutine()
 
-    async def fake_start_http_server(*_args: Any, **_kwargs: Any) -> _HttpRunner:
-        return _HttpRunner()
+    def fake_start_http_server(*_args: Any, **_kwargs: Any) -> Awaitable[_HttpRunner]:
+        return _completed_awaitable(_HttpRunner())
 
     monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
     monkeypatch.setattr(lifecycle, "create_background_task", fake_create_background_task)

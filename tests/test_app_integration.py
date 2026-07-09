@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -47,12 +48,25 @@ def _make_message(
     )
 
 
-async def _noop_docker_rm(name: str) -> None:
+def _completed_awaitable(value: Any = None) -> Awaitable[Any]:
+    future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    future.set_result(value)
+    return future
+
+
+def _failed_awaitable(exc: Exception) -> Awaitable[Any]:
+    future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
+    future.set_exception(exc)
+    return future
+
+
+def _noop_docker_rm(name: str) -> Awaitable[None]:
     """No-op replacement for _docker_rm_force in tests.
 
     _docker_rm_force spawns a real subprocess (``container rm -f``) which
     hangs in the test environment where there is no container runtime.
     """
+    return _completed_awaitable()
 
 
 @contextlib.contextmanager
@@ -369,8 +383,8 @@ class TestProcessGroupMessages:
         )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         channel = FakeChannel()
         app.channels = [channel]
@@ -405,8 +419,8 @@ class TestProcessGroupMessages:
             )
         )
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         channel = FakeChannel()
         app.channels = [channel]
@@ -448,8 +462,8 @@ class TestProcessGroupMessages:
 
         driver = asyncio.create_task(schedule_error())
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         app.channels = [FakeChannel()]
 
@@ -490,8 +504,8 @@ class TestProcessGroupMessages:
         )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         app.channels = [FakeChannel()]
 
@@ -526,8 +540,8 @@ class TestRunAgent:
         )
         driver = asyncio.create_task(fake_proc.schedule_output())
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         group = app.workspaces["group@g.us"]
 
@@ -545,8 +559,8 @@ class TestRunAgent:
         assert app.sessions.get("test-group") == "s-1"
 
     async def test_returns_error_on_exception(self, app: PynchyApp, tmp_path: Path):
-        async def failing_create(*args: Any, **kwargs: Any) -> None:
-            raise RuntimeError("spawn failed")
+        def failing_create(*args: Any, **kwargs: Any) -> Awaitable[None]:
+            return _failed_awaitable(RuntimeError("spawn failed"))
 
         group = app.workspaces["group@g.us"]
 
@@ -574,8 +588,9 @@ class TestRecoverPendingMessages:
 
         started = []
 
-        async def _start_turn(jid: str) -> None:
+        def _start_turn(jid: str) -> Awaitable[None]:
             started.append(jid)
+            return _completed_awaitable()
 
         app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
@@ -588,8 +603,9 @@ class TestRecoverPendingMessages:
         # No messages stored at all
         started = []
 
-        async def _start_turn(jid: str) -> None:
+        def _start_turn(jid: str) -> Awaitable[None]:
             started.append(jid)
+            return _completed_awaitable()
 
         app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
@@ -653,8 +669,8 @@ class TestTraceLocalPersistence:
             _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-trace")
         )
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         channel = FakeChannel()
         app.channels = [channel]
@@ -696,8 +712,8 @@ class TestTraceLocalPersistence:
             _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-sys")
         )
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         channel = FakeChannel()
         app.channels = [channel]
@@ -742,8 +758,8 @@ class TestTraceLocalPersistence:
             _schedule_outputs_via_session(fake_proc, trace_outputs, final_session_id="sess-meta")
         )
 
-        async def fake_create(*args: Any, **kwargs: Any) -> FakeProcess:
-            return fake_proc
+        def fake_create(*args: Any, **kwargs: Any) -> Awaitable[FakeProcess]:
+            return _completed_awaitable(fake_proc)
 
         channel = FakeChannel()
         app.channels = [channel]
@@ -810,8 +826,9 @@ class TestDeployContinuationResume:
 
         started: list[str] = []
 
-        async def _start_turn(jid: str) -> None:
+        def _start_turn(jid: str) -> Awaitable[None]:
             started.append(jid)
+            return _completed_awaitable()
 
         app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
@@ -860,8 +877,9 @@ class TestDeployContinuationResume:
 
         started: list[str] = []
 
-        async def _start_turn(jid: str) -> None:
+        def _start_turn(jid: str) -> Awaitable[None]:
             started.append(jid)
+            return _completed_awaitable()
 
         app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
 
