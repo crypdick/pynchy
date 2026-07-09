@@ -188,7 +188,7 @@ async def _pause_orphaned_tasks(
     specs: dict[str, WorkspaceSpec], desired_job_task_ids: set[str]
 ) -> None:
     """Pause config-owned job tasks without a matching config declaration."""
-    assert specs is not None
+    del specs
     all_tasks = await get_all_tasks()
     for task in all_tasks:
         if task.status != "active":

@@ -21,7 +21,7 @@ def resolve_workspace_connection_name(workspace_name: str) -> str | None:
     Current WorkspaceConfig carries profile selections only, so this layer has
     no connection reference to resolve.
     """
-    assert workspace_name is not None
+    del workspace_name
     return None
 
 
@@ -31,8 +31,7 @@ def resolve_channel_config(
     channel_plugin_name: str | None = None,
 ) -> ResolvedWorkspaceConfig:
     """Return the composable profile resolution for a workspace."""
-    assert channel_jid is None or isinstance(channel_jid, str)
-    assert channel_plugin_name is None or isinstance(channel_plugin_name, str)
+    del channel_jid, channel_plugin_name
     s = get_settings()
     resolved = s.resolved_workspace_config(workspace_name)
     if resolved is not None:
@@ -137,8 +136,8 @@ def filter_allowed_messages(
     Returns:
         Filtered list — only messages from allowed senders.
     """
-    assert group is not None
-    assert channel_plugin_name is None or isinstance(channel_plugin_name, str)
+    if channel_plugin_name is not None and not isinstance(channel_plugin_name, str):
+        raise TypeError("channel_plugin_name must be a string or None")
     if getattr(group, "is_admin", False):
         return messages
 

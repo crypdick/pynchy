@@ -18,7 +18,7 @@ from pynchy.types import Channel, ServiceTrustConfig, WorkspaceProfile, Workspac
 def resolve_display_name(
     folder: str, config: WorkspaceConfig, resolved_repo_access: str | None
 ) -> str:
-    assert config
+    del config
     if resolved_repo_access:
         # Slack channel names can't contain slashes; use double-dash convention.
         return resolved_repo_access.replace("/", "--")
@@ -26,9 +26,8 @@ def resolve_display_name(
 
 
 def _workspace_security(
-    config: WorkspaceConfig, resolved: ResolvedWorkspaceConfig
+    _config: WorkspaceConfig, resolved: ResolvedWorkspaceConfig
 ) -> WorkspaceSecurity:
-    assert config
     services: dict[str, ServiceTrustConfig] = {}
     return WorkspaceSecurity(services=services, contains_secrets=resolved.contains_secrets)
 
@@ -45,11 +44,6 @@ async def ensure_workspace_registered(
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
 ) -> str | None:
     """Return or create the concrete chat JID for a configured workspace."""
-    assert config
-    assert resolved
-    assert channels is not None
-    assert settings is not None
-    assert register_fn is not None
     jid = folder_to_jid.get(folder)
     if jid is not None:
         return jid

@@ -261,12 +261,16 @@ class Settings(BaseSettings):
         for job_name, job in self.jobs.items():
             if not job.is_host:
                 continue
-            assert job.schedule is not None
-            assert job.command is not None
+            schedule = job.schedule
+            command = job.command
+            if schedule is None:
+                raise ValueError(f"host job {job_name!r} requires schedule")
+            if command is None:
+                raise ValueError(f"host job {job_name!r} requires command")
             derived[job_name] = CronJobConfig(
                 enabled=job.enabled,
-                schedule=job.schedule,
-                command=job.command,
+                schedule=schedule,
+                command=command,
                 cwd=job.cwd,
                 timeout_seconds=job.timeout_seconds or 600,
                 quiet_on_success=job.quiet_on_success or False,

@@ -43,6 +43,12 @@ if TYPE_CHECKING:
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
 
 
+def _require_plugin_manager(app: PynchyApp, phase: str) -> Any:
+    if app.plugin_manager is None:
+        raise RuntimeError(f"phase 1 (_initialize_core) must run before {phase}")
+    return app.plugin_manager
+
+
 def _start_shutdown_watchdog() -> Any:
     watchdog = threading.Timer(_SHUTDOWN_HARD_EXIT_SECONDS, lambda: os._exit(1))
     watchdog.daemon = True
@@ -197,10 +203,8 @@ async def _setup_channels(app: PynchyApp) -> None:
         on_reaction_callback=dispatch_reaction,
         on_ask_user_answer_callback=dispatch_ask_user_answer,
     )
-    assert app.plugin_manager is not None, (
-        "phase 1 (_initialize_core) must run before _setup_channels"
-    )
-    app.channels = load_channels(app.plugin_manager, context)
+    plugin_manager = _require_plugin_manager(app, "_setup_channels")
+    app.channels = load_channels(plugin_manager, context)
     for ch in app.channels:
         missing = startup_handler.validate_plugin_credentials(ch)
         if missing:
@@ -281,10 +285,8 @@ async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) 
 
     app.queue.set_process_messages_fn(app._process_group_messages)
 
-    assert app.plugin_manager is not None, (
-        "phase 1 (_initialize_core) must run before _start_subsystems"
-    )
-    check_tunnels(app.plugin_manager)
+    plugin_manager = _require_plugin_manager(app, "_start_subsystems")
+    check_tunnels(plugin_manager)
     record_start_time()
     app._http_runner = await start_http_server(
         make_http_deps(app), status_deps=make_status_deps(app)

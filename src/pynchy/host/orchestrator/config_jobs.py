@@ -24,8 +24,10 @@ def _job_prompt(job_name: str, settings: Settings) -> str:
     job = settings.jobs[job_name]
     if job.prompt is not None:
         return job.prompt
-    assert job.prompt_file is not None, "JobConfig validates agent jobs have prompt_file"
-    path = settings.project_root / job.prompt_file
+    prompt_file = job.prompt_file
+    if prompt_file is None:
+        raise ValueError(f"agent job {job_name!r} requires prompt or prompt_file")
+    path = settings.project_root / prompt_file
     return path.read_text()
 
 
@@ -35,8 +37,10 @@ def _job_schedule(
     job = settings.jobs[job_name]
     if job.schedule is not None:
         return "cron", job.schedule, compute_next_run("cron", job.schedule, settings.timezone)
-    assert job.at is not None, "JobConfig validates jobs have schedule or at"
-    return "once", job.at, job.at
+    at = job.at
+    if at is None:
+        raise ValueError(f"job {job_name!r} requires schedule or at")
+    return "once", at, at
 
 
 @dataclass(frozen=True)
