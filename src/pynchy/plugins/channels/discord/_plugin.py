@@ -4,11 +4,24 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
+from typing import cast
 
 import pluggy
 
+from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves plugin config annotations at runtime.
+    DiscordConnectionConfig,
+)
+from pynchy.config.settings import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 from pynchy.logger import logger
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    NewMessage,
+    WorkspaceProfile,
+)
 
 from ._channel import DiscordChannel
 
@@ -17,11 +30,19 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 __all__ = ["DiscordChannel", "DiscordChannelPlugin"]
 
 
-def _public_module() -> Any:
+def _public_module() -> object:
     return sys.modules[__package__]
 
 
-def _channel_context(context: Any) -> tuple[Any, Any, Any, Any, Any] | None:
+def _channel_context(
+    context: object | None,
+) -> tuple[
+    Callable[[str, NewMessage], None],
+    Callable[[str, str, str | None], None],
+    Callable[[str, str, str, str], None] | None,
+    Callable[[str, dict[str, object]], None] | None,
+    Callable[[], dict[str, WorkspaceProfile]] | None,
+] | None:
     """Return the callbacks DiscordChannel needs, or ``None`` when unavailable."""
     if context is None:
         return None
@@ -41,12 +62,12 @@ def _channel_context(context: Any) -> tuple[Any, Any, Any, Any, Any] | None:
 def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiring explicit.
     *,
     name: str,
-    cfg: Any,
-    on_message: Any,
-    on_metadata: Any,
-    on_reaction: Any,
-    on_ask_user_answer: Any,
-    workspaces: Any,
+    cfg: DiscordConnectionConfig,
+    on_message: Callable[[str, NewMessage], None],
+    on_metadata: Callable[[str, str, str | None], None],
+    on_reaction: Callable[[str, str, str, str], None] | None,
+    on_ask_user_answer: Callable[[str, dict[str, object]], None] | None,
+    workspaces: Callable[[], dict[str, WorkspaceProfile]] | None,
 ) -> DiscordChannel | None:
     """Build one DiscordChannel or log why that connection was skipped."""
     connection_name = name
@@ -83,9 +104,15 @@ class DiscordChannelPlugin:
     """Built-in plugin that activates when Discord connections are configured."""
 
     @hookimpl
-    def pynchy_create_channel(self, context: Any) -> list[DiscordChannel] | None:
-        settings = _public_module().get_settings()
-        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "discord"}
+    def pynchy_create_channel(self, context: object | None) -> list[DiscordChannel] | None:
+        public = _public_module()
+        get_settings = cast("Callable[[], Settings]", public.get_settings)
+        settings = get_settings()
+        configs = {
+            name: cast("DiscordConnectionConfig", cfg)
+            for name, cfg in settings.connections.items()
+            if cfg.type == "discord"
+        }
         if not configs:
             logger.debug("Discord channel skipped — no connections configured")
             return None
