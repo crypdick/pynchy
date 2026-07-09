@@ -15,7 +15,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves Path annotations at runtime.
+from typing import Any
 
 import aiohttp
 
@@ -24,9 +25,6 @@ from pynchy.host.container_manager.gateway_litellm import (
 )
 from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
