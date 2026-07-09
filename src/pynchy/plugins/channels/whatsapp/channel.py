@@ -364,7 +364,8 @@ class WhatsAppChannel:
         return {"answer": content}
 
     @staticmethod
-    def _message_content(message: Any) -> str:
+    def _message_content(message: object) -> str:
+        message = cast("Any", message)
         return (
             message.conversation
             or message.extendedTextMessage.text
@@ -379,7 +380,8 @@ class WhatsAppChannel:
             raw_timestamp = raw_timestamp / 1000
         return datetime.fromtimestamp(raw_timestamp, tz=UTC).isoformat()
 
-    def _message_context(self, message: Any) -> _InboundMessageContext | None:
+    def _message_context(self, message: object) -> _InboundMessageContext | None:
+        message = cast("Any", message)
         info = message.Info
         source = info.MessageSource
         raw_jid = Jid2String(source.Chat)
@@ -433,7 +435,7 @@ class WhatsAppChannel:
             is_from_me=context.is_from_me,
         )
 
-    async def _handle_message(self, message: Any) -> None:
+    async def _handle_message(self, message: object) -> None:
         context = self._message_context(message)
         if context is None:
             return
@@ -453,7 +455,8 @@ class WhatsAppChannel:
 
         self._on_message(context.chat_jid, self._new_message(context, content))
 
-    def _translate_jid(self, jid_str: str, jid: Any) -> str:
+    def _translate_jid(self, jid_str: str, jid: object) -> str:
+        jid = cast("Any", jid)
         if jid.Server != "lid":
             return jid_str
         lid_user = jid.User.split(":")[0]
@@ -463,7 +466,7 @@ class WhatsAppChannel:
         return jid_str
 
     @staticmethod
-    def _parse_jid(jid_str: str) -> Any:
+    def _parse_jid(jid_str: str) -> object:
         from neonize.utils.jid import build_jid
 
         if "@" not in jid_str:
