@@ -309,11 +309,7 @@ async def test_send_event_chunks_long_text_with_safe_mentions():
     ch = _channel()
     ch.client = object()  # non-None so the guard passes
     fake = _FakeSendChannel()
-
-    async def _resolve(_jid: str) -> _FakeSendChannel:
-        return fake
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
 
     long_text = "word " * 1000  # ~5000 chars -> multiple chunks
     await ch.send_event(
@@ -330,45 +326,33 @@ async def test_send_event_chunks_long_text_with_safe_mentions():
 async def test_send_event_skips_empty_text():
     ch = _channel()
     ch.client = object()
-    called = False
-
-    async def _resolve(_jid: str):
-        nonlocal called
-        called = True
-        return _FakeSendChannel()
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve for empty text")
+    )
     await ch.send_event(
         "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="   ")
     )
-    assert called is False
+    assert ch._resolve_channel.await_count == 0
 
 
 @pytest.mark.asyncio
 async def test_send_event_ignores_foreign_jid():
     ch = _channel()
     ch.client = object()
-    resolved = False
-
-    async def _resolve(_jid: str):
-        nonlocal resolved
-        resolved = True
-        return _FakeSendChannel()
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve for a foreign jid")
+    )
     await ch.send_event("slack:C1", OutboundEvent(type=OutboundEventType.TEXT, content="hi"))
-    assert resolved is False
+    assert ch._resolve_channel.await_count == 0
 
 
 @pytest.mark.asyncio
 async def test_send_reaction_ignores_non_discord_message_id():
     ch = _channel()
     ch.client = object()
-
-    async def _resolve(_jid: str):
-        raise AssertionError("should not resolve for a non-Discord message id")
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve for a non-Discord message id")
+    )
     # slack-style id must be a no-op, not an error
     await ch.send_reaction("discord:channel:1", "slack-123", "u1", "👀")
 
@@ -405,11 +389,7 @@ async def test_set_typing_starts_background_refresh_and_stops_cleanly():
     ch = _channel()
     ch.client = object()
     fake = _FakeTypingChannel()
-
-    async def _resolve(_jid: str) -> _FakeTypingChannel:
-        return fake
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.set_typing("discord:channel:1", True)
     await asyncio.sleep(0)
 
@@ -426,19 +406,17 @@ async def test_typing_loop_refreshes_until_cancelled(monkeypatch: pytest.MonkeyP
     ch = _channel()
     ch.client = object()
     fake = _FakeTypingChannel()
-
-    async def _resolve(_jid: str) -> _FakeTypingChannel:
-        return fake
-
     sleep_calls = 0
+    orig_sleep = asyncio.sleep
 
     async def _fake_sleep(_seconds: float) -> None:
         nonlocal sleep_calls
         sleep_calls += 1
+        await orig_sleep(0)
         if sleep_calls >= 2:
             raise asyncio.CancelledError
 
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     monkeypatch.setattr(discord_channel_module.asyncio, "sleep", _fake_sleep)
 
     with pytest.raises(asyncio.CancelledError):
@@ -464,16 +442,14 @@ async def test_fetch_inbound_since_filters_bot_and_self():
     class _HistChannel:
         def history(self, **kwargs):
             async def gen():
+                await asyncio.sleep(0)
                 yield _msg("1", "human", bot=False)
                 yield _msg("2", "otherbot", bot=True)
                 yield _msg("3", "self", bot=False)
 
             return gen()
 
-    async def _resolve(_jid: str) -> _HistChannel:
-        return _HistChannel()
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=_HistChannel())  # type: ignore[method-assign]
 
     result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
     ids = [m.id for m in result.messages]
@@ -490,11 +466,7 @@ async def test_post_event_sends_preview_and_returns_message_id():
     ch = _channel()
     ch.client = object()
     fake = _FakeStreamChannel()
-
-    async def _resolve(_jid: str) -> _FakeStreamChannel:
-        return fake
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     msg_id = await ch.post_event(
         "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi there")
     )
@@ -508,8 +480,8 @@ async def test_post_event_sends_preview_and_returns_message_id():
 async def test_post_event_returns_none_for_empty_text():
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = lambda _jid: (_ for _ in ()).throw(  # type: ignore[method-assign]
-        AssertionError("should not resolve for empty text")
+    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve for empty text")
     )
     result = await ch.post_event(
         "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="   ")
@@ -523,8 +495,8 @@ async def test_post_event_returns_none_when_too_large_to_stream():
     # returning None makes core route it through chunked send_event instead.
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = lambda _jid: (_ for _ in ()).throw(  # type: ignore[method-assign]
-        AssertionError("should not resolve when text exceeds the limit")
+    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+        side_effect=AssertionError("should not resolve when text exceeds the limit")
     )
     result = await ch.post_event(
         "discord:channel:1",
@@ -539,11 +511,7 @@ async def test_update_event_edits_message_in_place():
     ch.client = object()
     fake = _FakeStreamChannel()
     msg = await fake.send("initial", allowed_mentions=None)
-
-    async def _resolve(_jid: str) -> _FakeStreamChannel:
-        return fake
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.update_event(
         "discord:channel:1",
         f"discord-{msg.id}",
@@ -559,11 +527,7 @@ async def test_update_event_raises_when_too_large_so_core_falls_back():
     ch = _channel()
     ch.client = object()
     fake = _FakeStreamChannel()
-
-    async def _resolve(_jid: str) -> _FakeStreamChannel:
-        return fake
-
-    ch._resolve_channel = _resolve  # type: ignore[method-assign]
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     with pytest.raises(ValueError, match="exceeds 2000 chars"):
         await ch.update_event(
             "discord:channel:1",
@@ -572,8 +536,7 @@ async def test_update_event_raises_when_too_large_so_core_falls_back():
         )
 
 
-@pytest.mark.asyncio
-async def test_streaming_channel_satisfies_protocol_and_is_detected():
+def test_streaming_channel_satisfies_protocol_and_is_detected():
     ch = _channel()
     # core detects streaming targets via hasattr on both methods
     assert hasattr(ch, "post_event")
