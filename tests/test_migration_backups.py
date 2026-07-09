@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from pynchy.__main__ import main
 from pynchy.host.migration_backups import prune_migration_backups
 
 if TYPE_CHECKING:
@@ -85,8 +86,6 @@ def test_cli_prune_migration_backups_defaults_to_dry_run(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from pynchy.__main__ import main
-
     backups = tmp_path / "data" / "migration-backups"
     backups.mkdir(parents=True)
     older = _backup_dir(backups, "20260705-runtime", 100)
