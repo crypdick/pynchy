@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
-import subprocess
+import subprocess  # noqa: S404, RUF100 - launches JupyterLab with fixed argv and sys.executable.
 import sys
 import uuid
 from pathlib import Path
@@ -422,7 +422,7 @@ _lab_process = None
 def _start_jupyterlab() -> None:
     """Start JupyterLab as a viewing frontend."""
     global _lab_process
-    _lab_process = subprocess.Popen(
+    _lab_process = subprocess.Popen(  # noqa: S603, RUF100 - fixed python -m jupyterlab argv; no shell.
         [
             sys.executable,
             "-m",
