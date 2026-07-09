@@ -10,7 +10,12 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 
+from pynchy.host.orchestrator.messaging import sender
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
+from pynchy.host.orchestrator.messaging.sender import (
+    broadcast,
+    finalize_stream_or_broadcast,
+)
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 
@@ -38,8 +43,6 @@ def _make_deps(channels):
 
 @pytest.mark.asyncio
 async def test_broadcast_sends_event_to_channels():
-    from pynchy.host.orchestrator.messaging.sender import broadcast
-
     ch = _make_channel("slack")
     deps = _make_deps([ch])
     event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
@@ -49,8 +52,6 @@ async def test_broadcast_sends_event_to_channels():
 
 @pytest.mark.asyncio
 async def test_broadcast_skips_disconnected_channels():
-    from pynchy.host.orchestrator.messaging.sender import broadcast
-
     ch = _make_channel("slack")
     ch.is_connected.return_value = False
     deps = _make_deps([ch])
@@ -61,8 +62,6 @@ async def test_broadcast_skips_disconnected_channels():
 
 @pytest.mark.asyncio
 async def test_broadcast_skips_channel_that_does_not_own_jid():
-    from pynchy.host.orchestrator.messaging.sender import broadcast
-
     ch = _make_channel("whatsapp", jid_prefix="wa:")
     deps = _make_deps([ch])
     event = OutboundEvent(type=OutboundEventType.HOST, content="hello")
@@ -72,8 +71,6 @@ async def test_broadcast_skips_channel_that_does_not_own_jid():
 
 @pytest.mark.asyncio
 async def test_broadcast_skip_channel_parameter():
-    from pynchy.host.orchestrator.messaging.sender import broadcast
-
     ch1 = _make_channel("slack")
     ch2 = _make_channel("slack2")
     ch2.owns_jid.side_effect = lambda j: j.startswith("slack:")
@@ -91,8 +88,6 @@ async def test_broadcast_skip_channel_parameter():
 
 @pytest.mark.asyncio
 async def test_finalize_no_stream_falls_back_to_broadcast():
-    from pynchy.host.orchestrator.messaging.sender import finalize_stream_or_broadcast
-
     ch = _make_channel("slack")
     deps = _make_deps([ch])
     event = OutboundEvent(type=OutboundEventType.RESULT, content="done")
@@ -102,8 +97,6 @@ async def test_finalize_no_stream_falls_back_to_broadcast():
 
 @pytest.mark.asyncio
 async def test_finalize_with_stream_updates_event():
-    from pynchy.host.orchestrator.messaging.sender import finalize_stream_or_broadcast
-
     ch = _make_channel("slack")
     ch.update_event = AsyncMock()
     deps = _make_deps([ch])
@@ -115,8 +108,6 @@ async def test_finalize_with_stream_updates_event():
 
 @pytest.mark.asyncio
 async def test_finalize_stream_update_failure_falls_back_to_send():
-    from pynchy.host.orchestrator.messaging.sender import finalize_stream_or_broadcast
-
     ch = _make_channel("slack")
     ch.update_event = AsyncMock(side_effect=Exception("update failed"))
     deps = _make_deps([ch])
@@ -133,8 +124,6 @@ async def test_finalize_stream_update_failure_falls_back_to_send():
 
 def test_broadcast_formatted_is_removed():
     """broadcast_formatted should no longer exist in sender.py."""
-    from pynchy.host.orchestrator.messaging import sender
-
     assert not hasattr(sender, "broadcast_formatted"), (
         "broadcast_formatted should be removed — callers construct OutboundEvent directly"
     )
