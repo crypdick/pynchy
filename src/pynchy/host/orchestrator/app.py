@@ -94,6 +94,45 @@ class PynchyApp:
         """Return whether shutdown has started."""
         return self._shutting_down
 
+    def begin_shutdown(self) -> bool:
+        """Mark shutdown as started; return False if shutdown was already active."""
+        if self._shutting_down:
+            return False
+        self._shutting_down = True
+        return True
+
+    def cancel_subsystem_tasks(self) -> None:
+        for task in self._subsystem_tasks:
+            task.cancel()
+        self._subsystem_tasks.clear()
+
+    def add_subsystem_task(self, task: Any) -> None:
+        self._subsystem_tasks.append(task)
+
+    async def cleanup_http_runner(self) -> None:
+        if self._http_runner is None:
+            return
+        await self._http_runner.cleanup()
+
+    def set_http_runner(self, runner: Any) -> None:
+        self._http_runner = runner
+
+    def attach_observers(self, observers: list[Any]) -> None:
+        self._observers = observers
+
+    async def close_observers(self) -> None:
+        for observer in self._observers:
+            await observer.close()
+
+    async def set_memory_provider(self, memory: Any | None) -> None:
+        self._memory = memory
+        if self._memory:
+            await self._memory.init()
+
+    async def close_memory_provider(self) -> None:
+        if self._memory:
+            await self._memory.close()
+
     def routing_cursor(self, chat_jid: str) -> str:
         """Return the cursor used to fetch messages for routing."""
         return max(
@@ -130,6 +169,9 @@ class PynchyApp:
             "State loaded",
             workspace_count=len(self.workspaces),
         )
+
+    async def load_state(self) -> None:
+        await self._load_state()
 
     async def _save_state(self) -> None:
         """Persist router state to the database atomically.
@@ -287,6 +329,9 @@ class PynchyApp:
         self.workspaces.pop(jid, None)
         await delete_workspace_profile(jid)
 
+    async def unregister_workspace(self, jid: str) -> None:
+        await self._unregister_workspace(jid)
+
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""
         chats = await get_all_chats()
@@ -322,6 +367,9 @@ class PynchyApp:
         """Delegates group processing to the message handler module."""
         return await message_handler.process_group_messages(self, chat_jid)
 
+    async def process_group_messages(self, chat_jid: str) -> bool:
+        return await self._process_group_messages(chat_jid)
+
     async def start_interactive_turn(self, chat_jid: str) -> None:
         """Start durable Temporal processing for pending messages in one chat."""
         from pynchy.host.orchestrator.temporal.scheduler import (
@@ -345,17 +393,26 @@ class PynchyApp:
     async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
         await session_handler.on_inbound(self, _jid, msg)
 
+    async def on_inbound(self, jid: str, msg: NewMessage) -> None:
+        await self._on_inbound(jid, msg)
+
     async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         """Handle an inbound reaction from a channel."""
         from pynchy.host.orchestrator.messaging.reaction_handler import handle_reaction
 
         await handle_reaction(self, jid, message_ts, user_id, emoji)
 
+    async def on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
+        await self._on_reaction(jid, message_ts, user_id, emoji)
+
     async def _on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         """Handle an ask_user answer from a channel interaction callback."""
         from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
 
         await handle_ask_user_answer(request_id, answer, self)
+
+    async def on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
+        await self._on_ask_user_answer(request_id, answer)
 
     async def enqueue_message(self, chat_jid: str, text: str) -> None:
         """Inject a synthetic message for cold-start answer delivery.

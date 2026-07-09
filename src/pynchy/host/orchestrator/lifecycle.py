@@ -72,9 +72,7 @@ async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
 
 
 def _cancel_subsystem_tasks(app: PynchyApp) -> None:
-    for task in app._subsystem_tasks:
-        task.cancel()
-    app._subsystem_tasks.clear()
+    app.cancel_subsystem_tasks()
 
 
 def _prepare_channels_for_shutdown(app: PynchyApp) -> None:
@@ -83,20 +81,16 @@ def _prepare_channels_for_shutdown(app: PynchyApp) -> None:
 
 
 async def _cleanup_http_runner(app: PynchyApp) -> None:
-    if app._http_runner is None:
-        return
     await asyncio.sleep(0.3)
-    await app._http_runner.cleanup()
+    await app.cleanup_http_runner()
 
 
 async def _close_runtime_resources(app: PynchyApp) -> None:
     from pynchy.host.container_manager.gateway import stop_gateway
 
     await stop_gateway()
-    for observer in app._observers:
-        await observer.close()
-    if app._memory:
-        await app._memory.close()
+    await app.close_observers()
+    await app.close_memory_provider()
     batcher = output_handler.get_trace_batcher()
     if batcher is not None:
         await batcher.flush_all()
@@ -106,10 +100,9 @@ async def _close_runtime_resources(app: PynchyApp) -> None:
 
 async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = False) -> None:
     """Graceful shutdown handler.  Second signal force-exits."""
-    if app._shutting_down:
+    if not app.begin_shutdown():
         logger.info("Force shutdown")
         os._exit(1)
-    app._shutting_down = True
     logger.info("Shutdown signal received", signal=sig_name)
 
     # Hard-exit watchdog: if graceful shutdown hangs, force-exit within
@@ -160,13 +153,10 @@ async def _initialize_core(app: PynchyApp) -> None:
     from pynchy.plugins.memory import get_memory_provider
     from pynchy.plugins.observers import attach_observers
 
-    app._observers = attach_observers(app.event_bus)
+    app.attach_observers(attach_observers(app.event_bus))
 
-    app._memory = get_memory_provider()
-    if app._memory:
-        await app._memory.init()
-
-    await app._load_state()
+    await app.set_memory_provider(get_memory_provider())
+    await app.load_state()
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +168,7 @@ async def _setup_channels(app: PynchyApp) -> None:
     """Create channel context, load channels, validate, connect."""
 
     def dispatch_inbound(jid: str, msg: NewMessage) -> None:
-        create_background_task(app._on_inbound(jid, msg), name="on-inbound")
+        create_background_task(app.on_inbound(jid, msg), name="on-inbound")
 
     def dispatch_chat_metadata(jid: str, ts: str, name: str | None = None) -> None:
         create_background_task(store_chat_metadata(jid, ts, name), name="store-metadata")
@@ -192,11 +182,11 @@ async def _setup_channels(app: PynchyApp) -> None:
         )
 
     def dispatch_reaction(jid: str, ts: str, user: str, emoji: str) -> None:
-        create_background_task(app._on_reaction(jid, ts, user, emoji), name="on-reaction")
+        create_background_task(app.on_reaction(jid, ts, user, emoji), name="on-reaction")
 
     def dispatch_ask_user_answer(request_id: str, answer: dict[str, Any]) -> None:
         create_background_task(
-            app._on_ask_user_answer(request_id, answer), name="on-ask-user-answer"
+            app.on_ask_user_answer(request_id, answer), name="on-ask-user-answer"
         )
 
     context = ChannelPluginContext(
@@ -248,8 +238,8 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
     await reconcile_workspaces(
         workspaces=app.workspaces,
         channels=app.channels,
-        register_fn=app._register_workspace,
-        unregister_fn=app._unregister_workspace,
+        register_fn=app.register_workspace,
+        unregister_fn=app.unregister_workspace,
     )
 
     from pynchy.plugins.integrations.linear_boot import reconcile_linear_workspace_boards
@@ -280,20 +270,20 @@ async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) 
     s = get_settings()
 
     scheduler_deps = cast("SchedulerDependencies", app)
-    app._subsystem_tasks.append(
+    app.add_subsystem_task(
         create_background_task(start_scheduler_loop(scheduler_deps), name="scheduler")
     )
-    app._subsystem_tasks.append(
+    app.add_subsystem_task(
         create_background_task(start_ipc_watcher(make_ipc_deps(app)), name="ipc-watcher")
     )
 
-    app.queue.set_process_messages_fn(app._process_group_messages)
+    app.queue.set_process_messages_fn(app.process_group_messages)
 
     plugin_manager = _require_plugin_manager(app, "_start_subsystems")
     check_tunnels(plugin_manager)
     record_start_time()
-    app._http_runner = await start_http_server(
-        make_http_deps(app), status_deps=make_status_deps(app)
+    app.set_http_runner(
+        await start_http_server(make_http_deps(app), status_deps=make_status_deps(app))
     )
 
     hostname = socket.gethostname()
@@ -361,7 +351,7 @@ async def run_app(app: PynchyApp) -> None:
     await _start_subsystems(app, repo_groups)
 
     await startup_handler.send_boot_notification(app)
-    await app._catch_up_channel_history()
+    await app.catch_up_channels()
     await startup_handler.recover_pending_messages(app)
     await startup_handler.check_deploy_continuation(app)
 
@@ -370,7 +360,7 @@ async def run_app(app: PynchyApp) -> None:
         return
     app.message_loop_running = True
     try:
-        await start_message_loop(app, lambda: app._shutting_down)
+        await start_message_loop(app, app.is_shutting_down)
     finally:
         if shutdown_task is not None and not shutdown_task.done():
             await asyncio.shield(shutdown_task)
