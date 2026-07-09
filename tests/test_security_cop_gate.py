@@ -8,6 +8,7 @@ import pytest
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.security.cop import CopVerdict
+from pynchy.host.container_manager.security.cop_gate import cop_gate
 
 
 @pytest.fixture
@@ -22,8 +23,6 @@ def mock_deps():
 @pytest.mark.asyncio
 async def test_cop_allows_clean_operation(mock_deps):
     """Clean operation passes through — cop_gate returns True."""
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     with (
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
@@ -47,8 +46,6 @@ async def test_cop_allows_clean_operation(mock_deps):
 @pytest.mark.asyncio
 async def test_cop_blocks_flagged_with_request_id(mock_deps):
     """Flagged operation with request_id creates pending approval and returns False."""
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     with (
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
@@ -87,8 +84,6 @@ async def test_cop_blocks_flagged_with_request_id(mock_deps):
 @pytest.mark.asyncio
 async def test_cop_blocks_flagged_fire_and_forget(mock_deps):
     """Flagged fire-and-forget operation broadcasts warning, no approval."""
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     with (
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
@@ -115,8 +110,6 @@ async def test_cop_blocks_flagged_fire_and_forget(mock_deps):
 @pytest.mark.asyncio
 async def test_cop_gate_resolves_chat_jid(mock_deps):
     """cop_gate resolves chat_jid from deps.workspaces() for audit logging."""
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     with (
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
@@ -143,8 +136,6 @@ async def test_cop_gate_resolves_chat_jid(mock_deps):
 @pytest.mark.asyncio
 async def test_cop_gate_unknown_group_uses_fallback_jid(mock_deps):
     """When source_group is not found in workspaces, uses 'unknown' as chat_jid."""
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     with (
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
@@ -170,8 +161,6 @@ async def test_cop_gate_unknown_group_uses_fallback_jid(mock_deps):
 @pytest.mark.asyncio
 async def test_cop_gate_notification_includes_reason(mock_deps):
     """When flagged with request_id, notification message includes cop reason."""
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     with (
         patch(
             "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
