@@ -16,7 +16,7 @@ if container_path.exists():
 
 try:
     from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
-    from agent_runner.cores._openai_tool_parsing import _fallback_mapping_scan
+    from agent_runner.cores.openai import extract_tool_call
     from agent_runner.registry import create_agent_core
 
     AGENT_RUNNER_AVAILABLE = True
@@ -279,27 +279,17 @@ class TestEventMapping:
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")
 class TestOpenAIToolParsing:
-    """Focused coverage for the OpenAI tool-call fallback parser helpers."""
+    """Focused coverage for the OpenAI tool-call parser."""
 
-    def test_fallback_scan_reads_nested_data_mapping(self):
-        raw = object()
-        tool_name, tool_input = _fallback_mapping_scan(
-            raw,
-            {"data": {"name": "search_docs", "input": {"query": "hooks"}}},
-            None,
-            None,
-        )
+    def test_extract_tool_call_reads_nested_data_mapping(self):
+        raw = {"data": {"name": "search_docs", "input": {"query": "hooks"}}}
+        tool_name, tool_input = extract_tool_call(raw)
         assert tool_name == "search_docs"
         assert tool_input == {"query": "hooks"}
 
-    def test_fallback_scan_builds_shell_input_from_action(self):
-        raw = object()
-        tool_name, tool_input = _fallback_mapping_scan(
-            raw,
-            {"action": {"type": "shell_call", "command": "git status"}},
-            None,
-            None,
-        )
+    def test_extract_tool_call_builds_shell_input_from_nested_action(self):
+        raw = {"data": {"action": {"type": "shell_call", "command": "git status"}}}
+        tool_name, tool_input = extract_tool_call(raw)
         assert tool_name == "shell"
         assert tool_input == {"command": "git status"}
 

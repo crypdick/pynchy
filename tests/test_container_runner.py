@@ -2884,27 +2884,34 @@ class TestContainerSessionSignalQueryDone:
 class TestGetSessionOutputHandler:
     """Tests for the module-level get_session_output_handler() function."""
 
-    def test_returns_handler_when_session_active(self):
+    @pytest.fixture(autouse=True)
+    def _patch_session_cleanup(self):
+        with (
+            patch("pynchy.host.container_manager.process._graceful_stop", new=AsyncMock()),
+            patch(
+                "pynchy.host.container_manager.session._docker_rm_force",
+                new=AsyncMock(),
+            ),
+        ):
+            yield
+
+    async def test_returns_handler_when_session_active(self):
         """Should return the session's _on_output when an active session exists."""
         from pynchy.host.container_manager.session import (
-            ContainerSession,
-            _sessions,  # allow: private-test-imports
+            create_session,
+            destroy_session,
             get_session_output_handler,
         )
 
-        session = ContainerSession("handler-test", "pynchy-handler-test")
-        mock_proc = MagicMock()
-        mock_proc.returncode = None  # simulate a running process
-        session.proc = mock_proc  # type: ignore[assignment]
+        session = await create_session("handler-test", "pynchy-handler-test", FakeProcess())
         handler = AsyncMock()
-        session._on_output = handler
-        _sessions["handler-test"] = session
+        session.set_output_handler(handler)
 
         try:
             result = get_session_output_handler("handler-test")
             assert result is handler
         finally:
-            _sessions.pop("handler-test", None)
+            await destroy_session("handler-test")
 
     def test_returns_none_when_no_session(self):
         """Should return None when no session exists for the group."""
@@ -2913,26 +2920,21 @@ class TestGetSessionOutputHandler:
         result = get_session_output_handler("nonexistent-group")
         assert result is None
 
-    def test_returns_none_when_no_handler_set(self):
+    async def test_returns_none_when_no_handler_set(self):
         """Should return None when session exists but no handler is set."""
         from pynchy.host.container_manager.session import (
-            ContainerSession,
-            _sessions,  # allow: private-test-imports
+            create_session,
+            destroy_session,
             get_session_output_handler,
         )
 
-        session = ContainerSession("no-handler-test", "pynchy-no-handler-test")
-        mock_proc = MagicMock()
-        mock_proc.returncode = None  # simulate a running process
-        session.proc = mock_proc  # type: ignore[assignment]
-        session._on_output = None
-        _sessions["no-handler-test"] = session
+        await create_session("no-handler-test", "pynchy-no-handler-test", FakeProcess())
 
         try:
             result = get_session_output_handler("no-handler-test")
             assert result is None
         finally:
-            _sessions.pop("no-handler-test", None)
+            await destroy_session("no-handler-test")
 
 
 class TestSessionStartOnlyStderr:
