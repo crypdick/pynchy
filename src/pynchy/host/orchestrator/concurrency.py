@@ -225,7 +225,6 @@ class GroupQueue:
 
         try:
             write_ipc_message(state.group_folder, text)
-            return True
         except OSError as exc:
             logger.warning(
                 "Failed to write IPC message to container",
@@ -233,6 +232,8 @@ class GroupQueue:
                 err=str(exc),
             )
             return False
+        else:
+            return True
 
     def close_stdin(self, group_jid: str) -> None:
         """Signal the active container to wind down by writing a close sentinel."""

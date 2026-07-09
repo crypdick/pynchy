@@ -45,6 +45,23 @@ def _disable_tracing() -> None:
         _log(f"Tracing disable skipped: {exc}")
 
 
+async def _run_before_tool_use_hooks(
+    before_tool_hooks: list[BeforeToolUseHook] | None,
+    command: str,
+) -> str | None:
+    """Run shell hooks and return an error string if one blocks execution."""
+    if not before_tool_hooks:
+        return None
+
+    for hook_fn in before_tool_hooks:
+        decision = await hook_fn("Bash", {"command": command})
+        if not decision.allowed:
+            _log(f"Command blocked by hook: {decision.reason}")
+            return f"Command blocked by security policy: {decision.reason}"
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Shell executor — runs commands directly in the container
 # ---------------------------------------------------------------------------
@@ -100,12 +117,9 @@ def _make_shell_executor(
 
         # Run BEFORE_TOOL_USE hooks before subprocess execution.
         # Same hook signature as the Claude core: (tool_name, tool_input) -> HookDecision.
-        if before_tool_hooks:
-            for hook_fn in before_tool_hooks:
-                decision = await hook_fn("Bash", {"command": command})
-                if not decision.allowed:
-                    _log(f"Command blocked by hook: {decision.reason}")
-                    return f"Command blocked by security policy: {decision.reason}"
+        blocked = await _run_before_tool_use_hooks(before_tool_hooks, command)
+        if blocked is not None:
+            return blocked
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -115,17 +129,18 @@ def _make_shell_executor(
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except TimeoutError:
+            proc.kill()
+            return f"Command timed out after {timeout_s}s"
+        except Exception as exc:  # allow: exception-handling — returned to agent as output
+            return f"Shell error: {exc}"
+        else:
             output = stdout.decode(errors="replace")
             if stderr:
                 output += "\n" + stderr.decode(errors="replace")
             if isinstance(max_output_length, int) and max_output_length > 0:
                 output = output[:max_output_length]
             return output
-        except TimeoutError:
-            proc.kill()
-            return f"Command timed out after {timeout_s}s"
-        except Exception as exc:  # allow: exception-handling — returned to agent as output
-            return f"Shell error: {exc}"
 
     return executor
 

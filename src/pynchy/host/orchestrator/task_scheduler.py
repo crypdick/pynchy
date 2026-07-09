@@ -345,10 +345,11 @@ async def _run_task_agent(
         if agent_result == "error":
             error = error or "Agent returned error"
         await _merge_scheduled_task_worktree(task, error=error)
-        return result, error
     except Exception as exc:
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
+        return result, error
+    else:
         return result, error
     finally:
         if idle_timer:

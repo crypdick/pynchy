@@ -100,11 +100,11 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
         if websockify_proc.poll() is not None:
             raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
 
-        return procs, f"http://HOST:{_NOVNC_PORT}/vnc.html?autoconnect=true"
-
     except Exception:
         stop_procs(procs)
         raise
+    else:
+        return procs, f"http://HOST:{_NOVNC_PORT}/vnc.html?autoconnect=true"
 
 
 def cleanup_xvfb() -> None:

@@ -257,9 +257,10 @@ async def _handle_computer_use(data: dict[str, Any]) -> dict[str, Any]:
                 screenshot_path=after_path,
             )
             result["after"] = after
-        return {"result": result}
     except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
+    else:
+        return {"result": result}
 
 
 class ComputerUsePlugin:

@@ -103,11 +103,11 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
         }
         if novnc_url:
             result["novnc_url"] = novnc_url
-        return {"result": result}
-
     except Exception as exc:
         logger.error("X session setup failed", error=str(exc))
         return {"error": str(exc)}
+    else:
+        return {"result": result}
 
     finally:
         stop_procs(vnc_procs)

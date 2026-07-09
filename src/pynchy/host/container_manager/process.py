@@ -96,7 +96,6 @@ async def _run_rm_force(container_name: str, timeout: float) -> bool:
     )
     try:
         await asyncio.wait_for(proc.wait(), timeout=timeout)
-        return True
     except TimeoutError:
         logger.warning(
             "Container force-remove timed out, killing cleanup CLI",
@@ -107,6 +106,8 @@ async def _run_rm_force(container_name: str, timeout: float) -> bool:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(proc.wait(), timeout=_RM_FORCE_KILL_WAIT_SECONDS)
         return False
+    else:
+        return True
 
 
 async def _find_apple_runtime_pids(container_name: str) -> list[int]:

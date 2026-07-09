@@ -57,6 +57,10 @@ def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -
             file_path.unlink()
 
 
+def _log_sweep_error(message: str, exc: OSError, source_group: str) -> None:
+    logger.error(message, err=str(exc), source_group=source_group)
+
+
 async def _process_message_file(
     file_path: Path,
     source_group: str,
@@ -245,14 +249,11 @@ async def _sweep_messages(
         for file_path in sorted(f for f in messages_dir.iterdir() if f.suffix == ".json"):
             await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             count += 1
-        return count
     except OSError as exc:
-        logger.error(
-            "Error reading IPC messages directory during sweep",
-            err=str(exc),
-            source_group=source_group,
-        )
+        _log_sweep_error("Error reading IPC messages directory during sweep", exc, source_group)
         return 0
+    else:
+        return count
 
 
 async def _sweep_requests(
@@ -266,14 +267,11 @@ async def _sweep_requests(
         for file_path in sorted(f for f in requests_dir.iterdir() if f.suffix == ".json"):
             await _process_request_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             count += 1
-        return count
     except OSError as exc:
-        logger.error(
-            "Error reading IPC requests directory during sweep",
-            err=str(exc),
-            source_group=source_group,
-        )
+        _log_sweep_error("Error reading IPC requests directory during sweep", exc, source_group)
         return 0
+    else:
+        return count
 
 
 async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir: Path) -> int:
@@ -285,14 +283,13 @@ async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir
         for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
             await _process_output_file(file_path, source_group, ipc_base_dir)
             count += 1
-        return count
     except OSError as exc:
-        logger.error(
-            "Error reading IPC output directory during runtime sweep",
-            err=str(exc),
-            source_group=source_group,
+        _log_sweep_error(
+            "Error reading IPC output directory during runtime sweep", exc, source_group
         )
         return 0
+    else:
+        return count
 
 
 async def _sweep_approval_decisions(decisions_dir: Path, source_group: str, deps: IpcDeps) -> int:
@@ -308,14 +305,15 @@ async def _sweep_approval_decisions(decisions_dir: Path, source_group: str, deps
         for file_path in sorted(f for f in decisions_dir.iterdir() if f.suffix == ".json"):
             await process_approval_decision(file_path, source_group, deps=deps)
             count += 1
-        return count
     except OSError as exc:
-        logger.error(
+        _log_sweep_error(
             "Error reading IPC approval_decisions directory during runtime sweep",
-            err=str(exc),
-            source_group=source_group,
+            exc,
+            source_group,
         )
         return 0
+    else:
+        return count
 
 
 def _clean_output_dir(output_dir: Path, source_group: str) -> int:
@@ -330,14 +328,11 @@ def _clean_output_dir(output_dir: Path, source_group: str) -> int:
         for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
             file_path.unlink()
             count += 1
-        return count
     except OSError as exc:
-        logger.error(
-            "Error cleaning IPC output directory during sweep",
-            err=str(exc),
-            source_group=source_group,
-        )
+        _log_sweep_error("Error cleaning IPC output directory during sweep", exc, source_group)
         return 0
+    else:
+        return count
 
 
 def _clean_stale_initial(input_dir: Path, source_group: str) -> int:
@@ -349,13 +344,10 @@ def _clean_stale_initial(input_dir: Path, source_group: str) -> int:
         if initial_file.exists():
             initial_file.unlink()
             return 1
-        return 0
     except OSError as exc:
-        logger.error(
-            "Error cleaning stale initial.json during sweep",
-            err=str(exc),
-            source_group=source_group,
-        )
+        _log_sweep_error("Error cleaning stale initial.json during sweep", exc, source_group)
+        return 0
+    else:
         return 0
 
 

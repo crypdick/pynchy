@@ -108,13 +108,6 @@ async def start_completed_turn_learning_review(
             final_cursor=final_cursor,
             summary=summary,
         )
-        logger.info(
-            "Completed-turn learning capture finished",
-            group=group.name,
-            chat_jid=chat_jid,
-            job_id=job_id,
-        )
-        return job_id
     except Exception as exc:  # allow: exception-handling - learning must not fail user turns
         logger.exception(
             "Failed to capture completed turn learning packet",
@@ -122,3 +115,11 @@ async def start_completed_turn_learning_review(
             err=str(exc),
         )
         return None
+    else:
+        logger.info(
+            "Completed-turn learning capture finished",
+            group=group.name,
+            chat_jid=chat_jid,
+            job_id=job_id,
+        )
+        return job_id

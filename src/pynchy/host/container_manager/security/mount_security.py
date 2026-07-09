@@ -162,8 +162,6 @@ def load_mount_allowlist() -> MountAllowlist | None:
             allowed_roots=len(allowlist.allowed_roots),
             blocked_patterns=len(allowlist.blocked_patterns),
         )
-        return _cached_allowlist
-
     except Exception as exc:
         _allowlist_load_error = str(exc)
         logger.error(
@@ -172,6 +170,8 @@ def load_mount_allowlist() -> MountAllowlist | None:
             error=_allowlist_load_error,
         )
         return None
+    else:
+        return _cached_allowlist
 
 
 def _expand_path(p: str) -> str:

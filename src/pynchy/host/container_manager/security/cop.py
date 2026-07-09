@@ -222,9 +222,9 @@ async def _inspect(
             flagged=verdict.flagged,
             reason=verdict.reason,
         )
-        return verdict
-
     except Exception as exc:
         # Fail open: if the Cop can't run, log and allow
         logger.error("Cop inspection failed, allowing operation", context=context, err=str(exc))
         return CopVerdict(flagged=False, reason=f"Cop error: {exc}")
+    else:
+        return verdict

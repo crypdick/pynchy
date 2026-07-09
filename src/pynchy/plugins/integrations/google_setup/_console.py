@@ -57,12 +57,13 @@ async def try_step(
     """Attempt an automated Console step; fall back to manual + noVNC."""
     try:
         await step_fn(page)
-        return
     except Exception as exc:
         logger.warning("GCP automation step failed, falling back to manual", error=str(exc))
         with contextlib.suppress(Exception):
             debug_screenshot = Path(tempfile.gettempdir()) / "gdrive-setup-debug.png"
             await page.screenshot(path=str(debug_screenshot))
+    else:
+        return
 
     logger.info("Manual step required", instructions=fallback_msg)
 

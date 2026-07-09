@@ -96,7 +96,10 @@ def drain_ipc_input() -> list[str]:
     try:
         IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
         files = sorted(f for f in IPC_INPUT_DIR.iterdir() if f.suffix == ".json")
-
+    except OSError as exc:
+        log(f"IPC drain error: {exc}")
+        return []
+    else:
         messages: list[str] = []
         for file_path in files:
             try:
@@ -109,9 +112,6 @@ def drain_ipc_input() -> list[str]:
                 with contextlib.suppress(OSError):
                     file_path.unlink()
         return messages
-    except OSError as exc:
-        log(f"IPC drain error: {exc}")
-        return []
 
 
 class _InputEventHandler(FileSystemEventHandler):

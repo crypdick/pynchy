@@ -177,9 +177,10 @@ def has_display() -> bool:
         return False
     try:
         r = subprocess.run(["xdpyinfo"], capture_output=True, timeout=5, check=False)
-        return r.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+    else:
+        return r.returncode == 0
 
 
 def display_is_live(display: str) -> bool:
@@ -192,9 +193,10 @@ def display_is_live(display: str) -> bool:
             env={**os.environ, "DISPLAY": display},
             check=False,
         )
-        return r.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+    else:
+        return r.returncode == 0
 
 
 def _is_process_running(name: str) -> bool:
@@ -324,11 +326,11 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
             raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
 
         os.environ["DISPLAY"] = _XVFB_DISPLAY
-        return procs, novnc_url
-
     except Exception:
         stop_procs(procs)
         raise
+    else:
+        return procs, novnc_url
 
 
 # ---------------------------------------------------------------------------

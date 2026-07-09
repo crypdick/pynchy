@@ -121,8 +121,6 @@ def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> 
     try:
         with urlopen_https_request(req) as resp:
             result = json.loads(resp.read())
-        logger.info("API enabled via REST", api=api_id, result_name=result.get("name", ""))
-        return True
     except urllib.error.HTTPError as exc:
         body = exc.read().decode()
         if "SCOPE_INSUFFICIENT" in body or "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in body:
@@ -133,3 +131,6 @@ def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> 
     except (RuntimeError, urllib.error.URLError) as exc:
         logger.warning("REST enable failed", api=api_id, error=str(exc))
         return False
+    else:
+        logger.info("API enabled via REST", api=api_id, result_name=result.get("name", ""))
+        return True

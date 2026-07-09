@@ -194,23 +194,25 @@ def count_unpushed_commits(cwd: Path | None = None) -> int:
     """Count commits ahead of origin/main. Returns 0 on failure."""
     try:
         main = detect_main_branch(cwd=cwd)
-        return count_commits(f"origin/{main}..HEAD", cwd=cwd) or 0
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("count_unpushed_commits failed", error=str(exc))
         return 0
+    else:
+        return count_commits(f"origin/{main}..HEAD", cwd=cwd) or 0
 
 
 def get_head_commit_message(max_length: int = 72, cwd: Path | None = None) -> str:
     """Return the subject line of the HEAD commit, truncated if needed."""
     try:
         result = run_git("log", "-1", "--format=%s", cwd=cwd)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("Failed to read HEAD commit message", err=str(exc))
+        return ""
+    else:
         msg = result.stdout.strip() if result.returncode == 0 else ""
         if len(msg) > max_length:
             return msg[: max_length - 1] + "\u2026"
         return msg
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.debug("Failed to read HEAD commit message", err=str(exc))
-        return ""
 
 
 def files_changed_between(old_sha: str, new_sha: str, path: str) -> bool:
@@ -269,11 +271,10 @@ def push_local_commits(
             if push.returncode != 0:
                 logger.warning("push_local: git push failed", stderr=push.stderr.strip())
                 return False
-
             logger.info("push_local: pushed local commits")
             return True
-
-        return False  # exhausted attempts
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logger.warning("push_local: unexpected error", err=str(exc))
         return False
+    else:
+        return False  # exhausted attempts

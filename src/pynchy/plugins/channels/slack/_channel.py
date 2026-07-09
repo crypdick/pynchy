@@ -473,10 +473,11 @@ class SlackChannel:
                 or user_id
             )
             self._user_name_cache.put(user_id, name)
-            return name
         except Exception as exc:
             logger.debug("Failed to resolve Slack user name", user_id=user_id, error=str(exc))
             return user_id
+        else:
+            return name
 
     async def _resolve_channel_name(self, channel_id: str) -> str:
         """Look up a Slack channel name, falling back to channel ID.
@@ -493,9 +494,10 @@ class SlackChannel:
             channel = resp.get("channel", {})
             name: str = channel.get("name", channel_id)
             self._channel_name_cache.put(channel_id, name)
-            return name
         except Exception as exc:
             logger.debug(
                 "Failed to resolve Slack channel name", channel_id=channel_id, error=str(exc)
             )
             return channel_id
+        else:
+            return name

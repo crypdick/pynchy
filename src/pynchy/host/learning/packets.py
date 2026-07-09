@@ -142,7 +142,6 @@ async def start_learning_review_workflow(
         )
 
         await _start_temporal_learning_review(packet)
-        return packet.job_id
     except Exception as exc:  # allow: exception-handling — learning must not fail user turns
         logger.exception(
             "Failed to start learning review workflow",
@@ -150,6 +149,8 @@ async def start_learning_review_workflow(
             err=str(exc),
         )
         return None
+    else:
+        return packet.job_id
 
 
 def _is_user_visible_user_message(message: NewMessage) -> bool:

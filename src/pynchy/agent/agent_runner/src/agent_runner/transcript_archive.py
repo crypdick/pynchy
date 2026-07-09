@@ -197,11 +197,11 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
             )
         except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
             _log(f"save_memory IPC failed (non-fatal): {exc}")
-
-        return file_path
     except Exception as exc:  # allow: exception-handling — best-effort; logged via _log()
         _log(f"Failed to archive transcript: {exc}")
         return None
+    else:
+        return file_path
 
 
 def main() -> None:

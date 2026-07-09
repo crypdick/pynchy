@@ -230,13 +230,14 @@ def _read_container_input() -> ContainerInput:
     """Read initial input from file (written by host before container start)."""
     try:
         container_input = read_initial_input()
+    except Exception as exc:  # allow: exception-handling — reported to host; exits
+        write_output(ContainerOutput(status="error", error=f"Failed to read initial input: {exc}"))
+        sys.exit(1)
+    else:
         log(f"Received input for group: {container_input.group_folder}")
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         log(f"Using agent core: {core_ref}")
         return container_input
-    except Exception as exc:  # allow: exception-handling — reported to host; exits
-        write_output(ContainerOutput(status="error", error=f"Failed to read initial input: {exc}"))
-        sys.exit(1)
 
 
 def _build_initial_prompt(container_input: ContainerInput) -> str:

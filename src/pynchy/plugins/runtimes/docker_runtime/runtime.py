@@ -79,11 +79,12 @@ class DockerContainerRuntime:
                     check=True,
                 )
                 logger.info("Docker Desktop started successfully")
-                return
             except (subprocess.CalledProcessError, FileNotFoundError):
                 if i % 5 == 0:
                     logger.info("Waiting for Docker Desktop to start...")
                 time.sleep(2)
+            else:
+                return
 
         raise RuntimeError(
             "Docker Desktop was launched but the daemon did not become ready "
