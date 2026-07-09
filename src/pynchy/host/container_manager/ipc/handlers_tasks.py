@@ -16,8 +16,11 @@ from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves task handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.logger import logger
 from pynchy.state import (
+    create_host_job,
+    create_task,
     delete_host_job,
     delete_task,
     get_host_job_by_id,
@@ -25,7 +28,7 @@ from pynchy.state import (
     update_host_job,
     update_task,
 )
-from pynchy.types import GroupFolder, WorkspaceProfile
+from pynchy.types import GroupFolder, ScheduledTask, WorkspaceProfile
 from pynchy.utils import compute_next_run
 
 
@@ -76,15 +79,13 @@ async def _handle_schedule_task(
     deps: IpcDeps,
 ) -> None:
     if not data.get("_cop_approved"):
-        from pynchy.host.container_manager.security.cop_gate import cop_gate
-
         prompt_preview = (data.get("prompt") or "")[:500]
         summary = (
             f"target={data.get('targetGroup')}, "
             f"schedule={data.get('schedule_type')}:{data.get('schedule_value')}, "
             f"prompt={prompt_preview}"
         )
-        allowed = await cop_gate(
+        allowed = await cop_gate_module.cop_gate(
             "schedule_task",
             summary,
             data,
@@ -132,9 +133,6 @@ async def _handle_schedule_task(
         return
 
     task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
-
-    from pynchy.state import create_task
-    from pynchy.types import ScheduledTask
 
     await create_task(
         ScheduledTask(
@@ -247,14 +245,12 @@ async def _handle_schedule_host_job(
         return
 
     if not data.get("_cop_approved"):
-        from pynchy.host.container_manager.security.cop_gate import cop_gate
-
         summary = (
             f"name={data.get('name')}, "
             f"command={data.get('command')}, "
             f"schedule={data.get('schedule_type')}:{data.get('schedule_value')}"
         )
-        allowed = await cop_gate(
+        allowed = await cop_gate_module.cop_gate(
             "schedule_host_job",
             summary,
             data,
@@ -285,8 +281,6 @@ async def _handle_schedule_host_job(
             schedule_value=request.schedule_value,
         )
         return
-
-    from pynchy.state import create_host_job
 
     job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
     await create_host_job(
