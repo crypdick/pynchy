@@ -8,14 +8,28 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from pynchy.config.access import resolve_workspace_connection_name
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
+from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.host.orchestrator.adapters import SessionManager
+from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
+from pynchy.host.orchestrator.temporal.deploy import DeployRequest
+from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.logger import logger
 from pynchy.state import clear_session, set_chat_cleared_at, store_message
-from pynchy.types import Channel, GroupFolder, NewMessage, WorkspaceProfile
+from pynchy.types import (
+    Channel,
+    GroupFolder,
+    NewMessage,
+    OutboundEvent,
+    OutboundEventType,
+    WorkspaceProfile,
+)
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -129,11 +143,6 @@ async def send_clear_confirmation(deps: SessionDeps, chat_jid: str) -> None:
 
 async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
     """Handle a manual redeploy command through Temporal."""
-    from pynchy.host.git_ops.utils import get_head_sha
-    from pynchy.host.orchestrator.adapters import SessionManager
-    from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-    from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
-
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
 
@@ -190,8 +199,6 @@ async def ingest_user_message(
     # skipped, so magic-word detection on the originating channel is
     # unaffected — and receiving channels won't re-ingest bot-posted
     # messages (Slack filters bot_id, WhatsApp filters IsFromMe echoes).
-    from pynchy.types import OutboundEvent, OutboundEventType
-
     channel_text = f"[{msg.sender_name}] {msg.content}"
     await broadcast(
         deps,
@@ -217,8 +224,6 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
     # owns this workspace.
     group = deps.workspaces.get(msg.chat_jid)
     if group and source_channel:
-        from pynchy.config.access import resolve_workspace_connection_name
-
         expected = resolve_workspace_connection_name(group.folder)
         if expected and expected != source_channel:
             logger.debug(
@@ -228,9 +233,6 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
                 chat_jid=msg.chat_jid,
             )
             return
-
-        from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
-
         create_background_task(
             send_reaction_to_channels(deps, msg.chat_jid, msg.id, msg.sender, "eyes"),
             name=f"read-receipt-{msg.id}",
@@ -250,9 +252,6 @@ async def _ensure_dynamic_thread_workspace(deps: SessionDeps, msg: NewMessage) -
     parent = deps.workspaces.get(parent_jid)
     if parent is None:
         return
-
-    from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
-
     thread_name = metadata.get("discord_channel_name")
     if not isinstance(thread_name, str) or not thread_name.strip():
         thread_name = msg.chat_jid
