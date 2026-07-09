@@ -223,7 +223,7 @@ class SlackChannel:
         self,
         jid: str,
         message_id: str,
-        sender: str,
+        _sender: str,
         emoji: str,
     ) -> None:
         """Add a reaction to a Slack message.

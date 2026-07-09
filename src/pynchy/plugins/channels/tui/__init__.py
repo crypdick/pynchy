@@ -24,4 +24,5 @@ class TuiChannelPlugin:
     @hookimpl
     def pynchy_create_channel(self, context: Any) -> Any | None:
         # TUI uses the HTTP/SSE server directly — no Channel instance needed.
+        del context
         return None

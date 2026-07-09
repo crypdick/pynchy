@@ -230,7 +230,7 @@ class SlackBlocksFormatter:
 
         return RenderedMessage(text=fallback, blocks=blocks)
 
-    def _render_thinking(self, event: OutboundEvent) -> RenderedMessage:
+    def _render_thinking(self, _event: OutboundEvent) -> RenderedMessage:
         """THINKING — compact muted line in a ``context`` block.
 
         Always shows a brief "thinking..." indicator regardless of content.

@@ -337,7 +337,7 @@ class DiscordChannel:
         message = await channel.fetch_message(int(raw_id))
         await message.edit(content=text, allowed_mentions=discord.AllowedMentions.none())
 
-    async def send_reaction(self, jid: str, message_id: str, sender: str, emoji: str) -> None:
+    async def send_reaction(self, jid: str, message_id: str, _sender: str, emoji: str) -> None:
         if self.client is None or not self.owns_jid(jid):
             return
         if not message_id.startswith(_MESSAGE_ID_PREFIX):

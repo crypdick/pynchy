@@ -153,7 +153,7 @@ class LiteLLMGateway:
             f"@{_POSTGRES_CONTAINER}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
         )
 
-    def has_provider(self, name: str) -> bool:
+    def has_provider(self, _name: str) -> bool:
         # LiteLLM handles provider resolution — always expose both URLs.
         # If a provider isn't configured, litellm returns a clear error.
         return True
