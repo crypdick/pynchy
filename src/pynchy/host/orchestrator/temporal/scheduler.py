@@ -371,8 +371,8 @@ class TemporalSchedulerRuntime:
 
     async def start_temporal_workflow(
         self,
-        workflow: Callable[..., Any],
-        *args: Any,
+        workflow: Callable[..., object],
+        *args: object,
         workflow_id: str,
         status_id: str,
         start_delay: timedelta | None = None,
@@ -390,8 +390,8 @@ class TemporalSchedulerRuntime:
 
     async def _start_workflow(
         self,
-        workflow: Callable[..., Any],
-        *args: Any,
+        workflow: Callable[..., object],
+        *args: object,
         workflow_id: str,
         status_id: str,
         start_delay: timedelta | None = None,
