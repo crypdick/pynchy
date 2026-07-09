@@ -52,7 +52,7 @@ class SlackChannel:
 
     prefix_assistant_name: bool = False  # Slack shows the bot username already
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, RUF100 - Slack channel constructor is the plugin integration boundary.
         self,
         connection_name: str,
         bot_token: str,

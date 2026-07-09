@@ -48,7 +48,7 @@ def _channel_context(context: Any) -> tuple[Any, Any, Any, Any] | None:
     )
 
 
-def _build_channel(
+def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack connection config.
     *,
     name: str,
     cfg: Any,

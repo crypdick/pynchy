@@ -136,7 +136,7 @@ class LinearClient:
             )
         return _nodes(data, "issues")
 
-    async def create_issue(
+    async def create_issue(  # noqa: PLR0913, RUF100 - Linear issue creation follows the API field set.
         self,
         *,
         team_id: str,

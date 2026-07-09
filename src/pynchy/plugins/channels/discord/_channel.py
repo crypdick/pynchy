@@ -59,7 +59,7 @@ class DiscordChannel:
     prefix_assistant_name: bool = False  # Discord shows the bot's own username
     auto_provision_configured_chats: bool = True
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, RUF100 - channel constructor is a boundary surface for plugin wiring.
         self,
         connection_name: str,
         config: Any,

@@ -71,7 +71,7 @@ class WhatsAppChannel:
     name: str
     prefix_assistant_name = True
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, RUF100 - WhatsApp channel constructor is a boundary configuration surface.
         self,
         connection_name: str,
         auth_db_path: str,

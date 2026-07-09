@@ -35,7 +35,7 @@ class SlackInteractions:
 
     _channel: SlackChannel
 
-    async def _finalize_decision(
+    async def _finalize_decision(  # noqa: PLR0913, RUF100 - shared callback helper keeps interaction handlers small.
         self,
         body: dict[str, Any],
         channel_id: str,
