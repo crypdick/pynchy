@@ -71,7 +71,16 @@ async def ensure_workspace_registered(
         )
         return None
 
-    created_jid = await channel.create_group(display_name)
+    try:
+        created_jid = await channel.create_group(display_name)
+    except (RuntimeError, ValueError) as exc:
+        logger.warning(
+            "Workspace chat creation failed; skipping registration",
+            folder=folder,
+            display_name=display_name,
+            err=str(exc),
+        )
+        return None
     if not isinstance(created_jid, str) or not created_jid:
         logger.warning("Workspace channel creation returned no JID", folder=folder)
         return None

@@ -27,9 +27,9 @@ from pynchy.types import (
 @pytest.fixture(autouse=True)
 def _clean_trace_batcher():
     """Ensure the global trace batcher is cleared before each test."""
-    streaming._trace_batcher = None
+    streaming._state.trace_batcher = None
     yield
-    streaming._trace_batcher = None
+    streaming._state.trace_batcher = None
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ class TestInitTraceBatcher:
         batcher = streaming.get_trace_batcher()
         assert batcher is not None
         # Clean up global state so subsequent tests get direct broadcast
-        streaming._trace_batcher = None
+        streaming._state.trace_batcher = None
 
 
 # ---------------------------------------------------------------------------

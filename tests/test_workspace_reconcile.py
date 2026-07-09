@@ -354,6 +354,45 @@ class TestReconcileWorkspaces:
         mock_channel.create_group.assert_awaited_once_with("New Agent")
         register_fn.assert_not_called()
 
+    async def test_create_group_failure_skips_workspace(
+        self,
+        db,
+        monkeypatch,
+        tmp_path,
+    ):
+        """A channel that cannot provision the workspace should not block startup."""
+        conn_ref = "main"
+        workspaces = _WorkspaceHarness()
+        s = make_settings(
+            workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection=conn_ref),
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+
+        _write_workspace_yaml(
+            workspaces,
+            "new-agent",
+            {
+                "schedule": "0 8 * * 1",
+                "prompt": "Weekly report",
+            },
+        )
+
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = conn_ref
+        mock_channel.create_group = AsyncMock(side_effect=ValueError("not configured"))
+
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+
+        await reconcile_workspaces(registered, [mock_channel], register_fn)
+
+        mock_channel.create_group.assert_awaited_once_with("New Agent")
+        register_fn.assert_not_called()
+
     async def test_discord_workspace_can_auto_create_configured_channel(
         self, db, monkeypatch, tmp_path
     ):
