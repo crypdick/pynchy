@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import asdict
-from typing import Any
+from typing import cast
 
 from temporalio import activity
 
@@ -41,15 +41,16 @@ _HOST_STATE_KEY = "temporal_git_sync_host_state"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 
 
-def _workspace_map(deps: Any) -> dict[str, WorkspaceProfile]:
+def _workspace_map(deps: object) -> dict[str, WorkspaceProfile]:
     workspaces = getattr(deps, "workspaces", {})
-    return workspaces() if callable(workspaces) else workspaces
+    workspaces = workspaces() if callable(workspaces) else workspaces
+    return cast("dict[str, WorkspaceProfile]", workspaces)
 
 
 class _TemporalGitSyncDeps:
     """Adapter that lets existing git-sync helpers start Temporal deploys."""
 
-    def __init__(self, deps: Any, *, reason: str) -> None:
+    def __init__(self, deps: object, *, reason: str) -> None:
         self._deps = deps
         self._reason = reason
 
