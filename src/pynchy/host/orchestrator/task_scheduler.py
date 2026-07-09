@@ -125,7 +125,9 @@ class TemporalRuntime(Protocol):
     async def reconcile_schedules(self) -> None: ...
 
 
-def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: Any) -> Any:
+def _build_temporal_runtime(
+    deps: SchedulerDependencies, scheduler_config: object
+) -> object:
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
     runtime_cls = TemporalSchedulerRuntime
     if runtime_cls is None:

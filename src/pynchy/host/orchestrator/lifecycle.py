@@ -16,6 +16,8 @@ import socket
 import threading
 from typing import TYPE_CHECKING, Any, cast
 
+import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+
 from pynchy.config import get_settings
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
@@ -48,13 +50,13 @@ _SHUTDOWN_HARD_EXIT_SECONDS = 60
 _PLUGIN_MANAGER_NOT_INITIALIZED = "phase 1 (_initialize_core) must run before {phase}"
 
 
-def _require_plugin_manager(app: PynchyApp, phase: str) -> Any:
+def _require_plugin_manager(app: PynchyApp, phase: str) -> pluggy.PluginManager:
     if app.plugin_manager is None:
         raise RuntimeError(_PLUGIN_MANAGER_NOT_INITIALIZED.format(phase=phase))
     return app.plugin_manager
 
 
-def _start_shutdown_watchdog() -> Any:
+def _start_shutdown_watchdog() -> object:
     watchdog = threading.Timer(_SHUTDOWN_HARD_EXIT_SECONDS, lambda: os._exit(1))
     watchdog.daemon = True
     watchdog.start()

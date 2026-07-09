@@ -243,7 +243,7 @@ def _prune_migration_backups(data_dir: Path) -> None:
 # ------------------------------------------------------------------
 
 
-async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> None:
+async def setup_admin_group(deps: StartupDeps, default_channel: object | None) -> None:
     """Create and register the first admin workspace.
 
     If a default channel with ``create_group`` is available, provision a
@@ -283,7 +283,7 @@ async def setup_admin_group(deps: StartupDeps, default_channel: Any | None) -> N
     logger.info("Admin workspace created", group=group_name, jid=jid)
 
 
-def validate_plugin_credentials(plugin: Any) -> list[str]:
+def validate_plugin_credentials(plugin: object) -> list[str]:
     """Check if plugin has required environment variables.
 
     Args:

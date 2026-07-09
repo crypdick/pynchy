@@ -11,7 +11,7 @@ import datetime
 import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pynchy.config.models import (
     ReposConfig,  # noqa: TC001, RUF100 - beartype resolves repo context settings at runtime.
@@ -67,6 +67,7 @@ def get_repo_context(slug: str) -> RepoContext | None:
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
 
 
+@runtime_checkable
 class _RepoSettings(Protocol):
     repos: ReposConfig
 
