@@ -14,9 +14,9 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
+import tomlkit
 
 from pynchy.config import get_settings, reset_settings
 from pynchy.config.jobs import (
@@ -298,11 +298,9 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     Preserves existing comments and formatting. Creates [workspaces.<folder>]
     section. Resets the settings cache so next get_settings() picks it up.
     """
-    import tomlkit
-
     toml_path = Path("config.toml")
 
-    def _mutate(doc: Any) -> None:
+    def _mutate(doc: tomlkit.TOMLDocument) -> None:
         if "workspaces" not in doc:
             doc.add("workspaces", tomlkit.table(is_super_table=True))
 
@@ -321,11 +319,9 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
 
 def add_job_to_toml(job_name: str, config: JobConfig) -> None:
     """Programmatically add a job to config.toml using tomlkit."""
-    import tomlkit
-
     toml_path = Path("config.toml")
 
-    def _mutate(doc: Any) -> None:
+    def _mutate(doc: tomlkit.TOMLDocument) -> None:
         if "jobs" not in doc:
             doc.add("jobs", tomlkit.table(is_super_table=True))
 

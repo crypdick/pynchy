@@ -8,7 +8,7 @@ from collections.abc import (
 )
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import Protocol, cast, runtime_checkable
 
 from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
@@ -29,6 +29,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace 
 )
 
 
+@runtime_checkable
 class _WorkspaceCreationChannel(Protocol):
     name: str
 
