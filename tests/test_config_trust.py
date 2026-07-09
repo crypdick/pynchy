@@ -9,6 +9,7 @@ from pynchy.config.models import (
     ToolConfig,
 )
 from pynchy.config.settings import validate_settings_mapping
+from pynchy.host.container_manager.mcp.resolution import merged_mcp_servers
 
 
 def test_tool_trust_defaults_are_maximally_cautious():
@@ -63,12 +64,54 @@ def test_mcp_tool_provider_config_parses_credentials_path():
             "secret_data": True,
             "public_sink": False,
             "dangerous_writes": False,
-            "mcp": {"credentials_path": "/gdrive-server/credentials.json"},
+            "mcp": {
+                "runtime": "docker",
+                "image": "mcp/gdrive:latest",
+                "port": 8080,
+                "credentials_path": "/gdrive-server/credentials.json",
+            },
         }
     )
 
     assert isinstance(cfg, McpTool)
     assert cfg.mcp.credentials_path == "/gdrive-server/credentials.json"
+
+
+def test_mcp_tool_rejects_missing_provider_config() -> None:
+    with pytest.raises(ValidationError, match="mcp"):
+        TypeAdapter(ToolConfig).validate_python({"type": "mcp"})
+
+
+def test_mcp_tool_provider_config_rejects_implicit_partial_docker_config() -> None:
+    with pytest.raises(ValidationError, match="Docker MCP tools require 'port'"):
+        TypeAdapter(ToolConfig).validate_python(
+            {"type": "mcp", "mcp": {"image": "mcp/example:latest"}}
+        )
+
+
+def test_valid_docker_mcp_tool_config_parses_and_resolves() -> None:
+    settings = validate_settings_mapping(
+        {
+            "profiles": {"worker": {"tools": ["docs"]}},
+            "workspaces": {"research": {"profiles": ["worker"]}},
+            "tools": {
+                "docs": {
+                    "type": "mcp",
+                    "mcp": {
+                        "runtime": "docker",
+                        "image": "mcp/docs:latest",
+                        "port": 8080,
+                    },
+                }
+            },
+        }
+    )
+
+    servers = merged_mcp_servers(settings, {})
+
+    assert servers["docs"].type == "docker"
+    assert servers["docs"].image == "mcp/docs:latest"
+    assert servers["docs"].port == 8080
 
 
 @pytest.mark.parametrize(
@@ -79,6 +122,8 @@ def test_mcp_tool_provider_config_parses_credentials_path():
         ({"runtime": "docker", "port": 8080}, "Docker MCP tools require 'image'"),
         ({"runtime": "docker", "image": "mcp/example:latest"}, "Docker MCP tools require 'port'"),
         ({"runtime": "url"}, "URL MCP tools require 'url'"),
+        ({"image": "mcp/example:latest"}, "Docker MCP tools require 'port'"),
+        ({"port": 8080}, "Docker MCP tools require 'image'"),
     ],
 )
 def test_mcp_tool_provider_config_rejects_incomplete_runtime_config(

@@ -21,7 +21,11 @@ def _settings_data(
 
 
 def _mcp_tool(*, public_source=True) -> dict:
-    return {"type": "mcp", "public_source": public_source}
+    return {
+        "type": "mcp",
+        "public_source": public_source,
+        "mcp": {"runtime": "docker", "image": "mcp/admin-test:latest", "port": 8080},
+    }
 
 
 class TestAdminCleanRoomRejectsPublicSource:
@@ -48,7 +52,16 @@ class TestAdminCleanRoomRejectsPublicSource:
             validate_settings_mapping(
                 _settings_data(
                     profile=ProfileConfig(is_admin=True, tools=["default-mcp"]),
-                    tools={"default-mcp": {"type": "mcp"}},
+                    tools={
+                        "default-mcp": {
+                            "type": "mcp",
+                            "mcp": {
+                                "runtime": "docker",
+                                "image": "mcp/admin-test:latest",
+                                "port": 8080,
+                            },
+                        }
+                    },
                 )
             )
 

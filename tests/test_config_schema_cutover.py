@@ -62,6 +62,11 @@ def test_new_schema_parses_minimal_config() -> None:
         [tools.docs]
         type = "mcp"
 
+        [tools.docs.mcp]
+        runtime = "docker"
+        image = "mcp/docs:latest"
+        port = 8080
+
         [connections.synapse]
         type = "discord"
         bot_token_env = "DISCORD_BOT_TOKEN"

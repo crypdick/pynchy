@@ -463,9 +463,6 @@ class McpToolConfig(_StrictModel):
 
     @model_validator(mode="after")
     def validate_explicit_runtime_config(self) -> McpToolConfig:
-        if "runtime" not in self.model_fields_set:
-            return self
-
         if self.runtime == "docker":
             if not self.image:
                 raise ValueError("Docker MCP tools require 'image'")
@@ -484,7 +481,7 @@ class McpToolConfig(_StrictModel):
 
 class McpTool(_ToolTrustConfig):
     type: Literal["mcp"]
-    mcp: McpToolConfig = Field(default_factory=McpToolConfig)
+    mcp: McpToolConfig
 
 
 BuiltinToolConfig = BuiltinTool

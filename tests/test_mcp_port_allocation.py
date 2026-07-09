@@ -412,7 +412,31 @@ class TestResolveAllInstancesPortOffset:
                     "alpha": {},
                     "beta": {"profiles": ["linear-access"]},
                 },
-                "tools": {"linear": {"type": "mcp"}},
+                "tools": {
+                    "linear": {
+                        "type": "mcp",
+                        "mcp": {
+                            "runtime": "script",
+                            "command": "uv",
+                            "args": [
+                                "run",
+                                "python",
+                                "-m",
+                                "pynchy.plugins.integrations.linear",
+                                "--port",
+                                "{port}",
+                                "--workspace",
+                                "{workspace}",
+                            ],
+                            "port": 8474,
+                            "transport": "streamable_http",
+                            "inject_workspace": True,
+                            "env_forward": {
+                                "LINEAR_API_KEY": "LINEAR_API_KEY"  # pragma: allowlist secret
+                            },
+                        },
+                    }
+                },
             }
         )
         all_servers = {
