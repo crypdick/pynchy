@@ -11,6 +11,8 @@ from pynchy.config.settings import validate_settings_mapping
 from pynchy.config.toml_io import parse_settings_toml
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pynchy.config import Settings
 
 
@@ -35,6 +37,32 @@ def test_schema_validation_ignores_ambient_settings_sources(
     )
 
     assert settings.command_center.connection is None
+
+
+def test_dotenv_secret_names_do_not_become_schema_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pynchy.config import Settings
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.toml").write_text("", encoding="utf-8")
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "DISCORD_BOT_TOKEN=x",
+                "CALDAV_NEXTCLOUD_PASSWORD=y",
+                "SERVER__PORT=9999",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(Settings.model_config, "toml_file", "config.toml")
+    monkeypatch.setitem(Settings.model_config, "env_file", ".env")
+
+    settings = Settings()
+
+    assert settings.server.port == 9999
 
 
 def test_new_schema_parses_minimal_config() -> None:

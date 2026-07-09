@@ -74,6 +74,24 @@ _HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
 )
 
 
+class _FilteredDotenvSettingsSource(PydanticBaseSettingsSource):
+    """Drop bare dotenv secrets before root schema validation runs."""
+
+    def __init__(
+        self, wrapped: PydanticBaseSettingsSource, settings_cls: type[BaseSettings]
+    ) -> None:
+        super().__init__(settings_cls)
+        self._wrapped = wrapped
+
+    def __call__(self) -> dict[str, Any]:
+        data = self._wrapped()
+        allowed = set(self.settings_cls.model_fields)
+        return {key: value for key, value in data.items() if key in allowed}
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        return self._wrapped.get_field_value(field, field_name)
+
+
 def _assert_admin_clean_room(
     settings: Settings, *, workspace_name: str, workspace: WorkspaceConfig
 ) -> None:
@@ -361,7 +379,7 @@ class Settings(BaseSettings):
         return (
             init_settings,
             env_settings,
-            dotenv_settings,
+            _FilteredDotenvSettingsSource(dotenv_settings, settings_cls),
             TomlConfigSettingsSource(settings_cls),
             file_secret_settings,
         )
