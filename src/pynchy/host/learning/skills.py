@@ -39,33 +39,40 @@ def _validated_skill_dir(
         return None
 
     resolved_candidate = candidate.resolve()
+    rejection = _skill_dir_rejection(candidate, resolved_candidate, resolved_root, skill_max_bytes)
+    if rejection is not None:
+        reason, fields = rejection
+        _skip_learned_skill(candidate, reason, **fields)
+        return None
+    return resolved_candidate
+
+
+def _skill_dir_rejection(
+    candidate: Path,
+    resolved_candidate: Path,
+    resolved_root: Path,
+    skill_max_bytes: int,
+) -> tuple[str, dict[str, object]] | None:
     if not _is_under(resolved_candidate, resolved_root):
-        _skip_learned_skill(candidate, "outside skills root")
-        return None
+        return ("outside skills root", {})
     if candidate.is_symlink():
-        _skip_learned_skill(candidate, "skill directory is a symlink")
-        return None
+        return ("skill directory is a symlink", {})
 
     skill_md = candidate / "SKILL.md"
     # Learned skills follow session_prep.parse_skill_tier's current loader contract:
     # require a real SKILL.md here, but do not invent learned-only frontmatter fields.
     if not _is_regular_file_without_symlink(skill_md):
-        _skip_learned_skill(candidate, "SKILL.md is missing, unreadable, or a symlink")
-        return None
+        return ("SKILL.md is missing, unreadable, or a symlink", {})
 
     size_bytes = _directory_size_bytes(candidate)
     if size_bytes is None:
-        _skip_learned_skill(candidate, "contains symlink or unreadable file")
-        return None
+        return ("contains symlink or unreadable file", {})
     if size_bytes > skill_max_bytes:
-        _skip_learned_skill(
-            candidate,
+        return (
             "exceeds byte budget",
-            size_bytes=size_bytes,
-            max_bytes=skill_max_bytes,
+            {"size_bytes": size_bytes, "max_bytes": skill_max_bytes},
         )
-        return None
-    return resolved_candidate
+    return None
 
 
 def iter_learned_skill_dirs(group_folder: str) -> list[Path]:

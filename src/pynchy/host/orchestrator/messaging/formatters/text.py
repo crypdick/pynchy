@@ -20,7 +20,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_tool_preview,
 )
 from pynchy.host.orchestrator.messaging.formatters.base import RenderedMessage
-from pynchy.types import OutboundEvent
+from pynchy.types import OutboundEvent, OutboundEventType
 
 # Channel broadcast truncation threshold for tool results.
 # Mirrors ``_MAX_TOOL_OUTPUT`` in router.py — full content is always persisted
@@ -48,32 +48,16 @@ class TextFormatter:
     """
 
     def render(self, event: OutboundEvent) -> RenderedMessage:
-        from pynchy.types import OutboundEventType
-
-        match event.type:
-            case OutboundEventType.TEXT:
-                return self._render_text(event)
-
-            case OutboundEventType.TOOL_TRACE:
-                return self._render_tool_trace(event)
-
-            case OutboundEventType.TOOL_RESULT:
-                return self._render_tool_result(event)
-
-            case OutboundEventType.THINKING:
-                return self._render_thinking(event)
-
-            case OutboundEventType.RESULT:
-                return self._render_result(event)
-
-            case OutboundEventType.HOST:
-                return RenderedMessage(text=f"\U0001f3e0 {event.content}")
-
-            case OutboundEventType.SYSTEM:
-                return RenderedMessage(text=f"\u2699\ufe0f {event.content}")
-
-            case _:
-                return RenderedMessage(text=event.content)
+        renderers = {
+            OutboundEventType.TEXT: self._render_text,
+            OutboundEventType.TOOL_TRACE: self._render_tool_trace,
+            OutboundEventType.TOOL_RESULT: self._render_tool_result,
+            OutboundEventType.THINKING: self._render_thinking,
+            OutboundEventType.RESULT: self._render_result,
+            OutboundEventType.HOST: self._render_host,
+            OutboundEventType.SYSTEM: self._render_system,
+        }
+        return renderers.get(event.type, self._render_default)(event)
 
     def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
         """Render multiple events as a single newline-joined message."""
@@ -108,6 +92,15 @@ class TextFormatter:
         text = format_internal_tags(event.content)
         prefix = "\U0001f99e " if event.metadata.get("prefix_assistant_name", True) else ""
         return RenderedMessage(text=f"{prefix}{text}")
+
+    def _render_host(self, event: OutboundEvent) -> RenderedMessage:
+        return RenderedMessage(text=f"\U0001f3e0 {event.content}")
+
+    def _render_system(self, event: OutboundEvent) -> RenderedMessage:
+        return RenderedMessage(text=f"\u2699\ufe0f {event.content}")
+
+    def _render_default(self, event: OutboundEvent) -> RenderedMessage:
+        return RenderedMessage(text=event.content)
 
 
 def _display_content(content: str) -> str:

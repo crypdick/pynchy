@@ -96,22 +96,43 @@ async def _handle_create_periodic_agent(
     deps: IpcDeps,
 ) -> None:
     """Create a periodic agent: folder, config.toml workspace, CLAUDE.md, chat group, and task."""
+    request = _periodic_agent_request(data, source_group=source_group, is_admin=is_admin)
+    if request is None:
+        return
+
+    if not await _periodic_agent_cop_allowed(request, data, source_group, deps):
+        return
+
+    await _create_periodic_agent(request, deps)
+
+
+def _periodic_agent_request(
+    data: dict[str, Any], *, source_group: str, is_admin: bool
+) -> CreatePeriodicAgentRequest | None:
     if not is_admin:
         logger.warning(
             "Unauthorized create_periodic_agent attempt blocked",
             source_group=source_group,
         )
-        return
+        return None
 
     request = CreatePeriodicAgentRequest.from_dict(data)
     if request is None:
         logger.warning("create_periodic_agent missing required fields", data=str(data))
-        return
+        return None
 
     if not croniter.is_valid(request.schedule):
         logger.warning("create_periodic_agent invalid cron", schedule=request.schedule)
-        return
+        return None
+    return request
 
+
+async def _periodic_agent_cop_allowed(
+    request: CreatePeriodicAgentRequest,
+    data: dict[str, Any],
+    source_group: str,
+    deps: IpcDeps,
+) -> bool:
     if not data.get("_cop_approved"):
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
@@ -128,8 +149,11 @@ async def _handle_create_periodic_agent(
             deps,
         )
         if not allowed:
-            return
+            return False
+    return True
 
+
+async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcDeps) -> None:
     from pynchy.config.jobs import JobConfig
     from pynchy.config.models import WorkspaceConfig
     from pynchy.host.orchestrator.workspace_config import add_job_to_toml, add_workspace_to_toml

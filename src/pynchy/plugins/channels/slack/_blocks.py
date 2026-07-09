@@ -24,7 +24,7 @@ from pynchy.host.orchestrator.messaging.formatter import (
     format_tool_preview,
 )
 from pynchy.host.orchestrator.messaging.formatters.base import RenderedMessage
-from pynchy.types import OutboundEvent
+from pynchy.types import OutboundEvent, OutboundEventType
 
 # Slack limits messages to 50 blocks.
 _MAX_BLOCKS_PER_MESSAGE = 50
@@ -94,25 +94,16 @@ class SlackBlocksFormatter:
     """
 
     def render(self, event: OutboundEvent) -> RenderedMessage:
-        from pynchy.types import OutboundEventType
-
-        match event.type:
-            case OutboundEventType.TEXT:
-                return self._render_text(event)
-            case OutboundEventType.RESULT:
-                return self._render_result(event)
-            case OutboundEventType.TOOL_TRACE:
-                return self._render_tool_trace(event)
-            case OutboundEventType.TOOL_RESULT:
-                return self._render_tool_result(event)
-            case OutboundEventType.THINKING:
-                return self._render_thinking(event)
-            case OutboundEventType.HOST:
-                return self._render_host(event)
-            case OutboundEventType.SYSTEM:
-                return self._render_system(event)
-            case _:
-                return RenderedMessage(text=event.content)
+        renderers = {
+            OutboundEventType.TEXT: self._render_text,
+            OutboundEventType.RESULT: self._render_result,
+            OutboundEventType.TOOL_TRACE: self._render_tool_trace,
+            OutboundEventType.TOOL_RESULT: self._render_tool_result,
+            OutboundEventType.THINKING: self._render_thinking,
+            OutboundEventType.HOST: self._render_host,
+            OutboundEventType.SYSTEM: self._render_system,
+        }
+        return renderers.get(event.type, self._render_default)(event)
 
     def render_batch(self, events: list[OutboundEvent]) -> RenderedMessage:
         """Render multiple events as a single block list.
@@ -282,6 +273,9 @@ class SlackBlocksFormatter:
         """SYSTEM — small muted operational line."""
         blocks = [_context_block(f"\u2699\ufe0f {event.content}")]
         return RenderedMessage(text=f"\u2699\ufe0f {event.content}", blocks=blocks)
+
+    def _render_default(self, event: OutboundEvent) -> RenderedMessage:
+        return RenderedMessage(text=event.content)
 
     # ------------------------------------------------------------------
     # Helpers

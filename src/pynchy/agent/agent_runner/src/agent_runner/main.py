@@ -192,33 +192,34 @@ def event_to_output(event: AgentEvent, session_id: str | None) -> ContainerOutpu
     """Convert AgentEvent to ContainerOutput."""
     match event.type:
         case "thinking":
-            return _success_output("thinking", thinking=event.data.get("thinking"))
+            output = _success_output("thinking", thinking=event.data.get("thinking"))
         case "tool_use":
-            return _success_output(
+            output = _success_output(
                 "tool_use",
                 tool_name=event.data.get("tool_name"),
                 tool_input=event.data.get("tool_input"),
             )
         case "tool_result":
-            return _success_output(
+            output = _success_output(
                 "tool_result",
                 tool_result_id=event.data.get("tool_result_id"),
                 tool_result_content=event.data.get("tool_result_content"),
                 tool_result_is_error=event.data.get("tool_result_is_error"),
             )
         case "text":
-            return _success_output("text", text=event.data.get("text"))
+            output = _success_output("text", text=event.data.get("text"))
         case "system":
-            return _success_output(
+            output = _success_output(
                 "system",
                 system_subtype=event.data.get("system_subtype"),
                 system_data=event.data.get("system_data", {}),
             )
         case "result":
-            return _result_output(event, session_id)
+            output = _result_output(event, session_id)
         case _:
             log(f"Unknown event type: {event.type}")
-            return _success_output("text", text="")
+            output = _success_output("text", text="")
+    return output
 
 
 # ---------------------------------------------------------------------------

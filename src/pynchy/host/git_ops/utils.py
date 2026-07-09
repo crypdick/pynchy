@@ -247,34 +247,36 @@ def push_local_commits(
         if not ahead:
             return True  # nothing to push (or can't tell)
 
-        # Try rebase+push, retry once if origin advanced mid-operation
-        for attempt in range(2):
-            rebase = run_git("rebase", f"origin/{main}", cwd=cwd)
-            if rebase.returncode != 0:
-                run_git("rebase", "--abort", cwd=cwd)
-                if attempt == 0:
-                    # Re-fetch and retry — origin may have advanced
-                    logger.info("push_local: rebase failed, retrying after fresh fetch")
-                    retry_fetch = run_git("fetch", "origin", cwd=cwd, env=env)
-                    if retry_fetch.returncode != 0:
-                        logger.warning(
-                            "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
-                        )
-                        return False
-                    continue
-                logger.warning(
-                    "push_local: rebase failed after retry", stderr=rebase.stderr.strip()
-                )
-                return False
-
-            push = run_git("push", cwd=cwd, env=env)
-            if push.returncode != 0:
-                logger.warning("push_local: git push failed", stderr=push.stderr.strip())
-                return False
-            logger.info("push_local: pushed local commits")
-            return True
+        return _rebase_and_push_local_commits(main, cwd=cwd, env=env)
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logger.warning("push_local: unexpected error", err=str(exc))
         return False
-    else:
-        return False  # exhausted attempts
+
+
+def _rebase_and_push_local_commits(
+    main: str, *, cwd: Path | None, env: dict[str, str] | None
+) -> bool:
+    # Try rebase+push, retry once if origin advanced mid-operation.
+    for attempt in range(2):
+        rebase = run_git("rebase", f"origin/{main}", cwd=cwd)
+        if rebase.returncode != 0:
+            run_git("rebase", "--abort", cwd=cwd)
+            if attempt == 0:
+                logger.info("push_local: rebase failed, retrying after fresh fetch")
+                retry_fetch = run_git("fetch", "origin", cwd=cwd, env=env)
+                if retry_fetch.returncode != 0:
+                    logger.warning(
+                        "push_local: retry fetch failed", stderr=retry_fetch.stderr.strip()
+                    )
+                    return False
+                continue
+            logger.warning("push_local: rebase failed after retry", stderr=rebase.stderr.strip())
+            return False
+
+        push = run_git("push", cwd=cwd, env=env)
+        if push.returncode != 0:
+            logger.warning("push_local: git push failed", stderr=push.stderr.strip())
+            return False
+        logger.info("push_local: pushed local commits")
+        return True
+    return False

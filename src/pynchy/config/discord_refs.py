@@ -65,6 +65,12 @@ def discord_chat_ref_error(config: DiscordConnectionConfig, chat: str) -> str | 
 
     if config.group_policy == "disabled":
         return "Discord guild messages are disabled"
+    return _discord_channel_ref_error(config, target)
+
+
+def _discord_channel_ref_error(
+    config: DiscordConnectionConfig, target: DiscordChatTarget
+) -> str | None:
     guild = config.chat.get(target.guild_id or "")
     if guild is None:
         return f"unknown Discord guild: {target.guild_id}"

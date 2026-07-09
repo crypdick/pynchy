@@ -70,17 +70,8 @@ def refresh_access_token(profile_name: str) -> str | None:
         logger.debug("Could not parse client credentials for refresh", error=str(exc))
         return None
 
-    creds_path = credentials_path(profile_name)
-    if not creds_path.exists():
-        return None
-
-    try:
-        creds = json.loads(creds_path.read_text())
-        refresh_token = creds.get("refresh_token")
-        if not refresh_token:
-            return None
-    except (OSError, ValueError) as exc:
-        logger.debug("Could not read stored refresh token", error=str(exc))
+    refresh_token = _stored_refresh_token(profile_name)
+    if refresh_token is None:
         return None
 
     data = urllib.parse.urlencode(
@@ -104,6 +95,20 @@ def refresh_access_token(profile_name: str) -> str | None:
     except (RuntimeError, urllib.error.URLError, ValueError) as exc:
         logger.debug("Access token refresh failed", error=str(exc))
         return None
+
+
+def _stored_refresh_token(profile_name: str) -> str | None:
+    creds_path = credentials_path(profile_name)
+    if not creds_path.exists():
+        return None
+
+    try:
+        creds = json.loads(creds_path.read_text())
+        refresh_token = creds.get("refresh_token")
+    except (OSError, ValueError) as exc:
+        logger.debug("Could not read stored refresh token", error=str(exc))
+        return None
+    return refresh_token if isinstance(refresh_token, str) and refresh_token else None
 
 
 def enable_api_via_rest(project_number: str, access_token: str, api_id: str) -> bool:

@@ -115,12 +115,18 @@ class DiscordChannel:
         if target is None:
             return None
         if target.kind == "direct":
-            if target.target_id.isdecimal():
-                return dm_jid(target.target_id)
-            user = self._find_configured_user(target.target_id)
-            if user is not None:
-                return dm_jid(str(user.id))
-            return await self._find_stored_direct_jid(target.target_id)
+            return await self._resolve_direct_chat_jid(target.target_id)
+        return await self._resolve_channel_chat_jid(target)
+
+    async def _resolve_direct_chat_jid(self, user_key: str) -> str | None:
+        if user_key.isdecimal():
+            return dm_jid(user_key)
+        user = self._find_configured_user(user_key)
+        if user is not None:
+            return dm_jid(str(user.id))
+        return await self._find_stored_direct_jid(user_key)
+
+    async def _resolve_channel_chat_jid(self, target: DiscordChatTarget) -> str | None:
         if self.client is not None:
             channel = await self._find_configured_channel(target)
             if channel is not None:

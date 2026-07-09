@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -135,7 +136,30 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
     if isinstance(ctx, dict):
         return ctx
 
-    # 1. Fetch origin
+    steps: tuple[Callable[[], dict[str, Any] | None], ...] = (
+        lambda: _sync_fetch_origin(repo_ctx, ctx),
+        lambda: _sync_rebase_main(repo_ctx, ctx),
+        lambda: _sync_rebase_worktree(ctx),
+        lambda: _sync_merge_worktree(repo_ctx, ctx),
+        lambda: _sync_push_main(repo_ctx, ctx),
+    )
+    for step in steps:
+        failure = step()
+        if failure is not None:
+            return failure
+
+    logger.info(
+        "Worktree synced to main and pushed",
+        group=group_folder,
+        commits=ctx.ahead,
+    )
+    return {
+        "success": True,
+        "message": f"Merged {ctx.ahead} commit(s) into main and pushed to origin.",
+    }
+
+
+def _sync_fetch_origin(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
     fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=ctx.env)
     if fetch.returncode != 0:
         return {
@@ -145,8 +169,10 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
                 "Check network connectivity and try again."
             ),
         }
+    return None
 
-    # 2. Rebase host main onto origin/main (catch up with remote)
+
+def _sync_rebase_main(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
     rebase_main = run_git("rebase", f"origin/{ctx.main_branch}", cwd=repo_ctx.root)
     if rebase_main.returncode != 0:
         run_git("rebase", "--abort", cwd=repo_ctx.root)
@@ -158,11 +184,12 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
                 "Your worktree commits are preserved — try again later."
             ),
         }
+    return None
 
-    # 3. Rebase worktree onto main (from within the worktree)
+
+def _sync_rebase_worktree(ctx: _WorktreeContext) -> dict[str, Any] | None:
     rebase_wt = run_git("rebase", ctx.main_branch, cwd=ctx.worktree_path)
     if rebase_wt.returncode != 0:
-        # Leave conflict markers for agent to resolve
         return {
             "success": False,
             "message": (
@@ -173,8 +200,10 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
                 "Then call sync_worktree_to_main again."
             ),
         }
+    return None
 
-    # 4. FF-merge worktree branch into main
+
+def _sync_merge_worktree(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
     merge = run_git("merge", "--ff-only", ctx.branch_name, cwd=repo_ctx.root)
     if merge.returncode != 0:
         return {
@@ -185,8 +214,10 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
                 "Try running `git log --oneline --graph` to inspect the state."
             ),
         }
+    return None
 
-    # 5. Push to origin (skip_fetch since we just fetched)
+
+def _sync_push_main(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, Any] | None:
     pushed = push_local_commits(skip_fetch=True, cwd=repo_ctx.root, env=ctx.env)
     if not pushed:
         return {
@@ -197,16 +228,7 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
                 "The host will retry pushing automatically."
             ),
         }
-
-    logger.info(
-        "Worktree synced to main and pushed",
-        group=group_folder,
-        commits=ctx.ahead,
-    )
-    return {
-        "success": True,
-        "message": f"Merged {ctx.ahead} commit(s) into main and pushed to origin.",
-    }
+    return None
 
 
 # ---------------------------------------------------------------------------

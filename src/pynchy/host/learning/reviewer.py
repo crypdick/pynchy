@@ -80,6 +80,15 @@ def should_review(packet: LearningPacket) -> bool:
     if not normalized:
         return False
 
+    if _has_review_signal(packet, text, normalized):
+        return True
+    if _is_short_low_signal_turn(normalized):
+        return False
+    return len(normalized) >= _MIN_REVIEW_TEXT_CHARS
+
+
+def _has_review_signal(packet: LearningPacket, text: str, normalized: str) -> bool:
+    """Return whether the packet has a positive signal strong enough to review."""
     if _contains_explicit_learning_signal(text):
         return True
     if packet.error_snippets:
@@ -88,12 +97,7 @@ def should_review(packet: LearningPacket) -> bool:
         return True
     if packet.tool_counts:
         return True
-    if packet.loaded_skills and len(normalized) >= _MIN_REVIEW_TEXT_CHARS // 2:
-        return True
-
-    if _is_short_low_signal_turn(normalized):
-        return False
-    return len(normalized) >= _MIN_REVIEW_TEXT_CHARS
+    return bool(packet.loaded_skills and len(normalized) >= _MIN_REVIEW_TEXT_CHARS // 2)
 
 
 def build_review_prompt(packet: LearningPacket, paths: LearningPaths) -> str:

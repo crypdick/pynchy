@@ -19,6 +19,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 _SCREENSHOT_BIN = "/usr/sbin/screencapture"
 _CONTAINER_SCREENSHOT_DIR = "/workspace/ipc/screenshots"
 _VALID_MODES = {"full", "selection", "window"}
+_ScreenshotRequest = tuple[str, Path, list[str]]
 
 
 def _timestamp() -> str:
@@ -82,19 +83,10 @@ async def _handle_take_screenshot(data: dict[str, Any]) -> dict[str, Any]:
     if platform.system() != "Darwin":
         return {"error": "Desktop screenshots are only supported on macOS hosts."}
 
-    source_group = _source_group(data)
-    if source_group is None:
-        return {"error": "Missing or invalid source group for screenshot request."}
-
-    mode = _mode(data)
-    if mode is None:
-        return {"error": 'mode must be one of "full", "selection", or "window".'}
-
-    try:
-        output_path = _screenshot_path(source_group=source_group, label=data.get("label"))
-        command = _command(data, output_path, mode)
-    except ValueError as exc:
-        return {"error": str(exc)}
+    request = _screenshot_request(data)
+    if isinstance(request, dict):
+        return request
+    mode, output_path, command = request
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     proc = await asyncio.create_subprocess_exec(
@@ -118,6 +110,23 @@ async def _handle_take_screenshot(data: dict[str, Any]) -> dict[str, Any]:
             "bytes": output_path.stat().st_size,
         }
     }
+
+
+def _screenshot_request(data: dict[str, Any]) -> _ScreenshotRequest | dict[str, str]:
+    source_group = _source_group(data)
+    if source_group is None:
+        return {"error": "Missing or invalid source group for screenshot request."}
+
+    mode = _mode(data)
+    if mode is None:
+        return {"error": 'mode must be one of "full", "selection", or "window".'}
+
+    try:
+        output_path = _screenshot_path(source_group=source_group, label=data.get("label"))
+        command = _command(data, output_path, mode)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return (mode, output_path, command)
 
 
 class DesktopScreenshotPlugin:
