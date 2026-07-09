@@ -3,7 +3,11 @@
 import sys
 from pathlib import Path
 
+import pluggy
 import pytest
+
+from pynchy.plugins import get_plugin_manager
+from pynchy.types import ContainerInput
 
 # Add container agent_runner to path for testing
 container_path = Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"
@@ -172,8 +176,6 @@ class TestContainerInputAgentCore:
 
     def test_container_input_has_agent_core_fields(self):
         """Test ContainerInput has agent_core_module and agent_core_config fields."""
-        from pynchy.types import ContainerInput
-
         input_data = ContainerInput(
             messages=[],
             group_folder="test",
@@ -190,8 +192,6 @@ class TestContainerInputAgentCore:
 
     def test_container_input_agent_core_defaults(self):
         """Test ContainerInput agent_core_module defaults to OpenAI."""
-        from pynchy.types import ContainerInput
-
         input_data = ContainerInput(
             messages=[],
             group_folder="test",
@@ -209,8 +209,6 @@ class TestAgentCorePlugin:
 
     def test_plugin_manager_initialization(self):
         """Test plugin manager initializes with built-in Claude plugin."""
-        from pynchy.plugins import get_plugin_manager
-
         pm = get_plugin_manager()
         assert pm is not None
 
@@ -228,10 +226,6 @@ class TestAgentCorePlugin:
 
     def test_custom_plugin_registration(self):
         """Test registering a custom agent core plugin."""
-        import pluggy
-
-        from pynchy.plugins import get_plugin_manager
-
         hookimpl = pluggy.HookimplMarker("pynchy")
 
         class TestCorePlugin:
@@ -257,10 +251,6 @@ class TestAgentCorePlugin:
 
     def test_plugin_with_packages(self):
         """Test plugin returning container packages."""
-        import pluggy
-
-        from pynchy.plugins import get_plugin_manager
-
         hookimpl = pluggy.HookimplMarker("pynchy")
 
         class OpenAICorePlugin:
