@@ -47,7 +47,7 @@ def register_prefix(
 async def dispatch(
     request: IpcRequestEnvelope | dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - dispatcher callback signature is part of the IPC protocol.
     deps: IpcDeps,
 ) -> None:
     """Dispatch an IPC request to its registered handler."""

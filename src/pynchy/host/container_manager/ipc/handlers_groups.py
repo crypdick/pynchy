@@ -51,7 +51,7 @@ class _PeriodicAgentSetup:
 async def _handle_register_group(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     if not is_admin:
@@ -98,7 +98,7 @@ async def _handle_register_group(
 async def _handle_create_periodic_agent(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Create a periodic agent: folder, config.toml workspace, CLAUDE.md, chat group, and task."""

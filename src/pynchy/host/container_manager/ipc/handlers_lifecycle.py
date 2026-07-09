@@ -67,7 +67,7 @@ def _aggregate_sync_results(
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,
+    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -115,7 +115,7 @@ async def _handle_reset_context(
 async def _handle_finished_work(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,
+    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     chat_jid = data.get("chatJid", "")
@@ -139,7 +139,7 @@ async def _handle_finished_work(
 async def _handle_sync_worktree_to_main(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,
+    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     import asyncio

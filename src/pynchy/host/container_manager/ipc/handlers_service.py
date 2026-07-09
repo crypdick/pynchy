@@ -82,7 +82,7 @@ def _service_request(data: dict[str, Any], source_group: str) -> _ServiceRequest
     )
 
 
-def _security_gate(source_group: str, is_admin: bool) -> SecurityGate:
+def _security_gate(source_group: str, *, is_admin: bool) -> SecurityGate:
     gate = get_gate_for_group(source_group)
     if gate is not None:
         return gate
@@ -183,7 +183,7 @@ async def _maybe_require_cop_approval(
 async def _handle_service_request(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Handle a service request with policy enforcement and plugin dispatch."""
@@ -208,7 +208,7 @@ async def _handle_service_request(
         )
         return
 
-    gate = _security_gate(source_group, is_admin)
+    gate = _security_gate(source_group, is_admin=is_admin)
 
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"

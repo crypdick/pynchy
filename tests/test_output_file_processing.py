@@ -63,7 +63,8 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -88,7 +89,8 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -108,7 +110,8 @@ class TestOutputFileProcessing:
         )
 
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=None,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -129,7 +132,8 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -153,7 +157,8 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -190,10 +195,12 @@ class TestQueryDonePulse:
         handler = AsyncMock()
         with (
             patch(
-                "pynchy.host.container_manager.ipc.watcher._get_output_handler",
+                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
                 return_value=handler,
             ),
-            patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
+            patch(
+                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
+            ) as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -215,9 +222,12 @@ class TestQueryDonePulse:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                return_value=None,
             ),
-            patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
+            patch(
+                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
+            ) as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -240,9 +250,12 @@ class TestQueryDonePulse:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                return_value=None,
             ),
-            patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
+            patch(
+                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
+            ) as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -265,9 +278,12 @@ class TestQueryDonePulse:
 
         with (
             patch(
-                "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=None
+                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                return_value=None,
             ),
-            patch("pynchy.host.container_manager.ipc.watcher._signal_query_done") as mock_signal,
+            patch(
+                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
+            ) as mock_signal,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -291,10 +307,10 @@ class TestQueryDonePulse:
         handler = AsyncMock()
         with (
             patch(
-                "pynchy.host.container_manager.ipc.watcher._get_output_handler",
+                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
                 return_value=handler,
             ),
-            patch("pynchy.host.container_manager.ipc.watcher._signal_query_done"),
+            patch("pynchy.host.container_manager.ipc.output_processing._signal_query_done"),
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -337,7 +353,8 @@ class TestOutputFileErrors:
 
         handler = AsyncMock(side_effect=consume_file)
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -363,7 +380,8 @@ class TestOutputFileErrors:
 
         handler = AsyncMock(side_effect=slow_handler)
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await asyncio.gather(
                 _process_output_file(file_path, "test-group", ipc_dir),
@@ -419,7 +437,8 @@ class TestOutputFileErrors:
 
         handler = AsyncMock(side_effect=RuntimeError("handler boom"))
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file_path, "test-group", ipc_dir)
 
@@ -446,7 +465,8 @@ class TestOutputFileErrors:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.watcher._get_output_handler", return_value=handler
+            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            return_value=handler,
         ):
             await _process_output_file(file1, "test-group", ipc_dir)
             await _process_output_file(file2, "test-group", ipc_dir)

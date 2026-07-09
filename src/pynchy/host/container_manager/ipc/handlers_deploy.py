@@ -24,7 +24,7 @@ async def start_deploy_workflow(request: DeployRequest) -> None:
 async def _handle_deploy(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """Handle a deploy request from the admin group agent.

@@ -21,17 +21,14 @@ from pynchy.host.container_manager.ipc.handlers_signals import handle_signal as 
 from pynchy.host.container_manager.ipc.ledger import (
     claim_request_for_execution as _claim_request_for_execution,
 )
-from pynchy.host.container_manager.ipc.output_claims import claim_output_file
+from pynchy.host.container_manager.ipc.output_processing import process_output_file
 from pynchy.host.container_manager.ipc.protocol import (
     InboundChatMessage,
     parse_ipc_file,
     parse_request_envelope,
 )
 from pynchy.host.container_manager.ipc.registry import dispatch
-from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
-from pynchy.host.container_manager.serialization import parse_container_output
 from pynchy.logger import logger
-from pynchy.types import GroupFolder
 
 _ipc_watcher_lock = asyncio.Lock()
 _ipc_watcher_running = False
@@ -75,10 +72,6 @@ def _unlink_path(path: Path) -> None:
     path.unlink()
 
 
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
 def _json_files_in_dir(path: Path) -> list[Path]:
     if not path.exists():
         return []
@@ -92,6 +85,7 @@ def _group_folders_in_ipc_dir(ipc_base_dir: Path) -> list[str]:
 async def _process_message_file(
     file_path: Path,
     source_group: str,
+    *,
     is_admin: bool,
     ipc_base_dir: Path,
     deps: IpcDeps,
@@ -139,6 +133,7 @@ async def _process_message_file(
 async def _process_request_file(
     file_path: Path,
     source_group: str,
+    *,
     is_admin: bool,
     ipc_base_dir: Path,
     deps: IpcDeps,
@@ -153,12 +148,17 @@ async def _process_request_file(
             )
 
         if envelope.kind == "refresh_groups":
-            await _handle_signal(envelope.kind, source_group, is_admin, deps)
+            await _handle_signal(
+                envelope.kind,
+                source_group,
+                is_admin=is_admin,
+                deps=deps,
+            )
             await asyncio.to_thread(_unlink_path, file_path)
             return
 
         if _claim_request_for_execution(envelope, ipc_base_dir):
-            await dispatch(envelope, source_group, is_admin, deps)
+            await dispatch(envelope, source_group, is_admin=is_admin, deps=deps)
         await asyncio.to_thread(_unlink_path, file_path)
     except Exception:
         logger.exception(
@@ -169,111 +169,34 @@ async def _process_request_file(
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
 
 
-def _get_output_handler(group_folder: str) -> OnOutput | None:
-    """Look up the session's output callback for a group.
-
-    Returns None if no session is active or no handler is set.
-    Delegates to get_session_output_handler() which is the public API
-    on the session module.
-    """
-    from pynchy.host.container_manager.session import get_session_output_handler
-
-    return get_session_output_handler(GroupFolder(group_folder))
-
-
-def _signal_query_done(group_folder: str) -> None:
-    """Signal query completion for a group's session.
-
-    Delegates to session.signal_query_done() which sets the _query_done
-    event, clears the output handler, and resets the idle timer.
-    """
-    from pynchy.host.container_manager.session import get_session
-
-    session = get_session(GroupFolder(group_folder))
-    if session is None:
-        return
-    session.signal_query_done()
-
-
 async def _process_output_file(
     file_path: Path,
     source_group: str,
     ipc_base_dir: Path,
 ) -> None:
-    """Process a single output event file from a container.
-
-    Reads JSON, parses via parse_container_output(), dispatches to the
-    session's output handler, and detects query-done pulses (result events
-    with new_session_id).
-
-    Only deletes the file if a session handler consumed it.  If no handler
-    is registered (e.g. a stale output file from a dead session), the file
-    is left in place for the startup sweep to clean up.
-    """
-    with claim_output_file(file_path) as claimed:
-        if not claimed:
-            return
-
-        await _process_claimed_output_file(file_path, source_group, ipc_base_dir)
-
-
-async def _process_claimed_output_file(
-    file_path: Path,
-    source_group: str,
-    ipc_base_dir: Path,
-) -> None:
-    """Process an output file after this task has claimed handler delivery."""
-    try:
-        try:
-            json_str = await asyncio.to_thread(_read_text, file_path)
-        except FileNotFoundError:
-            # Watchdog and the periodic runtime sweep can both discover the
-            # same output file. Whichever loses that race should be a no-op.
-            return
-        output = parse_container_output(json_str)
-
-        # Dispatch to the session's output handler
-        handler = _get_output_handler(source_group)
-        if handler is not None:
-            try:
-                await handler(output)
-            except Exception:
-                logger.exception(
-                    "Output handler callback failed",
-                    group=source_group,
-                )
-
-        # Detect query-done pulse
-        if is_query_done_pulse(output):
-            _signal_query_done(source_group)
-            logger.info(
-                "Query done pulse received via output file",
-                group=source_group,
-            )
-
-        # Only delete if a session handler consumed the event.  If no
-        # handler is set (e.g. stale file from a dead session), leave for
-        # the startup sweep to clean up.
-        if handler is not None:
-            with contextlib.suppress(FileNotFoundError):
-                await asyncio.to_thread(_unlink_path, file_path)
-    except Exception:
-        logger.exception(
-            "Error processing output file",
-            file=file_path.name,
-            source_group=source_group,
-        )
-        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+    """Process a single output event file from a container."""
+    await process_output_file(file_path, source_group, ipc_base_dir)
 
 
 async def _sweep_messages(
-    messages_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
+    messages_dir: Path,
+    source_group: str,
+    *,
+    is_admin: bool,
+    ipc_base_dir: Path,
+    deps: IpcDeps,
 ) -> int:
     """Replay pending message files. Returns the number processed."""
     try:
         count = 0
         for file_path in await asyncio.to_thread(_json_files_in_dir, messages_dir):
-            await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+            await _process_message_file(
+                file_path,
+                source_group,
+                is_admin=is_admin,
+                ipc_base_dir=ipc_base_dir,
+                deps=deps,
+            )
             count += 1
     except OSError as exc:
         _log_sweep_error("Error reading IPC messages directory during sweep", exc, source_group)
@@ -283,13 +206,24 @@ async def _sweep_messages(
 
 
 async def _sweep_requests(
-    requests_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
+    requests_dir: Path,
+    source_group: str,
+    *,
+    is_admin: bool,
+    ipc_base_dir: Path,
+    deps: IpcDeps,
 ) -> int:
     """Replay pending request files. Returns the number processed."""
     try:
         count = 0
         for file_path in await asyncio.to_thread(_json_files_in_dir, requests_dir):
-            await _process_request_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+            await _process_request_file(
+                file_path,
+                source_group,
+                is_admin=is_admin,
+                ipc_base_dir=ipc_base_dir,
+                deps=deps,
+            )
             count += 1
     except OSError as exc:
         _log_sweep_error("Error reading IPC requests directory during sweep", exc, source_group)
@@ -413,10 +347,18 @@ async def _sweep_directory(
         is_admin = source_group in admin_folders
         group_dir = ipc_base_dir / source_group
         processed += await _sweep_messages(
-            group_dir / "messages", source_group, is_admin, ipc_base_dir, deps
+            group_dir / "messages",
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
         )
         processed += await _sweep_requests(
-            group_dir / "requests", source_group, is_admin, ipc_base_dir, deps
+            group_dir / "requests",
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
         )
         cleaned += await asyncio.to_thread(_clean_output_dir, group_dir / "output", source_group)
         cleaned += await asyncio.to_thread(_clean_stale_initial, group_dir / "input", source_group)
@@ -448,10 +390,18 @@ async def _sweep_runtime_directory(
         is_admin = source_group in admin_folders
         group_dir = ipc_base_dir / source_group
         processed += await _sweep_messages(
-            group_dir / "messages", source_group, is_admin, ipc_base_dir, deps
+            group_dir / "messages",
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
         )
         processed += await _sweep_requests(
-            group_dir / "requests", source_group, is_admin, ipc_base_dir, deps
+            group_dir / "requests",
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
         )
         processed += await _sweep_output_events(group_dir / "output", source_group, ipc_base_dir)
         processed += await _sweep_approval_decisions(
@@ -495,9 +445,21 @@ async def _process_queue(
             is_admin = source_group in current_admin_folders
 
             if subdir == "messages":
-                await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+                await _process_message_file(
+                    file_path,
+                    source_group,
+                    is_admin=is_admin,
+                    ipc_base_dir=ipc_base_dir,
+                    deps=deps,
+                )
             elif subdir == "requests":
-                await _process_request_file(file_path, source_group, is_admin, ipc_base_dir, deps)
+                await _process_request_file(
+                    file_path,
+                    source_group,
+                    is_admin=is_admin,
+                    ipc_base_dir=ipc_base_dir,
+                    deps=deps,
+                )
             elif subdir == "output":
                 await _process_output_file(file_path, source_group, ipc_base_dir)
             elif subdir == "approval_decisions":

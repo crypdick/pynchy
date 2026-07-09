@@ -119,7 +119,11 @@ class NullIpcDeps:
         return []
 
     def write_groups_snapshot(
-        self, group_folder, is_admin, available_groups, registered_jids
+        self,
+        group_folder,
+        is_admin,  # noqa: FBT001, RUF100 - protocol-shaped test double mirrors IpcDeps.write_groups_snapshot.
+        available_groups,
+        registered_jids,
     ) -> None: ...
 
     def has_active_session(self, group_folder) -> bool:

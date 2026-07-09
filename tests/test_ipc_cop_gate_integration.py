@@ -83,7 +83,7 @@ class MockDeps:
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_admin: bool,
+        is_admin: bool,  # noqa: FBT001, RUF100 - protocol-shaped test double mirrors IpcDeps.write_groups_snapshot.
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:

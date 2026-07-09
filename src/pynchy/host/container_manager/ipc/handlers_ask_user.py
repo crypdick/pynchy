@@ -26,7 +26,7 @@ from pynchy.logger import logger
 async def _handle_ask_user_request(
     data: dict[str, Any],
     source_group: str,
-    _is_admin: bool,
+    _is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the protocol shape positional.
     deps: IpcDeps,
 ) -> None:
     """Handle an ask_user:ask IPC request from a container."""

@@ -72,7 +72,7 @@ def _compute_next_run_from_ipc(
 async def _handle_schedule_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     if not data.get("_cop_approved"):
@@ -239,7 +239,7 @@ def _target_jid_for_folder(
 async def _handle_schedule_host_job(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     if not is_admin:
@@ -316,7 +316,7 @@ async def _handle_schedule_host_job(
 async def _handle_pause_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
@@ -324,16 +324,16 @@ async def _handle_pause_task(
     await _authorized_task_action(
         data,
         source_group,
-        is_admin,
-        "pause",
-        lambda tid: update(tid, {"status": "paused"}),
+        is_admin=is_admin,
+        action_name="pause",
+        action=lambda tid: update(tid, {"status": "paused"}),
     )
 
 
 async def _handle_resume_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
@@ -341,26 +341,33 @@ async def _handle_resume_task(
     await _authorized_task_action(
         data,
         source_group,
-        is_admin,
-        "resume",
-        lambda tid: update(tid, {"status": "active"}),
+        is_admin=is_admin,
+        action_name="resume",
+        action=lambda tid: update(tid, {"status": "active"}),
     )
 
 
 async def _handle_cancel_task(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
     action = delete_host_job if task_id.startswith("host-") else delete_task
-    await _authorized_task_action(data, source_group, is_admin, "cancel", action)
+    await _authorized_task_action(
+        data,
+        source_group,
+        is_admin=is_admin,
+        action_name="cancel",
+        action=action,
+    )
 
 
 async def _authorized_task_action(
     data: dict[str, Any],
     source_group: str,
+    *,
     is_admin: bool,
     action_name: str,
     action: Callable[[str], Awaitable[Any]],

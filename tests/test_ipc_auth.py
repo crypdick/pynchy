@@ -401,7 +401,7 @@ class TestIpcMessageAuth:
     @staticmethod
     def is_message_authorized(
         source_group: str,
-        is_admin: bool,
+        is_admin: bool,  # noqa: FBT001, RUF100 - tiny test helper mirrors IPC auth semantics.
         target_chat_jid: str,
         workspaces: dict[str, WorkspaceProfile],
     ) -> bool:

@@ -85,13 +85,13 @@ def _is_network_command(command: str) -> bool:
     return first_token in _NETWORK_SINGLE
 
 
-async def _network_command_decision(command: str, both_tainted: bool) -> dict[str, str]:
+async def _network_command_decision(command: str, *, both_tainted: bool) -> dict[str, str]:
     if both_tainted:
         return _needs_human(f"Network command while corruption+secret tainted: {command[:200]}")
     return await _cop_review(command, escalate_on_flag=False)
 
 
-async def _grey_zone_decision(command: str, both_tainted: bool) -> dict[str, str]:
+async def _grey_zone_decision(command: str, *, both_tainted: bool) -> dict[str, str]:
     return await _cop_review(command, escalate_on_flag=both_tainted)
 
 
@@ -128,16 +128,16 @@ async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict[str, s
 
     # Tier 2: Network blacklist
     if _is_network_command(command):
-        return await _network_command_decision(command, both_tainted)
+        return await _network_command_decision(command, both_tainted=both_tainted)
 
     # Tier 3: Grey zone -> Cop review
-    return await _grey_zone_decision(command, both_tainted)
+    return await _grey_zone_decision(command, both_tainted=both_tainted)
 
 
 async def _handle_bash_security_check(
     data: dict[str, Any],
     source_group: str,
-    is_admin: bool,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
     """IPC handler for security:bash_check requests.

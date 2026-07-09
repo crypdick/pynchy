@@ -1,0 +1,110 @@
+"""Process file-based IPC output events."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC output paths at runtime.
+
+from pynchy.host.container_manager.ipc.output_claims import claim_output_file
+from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
+from pynchy.host.container_manager.serialization import parse_container_output
+from pynchy.logger import logger
+from pynchy.types import GroupFolder
+
+
+def _move_to_error_dir(ipc_base_dir: Path, source_group: str, file_path: Path) -> None:
+    try:
+        error_dir = ipc_base_dir / "errors"
+        error_dir.mkdir(parents=True, exist_ok=True)
+        file_path.rename(error_dir / f"{source_group}-{file_path.name}")
+    except OSError:
+        logger.warning(
+            "Failed to move IPC file to error dir, deleting instead",
+            file=file_path.name,
+            source_group=source_group,
+        )
+        with contextlib.suppress(OSError):
+            file_path.unlink()
+
+
+def _unlink_path(path: Path) -> None:
+    path.unlink()
+
+
+def _read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _get_output_handler(group_folder: str) -> OnOutput | None:
+    """Look up the session's output callback for a group."""
+    from pynchy.host.container_manager.session import get_session_output_handler
+
+    return get_session_output_handler(GroupFolder(group_folder))
+
+
+def _signal_query_done(group_folder: str) -> None:
+    """Signal query completion for a group's session."""
+    from pynchy.host.container_manager.session import get_session
+
+    session = get_session(GroupFolder(group_folder))
+    if session is None:
+        return
+    session.signal_query_done()
+
+
+async def process_output_file(
+    file_path: Path,
+    source_group: str,
+    ipc_base_dir: Path,
+) -> None:
+    """Process a single output event file from a container."""
+    with claim_output_file(file_path) as claimed:
+        if not claimed:
+            return
+
+        await _process_claimed_output_file(file_path, source_group, ipc_base_dir)
+
+
+async def _process_claimed_output_file(
+    file_path: Path,
+    source_group: str,
+    ipc_base_dir: Path,
+) -> None:
+    """Process an output file after this task has claimed handler delivery."""
+    try:
+        try:
+            json_str = await asyncio.to_thread(_read_text, file_path)
+        except FileNotFoundError:
+            # Watchdog and the periodic runtime sweep can both discover the
+            # same output file. Whichever loses that race should be a no-op.
+            return
+        output = parse_container_output(json_str)
+
+        handler = _get_output_handler(source_group)
+        if handler is not None:
+            try:
+                await handler(output)
+            except Exception:
+                logger.exception(
+                    "Output handler callback failed",
+                    group=source_group,
+                )
+
+        if is_query_done_pulse(output):
+            _signal_query_done(source_group)
+            logger.info(
+                "Query done pulse received via output file",
+                group=source_group,
+            )
+
+        if handler is not None:
+            with contextlib.suppress(FileNotFoundError):
+                await asyncio.to_thread(_unlink_path, file_path)
+    except Exception:
+        logger.exception(
+            "Error processing output file",
+            file=file_path.name,
+            source_group=source_group,
+        )
+        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)

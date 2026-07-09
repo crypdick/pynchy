@@ -83,7 +83,7 @@ class MockDeps(NullIpcDeps):
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_admin: bool,
+        is_admin: bool,  # noqa: FBT001, RUF100 - protocol-shaped test double mirrors IpcDeps.write_groups_snapshot.
         available_groups: list[Any],
         registered_jids: set[str],
     ) -> None:
@@ -406,7 +406,13 @@ class TestRequestSignalProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await watcher._process_request_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_request_file(
+                file_path,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
 
         deps.sync_group_metadata.assert_called_once()
         assert not file_path.exists()  # File should be cleaned up
@@ -421,7 +427,13 @@ class TestRequestSignalProcessing:
             {"signal": "refresh_groups", "extra_payload": "bad"},
         )
 
-        await watcher._process_request_file(file_path, "admin-1", True, ipc_dir, deps)
+        await watcher._process_request_file(
+            file_path,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         # Should have been moved to errors
         assert not file_path.exists()
@@ -457,7 +469,13 @@ class TestRequestFileProcessing:
             ),
         )
 
-        await watcher._process_request_file(file_path, "admin-1", True, ipc_dir, deps)
+        await watcher._process_request_file(
+            file_path,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         assert "test@g.us" in deps.workspaces()
         assert not file_path.exists()
@@ -483,7 +501,13 @@ class TestRequestFileProcessing:
             ),
         )
 
-        await watcher._process_request_file(file_path, "other-group", False, ipc_dir, deps)
+        await watcher._process_request_file(
+            file_path,
+            "other-group",
+            is_admin=False,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         assert "test@g.us" not in deps.workspaces()
         assert not file_path.exists()
@@ -519,8 +543,20 @@ class TestRequestFileProcessing:
             return asyncio.sleep(0)
 
         with patch("pynchy.host.container_manager.ipc.watcher.dispatch", fake_dispatch):
-            await watcher._process_request_file(first, "admin-1", True, ipc_dir, deps)
-            await watcher._process_request_file(second, "admin-1", True, ipc_dir, deps)
+            await watcher._process_request_file(
+                first,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
+            await watcher._process_request_file(
+                second,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
 
         assert dispatch_calls == ["req-mutate"]
         assert not first.exists()
@@ -611,7 +647,13 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await watcher._process_message_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_message_file(
+                file_path,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
 
         assert len(deps.broadcast_messages) == 1
         assert "hello" in deps.broadcast_messages[0][1]
@@ -631,7 +673,13 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await watcher._process_message_file(file_path, "other-group", False, ipc_dir, deps)
+            await watcher._process_message_file(
+                file_path,
+                "other-group",
+                is_admin=False,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
 
         assert len(deps.broadcast_messages) == 0
         # File should still be cleaned up (not retried)
@@ -656,7 +704,13 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await watcher._process_message_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_message_file(
+                file_path,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
 
         assert deps.broadcast_messages[0][1] == "Researcher: update"
 
@@ -672,7 +726,13 @@ class TestMessageFileProcessing:
             "pynchy.host.container_manager.ipc.watcher.get_settings",
             return_value=_test_settings(data_dir=tmp_path),
         ):
-            await watcher._process_message_file(file_path, "admin-1", True, ipc_dir, deps)
+            await watcher._process_message_file(
+                file_path,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            )
 
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "admin-1-broken.json").exists()
