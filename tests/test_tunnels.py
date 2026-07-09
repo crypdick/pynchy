@@ -7,16 +7,16 @@ that verify the plugin is auto-discovered by get_plugin_manager().
 from __future__ import annotations
 
 import json
+import subprocess  # noqa: S404, RUF100 - tests need TimeoutExpired, not process execution.
 from unittest.mock import MagicMock, patch
 
 import pluggy
 
+from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.tunnels import TunnelProvider, check_tunnels
 
 
 def _get_pm():
-    from pynchy.plugins import get_plugin_manager
-
     with patch(
         "pluggy.PluginManager.load_setuptools_entrypoints",
         return_value=0,
@@ -126,8 +126,6 @@ class TestTailscaleTunnel:
             assert t.status_summary() == "CLI not found"
 
     def test_is_connected_timeout(self):
-        import subprocess  # noqa: S404, RUF100 - test helper imports timeout exception
-
         with patch(
             "pynchy.plugins.tunnels.tailscale.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="tailscale", timeout=5),
