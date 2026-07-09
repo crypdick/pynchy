@@ -419,7 +419,7 @@ async def _run_scheduled_task(
     """
     input_data = _build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
     container_name = oneshot_container_name(group.folder)
-    _interrupted = False
+    interrupted = False
 
     try:
         return await _spawn_and_await(
@@ -436,13 +436,13 @@ async def _run_scheduled_task(
         # Deploy SIGTERM — preserve session for resume on restart.
         # finalize_deploy captures active_sessions BEFORE sending SIGTERM,
         # so the session_id is already in deploy_continuation.json.
-        _interrupted = True
+        interrupted = True
         raise
     except Exception:
         logger.exception("Scheduled task error", group=group.name)
         return "error"
     finally:
-        if not _interrupted:
+        if not interrupted:
             # Clean up the session created by the one-shot container.
             # Without this, the workspace appears "active" and receives
             # deploy resume messages that trigger unnecessary agent runs.

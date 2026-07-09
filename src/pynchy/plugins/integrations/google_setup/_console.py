@@ -23,19 +23,15 @@ from pynchy.plugins.integrations.google_setup._paths import GCP_CONSOLE, downloa
 async def dismiss_modals(page) -> None:
     """Try to dismiss common GCP Console popups/modals."""
     for text in ("Got it", "Dismiss", "No thanks", "Skip", "Not now"):
-        try:
+        with contextlib.suppress(Exception):
             btn = page.get_by_role("button", name=re.compile(text, re.I)).first
             if await btn.is_visible(timeout=500):
                 await btn.click()
                 await page.wait_for_timeout(300)
-        except Exception:  # allow: exception-handling — modal may not be present; absence is expected, not an error
-            pass
-    try:
+    with contextlib.suppress(Exception):
         close = page.locator('[aria-label="Close"]').first
         if await close.is_visible(timeout=500):
             await close.click()
-    except Exception:  # allow: exception-handling — close button may not be present; absence is expected, not an error
-        pass
 
 
 async def wait_for_login(page) -> None:
@@ -65,12 +61,10 @@ async def try_step(page, step_fn, fallback_msg: str, done_check=None, timeout: i
     if done_check:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            try:
+            with contextlib.suppress(Exception):
                 if await done_check(page):
                     logger.info("Manual step completed")
                     return
-            except Exception:  # allow: exception-handling — page may be mid-navigation during a poll; retried until timeout
-                pass
             await page.wait_for_timeout(5000)
         logger.warning("Timed out waiting for manual step", timeout=timeout)
 

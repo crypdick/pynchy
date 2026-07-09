@@ -391,10 +391,10 @@ def _register_idle_zzz_callback(
         return
 
     # Capture ids by value — the session may outlive these locals.
-    _ids = dict(outbound_ids)
+    ids = dict(outbound_ids)
 
     async def _send_zzz() -> None:
-        await deps.send_reaction_to_outbound(chat_jid, _ids, "zzz")
+        await deps.send_reaction_to_outbound(chat_jid, ids, "zzz")
 
     session.set_idle_callback(_send_zzz)
 

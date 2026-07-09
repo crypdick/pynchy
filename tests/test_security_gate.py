@@ -193,7 +193,7 @@ class TestGateDestroyedOnRelease:
         state.release()
 
         assert get_gate("test-ws", 100.0) is None
-        assert state.invocation_ts == 0.0
+        assert state.invocation_ts == 0
 
     def test_release_without_gate_is_noop(self):
         """Release when no gate exists should not raise."""
@@ -218,10 +218,10 @@ class TestInvocationTsOnContainerInput:
             chat_jid="test@g.us",
             is_admin=False,
         )
-        assert ci.invocation_ts == 0.0
+        assert ci.invocation_ts == 0
 
         ci.invocation_ts = 42.0
-        assert ci.invocation_ts == 42.0
+        assert ci.invocation_ts == 42
 
 
 class TestRegisterProcessAcceptsInvocationTs:
@@ -238,7 +238,7 @@ class TestRegisterProcessAcceptsInvocationTs:
             invocation_ts=42.0,
         )
         state = queue._get_group("test@g.us")
-        assert state.invocation_ts == 42.0
+        assert state.invocation_ts == 42
 
     def test_register_process_defaults_invocation_ts_to_zero(self):
         """register_process() without invocation_ts should default to 0.0."""
@@ -247,4 +247,4 @@ class TestRegisterProcessAcceptsInvocationTs:
         queue = GroupQueue()
         queue.register_process("test@g.us", None, "pynchy-test", group_folder="test-ws")
         state = queue._get_group("test@g.us")
-        assert state.invocation_ts == 0.0
+        assert state.invocation_ts == 0

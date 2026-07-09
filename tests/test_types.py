@@ -42,7 +42,7 @@ class TestContainerConfig:
 
     def test_from_dict_with_timeout(self):
         config = ContainerConfig.from_dict({"timeout": 600.0})
-        assert config.timeout == 600.0
+        assert config.timeout == 600
 
     def test_from_dict_with_mounts(self):
         config = ContainerConfig.from_dict(
@@ -71,7 +71,7 @@ class TestContainerConfig:
                 "timeout": 300.0,
             }
         )
-        assert config.timeout == 300.0
+        assert config.timeout == 300
         assert len(config.additional_mounts) == 1
         assert config.additional_mounts[0].readonly is False
 

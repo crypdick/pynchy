@@ -386,7 +386,7 @@ class SlackChannel:
         current_oldest = oldest
         high_water_mark = ""
 
-        for _page in range(max_pages):
+        for page_index in range(max_pages):
             page = await self._history_page(channel_id, current_oldest, limit=limit)
             if page is None:
                 return [], high_water_mark
@@ -410,7 +410,7 @@ class SlackChannel:
             logger.debug(
                 "Skipping bot-only page in catch-up",
                 channel=channel_id,
-                page=_page,
+                page=page_index,
                 skipped_to=newest_ts,
             )
             current_oldest = newest_ts

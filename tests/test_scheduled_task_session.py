@@ -149,7 +149,7 @@ class TestScheduledTaskUsesSession:
 
         mock_cs.assert_awaited_once()
         _, kwargs = mock_cs.call_args
-        assert kwargs.get("idle_timeout_override") == 0.0, (
+        assert kwargs.get("idle_timeout_override") == 0, (
             "create_session must be called with idle_timeout_override=0.0"
         )
 

@@ -197,14 +197,14 @@ class TestHostCreatePrFromWorktree:
         _git(wt_path, "commit", "-m", "add feature")
 
         # Mock only gh CLI calls — delegate git calls to real subprocess
-        _real_run = subprocess.run
+        real_run = subprocess.run
 
         def _mock_run(args, **kwargs):
             if args[0] == "gh":
                 # First gh call: pr view (no existing PR)
                 # Second gh call: pr create (success)
                 return _mock_run._next_gh_result.pop(0)
-            return _real_run(args, **kwargs)
+            return real_run(args, **kwargs)
 
         _mock_run._next_gh_result = [
             subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
@@ -241,7 +241,7 @@ class TestHostCreatePrFromWorktree:
         _git(wt_path, "config", "user.name", "Test")
         _git(wt_path, "commit", "-m", "add feature")
 
-        _real_run = subprocess.run
+        real_run = subprocess.run
 
         def _mock_run(args, **kwargs):
             if args[0] == "gh":
@@ -250,7 +250,7 @@ class TestHostCreatePrFromWorktree:
                     returncode=0,
                     stdout="https://github.com/owner/repo/pull/42\n",
                 )
-            return _real_run(args, **kwargs)
+            return real_run(args, **kwargs)
 
         with (
             patch("pynchy.host.git_ops.sync.git_env_with_token", return_value=None),
@@ -295,12 +295,12 @@ class TestHostCreatePrFromWorktree:
         _git(wt_path, "config", "user.name", "Test")
         _git(wt_path, "commit", "-m", "add feature")
 
-        _real_run = subprocess.run
+        real_run = subprocess.run
 
         def _mock_run(args, **kwargs):
             if args[0] == "gh":
                 return _mock_run._next_gh_result.pop(0)
-            return _real_run(args, **kwargs)
+            return real_run(args, **kwargs)
 
         _mock_run._next_gh_result = [
             # gh pr view: no existing PR

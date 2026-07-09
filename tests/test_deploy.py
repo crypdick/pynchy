@@ -128,7 +128,7 @@ class TestFinalizeDeploy:
         mock_kill.assert_not_called()
         mock_loop_instance.call_later.assert_called_once()
         delay_arg = mock_loop_instance.call_later.call_args[0][0]
-        assert delay_arg == 2.0
+        assert delay_arg == 2
 
     async def test_creates_parent_directories(self, deploy_dir: Path):
         """Continuation file path's parent dir should be created if missing."""

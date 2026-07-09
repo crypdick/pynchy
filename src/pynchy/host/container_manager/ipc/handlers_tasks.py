@@ -315,13 +315,13 @@ async def _handle_pause_task(
     deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
-    _update = update_host_job if task_id.startswith("host-") else update_task
+    update = update_host_job if task_id.startswith("host-") else update_task
     await _authorized_task_action(
         data,
         source_group,
         is_admin,
         "pause",
-        lambda tid: _update(tid, {"status": "paused"}),
+        lambda tid: update(tid, {"status": "paused"}),
     )
 
 
@@ -332,13 +332,13 @@ async def _handle_resume_task(
     deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
-    _update = update_host_job if task_id.startswith("host-") else update_task
+    update = update_host_job if task_id.startswith("host-") else update_task
     await _authorized_task_action(
         data,
         source_group,
         is_admin,
         "resume",
-        lambda tid: _update(tid, {"status": "active"}),
+        lambda tid: update(tid, {"status": "active"}),
     )
 
 
