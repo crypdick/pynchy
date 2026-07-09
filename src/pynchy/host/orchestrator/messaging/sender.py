@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from pynchy import state
+from pynchy.config import access
 from pynchy.logger import logger
 from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent, WorkspaceProfile
 
@@ -45,9 +47,7 @@ async def _record_to_ledger(
     if not channel_names:
         return None
     try:
-        from pynchy.state import record_outbound
-
-        return await record_outbound(
+        return await state.record_outbound(
             ChatJid(chat_jid), text, source, [ChannelName(c) for c in channel_names]
         )
     except Exception:  # noqa: BLE001, RUF100 - outbound ledger write is best-effort and must not block delivery.
@@ -59,9 +59,7 @@ async def _mark_success(ledger_id: int | None, channel_name: str) -> None:
     if ledger_id is None:
         return
     try:
-        from pynchy.state import mark_delivered
-
-        await mark_delivered(ledger_id, channel_name)
+        await state.mark_delivered(ledger_id, channel_name)
     except Exception:  # noqa: BLE001, RUF100 - ledger success marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivered failed (best-effort)", channel=channel_name)
 
@@ -70,9 +68,7 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
     if ledger_id is None:
         return
     try:
-        from pynchy.state import mark_delivery_error
-
-        await mark_delivery_error(ledger_id, channel_name, error)
+        await state.mark_delivery_error(ledger_id, channel_name, error)
     except Exception:  # noqa: BLE001, RUF100 - ledger error marking is best-effort bookkeeping.
         logger.debug("Ledger mark_delivery_error failed (best-effort)", channel=channel_name)
 
@@ -91,9 +87,8 @@ def _channel_allows_outbound(deps: BusDeps, chat_jid: str, channel_name: str) ->
     group = _find_workspace_by_jid(deps, chat_jid)
     if group is None:
         return True
-    from pynchy.config.access import resolve_workspace_connection_name
 
-    expected = resolve_workspace_connection_name(group.folder)
+    expected = access.resolve_workspace_connection_name(group.folder)
     return not (expected and expected != channel_name)
 
 
