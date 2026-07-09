@@ -10,6 +10,7 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 import pynchy.host.container_manager.gateway as _gw_mod
+from pynchy.config.models import AgentConfig, GatewayConfig
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
@@ -544,8 +545,6 @@ class TestGatewayModeSelection:
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text("model_list: []\n")
 
-        from pynchy.config.models import AgentConfig, GatewayConfig
-
         mock_settings = make_settings(
             agent=AgentConfig(default_core="codex", model="gpt-5.5"),
             gateway=GatewayConfig(
@@ -572,8 +571,6 @@ class TestGatewayModeSelection:
     async def test_default_container_host_resolves_for_apple_runtime(self, tmp_path: Path):
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text("model_list: []\n")
-
-        from pynchy.config.models import GatewayConfig
 
         mock_settings = make_settings(
             gateway=GatewayConfig(
@@ -604,8 +601,6 @@ class TestGatewayModeSelection:
         cfg = tmp_path / "litellm_config.yaml"
         cfg.write_text("model_list: []\n")
 
-        from pynchy.config.models import GatewayConfig
-
         mock_settings = make_settings(
             gateway=GatewayConfig(
                 litellm_config=str(cfg),
@@ -632,8 +627,6 @@ class TestGatewayModeSelection:
 
     @pytest.mark.asyncio
     async def test_builtin_mode_when_no_config(self, tmp_path: Path):
-        from pynchy.config.models import GatewayConfig
-
         mock_settings = make_settings(
             gateway=GatewayConfig(
                 litellm_config=None,
