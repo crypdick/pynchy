@@ -27,6 +27,14 @@ _DEFAULT_ANALYSIS_PROMPT = (
     "and call out actionable details."
 )
 _DEFAULT_MAX_OUTPUT_TOKENS = 1200
+_DISPLAY_ID_ERROR = "display_id must be a positive integer"
+_NO_SCREENSHOTS_ERROR = "No screenshots found for this workspace."
+_SCREENSHOT_PATH_ERROR = "Screenshot path must stay inside this workspace screenshots directory."
+_PNG_ONLY_ERROR = "Only PNG screenshots can be analyzed."
+_SCREENSHOT_NOT_FOUND_ERROR = "Screenshot not found: {name}"
+_MAX_OUTPUT_TOKENS_ERROR = "max_output_tokens must be a positive integer"
+_VISION_RESPONSE_ERROR = "Vision response did not include text output."
+_GATEWAY_NOT_RUNNING_ERROR = "LLM gateway is not running."
 
 
 def _timestamp() -> str:
@@ -62,7 +70,7 @@ def _display_id(data: dict[str, Any]) -> int | None:
     if raw is None:
         return None
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
-        raise ValueError("display_id must be a positive integer")
+        raise ValueError(_DISPLAY_ID_ERROR)
     return raw
 
 
@@ -86,7 +94,7 @@ def _path_is_relative_to(path: Path, base: Path) -> bool:
 def _latest_screenshot(base_dir: Path) -> Path:
     screenshots = sorted(base_dir.glob("*.png"), key=lambda path: path.name)
     if not screenshots:
-        raise ValueError("No screenshots found for this workspace.")
+        raise ValueError(_NO_SCREENSHOTS_ERROR)
     return screenshots[-1]
 
 
@@ -108,11 +116,11 @@ def _resolve_screenshot_path(
     resolved_base = base_dir.resolve(strict=False)
     resolved_candidate = candidate.resolve(strict=False)
     if not _path_is_relative_to(resolved_candidate, resolved_base):
-        raise ValueError("Screenshot path must stay inside this workspace screenshots directory.")
+        raise ValueError(_SCREENSHOT_PATH_ERROR)
     if resolved_candidate.suffix.lower() != ".png":
-        raise ValueError("Only PNG screenshots can be analyzed.")
+        raise ValueError(_PNG_ONLY_ERROR)
     if not resolved_candidate.exists():
-        raise ValueError(f"Screenshot not found: {resolved_candidate.name}")
+        raise ValueError(_SCREENSHOT_NOT_FOUND_ERROR.format(name=resolved_candidate.name))
     return resolved_candidate
 
 
@@ -149,7 +157,7 @@ def _model(data: dict[str, Any], settings: Any) -> str:
 def _max_output_tokens(data: dict[str, Any]) -> int:
     raw = data.get("max_output_tokens", _DEFAULT_MAX_OUTPUT_TOKENS)
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
-        raise ValueError("max_output_tokens must be a positive integer")
+        raise ValueError(_MAX_OUTPUT_TOKENS_ERROR)
     return raw
 
 
@@ -197,7 +205,7 @@ def _response_text(data: dict[str, Any]) -> str:
             )
     if chunks:
         return "\n".join(chunks)
-    raise RuntimeError("Vision response did not include text output.")
+    raise RuntimeError(_VISION_RESPONSE_ERROR)
 
 
 async def _request_vision_analysis(body: dict[str, Any]) -> str:
@@ -205,7 +213,7 @@ async def _request_vision_analysis(body: dict[str, Any]) -> str:
 
     gateway = get_gateway()
     if gateway is None:
-        raise RuntimeError("LLM gateway is not running.")
+        raise RuntimeError(_GATEWAY_NOT_RUNNING_ERROR)
 
     url = f"http://localhost:{gateway.port}/v1/responses"
     headers = {
