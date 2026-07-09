@@ -14,7 +14,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
     Coroutine,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from aiohttp import web
 
@@ -34,11 +34,6 @@ from pynchy.logger import logger
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
-
-if TYPE_CHECKING:
-    from aiohttp.web_app import Application as AiohttpApplication
-else:
-    AiohttpApplication = Any
 
 _start_time = time.monotonic()
 REMOTE_HTTP_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - documented Tailscale/firewall-gated API listener for remote clients.
@@ -95,7 +90,7 @@ class HttpDeps(Protocol):
 # ------------------------------------------------------------------
 
 
-async def _handle_health(request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
     deps: HttpDeps = request.app[deps_key]
     return web.json_response(
         {
@@ -109,7 +104,7 @@ async def _handle_health(request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp
     )
 
 
-async def _handle_deploy(request: Any) -> Any:
+async def _handle_deploy(request: web.Request) -> web.Response:
     deps: HttpDeps = request.app[deps_key]
     old_sha = get_head_sha()
 
@@ -190,7 +185,7 @@ async def _handle_deploy(request: Any) -> Any:
     )
 
 
-async def _handle_status(request: Any) -> Any:
+async def _handle_status(request: web.Request) -> web.Response:
     """Comprehensive operational status from all subsystems."""
     status_deps: StatusDeps = request.app[status_deps_key]
     data = await collect_status(status_deps, _start_time)
@@ -202,13 +197,13 @@ async def _handle_status(request: Any) -> Any:
 # ------------------------------------------------------------------
 
 
-async def _handle_api_groups(request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+async def _handle_api_groups(request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
     """Return registered groups."""
     deps: HttpDeps = request.app[deps_key]
     return web.json_response(deps.get_groups())
 
 
-async def _handle_api_messages(request: Any) -> Any:
+async def _handle_api_messages(request: web.Request) -> web.Response:
     """Return chat history for a group."""
     deps: HttpDeps = request.app[deps_key]
     jid = request.query.get("jid", "")
@@ -229,7 +224,7 @@ async def _handle_api_messages(request: Any) -> Any:
     )
 
 
-async def _handle_api_send(request: Any) -> Any:
+async def _handle_api_send(request: web.Request) -> web.Response:
     """Send a message from the TUI client."""
     deps: HttpDeps = request.app[deps_key]
     body = await request.json()
@@ -257,7 +252,7 @@ async def _stream_sse_events(
         await response.write(f"data: {data}\n\n".encode())
 
 
-async def _handle_api_events(request: Any) -> Any:
+async def _handle_api_events(request: web.Request) -> web.StreamResponse:
     """SSE stream for real-time events (messages, agent activity)."""
     deps: HttpDeps = request.app[deps_key]
 
@@ -289,7 +284,7 @@ async def _handle_api_events(request: Any) -> Any:
     return response
 
 
-async def _handle_api_periodic(request: Any) -> Any:
+async def _handle_api_periodic(request: web.Request) -> web.Response:
     """Return periodic agent status."""
     deps: HttpDeps = request.app[deps_key]
     agents = await deps.get_periodic_agents()
@@ -316,7 +311,7 @@ async def start_http_server(
     return runner
 
 
-def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) -> AiohttpApplication:
+def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) -> web.Application:
     """Build the aiohttp app with all HTTP routes registered."""
     app = web.Application()
     app[deps_key] = deps
