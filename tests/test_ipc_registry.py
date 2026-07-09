@@ -20,6 +20,10 @@ from agent_runner.core import AgentCore, AgentCoreConfig
 from agent_runner.registry import create_agent_core
 
 
+CONSTRUCTOR_EXPLODED_MESSAGE = "constructor exploded"
+BAD_CONFIG_VALUE_MESSAGE = "bad config value"
+
+
 def _make_config(**overrides: object) -> AgentCoreConfig:
     defaults = {
         "cwd": "/workspace/repos/owner/project",
@@ -102,7 +106,7 @@ class TestInstantiationFailures:
 
         class BrokenCore:
             def __init__(self, config: AgentCoreConfig) -> None:
-                raise RuntimeError("constructor exploded")
+                raise RuntimeError(CONSTRUCTOR_EXPLODED_MESSAGE)
 
         # Temporarily inject our broken class into the agent_runner.core module
         import agent_runner.core as core_mod
@@ -118,7 +122,7 @@ class TestInstantiationFailures:
 
         class ExplodingCore:
             def __init__(self, config: AgentCoreConfig) -> None:
-                raise ValueError("bad config value")
+                raise ValueError(BAD_CONFIG_VALUE_MESSAGE)
 
         import agent_runner.core as core_mod
 

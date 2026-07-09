@@ -32,6 +32,11 @@ from pynchy.types import (
 )
 
 
+TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
+TEST_ERROR_MESSAGE = "Test error"
+AGENT_FAILED_MESSAGE = "Agent failed"
+
+
 @contextlib.contextmanager
 def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, cron_jobs=None):
     overrides = {
@@ -408,7 +413,7 @@ class TestStartSchedulerLoop:
                 FailingTemporalRuntime.instances.append(self)
 
             async def __aenter__(self):
-                raise RuntimeError("temporal unavailable")
+                raise RuntimeError(TEMPORAL_UNAVAILABLE_MESSAGE)
 
             async def __aexit__(self, exc_type, exc, _tb):
                 pass
@@ -464,7 +469,7 @@ class TestStartSchedulerLoop:
             nonlocal error_count
             error_count += 1
             if error_count == 1:
-                raise ValueError("Test error")
+                raise ValueError(TEST_ERROR_MESSAGE)
 
         def mock_sleep(delay):
             if error_count >= 2:
@@ -789,7 +794,7 @@ class TestRunScheduledAgent:
         mock_deps.groups["test-jid"] = sample_group
 
         def mock_run_raise(group, chat_jid, messages, on_output, **kwargs):
-            raise ValueError("Agent failed")
+            raise ValueError(AGENT_FAILED_MESSAGE)
 
         mock_deps._run_agent_side_effect = mock_run_raise
 

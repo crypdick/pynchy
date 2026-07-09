@@ -13,6 +13,10 @@ from conftest import make_settings
 from pynchy.config import ContainerConfig, QueueConfig
 from pynchy.host.orchestrator.concurrency import GroupQueue
 
+
+TASK_EXPLODED_MESSAGE = "task exploded"
+REJECTED_TASK_MESSAGE = "rejected task should not run"
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
@@ -672,7 +676,7 @@ class TestTaskExceptionHandling:
         """An exception in a task should be caught and not crash the queue."""
 
         def failing_task() -> Awaitable[None]:
-            raise RuntimeError("task exploded")
+            raise RuntimeError(TASK_EXPLODED_MESSAGE)
 
         queue.enqueue_task("group1@g.us", "task-crash", failing_task)
         await asyncio.sleep(0.1)
@@ -713,7 +717,7 @@ class TestTaskAcceptance:
 
     async def test_rejects_task_when_queue_is_shutting_down(self, queue: GroupQueue):
         def task_fn() -> Awaitable[None]:
-            raise AssertionError("rejected task should not run")
+            raise AssertionError(REJECTED_TASK_MESSAGE)
 
         queue._shutting_down = True
 
