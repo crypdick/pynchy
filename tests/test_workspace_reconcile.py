@@ -354,6 +354,55 @@ class TestReconcileWorkspaces:
         mock_channel.create_group.assert_awaited_once_with("New Agent")
         register_fn.assert_not_called()
 
+    async def test_create_group_existing_jid_for_other_workspace_skips_registration(
+        self,
+        db,
+        monkeypatch,
+        tmp_path,
+    ):
+        """A reused channel JID must not remap an existing workspace."""
+        conn_ref = "main"
+        workspaces = _WorkspaceHarness()
+        s = make_settings(
+            workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
+            groups_dir=tmp_path / "groups",
+            command_center=CommandCenterConfig(connection=conn_ref),
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+
+        _write_workspace_yaml(
+            workspaces,
+            "general",
+            {
+                "schedule": "0 8 * * 1",
+                "prompt": "Weekly report",
+            },
+        )
+
+        existing_profile = WorkspaceProfile(
+            jid="discord:channel:1",
+            name="Discord Admin",
+            folder="discord-admin",
+            trigger="@Pynchy",
+            added_at=datetime.now(UTC).isoformat(),
+            is_admin=True,
+        )
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = conn_ref
+        mock_channel.create_group = AsyncMock(return_value=existing_profile.jid)
+
+        registered = {existing_profile.jid: existing_profile}
+        register_fn = AsyncMock()
+
+        await reconcile_workspaces(registered, [mock_channel], register_fn)
+
+        mock_channel.create_group.assert_awaited_once_with("General")
+        register_fn.assert_not_called()
+        assert registered[existing_profile.jid] == existing_profile
+        assert await get_active_task_for_group("general") is None
+
     async def test_create_group_failure_skips_workspace(
         self,
         db,

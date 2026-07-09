@@ -86,6 +86,16 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
         logger.warning("Workspace channel creation returned no JID", folder=folder)
         return None
 
+    existing_profile = workspaces.get(created_jid)
+    if existing_profile is not None and existing_profile.folder != folder:
+        logger.warning(
+            "Workspace channel creation returned JID already registered to another workspace",
+            folder=folder,
+            existing_folder=existing_profile.folder,
+            jid=created_jid,
+        )
+        return None
+
     profile = WorkspaceProfile(
         jid=created_jid,
         name=display_name,
