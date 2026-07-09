@@ -15,7 +15,6 @@ import json
 import os
 import uuid
 from pathlib import Path
-from typing import Any
 
 from mcp.types import TextContent
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
@@ -48,11 +47,11 @@ class _ResponseWatcher(FileSystemEventHandler):
         if Path(os.fsdecode(path)).name == self._target:
             self._loop.call_soon_threadsafe(self._event.set)
 
-    def on_created(self, event: Any) -> None:
+    def on_created(self, event: object) -> None:
         if isinstance(event, FileCreatedEvent):
             self._signal_if_match(event.src_path)
 
-    def on_moved(self, event: Any) -> None:
+    def on_moved(self, event: object) -> None:
         # Host writes atomically (tmp -> rename), which produces a moved event
         if isinstance(event, FileMovedEvent):
             self._signal_if_match(event.dest_path)
@@ -110,7 +109,7 @@ async def _wait_for_response_file(
 
 async def ipc_service_request(
     tool_name: str,
-    request: dict[str, Any],
+    request: dict[str, object],
     response_timeout_seconds: float = 300,
     *,
     type_override: str | None = None,

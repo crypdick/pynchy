@@ -23,18 +23,18 @@ def _is_union_origin(origin: object) -> bool:
     return origin is Union or origin is types.UnionType
 
 
-def _matches_union_hint(value: object, hint: Any) -> bool:
+def _matches_union_hint(value: object, hint: object) -> bool:
     return any(_matches_hint(value, arg) for arg in get_args(hint))
 
 
-def _matches_list_hint(value: object, hint: Any) -> bool:
+def _matches_list_hint(value: object, hint: object) -> bool:
     if not isinstance(value, list):
         return False
     item_hint = next(iter(get_args(hint)), Any)
     return all(_matches_hint(item, item_hint) for item in value)
 
 
-def _matches_dict_hint(value: object, hint: Any) -> bool:
+def _matches_dict_hint(value: object, hint: object) -> bool:
     if not isinstance(value, dict):
         return False
     args = get_args(hint)
@@ -46,7 +46,7 @@ def _matches_dict_hint(value: object, hint: Any) -> bool:
     )
 
 
-def _matches_hint(value: object, hint: Any) -> bool:
+def _matches_hint(value: object, hint: object) -> bool:
     """Return True if ``value`` satisfies the type ``hint``.
 
     Supports only the annotation forms used by ``ContainerInput``: bare classes,

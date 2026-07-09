@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import contextlib
 import sys
-from typing import Any
 
 from .core import AgentCore, AgentCoreConfig, AgentEvent
 from .ipc import (
@@ -32,7 +31,7 @@ from .registry import create_agent_core
 # ---------------------------------------------------------------------------
 
 
-def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
+def build_sdk_messages(messages: list[dict[str, object]]) -> str:
     """Convert message list to the format the SDK's query() method expects.
 
     Wraps each message in a ``<message>`` XML element.
@@ -68,7 +67,7 @@ def build_sdk_messages(messages: list[dict[str, Any]]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, Any]:
+def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, object]:
     """Build the always-present Pynchy MCP server entry."""
     return {
         "command": "python",
@@ -83,7 +82,7 @@ def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, Any]:
     }
 
 
-def _direct_mcp_server_entry(server: dict[str, Any]) -> dict[str, Any]:
+def _direct_mcp_server_entry(server: dict[str, object]) -> dict[str, object]:
     """Normalize a direct MCP server config for the agent core."""
     transport = server.get("transport", "sse")
     url = server["url"]
@@ -104,9 +103,9 @@ def _direct_mcp_server_entry(server: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_mcp_servers(container_input: ContainerInput) -> dict[str, dict[str, Any]]:
+def _build_mcp_servers(container_input: ContainerInput) -> dict[str, dict[str, object]]:
     """Build the MCP server map for the selected container input."""
-    mcp_servers: dict[str, dict[str, Any]] = {"pynchy": _built_in_mcp_server(container_input)}
+    mcp_servers: dict[str, dict[str, object]] = {"pynchy": _built_in_mcp_server(container_input)}
     direct_servers = container_input.mcp_direct_servers
     if not direct_servers:
         return mcp_servers
@@ -169,7 +168,7 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 # ---------------------------------------------------------------------------
 
 
-def _success_output(output_type: str, **kwargs: Any) -> ContainerOutput:
+def _success_output(output_type: str, **kwargs: object) -> ContainerOutput:
     """Build a successful non-result container output."""
     return ContainerOutput(status="success", type=output_type, **kwargs)
 

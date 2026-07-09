@@ -15,7 +15,7 @@ import shutil
 import signal
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 
@@ -83,12 +83,12 @@ def _pynchy_session_id(thread_id: str, model: str | None = None) -> str:
     return f"{_CODEX_SESSION_PREFIX}{thread_id}"
 
 
-def _configured_model(extra: dict[str, Any]) -> str | None:
+def _configured_model(extra: dict[str, object]) -> str | None:
     model = extra.get("model")
     return str(model) if model else None
 
 
-def _item_text(item: dict[str, Any]) -> str:
+def _item_text(item: dict[str, object]) -> str:
     """Extract display text from common Codex JSONL item shapes."""
     text = item.get("text") or item.get("message") or item.get("summary") or item.get("output")
     if isinstance(text, str):
@@ -100,7 +100,7 @@ def _item_text(item: dict[str, Any]) -> str:
     return ""
 
 
-def _command_string(value: Any, joiner: str) -> str:
+def _command_string(value: object, joiner: str) -> str:
     if isinstance(value, list):
         return joiner.join(str(part) for part in value)
     if value is not None:
@@ -108,14 +108,14 @@ def _command_string(value: Any, joiner: str) -> str:
     return ""
 
 
-def _action_command(action: dict[str, Any]) -> str:
+def _action_command(action: dict[str, object]) -> str:
     commands = _command_string(action.get("commands"), " && ")
     if commands:
         return commands
     return _command_string(action.get("command"), " ")
 
 
-def _item_command(item: dict[str, Any]) -> str:
+def _item_command(item: dict[str, object]) -> str:
     command = _command_string(item.get("command") or item.get("cmd"), " ")
     if command:
         return command
@@ -123,11 +123,11 @@ def _item_command(item: dict[str, Any]) -> str:
     return _action_command(action) if isinstance(action, dict) else ""
 
 
-def _item_id(item: dict[str, Any]) -> str:
+def _item_id(item: dict[str, object]) -> str:
     return str(item.get("id") or item.get("call_id") or item.get("callId") or "")
 
 
-def _item_is_error(item: dict[str, Any]) -> bool:
+def _item_is_error(item: dict[str, object]) -> bool:
     return bool(item.get("is_error") or item.get("isError"))
 
 
@@ -143,7 +143,7 @@ class CodexCLIAgentCore:
         self._env: dict[str, str] | None = None
         self._proc: asyncio.subprocess.Process | None = None
         self._last_agent_message: str | None = None
-        self._last_turn_metadata: dict[str, Any] = {}
+        self._last_turn_metadata: dict[str, object] = {}
 
     async def start(self) -> None:
         """Resolve the CLI binary, write config, and prepare the environment."""
@@ -285,7 +285,7 @@ class CodexCLIAgentCore:
             },
         )
 
-    def _map_event(self, obj: dict[str, Any]) -> list[AgentEvent]:
+    def _map_event(self, obj: dict[str, object]) -> list[AgentEvent]:
         """Map one Codex JSONL event object to zero or more ``AgentEvent``s."""
         event_type = obj.get("type")
 
@@ -307,7 +307,7 @@ class CodexCLIAgentCore:
             return []
         return self._map_item_event(str(event_type), item)
 
-    def _map_thread_started(self, obj: dict[str, Any]) -> list[AgentEvent]:
+    def _map_thread_started(self, obj: dict[str, object]) -> list[AgentEvent]:
         sid = obj.get("thread_id") or obj.get("threadId")
         if isinstance(sid, str) and sid:
             self._session_id = _pynchy_session_id(sid, _configured_model(self.config.extra))
@@ -321,12 +321,12 @@ class CodexCLIAgentCore:
             )
         ]
 
-    def _record_turn_metadata(self, obj: dict[str, Any]) -> None:
+    def _record_turn_metadata(self, obj: dict[str, object]) -> None:
         self._last_turn_metadata = {
             key: value for key, value in obj.items() if key not in {"type", "items", "item"}
         }
 
-    def _map_error_result(self, obj: dict[str, Any], fallback_subtype: str) -> AgentEvent:
+    def _map_error_result(self, obj: dict[str, object], fallback_subtype: str) -> AgentEvent:
         err = obj.get("error") if isinstance(obj.get("error"), dict) else {}
         message = err.get("message") or obj.get("message") or "Codex turn failed"
         subtype = err.get("code") or obj.get("code") or fallback_subtype
@@ -342,7 +342,7 @@ class CodexCLIAgentCore:
             },
         )
 
-    def _map_item_event(self, event_type: str, item: dict[str, Any]) -> list[AgentEvent]:
+    def _map_item_event(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
         item_type = item.get("type") or item.get("item_type") or item.get("itemType")
 
         if item_type == "agent_message" and event_type == "item.completed":
@@ -359,20 +359,20 @@ class CodexCLIAgentCore:
 
         return []
 
-    def _map_agent_message_item(self, item: dict[str, Any]) -> list[AgentEvent]:
+    def _map_agent_message_item(self, item: dict[str, object]) -> list[AgentEvent]:
         text = _item_text(item)
         if not text:
             return []
         self._last_agent_message = text
         return [AgentEvent(type="text", data={"text": text})]
 
-    def _map_reasoning_item(self, item: dict[str, Any]) -> list[AgentEvent]:
+    def _map_reasoning_item(self, item: dict[str, object]) -> list[AgentEvent]:
         text = _item_text(item)
         if not text:
             return []
         return [AgentEvent(type="thinking", data={"thinking": text})]
 
-    def _map_command_item(self, event_type: str, item: dict[str, Any]) -> list[AgentEvent]:
+    def _map_command_item(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
         command = _item_command(item)
         if event_type == "item.started":
             return [
@@ -393,7 +393,7 @@ class CodexCLIAgentCore:
         ]
 
     def _map_tool_call_item(
-        self, event_type: str, item: dict[str, Any], fallback_name: str
+        self, event_type: str, item: dict[str, object], fallback_name: str
     ) -> list[AgentEvent]:
         name = (
             item.get("tool_name")
@@ -421,7 +421,7 @@ class CodexCLIAgentCore:
             )
         ]
 
-    def _tool_input(self, item: dict[str, Any]) -> dict[str, Any]:
+    def _tool_input(self, item: dict[str, object]) -> dict[str, object]:
         tool_input = item.get("arguments") or item.get("input") or item.get("tool_input") or {}
         if isinstance(tool_input, str):
             with contextlib.suppress(json.JSONDecodeError):

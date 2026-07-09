@@ -6,7 +6,7 @@ import json
 import os
 import re
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,7 +30,7 @@ def _toml_key(key: str) -> str:
     return json.dumps(key)
 
 
-def _toml_value(value: Any) -> str:
+def _toml_value(value: object) -> str:
     """Serialize the small TOML value subset this generated config needs."""
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -43,15 +43,15 @@ def _toml_value(value: Any) -> str:
     raise TypeError(_UNSUPPORTED_TOML_VALUE_ERROR.format(value=value))
 
 
-def _append_mapping_table(lines: list[str], name: str, values: Any) -> None:
-    if not isinstance(values, dict) or not values:
+def _append_mapping_table(lines: list[str], name: str, values: dict[str, object] | None) -> None:
+    if not values:
         return
     lines.extend(["", f"[{name}]"])
     for key, value in values.items():
-        lines.append(f"{_toml_key(str(key))} = {_toml_value(str(value))}")
+        lines.append(f"{_toml_key(str(key))} = {_toml_value(value)}")
 
 
-def _mcp_server_lines(name: str, spec: dict[str, Any]) -> list[str]:
+def _mcp_server_lines(name: str, spec: dict[str, object]) -> list[str]:
     """Render one Pynchy MCP server spec as Codex ``config.toml``."""
     server = f"mcp_servers.{_toml_key(name)}"
     direct_keys = (
@@ -105,7 +105,7 @@ def gateway_base_url_from_env() -> str:
 
 def write_codex_config(
     codex_home: Path,
-    mcp_servers: dict[str, dict[str, Any]],
+    mcp_servers: dict[str, dict[str, object]],
     *,
     gateway_base_url: str,
     model: str | None = None,
