@@ -21,7 +21,7 @@ import warnings
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from typing import Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 import pluggy
 
@@ -29,10 +29,15 @@ from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.plugins.hookspecs import PynchySpec
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from pynchy.config.models import PluginConfig
+
 
 @runtime_checkable
 class _PluginSettings(Protocol):
-    plugins: object
+    plugins: Mapping[str, PluginConfig]
 
 
 __all__ = [
