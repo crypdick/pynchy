@@ -12,6 +12,8 @@ from pynchy.utils import (
     generate_message_id,
 )
 
+INTENTIONAL_FAILURE_MESSAGE = "intentional failure"
+
 
 class TestGenerateMessageId:
     """Test generate_message_id for unique, prefixed identifiers."""
@@ -176,7 +178,7 @@ class TestCreateBackgroundTask:
 
         async def fail():
             await asyncio.sleep(0)
-            raise RuntimeError("intentional failure")
+            raise RuntimeError(INTENTIONAL_FAILURE_MESSAGE)
 
         task = create_background_task(fail(), name="test-failure")
 

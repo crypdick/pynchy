@@ -3261,7 +3261,8 @@ class TestSessionStartOnlyStderr:
             return runtime_running
 
         def fail_sleep(_delay: float) -> None:
-            raise AssertionError("runtime monitor should not use asyncio.sleep for polling")
+            message = "runtime monitor should not use asyncio.sleep for polling"
+            raise AssertionError(message)
 
         with (
             patch("pynchy.host.container_manager.session.sys.platform", "darwin"),

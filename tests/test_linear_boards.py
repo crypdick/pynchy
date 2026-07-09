@@ -92,7 +92,8 @@ class FakeLinearClient:
             }
             self.updated_issues.append(variables)
             return {"issueUpdate": {"success": True, "issue": issue}}
-        raise AssertionError(f"Unexpected query: {query}")
+        message = f"Unexpected query: {query}"
+        raise AssertionError(message)
 
 
 class TestSelectTeam:

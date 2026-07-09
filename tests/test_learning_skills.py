@@ -13,6 +13,10 @@ from conftest import make_settings
 
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig, WorkspaceConfig
 
+ITERDIR_DENIED_MESSAGE = "iterdir denied"
+STAT_DENIED_MESSAGE = "stat denied"
+LSTAT_DENIED_MESSAGE = "lstat denied"
+
 if TYPE_CHECKING:
     import pytest
 
@@ -83,7 +87,7 @@ def test_iter_returns_empty_when_skills_root_iterdir_fails(
 
     def fail_skills_root_iterdir(path: Path):
         if path == skills_root.resolve():
-            raise OSError("iterdir denied")
+            raise OSError(ITERDIR_DENIED_MESSAGE)
         return original_iterdir(path)
 
     caplog.set_level(logging.WARNING)
@@ -94,7 +98,7 @@ def test_iter_returns_empty_when_skills_root_iterdir_fails(
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skills root" in caplog.text
-    assert "iterdir denied" in caplog.text
+    assert ITERDIR_DENIED_MESSAGE in caplog.text
 
 
 def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
@@ -241,7 +245,7 @@ def test_iter_skips_skill_when_file_stat_fails(
 
     def fail_payload_stat(path: Path, *args, **kwargs):
         if path == payload and kwargs.get("follow_symlinks", True):
-            raise OSError("stat denied")
+            raise OSError(STAT_DENIED_MESSAGE)
         return original_stat(path, *args, **kwargs)
 
     caplog.set_level(logging.WARNING)
@@ -249,7 +253,7 @@ def test_iter_skips_skill_when_file_stat_fails(
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
-    assert "stat denied" in caplog.text
+    assert STAT_DENIED_MESSAGE in caplog.text
 
 
 def test_iter_skips_skill_when_file_lstat_fails(
@@ -268,7 +272,7 @@ def test_iter_skips_skill_when_file_lstat_fails(
 
     def fail_payload_lstat(path: Path):
         if path == payload:
-            raise OSError("lstat denied")
+            raise OSError(LSTAT_DENIED_MESSAGE)
         return original_lstat(path)
 
     caplog.set_level(logging.WARNING)
@@ -276,7 +280,7 @@ def test_iter_skips_skill_when_file_lstat_fails(
         assert _iter_learned_skill_dirs("unprofiled") == []
 
     assert "Skipping learned skill" in caplog.text
-    assert "lstat denied" in caplog.text
+    assert LSTAT_DENIED_MESSAGE in caplog.text
 
 
 def test_iter_accepts_current_loader_metadata_without_description(tmp_path: Path):

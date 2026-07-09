@@ -31,6 +31,8 @@ from pynchy.host.orchestrator.adapters import (
 )
 from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
 
+CHANNEL_DOWN_MESSAGE = "channel down"
+
 
 def _make_event(content: str = "hello") -> OutboundEvent:
     return OutboundEvent(type=OutboundEventType.HOST, content=content)
@@ -250,7 +252,7 @@ class TestMessageBroadcaster:
 
         class FailingChannel(FakeChannel):
             async def send_event(self, jid: str, event: OutboundEvent) -> None:
-                raise ConnectionError("channel down")
+                raise ConnectionError(CHANNEL_DOWN_MESSAGE)
 
         failing = FailingChannel()
         working = FakeChannel()

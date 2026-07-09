@@ -21,6 +21,9 @@ from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.types import HostJob, ScheduledTask
 from pynchy.utils import ShellResult
 
+TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
+PAUSED_TASK_RUN_MESSAGE = "paused tasks must not run"
+
 
 @dataclass
 class NullSchedulerDeps:
@@ -784,7 +787,7 @@ class TestTemporalSchedulerRuntime:
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         def fail_connect(*args, **kwargs):
-            raise RuntimeError("temporal unavailable")
+            raise RuntimeError(TEMPORAL_UNAVAILABLE_MESSAGE)
 
         scheduler = SchedulerConfig(
             temporal_address="localhost:7233",
@@ -1063,7 +1066,7 @@ class TestTemporalSchedulerRuntime:
             return asyncio.sleep(0, result=temporal_task)
 
         def fake_run_scheduled_agent(task, runner_deps):
-            raise AssertionError("paused tasks must not run")
+            raise AssertionError(PAUSED_TASK_RUN_MESSAGE)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)

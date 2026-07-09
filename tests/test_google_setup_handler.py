@@ -17,6 +17,12 @@ from pynchy.plugins.integrations.google_setup import (
     run_oauth_flow,
 )
 
+CALLBACK_EVENT_SLEEP_MESSAGE = (
+    "OAuth flow should wait on the callback event, not sleep-poll"
+)
+LOGIN_FAILED_MESSAGE = "login failed"
+UNSAFE_URLOPEN_MESSAGE = "urlopen should not be called for unsafe URLs"
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -228,7 +234,7 @@ async def test_oauth_flow_waits_for_callback_thread_event_without_async_sleep(
         future = asyncio.get_running_loop().create_future()
         future.set_result(None)
         await future
-        raise AssertionError("OAuth flow should wait on the callback event, not sleep-poll")
+        raise AssertionError(CALLBACK_EVENT_SLEEP_MESSAGE)
 
     async def fail_sleep(_delay: float) -> None:
         return await _fail_sleep(_delay)
@@ -311,7 +317,7 @@ async def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(
 
 async def _raise_login_failed(_page) -> None:
     await asyncio.sleep(0)
-    raise RuntimeError("login failed")
+    raise RuntimeError(LOGIN_FAILED_MESSAGE)
 
 
 def _google_setup_tool(monkeypatch: pytest.MonkeyPatch, profile: str):
@@ -335,4 +341,4 @@ def _keys_file(tmp_path: Path) -> Path:
 
 
 def _fail_urlopen(*_args, **_kwargs):
-    raise AssertionError("urlopen should not be called for unsafe URLs")
+    raise AssertionError(UNSAFE_URLOPEN_MESSAGE)

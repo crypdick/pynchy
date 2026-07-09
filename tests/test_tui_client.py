@@ -21,7 +21,8 @@ def _make_app():
             return chat_log
         if selector == "#chat-header":
             return header
-        raise AssertionError(f"Unexpected selector: {selector!r}")
+        message = f"Unexpected selector: {selector!r}"
+        raise AssertionError(message)
 
     app.query_one = fake_query_one  # type: ignore[method-assign]
     return app, chat_log, header

@@ -7,6 +7,8 @@ import pytest
 
 from pynchy.plugins.integrations import slack_token_extractor
 
+TIMED_OUT_MESSAGE = "timed out"
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -21,7 +23,7 @@ class _FakePage:
     async def wait_for_url(self, _pattern, *, timeout: int) -> None:  # noqa: ASYNC109
         # Mirrors Playwright's timeout= API shape for this fake.
         assert timeout == 5_000
-        raise TimeoutError("timed out")
+        raise TimeoutError(TIMED_OUT_MESSAGE)
 
 
 class _FakeContext:

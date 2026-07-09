@@ -14,6 +14,8 @@ from pynchy.host.container_manager.security.cop import (
     inspect_outbound,
 )
 
+API_DOWN_MESSAGE = "API down"
+
 
 def _fake_gateway(port: int = 4010, key: str = "test-key"):
     return SimpleNamespace(port=port, key=key)
@@ -132,7 +134,7 @@ async def test_cop_error_fails_open():
 
     class _ExplodingPost:
         async def __aenter__(self):
-            raise RuntimeError("API down")
+            raise RuntimeError(API_DOWN_MESSAGE)
 
         async def __aexit__(self, *_exc_info):
             return False

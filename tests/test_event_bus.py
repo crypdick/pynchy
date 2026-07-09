@@ -15,6 +15,8 @@ from pynchy.event_bus import (
     MessageEvent,
 )
 
+INTENTIONAL_ERROR_MESSAGE = "Intentional error"
+
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
@@ -244,7 +246,7 @@ class TestEventBus:
         received_good: list[MessageEvent] = []
 
         def bad_listener(event: MessageEvent) -> None:
-            raise ValueError("Intentional error")
+            raise ValueError(INTENTIONAL_ERROR_MESSAGE)
 
         def good_listener(event: MessageEvent) -> Coroutine[Any, Any, None]:
             received_good.append(event)
