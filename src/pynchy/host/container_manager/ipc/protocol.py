@@ -334,6 +334,7 @@ class CreatePeriodicAgentRequest:
     """
 
     name: str
+    profile: str
     schedule: str
     prompt: str
     context_mode: Literal["group", "isolated"]
@@ -343,15 +344,17 @@ class CreatePeriodicAgentRequest:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CreatePeriodicAgentRequest | None:
         name = data.get("name")
+        profile = data.get("profile")
         schedule = data.get("schedule")
         prompt = data.get("prompt")
-        if not name or not schedule or not prompt:
+        if not name or not profile or not schedule or not prompt:
             return None
         context_mode = data.get("context_mode", "group")
         if context_mode not in ("group", "isolated"):
             context_mode = "group"
         return cls(
             name=name,
+            profile=profile,
             schedule=schedule,
             prompt=prompt,
             context_mode=cast('Literal["group", "isolated"]', context_mode),

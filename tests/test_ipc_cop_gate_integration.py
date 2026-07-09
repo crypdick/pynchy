@@ -313,6 +313,7 @@ class TestCreatePeriodicAgentCopGate:
                 {
                     "type": "create_periodic_agent",
                     "name": "evil-agent",
+                    "profile": "pynchy-worker",
                     "schedule": "0 9 * * *",
                     "prompt": "Do evil things",
                 },
@@ -329,7 +330,7 @@ class TestCreatePeriodicAgentCopGate:
         assert len(deps.registered) == 0
 
     async def test_summary_includes_agent_identity(self, deps):
-        """cop_gate summary should include name, schedule, and prompt preview."""
+        """cop_gate summary should include name, profile, schedule, and prompt preview."""
         with patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
@@ -339,6 +340,7 @@ class TestCreatePeriodicAgentCopGate:
                 {
                     "type": "create_periodic_agent",
                     "name": "briefing-bot",
+                    "profile": "pynchy-worker",
                     "schedule": "0 8 * * 1",
                     "prompt": "Compile a weekly briefing of all recent changes",
                 },
@@ -349,6 +351,7 @@ class TestCreatePeriodicAgentCopGate:
 
         summary = mock_cop.call_args.args[1]
         assert "briefing-bot" in summary
+        assert "pynchy-worker" in summary
         assert "0 8 * * 1" in summary
         assert "weekly briefing" in summary
 
@@ -380,6 +383,7 @@ class TestCreatePeriodicAgentCopGate:
                 {
                     "type": "create_periodic_agent",
                     "name": "approved-agent",
+                    "profile": "pynchy-worker",
                     "schedule": "0 9 * * *",
                     "prompt": "Do good things",
                     "_cop_approved": True,

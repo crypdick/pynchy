@@ -11,13 +11,16 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pynchy.config import get_settings, reset_settings
+from pynchy.config.discord_refs import parse_discord_chat_target
 from pynchy.config.merge import ResolvedSandboxConfig
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.refs import connection_ref_from_parts, parse_chat_ref
 from pynchy.config.settings import Settings
+from pynchy.config.toml_io import mutate_config_toml
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
@@ -348,52 +351,88 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     Preserves existing comments and formatting. Creates [workspaces.<folder>]
     section. Resets the settings cache so next get_settings() picks it up.
     """
-    from pathlib import Path
-
     import tomlkit
     from tomlkit.items import Table
 
     toml_path = Path("config.toml")
-    doc = tomlkit.parse(toml_path.read_text()) if toml_path.exists() else tomlkit.document()
 
-    if "workspaces" not in doc:
-        doc.add("workspaces", tomlkit.table(is_super_table=True))
+    def _mutate(doc: Any) -> None:
+        if "workspaces" not in doc:
+            doc.add("workspaces", tomlkit.table(is_super_table=True))
 
-    ws_table = tomlkit.table()
-    data = config.model_dump(exclude_none=True, exclude_defaults=True)
-    for key, value in data.items():
-        ws_table.add(key, value)
+        ws_table = tomlkit.table()
+        data = config.model_dump(exclude_none=True, exclude_defaults=True)
+        for key, value in data.items():
+            ws_table.add(key, value)
 
-    doc["workspaces"][folder] = ws_table  # type: ignore[index]
+        doc["workspaces"][folder] = ws_table
 
-    # Ensure the referenced chat exists under [connection.*] if possible.
-    chat_ref = parse_chat_ref(config.chat)
-    if chat_ref is not None:
+        # Ensure the referenced chat exists under [connection.*] if possible.
+        chat_ref = parse_chat_ref(config.chat)
+        if chat_ref is None:
+            return
         if "connection" not in doc:
             logger.warning("Config missing [connection] section; chat not added", chat=config.chat)
-        else:
-            connection_tbl = cast(Table, doc["connection"])
-            if chat_ref.platform not in connection_tbl:
-                logger.warning(
-                    "Config missing connection platform; chat not added",
-                    platform=chat_ref.platform,
-                )
-            else:
-                platform_tbl = cast(Table, connection_tbl[chat_ref.platform])
-                if chat_ref.name not in platform_tbl:
-                    logger.warning(
-                        "Config missing connection; chat not added",
-                        connection=connection_ref_from_parts(chat_ref.platform, chat_ref.name),
-                    )
-                else:
-                    conn_tbl = cast(Table, platform_tbl[chat_ref.name])
-                    if "chat" not in conn_tbl:
-                        conn_tbl.add("chat", tomlkit.table(is_super_table=True))
-                    chat_tbl = cast(Table, conn_tbl["chat"])
-                    if chat_ref.chat not in chat_tbl:
-                        chat_tbl.add(chat_ref.chat, tomlkit.table())
+            return
+        connection_tbl = cast(Table, doc["connection"])
+        if chat_ref.platform not in connection_tbl:
+            logger.warning(
+                "Config missing connection platform; chat not added",
+                platform=chat_ref.platform,
+            )
+            return
+        platform_tbl = cast(Table, connection_tbl[chat_ref.platform])
+        if chat_ref.name not in platform_tbl:
+            logger.warning(
+                "Config missing connection; chat not added",
+                connection=connection_ref_from_parts(chat_ref.platform, chat_ref.name),
+            )
+            return
+        conn_tbl = cast(Table, platform_tbl[chat_ref.name])
+        _ensure_chat_table(conn_tbl, chat_ref.platform, chat_ref.chat)
 
-    toml_path.write_text(tomlkit.dumps(doc))
+    mutate_config_toml(toml_path, _mutate)
 
     # Reset so next get_settings() re-reads the file
     reset_settings()
+
+
+def _ensure_toml_table(parent: Any, key: str, *, super_table: bool = False) -> Any:
+    """Return the TOML table at key, creating it when absent."""
+    import tomlkit
+    from tomlkit.items import Table
+
+    if key not in parent:
+        parent.add(key, tomlkit.table(is_super_table=super_table))
+    value = parent[key]
+    if not isinstance(value, Table):
+        raise ValueError(f"Expected TOML table at {key!r}")
+    return value
+
+
+def _ensure_chat_table(conn_tbl: Any, platform: str, chat: str) -> None:
+    chat_tbl = _ensure_toml_table(conn_tbl, "chat", super_table=True)
+    if platform == "discord":
+        _ensure_discord_chat_table(chat_tbl, chat)
+        return
+    if chat not in chat_tbl:
+        import tomlkit
+
+        chat_tbl.add(chat, tomlkit.table())
+
+
+def _ensure_discord_chat_table(chat_tbl: Any, chat: str) -> None:
+    import tomlkit
+
+    target = parse_discord_chat_target(chat)
+    if target is None or target.kind == "direct":
+        return
+
+    guild_tbl = _ensure_toml_table(chat_tbl, target.guild_id or "")
+    if "require_mention" not in guild_tbl:
+        guild_tbl.add("require_mention", True)
+    channels_tbl = _ensure_toml_table(guild_tbl, "channels", super_table=True)
+    if target.target_id not in channels_tbl:
+        channel_tbl = tomlkit.table()
+        channel_tbl.add("enabled", True)
+        channels_tbl.add(target.target_id, channel_tbl)

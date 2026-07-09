@@ -279,7 +279,7 @@
 # allowed-origins = "internal.example.com"     # merged with preset domains
 #
 # Per-workspace capability exception:
-# [sandbox.research.capabilities."mcp.email.send"]
+# [workspaces.research.capabilities."mcp.email.send"]
 # decision = "deny"                            # "allow", "deny", or "needs_human"
 
 # Daily Pynchy operations triage. Replace the chat ref with the explicit
@@ -539,10 +539,10 @@
 # idle_terminate = false
 # trigger = "always"
 #
-# [sandbox_profiles.pynchy-dev.capabilities."mcp.email.*"]
+# [profiles.pynchy-dev.capabilities."mcp.email.*"]
 # decision = "needs_human"
 #
-# [sandbox_profiles.pynchy-dev.capabilities."mcp.email.preview"]
+# [profiles.pynchy-dev.capabilities."mcp.email.preview"]
 # decision = "allow"      # exact match overrides the wildcard above
 
 # [profiles.ray-bench]

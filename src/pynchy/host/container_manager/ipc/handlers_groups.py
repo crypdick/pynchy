@@ -116,7 +116,10 @@ async def _handle_create_periodic_agent(
         from pynchy.host.container_manager.security.cop_gate import cop_gate
 
         prompt_preview = request.prompt[:500]
-        summary = f"name={request.name}, schedule={request.schedule}, prompt={prompt_preview}"
+        summary = (
+            f"name={request.name}, profile={request.profile}, "
+            f"schedule={request.schedule}, prompt={prompt_preview}"
+        )
         allowed = await cop_gate(
             "create_periodic_agent",
             summary,
@@ -136,6 +139,7 @@ async def _handle_create_periodic_agent(
 
     config = WorkspaceConfig(
         name=request.name,
+        profile=request.profile,
         chat=setup.chat_ref,
         schedule=request.schedule,
         prompt=request.prompt,

@@ -14,6 +14,7 @@ import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.host.container_manager.ipc.watcher import (
     _move_to_error_dir,  # allow: private-test-imports
 )
@@ -83,6 +84,32 @@ async def deps():
 class TestCreatePeriodicAgent:
     """Tests for the create_periodic_agent IPC command."""
 
+    def test_request_requires_explicit_profile(self):
+        request = CreatePeriodicAgentRequest.from_dict(
+            {
+                "type": "create_periodic_agent",
+                "name": "daily-briefing",
+                "schedule": "0 9 * * *",
+                "prompt": "Compile a daily briefing",
+            }
+        )
+
+        assert request is None
+
+    def test_request_parses_explicit_profile(self):
+        request = CreatePeriodicAgentRequest.from_dict(
+            {
+                "type": "create_periodic_agent",
+                "name": "daily-briefing",
+                "profile": "pynchy-worker",
+                "schedule": "0 9 * * *",
+                "prompt": "Compile a daily briefing",
+            }
+        )
+
+        assert request is not None
+        assert request.profile == "pynchy-worker"
+
     @staticmethod
     def _settings(tmp_path):
         from pynchy.config.models import CommandCenterConfig
@@ -140,6 +167,7 @@ class TestCreatePeriodicAgent:
                 {
                     "type": "create_periodic_agent",
                     "name": "daily-briefing",
+                    "profile": "pynchy-worker",
                     "schedule": "0 9 * * *",
                     "prompt": "Compile a daily briefing",
                 },
@@ -184,6 +212,7 @@ class TestCreatePeriodicAgent:
             {
                 "type": "create_periodic_agent",
                 "name": "custom-agent",
+                "profile": "pynchy-worker",
                 "schedule": "0 8 * * 1",
                 "prompt": "Weekly report",
                 "claude_md": "# Custom Agent\nYou are a custom agent.",
@@ -210,6 +239,7 @@ class TestCreatePeriodicAgent:
             {
                 "type": "create_periodic_agent",
                 "name": "existing-agent",
+                "profile": "pynchy-worker",
                 "schedule": "0 9 * * *",
                 "prompt": "Test",
             },
@@ -229,6 +259,7 @@ class TestCreatePeriodicAgent:
             {
                 "type": "create_periodic_agent",
                 "name": "isolated-agent",
+                "profile": "pynchy-worker",
                 "schedule": "0 9 * * *",
                 "prompt": "Isolated task",
                 "context_mode": "isolated",
@@ -250,6 +281,7 @@ class TestCreatePeriodicAgent:
             {
                 "type": "create_periodic_agent",
                 "name": "bad-context",
+                "profile": "pynchy-worker",
                 "schedule": "0 9 * * *",
                 "prompt": "Test",
                 "context_mode": "invalid",
@@ -271,6 +303,7 @@ class TestCreatePeriodicAgent:
             {
                 "type": "create_periodic_agent",
                 "name": "no-channel-agent",
+                "profile": "pynchy-worker",
                 "schedule": "0 9 * * *",
                 "prompt": "Test",
             },
@@ -293,6 +326,7 @@ class TestCreatePeriodicAgent:
             {
                 "type": "create_periodic_agent",
                 "name": "blank-jid-agent",
+                "profile": "pynchy-worker",
                 "schedule": "0 9 * * *",
                 "prompt": "Test",
             },

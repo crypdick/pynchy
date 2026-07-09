@@ -85,19 +85,19 @@ Rules accept these decisions:
 Rules support trailing wildcards. Exact rules win over wildcard rules:
 
 ```toml
-[sandbox_profiles.research.capabilities."mcp.email.*"]
+[profiles.research.capabilities."mcp.email.*"]
 decision = "needs_human"
 
-[sandbox_profiles.research.capabilities."mcp.email.preview"]
+[profiles.research.capabilities."mcp.email.preview"]
 decision = "allow"
 
-[sandbox_profiles.readonly.capabilities."mcp.email.send"]
+[profiles.readonly.capabilities."mcp.email.send"]
 decision = "deny"
 ```
 
-Capability maps resolve through the same cascade as other sandbox settings:
-`sandbox_universal` < `sandbox_profiles.<name>` < `sandbox.<name>`. Use profiles
-for reusable policy and per-sandbox entries for narrow exceptions.
+Capability maps resolve through the same cascade as other workspace settings:
+`universal` < `profiles.<name>` < `workspaces.<name>`. Use profiles
+for reusable policy and per-workspace entries for narrow exceptions.
 
 ## Configuration Examples
 

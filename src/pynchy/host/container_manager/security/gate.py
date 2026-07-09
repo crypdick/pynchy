@@ -123,10 +123,8 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
     if resolved is None:
         from pynchy.config.merge import merge_sandbox_config
 
-        profiles = getattr(s, "profiles", getattr(s, "sandbox_profiles", {}))
-        universal = getattr(s, "universal", getattr(s, "sandbox_universal", None))
-        profile = profiles.get(ws_config.profile) if ws_config.profile else None
-        resolved = merge_sandbox_config(universal, profile, ws_config)
+        profile = s.profiles.get(ws_config.profile) if ws_config.profile else None
+        resolved = merge_sandbox_config(s.universal, profile, ws_config)
 
     sec = resolved.security
     contains_secrets = resolved.contains_secrets

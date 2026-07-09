@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -12,6 +13,7 @@ from conftest import make_settings
 from pynchy.config import WorkspaceConfig
 from pynchy.config.models import ProfileConfig, SandboxProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
+    add_workspace_to_toml,
     configure_plugin_workspaces,
     get_repo_access,
     get_repo_access_groups,
@@ -154,6 +156,67 @@ class TestWorkspaceConfigModel:
     def test_is_periodic(self):
         assert WorkspaceConfig(name="test", schedule="0 9 * * *", prompt="x").is_periodic is True
         assert WorkspaceConfig(name="test", schedule="0 9 * * *").is_periodic is False
+
+
+class TestAddWorkspaceToToml:
+    def test_rejects_workspace_that_does_not_round_trip_through_settings(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        toml_path = tmp_path / "config.toml"
+        toml_path.write_text(
+            """
+[profiles.worker]
+
+[connection.slack.synapse]
+bot_token_env = "SLACK_BOT_TOKEN"
+app_token_env = "SLACK_APP_TOKEN"
+
+[connection.slack.synapse.chat.daily]
+"""
+        )
+
+        with pytest.raises(ValueError, match=r"workspaces\.daily\.profile is required"):
+            add_workspace_to_toml(
+                "daily",
+                WorkspaceConfig(chat="connection.slack.synapse.chat.daily"),
+            )
+
+        assert "workspaces.daily" not in toml_path.read_text()
+
+    def test_writes_discord_workspace_as_typed_nested_chat_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        toml_path = tmp_path / "config.toml"
+        toml_path.write_text(
+            """
+[profiles.pynchy-dev]
+is_admin = true
+
+[connection.discord.mybot]
+bot_token_env = "DISCORD_BOT_TOKEN"
+dm_policy = "allowlist"
+allow_from = ["ricardo"]
+group_policy = "allowlist"
+"""
+        )
+
+        add_workspace_to_toml(
+            "discord-admin",
+            WorkspaceConfig(
+                profile="pynchy-dev",
+                chat="connection.discord.mybot.chat.synapse.channels.code-improver",
+            ),
+        )
+
+        data = tomllib.loads(toml_path.read_text())
+        channel = data["connection"]["discord"]["mybot"]["chat"]["synapse"]["channels"][
+            "code-improver"
+        ]
+        assert channel["enabled"] is True
+        assert data["workspaces"]["discord-admin"]["profile"] == "pynchy-dev"
+        assert data["workspaces"]["discord-admin"]["chat"] == (
+            "connection.discord.mybot.chat.synapse.channels.code-improver"
+        )
 
 
 class TestGetRepoAccess:

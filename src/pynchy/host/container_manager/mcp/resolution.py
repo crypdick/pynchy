@@ -87,13 +87,13 @@ def _resolved_workspace_config(
     settings: Settings,
     group_folder: str,
 ) -> ResolvedSandboxConfig | None:
-    """Resolve sandbox config before reading MCP server declarations."""
+    """Resolve workspace config before reading MCP server declarations."""
     ws_config = settings.workspaces.get(group_folder)
     if ws_config is None:
         return None
 
-    profile = settings.sandbox_profiles.get(ws_config.profile) if ws_config.profile else None
-    return merge_sandbox_config(settings.sandbox_universal, profile, ws_config)
+    profile = settings.profiles.get(ws_config.profile) if ws_config.profile else None
+    return merge_sandbox_config(settings.universal, profile, ws_config)
 
 
 def merged_mcp_servers(
