@@ -17,9 +17,9 @@ from agents.mcp import (
     MCPServerStreamableHttp,
 )
 
-from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import BeforeToolUseHook
-from ._openai_tool_parsing import extract_tool_call, extract_tool_result
+from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.cores._openai_tool_parsing import extract_tool_call, extract_tool_result
+from agent_runner.hooks import BeforeToolUseHook
 
 
 def _log(message: str) -> None:

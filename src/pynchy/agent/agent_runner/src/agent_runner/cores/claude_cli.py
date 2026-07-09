@@ -32,8 +32,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from ..core import AgentCoreConfig, AgentEvent
-from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 # stream-json lines can carry large tool results; lift the asyncio reader limit
 # well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.

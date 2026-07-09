@@ -18,8 +18,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from ..core import AgentCoreConfig, AgentEvent
-from ._codex_config import (
+from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.cores._codex_config import (
     DEFAULT_CODEX_SANDBOX_MODE,
     gateway_base_url_from_env,
     write_codex_config,

@@ -24,16 +24,16 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import McpServerConfig, SdkPluginConfig, SystemPromptPreset
 
-from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import (
+from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+from agent_runner.hooks import (
     AGNOSTIC_TO_CLAUDE,
     BeforeToolUseHook,
     HookEvent,
     before_tool_use_roster,
     load_hooks,
 )
-from ..transcript_archive import archive_transcript
-from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+from agent_runner.transcript_archive import archive_transcript
 
 
 def _log(message: str) -> None:
