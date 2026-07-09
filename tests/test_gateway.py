@@ -543,7 +543,7 @@ class TestGatewayModeSelection:
         from pynchy.config.models import AgentConfig, GatewayConfig
 
         mock_settings = make_settings(
-            agent=AgentConfig(core="codex", model="gpt-5.5"),
+            agent=AgentConfig(default_core="codex", model="gpt-5.5"),
             gateway=GatewayConfig(
                 litellm_config=str(cfg),
                 port=4000,
