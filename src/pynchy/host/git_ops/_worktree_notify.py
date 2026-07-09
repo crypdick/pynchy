@@ -140,7 +140,7 @@ async def _notify_dirty_worktree(
     )
 
 
-async def _rebase_and_notify(
+async def _rebase_and_notify(  # noqa: PLR0913, RUF100 - local notification helper keeps the rebase inputs explicit.
     *,
     conflict_notify: _NotifyFn,
     success_notify: _NotifyFn | None,

@@ -29,7 +29,7 @@ from pynchy.host.container_manager.security.cop import inspect_outbound
 from pynchy.logger import logger
 
 
-async def cop_gate(
+async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation, payload, and dependency context explicit.
     operation: str,
     payload_summary: str,
     data: dict[str, Any],

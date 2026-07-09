@@ -55,7 +55,7 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
     )
 
 
-async def store_message_direct(
+async def store_message_direct(  # noqa: PLR0913, RUF100 - DB row writer keeps the message columns explicit.
     *,
     message_id: str,
     chat_jid: str,

@@ -110,7 +110,7 @@ class LiteLLMGateway:
         key: Ephemeral master key for container authentication.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, RUF100 - stable gateway constructor shared by orchestrator call sites.
         self,
         *,
         config_path: str,

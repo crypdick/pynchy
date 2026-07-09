@@ -13,6 +13,7 @@ import asyncio
 import shutil
 import subprocess  # noqa: S404, RUF100 - Docker helpers use fixed no-shell argv.
 import time
+from dataclasses import dataclass
 
 import aiohttp
 
@@ -22,6 +23,19 @@ from pynchy.logger import logger
 def docker_available() -> bool:
     """Check if ``docker`` is on PATH."""
     return shutil.which("docker") is not None
+
+
+@dataclass(frozen=True)
+class HealthCheckRequest:
+    """Parameters for waiting on a container or local process health check."""
+
+    container_name: str
+    url: str
+    health_timeout_seconds: float = 90
+    poll_interval: float = 1.0
+    headers: dict[str, str] | None = None
+    any_non_5xx: bool = False
+    process: subprocess.Popen[bytes] | None = None
 
 
 def _run_docker_sync(
@@ -106,56 +120,79 @@ async def stop_container(name: str, *, stop_timeout_seconds: int = 5) -> None:
     await run_docker("rm", "-f", name, check=False)
 
 
-async def wait_healthy(
-    container_name: str,
-    url: str,
+async def wait_healthy(  # noqa: PLR0913, RUF100 - shared health probe accepts both call styles and the request object.
+    request_or_container_name: HealthCheckRequest | str,
+    url: str | None = None,
+    *,
     health_timeout_seconds: float = 90,
     poll_interval: float = 1.0,
     headers: dict[str, str] | None = None,
-    *,
     any_non_5xx: bool = False,
     process: subprocess.Popen[bytes] | None = None,
 ) -> None:
     """Poll an HTTP endpoint until it responds healthy, or raise on timeout.
 
     Args:
-        any_non_5xx: When *False* (default) only ``200`` counts as healthy.
-            When *True* any status below 500 is accepted — useful for servers
-            that don't expose a dedicated health endpoint.
+        request.any_non_5xx: When *False* (default) only ``200`` counts as
+            healthy. When *True* any status below 500 is accepted — useful for
+            servers that don't expose a dedicated health endpoint.
     """
+    if isinstance(request_or_container_name, HealthCheckRequest):
+        request = request_or_container_name
+    else:
+        if url is None:
+            msg = "wait_healthy() missing url for legacy call signature"
+            raise TypeError(msg)
+        request = HealthCheckRequest(
+            container_name=request_or_container_name,
+            url=url,
+            health_timeout_seconds=health_timeout_seconds,
+            poll_interval=poll_interval,
+            headers=headers,
+            any_non_5xx=any_non_5xx,
+            process=process,
+        )
+
     start = time.monotonic()
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + health_timeout_seconds
+    deadline = loop.time() + request.health_timeout_seconds
 
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=5),
     ) as session:
         while loop.time() < deadline:
             try:
-                async with session.get(url, headers=headers) as resp:
-                    healthy = resp.status == 200 or (any_non_5xx and resp.status < 500)
+                async with session.get(request.url, headers=request.headers) as resp:
+                    healthy = resp.status == 200 or (request.any_non_5xx and resp.status < 500)
                     if healthy:
                         elapsed_ms = (time.monotonic() - start) * 1000
                         logger.info(
                             "Health check passed",
-                            container=container_name,
+                            container=request.container_name,
                             elapsed_ms=round(elapsed_ms),
                         )
                         return
             except (aiohttp.ClientError, OSError):
                 pass
 
-            if process is not None:
-                if process.poll() is not None:
-                    msg = f"Script {container_name} exited unexpectedly"
+            if request.process is not None:
+                if request.process.poll() is not None:
+                    msg = f"Script {request.container_name} exited unexpectedly"
                     raise RuntimeError(msg)
-            elif not await is_container_running(container_name):
-                logs = await run_docker("logs", "--tail", "30", container_name, check=False)
-                logger.error("Container exited", container=container_name, logs=logs.stdout[-2000:])
-                msg = f"Container {container_name} failed to start — check logs above"
+            elif not await is_container_running(request.container_name):
+                logs = await run_docker("logs", "--tail", "30", request.container_name, check=False)
+                logger.error(
+                    "Container exited",
+                    container=request.container_name,
+                    logs=logs.stdout[-2000:],
+                )
+                msg = f"Container {request.container_name} failed to start — check logs above"
                 raise RuntimeError(msg)
 
-            await asyncio.sleep(poll_interval)
+            await asyncio.sleep(request.poll_interval)
 
-    msg = f"Container {container_name} did not become healthy within {health_timeout_seconds}s"
+    msg = (
+        f"Container {request.container_name} did not become healthy within "
+        f"{request.health_timeout_seconds}s"
+    )
     raise TimeoutError(msg)

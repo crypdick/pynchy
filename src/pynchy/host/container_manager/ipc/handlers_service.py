@@ -46,6 +46,17 @@ class _ServiceRequest:
     request_id: str
 
 
+@dataclass(frozen=True)
+class _ApprovalRequestContext:
+    request: _ServiceRequest
+    data: dict[str, Any]
+    source_group: str
+    chat_jid: str
+    deps: IpcDeps
+    gate: SecurityGate
+    reason: str | None
+
+
 def _get_plugin_handlers() -> PluginHandlers:
     """Collect and cache tool handlers from all MCP server plugins."""
     handlers = _state.plugin_handlers
@@ -103,14 +114,7 @@ def _security_gate(source_group: str, *, is_admin: bool) -> SecurityGate:
 
 
 async def _request_human_approval(
-    *,
-    request: _ServiceRequest,
-    data: dict[str, Any],
-    source_group: str,
-    chat_jid: str,
-    deps: IpcDeps,
-    gate: SecurityGate,
-    reason: str | None,
+    context: _ApprovalRequestContext,
 ) -> None:
     # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
     from pynchy.host.container_manager.security.approval import (
@@ -120,34 +124,35 @@ async def _request_human_approval(
     from pynchy.types import OutboundEvent, OutboundEventType
 
     short_id = create_pending_approval(
-        request_id=request.request_id,
-        tool_name=request.tool_name,
-        source_group=source_group,
-        chat_jid=chat_jid,
-        request_data=data,
+        request_id=context.request.request_id,
+        tool_name=context.request.tool_name,
+        source_group=context.source_group,
+        chat_jid=context.chat_jid,
+        request_data=context.data,
     )
 
-    notification = format_approval_notification(request.tool_name, data, short_id)
-    await deps.broadcast_to_channels(
-        chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
+    notification = format_approval_notification(context.request.tool_name, context.data, short_id)
+    await context.deps.broadcast_to_channels(
+        context.chat_jid,
+        OutboundEvent(type=OutboundEventType.SYSTEM, content=notification),
     )
 
     await record_security_event(
-        chat_jid=chat_jid,
-        workspace=source_group,
-        tool_name=request.tool_name,
+        chat_jid=context.chat_jid,
+        workspace=context.source_group,
+        tool_name=context.request.tool_name,
         decision="approval_requested",
-        corruption_tainted=gate.policy.corruption_tainted,
-        secret_tainted=gate.policy.secret_tainted,
-        reason=reason,
-        request_id=request.request_id,
+        corruption_tainted=context.gate.policy.corruption_tainted,
+        secret_tainted=context.gate.policy.secret_tainted,
+        reason=context.reason,
+        request_id=context.request.request_id,
     )
     logger.info(
         "Service request needs human approval",
-        tool_name=request.tool_name,
-        source_group=source_group,
+        tool_name=context.request.tool_name,
+        source_group=context.source_group,
         short_id=short_id,
-        reason=reason,
+        reason=context.reason,
     )
 
 
@@ -249,13 +254,15 @@ async def _handle_service_request(
 
     if decision.needs_human:
         await _request_human_approval(
-            request=request,
-            data=data,
-            source_group=source_group,
-            chat_jid=chat_jid,
-            deps=deps,
-            gate=gate,
-            reason=decision.reason,
+            _ApprovalRequestContext(
+                request=request,
+                data=data,
+                source_group=source_group,
+                chat_jid=chat_jid,
+                deps=deps,
+                gate=gate,
+                reason=decision.reason,
+            )
         )
         # No response file written — container blocks until human decides
         return

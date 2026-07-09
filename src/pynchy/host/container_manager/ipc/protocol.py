@@ -240,7 +240,7 @@ def _payload_object(value: Any) -> dict[str, Any]:
     raise ValueError("IPC request envelope payload must be an object")
 
 
-def make_ipc_request(
+def make_ipc_request(  # noqa: PLR0913, RUF100 - canonical envelope builder keeps transport fields explicit.
     *,
     kind: str,
     request_id: str,

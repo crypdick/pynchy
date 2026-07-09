@@ -65,6 +65,19 @@ class _ProxyRequest:
     tail: str
 
 
+@dataclass(frozen=True)
+class _BackendForwardContext:
+    session: aiohttp.ClientSession
+    request: Any
+    backend_url: str
+    tail: str
+    body: bytes
+    state: _ProxyState
+    instance_id: str
+    gate: SecurityGate
+    group_folder: str
+
+
 def create_proxy_app(
     instance_urls: dict[str, str],
     *,
@@ -210,22 +223,13 @@ def _forwarded_headers(request: Any) -> dict[str, str]:
 
 
 async def _backend_response(
-    *,
-    session: aiohttp.ClientSession,
-    request: Any,
-    backend_url: str,
-    tail: str,
-    body: bytes,
-    state: _ProxyState,
-    instance_id: str,
-    gate: SecurityGate,
-    group_folder: str,
+    context: _BackendForwardContext,
 ) -> web.Response:
-    async with session.request(
-        request.method,
-        backend_url + tail,
-        data=body,
-        headers=_forwarded_headers(request),
+    async with context.session.request(
+        context.request.method,
+        context.backend_url + context.tail,
+        data=context.body,
+        headers=_forwarded_headers(context.request),
     ) as backend_resp:
         response_body = await backend_resp.read()
         response_headers = {
@@ -234,9 +238,14 @@ async def _backend_response(
             if key.lower() not in ("content-length", "transfer-encoding")
         }
 
-        trust = state.trust_map.get(instance_id, {})
+        trust = context.state.trust_map.get(context.instance_id, {})
         if trust.get("public_source"):
-            response_body = await _apply_fencing(response_body, instance_id, gate, group_folder)
+            response_body = await _apply_fencing(
+                response_body,
+                context.instance_id,
+                context.gate,
+                context.group_folder,
+            )
 
         return web.Response(
             status=backend_resp.status,
@@ -246,31 +255,12 @@ async def _backend_response(
 
 
 async def _forward_to_backend(
-    *,
-    session: aiohttp.ClientSession,
-    request: Any,
-    backend_url: str,
-    tail: str,
-    body: bytes,
-    state: _ProxyState,
-    instance_id: str,
-    gate: SecurityGate,
-    group_folder: str,
+    context: _BackendForwardContext,
 ) -> Any:
     try:
-        return await _backend_response(
-            session=session,
-            request=request,
-            backend_url=backend_url,
-            tail=tail,
-            body=body,
-            state=state,
-            instance_id=instance_id,
-            gate=gate,
-            group_folder=group_folder,
-        )
+        return await _backend_response(context)
     except aiohttp.ClientError as exc:
-        logger.error("MCP proxy backend error", instance=instance_id, error=str(exc))
+        logger.error("MCP proxy backend error", instance=context.instance_id, error=str(exc))
         return web.json_response({"error": "MCP backend unavailable"}, status=502)
 
 
@@ -298,15 +288,17 @@ async def _proxy_handler(request: Any) -> Any:
     if session is None:
         raise RuntimeError("MCP proxy ClientSession not initialized")
     return await _forward_to_backend(
-        session=session,
-        request=request,
-        backend_url=backend_url,
-        tail=proxy_request.tail,
-        body=body,
-        state=state,
-        instance_id=proxy_request.instance_id,
-        gate=gate,
-        group_folder=proxy_request.group_folder,
+        _BackendForwardContext(
+            session=session,
+            request=request,
+            backend_url=backend_url,
+            tail=proxy_request.tail,
+            body=body,
+            state=state,
+            instance_id=proxy_request.instance_id,
+            gate=gate,
+            group_folder=proxy_request.group_folder,
+        )
     )
 
 

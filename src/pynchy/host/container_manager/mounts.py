@@ -40,7 +40,7 @@ def _prepare_codex_home(group_folder: str) -> Path:
     return codex_home
 
 
-def build_volume_mounts(
+def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point with explicit mount inputs.
     group: WorkspaceProfile,
     *,
     is_admin: bool,

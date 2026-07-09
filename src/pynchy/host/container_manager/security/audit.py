@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pynchy.state import prune_messages_by_sender, store_message_direct
 
 
-async def record_security_event(
+async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror the policy decision fields directly.
     chat_jid: str,
     workspace: str,
     tool_name: str,

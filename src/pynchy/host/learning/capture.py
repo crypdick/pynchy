@@ -74,7 +74,7 @@ async def messages_for_learning_packet(
     return sorted(covered_messages, key=lambda message: message.timestamp)
 
 
-async def start_completed_turn_learning_review(
+async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learning review entry point mirrors the turn state it needs.
     settings: Settings,
     chat_jid: str,
     group: WorkspaceProfile,

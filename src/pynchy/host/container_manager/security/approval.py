@@ -157,7 +157,7 @@ def generate_short_id(source_group: str) -> str:
 # -- State operations ----------------------------------------------------------
 
 
-def create_pending_approval(
+def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intentionally keep the request payload explicit.
     request_id: str,
     tool_name: str,
     source_group: str,

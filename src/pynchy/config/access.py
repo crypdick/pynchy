@@ -6,6 +6,8 @@ connection-level channel security, not workspace/profile config.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import ChannelOverrideConfig, ConnectionConfig, OwnerConfig
 from pynchy.config.refs import channel_platform_from_name
@@ -66,42 +68,45 @@ def resolve_allowed_users(
     if "*" in raw_list:
         return None  # Wildcard — everyone allowed
 
-    result: set[str] = set()
-    _resolve_into(raw_list, user_groups, owner_config, channel_plugin_name, result, seen=set())
-    return result
+    resolver = _AllowedUsersResolver(
+        user_groups=user_groups,
+        owner_config=owner_config,
+        channel_plugin_name=channel_plugin_name,
+    )
+    resolver.resolve(raw_list)
+    return resolver.result
 
 
-def _resolve_into(
-    entries: list[str],
-    user_groups: dict[str, list[str]],
-    owner_config: OwnerConfig,
-    channel_plugin_name: str | None,
-    result: set[str],
-    seen: set[str],
-) -> None:
-    """Recursively resolve user entries into the result set."""
-    for entry in entries:
-        if entry == "*":
-            # Shouldn't reach here (caller checks), but handle defensively
-            return
-        if entry == "owner":
-            owner_id = _resolve_owner(owner_config, channel_plugin_name)
-            if owner_id:
-                result.add(owner_id)
-            continue
-        if ":" in entry:
-            # Literal user ID (e.g., "slack:U04ABC")
-            result.add(entry)
-            continue
-        # Group name lookup
-        if entry in seen:
-            continue  # Cycle detection
-        seen.add(entry)
-        group_members = user_groups.get(entry)
-        if group_members is not None:
-            _resolve_into(
-                group_members, user_groups, owner_config, channel_plugin_name, result, seen
-            )
+@dataclass
+class _AllowedUsersResolver:
+    """Resolve user references into a flat allowed-user set."""
+
+    user_groups: dict[str, list[str]]
+    owner_config: OwnerConfig
+    channel_plugin_name: str | None
+    result: set[str] = field(default_factory=set)
+    seen: set[str] = field(default_factory=set)
+
+    def resolve(self, entries: list[str]) -> None:
+        for entry in entries:
+            if entry == "*":
+                # Shouldn't reach here (caller checks), but handle defensively.
+                return
+            if entry == "owner":
+                owner_id = _resolve_owner(self.owner_config, self.channel_plugin_name)
+                if owner_id:
+                    self.result.add(owner_id)
+                continue
+            if ":" in entry:
+                # Literal user ID (e.g., "slack:U04ABC").
+                self.result.add(entry)
+                continue
+            if entry in self.seen:
+                continue  # Cycle detection.
+            self.seen.add(entry)
+            group_members = self.user_groups.get(entry)
+            if group_members is not None:
+                self.resolve(group_members)
 
 
 def _resolve_owner(owner_config: OwnerConfig, channel_plugin_name: str | None) -> str | None:
