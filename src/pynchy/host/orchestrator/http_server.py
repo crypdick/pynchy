@@ -10,7 +10,10 @@ import asyncio
 import json
 import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
+    Coroutine,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
+)
 from typing import Any, Protocol, runtime_checkable
 
 from aiohttp import web
@@ -28,7 +31,9 @@ from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
-from pynchy.types import NewMessage
+from pynchy.types import (
+    NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
+)
 
 _start_time = time.monotonic()
 REMOTE_HTTP_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - documented Tailscale/firewall-gated API listener for remote clients.

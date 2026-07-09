@@ -36,7 +36,9 @@ from pynchy.state import (
     get_router_state,
     get_task_run_logs,
 )
-from pynchy.types import TaskRunLog
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
+    TaskRunLog,
+)
 
 # Module-level wall-clock start time for uptime reporting.
 # Monotonic _start_time in http_server.py is for duration math only;

@@ -6,7 +6,10 @@ import asyncio
 import os
 import signal
 import subprocess  # noqa: S404, RUF100 - deploy helper invokes the repo-local build script without a shell.
-from collections.abc import Awaitable, Callable
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves deploy annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 

@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves pending-question path annotations at runtime.
+)
 from typing import Any, cast
 
 from pynchy.config import get_settings

@@ -14,7 +14,11 @@ from typing import Any, Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
-from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
+    Channel,
+    OutboundEvent,
+    WorkspaceProfile,
+)
 from pynchy.utils import create_background_task
 
 # ---------------------------------------------------------------------------

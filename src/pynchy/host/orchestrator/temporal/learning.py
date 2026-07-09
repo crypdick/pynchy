@@ -9,9 +9,13 @@ from uuid import uuid4
 from temporalio import activity
 
 from pynchy.host.learning.packet_codec import packet_from_payload
-from pynchy.host.learning.packet_models import LearningPacket
+from pynchy.host.learning.packet_models import (
+    LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+)
 from pynchy.host.learning.review_runner import run_learning_review as _run_learning_review_agent
-from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies
+from pynchy.host.orchestrator.task_scheduler import (
+    SchedulerDependencies,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+)
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,

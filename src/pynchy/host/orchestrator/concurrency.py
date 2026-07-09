@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass, field
 
 from pynchy.config import get_settings

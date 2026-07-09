@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves formatter annotations at runtime.
+    Callable,
+)
 from typing import Any
 
-from pynchy.types import NewMessage
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves formatter annotations at runtime.
+    NewMessage,
+)
 
 _INTERNAL_TAG_RE = re.compile(r"<internal>([\s\S]*?)</internal>")
 _HOST_TAG_RE = re.compile(r"^\s*<host>([\s\S]*?)</host>\s*$")

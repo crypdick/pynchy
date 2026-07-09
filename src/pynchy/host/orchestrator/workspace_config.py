@@ -7,14 +7,24 @@ Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
+    Iterable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
+)
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.config import get_settings, reset_settings
-from pynchy.config.jobs import JobConfig
-from pynchy.config.merge import ResolvedWorkspaceConfig
+from pynchy.config.jobs import (
+    JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+)
+from pynchy.config.merge import (
+    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+)
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.toml_io import mutate_config_toml
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
@@ -28,10 +38,10 @@ from pynchy.state import (
     get_all_tasks,
     update_task,
 )
-from pynchy.types import Channel, WorkspaceProfile
-
-if TYPE_CHECKING:
-    import pluggy
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    Channel,
+    WorkspaceProfile,
+)
 
 
 @dataclass(frozen=True)

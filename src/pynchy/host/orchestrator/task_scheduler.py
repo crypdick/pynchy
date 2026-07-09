@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
+    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.config import get_settings
-from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.logger import logger
 from pynchy.state import (
     get_task_run_logs,

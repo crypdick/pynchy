@@ -11,7 +11,9 @@ module only handles *how* messages arrive and get dispatched.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves inbound routing annotations at runtime.
+)
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.pipeline import (
@@ -21,7 +23,10 @@ from pynchy.host.orchestrator.messaging.pipeline import (
 )
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, get_new_messages
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    NewMessage,
+    WorkspaceProfile,
+)
 from pynchy.utils import create_background_task
 
 

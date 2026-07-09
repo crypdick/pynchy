@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings

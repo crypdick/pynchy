@@ -23,7 +23,10 @@ from pynchy.host.orchestrator.temporal.workflows import (
     HostGitSyncWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.types import HostJob, ScheduledTask
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal schedule annotations at runtime.
+    HostJob,
+    ScheduledTask,
+)
 
 TEMPORAL_SAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 SCHEDULE_PREFIXES = (

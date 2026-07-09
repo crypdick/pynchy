@@ -14,12 +14,13 @@ import os
 import signal
 import socket
 import threading
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator import startup_handler
-from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
+    PynchyApp,
+)
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.logger import logger
@@ -35,6 +36,9 @@ from pynchy.utils import create_background_task
 if TYPE_CHECKING:
     from pynchy.types import NewMessage
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
+    Callable,
+)
 
 # ---------------------------------------------------------------------------
 # Shutdown

@@ -31,7 +31,9 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.logger import logger
 from pynchy.state import get_router_state, set_router_state
-from pynchy.types import WorkspaceProfile
+from pynchy.types import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal git-sync annotations at runtime.
+)
 
 HOST_GIT_SYNC_ID = "git-sync-host"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"

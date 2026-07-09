@@ -9,7 +9,9 @@ from pynchy.host.orchestrator.task_scheduler import resolve_cron_job_cwd
 from pynchy.host.orchestrator.temporal.runtime_state import _record_activity_result
 from pynchy.logger import logger
 from pynchy.state import get_host_job_by_id, update_host_job_after_run
-from pynchy.types import HostJob
+from pynchy.types import (
+    HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
+)
 from pynchy.utils import compute_next_run, log_shell_result, run_shell_command
 
 

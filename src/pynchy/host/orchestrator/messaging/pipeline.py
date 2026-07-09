@@ -13,16 +13,18 @@ import asyncio
 import json
 import time
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves pipeline path annotations at runtime.
+)
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.types as types
 from pynchy.config import get_settings
-from pynchy.config.settings import Settings
+from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
+    Settings,
+)
 from pynchy.event_bus import AgentActivityEvent, MessageEvent
-from pynchy.host.container_manager import OnOutput
 from pynchy.host.learning import capture as learning_capture
-from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
@@ -30,6 +32,10 @@ from pynchy.host.orchestrator.messaging.run_context import prepare_message_conte
 from pynchy.logger import logger
 from pynchy.state import get_messages_since, store_message_direct
 from pynchy.utils import generate_message_id, run_shell_command
+
+if TYPE_CHECKING:
+    from pynchy.host.container_manager import OnOutput
+    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 type Group = types.WorkspaceProfile
 

@@ -5,16 +5,20 @@ Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
 
 from __future__ import annotations
 
-import asyncio
+import asyncio  # noqa: TC003, RUF100 - beartype resolves app annotations at runtime.
 import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.host.container_manager import OnOutput
+
 from pynchy.config import get_settings
 from pynchy.event_bus import EventBus
-from pynchy.host.container_manager import OnOutput
+from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+    OnOutput,
+)
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue

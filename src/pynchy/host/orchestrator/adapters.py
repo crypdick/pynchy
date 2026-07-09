@@ -10,7 +10,9 @@ from collections.abc import Awaitable, Callable, Coroutine
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.event_bus import EventBus
+from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
+    EventBus,
+)
 from pynchy.state import clear_session, get_all_tasks, get_chat_history
 from pynchy.types import (
     Channel,
