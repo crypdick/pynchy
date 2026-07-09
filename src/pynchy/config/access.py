@@ -17,6 +17,7 @@ from pynchy.types import (
 )
 
 _KNOWN_CHANNEL_PLATFORMS = {"slack", "whatsapp", "discord"}
+_CHANNEL_PLUGIN_NAME_ERROR = "channel_plugin_name must be a string or None"
 
 
 def resolve_workspace_connection_name(workspace_name: str) -> str | None:
@@ -144,7 +145,7 @@ def filter_allowed_messages(
         Filtered list — only messages from allowed senders.
     """
     if channel_plugin_name is not None and not isinstance(channel_plugin_name, str):
-        raise TypeError("channel_plugin_name must be a string or None")
+        raise TypeError(_CHANNEL_PLUGIN_NAME_ERROR)
     if getattr(group, "is_admin", False):
         return messages
 

@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, runtime_check
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.messaging.formatters.base import Formatter
 
+_CONTAINER_TIMEOUT_ERROR = "container_config.timeout: expected number, got {type_name}"
+_CONTAINER_MOUNTS_ERROR = "container_config.additional_mounts: expected list, got {type_name}"
+
 
 # --- Domain identity types ---
 #
@@ -58,14 +61,10 @@ class ContainerConfig:
         # a broken timeout calculation or an opaque mount error.
         timeout = raw.get("timeout")
         if timeout is not None and not isinstance(timeout, int | float):
-            raise TypeError(
-                f"container_config.timeout: expected number, got {type(timeout).__name__}"
-            )
+            raise TypeError(_CONTAINER_TIMEOUT_ERROR.format(type_name=type(timeout).__name__))
         mounts = raw.get("additional_mounts", [])
         if not isinstance(mounts, list):
-            raise TypeError(
-                f"container_config.additional_mounts: expected list, got {type(mounts).__name__}"
-            )
+            raise TypeError(_CONTAINER_MOUNTS_ERROR.format(type_name=type(mounts).__name__))
         return cls(
             additional_mounts=[AdditionalMount(**m) for m in mounts],
             timeout=timeout,

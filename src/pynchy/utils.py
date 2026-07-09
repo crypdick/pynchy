@@ -25,6 +25,8 @@ from croniter import croniter
 
 from pynchy.logger import logger
 
+_INTERVAL_POSITIVE_ERROR = "Interval must be positive"
+
 
 def write_json_atomic(path: Path, data: Any, *, indent: int | None = None) -> None:
     """Write JSON data to a file using atomic rename (tmp → final).
@@ -75,7 +77,7 @@ def compute_next_run(
     if schedule_type == "interval":
         ms = int(schedule_value)
         if ms <= 0:
-            raise ValueError("Interval must be positive")
+            raise ValueError(_INTERVAL_POSITIVE_ERROR)
         return datetime.fromtimestamp(
             datetime.now(UTC).timestamp() + ms / 1000,
             tz=UTC,
