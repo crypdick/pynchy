@@ -155,17 +155,17 @@ async def _write_container_snapshots(
     host_jobs = await get_all_host_jobs() if is_admin else []
     write_tasks_snapshot(
         group_folder,
-        is_admin,
         [t.to_snapshot_dict() for t in tasks],
+        is_admin=is_admin,
         host_jobs=[j.to_snapshot_dict() for j in host_jobs],
     )
 
     available_groups = await deps.get_available_groups()
     write_groups_snapshot(
         group_folder,
-        is_admin,
         available_groups,
         set(deps.workspaces.keys()),
+        is_admin=is_admin,
     )
     return (time.monotonic() - snapshot_start) * 1000
 

@@ -13,11 +13,11 @@ from pynchy.config import get_settings
 from pynchy.utils import write_json_atomic
 
 
-def write_tasks_snapshot(  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
+def write_tasks_snapshot(
     folder: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
     tasks: list[dict[str, Any]],
     *,
+    is_admin: bool,
     host_jobs: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write current_tasks.json to the group's IPC directory.
@@ -36,11 +36,12 @@ def write_tasks_snapshot(  # noqa: FBT001, RUF100 - orchestrator and tests still
     write_json_atomic(path, filtered, indent=2)
 
 
-def write_groups_snapshot(  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
+def write_groups_snapshot(
     folder: str,
-    is_admin: bool,  # noqa: FBT001, RUF100 - orchestrator and tests still call this snapshot helper positionally.
     groups: list[dict[str, Any]],
     _registered_jids: set[str],
+    *,
+    is_admin: bool,
 ) -> None:
     """Write available_groups.json to the group's IPC directory."""
     # Admin sees all groups; others see nothing (they can't activate groups)

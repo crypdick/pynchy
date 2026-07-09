@@ -390,7 +390,7 @@ class TestMcpProxyOutboundGating:
 
         def mock_approval_fn(group, tool_name, data, request_id):
             approval_calls.append((group, tool_name, request_id))
-            resolve_mcp_proxy_approval(request_id, True)
+            resolve_mcp_proxy_approval(request_id, approved=True)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -428,7 +428,7 @@ class TestMcpProxyOutboundGating:
         def mock_approval_fn(group, tool_name, data, request_id):
             approval_calls.append((group, tool_name, request_id))
             # Simulate immediate human approval
-            resolve_mcp_proxy_approval(request_id, True)
+            resolve_mcp_proxy_approval(request_id, approved=True)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
@@ -468,7 +468,7 @@ class TestMcpProxyOutboundGating:
 
         def mock_approval_fn(group, tool_name, data, request_id):
             # Simulate human denial
-            resolve_mcp_proxy_approval(request_id, False)
+            resolve_mcp_proxy_approval(request_id, approved=False)
             return asyncio.sleep(0)
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"

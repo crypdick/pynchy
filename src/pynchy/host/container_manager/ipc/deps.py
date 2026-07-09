@@ -32,9 +32,10 @@ class IpcDeps(Protocol):
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_admin: bool,  # noqa: FBT001, RUF100 - protocol method used by structural test doubles.
         available_groups: list[Any],
         registered_jids: set[str],
+        *,
+        is_admin: bool,
     ) -> None: ...
 
     def has_active_session(self, group_folder: str) -> bool: ...

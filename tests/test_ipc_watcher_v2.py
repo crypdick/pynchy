@@ -83,9 +83,10 @@ class MockDeps(NullIpcDeps):
     def write_groups_snapshot(
         self,
         group_folder: str,
-        is_admin: bool,  # noqa: FBT001, RUF100 - protocol-shaped test double mirrors IpcDeps.write_groups_snapshot.
         available_groups: list[Any],
         registered_jids: set[str],
+        *,
+        is_admin: bool,
     ) -> None:
         self.snapshot_calls.append((group_folder, is_admin, available_groups, registered_jids))
 

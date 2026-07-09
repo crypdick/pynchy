@@ -1395,7 +1395,7 @@ class TestTasksSnapshot:
                 {"groupFolder": "admin-1", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
-            write_tasks_snapshot("admin-1", True, tasks)
+            write_tasks_snapshot("admin-1", tasks, is_admin=True)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "admin-1" / "current_tasks.json").read_text()
             )
@@ -1407,7 +1407,7 @@ class TestTasksSnapshot:
                 {"groupFolder": "admin-1", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
-            write_tasks_snapshot("other", False, tasks)
+            write_tasks_snapshot("other", tasks, is_admin=False)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "other" / "current_tasks.json").read_text()
             )
@@ -1418,7 +1418,7 @@ class TestTasksSnapshot:
         with _patch_settings(tmp_path):
             tasks = [{"groupFolder": "admin-1", "id": "t1"}]
             host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
-            write_tasks_snapshot("admin-1", True, tasks, host_jobs=host_jobs)
+            write_tasks_snapshot("admin-1", tasks, is_admin=True, host_jobs=host_jobs)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "admin-1" / "current_tasks.json").read_text()
             )
@@ -1431,7 +1431,7 @@ class TestTasksSnapshot:
         with _patch_settings(tmp_path):
             tasks = [{"groupFolder": "other", "id": "t1"}]
             host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
-            write_tasks_snapshot("other", False, tasks, host_jobs=host_jobs)
+            write_tasks_snapshot("other", tasks, is_admin=False, host_jobs=host_jobs)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "other" / "current_tasks.json").read_text()
             )
@@ -1443,7 +1443,7 @@ class TestGroupsSnapshot:
     def test_admin_sees_all_groups(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
-            write_groups_snapshot("admin-1", True, groups, {"a@g.us", "b@g.us"})
+            write_groups_snapshot("admin-1", groups, {"a@g.us", "b@g.us"}, is_admin=True)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "admin-1" / "available_groups.json").read_text()
             )
@@ -1452,7 +1452,7 @@ class TestGroupsSnapshot:
     def test_nonadmin_sees_no_groups(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}]
-            write_groups_snapshot("other", False, groups, {"a@g.us"})
+            write_groups_snapshot("other", groups, {"a@g.us"}, is_admin=False)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "other" / "available_groups.json").read_text()
             )

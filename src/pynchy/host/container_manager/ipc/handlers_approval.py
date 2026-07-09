@@ -91,7 +91,7 @@ async def process_approval_decision(
     if handler_type == "mcp_proxy":
         from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 
-        resolved = resolve_mcp_proxy_approval(request_id, approved)
+        resolved = resolve_mcp_proxy_approval(request_id, approved=approved)
         if not resolved:
             logger.warning(
                 "MCP proxy approval Future not found (timed out?)",
