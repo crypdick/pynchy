@@ -66,38 +66,36 @@ def extract_comments(file_path: Path) -> list[tuple[int, str]]:
 
     Returns list of (line_number, comment_text) tuples.
     """
-    comments = []
-
     try:
-        with open(file_path, encoding="utf-8") as f:
-            in_docstring = False
-            docstring_delimiter: str | None = None
-
-            for line_num, line in enumerate(f, start=1):
-                stripped = line.strip()
-
-                # Handle docstrings
-                if in_docstring:
-                    comments.append((line_num, line))
-                    if docstring_delimiter is not None and docstring_delimiter in line:
-                        in_docstring = False
-                elif stripped.startswith('"""') or stripped.startswith("'''"):
-                    docstring_delimiter = '"""' if stripped.startswith('"""') else "'''"
-                    in_docstring = True
-                    comments.append((line_num, line))
-
-                    # Check if docstring ends on same line
-                    if stripped.count(docstring_delimiter) >= 2:
-                        in_docstring = False
-                elif "#" in line:
-                    # Regular comment - extract everything after the first #
-                    comment_start = line.find("#")
-                    comment_text = line[comment_start:]
-                    comments.append((line_num, comment_text))
-
+        lines = file_path.read_text(encoding="utf-8").splitlines(keepends=True)
     except UnicodeDecodeError:
-        # Skip binary files
-        pass
+        return []
+
+    comments = []
+    in_docstring = False
+    docstring_delimiter: str | None = None
+
+    for line_num, line in enumerate(lines, start=1):
+        stripped = line.strip()
+
+        # Handle docstrings
+        if in_docstring:
+            comments.append((line_num, line))
+            if docstring_delimiter is not None and docstring_delimiter in line:
+                in_docstring = False
+        elif stripped.startswith(('"""', "'''")):
+            docstring_delimiter = '"""' if stripped.startswith('"""') else "'''"
+            in_docstring = True
+            comments.append((line_num, line))
+
+            # Check if docstring ends on same line
+            if stripped.count(docstring_delimiter) >= 2:
+                in_docstring = False
+        elif "#" in line:
+            # Regular comment - extract everything after the first #
+            comment_start = line.find("#")
+            comment_text = line[comment_start:]
+            comments.append((line_num, comment_text))
 
     return comments
 
@@ -105,12 +103,11 @@ def extract_comments(file_path: Path) -> list[tuple[int, str]]:
 def _has_allow_comment(file_path: Path, line_num: int) -> bool:
     """Check if line has ``# allow: timeless-comments`` comment."""
     try:
-        with open(file_path, encoding="utf-8") as f:
-            lines = f.readlines()
-            if 0 < line_num <= len(lines):
-                line_lower = lines[line_num - 1].lower()
-                if "# allow:" in line_lower and "timeless-comments" in line_lower:
-                    return True
+        lines = file_path.read_text(encoding="utf-8").splitlines()
+        if 0 < line_num <= len(lines):
+            line_lower = lines[line_num - 1].lower()
+            if "# allow:" in line_lower and "timeless-comments" in line_lower:
+                return True
     except (UnicodeDecodeError, IndexError):
         pass
     return False
@@ -180,12 +177,12 @@ def main(filenames: list[str]) -> int:
     if exit_code != 0:
         print("\n" + "=" * 70)
         print(f"Found {total_violations} non-timeless comment(s).")
-        print("")
+        print()
         print("  FIX the comment (preferred):")
         print("     BAD:  # Temporary function for a separate code path")
         print("     GOOD: # Calculates total cost including tax")
         print("     If the comment only explains repository history, delete it.")
-        print("")
+        print()
         print("  EXEMPT with '# temporal-ok' or '# allow: timeless-comments'")
         print("  ONLY when:")
         print("     - Temporal word is domain-specific (e.g., 'old logs' = stale)")

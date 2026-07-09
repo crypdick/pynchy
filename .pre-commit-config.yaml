@@ -1,13 +1,14 @@
 # Run with: uvx pre-commit run --all-files
 # Install hooks: uvx pre-commit install
 repos:
-  # Ruff: linting + formatting
+  # Ruff: linting, formatting, and complexity
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.12
+    rev: v0.15.20
     hooks:
-      - id: ruff-format
       - id: ruff-check
-        args: [--fix]
+        args: [--fix, --quiet]
+      - id: ruff-format
+        args: [--quiet]
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks

@@ -79,7 +79,7 @@ def detect_first_party_packages(root: Path) -> set[str]:
 class PrivateImportVisitor(ast.NodeVisitor):
     """AST visitor flagging imports of private first-party symbols."""
 
-    def __init__(self, file_content: str, first_party: set[str]):
+    def __init__(self, file_content: str, first_party: set[str]) -> None:
         self.lines = file_content.splitlines()
         self.first_party = first_party
         self.violations: list[tuple[int, str, str]] = []
@@ -167,14 +167,14 @@ def main(argv: list[str]) -> int:
     if exit_code != 0:
         print("\n" + "=" * 70)
         print(f"Found {total} private-symbol import(s) in tests.")
-        print("")
+        print()
         print("  Tests must verify PUBLIC behaviour, not private implementation shape.")
-        print("")
+        print()
         print("  FIX: drive the public entry point that exercises this private and")
         print("       assert on its observable result. If nothing public reaches the")
         print("       private, it may be dead code — delete it (a 100% coverage gate")
         print("       is the arbiter).")
-        print("")
+        print()
         print("  CARVE-OUT: a private whose only effect is an external-process side")
         print("       channel with no public observable may keep a focused test —")
         print(f"       annotate its import with '# allow: {_ALLOW_MARKER}'.")

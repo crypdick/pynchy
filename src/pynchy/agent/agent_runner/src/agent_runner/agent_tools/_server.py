@@ -22,7 +22,7 @@ import agent_runner.agent_tools._tools_messaging
 import agent_runner.agent_tools._tools_slack_tokens
 import agent_runner.agent_tools._tools_tasks
 import agent_runner.agent_tools._tools_todos
-import agent_runner.agent_tools._tools_x  # noqa: F401
+import agent_runner.agent_tools._tools_x
 from agent_runner.agent_tools._registry import all_tools, get_handler
 
 server = Server("pynchy")

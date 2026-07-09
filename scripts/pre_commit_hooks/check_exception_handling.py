@@ -26,7 +26,7 @@ from pathlib import Path
 class ExceptionHandlerVisitor(ast.NodeVisitor):
     """AST visitor to find problematic exception handlers."""
 
-    def __init__(self, filename: str, file_content: str):
+    def __init__(self, filename: str, file_content: str) -> None:
         self.filename = filename
         self.file_content = file_content
         self.lines = file_content.splitlines()
@@ -58,9 +58,11 @@ class ExceptionHandlerVisitor(ast.NodeVisitor):
                 (
                     line_num,
                     "bare_except",
-                    "Bare 'except:' clause catches all exceptions including "
-                    "KeyboardInterrupt — catch a specific exception type instead "
-                    "(e.g., except ValueError as e:)",
+                    (
+                        "Bare 'except:' clause catches all exceptions including "
+                        "KeyboardInterrupt — catch a specific exception type instead "
+                        "(e.g., except ValueError as e:)"
+                    ),
                 )
             )
         # Check for except Exception:
@@ -77,8 +79,10 @@ class ExceptionHandlerVisitor(ast.NodeVisitor):
                     (
                         line_num,
                         "exception_pass",
-                        "Exception handler with only 'pass' swallows all errors "
-                        "— log the error and re-raise, or catch a narrower type",
+                        (
+                            "Exception handler with only 'pass' swallows all errors "
+                            "— log the error and re-raise, or catch a narrower type"
+                        ),
                     )
                 )
             elif is_only_continue:
@@ -86,8 +90,10 @@ class ExceptionHandlerVisitor(ast.NodeVisitor):
                     (
                         line_num,
                         "exception_continue",
-                        "Exception handler with only 'continue' swallows all errors "
-                        "— log the error and re-raise, or catch a narrower type",
+                        (
+                            "Exception handler with only 'continue' swallows all errors "
+                            "— log the error and re-raise, or catch a narrower type"
+                        ),
                     )
                 )
             elif not has_raise:
@@ -106,8 +112,10 @@ class ExceptionHandlerVisitor(ast.NodeVisitor):
                         (
                             line_num,
                             "broad_exception",
-                            "Broad 'except Exception' without logging or re-raising "
-                            "— catch a specific exception or add logger.exception()",
+                            (
+                                "Broad 'except Exception' without logging or re-raising "
+                                "— catch a specific exception or add logger.exception()"
+                            ),
                         )
                     )
 
@@ -126,14 +134,14 @@ def check_exception_handling(file_path: Path) -> list[tuple[int, str, str]]:
         visitor = ExceptionHandlerVisitor(str(file_path), content)
         visitor.visit(tree)
 
-        return visitor.violations
-
     except SyntaxError:
         # Skip files with syntax errors (will be caught by other tools)
         return []
     except UnicodeDecodeError:
         # Skip binary files
         return []
+    else:
+        return visitor.violations
 
 
 def main(filenames: list[str]) -> int:
@@ -164,12 +172,12 @@ def main(filenames: list[str]) -> int:
     if exit_code != 0:
         print("\n" + "=" * 70)
         print(f"Found {total_violations} exception handling violation(s).")
-        print("")
+        print()
         print("  FIX the code (preferred):")
         print("     BAD:  except Exception: pass")
         print("     GOOD: except (ValueError, KeyError) as e:")
         print("               logger.error('Failed to process: %s', e)")
-        print("")
+        print()
         print("  EXEMPT with '# allow: exception-handling' ONLY when:")
         print("     - The exception IS handled (collected, user notification)")
         print("     - Fallback for unsupported operation (e.g., clipboard)")

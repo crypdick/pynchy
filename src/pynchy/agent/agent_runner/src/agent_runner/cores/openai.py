@@ -12,11 +12,8 @@ from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResul
 from agents.mcp import (
     MCPServer,
     MCPServerSse,
-    MCPServerSseParams,
     MCPServerStdio,
-    MCPServerStdioParams,
     MCPServerStreamableHttp,
-    MCPServerStreamableHttpParams,
 )
 
 from ..core import AgentCoreConfig, AgentEvent
@@ -260,7 +257,7 @@ def _stdio_server(name: str, spec: dict[str, Any]) -> MCPServerStdio:
         params["args"] = spec.get("args", [])
     if "env" in spec and spec["env"] is not None:
         params["env"] = spec["env"]
-    return MCPServerStdio(params=cast(MCPServerStdioParams, params), name=name)
+    return MCPServerStdio(params=cast(Any, params), name=name)
 
 
 def _http_server_params(spec: dict[str, Any]) -> dict[str, Any]:
@@ -273,13 +270,13 @@ def _http_server_params(spec: dict[str, Any]) -> dict[str, Any]:
 
 def _sse_server(name: str, spec: dict[str, Any]) -> MCPServerSse:
     """Build an SSE MCP server."""
-    return MCPServerSse(params=cast(MCPServerSseParams, _http_server_params(spec)), name=name)
+    return MCPServerSse(params=cast(Any, _http_server_params(spec)), name=name)
 
 
 def _streamable_http_server(name: str, spec: dict[str, Any]) -> MCPServerStreamableHttp:
     """Build a streamable-HTTP MCP server."""
     return MCPServerStreamableHttp(
-        params=cast(MCPServerStreamableHttpParams, _http_server_params(spec)),
+        params=cast(Any, _http_server_params(spec)),
         name=name,
     )
 

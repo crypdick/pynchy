@@ -93,9 +93,11 @@ def check_file_length(filepath: Path, max_lines: int) -> tuple[int, str] | None:
     if lloc > max_lines:
         return (
             lloc,
-            f"File has {lloc} logical lines (limit {max_lines}) "
-            f"— split into smaller, focused modules "
-            f"(e.g., extract helpers, constants, or a sub-package)",
+            (
+                f"File has {lloc} logical lines (limit {max_lines}) "
+                f"— split into smaller, focused modules "
+                f"(e.g., extract helpers, constants, or a sub-package)"
+            ),
         )
     return None
 
@@ -125,7 +127,7 @@ def main(filenames: list[str] | None = None) -> int:
 
         # Allow file-level ignore via comment in first 5 lines
         try:
-            with open(filepath, encoding="utf-8") as f:
+            with filepath.open(encoding="utf-8") as f:
                 first_lines = [next(f, "") for _ in range(5)]
                 if any("# allow: file-length" in line for line in first_lines):
                     continue
@@ -143,12 +145,12 @@ def main(filenames: list[str] | None = None) -> int:
     if exit_code != 0:
         print("\n" + "=" * 70)
         print(f"Found {total_violations} file(s) exceeding the line limit.")
-        print("")
+        print()
         print("  FIX the code (preferred):")
         print("     - Extract helper functions into a utils module")
         print("     - Move constants/config to a dedicated file")
         print("     - Split large classes into mixins or sub-classes")
-        print("")
+        print()
         print("  EXEMPT with '# allow: file-length' in the first 5 lines")
         print("  ONLY when splitting is genuinely unfeasible.")
         print("=" * 70)

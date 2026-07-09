@@ -23,7 +23,7 @@ from pynchy.plugins.integrations.google_setup._paths import (
 
 def parse_client_credentials(kp: Path) -> tuple[str, str]:
     """Extract client_id and client_secret from the GCP OAuth JSON."""
-    with open(kp) as f:
+    with kp.open(encoding="utf-8") as f:
         data = json.load(f)
     client = data.get("installed") or data.get("web")
     if not client:

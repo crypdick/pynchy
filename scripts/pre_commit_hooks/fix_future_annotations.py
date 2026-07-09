@@ -26,7 +26,7 @@ from pathlib import Path
 
 def _is_docstring_start(line: str) -> bool:
     s = line.lstrip()
-    return s.startswith('"""') or s.startswith("'''")
+    return s.startswith(('"""', "'''"))
 
 
 def _docstring_end_idx(lines: list[str], start_idx: int) -> int | None:
@@ -65,7 +65,7 @@ def _find_insertion_point(lines: list[str]) -> int:
     if i < len(lines) and "coding" in lines[i] and lines[i].lstrip().startswith("#"):
         i += 1
     # blank lines after shebang/encoding
-    while i < len(lines) and lines[i].strip() == "":
+    while i < len(lines) and not lines[i].strip():
         i += 1
     # uv PEP-723 script metadata block
     if i < len(lines) and lines[i].strip() == "# /// script":
@@ -75,14 +75,14 @@ def _find_insertion_point(lines: list[str]) -> int:
                 i += 1
                 break
             i += 1
-        while i < len(lines) and lines[i].strip() == "":
+        while i < len(lines) and not lines[i].strip():
             i += 1
     # optional module docstring
     if i < len(lines) and _is_docstring_start(lines[i]):
         end = _docstring_end_idx(lines, i)
         if end is not None:
             i = end
-        while i < len(lines) and lines[i].strip() == "":
+        while i < len(lines) and not lines[i].strip():
             i += 1
     return i
 
@@ -102,7 +102,7 @@ def _fix_file(path: Path) -> bool:
     raw = path.read_text(encoding="utf-8")
     nl = _detect_newline_style(raw)
     text = raw.replace("\r\n", "\n")
-    lines = text.splitlines(True)  # keep line endings
+    lines = text.splitlines(keepends=True)
 
     target = "from __future__ import annotations\n"
 
@@ -125,7 +125,7 @@ def _fix_file(path: Path) -> bool:
     lines.insert(insert_at, target)
 
     # Ensure a blank line after the import if the next line is non-blank
-    if insert_at + 1 < len(lines) and lines[insert_at + 1].strip() != "":
+    if insert_at + 1 < len(lines) and lines[insert_at + 1].strip():
         lines.insert(insert_at + 1, "\n")
 
     new_text = "".join(lines)

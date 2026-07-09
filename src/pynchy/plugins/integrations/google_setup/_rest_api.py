@@ -26,7 +26,7 @@ def get_project_number(kp: Path) -> str | None:
     if not kp.exists():
         return None
     try:
-        with open(kp) as f:
+        with kp.open(encoding="utf-8") as f:
             data = json.load(f)
         client = data.get("installed") or data.get("web")
         if client and client.get("client_id"):
@@ -41,7 +41,7 @@ def read_project_id(kp: Path) -> str | None:
     if not kp.exists():
         return None
     try:
-        with open(kp) as f:
+        with kp.open(encoding="utf-8") as f:
             data = json.load(f)
         client = data.get("installed") or data.get("web")
         if client and client.get("project_id"):

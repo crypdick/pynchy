@@ -307,7 +307,7 @@ async def create_oauth_credentials(page, project_id: str) -> Path:
     if not dest.exists():
         raise RuntimeError(f"Credentials file not found at {dest}")
 
-    with open(dest) as f:
+    with dest.open(encoding="utf-8") as f:
         data = json.load(f)
     if "installed" not in data and "web" not in data:
         raise RuntimeError("Invalid credentials JSON — missing 'installed' or 'web' key")

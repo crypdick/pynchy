@@ -36,6 +36,7 @@ from pydantic_settings import (
 from pynchy.config.discord_refs import discord_chat_ref_error
 from pynchy.config.jobs import JobConfig
 from pynchy.config.mcp import McpServerConfig
+from pynchy.config.merge import ResolvedSandboxConfig
 from pynchy.config.models import (
     AgentConfig,
     CalDAVConfig,
@@ -449,7 +450,7 @@ class Settings(BaseSettings):
         """Internal alias for modules that use the profile cascade."""
         return self.profiles
 
-    def resolved_workspace_config(self, workspace_name: str):
+    def resolved_workspace_config(self, workspace_name: str) -> ResolvedSandboxConfig | None:
         """Return the merged config for a configured workspace."""
         from pynchy.config.merge import merge_sandbox_config
 

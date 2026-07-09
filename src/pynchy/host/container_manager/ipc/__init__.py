@@ -7,7 +7,7 @@ import pynchy.host.container_manager.ipc.handlers_groups
 import pynchy.host.container_manager.ipc.handlers_lifecycle
 import pynchy.host.container_manager.ipc.handlers_security
 import pynchy.host.container_manager.ipc.handlers_service
-import pynchy.host.container_manager.ipc.handlers_tasks  # noqa: F401
+import pynchy.host.container_manager.ipc.handlers_tasks
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import dispatch
 from pynchy.host.container_manager.ipc.watcher import start_ipc_watcher

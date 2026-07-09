@@ -21,12 +21,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from claude_agent_sdk.types import HookEvent as SdkHookEvent
-from claude_agent_sdk.types import (
-    McpServerConfig,
-    SdkPluginConfig,
-    SystemPromptPreset,
-)
+from claude_agent_sdk.types import McpServerConfig, SdkPluginConfig, SystemPromptPreset
 
 from ..core import AgentCoreConfig, AgentEvent
 from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, before_tool_use_roster, load_hooks
@@ -219,10 +214,9 @@ class ClaudeAgentCore:
             # narrows it to its own McpServerConfig union at runtime.
             mcp_servers=cast("dict[str, McpServerConfig]", self.config.mcp_servers),
             # Agnostic hook names (from AGNOSTIC_TO_CLAUDE) are a superset of the
-            # SDK's HookEvent literals, so the dict is typed str-keyed and cast here.
-            hooks=cast(dict[SdkHookEvent, list[HookMatcher]], claude_hooks)
-            if claude_hooks
-            else None,
+            # SDK's HookEvent literals, so the dict is typed str-keyed at assembly
+            # time and handed to the SDK boundary as-is.
+            hooks=cast(Any, claude_hooks) if claude_hooks else None,
             plugins=plugins,
         )
 
