@@ -14,6 +14,7 @@ from __future__ import annotations
 # ruff: noqa: SIM117
 import asyncio
 import contextlib
+import inspect
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -101,7 +102,7 @@ async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
 
     ts_mod._scheduler_running = False
 
-    async def stop_after_poll(delay):
+    def stop_after_poll(delay):
         raise asyncio.CancelledError
 
     with (
@@ -255,7 +256,7 @@ class MockSchedulerDeps:
             }
         )
         if self._run_agent_side_effect:
-            return await self._run_agent_side_effect(
+            result = self._run_agent_side_effect(
                 group,
                 chat_jid,
                 messages,
@@ -264,6 +265,9 @@ class MockSchedulerDeps:
                 repo_access_override=repo_access_override,
                 input_source=input_source,
             )
+            if inspect.isawaitable(result):
+                return await result
+            return result
         return self._run_agent_result
 
     async def handle_streamed_output(self, chat_jid, group, result) -> bool:
@@ -406,7 +410,7 @@ class TestStartSchedulerLoop:
             async def __aexit__(self, exc_type, exc, _tb):
                 pass
 
-        async def stop_on_first_poll(delay):
+        def stop_on_first_poll(delay):
             raise asyncio.CancelledError
 
         with _patch_scheduler_temporal_runtime(FailingTemporalRuntime):
@@ -432,7 +436,7 @@ class TestStartSchedulerLoop:
         """Should continuously reconcile Temporal schedules."""
         sleep_count = 0
 
-        async def mock_sleep(delay):
+        def mock_sleep(delay):
             nonlocal sleep_count
             sleep_count += 1
             if sleep_count >= 2:
@@ -453,13 +457,13 @@ class TestStartSchedulerLoop:
         """Should catch and log exceptions without crashing."""
         error_count = 0
 
-        async def mock_reconcile():
+        def mock_reconcile():
             nonlocal error_count
             error_count += 1
             if error_count == 1:
                 raise ValueError("Test error")
 
-        async def mock_sleep(delay):
+        def mock_sleep(delay):
             if error_count >= 2:
                 raise asyncio.CancelledError
 
@@ -527,10 +531,10 @@ class TestRunScheduledAgent:
         updates = []
         logged_runs = []
 
-        async def mock_update(task_id, update):
+        def mock_update(task_id, update):
             updates.append((task_id, update))
 
-        async def mock_log_run(log: TaskRunLog):
+        def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
         with patch(
@@ -560,7 +564,7 @@ class TestRunScheduledAgent:
         """Should log error when group is not registered."""
         logged_runs = []
 
-        async def mock_log_run(log: TaskRunLog):
+        def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
         with patch(
@@ -690,7 +694,7 @@ class TestRunScheduledAgent:
 
         updates = []
 
-        async def mock_update(task_id, next_run, result_summary):
+        def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
@@ -722,7 +726,7 @@ class TestRunScheduledAgent:
 
         updates = []
 
-        async def mock_update(task_id, next_run, result_summary):
+        def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
@@ -756,7 +760,7 @@ class TestRunScheduledAgent:
 
         updates = []
 
-        async def mock_update(task_id, next_run, result_summary):
+        def mock_update(task_id, next_run, result_summary):
             updates.append((task_id, next_run, result_summary))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
@@ -781,14 +785,14 @@ class TestRunScheduledAgent:
         """Should log error when run_agent raises an exception."""
         mock_deps.groups["test-jid"] = sample_group
 
-        async def mock_run_raise(group, chat_jid, messages, on_output, **kwargs):
+        def mock_run_raise(group, chat_jid, messages, on_output, **kwargs):
             raise ValueError("Agent failed")
 
         mock_deps._run_agent_side_effect = mock_run_raise
 
         logged_runs = []
 
-        async def mock_log_run(log: TaskRunLog):
+        def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
         with patch(
@@ -819,7 +823,7 @@ class TestRunScheduledAgent:
 
         logged_runs = []
 
-        async def mock_log_run(log: TaskRunLog):
+        def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
         with patch(
@@ -851,7 +855,7 @@ class TestRunScheduledAgent:
 
         early_updates = []
 
-        async def mock_update(task_id, updates):
+        def mock_update(task_id, updates):
             early_updates.append((task_id, updates))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
@@ -886,16 +890,19 @@ class TestRunScheduledAgent:
         # Container now emits status="error" when ResultMessage.is_error is True
         streamed = ContainerOutput(status="error", error=api_error_text)
 
-        async def mock_run(group, chat_jid, messages, on_output, **kwargs):
-            if on_output:
-                await on_output(streamed)
-            return "success"
+        def mock_run(group, chat_jid, messages, on_output, **kwargs):
+            async def _run():
+                if on_output:
+                    await on_output(streamed)
+                return "success"
+
+            return _run()
 
         mock_deps._run_agent_side_effect = mock_run
 
         logged_runs = []
 
-        async def mock_log_run(log: TaskRunLog):
+        def mock_log_run(log: TaskRunLog):
             logged_runs.append(log)
 
         with patch(

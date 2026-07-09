@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -72,11 +73,7 @@ class FakeScheduleClient:
         return self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
 
     def list_schedules(self):
-        async def _iter():
-            for schedule_id in self.schedule_ids:
-                yield SimpleNamespace(id=schedule_id)
-
-        return _iter()
+        return _ScheduleIterator(self.schedule_ids)
 
     async def start_workflow(self, workflow, *posargs, **kwargs):
         assert len(posargs) <= 1
@@ -86,8 +83,24 @@ class FakeScheduleClient:
 
 
 class AwaitableScheduleListClient(FakeScheduleClient):
-    async def list_schedules(self):
-        return super().list_schedules()
+    def list_schedules(self):
+        return asyncio.sleep(0, result=super().list_schedules())
+
+
+class _ScheduleIterator:
+    def __init__(self, schedule_ids):
+        self._schedule_ids = iter(schedule_ids)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        await asyncio.sleep(0)
+        try:
+            schedule_id = next(self._schedule_ids)
+        except StopIteration:
+            raise StopAsyncIteration from None
+        return SimpleNamespace(id=schedule_id)
 
 
 @pytest.fixture
@@ -655,8 +668,8 @@ class TestTemporalSchedulerRuntime:
     async def test_worker_lifecycle_updates_running_status(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
-        async def fake_connect(*args, **kwargs):
-            return object()
+        def fake_connect(*args, **kwargs):
+            return asyncio.sleep(0, result=object())
 
         @asynccontextmanager
         async def fake_worker(*args, **kwargs):
@@ -680,8 +693,8 @@ class TestTemporalSchedulerRuntime:
 
         captured = {}
 
-        async def fake_connect(*args, **kwargs):
-            return object()
+        def fake_connect(*args, **kwargs):
+            return asyncio.sleep(0, result=object())
 
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
         monkeypatch.setattr(temporal_scheduler, "Worker", self._capturing_worker(captured))
@@ -696,7 +709,7 @@ class TestTemporalSchedulerRuntime:
     async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
-        async def fail_connect(*args, **kwargs):
+        def fail_connect(*args, **kwargs):
             raise RuntimeError("temporal unavailable")
 
         scheduler = SchedulerConfig(
@@ -730,12 +743,13 @@ class TestTemporalSchedulerRuntime:
         deps = NullSchedulerDeps()
         called = {}
 
-        async def fake_get_task_by_id(task_id: str):
-            return temporal_task if task_id == temporal_task.id else None
+        def fake_get_task_by_id(task_id: str):
+            return asyncio.sleep(0, result=temporal_task if task_id == temporal_task.id else None)
 
-        async def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps):
             called["task"] = task
             called["deps"] = runner_deps
+            return asyncio.sleep(0, result=None)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
@@ -765,10 +779,10 @@ class TestTemporalSchedulerRuntime:
         deps = NullSchedulerDeps()
         called = {}
 
-        async def fake_run_learning_review(packet, runner_deps):
+        def fake_run_learning_review(packet, runner_deps):
             called["packet"] = packet
             called["deps"] = runner_deps
-            return "completed"
+            return asyncio.sleep(0, result="completed")
 
         monkeypatch.setattr(temporal_learning, "_run_learning_review", fake_run_learning_review)
         monkeypatch.setattr(
@@ -796,10 +810,10 @@ class TestTemporalSchedulerRuntime:
         deps = NullSchedulerDeps()
         called = {}
 
-        async def fake_process_message_turn(runner_deps, chat_jid):
+        def fake_process_message_turn(runner_deps, chat_jid):
             called["deps"] = runner_deps
             called["chat_jid"] = chat_jid
-            return True
+            return asyncio.sleep(0, result=True)
 
         monkeypatch.setattr(
             temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
@@ -826,8 +840,8 @@ class TestTemporalSchedulerRuntime:
         import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
-        async def fake_process_message_turn(_runner_deps, _chat_jid):
-            return False
+        def fake_process_message_turn(_runner_deps, _chat_jid):
+            return asyncio.sleep(0, result=False)
 
         monkeypatch.setattr(
             temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
@@ -939,8 +953,9 @@ class TestTemporalSchedulerRuntime:
         deps = NullSchedulerDeps()
         called = {}
 
-        async def fake_reconcile_all_channels(runner_deps):
+        def fake_reconcile_all_channels(runner_deps):
             called["deps"] = runner_deps
+            return asyncio.sleep(0, result=None)
 
         monkeypatch.setattr(
             temporal_channels,
@@ -970,10 +985,10 @@ class TestTemporalSchedulerRuntime:
 
         temporal_task.status = "paused"
 
-        async def fake_get_task_by_id(task_id: str):
-            return temporal_task
+        def fake_get_task_by_id(task_id: str):
+            return asyncio.sleep(0, result=temporal_task)
 
-        async def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps):
             raise AssertionError("paused tasks must not run")
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
@@ -999,11 +1014,11 @@ class TestTemporalSchedulerRuntime:
     ):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
-        async def fake_get_task_by_id(task_id: str):
-            return temporal_task
+        def fake_get_task_by_id(task_id: str):
+            return asyncio.sleep(0, result=temporal_task)
 
-        async def fake_run_scheduled_agent(task, runner_deps):
-            return False
+        def fake_run_scheduled_agent(task, runner_deps):
+            return asyncio.sleep(0, result=False)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
@@ -1033,12 +1048,13 @@ class TestTemporalSchedulerRuntime:
         called = {}
         task_queue = f"pynchy-temporal-test-{uuid4()}"
 
-        async def fake_get_task_by_id(task_id: str):
-            return temporal_task if task_id == temporal_task.id else None
+        def fake_get_task_by_id(task_id: str):
+            return asyncio.sleep(0, result=temporal_task if task_id == temporal_task.id else None)
 
-        async def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps):
             called["task_id"] = task.id
             called["deps"] = runner_deps
+            return asyncio.sleep(0, result=None)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
