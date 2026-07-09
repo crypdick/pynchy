@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves Slack Bolt callback annotations at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves Slack Bolt callback annotations at runtime.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
@@ -34,13 +38,38 @@ else:
     SlackChannel = object
 
 
+JsonDict = dict[str, object]
+
+
+@runtime_checkable
+class _SlackApp(Protocol):
+    def event(
+        self, event_name: str
+    ) -> Callable[[Callable[..., object]], Callable[..., object]]: ...
+
+    def action(
+        self, action_name: str
+    ) -> Callable[[Callable[..., object]], Callable[..., object]]: ...
+
+    def use(self, middleware: object) -> object: ...
+
+
+@runtime_checkable
+class _SlackAssistant(Protocol):
+    def thread_started(
+        self, handler: Callable[..., object]
+    ) -> Callable[..., object]: ...
+
+    def user_message(self, handler: Callable[..., object]) -> Callable[..., object]: ...
+
+
 @dataclass(slots=True)
 class SlackEvents:
     """Inbound event ingestion for :class:`SlackChannel`."""
 
     _channel: SlackChannel
 
-    def _require_app(self) -> Any:
+    def _require_app(self) -> _SlackApp:
         return self._channel.require_slack_app()
 
     def register_handlers(self) -> None:
@@ -55,23 +84,25 @@ class SlackEvents:
         # untyped — hence the per-handler ``untyped-decorator`` ignores below.
 
         @app.event("message")  # type: ignore[untyped-decorator]
-        async def _handle_message(event: dict[str, Any], say: Any) -> None:
+        async def _handle_message(event: JsonDict, say: object) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
             await self.on_slack_message(event)
 
         @app.event("app_mention")  # type: ignore[untyped-decorator]
-        async def _handle_mention(event: dict[str, Any], say: Any) -> None:
+        async def _handle_mention(event: JsonDict, say: object) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
             await self.on_slack_message(event)
 
         @app.event("reaction_added")  # type: ignore[untyped-decorator]
-        async def _handle_reaction(event: dict[str, Any]) -> None:
+        async def _handle_reaction(event: JsonDict) -> None:
             await self._on_slack_reaction(event)
 
         # --- ask_user interaction handlers (Block Kit buttons & text submit) ---
         @app.action(ASK_USER_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_ask_user_action(
-            ack: Any, body: dict[str, Any], action: dict[str, Any]
+            ack: Callable[[], Awaitable[object]],
+            body: JsonDict,
+            action: JsonDict,
         ) -> None:
             await ack()
             await ch.interactions.on_ask_user_interaction(body, action)
@@ -79,7 +110,9 @@ class SlackEvents:
         # --- Approval button handlers (Approve/Deny from approval gate) ---
         @app.action(COP_APPROVAL_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_approval_action(
-            ack: Any, body: dict[str, Any], action: dict[str, Any]
+            ack: Callable[[], Awaitable[object]],
+            body: JsonDict,
+            action: JsonDict,
         ) -> None:
             await ack()
             await ch.interactions.on_approval_interaction(body, action)
@@ -87,7 +120,9 @@ class SlackEvents:
         # --- Agent stop button handler ---
         @app.action(AGENT_STOP_ACTION_RE)  # type: ignore[untyped-decorator]
         async def _handle_agent_stop(
-            ack: Any, body: dict[str, Any], action: dict[str, Any]
+            ack: Callable[[], Awaitable[object]],
+            body: JsonDict,
+            action: JsonDict,
         ) -> None:
             await ack()
             await ch.interactions.on_agent_stop_interaction(body, action)
@@ -100,12 +135,12 @@ class SlackEvents:
         from slack_bolt.middleware.assistant.async_assistant import AsyncAssistant
 
         ch = self._channel
-        assistant = AsyncAssistant()
+        assistant = cast("_SlackAssistant", AsyncAssistant())
 
         @assistant.thread_started  # type: ignore[untyped-decorator]
         async def _on_thread_started(
-            say: Any,
-            set_suggested_prompts: Any,
+            say: Callable[[str], Awaitable[object]],
+            set_suggested_prompts: Callable[..., Awaitable[object]],
         ) -> None:
             await say("How can I help?")
             await set_suggested_prompts(
@@ -117,15 +152,15 @@ class SlackEvents:
 
         @assistant.user_message  # type: ignore[untyped-decorator]
         async def _on_user_message(
-            payload: dict[str, Any],
+            payload: JsonDict,
             context: AsyncBoltContext,
-            set_status: Any,
+            set_status: Callable[[str], Awaitable[object]],
         ) -> None:
             await set_status("thinking...")
             channel_id = context.channel_id
-            user_id = payload.get("user", "")
-            text = payload.get("text", "")
-            ts = payload.get("ts", "")
+            user_id = cast("str", payload.get("user", ""))
+            text = cast("str", payload.get("text", ""))
+            ts = cast("str", payload.get("ts", ""))
 
             if not channel_id or not user_id:
                 return
@@ -186,7 +221,7 @@ class SlackEvents:
     def _dedup_ts(self, ts: str) -> bool:
         return self.dedup_ts(ts)
 
-    async def on_slack_message(self, event: dict[str, Any]) -> None:
+    async def on_slack_message(self, event: JsonDict) -> None:
         """Route an inbound Slack event to the pynchy message callback."""
         ch = self._channel
         # Ignore bot messages, edits, and deletions
@@ -196,10 +231,10 @@ class SlackEvents:
         ):
             return
 
-        channel_id = event.get("channel")
-        user_id = event.get("user")
-        text = event.get("text", "")
-        ts = event.get("ts", "")
+        channel_id = cast("str", event.get("channel", ""))
+        user_id = cast("str", event.get("user", ""))
+        text = cast("str", event.get("text", ""))
+        ts = cast("str", event.get("ts", ""))
 
         if not channel_id or not user_id:
             return
@@ -246,17 +281,17 @@ class SlackEvents:
         )
         ch.emit_message(jid, msg)
 
-    async def _on_slack_message(self, event: dict[str, Any]) -> None:
+    async def _on_slack_message(self, event: JsonDict) -> None:
         await self.on_slack_message(event)
 
-    async def _on_slack_reaction(self, event: dict[str, Any]) -> None:
+    async def _on_slack_reaction(self, event: JsonDict) -> None:
         """Route an inbound Slack reaction to the pynchy reaction callback."""
         ch = self._channel
-        user_id = event.get("user", "")
-        reaction = event.get("reaction", "")
-        item = event.get("item", {})
-        channel_id = item.get("channel", "")
-        message_ts = item.get("ts", "")
+        user_id = cast("str", event.get("user", ""))
+        reaction = cast("str", event.get("reaction", ""))
+        item = cast("JsonDict", event.get("item", {}))
+        channel_id = cast("str", item.get("channel", ""))
+        message_ts = cast("str", item.get("ts", ""))
 
         if not channel_id or not user_id or not reaction:
             return

@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import asyncio  # noqa: TC003, RUF100 - beartype resolves task annotations at runtime.
 from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, ClassVar, cast
+from typing import ClassVar, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.plugins.channels.slack._blocks import SlackBlocksFormatter
@@ -43,10 +44,32 @@ from ._ui import build_ask_user_blocks, normalize_chat_name, split_text
 
 _SLACK_APP_NOT_INITIALIZED = "Slack app is not initialized"
 
+JsonDict = dict[str, object]
+
+
+@runtime_checkable
+class _SlackClient(Protocol):
+    def chat_postMessage(self, **kwargs: object) -> Awaitable[JsonDict]: ...  # noqa: N802, RUF100 - Slack SDK method name.
+
+    def chat_update(self, **kwargs: object) -> Awaitable[JsonDict]: ...
+
+    def reactions_add(self, **kwargs: object) -> Awaitable[JsonDict]: ...
+
+    def conversations_history(self, **kwargs: object) -> Awaitable[JsonDict]: ...
+
+    def users_info(self, **kwargs: object) -> Awaitable[JsonDict]: ...
+
+    def conversations_info(self, **kwargs: object) -> Awaitable[JsonDict]: ...
+
+
+@runtime_checkable
+class _SlackApp(Protocol):
+    client: _SlackClient
+
 
 @dataclass(frozen=True)
 class _SlackHistoryPage:
-    messages: list[dict[str, Any]]
+    messages: list[JsonDict]
     has_more: bool
 
 
@@ -66,7 +89,7 @@ class SlackChannel:
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
-        on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None = None,
+        on_ask_user_answer: Callable[[str, JsonDict], None] | None = None,
         on_approval_decision: Callable[[str, str, str, str], None] | None = None,
         on_agent_stop: Callable[[str, str], None] | None = None,
     ) -> None:
@@ -89,8 +112,8 @@ class SlackChannel:
         self._shutting_down = False
 
         # Assigned when connect() builds the Slack app and socket handler.
-        self._app: Any = None
-        self._handler: Any = None
+        self._app: _SlackApp | None = None
+        self._handler: object | None = None
         self._handler_task: asyncio.Task[None] | None = None
         self._reconnect_task: asyncio.Task[None] | None = None
         self._bot_user_id: str = ""
@@ -153,24 +176,24 @@ class SlackChannel:
         return self._app_token
 
     @property
-    def slack_app(self) -> Any:
+    def slack_app(self) -> _SlackApp | None:
         return self._app
 
     @slack_app.setter
-    def slack_app(self, app: Any) -> None:
+    def slack_app(self, app: _SlackApp | None) -> None:
         self._app = app
 
-    def require_slack_app(self) -> Any:
+    def require_slack_app(self) -> _SlackApp:
         if self._app is None:
             raise RuntimeError(_SLACK_APP_NOT_INITIALIZED)
         return self._app
 
     @property
-    def handler(self) -> Any:
+    def handler(self) -> object | None:
         return self._handler
 
     @handler.setter
-    def handler(self, handler: Any) -> None:
+    def handler(self, handler: object | None) -> None:
         self._handler = handler
 
     @property
@@ -214,7 +237,7 @@ class SlackChannel:
         self._shutting_down = shutting_down
 
     @property
-    def on_ask_user_answer(self) -> Callable[[str, dict[str, Any]], None] | None:
+    def on_ask_user_answer(self) -> Callable[[str, JsonDict], None] | None:
         return self._on_ask_user_answer
 
     @property
@@ -297,7 +320,7 @@ class SlackChannel:
     def _register_handlers(self) -> None:
         self.events.register_handlers()
 
-    async def _on_slack_message(self, event: dict[str, Any]) -> None:
+    async def _on_slack_message(self, event: JsonDict) -> None:
         await self.events.on_slack_message(event)
 
     def _dedup_ts(self, ts: str) -> bool:
@@ -331,7 +354,7 @@ class SlackChannel:
             return None
         rendered = self.formatter.render(event)
         channel_id = channel_id_from_jid(jid)
-        kwargs: dict[str, Any] = {"channel": channel_id, "text": rendered.text}
+        kwargs: dict[str, object] = {"channel": channel_id, "text": rendered.text}
         if rendered.blocks:
             kwargs["blocks"] = rendered.blocks
         resp = await self._app.client.chat_postMessage(**kwargs)
@@ -343,7 +366,7 @@ class SlackChannel:
             return
         rendered = self.formatter.render(event)
         channel_id = channel_id_from_jid(jid)
-        kwargs: dict[str, Any] = {"channel": channel_id, "ts": message_id, "text": rendered.text}
+        kwargs: dict[str, object] = {"channel": channel_id, "ts": message_id, "text": rendered.text}
         if rendered.blocks:
             kwargs["blocks"] = rendered.blocks
         await self._app.client.chat_update(**kwargs)
@@ -404,7 +427,7 @@ class SlackChannel:
             logger.debug("Slack reaction failed", err=str(exc))
 
     async def send_ask_user(
-        self, jid: str, request_id: str, questions: list[dict[str, Any]]
+        self, jid: str, request_id: str, questions: list[JsonDict]
     ) -> str | None:
         """Post an interactive question widget and return the message ``ts``.
 
@@ -437,7 +460,7 @@ class SlackChannel:
 
     @staticmethod
     def _history_high_water_mark(
-        raw_messages: list[dict[str, Any]], current_high_water_mark: str
+        raw_messages: list[JsonDict], current_high_water_mark: str
     ) -> tuple[str, str]:
         newest_ts = raw_messages[-1].get("ts", "")
         if not newest_ts:
@@ -448,7 +471,7 @@ class SlackChannel:
         return current_high_water_mark, newest_ts
 
     @staticmethod
-    def _history_event_fields(event: dict[str, Any]) -> tuple[str, str, str] | None:
+    def _history_event_fields(event: JsonDict) -> tuple[str, str, str] | None:
         if event.get("bot_id") or event.get("subtype"):
             return None
         user_id = event.get("user")
@@ -459,7 +482,7 @@ class SlackChannel:
         return user_id, text, ts
 
     async def _history_new_message(
-        self, channel_id: str, event: dict[str, Any]
+        self, channel_id: str, event: JsonDict
     ) -> NewMessage | None:
         fields = self._history_event_fields(event)
         if fields is None:
@@ -478,7 +501,7 @@ class SlackChannel:
         )
 
     async def _history_user_messages(
-        self, channel_id: str, raw_messages: list[dict[str, Any]]
+        self, channel_id: str, raw_messages: list[JsonDict]
     ) -> list[NewMessage]:
         results: list[NewMessage] = []
         for event in raw_messages:
@@ -497,7 +520,7 @@ class SlackChannel:
         except Exception:  # noqa: BLE001, RUF100 - history catch-up is best-effort and should not block reconnect.
             logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
             return None
-        raw_messages = list(cast("list[dict[str, Any]]", resp.get("messages", [])))
+        raw_messages = list(cast("list[JsonDict]", resp.get("messages", [])))
         raw_messages.reverse()
         return _SlackHistoryPage(messages=raw_messages, has_more=bool(resp.get("has_more")))
 
