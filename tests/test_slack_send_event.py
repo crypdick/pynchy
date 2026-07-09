@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from pynchy.plugins.channels.slack import SlackBlocksFormatter, SlackChannel
 from pynchy.types import OutboundEvent, OutboundEventType
 
 SLACK_BOT_VALUE = "xoxb-test"
@@ -15,8 +16,6 @@ SLACK_APP_VALUE = "xapp-test"
 @pytest.fixture
 def slack_channel():
     """Create a SlackChannel with mocked Slack app."""
-    from pynchy.plugins.channels.slack import SlackChannel
-
     ch = SlackChannel(
         connection_name="test",
         bot_token=SLACK_BOT_VALUE,
@@ -195,6 +194,4 @@ async def test_update_event_includes_blocks_from_blocks_formatter(slack_channel)
 
 def test_formatter_is_slack_blocks_formatter(slack_channel):
     """SlackChannel should use SlackBlocksFormatter."""
-    from pynchy.plugins.channels.slack import SlackBlocksFormatter
-
     assert isinstance(slack_channel.formatter, SlackBlocksFormatter)
