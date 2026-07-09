@@ -9,6 +9,10 @@ from unittest.mock import patch
 
 import pytest
 
+from pynchy.config import Settings, get_settings
+from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.agent_cores.openai import OpenAIAgentCorePlugin
+
 # Add container agent_runner to path for testing
 container_path = Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src"
 if container_path.exists():
@@ -34,8 +38,6 @@ class TestOpenAIPluginInfo:
 
     def test_plugin_info_structure(self):
         """Plugin returns all required fields."""
-        from pynchy.plugins.agent_cores.openai import OpenAIAgentCorePlugin
-
         plugin = OpenAIAgentCorePlugin()
         info = plugin.pynchy_agent_core_info()
 
@@ -47,8 +49,6 @@ class TestOpenAIPluginInfo:
 
     def test_plugin_registered_via_auto_discovery(self):
         """OpenAI plugin is auto-discovered alongside Claude plugin."""
-        from pynchy.plugins import get_plugin_manager
-
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
             pm = get_plugin_manager()
         cores = pm.hook.pynchy_agent_core_info()
@@ -59,8 +59,6 @@ class TestOpenAIPluginInfo:
 
     def test_core_selection_by_name(self):
         """Selecting a core by name returns the correct info."""
-        from pynchy.plugins import get_plugin_manager
-
         with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
             pm = get_plugin_manager()
         cores = pm.hook.pynchy_agent_core_info()
@@ -129,7 +127,9 @@ class TestMCPServerConversion:
 
     def _make_core(self):
         try:
-            from agent_runner.cores.openai import OpenAIAgentCore
+            from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
+                OpenAIAgentCore,
+            )
         except ImportError:
             pytest.skip("openai-agents not installed")
 
@@ -148,7 +148,9 @@ class TestMCPServerConversion:
     def test_mcp_servers_built_from_config(self):
         """start() converts mcp_servers dict to MCPServerStdio instances."""
         try:
-            from agent_runner.cores.openai import OpenAIAgentCore
+            from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
+                OpenAIAgentCore,
+            )
         except ImportError:
             pytest.skip("openai-agents not installed")
 
@@ -300,7 +302,9 @@ class TestOpenAIQueryModel:
 
     def _make_core(self):
         try:
-            from agent_runner.cores.openai import OpenAIAgentCore
+            from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
+                OpenAIAgentCore,
+            )
         except ImportError:
             pytest.skip("openai-agents not installed")
 
@@ -380,14 +384,10 @@ class TestDefaultAgentCoreConfig:
 
     def test_default_is_openai(self):
         """Default agent core comes from Settings with valid value."""
-        from pynchy.config import get_settings
-
         assert get_settings().agent.default_core == "openai"
 
     def test_env_override(self):
         """Nested env override maps to settings.agent.default_core."""
-        from pynchy.config import Settings
-
         env = {
             "AGENT__DEFAULT_CORE": "openai",
         }
