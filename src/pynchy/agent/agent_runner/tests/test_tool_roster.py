@@ -10,12 +10,9 @@ next resume on a stale tip.
 
 from __future__ import annotations
 
-from agent_runner.cores import (
-    BUILTIN_ALLOWED_TOOLS,
-    DISALLOWED_TOOLS,
-    claude,
-    claude_cli,
-)
+import pytest
+
+from agent_runner.cores import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 # Native multi-agent tools that let the claude binary spawn transcript-writing
 # child processes. Unsafe until teammates get per-teammate session isolation.
@@ -45,6 +42,12 @@ def test_interactive_tools_are_disallowed():
 
 def test_both_cores_draw_from_the_shared_roster():
     # Parity by construction: both core modules import the same constant object.
+    pytest.importorskip("claude_agent_sdk")
+    from agent_runner.cores import (  # noqa: PLC0415, RUF100 - optional SDK import.
+        claude,
+        claude_cli,
+    )
+
     assert claude.BUILTIN_ALLOWED_TOOLS is BUILTIN_ALLOWED_TOOLS
     assert claude_cli.BUILTIN_ALLOWED_TOOLS is BUILTIN_ALLOWED_TOOLS
     assert claude.DISALLOWED_TOOLS is DISALLOWED_TOOLS
