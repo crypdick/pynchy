@@ -93,6 +93,10 @@ class DiscordChannel:
         self.events = DiscordEvents(self)
         self.lifecycle = DiscordLifecycle(self)
 
+    @property
+    def config(self) -> Any:
+        return self._config
+
     # ------------------------------------------------------------------
     # Lifecycle — delegated
     # ------------------------------------------------------------------
@@ -149,7 +153,7 @@ class DiscordChannel:
 
     async def _resolve_channel_chat_jid(self, target: DiscordChatTarget) -> str | None:
         if self.client is not None:
-            channel = await self._find_configured_channel(target)
+            channel = await self.find_configured_channel(target)
             if channel is not None:
                 return channel_jid(str(channel.id))
         if not target.target_id.isdecimal():
@@ -202,8 +206,8 @@ class DiscordChannel:
     async def create_group(self, name: str) -> str:
         return await create_discord_group(self, name)
 
-    async def _find_configured_channel(self, target: DiscordChatTarget) -> Any | None:
-        guild = await self._find_configured_guild(target)
+    async def find_configured_channel(self, target: DiscordChatTarget) -> Any | None:
+        guild = await self.find_configured_guild(target)
         if guild is None:
             return None
         channel_key = target.target_id
@@ -213,7 +217,7 @@ class DiscordChannel:
             )
             if existing is not None:
                 return existing
-        channel_name = self._configured_channel_name(target)
+        channel_name = self.configured_channel_name(target)
         for channel in getattr(guild, "text_channels", []):
             if channel_key.isdecimal() and str(channel.id) == channel_key:
                 return channel
@@ -221,7 +225,7 @@ class DiscordChannel:
                 return channel
         return None
 
-    async def _find_configured_guild(self, target: DiscordChatTarget) -> Any | None:
+    async def find_configured_guild(self, target: DiscordChatTarget) -> Any | None:
         client = _require_client(self.client)
         guild_key = target.guild_id or ""
         if guild_key.isdecimal():
@@ -243,7 +247,7 @@ class DiscordChannel:
         guild_cfg = self._config.chat.get(guild_key)
         return (guild_cfg.name if guild_cfg and guild_cfg.name else guild_key).strip()
 
-    def _configured_channel_name(self, target: DiscordChatTarget) -> str:
+    def configured_channel_name(self, target: DiscordChatTarget) -> str:
         guild_cfg = self._config.chat.get(target.guild_id or "")
         channel_cfg = guild_cfg.channels.get(target.target_id) if guild_cfg else None
         raw = channel_cfg.name if channel_cfg and channel_cfg.name else target.target_id
