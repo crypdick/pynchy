@@ -37,34 +37,55 @@ RepoSlug = NewType("RepoSlug", str)
 # TODO(config-schema-cutover): propagate these semantic names through host/runtime
 # call sites as the remaining config plumbing adopts workspace/tool identity types.
 
+CONNECTION_REF_MESSAGE = "command_center.connection must be connection.<platform>.<name>"
+CONNECTION_NAME_MESSAGE = "command_center.connection must be a [connections.<name>] name"
+CHAT_REF_MESSAGE = "chat must be connection.<platform>.<name>.chat.<chat>"
+CONFIG_NAME_MESSAGE = "config names must not be empty"
+REPO_SLUG_MESSAGE = "repo must be an owner/repo slug"
+MOUNT_ABSOLUTE_MESSAGE = "mount_path must be an absolute container path"
+MOUNT_POSIX_MESSAGE = "mount_path must be an absolute POSIX container path"
+MOUNT_PARENT_MESSAGE = "mount_path must not contain '..' path components"
+MOUNT_ROOT_MESSAGE = "mount_path must not mount the vault at '/'"
+DEFAULT_PROFILE_RELATIVE_MESSAGE = "default_profile_root must be a relative path template"
+DEFAULT_PROFILE_PARENT_MESSAGE = "default_profile_root must not contain '..' path components"
+LEARNING_DIR_NAME_MESSAGE = "learning directory names must be a single path component"
+LEARNING_POSITIVE_MESSAGE = "learning operational values must be positive"
+DOCKER_MCP_IMAGE_MESSAGE = "Docker MCP tools require 'image'"
+DOCKER_MCP_PORT_MESSAGE = "Docker MCP tools require 'port'"
+URL_MCP_URL_MESSAGE = "URL MCP tools require 'url'"
+SCRIPT_MCP_COMMAND_MESSAGE = "Script MCP tools require 'command'"
+SCRIPT_MCP_PORT_MESSAGE = "Script MCP tools require 'port'"
+CRON_COMMAND_MESSAGE = "Cron job command cannot be empty"
+TIMEOUT_POSITIVE_MESSAGE = "timeout_seconds must be positive"
+
 
 def _validated_connection_ref(v: str) -> ConnectionRefStr:
     if parse_connection_ref(v) is None:
-        raise ValueError("command_center.connection must be connection.<platform>.<name>")
+        raise ValueError(CONNECTION_REF_MESSAGE)
     return ConnectionRefStr(v)
 
 
 def _validated_connection_name(v: str) -> str:
     if v.startswith("connection.") or "." in v:
-        raise ValueError("command_center.connection must be a [connections.<name>] name")
+        raise ValueError(CONNECTION_NAME_MESSAGE)
     return _validated_name(v)
 
 
 def _validated_chat_ref(v: str) -> ChatRefStr:
     if parse_chat_ref(v) is None:
-        raise ValueError("chat must be connection.<platform>.<name>.chat.<chat>")
+        raise ValueError(CHAT_REF_MESSAGE)
     return ChatRefStr(v)
 
 
 def _validated_name(v: str) -> str:
     if not v.strip():
-        raise ValueError("config names must not be empty")
+        raise ValueError(CONFIG_NAME_MESSAGE)
     return v
 
 
 def _validated_repo_slug(v: str) -> RepoSlug:
     if v.count("/") != 1 or any(not part for part in v.split("/")):
-        raise ValueError("repo must be an owner/repo slug")
+        raise ValueError(REPO_SLUG_MESSAGE)
     return RepoSlug(v)
 
 
@@ -185,16 +206,16 @@ class ObsidianLearningConfig(_StrictModel):
     @classmethod
     def validate_mount_path(cls, v: str) -> str:
         if not v.startswith("/"):
-            raise ValueError("mount_path must be an absolute container path")
+            raise ValueError(MOUNT_ABSOLUTE_MESSAGE)
         if "\\" in v:
-            raise ValueError("mount_path must be an absolute POSIX container path")
+            raise ValueError(MOUNT_POSIX_MESSAGE)
         raw_parts = [part for part in v.split("/") if part]
         if any(part == ".." for part in raw_parts):
-            raise ValueError("mount_path must not contain '..' path components")
+            raise ValueError(MOUNT_PARENT_MESSAGE)
         normalized = "/" + "/".join(part for part in raw_parts if part != ".")
         normalized = posixpath.normpath(normalized)
         if normalized == "/":
-            raise ValueError("mount_path must not mount the vault at '/'")
+            raise ValueError(MOUNT_ROOT_MESSAGE)
         return normalized
 
     @field_validator("default_profile_root")
@@ -202,16 +223,16 @@ class ObsidianLearningConfig(_StrictModel):
     def validate_default_profile_root(cls, v: str) -> str:
         path = Path(v)
         if path.is_absolute():
-            raise ValueError("default_profile_root must be a relative path template")
+            raise ValueError(DEFAULT_PROFILE_RELATIVE_MESSAGE)
         if any(part == ".." for part in path.parts):
-            raise ValueError("default_profile_root must not contain '..' path components")
+            raise ValueError(DEFAULT_PROFILE_PARENT_MESSAGE)
         return v
 
     @field_validator("memory_dir_name", "skills_dir_name")
     @classmethod
     def validate_learning_dir_name(cls, v: str) -> str:
         if not v or "/" in v or v in {".", ".."}:
-            raise ValueError("learning directory names must be a single path component")
+            raise ValueError(LEARNING_DIR_NAME_MESSAGE)
         return v
 
 
@@ -231,7 +252,7 @@ class LearningConfig(_StrictModel):
     @classmethod
     def validate_positive_operational_knobs(cls, v: float | int) -> float | int:
         if v <= 0:
-            raise ValueError("learning operational values must be positive")
+            raise ValueError(LEARNING_POSITIVE_MESSAGE)
         return v
 
 
@@ -417,7 +438,8 @@ class ReposConfig(_StrictModel):
             return data
         unknown = sorted(set(data) - {"root", "overrides"})
         if unknown:
-            raise ValueError(f"repo overrides must be nested under repos.overrides: {unknown}")
+            message = f"repo overrides must be nested under repos.overrides: {unknown}"
+            raise ValueError(message)
         return data
 
     @field_validator("overrides")
@@ -479,17 +501,17 @@ class McpToolConfig(_StrictModel):
     def validate_explicit_runtime_config(self) -> McpToolConfig:
         if self.runtime == "docker":
             if not self.image:
-                raise ValueError("Docker MCP tools require 'image'")
+                raise ValueError(DOCKER_MCP_IMAGE_MESSAGE)
             if self.port is None:
-                raise ValueError("Docker MCP tools require 'port'")
+                raise ValueError(DOCKER_MCP_PORT_MESSAGE)
         elif self.runtime == "url":
             if not self.url:
-                raise ValueError("URL MCP tools require 'url'")
+                raise ValueError(URL_MCP_URL_MESSAGE)
         elif self.runtime == "script":
             if not self.command:
-                raise ValueError("Script MCP tools require 'command'")
+                raise ValueError(SCRIPT_MCP_COMMAND_MESSAGE)
             if self.port is None:
-                raise ValueError("Script MCP tools require 'port'")
+                raise ValueError(SCRIPT_MCP_PORT_MESSAGE)
         return self
 
 
@@ -565,14 +587,14 @@ class CronJobConfig(_StrictModel):
     def validate_command(cls, v: str) -> str:
         command = v.strip()
         if not command:
-            raise ValueError("Cron job command cannot be empty")
+            raise ValueError(CRON_COMMAND_MESSAGE)
         return command
 
     @field_validator("timeout_seconds")
     @classmethod
     def validate_timeout_seconds(cls, v: int) -> int:
         if v <= 0:
-            raise ValueError("timeout_seconds must be positive")
+            raise ValueError(TIMEOUT_POSITIVE_MESSAGE)
         return v
 
 
