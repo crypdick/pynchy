@@ -92,10 +92,10 @@ def _make_shell_executor(
             ``allowed=False`` the command is blocked without execution.
     """
 
-    async def executor(request: Any) -> str:
+    async def executor(request: object) -> str:
         """Execute a shell command inside the container."""
 
-        def get_field(obj: Any, name: str) -> Any:
+        def get_field(obj: object, name: str) -> object | None:
             if obj is None:
                 return None
             if isinstance(obj, dict):
@@ -223,19 +223,20 @@ class ContainerPatchEditor(ApplyPatchEditor):
 # ---------------------------------------------------------------------------
 
 
-def _handle_raw_response_event(event: Any) -> AgentEvent | None:
+def _handle_raw_response_event(event: object) -> AgentEvent | None:
     """Token-level text deltas, or reasoning/thinking content (o-series models)."""
-    delta = getattr(event.data, "delta", None)
+    event_data = cast("Any", event).data
+    delta = getattr(event_data, "delta", None)
     if delta and isinstance(delta, str):
         return AgentEvent(type="text", data={"text": delta})
-    if hasattr(event.data, "type") and "reasoning" in str(getattr(event.data, "type", "")):
-        text = getattr(event.data, "text", None) or getattr(event.data, "summary", None)
+    if hasattr(event_data, "type") and "reasoning" in str(getattr(event_data, "type", "")):
+        text = getattr(event_data, "text", None) or getattr(event_data, "summary", None)
         if text:
             return AgentEvent(type="thinking", data={"thinking": text})
     return None
 
 
-def _handle_tool_call_item(item: Any) -> AgentEvent:
+def _handle_tool_call_item(item: object) -> AgentEvent:
     tool_name, tool_input = extract_tool_call(item)
     if not tool_input:
         _log(f"Tool call parsed without input: tool={tool_name}")
@@ -245,7 +246,7 @@ def _handle_tool_call_item(item: Any) -> AgentEvent:
     )
 
 
-def _handle_tool_call_output_item(item: Any) -> AgentEvent:
+def _handle_tool_call_output_item(item: object) -> AgentEvent:
     tool_result_id, output = extract_tool_result(item)
     return AgentEvent(
         type="tool_result",
@@ -257,16 +258,16 @@ def _handle_tool_call_output_item(item: Any) -> AgentEvent:
     )
 
 
-def _handle_message_output_item(item: Any) -> AgentEvent | None:
+def _handle_message_output_item(item: object) -> AgentEvent | None:
     from agents import ItemHelpers
 
-    text = ItemHelpers.text_message_output(item)
+    text = ItemHelpers.text_message_output(cast("Any", item))
     if text:
         return AgentEvent(type="text", data={"text": text})
     return None
 
 
-def _handle_reasoning_item(item: Any) -> AgentEvent | None:
+def _handle_reasoning_item(item: object) -> AgentEvent | None:
     text = getattr(item, "text", None) or ""
     summary_parts = getattr(item, "summary", None)
     if summary_parts and isinstance(summary_parts, list):
@@ -276,7 +277,7 @@ def _handle_reasoning_item(item: Any) -> AgentEvent | None:
     return None
 
 
-_RUN_ITEM_HANDLERS: dict[str, Callable[[Any], AgentEvent | None]] = {
+_RUN_ITEM_HANDLERS: dict[str, Callable[[object], AgentEvent | None]] = {
     "tool_call_item": _handle_tool_call_item,
     "tool_call_output_item": _handle_tool_call_output_item,
     "message_output_item": _handle_message_output_item,
@@ -284,11 +285,12 @@ _RUN_ITEM_HANDLERS: dict[str, Callable[[Any], AgentEvent | None]] = {
 }
 
 
-def _handle_run_item_stream_event(event: Any) -> AgentEvent | None:
-    handler = _RUN_ITEM_HANDLERS.get(event.item.type)
+def _handle_run_item_stream_event(event: object) -> AgentEvent | None:
+    item = cast("Any", event).item
+    handler = _RUN_ITEM_HANDLERS.get(item.type)
     if handler is None:
         return None
-    return handler(event.item)
+    return handler(item)
 
 
 def _stdio_server(name: str, spec: dict[str, Any]) -> MCPServerStdio:
