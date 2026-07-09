@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from croniter import croniter
@@ -307,8 +308,6 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
             )
 
     elif schedule_type == "once":
-        from datetime import datetime
-
         try:
             datetime.fromisoformat(schedule_value)
         except (ValueError, TypeError):
