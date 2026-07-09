@@ -184,34 +184,41 @@ def _sync_plugin_skill_path(
 ) -> None:
     try:
         skill_path = Path(skill_path_str)
-        if not skill_path.exists() or not skill_path.is_dir():
-            logger.warning(
-                "Plugin skill path does not exist or is not a directory",
-                path=str(skill_path),
-            )
-            return
+    except (TypeError, ValueError):
+        logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
+        return
 
-        name, tier = parse_skill_tier(skill_path)
-        if not is_skill_selected(name, tier, workspace_skills):
-            logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
-            return
+    if not skill_path.exists() or not skill_path.is_dir():
+        logger.warning(
+            "Plugin skill path does not exist or is not a directory",
+            path=str(skill_path),
+        )
+        return
 
-        dst_dir = skills_dst / skill_path.name
-        if _is_learned_skill_copy(dst_dir):
-            shutil.rmtree(dst_dir)
-        if dst_dir.exists():
-            raise ValueError(
-                f"Skill name collision: skill '{skill_path.name}' conflicts with "
-                f"an existing skill. Rename the plugin skill directory to "
-                f"avoid shadowing built-in or other plugin skills."
-            )
+    name, tier = parse_skill_tier(skill_path)
+    if not is_skill_selected(name, tier, workspace_skills):
+        logger.debug("Skipping plugin skill (not selected)", skill=name, tier=tier)
+        return
 
-        shutil.copytree(skill_path, dst_dir)
-        logger.info("Synced plugin skill", skill=skill_path.name)
-    except ValueError:
-        raise
+    try:
+        _copy_plugin_skill_path(skill_path, skills_dst)
     except (OSError, TypeError):
         logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
+
+
+def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
+    dst_dir = skills_dst / skill_path.name
+    if _is_learned_skill_copy(dst_dir):
+        shutil.rmtree(dst_dir)
+    if dst_dir.exists():
+        raise ValueError(
+            f"Skill name collision: skill '{skill_path.name}' conflicts with "
+            f"an existing skill. Rename the plugin skill directory to "
+            f"avoid shadowing built-in or other plugin skills."
+        )
+
+    shutil.copytree(skill_path, dst_dir)
+    logger.info("Synced plugin skill", skill=skill_path.name)
 
 
 def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:

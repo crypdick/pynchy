@@ -42,25 +42,37 @@ def _read_gh_token() -> str | None:
     return None
 
 
+def _read_git_config_value(key: str) -> str | None:
+    try:
+        result = subprocess.run(  # noqa: S603, RUF100 - git config key is selected from a fixed tuple; no shell.
+            ["git", "config", key],  # noqa: S607, RUF100 - git is a trusted host CLI and argv shape is constrained.
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Failed to read git config", key=key, err=str(exc))
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    value = result.stdout.strip()
+    return value or None
+
+
 def _read_git_identity() -> tuple[str | None, str | None]:
     """Read git user.name and user.email from the host's git config."""
     name = email = None
     for key in ("user.name", "user.email"):
-        try:
-            r = subprocess.run(  # noqa: S603, RUF100 - git config key is selected from a fixed tuple; no shell.
-                ["git", "config", key],  # noqa: S607, RUF100 - git is a trusted host CLI and argv shape is constrained.
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                if key == "user.name":
-                    name = r.stdout.strip()
-                else:
-                    email = r.stdout.strip()
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-            logger.debug("Failed to read git config", key=key, err=str(exc))
+        value = _read_git_config_value(key)
+        if value is None:
+            continue
+        if key == "user.name":
+            name = value
+        else:
+            email = value
     return name, email
 
 

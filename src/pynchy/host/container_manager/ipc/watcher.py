@@ -1,10 +1,8 @@
+# allow: file-length - watcher is a large IPC boundary module.
 """File-based IPC watcher.
 
-Uses watchdog (inotify on Linux, FSEvents on macOS) for event-driven
-file processing.  On startup, sweeps existing files for crash recovery.
+Uses watchdog for event-driven processing and startup recovery.
 """
-
-from __future__ import annotations
 
 import asyncio
 import contextlib
@@ -99,36 +97,8 @@ async def _process_message_file(
     deps: IpcDeps,
 ) -> None:
     """Process a single IPC message file."""
-    s = get_settings()
     try:
-        message = InboundChatMessage.from_dict(parse_ipc_file(file_path))
-
-        if message is not None:
-            workspaces = deps.workspaces()
-            target_group = workspaces.get(message.chat_jid)
-            if is_admin or (target_group and target_group.folder == source_group):
-                from pynchy.types import OutboundEvent, OutboundEventType
-
-                prefix = message.sender or s.agent.name
-                await deps.broadcast_to_channels(
-                    message.chat_jid,
-                    OutboundEvent(
-                        type=OutboundEventType.TEXT,
-                        content=f"{prefix}: {message.text}",
-                    ),
-                )
-                logger.info(
-                    "IPC message sent",
-                    chat_jid=message.chat_jid,
-                    source_group=source_group,
-                )
-            else:
-                logger.warning(
-                    "Unauthorized IPC message attempt blocked",
-                    chat_jid=message.chat_jid,
-                    source_group=source_group,
-                )
-        await asyncio.to_thread(_unlink_path, file_path)
+        await _handle_message_file(file_path, source_group, is_admin=is_admin, deps=deps)
     except Exception:  # noqa: BLE001, RUF100 - IPC message handling is an isolation boundary; move failures to error dir.
         logger.exception(
             "Error processing IPC message",
@@ -136,6 +106,44 @@ async def _process_message_file(
             source_group=source_group,
         )
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+
+
+async def _handle_message_file(
+    file_path: Path,
+    source_group: str,
+    *,
+    is_admin: bool,
+    deps: IpcDeps,
+) -> None:
+    s = get_settings()
+    message = InboundChatMessage.from_dict(parse_ipc_file(file_path))
+
+    if message is not None:
+        workspaces = deps.workspaces()
+        target_group = workspaces.get(message.chat_jid)
+        if is_admin or (target_group and target_group.folder == source_group):
+            from pynchy.types import OutboundEvent, OutboundEventType
+
+            prefix = message.sender or s.agent.name
+            await deps.broadcast_to_channels(
+                message.chat_jid,
+                OutboundEvent(
+                    type=OutboundEventType.TEXT,
+                    content=f"{prefix}: {message.text}",
+                ),
+            )
+            logger.info(
+                "IPC message sent",
+                chat_jid=message.chat_jid,
+                source_group=source_group,
+            )
+        else:
+            logger.warning(
+                "Unauthorized IPC message attempt blocked",
+                chat_jid=message.chat_jid,
+                source_group=source_group,
+            )
+    await asyncio.to_thread(_unlink_path, file_path)
 
 
 async def _process_request_file(
@@ -148,26 +156,13 @@ async def _process_request_file(
 ) -> None:
     """Process a single canonical IPC request file."""
     try:
-        envelope = parse_request_envelope(file_path)
-        if envelope.source_group != source_group:
-            raise ValueError(
-                "IPC request source_group does not match directory "
-                f"({envelope.source_group!r} != {source_group!r})"
-            )
-
-        if envelope.kind == "refresh_groups":
-            await _handle_signal(
-                envelope.kind,
-                source_group,
-                is_admin=is_admin,
-                deps=deps,
-            )
-            await asyncio.to_thread(_unlink_path, file_path)
-            return
-
-        if _claim_request_for_execution(envelope, ipc_base_dir):
-            await dispatch(envelope, source_group, is_admin=is_admin, deps=deps)
-        await asyncio.to_thread(_unlink_path, file_path)
+        await _handle_request_file(
+            file_path,
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
+        )
     except Exception:  # noqa: BLE001, RUF100 - IPC request handling is an isolation boundary; move failures to error dir.
         logger.exception(
             "Error processing IPC request",
@@ -175,6 +170,36 @@ async def _process_request_file(
             source_group=source_group,
         )
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+
+
+async def _handle_request_file(
+    file_path: Path,
+    source_group: str,
+    *,
+    is_admin: bool,
+    ipc_base_dir: Path,
+    deps: IpcDeps,
+) -> None:
+    envelope = parse_request_envelope(file_path)
+    if envelope.source_group != source_group:
+        raise ValueError(
+            "IPC request source_group does not match directory "
+            f"({envelope.source_group!r} != {source_group!r})"
+        )
+
+    if envelope.kind == "refresh_groups":
+        await _handle_signal(
+            envelope.kind,
+            source_group,
+            is_admin=is_admin,
+            deps=deps,
+        )
+        await asyncio.to_thread(_unlink_path, file_path)
+        return
+
+    if _claim_request_for_execution(envelope, ipc_base_dir):
+        await dispatch(envelope, source_group, is_admin=is_admin, deps=deps)
+    await asyncio.to_thread(_unlink_path, file_path)
 
 
 async def _process_output_file(
@@ -439,43 +464,7 @@ async def _process_queue(
     while True:
         file_path = await queue.get()
         try:
-            if not await asyncio.to_thread(_path_exists, file_path):
-                continue
-
-            relative = file_path.relative_to(ipc_base_dir)
-            parts = relative.parts
-            source_group = parts[0]
-            subdir = parts[1]
-
-            # Re-check admin status (groups can change at runtime)
-            current_groups = deps.workspaces()
-            current_admin_folders = {g.folder for g in current_groups.values() if g.is_admin}
-            is_admin = source_group in current_admin_folders
-
-            if subdir == "messages":
-                await _process_message_file(
-                    file_path,
-                    source_group,
-                    is_admin=is_admin,
-                    ipc_base_dir=ipc_base_dir,
-                    deps=deps,
-                )
-            elif subdir == "requests":
-                await _process_request_file(
-                    file_path,
-                    source_group,
-                    is_admin=is_admin,
-                    ipc_base_dir=ipc_base_dir,
-                    deps=deps,
-                )
-            elif subdir == "output":
-                await _process_output_file(file_path, source_group, ipc_base_dir)
-            elif subdir == "approval_decisions":
-                from pynchy.host.container_manager.ipc.handlers_approval import (
-                    process_approval_decision,
-                )
-
-                await process_approval_decision(file_path, source_group, deps=deps)
+            await _handle_queued_ipc_file(file_path, ipc_base_dir, deps)
         except Exception:  # noqa: BLE001, RUF100 - queued IPC file errors stay scoped to one file.
             logger.exception(
                 "Error processing queued IPC file",
@@ -483,6 +472,46 @@ async def _process_queue(
             )
         finally:
             queue.task_done()
+
+
+async def _handle_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: IpcDeps) -> None:
+    if not await asyncio.to_thread(_path_exists, file_path):
+        return
+
+    relative = file_path.relative_to(ipc_base_dir)
+    parts = relative.parts
+    source_group = parts[0]
+    subdir = parts[1]
+
+    # Re-check admin status (groups can change at runtime)
+    current_groups = deps.workspaces()
+    current_admin_folders = {g.folder for g in current_groups.values() if g.is_admin}
+    is_admin = source_group in current_admin_folders
+
+    if subdir == "messages":
+        await _process_message_file(
+            file_path,
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
+        )
+    elif subdir == "requests":
+        await _process_request_file(
+            file_path,
+            source_group,
+            is_admin=is_admin,
+            ipc_base_dir=ipc_base_dir,
+            deps=deps,
+        )
+    elif subdir == "output":
+        await _process_output_file(file_path, source_group, ipc_base_dir)
+    elif subdir == "approval_decisions":
+        from pynchy.host.container_manager.ipc.handlers_approval import (
+            process_approval_decision,
+        )
+
+        await process_approval_decision(file_path, source_group, deps=deps)
 
 
 async def start_ipc_watcher(deps: IpcDeps) -> None:

@@ -178,8 +178,6 @@ def check_token_expiry(slug: str, token: str) -> None:
     Silently succeeds if the API call fails (network issues, classic token, etc.).
     """
     try:
-        # Use the /rate_limit endpoint with -i to get response headers
-        # The github-authentication-token-expiration header reveals PAT expiry
         result = subprocess.run(  # noqa: S603, RUF100 - fixed gh API argv with token passed as a header; no shell.
             [  # noqa: S607, RUF100 - gh is the trusted host GitHub CLI.
                 "gh",
@@ -194,40 +192,41 @@ def check_token_expiry(slug: str, token: str) -> None:
             timeout=10,
             check=False,
         )
-        if result.returncode != 0:
-            return  # Can't check — might be a classic token or network issue
-
-        # Parse github-authentication-token-expiration header
-        for line in result.stdout.splitlines():
-            if line.lower().startswith("github-authentication-token-expiration:"):
-                expiry_str = line.split(":", 1)[1].strip()
-                # GitHub returns the expiry as a UTC timestamp, for example
-                # "2024-11-30 09:00:00 UTC".
-                expiry = datetime.datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S %Z").replace(
-                    tzinfo=datetime.UTC
-                )
-                now = datetime.datetime.now(datetime.UTC)
-                days_left = (expiry - now).days
-
-                if days_left < 0:
-                    logger.error(
-                        "Repo token has EXPIRED — git operations will fail",
-                        slug=slug,
-                        expired_on=expiry_str,
-                    )
-                elif days_left <= _EXPIRY_WARNING_DAYS:
-                    logger.warning(
-                        "Repo token expiring soon",
-                        slug=slug,
-                        expires=expiry_str,
-                        days_left=days_left,
-                    )
-                else:
-                    logger.debug(
-                        "Repo token expiry OK",
-                        slug=slug,
-                        days_left=days_left,
-                    )
-                return
     except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
         logger.debug("Could not check token expiry", slug=slug, err=str(exc))
+        return
+
+    if result.returncode != 0:
+        return  # Can't check — might be a classic token or network issue
+
+    for line in result.stdout.splitlines():
+        if line.lower().startswith("github-authentication-token-expiration:"):
+            expiry_str = line.split(":", 1)[1].strip()
+            # GitHub returns the expiry as a UTC timestamp, for example
+            # "2024-11-30 09:00:00 UTC".
+            expiry = datetime.datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S %Z").replace(
+                tzinfo=datetime.UTC
+            )
+            now = datetime.datetime.now(datetime.UTC)
+            days_left = (expiry - now).days
+
+            if days_left < 0:
+                logger.error(
+                    "Repo token has EXPIRED — git operations will fail",
+                    slug=slug,
+                    expired_on=expiry_str,
+                )
+            elif days_left <= _EXPIRY_WARNING_DAYS:
+                logger.warning(
+                    "Repo token expiring soon",
+                    slug=slug,
+                    expires=expiry_str,
+                    days_left=days_left,
+                )
+            else:
+                logger.debug(
+                    "Repo token expiry OK",
+                    slug=slug,
+                    days_left=days_left,
+                )
+            return

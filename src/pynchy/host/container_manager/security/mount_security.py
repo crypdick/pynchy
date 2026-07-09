@@ -139,31 +139,22 @@ def load_mount_allowlist() -> MountAllowlist | None:
     s = get_settings()
     allowlist_path = s.mount_allowlist_path
 
-    try:
-        if not allowlist_path.exists():
-            _state.allowlist_load_error = f"Mount allowlist not found at {allowlist_path}"
-            logger.warning(
-                "Mount allowlist not found - additional mounts will be BLOCKED. "
-                "Create the file to enable additional mounts.",
-                path=str(allowlist_path),
-            )
-            return None
+    if not allowlist_path.exists():
+        _state.allowlist_load_error = f"Mount allowlist not found at {allowlist_path}"
+        logger.warning(
+            "Mount allowlist not found - additional mounts will be BLOCKED. "
+            "Create the file to enable additional mounts.",
+            path=str(allowlist_path),
+        )
+        return None
 
+    try:
         content = allowlist_path.read_text()
         # NOTE: Update docs/architecture/security.md § 2 (Mount Security) if
         # the allowlist format or protection semantics change here.
         allowlist = _parsed_allowlist(
             tomllib.loads(content),
             default_blocked_patterns=s.security.blocked_patterns,
-        )
-
-        _state.cached_allowlist = allowlist
-        _state.allowlist_load_error = None
-        logger.info(
-            "Mount allowlist loaded successfully",
-            path=str(allowlist_path),
-            allowed_roots=len(allowlist.allowed_roots),
-            blocked_patterns=len(allowlist.blocked_patterns),
         )
     except (OSError, tomllib.TOMLDecodeError, TypeError, ValueError) as exc:
         _state.allowlist_load_error = str(exc)
@@ -174,6 +165,14 @@ def load_mount_allowlist() -> MountAllowlist | None:
         )
         return None
     else:
+        _state.cached_allowlist = allowlist
+        _state.allowlist_load_error = None
+        logger.info(
+            "Mount allowlist loaded successfully",
+            path=str(allowlist_path),
+            allowed_roots=len(allowlist.allowed_roots),
+            blocked_patterns=len(allowlist.blocked_patterns),
+        )
         return _state.cached_allowlist
 
 

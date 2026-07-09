@@ -73,34 +73,7 @@ async def _process_claimed_output_file(
 ) -> None:
     """Process an output file after this task has claimed handler delivery."""
     try:
-        try:
-            json_str = await asyncio.to_thread(_read_text, file_path)
-        except FileNotFoundError:
-            # Watchdog and the periodic runtime sweep can both discover the
-            # same output file. Whichever loses that race should be a no-op.
-            return
-        output = parse_container_output(json_str)
-
-        handler = _get_output_handler(source_group)
-        if handler is not None:
-            try:
-                await handler(output)
-            except Exception:  # noqa: BLE001, RUF100 - output handler is a delivery boundary; keep the file alive.
-                logger.exception(
-                    "Output handler callback failed",
-                    group=source_group,
-                )
-
-        if is_query_done_pulse(output):
-            _signal_query_done(source_group)
-            logger.info(
-                "Query done pulse received via output file",
-                group=source_group,
-            )
-
-        if handler is not None:
-            with contextlib.suppress(FileNotFoundError):
-                await asyncio.to_thread(_unlink_path, file_path)
+        await _handle_claimed_output_file(file_path, source_group)
     except Exception:  # noqa: BLE001, RUF100 - output file processing is an isolation boundary.
         logger.exception(
             "Error processing output file",
@@ -108,3 +81,35 @@ async def _process_claimed_output_file(
             source_group=source_group,
         )
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+
+
+async def _handle_claimed_output_file(file_path: Path, source_group: str) -> None:
+    try:
+        json_str = await asyncio.to_thread(_read_text, file_path)
+    except FileNotFoundError:
+        # Watchdog and the periodic runtime sweep can both discover the
+        # same output file. Whichever loses that race should be a no-op.
+        return
+
+    output = parse_container_output(json_str)
+
+    handler = _get_output_handler(source_group)
+    if handler is not None:
+        try:
+            await handler(output)
+        except Exception:  # noqa: BLE001, RUF100 - output handler is a delivery boundary; keep the file alive.
+            logger.exception(
+                "Output handler callback failed",
+                group=source_group,
+            )
+
+    if is_query_done_pulse(output):
+        _signal_query_done(source_group)
+        logger.info(
+            "Query done pulse received via output file",
+            group=source_group,
+        )
+
+    if handler is not None:
+        with contextlib.suppress(FileNotFoundError):
+            await asyncio.to_thread(_unlink_path, file_path)

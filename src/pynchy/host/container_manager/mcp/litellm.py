@@ -50,24 +50,46 @@ async def api_request(
     url = f"http://localhost:{gateway.port}{path}"
     headers = {"Authorization": f"Bearer {gateway.key}"}
     try:
-        async with session.request(
+        return await _api_response_data(
+            session,
             method,
             url,
-            json=json_data,
             headers=headers,
-        ) as resp:
-            if resp.status in (200, 201):
-                try:
-                    return await resp.json()
-                except (aiohttp.ContentTypeError, ValueError):
-                    return True  # 2xx but no JSON body
-            if log_event:
-                body = await resp.text()
-                logger.warning(log_event, status=resp.status, body=body[:500], **log_kwargs)
+            json_data=json_data,
+            log_event=log_event,
+            log_kwargs=log_kwargs,
+        )
     except (aiohttp.ClientError, OSError) as exc:
         if log_event:
             logger.warning(log_event, error=str(exc), **log_kwargs)
     return None
+
+
+async def _api_response_data(
+    session: aiohttp.ClientSession,
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_data: dict[str, Any] | None,
+    log_event: str,
+    log_kwargs: dict[str, Any],
+) -> Any:
+    async with session.request(
+        method,
+        url,
+        json=json_data,
+        headers=headers,
+    ) as resp:
+        if resp.status in (200, 201):
+            try:
+                return await resp.json()
+            except (aiohttp.ContentTypeError, ValueError):
+                return True  # 2xx but no JSON body
+        if log_event:
+            body = await resp.text()
+            logger.warning(log_event, status=resp.status, body=body[:500], **log_kwargs)
+        return None
 
 
 # ---------------------------------------------------------------------------

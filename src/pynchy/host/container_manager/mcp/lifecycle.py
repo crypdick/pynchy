@@ -171,17 +171,19 @@ def terminate_process(instance: McpInstance) -> None:
     if proc is None or proc.poll() is not None:
         instance.process = None
         return
-    try:
-        # Send SIGTERM to the process group (start_new_session=True)
-        os.killpg(proc.pid, signal.SIGTERM)
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait(timeout=2)
-    except (ProcessLookupError, OSError):
-        pass  # already dead
+    with contextlib.suppress(ProcessLookupError, OSError):
+        _terminate_process_group(proc)
     instance.process = None
+
+
+def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
+    # Send SIGTERM to the process group (start_new_session=True)
+    os.killpg(proc.pid, signal.SIGTERM)
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=2)
 
 
 # ---------------------------------------------------------------------------

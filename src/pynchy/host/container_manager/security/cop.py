@@ -173,58 +173,67 @@ async def _inspect(
     context: str,
 ) -> CopVerdict:
     """Run an LLM inspection and return a CopVerdict."""
-    from pynchy.host.container_manager.gateway import get_gateway
-
     try:
-        gateway = get_gateway()
-        if gateway is None:
-            logger.warning("Cop: no gateway available, allowing operation", context=context)
-            return CopVerdict(flagged=False, reason="No gateway available")
-
-        url = f"http://localhost:{gateway.port}/v1/messages"
-        headers = {
-            "x-api-key": gateway.key,
-            "content-type": "application/json",
-            "anthropic-version": "2023-06-01",
-        }
-        body = {
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 200,
-            "temperature": 0.0,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": user_content}],
-        }
-
-        async with (
-            aiohttp.ClientSession() as session,
-            session.post(url, headers=headers, json=body) as resp,
-        ):
-            resp.raise_for_status()
-            data = await resp.json()
-
-        text = data["content"][0]["text"].strip()
-
-        # Strip markdown fences if present
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-            if text.endswith("```"):
-                text = text[:-3].strip()
-
-        result = _json.loads(text)
-        verdict = CopVerdict(
-            flagged=bool(result.get("flagged", False)),
-            reason=result.get("reason"),
-        )
-
-        logger.info(
-            "Cop inspection complete",
-            context=context,
-            flagged=verdict.flagged,
-            reason=verdict.reason,
-        )
+        verdict = await _run_inspection(system_prompt, user_content, context)
     except Exception as exc:  # noqa: BLE001, RUF100 - caller-facing Cop conversion treats any inspection failure as allow.
         # Fail open: if the Cop can't run, log and allow
         logger.error("Cop inspection failed, allowing operation", context=context, err=str(exc))
         return CopVerdict(flagged=False, reason=f"Cop error: {exc}")
     else:
         return verdict
+
+
+async def _run_inspection(
+    system_prompt: str,
+    user_content: str,
+    context: str,
+) -> CopVerdict:
+    from pynchy.host.container_manager.gateway import get_gateway
+
+    gateway = get_gateway()
+    if gateway is None:
+        logger.warning("Cop: no gateway available, allowing operation", context=context)
+        return CopVerdict(flagged=False, reason="No gateway available")
+
+    url = f"http://localhost:{gateway.port}/v1/messages"
+    headers = {
+        "x-api-key": gateway.key,
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+    }
+    body = {
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 200,
+        "temperature": 0.0,
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_content}],
+    }
+
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(url, headers=headers, json=body) as resp,
+    ):
+        resp.raise_for_status()
+        data = await resp.json()
+
+    text = data["content"][0]["text"].strip()
+
+    # Strip markdown fences if present
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3].strip()
+
+    result = _json.loads(text)
+    verdict = CopVerdict(
+        flagged=bool(result.get("flagged", False)),
+        reason=result.get("reason"),
+    )
+
+    logger.info(
+        "Cop inspection complete",
+        context=context,
+        flagged=verdict.flagged,
+        reason=verdict.reason,
+    )
+    return verdict

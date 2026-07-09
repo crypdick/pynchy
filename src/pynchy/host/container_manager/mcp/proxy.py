@@ -209,6 +209,42 @@ def _forwarded_headers(request: Any) -> dict[str, str]:
     }
 
 
+async def _backend_response(
+    *,
+    session: aiohttp.ClientSession,
+    request: Any,
+    backend_url: str,
+    tail: str,
+    body: bytes,
+    state: _ProxyState,
+    instance_id: str,
+    gate: SecurityGate,
+    group_folder: str,
+) -> web.Response:
+    async with session.request(
+        request.method,
+        backend_url + tail,
+        data=body,
+        headers=_forwarded_headers(request),
+    ) as backend_resp:
+        response_body = await backend_resp.read()
+        response_headers = {
+            key: value
+            for key, value in backend_resp.headers.items()
+            if key.lower() not in ("content-length", "transfer-encoding")
+        }
+
+        trust = state.trust_map.get(instance_id, {})
+        if trust.get("public_source"):
+            response_body = await _apply_fencing(response_body, instance_id, gate, group_folder)
+
+        return web.Response(
+            status=backend_resp.status,
+            body=response_body,
+            headers=response_headers,
+        )
+
+
 async def _forward_to_backend(
     *,
     session: aiohttp.ClientSession,
@@ -222,28 +258,17 @@ async def _forward_to_backend(
     group_folder: str,
 ) -> Any:
     try:
-        async with session.request(
-            request.method,
-            backend_url + tail,
-            data=body,
-            headers=_forwarded_headers(request),
-        ) as backend_resp:
-            response_body = await backend_resp.read()
-            response_headers = {
-                key: value
-                for key, value in backend_resp.headers.items()
-                if key.lower() not in ("content-length", "transfer-encoding")
-            }
-
-            trust = state.trust_map.get(instance_id, {})
-            if trust.get("public_source"):
-                response_body = await _apply_fencing(response_body, instance_id, gate, group_folder)
-
-            return web.Response(
-                status=backend_resp.status,
-                body=response_body,
-                headers=response_headers,
-            )
+        return await _backend_response(
+            session=session,
+            request=request,
+            backend_url=backend_url,
+            tail=tail,
+            body=body,
+            state=state,
+            instance_id=instance_id,
+            gate=gate,
+            group_folder=group_folder,
+        )
     except aiohttp.ClientError as exc:
         logger.error("MCP proxy backend error", instance=instance_id, error=str(exc))
         return web.json_response({"error": "MCP backend unavailable"}, status=502)

@@ -199,8 +199,7 @@ def count_unpushed_commits(cwd: Path | None = None) -> int:
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug("count_unpushed_commits failed", error=str(exc))
         return 0
-    else:
-        return count_commits(f"origin/{main}..HEAD", cwd=cwd) or 0
+    return count_commits(f"origin/{main}..HEAD", cwd=cwd) or 0
 
 
 def get_head_commit_message(max_length: int = 72, cwd: Path | None = None) -> str:
@@ -236,23 +235,29 @@ def push_local_commits(
     Args:
         env: Optional environment for remote-facing git calls (fetch, push).
     """
-    try:
-        main = detect_main_branch(cwd=cwd)
-
-        if not skip_fetch:
-            fetch = run_git("fetch", "origin", cwd=cwd, env=env)
-            if fetch.returncode != 0:
-                logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
-                return False
-
-        ahead = count_commits(f"origin/{main}..HEAD", cwd=cwd)
-        if not ahead:
-            return True  # nothing to push (or can't tell)
-
-        return _rebase_and_push_local_commits(main, cwd=cwd, env=env)
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        logger.warning("push_local: unexpected error", err=str(exc))
+    main = _detect_main_branch_safe(cwd=cwd)
+    if main is None:
         return False
+
+    if not skip_fetch:
+        fetch = run_git("fetch", "origin", cwd=cwd, env=env)
+        if fetch.returncode != 0:
+            logger.warning("push_local: git fetch failed", stderr=fetch.stderr.strip())
+            return False
+
+    ahead = count_commits(f"origin/{main}..HEAD", cwd=cwd)
+    if not ahead:
+        return True  # nothing to push (or can't tell)
+
+    return _rebase_and_push_local_commits(main, cwd=cwd, env=env)
+
+
+def _detect_main_branch_safe(cwd: Path | None) -> str | None:
+    try:
+        return detect_main_branch(cwd=cwd)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("push_local: unexpected error", err=str(exc))
+        return None
 
 
 def _rebase_and_push_local_commits(

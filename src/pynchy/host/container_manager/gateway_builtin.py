@@ -47,6 +47,39 @@ def _resolve_provider(path: str) -> tuple[str, str] | None:
     return None
 
 
+async def _relay_upstream_response(
+    *,
+    session: aiohttp.ClientSession,
+    request: Any,
+    upstream_url: str,
+    headers: dict[str, str],
+    body: bytes,
+) -> web.StreamResponse:
+    async with session.request(
+        method=request.method,
+        url=upstream_url,
+        headers=headers,
+        data=body,
+    ) as upstream:
+        resp_headers = {
+            key: value
+            for key, value in upstream.headers.items()
+            if key.lower() not in _STRIP_RESPONSE_HEADERS
+        }
+
+        response = web.StreamResponse(
+            status=upstream.status,
+            headers=resp_headers,
+        )
+        await response.prepare(request)
+
+        async for chunk in upstream.content.iter_any():
+            await response.write(chunk)
+
+        await response.write_eof()
+        return response
+
+
 # ---------------------------------------------------------------------------
 # BuiltinGateway
 # ---------------------------------------------------------------------------
@@ -158,29 +191,13 @@ class BuiltinGateway:
         body = await request.read()
 
         try:
-            async with session.request(
-                method=request.method,
-                url=upstream_url,
+            return await _relay_upstream_response(
+                session=session,
+                request=request,
+                upstream_url=upstream_url,
                 headers=headers,
-                data=body,
-            ) as upstream:
-                resp_headers = {
-                    key: value
-                    for key, value in upstream.headers.items()
-                    if key.lower() not in _STRIP_RESPONSE_HEADERS
-                }
-
-                response = web.StreamResponse(
-                    status=upstream.status,
-                    headers=resp_headers,
-                )
-                await response.prepare(request)
-
-                async for chunk in upstream.content.iter_any():
-                    await response.write(chunk)
-
-                await response.write_eof()
-                return response
+                body=body,
+            )
         except aiohttp.ClientError as exc:
             logger.error("Gateway upstream error", provider=provider, err=str(exc))
             return web.Response(status=502, text=f"Gateway error: {type(exc).__name__}")

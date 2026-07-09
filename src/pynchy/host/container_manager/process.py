@@ -47,34 +47,7 @@ def is_query_done_pulse(output: ContainerOutput) -> bool:
 async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:
     """Stop container gracefully with a short timeout, killing it if it doesn't exit."""
     try:
-        stop_proc = await asyncio.create_subprocess_exec(
-            get_runtime().cli,
-            "stop",
-            "-t",
-            "5",
-            container_name,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        try:
-            await asyncio.wait_for(stop_proc.wait(), timeout=7.0)
-        except TimeoutError:
-            logger.warning(
-                "Graceful stop timed out, force killing",
-                container=container_name,
-            )
-            proc.kill()
-        if proc.returncode is None:
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=5.0)
-            except TimeoutError:
-                logger.warning(
-                    "Container stop did not exit docker run, force killing",
-                    container=container_name,
-                )
-                proc.kill()
-                with contextlib.suppress(OSError):
-                    await proc.wait()
+        await _stop_container_process(proc, container_name)
     except Exception as exc:  # noqa: BLE001, RUF100 - cleanup boundary; any stop failure falls back to force kill.
         logger.exception(
             "Graceful stop failed, force killing",
@@ -82,6 +55,37 @@ async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) 
             error=str(exc),
         )
         proc.kill()
+
+
+async def _stop_container_process(proc: asyncio.subprocess.Process, container_name: str) -> None:
+    stop_proc = await asyncio.create_subprocess_exec(
+        get_runtime().cli,
+        "stop",
+        "-t",
+        "5",
+        container_name,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        await asyncio.wait_for(stop_proc.wait(), timeout=7.0)
+    except TimeoutError:
+        logger.warning(
+            "Graceful stop timed out, force killing",
+            container=container_name,
+        )
+        proc.kill()
+    if proc.returncode is None:
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except TimeoutError:
+            logger.warning(
+                "Container stop did not exit docker run, force killing",
+                container=container_name,
+            )
+            proc.kill()
+            with contextlib.suppress(OSError):
+                await proc.wait()
 
 
 async def _run_rm_force(container_name: str, rm_timeout_seconds: float) -> bool:
