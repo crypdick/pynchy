@@ -15,14 +15,18 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
+from pynchy.host.container_manager.gateway_litellm import (
+    LiteLLMGateway,  # noqa: TC001, RUF100 - beartype resolves LiteLLM sync signatures at runtime.
+)
 from pynchy.host.container_manager.mcp.resolution import McpInstance, WorkspaceTeam
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # HTTP helpers

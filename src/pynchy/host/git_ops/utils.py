@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import subprocess  # noqa: S404, RUF100 - shared git helper uses fixed no-shell argv.
-from pathlib import Path
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves git helper signatures at runtime.
+)
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings

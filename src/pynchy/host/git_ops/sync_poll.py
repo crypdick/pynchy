@@ -5,13 +5,19 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
 
 from pynchy.config import get_settings
-from pynchy.config.settings import Settings
+from pynchy.config.settings import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+)
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
-from pynchy.host.git_ops.repo import RepoContext
-from pynchy.host.git_ops.sync import GitSyncDeps
+from pynchy.host.git_ops.repo import (
+    RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+)
+from pynchy.host.git_ops.sync import (
+    GitSyncDeps,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+)
 from pynchy.host.git_ops.utils import (
     detect_main_branch,
     files_changed_between,

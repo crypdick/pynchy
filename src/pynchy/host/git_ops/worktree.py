@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import shutil
 import subprocess  # noqa: S404, RUF100 - worktree helper uses fixed no-shell uv/pre-commit argv.
-from collections.abc import Callable
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
+)
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
 
-from pynchy.config import Settings
+from pynchy.config import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves worktree signatures at runtime.
+)
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.git_ops.utils import (
     count_commits,

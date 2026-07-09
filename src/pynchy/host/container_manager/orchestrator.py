@@ -8,20 +8,25 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
-from typing import TYPE_CHECKING
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves container orchestration signatures at runtime.
+)
 
-if TYPE_CHECKING:
-    import pluggy
-
-    from pynchy.host.git_ops.repo import RepoContext
+import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.serialization import input_to_dict
+from pynchy.host.git_ops.repo import (
+    RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+)
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
-from pynchy.types import ContainerInput, VolumeMount, WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+    ContainerInput,
+    VolumeMount,
+    WorkspaceProfile,
+)
 
 # ---------------------------------------------------------------------------
 # Container timeout resolution

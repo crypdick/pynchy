@@ -15,7 +15,9 @@ import signal
 import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
 from pathlib import Path
 
-from pynchy.config.mcp import McpServerConfig
+from pynchy.config.mcp import (
+    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
+)
 from pynchy.host.container_manager.docker import (
     ensure_image,
     ensure_network,
@@ -25,10 +27,14 @@ from pynchy.host.container_manager.docker import (
     stop_container,
     wait_healthy,
 )
-from pynchy.host.container_manager.mcp.resolution import McpInstance
+from pynchy.host.container_manager.mcp.resolution import (
+    McpInstance,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
+)
 from pynchy.host.container_manager.onecli import OneCliMaterial, prepare_onecli_material
 from pynchy.logger import logger
-from pynchy.types import VolumeMount
+from pynchy.types import (
+    VolumeMount,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
+)
 
 _NETWORK_NAME = "pynchy-litellm-net"
 

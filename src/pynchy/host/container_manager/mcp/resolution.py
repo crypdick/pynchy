@@ -9,16 +9,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess  # noqa: S404, RUF100 - used for subprocess exception types in MCP resolution.
+import subprocess  # noqa: S404, TC003, RUF100 - beartype resolves tracked MCP process annotations at runtime.
 from dataclasses import dataclass, field
 from typing import Any
 
-from pynchy.config import Settings
+from pynchy.config import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
+)
 from pynchy.config.mcp import McpServerConfig
-from pynchy.config.merge import ResolvedWorkspaceConfig
+from pynchy.config.merge import (
+    ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
+)
 from pynchy.config.models import McpTool
 from pynchy.logger import logger
-from pynchy.types import ServiceTrustConfig
+from pynchy.types import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution models at runtime.
+)
 
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"
 

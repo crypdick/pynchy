@@ -7,12 +7,17 @@ API credentials.  Real keys never leave the host process.
 from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves credential helpers at runtime.
 from urllib.parse import urlparse
 
 from pynchy.config import get_settings
-from pynchy.config.settings import Settings
-from pynchy.host.container_manager.gateway import BuiltinGateway, LiteLLMGateway
+from pynchy.config.settings import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
+)
+from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
+    BuiltinGateway,
+    LiteLLMGateway,
+)
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------

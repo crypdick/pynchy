@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.types import Channel, OutboundEvent, WorkspaceProfile
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
+    Channel,
+    OutboundEvent,
+    WorkspaceProfile,
+)
 
 
 @runtime_checkable

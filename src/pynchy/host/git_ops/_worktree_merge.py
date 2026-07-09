@@ -7,7 +7,9 @@ reconciliation) to keep each module focused on a single concern.
 
 from __future__ import annotations
 
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import (
+    RepoContext,  # noqa: TC001, RUF100 - beartype resolves merge helper signatures at runtime.
+)
 from pynchy.host.git_ops.utils import (
     count_commits,
     detect_main_branch,
@@ -17,7 +19,9 @@ from pynchy.host.git_ops.utils import (
 )
 from pynchy.host.git_ops.worktree import _safe_rebase
 from pynchy.logger import logger
-from pynchy.types import WorkspaceProfile
+from pynchy.types import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves merge helper signatures at runtime.
+)
 
 
 def merge_worktree(group_folder: str, repo_ctx: RepoContext) -> bool:

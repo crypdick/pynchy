@@ -20,7 +20,9 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from pynchy.config import get_settings
-from pynchy.config.models import OneCliConfig
+from pynchy.config.models import (
+    OneCliConfig,  # noqa: TC001, RUF100 - beartype resolves OneCLI client signatures at runtime.
+)
 from pynchy.logger import logger
 from pynchy.types import VolumeMount
 

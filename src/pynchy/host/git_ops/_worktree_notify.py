@@ -10,13 +10,19 @@ ipc/_handlers_lifecycle.py (after a sync_worktree_to_main merge).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from pathlib import Path
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves git sync helper signatures at runtime.
+)
 from typing import Protocol, runtime_checkable
 
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import (
+    RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync helper signatures at runtime.
+)
 from pynchy.host.git_ops.utils import count_commits, detect_main_branch, get_head_sha, run_git
 from pynchy.logger import logger
-from pynchy.types import WorkspaceProfile
+from pynchy.types import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves git sync helper signatures at runtime.
+)
 
 
 @runtime_checkable

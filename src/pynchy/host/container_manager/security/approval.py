@@ -24,7 +24,7 @@ import json
 import secrets
 import string
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves approval file paths at runtime.
 from typing import Any, cast
 
 from pynchy.config import get_settings

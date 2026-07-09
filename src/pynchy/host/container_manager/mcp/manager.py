@@ -20,7 +20,9 @@ import asyncio
 import time
 
 from pynchy.config import Settings, get_settings
-from pynchy.config.mcp import McpServerConfig
+from pynchy.config.mcp import (
+    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
+)
 from pynchy.host.container_manager.docker import (
     is_container_running,
     stop_container,
@@ -47,7 +49,9 @@ from pynchy.host.container_manager.mcp.resolution import (
     resolve_all_instances,
 )
 from pynchy.logger import logger
-from pynchy.types import ServiceTrustConfig
+from pynchy.types import (
+    ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
+)
 from pynchy.utils import create_background_task
 
 # ---------------------------------------------------------------------------

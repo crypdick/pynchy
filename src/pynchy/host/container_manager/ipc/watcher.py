@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC watcher paths at runtime.
 
 from watchdog.observers import Observer
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.ipc.deps import IpcDeps
+from pynchy.host.container_manager.ipc.deps import (
+    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC watcher deps at runtime.
+)
 from pynchy.host.container_manager.ipc.events import IpcEventHandler as _IpcEventHandler
 from pynchy.host.container_manager.ipc.handlers_signals import handle_signal as _handle_signal
 from pynchy.host.container_manager.ipc.ledger import (

@@ -13,7 +13,7 @@ from __future__ import annotations
 import contextlib
 import secrets
 import time
-from pathlib import Path
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC write signatures at runtime.
 from typing import Any
 
 from pynchy.config import get_settings

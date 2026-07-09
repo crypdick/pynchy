@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import dataclasses
 import subprocess  # noqa: S404, RUF100 - PR helpers use fixed no-shell gh argv.
-from collections.abc import Callable
-from pathlib import Path
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves git sync signatures at runtime.
+)
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync signatures at runtime.
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.host.git_ops.repo import RepoContext
+from pynchy.host.git_ops.repo import (
+    RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync signatures at runtime.
+)
 from pynchy.host.git_ops.utils import (
     count_commits,
     detect_main_branch,
@@ -24,7 +28,9 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.logger import logger
-from pynchy.types import WorkspaceProfile
+from pynchy.types import (
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves git sync signatures at runtime.
+)
 
 # Valid git_policy values
 GIT_POLICY_MERGE = "merge-to-main"

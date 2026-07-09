@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pynchy.host.container_manager.ipc.deps import IpcDeps
+from pynchy.host.container_manager.ipc.deps import (
+    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves deploy handler signatures at runtime.
+)
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.logger import logger

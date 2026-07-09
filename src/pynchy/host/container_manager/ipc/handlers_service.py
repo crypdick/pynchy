@@ -7,7 +7,10 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import (
+    Awaitable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
+    Callable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
+)
 from dataclasses import dataclass
 from typing import Any
 

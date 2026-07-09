@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
+
+if TYPE_CHECKING:
+    import asyncio
 
 
 class IpcEventHandler(FileSystemEventHandler):
