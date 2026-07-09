@@ -31,12 +31,14 @@ _state = _ConnectionState()
 
 _SQL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _UPDATE_TABLES = frozenset({"scheduled_tasks", "host_jobs"})
+_UNSAFE_SQL_IDENTIFIER_MESSAGE = "Unsafe SQL identifier: {identifier!r}"
+_DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call init_database() first."
 
 
 def _safe_update_identifier(identifier: str, *, allowed: frozenset[str]) -> str:
     """Return an allowlisted SQL identifier, rejecting fragments."""
     if identifier not in allowed or not _SQL_IDENTIFIER.fullmatch(identifier):
-        raise ValueError(f"Unsafe SQL identifier: {identifier!r}")
+        raise ValueError(_UNSAFE_SQL_IDENTIFIER_MESSAGE.format(identifier=identifier))
     return identifier
 
 
@@ -64,7 +66,7 @@ async def atomic_write() -> AsyncIterator[aiosqlite.Connection]:
 
 def _get_db() -> aiosqlite.Connection:
     if _state.db is None:
-        raise RuntimeError("Database not initialized. Call init_database() first.")
+        raise RuntimeError(_DATABASE_NOT_INITIALIZED_MESSAGE)
     return _state.db
 
 
