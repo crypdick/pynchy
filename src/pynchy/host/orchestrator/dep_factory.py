@@ -7,7 +7,7 @@ the composite dependency objects that subsystems require.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
@@ -45,6 +45,10 @@ from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.utils import create_background_task
 
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.concurrency import GroupQueue
+    from pynchy.types import WorkspaceProfile
+
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
     """Return the app's shared broadcaster pair.
@@ -71,19 +75,19 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
         broadcast_to_channels = broadcaster.broadcast_to_channels
 
-        def workspaces(self) -> dict[str, Any]:
+        def workspaces(self) -> dict[str, WorkspaceProfile]:
             return app.workspaces
 
         @property
-        def queue(self) -> Any:
+        def queue(self) -> GroupQueue:
             return app.queue
 
         @staticmethod
-        async def run_agent(*args: Any, **kwargs: Any) -> str:
+        async def run_agent(*args: object, **kwargs: object) -> str:
             return await app.run_agent(*args, **kwargs)
 
         @staticmethod
-        async def handle_streamed_output(*args: Any, **kwargs: Any) -> bool:
+        async def handle_streamed_output(*args: object, **kwargs: object) -> bool:
             return await app.handle_streamed_output(*args, **kwargs)
 
     return SchedulerDeps()
@@ -92,7 +96,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
 async def _start_temporal_deploy(
     *,
     host_broadcaster: HostMessageBroadcaster,
-    workspaces: dict[str, Any],
+    workspaces: dict[str, WorkspaceProfile],
     session_manager: SessionManager,
     previous_sha: str,
     rebuild: bool = True,

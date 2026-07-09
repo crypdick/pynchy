@@ -14,7 +14,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
     Coroutine,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from aiohttp import web
 
@@ -34,6 +34,11 @@ from pynchy.logger import logger
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
+
+if TYPE_CHECKING:
+    from aiohttp.web_app import Application as AiohttpApplication
+else:
+    AiohttpApplication = object
 
 _start_time = time.monotonic()
 REMOTE_HTTP_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - documented Tailscale/firewall-gated API listener for remote clients.
@@ -311,7 +316,7 @@ async def start_http_server(
     return runner
 
 
-def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) -> web.Application:
+def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) -> AiohttpApplication:
     """Build the aiohttp app with all HTTP routes registered."""
     app = web.Application()
     app[deps_key] = deps
