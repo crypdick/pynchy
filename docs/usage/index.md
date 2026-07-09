@@ -61,6 +61,7 @@ No config files to learn. Just tell Pynchy what you want:
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
 | [Directives](directives.md) | System prompt extensions via profiles and workspaces |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
+| [Computer use](computer-use.md) | Drive the macOS host desktop through Cua Driver for real-browser/native-app workflows |
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
 | [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
 | [Slack MCP](slack-mcp.md) | Slack read access via browser tokens (no admin required) |

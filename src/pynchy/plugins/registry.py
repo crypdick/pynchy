@@ -79,6 +79,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "desktop-screenshot",
     ),
     (
+        "pynchy.plugins.integrations.computer_use",
+        "ComputerUsePlugin",
+        "computer-use",
+    ),
+    (
         "pynchy.plugins.integrations.linear",
         "LinearMcpPlugin",
         "linear",
