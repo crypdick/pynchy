@@ -121,6 +121,15 @@ async def _cleanup_http_session(app: Any) -> None:
         app[_STATE_KEY].http_session = None
 
 
+def _runner_port(runner: web.AppRunner) -> int:
+    addresses = runner.addresses
+    if not addresses:
+        raise RuntimeError("MCP proxy server did not bind any addresses")
+
+    address = addresses[0]
+    return int(address[1])
+
+
 def _proxy_request(request: Any) -> Any:
     try:
         invocation_ts = float(request.match_info["invocation_ts"])
@@ -453,8 +462,8 @@ class McpProxy:
         await self._runner.setup()
         site = web.TCPSite(self._runner, "localhost", port)
         await site.start()
-        # Extract the actual bound port from the socket
-        self._port = site._server.sockets[0].getsockname()[1]
+        # Extract the actual bound port from the public runner address list.
+        self._port = _runner_port(self._runner)
         logger.info("MCP proxy started", port=self._port)
         return self._port
 
