@@ -18,12 +18,14 @@ import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
+from pynchy.host.git_ops import background_merge_worktree, merge_worktree_with_policy
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import (
     GIT_POLICY_MERGE,
     host_create_pr_from_worktree,
     resolve_git_policy,
 )
+from pynchy.host.git_ops.worktree import ensure_worktree
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -117,8 +119,6 @@ class TestHostCreatePrFromWorktree:
 
     def test_uncommitted_changes(self, git_env: dict):
         """Returns error when worktree has uncommitted changes."""
-        from pynchy.host.git_ops.worktree import ensure_worktree
-
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
         (wt_result.path / "wip.txt").write_text("uncommitted")
@@ -129,8 +129,6 @@ class TestHostCreatePrFromWorktree:
 
     def test_nothing_to_push(self, git_env: dict):
         """Returns success when already up to date."""
-        from pynchy.host.git_ops.worktree import ensure_worktree
-
         repo_ctx = git_env["repo_ctx"]
         ensure_worktree("agent-1", repo_ctx)
 
@@ -140,8 +138,6 @@ class TestHostCreatePrFromWorktree:
 
     def test_push_success_and_pr_created(self, git_env: dict):
         """Commits are pushed and a PR is opened."""
-        from pynchy.host.git_ops.worktree import ensure_worktree
-
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
         wt_path = wt_result.path
@@ -185,8 +181,6 @@ class TestHostCreatePrFromWorktree:
 
     def test_push_updates_existing_pr(self, git_env: dict):
         """When a PR already exists, just push (PR auto-updates)."""
-        from pynchy.host.git_ops.worktree import ensure_worktree
-
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
         wt_path = wt_result.path
@@ -219,8 +213,6 @@ class TestHostCreatePrFromWorktree:
 
     def test_push_failure(self, git_env: dict):
         """Push failure returns an error."""
-        from pynchy.host.git_ops.worktree import ensure_worktree
-
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
         wt_path = wt_result.path
@@ -239,8 +231,6 @@ class TestHostCreatePrFromWorktree:
 
     def test_pr_creation_failure(self, git_env: dict):
         """PR creation failure still reports that push succeeded."""
-        from pynchy.host.git_ops.worktree import ensure_worktree
-
         repo_ctx = git_env["repo_ctx"]
         wt_result = ensure_worktree("agent-1", repo_ctx)
         wt_path = wt_result.path
@@ -452,8 +442,6 @@ class TestMergeWorktreeWithPolicy:
             ),
             patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
         ):
-            from pynchy.host.git_ops import merge_worktree_with_policy
-
             await merge_worktree_with_policy("agent-1")
 
         mock_merge.assert_called_once_with("agent-1", mock_repo)
@@ -464,8 +452,6 @@ class TestMergeWorktreeWithPolicy:
             "pynchy.host.git_ops.repo.resolve_repos_for_group",
             return_value=[],
         ):
-            from pynchy.host.git_ops import merge_worktree_with_policy
-
             await merge_worktree_with_policy("no-repo")
 
 
@@ -476,8 +462,6 @@ class TestBackgroundMergePolicy:
         group.folder = "agent-1"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.host.git_ops import background_merge_worktree
-
             background_merge_worktree(group)
 
         mock_task.assert_called_once()
@@ -491,8 +475,6 @@ class TestBackgroundMergePolicy:
         group.folder = "no-repo"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.host.git_ops import background_merge_worktree
-
             background_merge_worktree(group)
 
         # The coroutine is always created — repo check happens inside it
