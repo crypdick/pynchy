@@ -76,7 +76,7 @@ class SqliteEventObserver:
             from pynchy.state import store_event
 
             await store_event(event_type, chat_jid, payload)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - event persistence is best-effort observer behavior.
             logger.warning(
                 "SQLite observer failed to store event",
                 err=str(exc),

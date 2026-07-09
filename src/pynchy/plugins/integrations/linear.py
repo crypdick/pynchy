@@ -261,7 +261,7 @@ async def _handle_mcp(request: Any) -> Any:
                 ),
             )
         return _jsonrpc_error(request_id, -32601, f"Unknown MCP method: {method}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - Linear MCP tool failures are converted to JSON-RPC errors.
         logger.exception("Linear MCP request failed", method=method)
         return _jsonrpc_result(
             request_id, _text_result(f"Linear tool failed: {exc}", is_error=True)

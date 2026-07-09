@@ -259,7 +259,7 @@ class SlackChannel:
             await self._app.client.reactions_add(
                 channel=channel_id, timestamp=slack_ts, name=emoji_name
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - Slack reactions are best-effort delivery.
             logger.debug("Slack reaction failed", err=str(exc))
 
     async def send_ask_user(
@@ -353,7 +353,7 @@ class SlackChannel:
             resp = await self._app.client.conversations_history(
                 channel=channel_id, oldest=oldest, limit=limit
             )
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - history catch-up is best-effort and should not block reconnect.
             logger.warning("Failed to fetch Slack history for catch-up", channel=channel_id)
             return None
         raw_messages = list(cast("list[dict[str, Any]]", resp.get("messages", [])))
@@ -478,7 +478,7 @@ class SlackChannel:
                 or user_id
             )
             self._user_name_cache.put(user_id, name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - Slack user lookup failures fall back to the raw user ID.
             logger.debug("Failed to resolve Slack user name", user_id=user_id, error=str(exc))
             return user_id
         else:
@@ -499,7 +499,7 @@ class SlackChannel:
             channel = resp.get("channel", {})
             name: str = channel.get("name", channel_id)
             self._channel_name_cache.put(channel_id, name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - Slack channel lookup failures fall back to the channel ID.
             logger.debug(
                 "Failed to resolve Slack channel name", channel_id=channel_id, error=str(exc)
             )

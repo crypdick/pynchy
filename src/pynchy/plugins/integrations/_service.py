@@ -39,7 +39,7 @@ def service_tool(handler: ServiceHandler) -> ServiceHandler:
     async def wrapper(data: dict[str, Any]) -> dict[str, Any]:
         try:
             return await handler(data)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - service-tool boundary converts handler failures into caller-facing errors.
             logger.error("service tool failed", op=op, error=str(exc))
             return {"error": str(exc)}
 

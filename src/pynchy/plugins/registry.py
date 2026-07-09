@@ -137,8 +137,11 @@ def _register_builtin_plugins(pm: pluggy.PluginManager, settings: Any) -> None:
             logger.info("Registered built-in plugin", name=config_key)
         except ImportError:
             logger.debug("Plugin skipped (optional dependency missing)", plugin=config_key)
-        except Exception:
-            logger.exception("Failed to load built-in plugin", plugin=config_key)
+        except Exception:  # noqa: BLE001, RUF100 - built-in plugin import/load isolation.
+            logger.exception(
+                "Failed to load built-in plugin",
+                plugin=config_key,
+            )
 
 
 def _unregister_class_plugins(pm: pluggy.PluginManager) -> None:
@@ -217,7 +220,7 @@ def collect_hook_results(
     hook_caller = getattr(pm.hook, hook_attr)  # AttributeError = bug in calling code
     try:
         provided = hook_caller()
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - plugin hook isolation; one bad plugin shouldn't crash the caller.
         # Individual plugin hook implementations can raise arbitrary errors.
         # One bad plugin shouldn't crash the caller — log and return empty.
         logger.exception("Failed to resolve %s plugins", label)

@@ -45,7 +45,7 @@ async def reconcile_linear_workspace_boards(
                 selected_workspaces,
                 team_key=os.environ.get("LINEAR_TEAM_KEY"),
             )
-        except Exception as exc:  # allow: exception-handling - Linear is optional at boot
+        except Exception as exc:  # noqa: BLE001, RUF100 - Linear is optional at boot.
             logger.warning("Linear workspace board reconciliation failed", err=str(exc))
             return {}
     logger.info("Linear workspace boards reconciled", count=len(boards))
@@ -85,7 +85,7 @@ async def create_linear_workspace_todo(
                 title,
                 team_key=os.environ.get("LINEAR_TEAM_KEY"),
             )
-        except Exception as exc:  # allow: exception-handling - local todo capture still succeeds
+        except Exception as exc:  # noqa: BLE001, RUF100 - local todo capture still succeeds even if Linear fails.
             logger.warning(
                 "Linear todo creation failed",
                 workspace=workspace.folder,

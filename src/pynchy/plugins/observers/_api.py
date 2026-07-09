@@ -52,7 +52,7 @@ def attach_observers(event_bus: EventBus) -> list[ObserverProvider]:
             obs.subscribe(event_bus)
             observers.append(obs)
             logger.info("Attached observer", name=obs.name)
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - observer plugins are isolated best-effort extensions.
             logger.exception("Failed to attach observer", name=getattr(obs, "name", "?"))
 
     return observers

@@ -55,7 +55,7 @@ class SlackAllowlist:
         app = self._require_app()
         try:
             await app.client.conversations_join(channel=channel_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - Slack API join failures are best-effort for optional channels.
             logger.debug(
                 "Failed to join Slack channel (may be private)",
                 channel=name,
@@ -124,7 +124,7 @@ class SlackAllowlist:
             resp = await app.client.conversations_create(name=slack_name, is_private=False)
             channel_id = resp["channel"]["id"]
             logger.info("Created Slack channel", name=slack_name, channel_id=channel_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - Slack channel creation/reuse is a best-effort integration boundary.
             if "name_taken" not in str(exc):
                 raise
             # Channel already exists — look it up by name and reuse it.
@@ -137,7 +137,7 @@ class SlackAllowlist:
             # conversations.join is a no-op if already a member.
             try:
                 await app.client.conversations_join(channel=channel_id)
-            except Exception as join_exc:
+            except Exception as join_exc:  # noqa: BLE001, RUF100 - join retry is optional after name_taken reuse.
                 logger.warning(
                     "Failed to join existing Slack channel (events may not be received)",
                     channel=slack_name,

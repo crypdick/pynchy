@@ -67,11 +67,11 @@ async def try_step(
     done_check: Callable[[Page], Awaitable[bool]] | None = None,
     manual_step_timeout_seconds: int = 60,
 ) -> None:
-    """Attempt an automated Console step; fall back to manual + noVNC."""
+    """Attempt an automated Console step; use the manual + noVNC path when needed."""
     try:
         await step_fn(page)
-    except Exception as exc:
-        logger.warning("GCP automation step failed, falling back to manual", error=str(exc))
+    except Exception as exc:  # noqa: BLE001, RUF100 - UI automation fallback is best-effort by design.
+        logger.warning("GCP automation step failed; using manual path", error=str(exc))
         with contextlib.suppress(Exception):
             debug_screenshot = Path(tempfile.gettempdir()) / "gdrive-setup-debug.png"
             await page.screenshot(path=str(debug_screenshot))
@@ -301,7 +301,7 @@ async def create_oauth_credentials(page: Page, project_id: str) -> Path:
 
     try:
         await _automate(page)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - credential download automation falls back to manual steps.
         logger.warning("Credential creation automation failed", error=str(exc))
         logger.info(
             "Manual step required: create Desktop App credentials",
@@ -316,7 +316,7 @@ async def create_oauth_credentials(page: Page, project_id: str) -> Path:
             async with page.expect_download(timeout=180_000) as download_info:
                 download = await download_info.value
                 await download.save_as(str(dest))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - missing download remains a manual credential-creation path.
             raise RuntimeError(
                 "Could not detect credential JSON download. "
                 "Download it manually and place at "

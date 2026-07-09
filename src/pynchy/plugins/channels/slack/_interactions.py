@@ -63,7 +63,7 @@ class SlackInteractions:
             await self._channel._app.client.chat_update(
                 channel=channel_id, ts=message_ts, text=fallback, blocks=kept_blocks
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - interactive message updates are best-effort UX.
             logger.debug("failed to update message", label=label, err=str(exc))
 
     async def _on_ask_user_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:
@@ -126,7 +126,7 @@ class SlackInteractions:
                         }
                     ],
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001, RUF100 - ask_user message updates are best-effort UX.
                 logger.debug("Failed to update ask_user message", err=str(exc))
 
     async def _on_approval_interaction(self, body: dict[str, Any], action: dict[str, Any]) -> None:

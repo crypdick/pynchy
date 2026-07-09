@@ -174,7 +174,7 @@ async def _handle_refresh_slack_tokens(data: dict[str, Any]) -> dict[str, Any]:
 
     try:
         tokens = await _extract_tokens(profile, workspace_url)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - token extraction failures are surfaced to the caller.
         logger.error("Slack token extraction failed", error=str(exc))
         return {"error": str(exc)}
 
@@ -226,7 +226,7 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
                     re.compile(r"/client/"),
                     timeout=request.timeout_seconds * 1000,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001, RUF100 - login timeout handling is caller-facing.
                 logger.warning(
                     "Slack login not completed before timeout",
                     timeout_seconds=request.timeout_seconds,
@@ -239,7 +239,7 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
 
         return {"result": _saved_session_result(request, novnc_url)}
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - session setup failures are surfaced to the caller.
         logger.error("Slack session setup failed", error=str(exc))
         return {"error": str(exc)}
 

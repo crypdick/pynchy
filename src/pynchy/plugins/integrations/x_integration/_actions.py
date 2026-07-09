@@ -85,7 +85,7 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
                     SEL["account_switcher"],
                     timeout=timeout_seconds * 1000,
                 )
-            except Exception:  # allow: exception-handling - timeout becomes a caller-facing error
+            except Exception:  # noqa: BLE001, RUF100  # allow: exception-handling - timeout becomes a caller-facing error.
                 await context.close()
                 return {
                     "error": (
@@ -103,7 +103,7 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
         }
         if novnc_url:
             result["novnc_url"] = novnc_url
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - X session setup failures are surfaced to the caller.
         logger.error("X session setup failed", error=str(exc))
         return {"error": str(exc)}
     else:

@@ -30,7 +30,7 @@ class AppleContainerRuntime:
                     check=True,
                     timeout=30,
                 )
-            except Exception as exc:
+            except (subprocess.SubprocessError, OSError) as exc:
                 raise RuntimeError(
                     "Apple Container system is required but failed to start"
                 ) from exc

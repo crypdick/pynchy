@@ -43,7 +43,7 @@ class SlackLifecycle:
         try:
             auth = await ch._app.client.auth_test()
             ch._bot_user_id = auth.get("user_id", "")
-        except Exception:
+        except Exception:  # noqa: BLE001, RUF100 - bot user lookup is best-effort and can be skipped.
             logger.warning("Failed to resolve bot user ID (mention stripping disabled)")
 
         await ch.allowlist._sync_allowed_channels()
@@ -137,7 +137,7 @@ class SlackLifecycle:
             ch._handler_task = None
             await ch.connect()
             ch._reconnect_task = None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - reconnect failures are expected retryable Slack lifecycle errors.
             logger.warning("Slack reconnect failed, will retry", delay=delay, exc=str(exc))
             ch._connected = False
             next_delay = min(delay * 2, 300)

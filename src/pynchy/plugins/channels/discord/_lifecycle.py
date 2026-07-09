@@ -60,7 +60,7 @@ class DiscordLifecycle:
             await client.start(self._channel._bot_token)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # allow: exception-handling
+        except discord.DiscordException as exc:
             # Background gateway task: any startup/runtime failure (auth,
             # disallowed intents, connection drop) is logged rather than left
             # to crash an orphaned task; the host watchdog drives reconnect.

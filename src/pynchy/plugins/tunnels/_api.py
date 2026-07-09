@@ -68,7 +68,7 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
                     tunnel=t.name,
                     status=t.status_summary(),
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001, RUF100 - tunnel provider checks are best-effort plugin isolation.
             logger.warning("Tunnel check failed", tunnel=t.name, err=str(exc))
 
     if not connected:

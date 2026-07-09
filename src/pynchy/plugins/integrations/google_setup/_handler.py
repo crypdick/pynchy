@@ -211,7 +211,7 @@ async def _run_interactive_setup(
 
         return {"result": _interactive_success_result(setup, steps_done, novnc_url)}
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - interactive setup failure is converted into a caller-facing error.
         logger.error("setup_google failed", profile=profile_name, error=str(exc))
         return _interactive_error_result(str(exc), novnc_url)
 

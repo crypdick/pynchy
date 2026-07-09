@@ -376,7 +376,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
             raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
 
         os.environ["DISPLAY"] = _XVFB_DISPLAY
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - startup cleanup is best-effort for partially launched VNC layers.
         stop_procs(procs)
         raise
     else:

@@ -130,7 +130,7 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
         if websockify_proc.poll() is not None:
             raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
 
-    except Exception:
+    except Exception:  # noqa: BLE001, RUF100 - browser-layer startup cleanup is best-effort.
         stop_procs(procs)
         raise
     else:

@@ -159,7 +159,7 @@ class WhatsAppChannel:
         async def on_message(_client: NewAClient, message: MessageEv) -> None:
             try:
                 await self._handle_message(message)
-            except Exception:
+            except Exception:  # noqa: BLE001, RUF100 - WhatsApp message handler isolation keeps the client alive.
                 logger.exception(
                     "Unhandled error in message handler",
                     message_id=getattr(getattr(message, "Info", None), "ID", "unknown"),
@@ -195,7 +195,7 @@ class WhatsAppChannel:
         try:
             target = self._parse_jid(jid)
             await self._client.send_message(target, text)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001, RUF100 - send failures are queued for later retry.
             self._outgoing_queue.append(_OutgoingMessage(jid=jid, text=text))
             logger.warning("Failed to send, message queued", jid=jid, error=str(err))
 
@@ -223,7 +223,7 @@ class WhatsAppChannel:
             await self._client.send_chat_presence(
                 target, presence, ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT
             )
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001, RUF100 - typing updates are best-effort transport hints.
             logger.debug("Failed to update typing status", jid=jid, error=str(err))
 
     async def send_reaction(
@@ -234,7 +234,7 @@ class WhatsAppChannel:
             sender = self._parse_jid(sender_jid)
             reaction_msg = await self._client.build_reaction(chat, sender, message_id, emoji)
             await self._client.send_message(chat, reaction_msg)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001, RUF100 - reaction send failures are best-effort only.
             logger.debug("Failed to send reaction", chat_jid=chat_jid, error=str(err))
 
     async def create_group(self, name: str) -> str:
@@ -280,7 +280,7 @@ class WhatsAppChannel:
                     count += 1
             await set_last_group_sync()
             logger.info("Group metadata synced", count=count)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001, RUF100 - group sync is best-effort background maintenance.
             logger.error("Failed to sync group metadata", error=str(err))
 
     async def _periodic_group_sync(self) -> None:
@@ -288,7 +288,7 @@ class WhatsAppChannel:
             await asyncio.sleep(GROUP_SYNC_INTERVAL)
             try:
                 await self._sync_group_metadata()
-            except Exception as err:
+            except Exception as err:  # noqa: BLE001, RUF100 - periodic sync failures should not stop the loop.
                 logger.error("Periodic group sync failed", error=str(err))
 
     async def _flush_outgoing_queue(self) -> None:
