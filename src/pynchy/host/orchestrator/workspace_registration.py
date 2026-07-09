@@ -8,7 +8,7 @@ from collections.abc import (
 )
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Protocol, cast
 
 from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
@@ -27,6 +27,12 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace 
     WorkspaceProfile,
     WorkspaceSecurity,
 )
+
+
+class _WorkspaceCreationChannel(Protocol):
+    name: str
+
+    async def create_group(self, name: str) -> str: ...
 
 
 def resolve_display_name(folder: str) -> str:
@@ -106,12 +112,14 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
     return created_jid
 
 
-def _workspace_creation_channel(channels: list[Channel], command_center: str | None) -> Any | None:
+def _workspace_creation_channel(
+    channels: list[Channel], command_center: str | None
+) -> _WorkspaceCreationChannel | None:
     if not command_center:
         return None
     return next(
         (
-            channel
+            cast("_WorkspaceCreationChannel", channel)
             for channel in channels
             if channel.name == command_center and hasattr(channel, "create_group")
         ),
@@ -131,7 +139,7 @@ async def sync_workspace_profile(  # noqa: PLR0913, RUF100 - sync boundary mirro
     if jid is None or jid not in workspaces:
         return
     profile = workspaces[jid]
-    changed: dict[str, Any] = {}
+    changed: dict[str, object] = {}
     if profile.name != display_name:
         changed["name"] = display_name
     if profile.is_admin != resolved.is_admin:

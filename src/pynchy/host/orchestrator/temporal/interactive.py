@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from temporalio import activity
 
 from pynchy.host.orchestrator.temporal.runtime_state import (
@@ -35,7 +33,7 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
     return "completed"
 
 
-async def _process_interactive_message_turn(deps: Any, chat_jid: str) -> bool:
+async def _process_interactive_message_turn(deps: object, chat_jid: str) -> bool:
     from pynchy.host.orchestrator.messaging.pipeline import process_group_messages
 
     return await process_group_messages(deps, chat_jid)

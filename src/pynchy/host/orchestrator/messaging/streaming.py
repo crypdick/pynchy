@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
 from pynchy.logger import logger
@@ -20,6 +20,9 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves streaming 
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
+
+if TYPE_CHECKING:
+    from pynchy.event_bus import Event
 
 # ---------------------------------------------------------------------------
 # OutputDeps protocol — dependency interface for output handling
@@ -40,7 +43,7 @@ class OutputDeps(Protocol):
         self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
 
-    def emit(self, event: Any) -> None: ...
+    def emit(self, event: Event) -> None: ...
 
 
 # ---------------------------------------------------------------------------

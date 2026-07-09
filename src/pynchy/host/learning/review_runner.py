@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from pynchy.host.learning.packet_models import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     LearningPacket,
@@ -33,7 +32,7 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
             )
         )
 
-    async def on_output(_output: Any) -> None:  # noqa: RUF029, RUF100 - run_agent expects an async output callback.
+    async def on_output(_output: object) -> None:  # noqa: RUF029, RUF100 - run_agent expects an async output callback.
         return None
 
     reviewer_jid = f"learning-review:{paths.profile_slug}"

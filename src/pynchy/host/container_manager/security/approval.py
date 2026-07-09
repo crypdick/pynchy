@@ -110,7 +110,7 @@ def _path_exists(path: Path) -> bool:
     return path.exists()
 
 
-def _read_json_file(path: Path) -> Any:
+def _read_json_file(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 

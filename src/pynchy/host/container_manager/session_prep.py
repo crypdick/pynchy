@@ -186,7 +186,7 @@ def _sync_plugin_skill_paths(
 
 def _sync_plugin_skill_path(
     skills_dst: Path,
-    skill_path_str: Any,
+    skill_path_str: object,
     workspace_skills: list[str] | None,
 ) -> None:
     try:

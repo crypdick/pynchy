@@ -11,8 +11,11 @@ import datetime
 import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
+from pynchy.config.models import (
+    ReposConfig,  # noqa: TC001, RUF100 - beartype resolves repo context settings at runtime.
+)
 from pynchy.logger import logger
 
 # Warn when a token expires within this many days
@@ -64,7 +67,11 @@ def get_repo_context(slug: str) -> RepoContext | None:
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
 
 
-def repo_host_root(settings: Any, slug: str) -> Path | None:
+class _RepoSettings(Protocol):
+    repos: ReposConfig
+
+
+def repo_host_root(settings: _RepoSettings, slug: str) -> Path | None:
     """Return the host checkout path for a repo slug."""
     repo_cfg = settings.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.path is not None:

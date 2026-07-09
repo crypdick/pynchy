@@ -17,7 +17,7 @@ from pynchy.logger import logger
 
 
 def _sync_merge_and_check_deploy(
-    source_group: str, repo_ctx: Any
+    source_group: str, repo_ctx: object
 ) -> tuple[dict[str, Any], str, bool | None]:
     """Synchronous git merge + deploy check — runs on a thread.
 

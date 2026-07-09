@@ -271,7 +271,7 @@ def _command_center_channel(
     )
 
 
-def _valid_jid(value: Any) -> str | None:
+def _valid_jid(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     stripped = value.strip()

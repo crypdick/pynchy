@@ -24,7 +24,7 @@ from pynchy.config import get_settings
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
     Settings,
 )
-from pynchy.event_bus import AgentActivityEvent, MessageEvent
+from pynchy.event_bus import AgentActivityEvent, Event, MessageEvent
 from pynchy.host.learning import capture as learning_capture
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
@@ -96,7 +96,7 @@ class MessageHandlerDeps(Protocol):
 
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
-    def emit(self, event: Any) -> None: ...
+    def emit(self, event: Event) -> None: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - protocol contract intentionally preserves the full orchestration call shape.
         self,

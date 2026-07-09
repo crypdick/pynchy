@@ -6,9 +6,9 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pynchy.event_bus import ChatClearedEvent, MessageEvent
+from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
@@ -50,7 +50,7 @@ class SessionDeps(Protocol):
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
-    def emit(self, event: Any) -> None: ...
+    def emit(self, event: Event) -> None: ...
 
 
 async def _teardown_group(

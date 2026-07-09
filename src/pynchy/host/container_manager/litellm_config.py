@@ -168,7 +168,7 @@ def _validate_required_models(
     raise RuntimeError(msg)
 
 
-def _model_route_matches(required_model: str, configured_name: Any) -> bool:
+def _model_route_matches(required_model: str, configured_name: object) -> bool:
     if not isinstance(configured_name, str):
         return False
     if configured_name == required_model:
