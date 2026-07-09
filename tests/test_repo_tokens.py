@@ -67,7 +67,7 @@ class TestRepoContext:
 
         assert repo_ctx == RepoContext(
             slug="owner/project",
-            root=repos_root / "owner" / "project",
+            root=repos_root / "project",
             worktrees_dir=worktrees_root / "owner" / "project",
         )
 

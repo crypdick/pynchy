@@ -374,9 +374,7 @@ class ProfileConfig(_StrictModel):
 class RepoConfig(_StrictModel):
     """Config for a single tracked git repo under [repos."owner/repo"]."""
 
-    path: str | None = (
-        None  # relative to project root or absolute; None = auto-clone to data/repos/
-    )
+    path: str | None = None  # relative to project root or absolute; None = repos.root / repo_name
     token: SecretStr | None = None  # repo-scoped GitHub token (fine-grained PAT)
 
     @field_validator("path")

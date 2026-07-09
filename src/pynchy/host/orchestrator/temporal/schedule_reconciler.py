@@ -7,7 +7,9 @@ from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
 )
-from pathlib import Path
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
+)
 from typing import Any
 
 from temporalio.client import (
@@ -17,6 +19,7 @@ from temporalio.client import (
 )
 from temporalio.service import RPCError, RPCStatusCode
 
+from pynchy.host.git_ops.repo import repo_host_root
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
     agent_task_schedule_id,
@@ -206,14 +209,7 @@ async def _delete_stale_schedules(client: Any, desired_schedule_ids: set[str]) -
 
 
 def _repo_root_for_slug(settings: Any, repo_slug: str) -> Path | None:
-    repo_cfg = settings.repos.overrides.get(repo_slug)
-    if repo_cfg and repo_cfg.path:
-        return Path(repo_cfg.path)
-    try:
-        owner, repo_name = repo_slug.split("/", 1)
-    except ValueError:
-        return None
-    return Path(settings.repos.root) / owner / repo_name
+    return repo_host_root(settings, repo_slug)
 
 
 def _external_repo_sync_slugs(settings: Any) -> list[str]:

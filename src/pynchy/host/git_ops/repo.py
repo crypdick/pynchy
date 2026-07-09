@@ -11,6 +11,7 @@ import datetime
 import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from pynchy.logger import logger
 
@@ -47,22 +48,32 @@ def get_repo_context(slug: str) -> RepoContext | None:
     """Resolve a slug to its RepoContext.
 
     Per-repo overrides are optional. A profile can name ``repo = "owner/repo"``
-    and Pynchy resolves it under ``repos.root`` unless an explicit override
-    supplies a different path or token.
+    and Pynchy resolves the host checkout to ``repos.root / repo`` unless an
+    explicit override supplies a different path or token. Container mounts
+    remain owner-qualified via :func:`repo_container_path`.
     """
     from pynchy.config import get_settings
 
     s = get_settings()
-    repo_cfg = s.repos.overrides.get(slug)
 
     owner, repo_name = _slug_to_parts(slug)
-    root = (
-        Path(repo_cfg.path)
-        if repo_cfg and repo_cfg.path is not None
-        else (s.repos.root / owner / repo_name)
-    )
+    root = repo_host_root(s, slug)
+    if root is None:
+        return None
     worktrees_dir = s.worktrees_dir / owner / repo_name
     return RepoContext(slug=slug, root=root, worktrees_dir=worktrees_dir)
+
+
+def repo_host_root(settings: Any, slug: str) -> Path | None:
+    """Return the host checkout path for a repo slug."""
+    repo_cfg = settings.repos.overrides.get(slug)
+    if repo_cfg and repo_cfg.path is not None:
+        return Path(repo_cfg.path)
+    try:
+        _, repo_name = _slug_to_parts(slug)
+    except ValueError:
+        return None
+    return Path(settings.repos.root) / repo_name
 
 
 def repo_container_path(slug: str) -> str:

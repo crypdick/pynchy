@@ -643,6 +643,38 @@ class TestTemporalSchedulerRuntime:
         )
 
     @pytest.mark.asyncio
+    async def test_reconcile_uses_flat_host_repo_root_for_external_sync_detection(
+        self, monkeypatch, tmp_path
+    ):
+        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        repos_root = tmp_path / "repos"
+        settings = make_settings(
+            project_root=repos_root / "project",
+            timezone="UTC",
+            scheduler=SchedulerConfig(),
+            cron_jobs={},
+            repos=ReposConfig(root=repos_root),
+            profiles={"worker": ProfileConfig(repo="owner/project")},
+            workspaces={"worker": WorkspaceConfig(profiles=["worker"])},
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        schedule_ids = {schedule_id for schedule_id, _, _ in client.created_schedules}
+        assert "pynchy-git-sync-repo-owner-project" not in schedule_ids
+
+    @pytest.mark.asyncio
     async def test_reconcile_accepts_awaitable_schedule_list(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
         import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
