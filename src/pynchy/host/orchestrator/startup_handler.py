@@ -11,8 +11,10 @@ from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup anno
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager import credentials
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.host.migration_backups import prune_migration_backups
+from pynchy.host.orchestrator import adapters
 from pynchy.logger import logger
 from pynchy.state import get_active_task_for_group, get_messages_since
 from pynchy.types import WorkspaceProfile, WorkspaceSecurity
@@ -48,9 +50,8 @@ class StartupDeps(Protocol):
 async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the admin channel on startup."""
     s = get_settings()
-    from pynchy.host.orchestrator.adapters import find_admin_jid
 
-    admin_jid = find_admin_jid(deps.workspaces) or None
+    admin_jid = adapters.find_admin_jid(deps.workspaces) or None
     if not admin_jid:
         return
 
@@ -61,9 +62,8 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     parts = [f"🦞 online -- {label}"]
 
     # Check for API credentials and warn if missing
-    from pynchy.host.container_manager.credentials import has_api_credentials
 
-    if not has_api_credentials():
+    if not credentials.has_api_credentials():
         parts.append(
             "WARNING: No API credentials found -- messages will fail. "
             "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in config.toml."
