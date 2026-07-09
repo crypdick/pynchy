@@ -68,20 +68,21 @@ class LinearClient:
         self,
         *,
         api_key: str,
-        session: Any,
+        session: object,
         endpoint: str = LINEAR_API_URL,
     ) -> None:
         self._api_key = api_key
         self._session = session
         self._endpoint = endpoint
 
-    async def query(self, query: str, **variables: Any) -> dict[str, Any]:
+    async def query(self, query: str, **variables: object) -> dict[str, Any]:
         payload = {"query": query, "variables": variables}
         headers = {
             "Authorization": self._api_key,
             "Content-Type": "application/json",
         }
-        async with self._session.post(self._endpoint, json=payload, headers=headers) as response:
+        session = cast("Any", self._session)
+        async with session.post(self._endpoint, json=payload, headers=headers) as response:
             response.raise_for_status()
             body = await response.json()
 
@@ -238,7 +239,7 @@ class LinearMcpPlugin:
         }
 
 
-def build_app(*, workspace: str | None = None) -> Any:
+def build_app(*, workspace: str | None = None) -> object:
     app = web.Application()
     app[WORKSPACE_APP_KEY] = workspace
     app.router.add_get("/", _handle_health)
@@ -246,11 +247,11 @@ def build_app(*, workspace: str | None = None) -> Any:
     return app
 
 
-async def _handle_health(_request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+async def _handle_health(_request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
     return web.json_response({"status": "ok", "service": "pynchy-linear"})
 
 
-async def _handle_mcp(request: Any) -> Any:
+async def _handle_mcp(request: web.Request) -> web.StreamResponse:
     payload = await request.json()
     request_id = payload.get("id")
     method = payload.get("method")
@@ -317,15 +318,15 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
 
 
 async def _tool_list_teams(
-    client: Any,
+    client: object,
     _arguments: dict[str, Any],
     _workspace: str | None,
 ) -> list[dict[str, Any]]:
-    return cast("list[dict[str, Any]]", await client.list_teams())
+    return cast("list[dict[str, Any]]", await cast("Any", client).list_teams())
 
 
 async def _tool_list_issues(
-    client: Any,
+    client: object,
     arguments: dict[str, Any],
     _workspace: str | None,
 ) -> list[dict[str, Any]]:
@@ -334,12 +335,14 @@ async def _tool_list_issues(
         first = int(first)
     return cast(
         "list[dict[str, Any]]",
-        await client.list_issues(team_id=arguments.get("team_id"), first=first),
+        await cast("Any", client).list_issues(
+            team_id=arguments.get("team_id"), first=first
+        ),
     )
 
 
 async def _tool_create_issue(
-    client: Any,
+    client: object,
     arguments: dict[str, Any],
     _workspace: str | None,
 ) -> dict[str, Any]:
@@ -350,7 +353,7 @@ async def _tool_create_issue(
         raise LinearError(_LINEAR_LABEL_IDS_NOT_ARRAY)
     return cast(
         "dict[str, Any]",
-        await client.create_issue(
+        await cast("Any", client).create_issue(
             team_id=team_id,
             title=title,
             description=arguments.get("description"),
@@ -362,7 +365,7 @@ async def _tool_create_issue(
 
 
 async def _tool_list_todos(
-    client: Any,
+    client: object,
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> list[dict[str, Any]]:
@@ -375,7 +378,7 @@ async def _tool_list_todos(
 
 
 async def _tool_create_todo(
-    client: Any,
+    client: object,
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> dict[str, Any]:
@@ -389,7 +392,7 @@ async def _tool_create_todo(
 
 
 async def _tool_move_todo(
-    client: Any,
+    client: object,
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> dict[str, Any]:
@@ -416,8 +419,8 @@ def _required_str(arguments: dict[str, Any], key: str) -> str:
     return value
 
 
-def _json_result(value: Any) -> dict[str, Any]:
-    return _text_result(json.dumps(value, indent=2, sort_keys=True))
+def _json_result(value: object) -> dict[str, Any]:
+    return _text_result(json.dumps(cast("Any", value), indent=2, sort_keys=True))
 
 
 def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
@@ -427,11 +430,11 @@ def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
     return result
 
 
-def _jsonrpc_result(request_id: Any, result: dict[str, Any]) -> Any:
+def _jsonrpc_result(request_id: object, result: dict[str, Any]) -> web.Response:
     return web.json_response({"jsonrpc": "2.0", "id": request_id, "result": result})
 
 
-def _jsonrpc_error(request_id: Any, code: int, message: str) -> Any:
+def _jsonrpc_error(request_id: object, code: int, message: str) -> web.Response:
     return web.json_response(
         {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
     )
