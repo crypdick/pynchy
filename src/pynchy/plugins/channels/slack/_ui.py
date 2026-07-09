@@ -27,8 +27,7 @@ AGENT_STOP_ACTION_RE = re.compile(r"^agent_stop_")
 def normalize_chat_name(name: str) -> str:
     """Normalize Slack channel name to the canonical slug form."""
     cleaned = name.strip()
-    if cleaned.startswith("#"):
-        cleaned = cleaned[1:]
+    cleaned = cleaned.removeprefix("#")
     return cleaned.lower().replace(" ", "-")
 
 

@@ -791,11 +791,11 @@ class TestMountBuilding:
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
 
+        (tmp_path / "groups" / "test-group").mkdir(parents=True)
         with (
             _patch_settings(tmp_path, learning=learning),
             pytest.raises(LearningConfigError, match=r"vault_root.*directory"),
         ):
-            (tmp_path / "groups" / "test-group").mkdir(parents=True)
             build_volume_mounts(TEST_GROUP, is_admin=False)
 
     def test_admin_group_has_project_mount(self, tmp_path: Path):

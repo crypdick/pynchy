@@ -76,7 +76,7 @@ async def _run_agent_via_queue(
     )
     if accepted is False:
         result_future.cancel()
-        raise asyncio.CancelledError()
+        raise asyncio.CancelledError
 
     try:
         return await result_future

@@ -147,10 +147,10 @@ class TestDockerRuntime:
                 side_effect=subprocess.CalledProcessError(1, "docker"),
             ),
             patch("pynchy.plugins.runtimes.docker_runtime.runtime.sys") as mock_sys,
-            pytest.raises(RuntimeError, match="systemctl"),
         ):
             mock_sys.platform = "linux"
-            rt.ensure_running()
+            with pytest.raises(RuntimeError, match="systemctl"):
+                rt.ensure_running()
 
 
 class TestAppleRuntime:

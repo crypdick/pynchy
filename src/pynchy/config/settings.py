@@ -536,7 +536,7 @@ def _detect_timezone() -> str:
     if tz := os.environ.get("TZ"):
         return tz
     try:
-        link = os.readlink("/etc/localtime")
+        link = str(Path("/etc/localtime").readlink())
         parts = link.split("zoneinfo/")
         if len(parts) > 1:
             return parts[1]

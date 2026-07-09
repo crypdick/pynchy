@@ -74,7 +74,7 @@ def _make_whatsapp_channel() -> WhatsAppChannel:
     ch._on_message = MagicMock()
     ch._on_chat_metadata = MagicMock()
     ch._on_ask_user_answer = None
-    ch._workspaces = lambda: {}
+    ch._workspaces = dict
     ch._connected = True
     ch._outgoing_queue = MagicMock()
     ch._lid_to_phone = {}

@@ -12,7 +12,7 @@ from agent_runner.ipc import read_initial_input
 from agent_runner.models import ContainerInput
 
 
-@pytest.fixture()
+@pytest.fixture
 def input_dir(tmp_path: Path) -> Path:
     """Create a temporary IPC input directory."""
     d = tmp_path / "input"

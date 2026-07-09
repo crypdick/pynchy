@@ -565,7 +565,7 @@ async def test_update_event_raises_when_too_large_so_core_falls_back():
         return fake
 
     ch._resolve_channel = _resolve  # type: ignore[method-assign]
-    with pytest.raises(Exception):  # noqa: B017 -- any raise triggers the fallback
+    with pytest.raises(ValueError, match="exceeds 2000 chars"):
         await ch.update_event(
             "discord:channel:1",
             "discord-101",

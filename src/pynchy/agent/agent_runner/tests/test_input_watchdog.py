@@ -12,7 +12,7 @@ import pytest
 from agent_runner.ipc import wait_for_ipc_message
 
 
-@pytest.fixture()
+@pytest.fixture
 def input_dir(tmp_path: Path) -> Path:
     """Create and return a temporary IPC input directory."""
     d = tmp_path / "input"

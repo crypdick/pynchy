@@ -338,7 +338,7 @@ def _render_message(log: ChatLog, sender: str, content: str, timestamp: str) -> 
     # Bot messages are stored with "pynchy: <text>" baked into content.
     # Strip the redundant prefix to avoid displaying "pynchy: pynchy: ...".
     prefix = f"{sender}: "
-    display = content[len(prefix) :] if content.startswith(prefix) else content
+    display = content.removeprefix(prefix)
     log.write(f"[dim]{time_str}[/dim] [bold]{sender}[/bold]: {display}")
 
 

@@ -313,7 +313,7 @@ class OpenAIAgentCore:
         if transport is None and "url" in spec:
             transport = "sse"
 
-        if transport in ("sse",):
+        if transport == "sse":
             return _sse_server(name, spec)
 
         if transport in ("streamable_http", "http"):

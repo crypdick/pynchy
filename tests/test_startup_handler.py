@@ -225,7 +225,7 @@ class TestCheckDeployContinuation:
 
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
-            lambda: type("S", (), {"data_dir": tmp_path})(),
+            type("S", (), {"data_dir": tmp_path}),
         )
 
         await check_deploy_continuation(FakeDeps({}))
@@ -268,7 +268,7 @@ class TestCheckDeployContinuation:
         # Patch settings to point data_dir at tmp_path
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
-            lambda: type("S", (), {"data_dir": tmp_path})(),
+            type("S", (), {"data_dir": tmp_path}),
         )
 
         # Patch load_workspace_config: periodic for code-improver, non-periodic for others
@@ -321,7 +321,7 @@ class TestCheckDeployContinuation:
 
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
-            lambda: type("S", (), {"data_dir": tmp_path})(),
+            type("S", (), {"data_dir": tmp_path}),
         )
 
         from pynchy.config.models import WorkspaceConfig

@@ -297,5 +297,4 @@ def validate_plugin_credentials(plugin: Any) -> list[str]:
         return []
 
     required = plugin.requires_credentials()
-    missing = [cred for cred in required if cred not in os.environ]
-    return missing
+    return [cred for cred in required if cred not in os.environ]

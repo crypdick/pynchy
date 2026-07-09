@@ -13,7 +13,7 @@ from pynchy.state import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 async def _db():
     await init_test_database()
 

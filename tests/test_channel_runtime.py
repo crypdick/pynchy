@@ -33,7 +33,7 @@ def _context() -> channel_runtime.ChannelPluginContext:
     return channel_runtime.ChannelPluginContext(
         on_message_callback=lambda _jid, _msg: None,
         on_chat_metadata_callback=lambda _jid, _ts, _name=None: None,
-        workspaces=lambda: {},
+        workspaces=dict,
         send_message=lambda _jid, _text: None,
     )
 

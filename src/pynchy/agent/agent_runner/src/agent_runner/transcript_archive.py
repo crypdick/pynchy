@@ -98,7 +98,6 @@ def _parse_transcript(content: str) -> list[TranscriptMessage]:
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
-            pass
             continue
 
         parsed = _parse_transcript_entry(entry)

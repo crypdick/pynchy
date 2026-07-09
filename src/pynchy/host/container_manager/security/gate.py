@@ -62,7 +62,7 @@ def create_gate(
 ) -> SecurityGate:
     """Create and register a SecurityGate for a container invocation."""
     gate = SecurityGate(security)
-    _gates[(source_group, invocation_ts)] = gate
+    _gates[source_group, invocation_ts] = gate
     return gate
 
 

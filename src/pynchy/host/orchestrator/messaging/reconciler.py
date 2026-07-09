@@ -310,7 +310,7 @@ async def _reconcile_channel_pair(
         outbound_cursor=outbound_cursor,
         new_outbound_cursor=new_outbound_cursor,
     )
-    _last_reconciled[(ch.name, canonical_jid)] = now
+    _last_reconciled[ch.name, canonical_jid] = now
     return pair_recovered, pair_retried
 
 

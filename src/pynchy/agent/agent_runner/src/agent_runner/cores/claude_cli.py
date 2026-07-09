@@ -203,7 +203,9 @@ class ClaudeCLIAgentCore:
             limit=_STREAM_LINE_LIMIT,
         )
         self._proc = proc
-        assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+        assert proc.stderr is not None
 
         # Send the single user message, then EOF so the CLI stops reading input.
         proc.stdin.write(self._build_stdin(prompt))

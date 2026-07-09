@@ -63,8 +63,7 @@ class FakeScheduleClient:
 
     async def create_schedule(self, schedule_id, schedule, **kwargs):
         self.created_schedules.append((schedule_id, schedule, kwargs))
-        handle = self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
-        return handle
+        return self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
 
     def get_schedule_handle(self, schedule_id):
         return self.handles.setdefault(schedule_id, FakeScheduleHandle(schedule_id))
@@ -132,7 +131,7 @@ class TestTemporalSchedulerRuntime:
                 return self
 
             async def __aexit__(self, exc_type, exc, _tb):
-                return None
+                pass
 
         return FakeWorker
 
@@ -305,7 +304,6 @@ class TestTemporalSchedulerRuntime:
             ):
                 assert len(posargs) <= 1
                 assert not (posargs and args)
-                return None
 
         temporal_scheduler.reset_temporal_scheduler_status()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from conftest import make_settings
 
 from pynchy.config import CronJobConfig
@@ -411,22 +412,13 @@ class TestCronJobConfig:
         assert cfg.enabled is True
 
     def test_rejects_invalid_schedule(self):
-        try:
+        with pytest.raises(ValueError, match="Invalid cron expression"):
             CronJobConfig(schedule="not a cron", command="echo hi")
-            raise AssertionError("Expected ValueError for invalid cron schedule")
-        except ValueError as exc:
-            assert "Invalid cron expression" in str(exc)
 
     def test_rejects_empty_command(self):
-        try:
+        with pytest.raises(ValueError, match="command cannot be empty"):
             CronJobConfig(schedule="0 5 * * *", command="   ")
-            raise AssertionError("Expected ValueError for empty command")
-        except ValueError as exc:
-            assert "command cannot be empty" in str(exc)
 
     def test_rejects_non_positive_timeout(self):
-        try:
+        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
             CronJobConfig(schedule="0 5 * * *", command="echo hi", timeout_seconds=0)
-            raise AssertionError("Expected ValueError for invalid timeout")
-        except ValueError as exc:
-            assert "timeout_seconds must be positive" in str(exc)

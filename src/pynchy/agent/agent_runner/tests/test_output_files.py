@@ -13,12 +13,11 @@ from agent_runner.ipc import write_output
 from agent_runner.models import ContainerOutput
 
 
-@pytest.fixture()
+@pytest.fixture
 def output_dir(tmp_path: Path) -> Path:
     """Patch IPC_OUTPUT_DIR to a temporary directory and return it."""
     # Don't pre-create — write_output should handle mkdir itself.
-    d = tmp_path / "output"
-    return d
+    return tmp_path / "output"
 
 
 @pytest.fixture(autouse=True)

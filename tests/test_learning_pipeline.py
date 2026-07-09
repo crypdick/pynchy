@@ -100,7 +100,7 @@ def _settings_mock(tmp_path: Path, **overrides):
     defaults = {
         "data_dir": tmp_path,
         "learning": LearningConfig(enabled=False),
-        "trigger_pattern": re.compile(".*"),
+        "trigger_pattern": re.compile(r".*"),
         "idle_timeout": 300,
     }
     defaults.update(overrides)

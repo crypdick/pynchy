@@ -246,7 +246,7 @@ def ensure_vnc_stack_alive() -> list[subprocess.Popen[bytes]]:
 
     if not _is_process_running("websockify"):
         ws_cmd = ["websockify", str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
-        if os.path.isdir(_NOVNC_WEB_DIR):
+        if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
         p = subprocess.Popen(ws_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         procs.append(p)
@@ -310,7 +310,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
             raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
 
         ws_cmd = ["websockify", str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
-        if os.path.isdir(_NOVNC_WEB_DIR):
+        if Path(_NOVNC_WEB_DIR).is_dir():
             ws_cmd[1:1] = ["--web", _NOVNC_WEB_DIR]
         websockify_proc = subprocess.Popen(
             ws_cmd,

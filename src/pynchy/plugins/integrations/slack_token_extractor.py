@@ -113,7 +113,7 @@ async def _extract_tokens(
         )
 
         # Strategy 2: localStorage on /client/ pages
-        if not xoxc and re.search(r"/client/", page.url):
+        if not xoxc and "/client/" in page.url:
             await page.wait_for_timeout(3000)
             xoxc = await page.evaluate("""() => {
                 const raw = localStorage.getItem('localConfig_v2');
@@ -214,7 +214,7 @@ async def _handle_setup_slack_session(data: dict[str, Any]) -> dict[str, Any]:
             await page.goto(request.workspace_url, wait_until="networkidle")
 
             # Already logged in?
-            if re.search(r"/client/", page.url):
+            if "/client/" in page.url:
                 await context.close()
                 return {"result": _already_logged_in_result(request.profile, novnc_url)}
 

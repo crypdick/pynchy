@@ -240,9 +240,7 @@ class LiteLLMGateway:
     def _phoenix_health_url(endpoint: str) -> str:
         """Map a Phoenix OTLP traces endpoint to the deployment health endpoint."""
         parsed = urlparse(endpoint)
-        path = parsed.path.rstrip("/")
-        if path.endswith("/v1/traces"):
-            path = path[: -len("/v1/traces")]
+        path = parsed.path.rstrip("/").removesuffix("/v1/traces")
         health_path = f"{path}/healthz" if path else "/healthz"
         return urlunparse(parsed._replace(path=health_path, params="", query="", fragment=""))
 

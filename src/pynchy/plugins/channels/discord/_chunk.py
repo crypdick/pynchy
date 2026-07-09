@@ -20,7 +20,7 @@ _FENCE_RESERVE = len(_FENCE) + 1
 
 def _is_fence_line(line: str) -> bool:
     stripped = line.strip()
-    return stripped.startswith("```") or stripped.startswith("~~~")
+    return stripped.startswith(("```", "~~~"))
 
 
 def _hard_split(segment: str, max_size: int) -> list[str]:

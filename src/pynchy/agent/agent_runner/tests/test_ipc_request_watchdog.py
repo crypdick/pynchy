@@ -13,7 +13,7 @@ import pytest
 from agent_runner.agent_tools._ipc_request import ipc_service_request
 
 
-@pytest.fixture()
+@pytest.fixture
 def ipc_dirs(tmp_path: Path) -> dict[str, Path]:
     """Create temporary IPC directories and return them."""
     responses = tmp_path / "responses"

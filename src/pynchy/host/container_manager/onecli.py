@@ -268,7 +268,7 @@ def _handle_unavailable(config: OneCliConfig, reason: str) -> None:
     if config.fail_closed:
         raise OneCliError(f"OneCLI is enabled but unavailable: {reason}")
     logger.warning("OneCLI unavailable; falling back to native credentials", reason=reason)
-    return None
+    return
 
 
 def _materialize_container_config(

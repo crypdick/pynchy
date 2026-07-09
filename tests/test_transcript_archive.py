@@ -416,7 +416,8 @@ class TestArchiveTranscript:
             ],
         )
         out = asyncio.run(ta.archive_transcript(str(tp), "sid"))
-        assert out is not None and out.exists()
+        assert out is not None
+        assert out.exists()
         assert out.parent == _isolated_archive
         text = out.read_text()
         assert "**User**: hello there" in text

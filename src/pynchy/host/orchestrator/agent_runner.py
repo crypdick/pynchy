@@ -391,8 +391,7 @@ async def run_agent(
     try:
         if session is not None and session.is_alive:
             return await _warm_query(deps, group, chat_jid, session, messages, ctx)
-        else:
-            return await _cold_start(deps, group, chat_jid, messages, ctx)
+        return await _cold_start(deps, group, chat_jid, messages, ctx)
     except Exception:
         logger.exception("Agent error", group=group.name)
         return "error"

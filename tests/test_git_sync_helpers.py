@@ -168,13 +168,12 @@ class TestHostUpdateMain:
             ok = subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
             if "fetch" in cmd_args:
                 return ok
-            elif "rebase" in cmd_args and "--abort" not in cmd_args:
+            if "rebase" in cmd_args and "--abort" not in cmd_args:
                 return subprocess.CompletedProcess(
                     args=cmd_args, returncode=1, stdout="", stderr="conflict"
                 )
-            else:
-                # rebase --abort, status --porcelain, etc.
-                return ok
+            # rebase --abort, status --porcelain, etc.
+            return ok
 
         with (
             patch("subprocess.run", side_effect=mock_run),

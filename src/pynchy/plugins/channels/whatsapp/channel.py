@@ -467,7 +467,7 @@ class WhatsAppChannel:
         await self.connect()
 
     def owns_jid(self, jid: str) -> bool:
-        return jid.endswith("@g.us") or jid.endswith("@s.whatsapp.net")
+        return jid.endswith(("@g.us", "@s.whatsapp.net"))
 
     async def fetch_inbound_since(
         self,

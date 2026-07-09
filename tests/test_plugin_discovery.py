@@ -272,8 +272,6 @@ class TestPluginErrors:
         # Pluggy catches signature mismatches
         with pytest.raises(pluggy.PluginValidationError):
             pm.register(BadPlugin(), name="bad-plugin")
-            # Trigger validation by calling the hook
-            pm.hook.pynchy_agent_core_info()
 
     def test_hook_with_no_plugins_still_callable(self):
         """Hooks with no or few implementations are still callable."""

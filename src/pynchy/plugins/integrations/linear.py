@@ -356,7 +356,7 @@ async def _tool_list_todos(
         client,
         _workspace_context(workspace),
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
-        include_done=bool(arguments.get("include_done", False)),
+        include_done=bool(arguments.get("include_done")),
     )
 
 

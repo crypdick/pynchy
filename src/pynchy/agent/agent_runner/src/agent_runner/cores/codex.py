@@ -212,7 +212,9 @@ class CodexCLIAgentCore:
         return proc
 
     async def _write_prompt(self, proc: asyncio.subprocess.Process, prompt: str) -> None:
-        assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+        assert proc.stderr is not None
         proc.stdin.write(self._build_stdin(prompt))
         await proc.stdin.drain()
         proc.stdin.close()

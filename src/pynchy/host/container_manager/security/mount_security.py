@@ -5,7 +5,6 @@ Allowlist location: ~/.config/pynchy/mount-allowlist.toml
 
 from __future__ import annotations
 
-import os
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -177,17 +176,12 @@ def load_mount_allowlist() -> MountAllowlist | None:
 
 def _expand_path(p: str) -> str:
     """Expand ~ to home directory and resolve to absolute path."""
-    home = str(Path.home())
-    if p.startswith("~/"):
-        return os.path.join(home, p[2:])
-    if p == "~":
-        return home
-    return os.path.abspath(p)
+    return str(Path(p).expanduser().resolve())
 
 
 def _matches_blocked_pattern(real_path: str, blocked_patterns: list[str]) -> str | None:
     """Check if a path matches any blocked pattern."""
-    path_parts = real_path.split(os.sep)
+    path_parts = Path(real_path).parts
 
     for pattern in blocked_patterns:
         for part in path_parts:
@@ -201,18 +195,18 @@ def _matches_blocked_pattern(real_path: str, blocked_patterns: list[str]) -> str
 
 def _find_allowed_root(real_path: str, allowed_roots: list[AllowedRoot]) -> AllowedRoot | None:
     """Check if a real path is under an allowed root."""
+    real_path_path = Path(real_path).resolve()
     for root in allowed_roots:
         expanded_root = _expand_path(root.path)
         try:
-            real_root = os.path.realpath(expanded_root)
+            real_root = Path(expanded_root).resolve()
         except OSError:
             continue
 
-        if not os.path.exists(real_root):
+        if not real_root.exists():
             continue
 
-        relative = os.path.relpath(real_path, real_root)
-        if not relative.startswith("..") and not os.path.isabs(relative):
+        if real_path_path.is_relative_to(real_root):
             return root
 
     return None
@@ -237,14 +231,14 @@ class MountValidationResult:
 
 
 def _resolved_container_path(mount: AdditionalMount) -> str:
-    return mount.container_path or os.path.basename(mount.host_path)
+    return mount.container_path or Path(mount.host_path).name
 
 
 def _existing_real_host_path(host_path: str) -> str | None:
     expanded_path = _expand_path(host_path)
-    if not os.path.exists(expanded_path):
+    if not Path(expanded_path).exists():
         return None
-    return os.path.realpath(expanded_path)
+    return str(Path(expanded_path).resolve())
 
 
 def _missing_host_path_reason(host_path: str) -> str:

@@ -124,7 +124,8 @@ class TestPluginTrustExtraction:
         fake_pm = _FakePM(hook)
 
         servers, trust_defaults = collect_plugin_mcp_servers(fake_pm)
-        assert "a" in servers and "b" in servers
+        assert "a" in servers
+        assert "b" in servers
         assert "a" in trust_defaults
         assert "b" not in trust_defaults
         assert trust_defaults["a"].dangerous_writes is True

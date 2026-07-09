@@ -102,7 +102,7 @@ async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
     ts_mod._scheduler_running = False
 
     async def stop_after_poll(delay):
-        raise asyncio.CancelledError()
+        raise asyncio.CancelledError
 
     with (
         patch("pynchy.host.orchestrator.task_scheduler.asyncio.sleep", side_effect=stop_after_poll),
@@ -404,10 +404,10 @@ class TestStartSchedulerLoop:
                 raise RuntimeError("temporal unavailable")
 
             async def __aexit__(self, exc_type, exc, _tb):
-                return None
+                pass
 
         async def stop_on_first_poll(delay):
-            raise asyncio.CancelledError()
+            raise asyncio.CancelledError
 
         with _patch_scheduler_temporal_runtime(FailingTemporalRuntime):
             with pytest.raises(RuntimeError, match="temporal unavailable"):
@@ -436,7 +436,7 @@ class TestStartSchedulerLoop:
             nonlocal sleep_count
             sleep_count += 1
             if sleep_count >= 2:
-                raise asyncio.CancelledError()
+                raise asyncio.CancelledError
 
         with _patch_scheduler_temporal_runtime() as runtime_cls:
             with patch(
@@ -458,11 +458,10 @@ class TestStartSchedulerLoop:
             error_count += 1
             if error_count == 1:
                 raise ValueError("Test error")
-            return None
 
         async def mock_sleep(delay):
             if error_count >= 2:
-                raise asyncio.CancelledError()
+                raise asyncio.CancelledError
 
         with _patch_scheduler_temporal_runtime() as runtime_cls:
             with patch.object(runtime_cls, "reconcile_schedules", side_effect=mock_reconcile):

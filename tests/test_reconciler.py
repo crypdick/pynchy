@@ -72,7 +72,7 @@ def _make_deps(
     return deps
 
 
-@pytest.fixture()
+@pytest.fixture
 async def _db():
     await init_test_database()
     # Seed chat rows for the FK constraint

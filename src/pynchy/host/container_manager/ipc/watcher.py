@@ -120,7 +120,7 @@ async def _process_request_file(
                 f"({envelope.source_group!r} != {source_group!r})"
             )
 
-        if envelope.kind in ("refresh_groups",):
+        if envelope.kind == "refresh_groups":
             await _handle_signal(envelope.kind, source_group, is_admin, deps)
             file_path.unlink()
             return

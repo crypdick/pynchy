@@ -93,7 +93,7 @@ class AskUserSelect(discord.ui.Select["DiscordAskUserView"]):
 
     def __init__(self, *, question: dict[str, Any]) -> None:
         options = question.get("options", [])
-        multi_select = bool(question.get("multiSelect", False))
+        multi_select = bool(question.get("multiSelect"))
         super().__init__(
             custom_id=_SELECT_CUSTOM_ID,
             placeholder=question.get("header") or "Select an answer",

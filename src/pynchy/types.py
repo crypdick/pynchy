@@ -73,7 +73,7 @@ class ContainerConfig:
 
 
 # Tri-state: False (safe), True (risky/gated), "forbidden" (blocked)
-TrustLevel = Literal[False, True, "forbidden"]
+TrustLevel = Literal["forbidden"] | bool
 CapabilityDecision = Literal["allow", "deny", "needs_human"]
 
 

@@ -94,7 +94,7 @@ class TestComputeNextRun:
 
     def test_interval_non_numeric_raises(self):
         """Non-numeric interval should raise ValueError."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="invalid literal"):
             compute_next_run("interval", "abc", "UTC")
 
     def test_once_returns_none(self):

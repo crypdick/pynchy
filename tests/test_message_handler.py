@@ -403,7 +403,7 @@ def _settings_mock(tmp_path, **overrides):
     defaults = {
         "data_dir": tmp_path,
         "learning": LearningConfig(enabled=False),
-        "trigger_pattern": re.compile(".*"),
+        "trigger_pattern": re.compile(r".*"),
         "idle_timeout": 300,
     }
     defaults.update(overrides)
@@ -1183,7 +1183,7 @@ def _loop_settings_mock():
     return make_settings(
         agent=AgentConfig(name="Pynchy"),
         intervals=IntervalsConfig(message_poll=0.0),  # no sleep between iterations
-        trigger_pattern=re.compile(".*"),
+        trigger_pattern=re.compile(r".*"),
     )
 
 

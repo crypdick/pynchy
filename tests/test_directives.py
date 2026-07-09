@@ -10,7 +10,7 @@ from pynchy.config.directives import read_directives
 
 
 class TestReadDirectives:
-    @pytest.fixture()
+    @pytest.fixture
     def directives_dir(self, tmp_path: Path) -> Path:
         d = tmp_path / "directives"
         d.mkdir()
