@@ -23,6 +23,8 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
 
+_LEARNING_REVIEW_CHAT_JID_REQUIRED = "learning reviewer run requires a chat_jid"
+
 
 def learning_review_workflow_id(packet: LearningPacket) -> str:
     """Return the idempotency key for one hidden learning review."""
@@ -99,4 +101,4 @@ def _learning_run_group_jid(args: tuple[Any, ...], kwargs: dict[str, Any]) -> st
     if isinstance(chat_jid, str):
         return chat_jid
 
-    raise TypeError("learning reviewer run requires a chat_jid")
+    raise TypeError(_LEARNING_REVIEW_CHAT_JID_REQUIRED)

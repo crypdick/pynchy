@@ -12,6 +12,8 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 
+_INTERACTIVE_TURN_RETRY_REQUESTED = "Interactive message turn requested retry"
+
 
 def interactive_message_workflow_id(chat_jid: str) -> str:
     """Return the reusable workflow key for one chat's interactive turn worker."""
@@ -25,7 +27,7 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
         handled = await _process_interactive_message_turn(_require_scheduler_deps(), chat_jid)
         if not handled:
             _record_activity_result(chat_jid, "retry_requested")
-            raise RuntimeError("Interactive message turn requested retry")
+            raise RuntimeError(_INTERACTIVE_TURN_RETRY_REQUESTED)
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(chat_jid, "error", str(exc))
         raise

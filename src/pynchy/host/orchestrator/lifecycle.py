@@ -45,11 +45,12 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves lifecyc
 # ---------------------------------------------------------------------------
 
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
+_PLUGIN_MANAGER_NOT_INITIALIZED = "phase 1 (_initialize_core) must run before {phase}"
 
 
 def _require_plugin_manager(app: PynchyApp, phase: str) -> Any:
     if app.plugin_manager is None:
-        raise RuntimeError(f"phase 1 (_initialize_core) must run before {phase}")
+        raise RuntimeError(_PLUGIN_MANAGER_NOT_INITIALIZED.format(phase=phase))
     return app.plugin_manager
 
 

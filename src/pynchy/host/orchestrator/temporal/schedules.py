@@ -40,6 +40,7 @@ HOST_GIT_SYNC_SCHEDULE_ID = "pynchy-git-sync-host"
 CHANNEL_RECONCILIATION_SCHEDULE_ID = "pynchy-channel-reconciliation"
 HOST_GIT_SYNC_INTERVAL_SECONDS = 5
 CHANNEL_RECONCILIATION_INTERVAL_SECONDS = 10
+_UNSUPPORTED_RECURRING_SCHEDULE_TYPE = "Unsupported recurring schedule type: {schedule_type}"
 
 
 def safe_workflow_fragment(value: str) -> str:
@@ -227,7 +228,7 @@ def _recurring_schedule_spec(
         return ScheduleSpec(
             intervals=[ScheduleIntervalSpec(every=timedelta(milliseconds=interval_ms))]
         )
-    raise ValueError(f"Unsupported recurring schedule type: {schedule_type}")
+    raise ValueError(_UNSUPPORTED_RECURRING_SCHEDULE_TYPE.format(schedule_type=schedule_type))
 
 
 def _schedule_policy() -> SchedulePolicy:

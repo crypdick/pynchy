@@ -8,6 +8,8 @@ from typing import Any
 
 from temporalio import activity
 
+_SCHEDULER_DEPS_NOT_BOUND = "Temporal scheduler dependencies are not bound"
+
 
 @dataclass(frozen=True)
 class TemporalSchedulerStatusSnapshot:
@@ -71,5 +73,5 @@ def bind_scheduler_deps(deps: Any | None) -> None:
 
 def _require_scheduler_deps() -> Any:
     if _state.scheduler_deps is None:
-        raise RuntimeError("Temporal scheduler dependencies are not bound")
+        raise RuntimeError(_SCHEDULER_DEPS_NOT_BOUND)
     return _state.scheduler_deps

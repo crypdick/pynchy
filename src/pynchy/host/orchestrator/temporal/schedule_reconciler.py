@@ -48,6 +48,8 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal r
     ScheduledTask,
 )
 
+_TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED = "Temporal scheduler runtime has not been started"
+
 
 async def reconcile_temporal_schedules(
     runtime: Any,
@@ -151,7 +153,7 @@ async def _reconcile_config_cron_schedules(
 def _require_client(runtime: Any) -> Any:
     client = runtime.client
     if client is None:
-        raise RuntimeError("Temporal scheduler runtime has not been started")
+        raise RuntimeError(_TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED)
     return client
 
 
