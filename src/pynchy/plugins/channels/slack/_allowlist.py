@@ -23,6 +23,11 @@ else:
     # forward ref resolves (mypy uses the real type from the branch above).
     SlackChannel = object
 
+_SLACK_APP_NOT_INITIALIZED = "Slack app is not initialized"
+_SLACK_CHANNEL_EXISTS_NOT_FOUND = (
+    "Slack channel '{slack_name}' exists but could not be found via API"
+)
+
 
 class SlackAllowlist:
     """Chat allowlist resolution and channel creation for :class:`SlackChannel`."""
@@ -34,7 +39,7 @@ class SlackAllowlist:
         ch = self._channel
         app = ch.slack_app
         if app is None:
-            raise RuntimeError("Slack app is not initialized")
+            raise RuntimeError(_SLACK_APP_NOT_INITIALIZED)
         return app
 
     def register_allowed_channel(self, name: str, channel_id: str) -> None:
@@ -132,7 +137,7 @@ class SlackAllowlist:
             channel_id = await self._find_channel_by_name(slack_name)
             if channel_id is None:
                 raise RuntimeError(
-                    f"Slack channel '{slack_name}' exists but could not be found via API"
+                    _SLACK_CHANNEL_EXISTS_NOT_FOUND.format(slack_name=slack_name)
                 ) from exc
             # Ensure the bot is a member so it receives events.
             # conversations.join is a no-op if already a member.

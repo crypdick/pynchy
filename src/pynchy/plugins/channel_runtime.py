@@ -21,6 +21,10 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
     WorkspaceProfile,
 )
 
+_DEFAULT_CHANNEL_NOT_FOUND = (
+    "Configured default channel '{wanted}' was not found. Available channels: {available}"
+)
+
 
 @dataclass(frozen=True)
 class ChannelPluginContext:
@@ -80,6 +84,4 @@ def resolve_default_channel(channels: list[Channel]) -> Channel | None:
             return channel
 
     available = sorted(getattr(ch, "name", "?") for ch in channels)
-    raise RuntimeError(
-        f"Configured default channel '{wanted}' was not found. Available channels: {available}"
-    )
+    raise RuntimeError(_DEFAULT_CHANNEL_NOT_FOUND.format(wanted=wanted, available=available))
