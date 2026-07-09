@@ -13,6 +13,12 @@ import importlib
 from .core import AgentCore, AgentCoreConfig
 
 
+_IMPORT_ERROR = "Failed to import agent core module '{module_path}': {exc}"
+_MISSING_CLASS_ERROR = "Module '{module_path}' has no class '{class_name}'"
+_INSTANTIATION_ERROR = "Failed to instantiate {module_path}.{class_name}: {exc}"
+_PROTOCOL_ERROR = "Class {module_path}.{class_name} does not satisfy AgentCore protocol"
+
+
 def create_agent_core(module_path: str, class_name: str, config: AgentCoreConfig) -> AgentCore:
     """Create an agent core instance by importing and instantiating directly.
 
@@ -33,13 +39,15 @@ def create_agent_core(module_path: str, class_name: str, config: AgentCoreConfig
         # Import the module
         module = importlib.import_module(module_path)
     except ImportError as exc:
-        raise ImportError(f"Failed to import agent core module '{module_path}': {exc}") from exc
+        raise ImportError(_IMPORT_ERROR.format(module_path=module_path, exc=exc)) from exc
 
     # Get the class from the module
     try:
         cls = getattr(module, class_name)
     except AttributeError as exc:
-        raise AttributeError(f"Module '{module_path}' has no class '{class_name}'") from exc
+        raise AttributeError(
+            _MISSING_CLASS_ERROR.format(module_path=module_path, class_name=class_name)
+        ) from exc
 
     # Instantiate the core
     try:
@@ -47,10 +55,12 @@ def create_agent_core(module_path: str, class_name: str, config: AgentCoreConfig
     except (
         Exception
     ) as exc:  # allow: exception-handling; instantiation error  # noqa: BLE001, RUF100
-        raise TypeError(f"Failed to instantiate {module_path}.{class_name}: {exc}") from exc
+        raise TypeError(
+            _INSTANTIATION_ERROR.format(module_path=module_path, class_name=class_name, exc=exc)
+        ) from exc
 
     # Runtime protocol check
     if not isinstance(instance, AgentCore):
-        raise TypeError(f"Class {module_path}.{class_name} does not satisfy AgentCore protocol")
+        raise TypeError(_PROTOCOL_ERROR.format(module_path=module_path, class_name=class_name))
 
     return instance
