@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
+from watchdog.events import FileCreatedEvent, FileMovedEvent
 
 from pynchy.host.container_manager.ipc import watcher
 from pynchy.host.container_manager.ipc.protocol import make_ipc_request
@@ -764,8 +765,6 @@ class TestIpcEventHandler:
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
-        from watchdog.events import FileCreatedEvent
-
         # JSON file in expected path — should be queued
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "messages" / "test.json")))
         self._drain(loop)
@@ -785,8 +784,6 @@ class TestIpcEventHandler:
         ipc_dir = tmp_path / "test-ipc"
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
-
-        from watchdog.events import FileCreatedEvent
 
         # File directly in group dir (not a watched IPC subdir) — ignored
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "random.json")))
@@ -813,8 +810,6 @@ class TestIpcEventHandler:
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
 
-        from watchdog.events import FileCreatedEvent
-
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "output" / "001.json")))
         self._drain(loop)
         assert queue.qsize() == 1
@@ -832,8 +827,6 @@ class TestIpcEventHandler:
         ipc_dir = tmp_path / "test-ipc"
 
         handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
-
-        from watchdog.events import FileMovedEvent
 
         handler.on_moved(
             FileMovedEvent(
