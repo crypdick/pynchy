@@ -43,7 +43,7 @@ class LinearQueryClient(Protocol):
     async def list_teams(self) -> list[dict[str, Any]]:
         """Return Linear teams visible to the configured credential."""
 
-    async def query(self, query: str, **variables: Any) -> dict[str, Any]:
+    async def query(self, query: str, **variables: object) -> dict[str, Any]:
         """Run a Linear GraphQL query or mutation."""
 
 
@@ -466,7 +466,7 @@ def _normalize_status(status: str) -> str:
     return key
 
 
-def _norm_name(value: Any) -> str:
+def _norm_name(value: object) -> str:
     return str(value or "").strip().lower()
 
 

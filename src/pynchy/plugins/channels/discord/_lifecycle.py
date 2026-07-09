@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 
@@ -93,5 +93,5 @@ class DiscordLifecycle:
         self._channel.shutting_down = True
 
     # Exposed for symmetry with other channels; discord.py handles retries.
-    def _reconnect_task(self) -> Any:
+    def _reconnect_task(self) -> asyncio.Task[None] | None:
         return self._task

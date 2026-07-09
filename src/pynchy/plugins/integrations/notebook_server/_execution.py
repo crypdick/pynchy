@@ -10,7 +10,7 @@ module stays importable without jupyter_client at type-check time.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from nbformat.v4 import new_notebook
 
@@ -18,10 +18,17 @@ if TYPE_CHECKING:
     from jupyter_client import KernelManager
 
 
+@runtime_checkable
+class _KernelClient(Protocol):
+    def execute(self, code: str) -> str: ...
+
+    def get_iopub_msg(self, timeout: int) -> dict[str, object]: ...
+
+
 class KernelSession:
     """Tracks a running kernel and its associated notebook."""
 
-    def __init__(self, kernel_id: str, km: KernelManager, client: Any, name: str) -> None:
+    def __init__(self, kernel_id: str, km: KernelManager, client: _KernelClient, name: str) -> None:
         self.kernel_id = kernel_id
         self.km = km
         self.client = client  # must already have start_channels() called
@@ -60,7 +67,7 @@ del _w
 """
 
 
-async def execute_code(session: KernelSession, code: str) -> list[dict[str, Any]]:
+async def execute_code(session: KernelSession, code: str) -> list[dict[str, object]]:
     """Execute code on a kernel and collect outputs.
 
     Returns a list of output dicts matching nbformat output schema, suitable
@@ -68,7 +75,7 @@ async def execute_code(session: KernelSession, code: str) -> list[dict[str, Any]
     """
     client = session.client
     msg_id = client.execute(code)
-    outputs: list[dict[str, Any]] = []
+    outputs: list[dict[str, object]] = []
 
     while True:
         try:
@@ -105,7 +112,7 @@ async def execute_code(session: KernelSession, code: str) -> list[dict[str, Any]
                 }
             )
         elif msg_type in ("execute_result", "display_data"):
-            output: dict[str, Any] = {
+            output: dict[str, object] = {
                 "output_type": msg_type,
                 "data": content.get("data", {}),
                 "metadata": content.get("metadata", {}),

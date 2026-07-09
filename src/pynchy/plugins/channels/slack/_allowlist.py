@@ -6,7 +6,7 @@ constructs one of these and delegates its allowlist-related methods to it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.logger import logger
 
@@ -23,6 +23,21 @@ else:
     # forward ref resolves (mypy uses the real type from the branch above).
     SlackChannel = object
 
+
+@runtime_checkable
+class _SlackClient(Protocol):
+    async def conversations_join(self, *, channel: str) -> object: ...
+
+    async def conversations_create(self, *, name: str, is_private: bool) -> dict[str, object]: ...
+
+    async def conversations_list(self, **kwargs: object) -> dict[str, object]: ...
+
+
+@runtime_checkable
+class _SlackApp(Protocol):
+    client: _SlackClient
+
+
 _SLACK_APP_NOT_INITIALIZED = "Slack app is not initialized"
 _SLACK_CHANNEL_EXISTS_NOT_FOUND = (
     "Slack channel '{slack_name}' exists but could not be found via API"
@@ -35,7 +50,7 @@ class SlackAllowlist:
     def __init__(self, channel: SlackChannel) -> None:
         self._channel = channel
 
-    def _require_app(self) -> Any:
+    def _require_app(self) -> _SlackApp:
         ch = self._channel
         app = ch.slack_app
         if app is None:
@@ -159,7 +174,7 @@ class SlackAllowlist:
         app = self._require_app()
         cursor = None
         while True:
-            kwargs: dict[str, Any] = {"types": "public_channel,private_channel", "limit": 200}
+            kwargs: dict[str, object] = {"types": "public_channel,private_channel", "limit": 200}
             if cursor:
                 kwargs["cursor"] = cursor
             resp = await app.client.conversations_list(**kwargs)

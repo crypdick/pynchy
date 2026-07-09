@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pluggy
 
 from .runtime import DockerContainerRuntime
@@ -15,5 +13,5 @@ class DockerRuntimePlugin:
     """Plugin providing Docker container runtime detection."""
 
     @hookimpl
-    def pynchy_container_runtime(self) -> Any | None:
+    def pynchy_container_runtime(self) -> object | None:
         return DockerContainerRuntime()

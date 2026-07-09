@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 _DISCORD_CHANNEL_NAME_EMPTY = "Discord channel name cannot be empty"
 
@@ -12,7 +11,7 @@ def same_name(left: str | None, right: str | None) -> bool:
     return bool(left and right and left.casefold() == right.casefold())
 
 
-def discord_user_names(user: Any) -> set[str]:
+def discord_user_names(user: object) -> set[str]:
     return {
         value
         for value in (

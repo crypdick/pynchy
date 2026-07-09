@@ -7,7 +7,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
@@ -50,6 +50,13 @@ if TYPE_CHECKING:
     import subprocess
 
 
+@runtime_checkable
+class _BrowserPage(Protocol):
+    async def goto(self, url: str, *, wait_until: str) -> object: ...
+
+    async def wait_for_timeout(self, milliseconds: int) -> object: ...
+
+
 @dataclass(frozen=True)
 class _GoogleInteractiveSetup:
     profile_name: str
@@ -59,7 +66,10 @@ class _GoogleInteractiveSetup:
     profile_dir: Path
 
 
-def _check_workspace_access(profile_name: str, source_group: str | None) -> dict[str, Any] | None:
+def _check_workspace_access(
+    profile_name: str,
+    source_group: str | None,
+) -> dict[str, object] | None:
     """Return an error dict if source_group lacks access to profile_name, else None.
 
     Non-admin workspaces can only set up profiles attached to their MCP servers.
@@ -106,7 +116,7 @@ def _resolve_scopes(profile_name: str) -> tuple[str, list[str]]:
 
 def _try_fast_path(
     profile_name: str, kp: Path, cp: Path, api_ids: list[str]
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     """Return an 'already_configured' result if valid tokens already exist, else None."""
     if not (kp.exists() and cp.exists()):
         return None
@@ -134,7 +144,12 @@ def _try_fast_path(
     }
 
 
-async def _ensure_oauth_credentials(page: Any, project_id: str, kp: Path, profile_name: str) -> str:
+async def _ensure_oauth_credentials(
+    page: _BrowserPage,
+    project_id: str,
+    kp: Path,
+    profile_name: str,
+) -> str:
     """Ensure OAuth client credentials exist for profile_name, creating them if missing."""
     if await asyncio.to_thread(kp.exists):
         return "OAuth credentials already exist"
@@ -154,8 +169,8 @@ async def _ensure_oauth_credentials(page: Any, project_id: str, kp: Path, profil
 
 
 async def _run_interactive_setup(
-    profile_name: str, kp: Path, api_ids: list[str], scopes: str, data: dict[str, Any]
-) -> dict[str, Any]:
+    profile_name: str, kp: Path, api_ids: list[str], scopes: str, data: dict[str, object]
+) -> dict[str, object]:
     """Drive the browser through GCP project/API/OAuth setup for profile_name."""
     steps_done: list[str] = []
     setup = _google_interactive_setup(profile_name, kp, api_ids, scopes, data)
@@ -185,7 +200,7 @@ async def _run_interactive_setup_body(
     kp: Path,
     steps_done: list[str],
     novnc_url: str | None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
@@ -235,7 +250,7 @@ def _google_interactive_setup(
     kp: Path,
     api_ids: list[str],
     scopes: str,
-    data: dict[str, Any],
+    data: dict[str, object],
 ) -> _GoogleInteractiveSetup:
     return _GoogleInteractiveSetup(
         profile_name=profile_name,
@@ -250,7 +265,7 @@ def _interactive_success_result(
     setup: _GoogleInteractiveSetup,
     steps_done: list[str],
     novnc_url: str | None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     return _with_optional_novnc_url(
         {
             "status": "ok",
@@ -262,17 +277,20 @@ def _interactive_success_result(
     )
 
 
-def _interactive_error_result(error: str, novnc_url: str | None) -> dict[str, Any]:
+def _interactive_error_result(error: str, novnc_url: str | None) -> dict[str, object]:
     return _with_optional_novnc_url({"error": error}, novnc_url)
 
 
-def _with_optional_novnc_url(payload: dict[str, Any], novnc_url: str | None) -> dict[str, Any]:
+def _with_optional_novnc_url(
+    payload: dict[str, object],
+    novnc_url: str | None,
+) -> dict[str, object]:
     if novnc_url is None:
         return payload
     return {**payload, "novnc_url": novnc_url}
 
 
-async def handle_setup_google(data: dict[str, Any]) -> dict[str, Any]:
+async def handle_setup_google(data: dict[str, object]) -> dict[str, object]:
     """Idempotent Google setup for a chrome profile.
 
     Checks state and does only what's missing:

@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import (
@@ -22,11 +22,15 @@ from pynchy.plugins.integrations.google_setup._paths import (
 
 OAUTH_CALLBACK_HOST = "localhost"
 INVALID_CREDENTIALS_JSON_ERROR = "Invalid credentials JSON"
-TOKEN_EXCHANGE_FAILED_MESSAGE_TEMPLATE = "Token exchange failed: {error}"
 GOOGLE_API_URL_MUST_USE_HTTPS_ERROR = "Google API URL must use https"
 OAUTH_CALLBACK_TIMEOUT_ERROR = (
     "OAuth callback not received within 5 minutes. Make sure you clicked 'Allow' in the browser."
 )
+
+
+def _token_exchange_failure_message(error: object) -> str:
+    return f"Token exchange failed: {error}"
+
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -34,7 +38,9 @@ else:
     try:
         from playwright.async_api import Page
     except ImportError:
-        Page = Any
+        @runtime_checkable
+        class Page(Protocol):
+            async def goto(self, url: str, *, wait_until: str) -> object: ...
 
 
 def parse_client_credentials(kp: Path) -> tuple[str, str]:
@@ -90,7 +96,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
     return done, auth_codes, server
 
 
-def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> dict[str, Any]:
+def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> dict[str, object]:
     """Exchange the authorization code for access + refresh tokens."""
     data = urllib.parse.urlencode(
         {
@@ -108,12 +114,10 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     with urlopen_https_request(req) as resp:
-        tokens: dict[str, Any] = json.loads(resp.read())
+        tokens: dict[str, object] = json.loads(resp.read())
 
     if "error" in tokens:
-        raise RuntimeError(
-            TOKEN_EXCHANGE_FAILED_MESSAGE_TEMPLATE.format(error=tokens["error"])
-        )
+        raise RuntimeError(_token_exchange_failure_message(tokens["error"]))
 
     # Add expiry_date (ms) as expected by the googleapis Node.js client
     if "expires_in" in tokens:
@@ -122,14 +126,14 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
     return tokens
 
 
-def urlopen_https_request(req: urllib.request.Request) -> Any:
+def urlopen_https_request(req: urllib.request.Request) -> object:
     scheme = urllib.parse.urlsplit(req.full_url).scheme.lower()
     if scheme != "https":
         raise RuntimeError(GOOGLE_API_URL_MUST_USE_HTTPS_ERROR)
     return urllib.request.urlopen(req)  # noqa: S310, RUF100 - scheme is constrained above.
 
 
-def save_credentials_to_profile(tokens: dict[str, Any], profile_name: str) -> Path:
+def save_credentials_to_profile(tokens: dict[str, object], profile_name: str) -> Path:
     """Write credentials.json to the chrome profile directory."""
     dest = credentials_path(profile_name)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +147,7 @@ def save_credentials_to_profile(tokens: dict[str, Any], profile_name: str) -> Pa
     return dest
 
 
-async def run_oauth_flow(page: Page, kp: Path, scopes: str) -> dict[str, Any]:
+async def run_oauth_flow(page: Page, kp: Path, scopes: str) -> dict[str, object]:
     """Run the OAuth consent + token exchange flow."""
     client_id, client_secret = parse_client_credentials(kp)
     done_event, auth_codes, callback_server = start_callback_server()
