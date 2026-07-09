@@ -21,6 +21,12 @@ XVFB_DISPLAY = ":99"
 _VNC_PORT = 5999
 _NOVNC_PORT = 6080
 _NOVNC_WEB_DIR = "/usr/share/novnc"
+_PROCESS_EXITED_IMMEDIATELY = "{name} exited immediately (code {code})"
+_XVFB_NOT_INSTALLED = (
+    "No display available and Xvfb not installed. X automation requires "
+    "headed mode to avoid bot detection. Install with: apt install xvfb"
+)
+_VNC_REQUIREMENTS_MISSING = "VNC layer requires: {missing}. Install with: apt install x11vnc novnc"
 
 
 @dataclass(slots=True)
@@ -77,7 +83,9 @@ def _start_vnc_layer_processes(
         stack.callback(stop_procs, procs)
         time.sleep(0.5)
         if x11vnc.poll() is not None:
-            raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
+            raise RuntimeError(
+                _PROCESS_EXITED_IMMEDIATELY.format(name="x11vnc", code=x11vnc.returncode)
+            )
 
         ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
@@ -90,7 +98,12 @@ def _start_vnc_layer_processes(
         procs.append(websockify_proc)
         time.sleep(0.5)
         if websockify_proc.poll() is not None:
-            raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
+            raise RuntimeError(
+                _PROCESS_EXITED_IMMEDIATELY.format(
+                    name="websockify",
+                    code=websockify_proc.returncode,
+                )
+            )
         stack.pop_all()
     return procs
 
@@ -110,10 +123,7 @@ def ensure_xvfb() -> None:
     try:
         xvfb_path = _resolve_executable("Xvfb")
     except RuntimeError as exc:
-        raise RuntimeError(
-            "No display available and Xvfb not installed. X automation requires "
-            "headed mode to avoid bot detection. Install with: apt install xvfb"
-        ) from exc
+        raise RuntimeError(_XVFB_NOT_INSTALLED) from exc
     _state.xvfb_proc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved Xvfb path.
         [xvfb_path, XVFB_DISPLAY, "-screen", "0", "1280x720x24"],
         stdout=subprocess.DEVNULL,
@@ -123,7 +133,7 @@ def ensure_xvfb() -> None:
     if _state.xvfb_proc.poll() is not None:
         code = _state.xvfb_proc.returncode
         _state.xvfb_proc = None
-        raise RuntimeError(f"Xvfb exited immediately (code {code})")
+        raise RuntimeError(_PROCESS_EXITED_IMMEDIATELY.format(name="Xvfb", code=code))
     os.environ["DISPLAY"] = XVFB_DISPLAY
 
 
@@ -135,9 +145,7 @@ def start_vnc_layer() -> tuple[list[subprocess.Popen[bytes]], str]:
     try:
         tool_paths = _resolve_executables("x11vnc", "websockify")
     except RuntimeError as exc:
-        raise RuntimeError(
-            f"VNC layer requires: {exc}. Install with: apt install x11vnc novnc"
-        ) from exc
+        raise RuntimeError(_VNC_REQUIREMENTS_MISSING.format(missing=exc)) from exc
     procs = _start_vnc_layer_processes(tool_paths)
     return procs, f"http://HOST:{_NOVNC_PORT}/vnc.html?autoconnect=true"
 
