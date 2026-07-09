@@ -42,7 +42,7 @@ class DiscordLifecycle:
 
     async def connect(self) -> None:
         ch = self._channel
-        ch._shutting_down = False
+        ch.shutting_down = False
         client = discord.Client(intents=_intents())
         ch.client = client
         ch.events.register()
@@ -50,14 +50,14 @@ class DiscordLifecycle:
         @client.event
         async def on_ready() -> None:  # noqa: RUF029, RUF100 - discord.py event callbacks are async.
             ch.bot_user_id = str(client.user.id) if client.user else ""
-            ch._connected = True
+            ch.connected = True
             logger.info("Connected to Discord", connection=ch.name, bot_user_id=ch.bot_user_id)
 
         self._task = asyncio.ensure_future(self._run(client))
 
     async def _run(self, client: discord.Client) -> None:
         try:
-            await client.start(self._channel._bot_token)
+            await client.start(self._channel.bot_token)
         except asyncio.CancelledError:
             raise
         except discord.DiscordException as exc:
@@ -66,16 +66,16 @@ class DiscordLifecycle:
             # to crash an orphaned task; the host watchdog drives reconnect.
             logger.warning("Discord client stopped", connection=self._channel.name, err=str(exc))
         finally:
-            self._channel._connected = False
+            self._channel.connected = False
 
     def is_connected(self) -> bool:
         ch = self._channel
-        return ch._connected and self._task is not None and not self._task.done()
+        return ch.connected and self._task is not None and not self._task.done()
 
     async def disconnect(self) -> None:
         ch = self._channel
-        ch._shutting_down = True
-        ch._connected = False
+        ch.shutting_down = True
+        ch.connected = False
         if ch.client is not None:
             await ch.client.close()
         if self._task is not None:
@@ -90,7 +90,7 @@ class DiscordLifecycle:
         await self.connect()
 
     def prepare_shutdown(self) -> None:
-        self._channel._shutting_down = True
+        self._channel.shutting_down = True
 
     # Exposed for symmetry with other channels; discord.py handles retries.
     def _reconnect_task(self) -> Any:

@@ -97,6 +97,26 @@ class DiscordChannel:
     def config(self) -> Any:
         return self._config
 
+    @property
+    def bot_token(self) -> str:
+        return self._bot_token
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    @connected.setter
+    def connected(self, value: bool) -> None:
+        self._connected = value
+
+    @property
+    def shutting_down(self) -> bool:
+        return self._shutting_down
+
+    @shutting_down.setter
+    def shutting_down(self, value: bool) -> None:
+        self._shutting_down = value
+
     # ------------------------------------------------------------------
     # Lifecycle — delegated
     # ------------------------------------------------------------------
