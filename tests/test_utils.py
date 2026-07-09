@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 
@@ -61,8 +62,6 @@ class TestComputeNextRun:
 
     def test_cron_returns_future_timestamp(self):
         """Cron schedules should produce a future ISO timestamp."""
-        from datetime import datetime
-
         result = compute_next_run("cron", "0 9 * * *", "UTC")
         assert result is not None
         parsed = datetime.fromisoformat(result)
@@ -75,8 +74,6 @@ class TestComputeNextRun:
 
     def test_interval_returns_future_timestamp(self):
         """Interval schedules produce a timestamp ~interval ms in the future."""
-        from datetime import UTC, datetime
-
         result = compute_next_run("interval", "3600000", "UTC")  # 1 hour
         assert result is not None
         parsed = datetime.fromisoformat(result)
@@ -112,8 +109,6 @@ class TestComputeNextRun:
         assert utc_result is not None
         assert est_result is not None
         # Both should be valid ISO timestamps
-        from datetime import datetime
-
         datetime.fromisoformat(utc_result)
         datetime.fromisoformat(est_result)
 
@@ -124,8 +119,6 @@ class TestComputeNextRun:
         UTC timestamps in SQLite's lexicographic comparison, causing tasks to
         appear perpetually due.
         """
-        from datetime import UTC, datetime
-
         result = compute_next_run("cron", "0 4 * * *", "America/Los_Angeles")
         assert result is not None
         parsed = datetime.fromisoformat(result)
@@ -139,8 +132,6 @@ class TestComputeNextRun:
 
     def test_interval_returns_utc(self):
         """Interval next_run must be in UTC."""
-        from datetime import datetime
-
         result = compute_next_run("interval", "3600000", "America/Los_Angeles")
         assert result is not None
         parsed = datetime.fromisoformat(result)
