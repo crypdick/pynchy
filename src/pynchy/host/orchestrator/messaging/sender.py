@@ -151,7 +151,7 @@ def resolve_target_jid(chat_jid: str, channel: Channel) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def broadcast(
+async def broadcast(  # noqa: PLR0913, RUF100 - outbound bus keeps the full routing/broadcast contract explicit.
     deps: BusDeps,
     chat_jid: str,
     event: OutboundEvent,

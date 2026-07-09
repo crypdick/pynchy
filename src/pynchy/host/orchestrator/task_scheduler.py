@@ -41,7 +41,7 @@ class SchedulerDependencies(Protocol):
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
 
-    async def run_agent(
+    async def run_agent(  # noqa: PLR0913, RUF100 - scheduler protocol preserves the full agent execution contract.
         self,
         group: WorkspaceProfile,
         chat_jid: str,

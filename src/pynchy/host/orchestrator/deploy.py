@@ -55,7 +55,7 @@ def build_container_image(*, timeout: int = 600) -> BuildResult:
     return BuildResult(success=True)
 
 
-async def finalize_deploy(
+async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry the full restart contract explicitly.
     *,
     broadcast_host_message: Callable[[str, str], Awaitable[None]],
     chat_jid: str,

@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves inbound routing annotations at runtime.
 )
+from dataclasses import dataclass
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.pipeline import (
@@ -155,7 +156,14 @@ async def _route_pending_messages(
     if deps.queue.is_active_task(group_jid):
         logger.info("route_trace", step="active_task_forward", group=group.name)
         await _handle_message_during_task(
-            deps, group_jid, group, formatted, last_content, is_btw=is_btw
+            _TaskDuringScheduleRequest(
+                deps=deps,
+                group_jid=group_jid,
+                group=group,
+                formatted=formatted,
+                last_content=last_content,
+                is_btw=is_btw,
+            )
         )
         return
 
@@ -215,22 +223,24 @@ async def _start_new_interactive_turn(
     await deps.start_interactive_turn(group_jid)
 
 
-async def _handle_message_during_task(
-    deps: MessageHandlerDeps,
-    group_jid: str,
-    group: WorkspaceProfile,
-    formatted: str,
-    last_content: str,
-    *,
-    is_btw: bool,
-) -> None:
+@dataclass(frozen=True)
+class _TaskDuringScheduleRequest:
+    deps: MessageHandlerDeps
+    group_jid: str
+    group: WorkspaceProfile
+    formatted: str
+    last_content: str
+    is_btw: bool
+
+
+async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> None:
     """Handle an incoming message when a scheduled task is running.
 
     "btw" messages are forwarded non-interruptingly via IPC.  Todo items
     are written directly to the group's todo list.  All other messages
     interrupt the running task.
     """
-    if is_btw:
+    if request.is_btw:
         # Non-interrupting — best-effort forward to the running container
         # via IPC.  The cursor is NOT advanced: the container may never
         # read the IPC file (e.g. the agent calls finished_work() before
@@ -238,13 +248,13 @@ async def _handle_message_during_task(
         # _drain_group reprocesses them after the task exits.
         from pynchy.types import OutboundEvent, OutboundEventType
 
-        deps.queue.send_message(group_jid, formatted)
-        msg = f"\u00bb [Forwarded] {last_content[:500]}"
-        await deps.broadcast_to_channels(
-            group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
+        request.deps.queue.send_message(request.group_jid, request.formatted)
+        msg = f"\u00bb [Forwarded] {request.last_content[:500]}"
+        await request.deps.broadcast_to_channels(
+            request.group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
         )
-        deps.queue.enqueue_message_check(group_jid)
-    elif last_content.lower().startswith("todo "):
+        request.deps.queue.enqueue_message_check(request.group_jid)
+    elif request.last_content.lower().startswith("todo "):
         # Non-interrupting — host writes directly to todos.json, then
         # notifies agent via IPC.
         #
@@ -259,24 +269,24 @@ async def _handle_message_during_task(
         from pynchy.host.orchestrator.todos import add_todo
         from pynchy.plugins.integrations.linear_boot import create_linear_workspace_todo
 
-        item = last_content[5:]  # strip "todo " prefix
-        add_todo(group.folder, item)
-        await create_linear_workspace_todo(group, item)
-        deps.queue.send_message(
-            group_jid,
+        item = request.last_content[5:]  # strip "todo " prefix
+        add_todo(request.group.folder, item)
+        await create_linear_workspace_todo(request.group, item)
+        request.deps.queue.send_message(
+            request.group_jid,
             "[System notice \u2014 no response needed] "
             f"User added a todo item to your list: {item}",
         )
         # Same as "btw ": don't advance cursor, mark pending so drain
         # reprocesses.
-        deps.queue.enqueue_message_check(group_jid)
+        request.deps.queue.enqueue_message_check(request.group_jid)
     else:
         # Interrupting — kill the task, process messages after it dies.
-        deps.queue.clear_pending_tasks(group_jid)
-        deps.queue.enqueue_message_check(group_jid)
+        request.deps.queue.clear_pending_tasks(request.group_jid)
+        request.deps.queue.enqueue_message_check(request.group_jid)
         create_background_task(
-            deps.queue.stop_active_process(group_jid),
-            name=f"interrupt-stop-{group_jid[:20]}",
+            request.deps.queue.stop_active_process(request.group_jid),
+            name=f"interrupt-stop-{request.group_jid[:20]}",
         )
 
 

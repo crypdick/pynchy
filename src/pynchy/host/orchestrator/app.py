@@ -153,7 +153,7 @@ class PynchyApp:
     ) -> None:
         await output_handler.broadcast_agent_input(self, chat_jid, messages, source=source)
 
-    async def run_agent(
+    async def run_agent(  # noqa: PLR0913, RUF100 - protocol-facing orchestration entry point keeps the full dependency contract explicit.
         self,
         group: WorkspaceProfile,
         chat_jid: str,

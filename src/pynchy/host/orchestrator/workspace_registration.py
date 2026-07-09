@@ -46,7 +46,7 @@ def _workspace_security(
     return WorkspaceSecurity(services=services, contains_secrets=resolved.contains_secrets)
 
 
-async def ensure_workspace_registered(
+async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration boundary keeps the full workspace creation contract explicit.
     folder: str,
     config: WorkspaceConfig,
     resolved: ResolvedWorkspaceConfig,
@@ -115,7 +115,7 @@ def _workspace_creation_channel(channels: list[Channel], command_center: str | N
     )
 
 
-async def sync_workspace_profile(
+async def sync_workspace_profile(  # noqa: PLR0913, RUF100 - sync boundary mirrors the stored workspace profile update contract.
     jid: str | None,
     workspaces: dict[str, WorkspaceProfile],
     folder: str,

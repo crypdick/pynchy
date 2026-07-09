@@ -42,7 +42,7 @@ def _pending_questions_dir(source_group: str) -> Path:
 # -- State operations ----------------------------------------------------------
 
 
-def create_pending_question(
+def create_pending_question(  # noqa: PLR0913, RUF100 - file-backed pending-question payload mirrors the channel callback contract.
     request_id: str,
     source_group: str,
     chat_jid: str,

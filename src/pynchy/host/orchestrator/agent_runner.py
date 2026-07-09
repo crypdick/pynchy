@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
@@ -71,6 +72,28 @@ class AgentRunnerDeps(Protocol):
     async def broadcast_agent_input(
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None: ...
+
+
+@dataclass(frozen=True)
+class _SpawnAndAwaitRequest:
+    deps: AgentRunnerDeps
+    group: WorkspaceProfile
+    chat_jid: str
+    input_data: ContainerInput
+    container_name: str
+    ctx: _PreContainerResult
+    idle_timeout: float
+    label: str
+
+
+@dataclass(frozen=True)
+class _WarmQueryRequest:
+    deps: AgentRunnerDeps
+    group: WorkspaceProfile
+    chat_jid: str
+    session: ContainerSession
+    messages: list[dict[str, Any]]
+    ctx: _PreContainerResult
 
 
 # ---------------------------------------------------------------------------
@@ -192,17 +215,7 @@ async def _await_query(
 # ---------------------------------------------------------------------------
 
 
-async def _spawn_and_await(
-    deps: AgentRunnerDeps,
-    group: WorkspaceProfile,
-    chat_jid: str,
-    input_data: ContainerInput,
-    container_name: str,
-    ctx: _PreContainerResult,
-    *,
-    idle_timeout: float,
-    label: str,
-) -> str:
+async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
     """Spawn a container, create a session, and wait for the query to complete.
 
     Shared by _cold_start and _run_scheduled_task to avoid duplicating the
@@ -210,24 +223,31 @@ async def _spawn_and_await(
     """
     try:
         proc, container_name, _mounts = await _spawn_container(
-            group, input_data, container_name, deps.plugin_manager
+            request.group,
+            request.input_data,
+            request.container_name,
+            request.deps.plugin_manager,
         )
     except OSError as exc:
-        logger.error("Failed to spawn container", error=str(exc), container=container_name)
+        logger.error("Failed to spawn container", error=str(exc), container=request.container_name)
         return "error"
 
     session = await create_session(
-        group.folder,
+        request.group.folder,
         container_name,
         proc,
-        idle_timeout_override=idle_timeout,
+        idle_timeout_override=request.idle_timeout,
     )
-    deps.queue.register_process(
-        chat_jid, proc, container_name, group.folder, input_data.invocation_ts
+    request.deps.queue.register_process(
+        request.chat_jid,
+        proc,
+        container_name,
+        request.group.folder,
+        request.input_data.invocation_ts,
     )
-    session.set_output_handler(ctx.wrapped_on_output)
+    session.set_output_handler(request.ctx.wrapped_on_output)
 
-    return await _await_query(session, group, ctx.config_timeout, label)
+    return await _await_query(session, request.group, request.ctx.config_timeout, request.label)
 
 
 # ---------------------------------------------------------------------------
@@ -235,33 +255,33 @@ async def _spawn_and_await(
 # ---------------------------------------------------------------------------
 
 
-async def _warm_query(
-    deps: AgentRunnerDeps,
-    group: WorkspaceProfile,
-    chat_jid: str,
-    session: ContainerSession,
-    messages: list[dict[str, Any]],
-    ctx: _PreContainerResult,
-) -> str:
+async def _warm_query(request: _WarmQueryRequest) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
     # Ensure MCP servers are running (they may have stopped since last query)
     from pynchy.host.container_manager.mcp.manager import get_mcp_manager
 
     mcp_mgr = get_mcp_manager()
     if mcp_mgr is not None:
-        await mcp_mgr.ensure_workspace_running(group.folder)
+        await mcp_mgr.ensure_workspace_running(request.group.folder)
 
     # Register the session's process so send_message() works for follow-ups
-    deps.queue.register_process(chat_jid, session.proc, session.container_name, group.folder)
+    request.deps.queue.register_process(
+        request.chat_jid,
+        request.session.proc,
+        request.session.container_name,
+        request.group.folder,
+    )
 
     # Set output handler and format messages
-    session.set_output_handler(ctx.wrapped_on_output)
-    formatted = _format_messages_for_ipc(messages, ctx.system_notices or None)
+    request.session.set_output_handler(request.ctx.wrapped_on_output)
+    formatted = _format_messages_for_ipc(request.messages, request.ctx.system_notices or None)
 
     # Send via IPC
-    await session.send_ipc_message(formatted)
+    await request.session.send_ipc_message(formatted)
 
-    return await _await_query(session, group, ctx.config_timeout, "warm query")
+    return await _await_query(
+        request.session, request.group, request.ctx.config_timeout, "warm query"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -291,14 +311,16 @@ async def _cold_start(
     idle_timeout = get_settings().idle_timeout
 
     return await _spawn_and_await(
-        deps,
-        group,
-        chat_jid,
-        input_data,
-        container_name,
-        ctx,
-        idle_timeout=idle_timeout,
-        label="cold start",
+        _SpawnAndAwaitRequest(
+            deps=deps,
+            group=group,
+            chat_jid=chat_jid,
+            input_data=input_data,
+            container_name=container_name,
+            ctx=ctx,
+            idle_timeout=idle_timeout,
+            label="cold start",
+        )
     )
 
 
@@ -307,7 +329,7 @@ async def _cold_start(
 # ---------------------------------------------------------------------------
 
 
-async def run_agent(
+async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point preserves the full dependency contract.
     deps: AgentRunnerDeps,
     group: WorkspaceProfile,
     chat_jid: str,
@@ -340,15 +362,17 @@ async def run_agent(
 
     # Pre-container setup is shared by all paths (warm, cold, scheduled).
     ctx = await _pre_container_setup(
-        deps,
-        group,
-        chat_jid,
-        messages,
-        on_output,
-        extra_system_notices,
-        input_source,
-        is_scheduled_task=is_scheduled_task,
-        repo_access_override=repo_access_override,
+        _preflight._PreContainerSetupRequest(
+            deps=deps,
+            group=group,
+            chat_jid=chat_jid,
+            messages=messages,
+            on_output=on_output,
+            extra_system_notices=extra_system_notices,
+            input_source=input_source,
+            is_scheduled_task=is_scheduled_task,
+            repo_access_override=repo_access_override,
+        )
     )
 
     # --- Scheduled tasks: one-shot container, no persistent session ---
@@ -377,7 +401,16 @@ async def run_agent(
 
     try:
         if session is not None and session.is_alive:
-            return await _warm_query(deps, group, chat_jid, session, messages, ctx)
+            return await _warm_query(
+                _WarmQueryRequest(
+                    deps=deps,
+                    group=group,
+                    chat_jid=chat_jid,
+                    session=session,
+                    messages=messages,
+                    ctx=ctx,
+                )
+            )
         return await _cold_start(deps, group, chat_jid, messages, ctx)
     except Exception:  # noqa: BLE001, RUF100 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
@@ -410,14 +443,16 @@ async def _run_scheduled_task(
 
     try:
         return await _spawn_and_await(
-            deps,
-            group,
-            chat_jid,
-            input_data,
-            container_name,
-            ctx,
-            idle_timeout=get_settings().idle_timeout,
-            label="scheduled task",
+            _SpawnAndAwaitRequest(
+                deps=deps,
+                group=group,
+                chat_jid=chat_jid,
+                input_data=input_data,
+                container_name=container_name,
+                ctx=ctx,
+                idle_timeout=get_settings().idle_timeout,
+                label="scheduled task",
+            )
         )
     except asyncio.CancelledError:
         # Deploy SIGTERM — preserve session for resume on restart.

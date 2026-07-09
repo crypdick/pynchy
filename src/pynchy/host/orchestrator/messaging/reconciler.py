@@ -7,6 +7,7 @@ the canonical JID are skipped.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
@@ -40,6 +41,26 @@ _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 
 # Module-level cooldown state (survives across calls within a process)
 _last_reconciled: dict[tuple[str, str], datetime] = {}
+
+
+@dataclass(frozen=True)
+class _ReconcileInboundRequest:
+    ch: Channel
+    canonical_jid: str
+    target_jid: str
+    group: WorkspaceProfile | None
+    inbound_cursor: str
+    deps: ReconcilerDeps
+
+
+@dataclass(frozen=True)
+class _AdvancePairCursorsRequest:
+    channel_name: str
+    canonical_jid: str
+    inbound_cursor: str
+    new_inbound_cursor: str
+    outbound_cursor: str
+    new_outbound_cursor: str
 
 
 @runtime_checkable
@@ -84,14 +105,7 @@ def _should_skip_pair(
     return now - _last_reconciled.get(key, _EPOCH) < RECONCILE_COOLDOWN
 
 
-async def _reconcile_inbound(
-    ch: Channel,
-    canonical_jid: str,
-    target_jid: str,
-    group: WorkspaceProfile | None,
-    inbound_cursor: str,
-    deps: ReconcilerDeps,
-) -> tuple[str, int] | None:
+async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, int] | None:
     """Fetch and ingest missed inbound messages.
 
     Returns (new_inbound_cursor, recovered_count), or None if the fetch itself
@@ -101,11 +115,13 @@ async def _reconcile_inbound(
     logger.debug(
         "reconciler_trace",
         step="fetch_inbound",
-        channel=ch.name,
-        jid=canonical_jid,
-        cursor=inbound_cursor[:30] if inbound_cursor else "none",
+        channel=request.ch.name,
+        jid=request.canonical_jid,
+        cursor=request.inbound_cursor[:30] if request.inbound_cursor else "none",
     )
-    result = await _fetch_inbound_result(ch, target_jid, canonical_jid, inbound_cursor)
+    result = await _fetch_inbound_result(
+        request.ch, request.target_jid, request.canonical_jid, request.inbound_cursor
+    )
     if result is None:
         return None
 
@@ -113,32 +129,31 @@ async def _reconcile_inbound(
     logger.debug(
         "reconciler_trace",
         step="fetch_result",
-        channel=ch.name,
-        jid=canonical_jid,
+        channel=request.ch.name,
+        jid=request.canonical_jid,
         msg_count=len(remote_messages),
         high_water_mark=result.high_water_mark[:30] if result.high_water_mark else "none",
     )
     # Seed with high-water mark so the cursor advances past bot-only
     # pages even when no user messages are found.
     new_inbound_cursor = (
-        result.high_water_mark if result.high_water_mark > inbound_cursor else inbound_cursor
+        result.high_water_mark
+        if result.high_water_mark > request.inbound_cursor
+        else request.inbound_cursor
     )
     new_inbound_cursor, recovered = await _ingest_remote_messages(
-        ch,
-        canonical_jid,
-        group,
+        request,
         remote_messages,
         new_inbound_cursor,
-        deps,
     )
 
     logger.debug(
         "reconciler_trace",
         step="cursor_advance",
-        jid=canonical_jid,
-        old_cursor=inbound_cursor[:30] if inbound_cursor else "none",
+        jid=request.canonical_jid,
+        old_cursor=request.inbound_cursor[:30] if request.inbound_cursor else "none",
         new_cursor=new_inbound_cursor[:30] if new_inbound_cursor else "none",
-        will_advance=new_inbound_cursor != inbound_cursor,
+        will_advance=new_inbound_cursor != request.inbound_cursor,
     )
     return new_inbound_cursor, recovered
 
@@ -159,44 +174,35 @@ async def _fetch_inbound_result(
 
 
 async def _ingest_remote_messages(
-    ch: Channel,
-    canonical_jid: str,
-    group: WorkspaceProfile | None,
+    request: _ReconcileInboundRequest,
     remote_messages: list[NewMessage],
     new_inbound_cursor: str,
-    deps: ReconcilerDeps,
 ) -> tuple[str, int]:
     recovered = 0
     for msg in remote_messages:
         new_inbound_cursor, did_recover = await _ingest_remote_message(
-            ch,
-            canonical_jid,
-            group,
+            request,
             msg,
             new_inbound_cursor,
-            deps,
         )
         recovered += int(did_recover)
     return new_inbound_cursor, recovered
 
 
 async def _ingest_remote_message(
-    ch: Channel,
-    canonical_jid: str,
-    group: WorkspaceProfile | None,
+    request: _ReconcileInboundRequest,
     msg: NewMessage,
     new_inbound_cursor: str,
-    deps: ReconcilerDeps,
 ) -> tuple[str, bool]:
     from pynchy.config.access import filter_allowed_messages
 
     # Remap chat_jid to canonical (the channel returned channel-native JIDs)
-    msg.chat_jid = canonical_jid
-    exists = await message_exists(msg.id, canonical_jid)
+    msg.chat_jid = request.canonical_jid
+    exists = await message_exists(msg.id, request.canonical_jid)
     logger.debug(
         "reconciler_trace",
         step="msg_check",
-        jid=canonical_jid,
+        jid=request.canonical_jid,
         msg_id=msg.id,
         msg_ts=msg.timestamp[:30] if msg.timestamp else "none",
         exists=exists,
@@ -205,15 +211,18 @@ async def _ingest_remote_message(
     if exists:
         return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
 
-    if not filter_allowed_messages([msg], group, ch.name):
+    if not filter_allowed_messages([msg], request.group, request.ch.name):
         logger.debug(
-            "reconciler_skip_sender", channel=ch.name, jid=canonical_jid, sender=msg.sender
+            "reconciler_skip_sender",
+            channel=request.ch.name,
+            jid=request.canonical_jid,
+            sender=msg.sender,
         )
         return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), False
 
-    logger.debug("reconciler_trace", step="ingesting", jid=canonical_jid, msg_id=msg.id)
-    await deps._ingest_user_message(msg, source_channel=ch.name)
-    await deps.start_interactive_turn(canonical_jid)
+    logger.debug("reconciler_trace", step="ingesting", jid=request.canonical_jid, msg_id=msg.id)
+    await request.deps._ingest_user_message(msg, source_channel=request.ch.name)
+    await request.deps.start_interactive_turn(request.canonical_jid)
     return _advance_inbound_cursor(new_inbound_cursor, msg.timestamp), True
 
 
@@ -306,7 +315,14 @@ async def _reconcile_channel_pair(
 
     inbound_cursor = await _inbound_cursor(ch.name, canonical_jid, now)
     inbound_result = await _reconcile_inbound(
-        ch, canonical_jid, target_jid, group, inbound_cursor, deps
+        _ReconcileInboundRequest(
+            ch=ch,
+            canonical_jid=canonical_jid,
+            target_jid=target_jid,
+            group=group,
+            inbound_cursor=inbound_cursor,
+            deps=deps,
+        )
     )
     if inbound_result is None:
         return None
@@ -319,12 +335,14 @@ async def _reconcile_channel_pair(
         ch, canonical_jid, target_jid, outbound_cursor
     )
     await _advance_pair_cursors(
-        ch.name,
-        canonical_jid,
-        inbound_cursor=inbound_cursor,
-        new_inbound_cursor=new_inbound_cursor,
-        outbound_cursor=outbound_cursor,
-        new_outbound_cursor=new_outbound_cursor,
+        _AdvancePairCursorsRequest(
+            channel_name=ch.name,
+            canonical_jid=canonical_jid,
+            inbound_cursor=inbound_cursor,
+            new_inbound_cursor=new_inbound_cursor,
+            outbound_cursor=outbound_cursor,
+            new_outbound_cursor=new_outbound_cursor,
+        )
     )
     _last_reconciled[ch.name, canonical_jid] = now
     return pair_recovered, pair_retried
@@ -344,20 +362,20 @@ async def _inbound_cursor(channel_name: str, canonical_jid: str, now: datetime) 
     return (now - _INITIAL_LOOKBACK).isoformat()
 
 
-async def _advance_pair_cursors(
-    channel_name: str,
-    canonical_jid: str,
-    *,
-    inbound_cursor: str,
-    new_inbound_cursor: str,
-    outbound_cursor: str,
-    new_outbound_cursor: str,
-) -> None:
+async def _advance_pair_cursors(request: _AdvancePairCursorsRequest) -> None:
     await advance_cursors_atomic(
-        ChannelName(channel_name),
-        ChatJid(canonical_jid),
-        inbound=new_inbound_cursor if new_inbound_cursor != inbound_cursor else None,
-        outbound=new_outbound_cursor if new_outbound_cursor != outbound_cursor else None,
+        ChannelName(request.channel_name),
+        ChatJid(request.canonical_jid),
+        inbound=(
+            request.new_inbound_cursor
+            if request.new_inbound_cursor != request.inbound_cursor
+            else None
+        ),
+        outbound=(
+            request.new_outbound_cursor
+            if request.new_outbound_cursor != request.outbound_cursor
+            else None
+        ),
     )
 
 

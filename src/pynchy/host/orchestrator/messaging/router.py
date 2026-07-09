@@ -10,6 +10,7 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -90,6 +91,16 @@ _last_tool_name: dict[str, str] = {}
 # Channel broadcast truncation threshold for tool results.
 # Full content is always persisted to DB; only the channel broadcast is truncated.
 _MAX_TOOL_OUTPUT = 4000
+
+
+@dataclass(frozen=True)
+class _FinalResultRequest:
+    deps: OutputDeps
+    chat_jid: str
+    group: WorkspaceProfile
+    result: ContainerOutput
+    ts: str
+    stream_state: StreamState | None
 
 
 def _truncate_output(content: str) -> str:
@@ -325,24 +336,21 @@ async def _handle_result_metadata(deps: OutputDeps, chat_jid: str, meta: dict[st
     )
 
 
-async def _handle_final_result(
-    deps: OutputDeps,
-    chat_jid: str,
-    group: WorkspaceProfile,
-    result: ContainerOutput,
-    ts: str,
-    stream_state: StreamState | None,
-) -> bool:
+async def _handle_final_result(request: _FinalResultRequest) -> bool:
     """Handle the final result event — store, broadcast, and emit.
 
     Returns True if a user-visible result was sent.
     """
     from pynchy.host.orchestrator.messaging.formatter import format_internal_tags
 
-    if not result.result:
+    if not request.result.result:
         return False
 
-    raw = result.result if isinstance(result.result, str) else json.dumps(result.result)
+    raw = (
+        request.result.result
+        if isinstance(request.result.result, str)
+        else json.dumps(request.result.result)
+    )
     text = format_internal_tags(raw)
     if not text:
         return False
@@ -354,41 +362,47 @@ async def _handle_final_result(
         sender_name = "host"
         db_content = content
         event = _make_event("host", content)
-        logger.info("Host message", group=group.name, text=content[:200])
+        logger.info("Host message", group=request.group.name, text=content[:200])
     else:
         sender = "bot"
         sender_name = s.agent.name
         db_content = text
         event = _make_event("result", text)
-        logger.info("Agent output", group=group.name, text=raw[:200])
+        logger.info("Agent output", group=request.group.name, text=raw[:200])
 
     msg_type = "host" if sender == "host" else "assistant"
     await store_message_direct(
         message_id=generate_message_id("bot"),
-        chat_jid=chat_jid,
+        chat_jid=request.chat_jid,
         sender=sender,
         sender_name=sender_name,
         content=db_content,
-        timestamp=ts,
+        timestamp=request.ts,
         is_from_me=True,
         message_type=msg_type,
     )
 
     # For channels that were streaming, finalize the existing message.
     # For all others, post normally via broadcast.
-    stream_ids = stream_state.message_ids if stream_state else None
-    await finalize_stream_or_broadcast(deps, chat_jid, event, stream_ids, suppress_errors=False)
+    stream_ids = request.stream_state.message_ids if request.stream_state else None
+    await finalize_stream_or_broadcast(
+        request.deps,
+        request.chat_jid,
+        event,
+        stream_ids,
+        suppress_errors=False,
+    )
 
     # Stash per-channel message IDs for post-run reactions (e.g. zzz).
     if stream_ids:
-        _last_result_ids[chat_jid] = dict(stream_ids)
+        _last_result_ids[request.chat_jid] = dict(stream_ids)
 
-    deps.emit(
+    request.deps.emit(
         MessageEvent(
-            chat_jid=chat_jid,
+            chat_jid=request.chat_jid,
             sender_name=sender_name,
             content=db_content,
-            timestamp=ts,
+            timestamp=request.ts,
             is_bot=True,
         )
     )
@@ -447,4 +461,13 @@ async def handle_streamed_output(
     if batcher is not None:
         await batcher.flush(chat_jid)
 
-    return await _handle_final_result(deps, chat_jid, group, result, ts, stream_state)
+    return await _handle_final_result(
+        _FinalResultRequest(
+            deps=deps,
+            chat_jid=chat_jid,
+            group=group,
+            result=result,
+            ts=ts,
+            stream_state=stream_state,
+        )
+    )

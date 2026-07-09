@@ -60,6 +60,15 @@ class _AgentJobContext:
     resolved: ResolvedWorkspaceConfig
 
 
+@dataclass(frozen=True)
+class _AgentJobTaskDetails:
+    prompt: str
+    schedule_type: Literal["cron", "once"]
+    schedule_value: str
+    next_run: str | None
+    context_mode: Literal["isolated"]
+
+
 async def _pause_disabled_job(task_id: str) -> None:
     existing = await get_task_by_id(task_id)
     if existing and existing.status == "active":
@@ -98,22 +107,18 @@ async def _create_agent_job_task(
     task_id: str,
     job: JobConfig,
     group: WorkspaceProfile,
-    prompt: str,
-    schedule_type: Literal["cron", "once"],
-    schedule_value: str,
-    next_run: str | None,
-    context_mode: Literal["isolated"],
+    details: _AgentJobTaskDetails,
 ) -> None:
     await create_task(
         ScheduledTask(
             id=task_id,
             group_folder=job.workspace,
             chat_jid=group.jid,
-            prompt=prompt,
-            schedule_type=schedule_type,
-            schedule_value=schedule_value,
-            context_mode=context_mode,
-            next_run=next_run,
+            prompt=details.prompt,
+            schedule_type=details.schedule_type,
+            schedule_value=details.schedule_value,
+            context_mode=details.context_mode,
+            next_run=details.next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
         )
@@ -124,24 +129,20 @@ def _agent_job_updates(
     *,
     existing: ScheduledTask,
     group: WorkspaceProfile,
-    prompt: str,
-    schedule_type: Literal["cron", "once"],
-    schedule_value: str,
-    next_run: str | None,
-    context_mode: Literal["isolated"],
+    details: _AgentJobTaskDetails,
 ) -> dict[str, Any]:
     updates: dict[str, Any] = {}
     if existing.chat_jid != group.jid:
         updates["chat_jid"] = group.jid
-    if existing.prompt != prompt:
-        updates["prompt"] = prompt
-    if existing.schedule_type != schedule_type:
-        updates["schedule_type"] = schedule_type
-    if existing.schedule_value != schedule_value:
-        updates["schedule_value"] = schedule_value
-        updates["next_run"] = next_run
-    if existing.context_mode != context_mode:
-        updates["context_mode"] = context_mode
+    if existing.prompt != details.prompt:
+        updates["prompt"] = details.prompt
+    if existing.schedule_type != details.schedule_type:
+        updates["schedule_type"] = details.schedule_type
+    if existing.schedule_value != details.schedule_value:
+        updates["schedule_value"] = details.schedule_value
+        updates["next_run"] = details.next_run
+    if existing.context_mode != details.context_mode:
+        updates["context_mode"] = details.context_mode
     if existing.repo_access is not None:
         updates["repo_access"] = None
     if existing.status != "active":
@@ -172,7 +173,13 @@ async def reconcile_agent_jobs(
 
         schedule_type, schedule_value, next_run = _job_schedule(job_name, settings)
         prompt = _job_prompt(job_name, settings)
-        context_mode: Literal["isolated"] = "isolated"
+        details = _AgentJobTaskDetails(
+            prompt=prompt,
+            schedule_type=schedule_type,
+            schedule_value=schedule_value,
+            next_run=next_run,
+            context_mode="isolated",
+        )
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)
 
@@ -181,11 +188,7 @@ async def reconcile_agent_jobs(
                 task_id=task_id,
                 job=job,
                 group=context.group,
-                prompt=prompt,
-                schedule_type=schedule_type,
-                schedule_value=schedule_value,
-                next_run=next_run,
-                context_mode=context_mode,
+                details=details,
             )
             logger.info("Created config agent job task", job=job_name, task_id=task_id)
             continue
@@ -193,11 +196,7 @@ async def reconcile_agent_jobs(
         updates = _agent_job_updates(
             existing=existing,
             group=context.group,
-            prompt=prompt,
-            schedule_type=schedule_type,
-            schedule_value=schedule_value,
-            next_run=next_run,
-            context_mode=context_mode,
+            details=details,
         )
         if updates:
             await update_task(task_id, updates)

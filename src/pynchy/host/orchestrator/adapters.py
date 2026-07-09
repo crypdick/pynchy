@@ -7,6 +7,7 @@ HTTP server, and IPC watcher. Reduces boilerplate delegation code in PynchyApp.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -107,17 +108,7 @@ class HostMessageBroadcaster:
         self._store_notice = store_notice_fn
         self.emit_event = emit_event_fn
 
-    async def _store_broadcast_and_emit(
-        self,
-        *,
-        chat_jid: str,
-        text: str,
-        id_prefix: str,
-        sender: str,
-        sender_name: str,
-        event_type: OutboundEventType,
-        store_fn: StoreMessageFn,
-    ) -> None:
+    async def _store_broadcast_and_emit(self, request: _StoreBroadcastAndEmitRequest) -> None:
         """Store a message, broadcast to channels, and emit an event.
 
         Shared implementation for broadcast_host_message and broadcast_system_notice.
@@ -127,22 +118,22 @@ class HostMessageBroadcaster:
         from pynchy.types import OutboundEvent
 
         ts = datetime.now(UTC).isoformat()
-        await store_fn(
-            message_id=generate_message_id(id_prefix),
-            chat_jid=chat_jid,
-            sender=sender,
-            sender_name=sender_name,
-            content=text,
+        await request.store_fn(
+            message_id=generate_message_id(request.id_prefix),
+            chat_jid=request.chat_jid,
+            sender=request.sender,
+            sender_name=request.sender_name,
+            content=request.text,
             timestamp=ts,
             is_from_me=True,
         )
-        event = OutboundEvent(type=event_type, content=text)
-        await self.broadcaster._broadcast_to_channels(chat_jid, event)
+        event = OutboundEvent(type=request.event_type, content=request.text)
+        await self.broadcaster._broadcast_to_channels(request.chat_jid, event)
         self.emit_event(
             MessageEvent(
-                chat_jid=chat_jid,
-                sender_name=sender_name,
-                content=text,
+                chat_jid=request.chat_jid,
+                sender_name=request.sender_name,
+                content=request.text,
                 timestamp=ts,
                 is_bot=True,
             )
@@ -159,13 +150,15 @@ class HostMessageBroadcaster:
         - NOT part of the SDK conversation flow
         """
         await self._store_broadcast_and_emit(
-            chat_jid=chat_jid,
-            text=text,
-            id_prefix="host",
-            sender="host",
-            sender_name="host",
-            event_type=OutboundEventType.HOST,
-            store_fn=self._store_host,
+            _StoreBroadcastAndEmitRequest(
+                chat_jid=chat_jid,
+                text=text,
+                id_prefix="host",
+                sender="host",
+                sender_name="host",
+                event_type=OutboundEventType.HOST,
+                store_fn=self._store_host,
+            )
         )
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
@@ -186,14 +179,27 @@ class HostMessageBroadcaster:
         See host_notify_worktree_updates() for the canonical routing pattern.
         """
         await self._store_broadcast_and_emit(
-            chat_jid=chat_jid,
-            text=f"[System Notice] {text}",
-            id_prefix="sys-notice",
-            sender="system_notice",
-            sender_name="System",
-            event_type=OutboundEventType.SYSTEM,
-            store_fn=self._store_notice,
+            _StoreBroadcastAndEmitRequest(
+                chat_jid=chat_jid,
+                text=f"[System Notice] {text}",
+                id_prefix="sys-notice",
+                sender="system_notice",
+                sender_name="System",
+                event_type=OutboundEventType.SYSTEM,
+                store_fn=self._store_notice,
+            )
         )
+
+
+@dataclass(frozen=True)
+class _StoreBroadcastAndEmitRequest:
+    chat_jid: str
+    text: str
+    id_prefix: str
+    sender: str
+    sender_name: str
+    event_type: OutboundEventType
+    store_fn: StoreMessageFn
 
 
 def find_admin_jid(groups: dict[str, WorkspaceProfile]) -> str:

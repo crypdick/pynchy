@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves pipeline path annotations at runtime.
@@ -98,7 +99,7 @@ class MessageHandlerDeps(Protocol):
 
     def emit(self, event: Any) -> None: ...
 
-    async def run_agent(
+    async def run_agent(  # noqa: PLR0913, RUF100 - protocol contract intentionally preserves the full orchestration call shape.
         self,
         group: Group,
         chat_jid: str,
@@ -112,6 +113,19 @@ class MessageHandlerDeps(Protocol):
     async def handle_streamed_output(
         self, chat_jid: str, group: Group, result: types.ContainerOutput
     ) -> bool: ...
+
+
+@dataclass(frozen=True)
+class _FinalizeCursorRetryRequest:
+    deps: MessageHandlerDeps
+    chat_jid: str
+    group: types.WorkspaceProfile
+    missed_messages: list[types.NewMessage]
+    agent_result: str
+    had_error: bool
+    output_sent_to_user: bool
+    learning_summary: learning_capture.LearningRunSummary
+    s: Settings
 
 
 async def intercept_special_command(
@@ -396,18 +410,7 @@ def _register_idle_zzz_callback(
     session.set_idle_callback(_send_zzz)
 
 
-async def _finalize_cursor_and_retry(
-    deps: MessageHandlerDeps,
-    chat_jid: str,
-    group: types.WorkspaceProfile,
-    missed_messages: list[types.NewMessage],
-    agent_result: str,
-    *,
-    had_error: bool,
-    output_sent_to_user: bool,
-    learning_summary: learning_capture.LearningRunSummary,
-    s: Settings,
-) -> bool:
+async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bool:
     """Advance the cursor (or signal retry) based on how the agent run went.
 
     Returns True once the batch is considered handled, False if GroupQueue
@@ -415,39 +418,47 @@ async def _finalize_cursor_and_retry(
     """
     # Pop the dispatched marker; include any follow-ups piped while this
     # container was running (tracked by the routing loop via _mark_dispatched).
-    dispatched = deps._dispatched_through.pop(chat_jid, missed_messages[-1].timestamp)
-    final_cursor = max(missed_messages[-1].timestamp, dispatched)
+    dispatched = request.deps._dispatched_through.pop(
+        request.chat_jid, request.missed_messages[-1].timestamp
+    )
+    final_cursor = max(request.missed_messages[-1].timestamp, dispatched)
 
-    failed = agent_result == "error" or had_error
+    failed = request.agent_result == "error" or request.had_error
 
     # The cursor advances in every case EXCEPT a clean failure with no
     # user-visible output — that's the only path we want re-tried verbatim.
-    if failed and not output_sent_to_user:
-        await deps.broadcast_host_message(
-            chat_jid, "⚠️ Agent error occurred. Will retry on next message."
+    if failed and not request.output_sent_to_user:
+        await request.deps.broadcast_host_message(
+            request.chat_jid, "⚠️ Agent error occurred. Will retry on next message."
         )
-        logger.warning("Agent error, cursor unchanged for retry", group=group.name)
+        logger.warning("Agent error, cursor unchanged for retry", group=request.group.name)
         return False
 
-    await advance_cursor(deps, chat_jid, final_cursor)
+    await advance_cursor(request.deps, request.chat_jid, final_cursor)
 
     if failed:
         # Partial output already sent — cursor advanced to prevent a duplicate
         # response if the same messages are re-processed on the next trigger.
         logger.warning(
             "Agent error after output was sent, advanced cursor to prevent retry duplicate",
-            group=group.name,
+            group=request.group.name,
         )
         return True
 
     await learning_capture.start_completed_turn_learning_review(
-        s, chat_jid, group, missed_messages, final_cursor, learning_summary, get_messages_since
+        request.s,
+        request.chat_jid,
+        request.group,
+        request.missed_messages,
+        final_cursor,
+        request.learning_summary,
+        get_messages_since,
     )
 
     # Success: merge worktree commits into main and push for groups with repo_access
     from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 
-    background_merge_worktree(group)
+    background_merge_worktree(request.group)
 
     return True
 
@@ -532,13 +543,15 @@ async def process_group_messages(
     )
 
     return await _finalize_cursor_and_retry(
-        deps,
-        chat_jid,
-        group,
-        missed_messages,
-        agent_result,
-        had_error=had_error,
-        output_sent_to_user=output_sent_to_user,
-        learning_summary=learning_summary,
-        s=s,
+        _FinalizeCursorRetryRequest(
+            deps=deps,
+            chat_jid=chat_jid,
+            group=group,
+            missed_messages=missed_messages,
+            agent_result=agent_result,
+            had_error=had_error,
+            output_sent_to_user=output_sent_to_user,
+            learning_summary=learning_summary,
+            s=s,
+        )
     )

@@ -37,6 +37,19 @@ class _PreContainerResult:
     snapshot_ms: float
 
 
+@dataclass(frozen=True)
+class _PreContainerSetupRequest:
+    deps: _PreflightDeps
+    group: WorkspaceProfile
+    chat_jid: str
+    messages: list[dict[str, Any]]
+    on_output: OnOutput | None
+    extra_system_notices: list[str] | None
+    input_source: str
+    is_scheduled_task: bool
+    repo_access_override: str | None
+
+
 @runtime_checkable
 class _PreflightDeps(Protocol):
     @property
@@ -68,44 +81,37 @@ def session_id_from_output(output: ContainerOutput) -> str | None:
     return session_id if isinstance(session_id, str) and session_id else None
 
 
-async def _pre_container_setup(
-    deps: _PreflightDeps,
-    group: WorkspaceProfile,
-    chat_jid: str,
-    messages: list[dict[str, Any]],
-    on_output: OnOutput | None,
-    extra_system_notices: list[str] | None,
-    input_source: str,
-    *,
-    is_scheduled_task: bool,
-    repo_access_override: str | None,
-) -> _PreContainerResult:
+async def _pre_container_setup(request: _PreContainerSetupRequest) -> _PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
-    del is_scheduled_task  # preflight behavior is identical for scheduled/interactive paths
-
     is_admin, repo_access, repo_accesses, system_prompt_append, session_id = (
         _resolved_pre_container_context(
-            deps,
-            group.folder,
-            is_admin=group.is_admin,
-            repo_access_override=repo_access_override,
+            request.deps,
+            request.group.folder,
+            is_admin=request.group.is_admin,
+            repo_access_override=request.repo_access_override,
         )
     )
-    await deps.broadcast_agent_input(chat_jid, messages, source=input_source)
+    await request.deps.broadcast_agent_input(
+        request.chat_jid, request.messages, source=request.input_source
+    )
     snapshot_ms = await _write_container_snapshots(
-        deps,
-        group.folder,
+        request.deps,
+        request.group.folder,
         is_admin=is_admin,
     )
-    wrapped_on_output = _session_tracking_output_handler(deps, group.folder, on_output)
+    wrapped_on_output = _session_tracking_output_handler(
+        request.deps, request.group.folder, request.on_output
+    )
     system_notices = _merged_system_notices(
-        _build_admin_system_notices(group.folder, is_admin=is_admin, repo_access=repo_access),
-        extra_system_notices,
+        _build_admin_system_notices(
+            request.group.folder, is_admin=is_admin, repo_access=repo_access
+        ),
+        request.extra_system_notices,
     )
 
-    deps._session_cleared.discard(group.folder)
-    agent_core_module, agent_core_class = resolve_agent_core(deps.plugin_manager)
-    config_timeout = resolve_container_timeout(group)
+    request.deps._session_cleared.discard(request.group.folder)
+    agent_core_module, agent_core_class = resolve_agent_core(request.deps.plugin_manager)
+    config_timeout = resolve_container_timeout(request.group)
 
     return _PreContainerResult(
         is_admin=is_admin,
