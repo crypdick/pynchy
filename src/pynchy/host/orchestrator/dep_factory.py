@@ -52,7 +52,7 @@ def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBr
     All subsystems reuse the same MessageBroadcaster and HostMessageBroadcaster
     instances from PynchyApp, ensuring a single code path for all channel sends.
     """
-    return app._broadcaster, app._host_broadcaster
+    return app.message_broadcaster, app.host_broadcaster
 
 
 def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
@@ -69,7 +69,7 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
     class SchedulerDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
-        broadcast_to_channels = broadcaster._broadcast_to_channels
+        broadcast_to_channels = broadcaster.broadcast_to_channels
 
         def workspaces(self) -> dict[str, Any]:
             return app.workspaces
@@ -127,7 +127,7 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
     periodic_agent_manager = PeriodicAgentManager(app.workspaces)
     user_message_handler = UserMessageHandler(
-        app._ingest_user_message,
+        app.ingest_user_message,
         lambda jid: _schedule_interactive_turn(app, jid),
     )
     event_adapter = EventBusAdapter(app.event_bus)
@@ -145,7 +145,7 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
             return find_admin_jid(app.workspaces)
 
         def is_shutting_down(self) -> bool:
-            return app._shutting_down
+            return app.is_shutting_down()
 
         def get_active_sessions(self) -> dict[str, str]:
             return session_manager.get_active_sessions(app.workspaces)
@@ -157,13 +157,13 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
     broadcaster, host_broadcaster = _get_broadcasters(app)
     registration_manager = GroupRegistrationManager(
-        app.workspaces, app._register_workspace, app._send_clear_confirmation
+        app.workspaces, app.register_workspace, app.send_clear_confirmation
     )
     session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
 
     class IpcDeps:
-        broadcast_to_channels = broadcaster._broadcast_to_channels
+        broadcast_to_channels = broadcaster.broadcast_to_channels
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
         workspaces = registration_manager.workspaces
@@ -201,7 +201,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 
     class _StatusDeps:
         def is_shutting_down(self) -> bool:
-            return app._shutting_down
+            return app.is_shutting_down()
 
         def get_channel_status(self) -> dict[str, bool]:
             return {ch.name: ch.is_connected() for ch in metadata_manager.channels()}

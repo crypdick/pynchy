@@ -33,11 +33,8 @@ EmitEventFn = Callable[..., None]
 class MessageBroadcaster:
     """Broadcasts messages to all connected channels.
 
-    The public API is on HostMessageBroadcaster — typed methods with correct
-    emoji prefixes and DB persistence. Raw channel sends are private.
-
     Satisfies the ``BusDeps`` protocol from ``messaging.bus`` so that
-    ``_broadcast_to_channels`` delegates to the single ``bus.broadcast()``
+    ``broadcast_to_channels`` delegates to the single ``bus.broadcast()``
     code path (JID resolution, ownership check, error handling).
 
     Uses a callable for channel list so the broadcaster always reads the
@@ -75,7 +72,7 @@ class MessageBroadcaster:
 
     # -- Broadcast methods --
 
-    async def _broadcast_to_channels(
+    async def broadcast_to_channels(
         self, jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None:
         """Send event to all connected channels.
@@ -128,7 +125,7 @@ class HostMessageBroadcaster:
             is_from_me=True,
         )
         event = OutboundEvent(type=request.event_type, content=request.text)
-        await self.broadcaster._broadcast_to_channels(request.chat_jid, event)
+        await self.broadcaster.broadcast_to_channels(request.chat_jid, event)
         self.emit_event(
             MessageEvent(
                 chat_jid=request.chat_jid,

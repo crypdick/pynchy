@@ -80,6 +80,20 @@ class PynchyApp:
         )
         self._host_broadcaster = self._make_host_broadcaster()
 
+    @property
+    def message_broadcaster(self) -> MessageBroadcaster:
+        """Return the shared raw channel broadcaster."""
+        return self._broadcaster
+
+    @property
+    def host_broadcaster(self) -> HostMessageBroadcaster:
+        """Return the shared host/system notice broadcaster."""
+        return self._host_broadcaster
+
+    def is_shutting_down(self) -> bool:
+        """Return whether shutdown has started."""
+        return self._shutting_down
+
     # ------------------------------------------------------------------
     # State persistence
     # ------------------------------------------------------------------
@@ -185,7 +199,7 @@ class PynchyApp:
     async def broadcast_to_channels(
         self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True
     ) -> None:
-        await self._broadcaster._broadcast_to_channels(
+        await self._broadcaster.broadcast_to_channels(
             chat_jid, event, suppress_errors=suppress_errors
         )
 
@@ -249,6 +263,10 @@ class PynchyApp:
             folder=profile.folder,
         )
 
+    async def register_workspace(self, profile: WorkspaceProfile) -> None:
+        """Register a workspace from subsystem adapters."""
+        await self._register_workspace(profile)
+
     async def _unregister_workspace(self, jid: str) -> None:
         """Remove an orphaned workspace registration."""
         self.workspaces.pop(jid, None)
@@ -304,6 +322,11 @@ class PynchyApp:
     ) -> None:
         await session_handler.ingest_user_message(self, msg, source_channel=source_channel)
 
+    async def ingest_user_message(
+        self, msg: NewMessage, *, source_channel: str | None = None
+    ) -> None:
+        await self._ingest_user_message(msg, source_channel=source_channel)
+
     async def _on_inbound(self, _jid: str, msg: NewMessage) -> None:
         await session_handler.on_inbound(self, _jid, msg)
 
@@ -354,6 +377,9 @@ class PynchyApp:
 
     async def _send_clear_confirmation(self, chat_jid: str) -> None:
         await session_handler.send_clear_confirmation(self, chat_jid)
+
+    async def send_clear_confirmation(self, chat_jid: str) -> None:
+        await self._send_clear_confirmation(chat_jid)
 
     # ------------------------------------------------------------------
     # Channel history catch-up

@@ -231,7 +231,7 @@ class TestMessageBroadcaster:
         ch2 = FakeChannel()
         broadcaster = MessageBroadcaster([ch1, ch2])
         event = _make_event("hello")
-        await broadcaster._broadcast_to_channels("group@g.us", event)
+        await broadcaster.broadcast_to_channels("group@g.us", event)
 
         assert len(ch1.sent) == 1
         assert len(ch2.sent) == 1
@@ -240,7 +240,7 @@ class TestMessageBroadcaster:
         connected = FakeChannel(connected=True)
         disconnected = FakeChannel(connected=False)
         broadcaster = MessageBroadcaster([connected, disconnected])
-        await broadcaster._broadcast_to_channels("group@g.us", _make_event("hello"))
+        await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
 
         assert len(connected.sent) == 1
         assert len(disconnected.sent) == 0
@@ -257,7 +257,7 @@ class TestMessageBroadcaster:
         broadcaster = MessageBroadcaster([failing, working])
 
         # Should not raise
-        await broadcaster._broadcast_to_channels("group@g.us", _make_event("hello"))
+        await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
         assert len(working.sent) == 1
 
     async def test_broadcast_formatted_is_removed(self):
@@ -271,7 +271,7 @@ class TestMessageBroadcaster:
         """Broadcasting to empty channel list is a no-op."""
         broadcaster = MessageBroadcaster([])
         # Should not raise
-        await broadcaster._broadcast_to_channels("group@g.us", _make_event("hello"))
+        await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
 
 
 # ---------------------------------------------------------------------------
