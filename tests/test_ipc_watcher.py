@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
+from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.watcher import (
     start_ipc_watcher,
 )
@@ -242,21 +243,15 @@ class TestIpcTaskFileEdgeCases:
 
     async def test_empty_type_field_is_ignored(self, deps):
         """A request with no type field should be logged and ignored."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         # Should not raise
         await dispatch({"no_type_field": True}, "admin-1", True, deps)
 
     async def test_none_type_field_is_ignored(self, deps):
         """A request with type=None should be handled gracefully."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         await dispatch({"type": None}, "admin-1", True, deps)
 
     async def test_empty_data_dict_is_ignored(self, deps):
         """An empty data dict should not crash the processor."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         await dispatch({}, "admin-1", True, deps)
 
 
@@ -270,8 +265,6 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_uses_admin_group(self, deps):
         """Deploy request missing chatJid should fall back to admin group's JID."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         with patch(
             "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
             new_callable=AsyncMock,
@@ -294,8 +287,6 @@ class TestIpcDeployEdgeCases:
 
     async def test_deploy_without_chat_jid_and_no_admin_group(self, deps):
         """Deploy request with no chatJid and no admin group should not finalize."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         # Remove admin group from deps
         no_admin_deps = MockDeps(
             {
@@ -331,8 +322,6 @@ class TestSyncWorktreeIpc:
 
     async def test_writes_result_file(self, deps, tmp_path: Path):
         """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         fake_repo_ctx = RepoContext(
             slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
         )
@@ -372,8 +361,6 @@ class TestSyncWorktreeIpc:
 
     async def test_notifies_other_worktrees_on_success(self, deps, tmp_path: Path):
         """On successful sync, other worktrees should be notified."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         fake_repo_ctx = RepoContext(
             slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
         )
@@ -412,8 +399,6 @@ class TestSyncWorktreeIpc:
 
     async def test_skips_notification_on_failure(self, deps, tmp_path: Path):
         """On failed sync, worktree notification should be skipped."""
-        from pynchy.host.container_manager.ipc import dispatch
-
         with (
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
