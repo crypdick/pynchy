@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -277,8 +279,6 @@ class TestNormalizeBotMention:
 
     def test_trigger_pattern_matches_after_normalize(self) -> None:
         """Verify the canonical trigger survives the trigger pattern check."""
-        import re
-
         ch = _make_channel()
         ch.bot_user_id = "U_BOT"
         result = ch._normalize_bot_mention("<@U_BOT> do something")
@@ -610,8 +610,6 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_uses_actual_message_timestamp(self) -> None:
         """Timestamp should be derived from Slack ts, not current time."""
-        from datetime import UTC, datetime
-
         ch = _make_channel()
         ch._app = MagicMock()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
