@@ -280,6 +280,40 @@ async def _handle_message_during_task(
         )
 
 
+async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:
+    jids = list(deps.workspaces.keys())
+    messages, new_timestamp = await get_new_messages(jids, deps.last_timestamp)
+
+    if messages:
+        logger.info("New messages", count=len(messages))
+
+        # Advance "seen" cursor immediately
+        deps.last_timestamp = new_timestamp
+        logger.info("message_loop_trace", step="save_state_start")
+        await deps.save_state()
+        logger.info("message_loop_trace", step="save_state_done")
+
+        # Group by chat JID and route each group independently
+        messages_by_group: dict[str, list[NewMessage]] = {}
+        for msg in messages:
+            messages_by_group.setdefault(msg.chat_jid, []).append(msg)
+
+        for group_jid, group_messages in messages_by_group.items():
+            group = deps.workspaces.get(group_jid)
+            if group:
+                logger.info(
+                    "message_loop_trace",
+                    step="route_start",
+                    group=group.name,
+                )
+                await _route_incoming_group(deps, group_jid, group, group_messages)
+                logger.info(
+                    "message_loop_trace",
+                    step="route_done",
+                    group=group.name,
+                )
+
+
 async def start_message_loop(
     deps: MessageHandlerDeps,
     shutting_down: Callable[[], bool],
@@ -290,38 +324,7 @@ async def start_message_loop(
 
     while not shutting_down():
         try:
-            jids = list(deps.workspaces.keys())
-            messages, new_timestamp = await get_new_messages(jids, deps.last_timestamp)
-
-            if messages:
-                logger.info("New messages", count=len(messages))
-
-                # Advance "seen" cursor immediately
-                deps.last_timestamp = new_timestamp
-                logger.info("message_loop_trace", step="save_state_start")
-                await deps.save_state()
-                logger.info("message_loop_trace", step="save_state_done")
-
-                # Group by chat JID and route each group independently
-                messages_by_group: dict[str, list[NewMessage]] = {}
-                for msg in messages:
-                    messages_by_group.setdefault(msg.chat_jid, []).append(msg)
-
-                for group_jid, group_messages in messages_by_group.items():
-                    group = deps.workspaces.get(group_jid)
-                    if group:
-                        logger.info(
-                            "message_loop_trace",
-                            step="route_start",
-                            group=group.name,
-                        )
-                        await _route_incoming_group(deps, group_jid, group, group_messages)
-                        logger.info(
-                            "message_loop_trace",
-                            step="route_done",
-                            group=group.name,
-                        )
-
+            await _poll_incoming_messages(deps)
         except Exception:  # noqa: BLE001, RUF100 - message loop is the routing boundary; keep polling after a failure.
             logger.exception("Error in message loop")
 

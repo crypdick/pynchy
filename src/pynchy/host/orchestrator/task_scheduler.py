@@ -336,10 +336,10 @@ async def _run_task_agent(
         if streamed.status == "error":
             error = streamed.error or "Unknown error"
 
-    try:
-        if idle_timer:
-            idle_timer.reset()
+    if idle_timer:
+        idle_timer.reset()
 
+    try:
         agent_result = await deps.run_agent(
             group,
             task.chat_jid,
@@ -349,14 +349,14 @@ async def _run_task_agent(
             repo_access_override=None,
             input_source="scheduled_task",
         )
-        if agent_result == "error":
-            error = error or "Agent returned error"
-        await _merge_scheduled_task_worktree(task, error=error)
     except Exception as exc:  # noqa: BLE001, RUF100 - task execution is a boundary; record the failure and continue.
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
         return result, error
     else:
+        if agent_result == "error":
+            error = error or "Agent returned error"
+        await _merge_scheduled_task_worktree(task, error=error)
         return result, error
     finally:
         if idle_timer:

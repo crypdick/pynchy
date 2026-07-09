@@ -250,13 +250,14 @@ def _worktree_status(worktree_path: Path, main_branch: str, repo_root: Path) -> 
     conflict = False
     try:
         git_dir_result = run_git("rev-parse", "--git-dir", cwd=worktree_path)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("Conflict detection failed", worktree=str(worktree_path), err=str(exc))
+    else:
         if git_dir_result.returncode == 0:
             gd = Path(git_dir_result.stdout.strip())
             if not gd.is_absolute():
                 gd = worktree_path / gd
             conflict = (gd / "MERGE_HEAD").exists() or (gd / "REBASE_HEAD").exists()
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Conflict detection failed", worktree=str(worktree_path), err=str(exc))
 
     return {
         "sha": sha,
@@ -387,28 +388,40 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
     port = info.get("port")
     key = info.get("key")
     if port and key:
-        try:
-            import aiohttp
+        result.update(await _check_litellm_readiness(port, key))
 
-            async with aiohttp.ClientSession() as session:
-                resp = await session.get(
-                    f"http://localhost:{port}/health/readiness",
-                    headers={"Authorization": f"Bearer {key}"},
-                    timeout=aiohttp.ClientTimeout(total=5),
-                )
-                data = await resp.json()
-                result["ready"] = (
-                    resp.status == 200
-                    and data.get("status") in {"connected", "healthy"}
-                    and data.get("db") == "connected"
-                )
-                result["database"] = data.get("db")
-                if "litellm_version" in data:
-                    result["litellm_version"] = data["litellm_version"]
-        except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
-            logger.debug("Gateway health check failed", err=str(exc))
-            result["ready"] = None
+    return result
 
+
+async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
+    try:
+        import aiohttp
+    except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
+        logger.debug("Gateway health check failed", err=str(exc))
+        return {"ready": None}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            resp = await session.get(
+                f"http://localhost:{port}/health/readiness",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            )
+            data = await resp.json()
+    except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
+        logger.debug("Gateway health check failed", err=str(exc))
+        return {"ready": None}
+
+    result: dict[str, Any] = {
+        "ready": (
+            resp.status == 200
+            and data.get("status") in {"connected", "healthy"}
+            and data.get("db") == "connected"
+        ),
+        "database": data.get("db"),
+    }
+    if "litellm_version" in data:
+        result["litellm_version"] = data["litellm_version"]
     return result
 
 

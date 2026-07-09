@@ -236,6 +236,22 @@ async def _handle_api_send(request: Any) -> Any:
     return web.json_response({"status": "ok"})
 
 
+async def _stream_sse_events(
+    response: web.StreamResponse,
+    queue: asyncio.Queue[dict[str, Any]],
+    deps: HttpDeps,
+) -> None:
+    while True:
+        if deps.is_shutting_down():
+            return
+        try:
+            event = await asyncio.wait_for(queue.get(), timeout=0.2)
+        except TimeoutError:
+            continue
+        data = json.dumps(event)
+        await response.write(f"data: {data}\n\n".encode())
+
+
 async def _handle_api_events(request: Any) -> Any:
     """SSE stream for real-time events (messages, agent activity)."""
     deps: HttpDeps = request.app[deps_key]
@@ -259,15 +275,7 @@ async def _handle_api_events(request: Any) -> Any:
     unsubscribe = deps.subscribe_events(on_event)
 
     try:
-        while True:
-            if deps.is_shutting_down():
-                break
-            try:
-                event = await asyncio.wait_for(queue.get(), timeout=0.2)
-            except TimeoutError:
-                continue
-            data = json.dumps(event)
-            await response.write(f"data: {data}\n\n".encode())
+        await _stream_sse_events(response, queue, deps)
     except (asyncio.CancelledError, ConnectionResetError):
         pass  # Client disconnected or request cancelled — clean up silently
     finally:

@@ -286,6 +286,17 @@ class GroupQueue:
         state = self._get_group(group_jid)
         state.pending_tasks.clear()
 
+    async def _process_group_messages(self, group_jid: str, state: GroupState) -> None:
+        """Process messages for a group and schedule retry on failure."""
+        if not self._process_messages_fn:
+            return
+
+        success = await self._process_messages_fn(group_jid)
+        if success:
+            state.retry_count = 0
+        else:
+            self._schedule_retry(group_jid, state)
+
     async def _run_for_group(self, group_jid: str, reason: str) -> None:
         """Run the process_messages_fn for a group.
 
@@ -302,12 +313,7 @@ class GroupQueue:
         )
 
         try:
-            if self._process_messages_fn:
-                success = await self._process_messages_fn(group_jid)
-                if success:
-                    state.retry_count = 0
-                else:
-                    self._schedule_retry(group_jid, state)
+            await self._process_group_messages(group_jid, state)
         except PolicyDeniedError as exc:
             # Deterministic failure — retrying won't change the outcome
             logger.warning(

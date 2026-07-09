@@ -229,28 +229,29 @@ async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RU
             try:
                 data = json.loads(filepath.read_text())
                 ts = datetime.fromisoformat(data["timestamp"])
-                age = (now - ts).total_seconds()
-
-                if age > PENDING_QUESTION_TIMEOUT_SECONDS:
-                    write_ipc_response(
-                        ipc_response_path(grp, data["request_id"]),
-                        {"error": "Question expired (no response within timeout)"},
-                    )
-
-                    filepath.unlink()
-                    expired.append(data)
-
-                    logger.info(
-                        "Expired pending question auto-expired",
-                        request_id=data["request_id"],
-                        source_group=grp,
-                        age_seconds=round(age),
-                    )
             except (json.JSONDecodeError, OSError, KeyError) as exc:
                 logger.warning(
                     "Failed to process pending question during sweep",
                     path=str(filepath),
                     err=str(exc),
+                )
+                continue
+
+            age = (now - ts).total_seconds()
+            if age > PENDING_QUESTION_TIMEOUT_SECONDS:
+                write_ipc_response(
+                    ipc_response_path(grp, data["request_id"]),
+                    {"error": "Question expired (no response within timeout)"},
+                )
+
+                filepath.unlink()
+                expired.append(data)
+
+                logger.info(
+                    "Expired pending question auto-expired",
+                    request_id=data["request_id"],
+                    source_group=grp,
+                    age_seconds=round(age),
                 )
 
     return expired

@@ -8,7 +8,7 @@ the canonical JID are skipped.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.state import (
@@ -218,6 +218,17 @@ def _advance_inbound_cursor(cursor: str, timestamp: str) -> str:
     return timestamp if timestamp > cursor else cursor
 
 
+async def _deliver_pending_outbound_row(
+    ch: Channel, target_jid: str, row: Any, outbound_cursor: str
+) -> str:
+    event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
+    await ch.send_event(target_jid, event)
+    await mark_delivered(row.ledger_id, ch.name)
+    if row.timestamp > outbound_cursor:
+        outbound_cursor = row.timestamp
+    return outbound_cursor
+
+
 async def _retry_outbound(
     ch: Channel, canonical_jid: str, target_jid: str, outbound_cursor: str
 ) -> tuple[str, int]:
@@ -227,18 +238,20 @@ async def _retry_outbound(
     retried = 0
     for row in pending:
         try:
-            event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
-            await ch.send_event(target_jid, event)
-            await mark_delivered(row.ledger_id, ch.name)
-            if row.timestamp > new_outbound_cursor:
-                new_outbound_cursor = row.timestamp
-            retried += 1
+            new_outbound_cursor = await _deliver_pending_outbound_row(
+                ch,
+                target_jid,
+                row,
+                new_outbound_cursor,
+            )
         except Exception as exc:  # noqa: BLE001, RUF100 - outbound retry is best-effort and stops after the first delivery failure.
             logger.warning(
                 "outbound retry failed", channel=ch.name, ledger_id=row.ledger_id, error=str(exc)
             )
             await mark_delivery_error(row.ledger_id, ch.name, str(exc))
             break  # preserve ordering — don't skip ahead
+        else:
+            retried += 1
     return new_outbound_cursor, retried
 
 
