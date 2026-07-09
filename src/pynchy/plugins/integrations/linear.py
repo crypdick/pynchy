@@ -36,6 +36,16 @@ LINEAR_API_URL = "https://api.linear.app/graphql"
 DEFAULT_PORT = 8474
 LOCAL_MCP_BIND_HOST = "localhost"
 WORKSPACE_APP_KEY = web.AppKey("workspace", object)
+_LINEAR_DATA_OBJECT_MISSING = "Linear response did not include a data object"
+_LINEAR_ISSUE_NOT_CREATED = "Linear did not create the issue"
+_LINEAR_ISSUE_CREATE_ISSUE_MISSING = "Linear issueCreate response did not include an issue"
+_LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
+_LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
+_LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
+_LINEAR_WORKSPACE_REQUIRED = (
+    "Workspace-scoped Linear todo tools require an MCP workspace instance"
+)
+_LINEAR_REQUIRED_ARGUMENT = "{key} is required"
 
 
 class LinearError(RuntimeError):
@@ -80,7 +90,7 @@ class LinearClient:
             raise LinearError(messages)
         data = body.get("data")
         if not isinstance(data, dict):
-            raise LinearError("Linear response did not include a data object")
+            raise LinearError(_LINEAR_DATA_OBJECT_MISSING)
         return data
 
     async def list_teams(self) -> list[dict[str, Any]]:
@@ -178,20 +188,20 @@ class LinearClient:
         )
         result = data.get("issueCreate")
         if not isinstance(result, dict) or not result.get("success"):
-            raise LinearError("Linear did not create the issue")
+            raise LinearError(_LINEAR_ISSUE_NOT_CREATED)
         issue = result.get("issue")
         if not isinstance(issue, dict):
-            raise LinearError("Linear issueCreate response did not include an issue")
+            raise LinearError(_LINEAR_ISSUE_CREATE_ISSUE_MISSING)
         return issue
 
 
 def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
     connection = data.get(key)
     if not isinstance(connection, dict):
-        raise LinearError(f"Linear response did not include {key}")
+        raise LinearError(_LINEAR_CONNECTION_MISSING.format(key=key))
     nodes = connection.get("nodes")
     if not isinstance(nodes, list):
-        raise LinearError(f"Linear response did not include {key}.nodes")
+        raise LinearError(_LINEAR_NODES_MISSING.format(key=key))
     return [node for node in nodes if isinstance(node, dict)]
 
 
@@ -337,7 +347,7 @@ async def _tool_create_issue(
     title = _required_str(arguments, "title")
     label_ids = arguments.get("label_ids")
     if label_ids is not None and not isinstance(label_ids, list):
-        raise LinearError("label_ids must be an array of Linear label ids")
+        raise LinearError(_LINEAR_LABEL_IDS_NOT_ARRAY)
     return cast(
         "dict[str, Any]",
         await client.create_issue(
@@ -394,7 +404,7 @@ async def _tool_move_todo(
 
 def _workspace_context(workspace: str | None) -> WorkspaceContext:
     if not workspace:
-        raise LinearError("Workspace-scoped Linear todo tools require an MCP workspace instance")
+        raise LinearError(_LINEAR_WORKSPACE_REQUIRED)
     name = workspace.replace("-", " ").replace("_", " ").title()
     return WorkspaceContext(folder=workspace, name=name)
 
@@ -402,7 +412,7 @@ def _workspace_context(workspace: str | None) -> WorkspaceContext:
 def _required_str(arguments: dict[str, Any], key: str) -> str:
     value = arguments.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise LinearError(f"{key} is required")
+        raise LinearError(_LINEAR_REQUIRED_ARGUMENT.format(key=key))
     return value
 
 
