@@ -7,7 +7,6 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 
 from __future__ import annotations
 
-import sys
 from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
@@ -29,7 +28,15 @@ from pynchy.logger import logger
 from pynchy.plugins import get_plugin_manager
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
-_plugin_handlers: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] | None = None
+PluginHandlers = dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]
+
+
+@dataclass
+class _PluginHandlerState:
+    plugin_handlers: PluginHandlers | None = None
+
+
+_state = _PluginHandlerState()
 
 
 @dataclass(frozen=True)
@@ -39,25 +46,25 @@ class _ServiceRequest:
     request_id: str
 
 
-def _get_plugin_handlers() -> dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]:
+def _get_plugin_handlers() -> PluginHandlers:
     """Collect and cache tool handlers from all MCP server plugins."""
-    handlers = _plugin_handlers
+    handlers = _state.plugin_handlers
     if handlers is not None:
         return handlers
 
     pm = get_plugin_manager()
-    merged: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {}
+    merged: PluginHandlers = {}
     for result in pm.hook.pynchy_service_handler():
         tools = result.get("tools", {})
         merged.update(tools)
 
-    sys.modules[__name__].__dict__["_plugin_handlers"] = merged
+    _state.plugin_handlers = merged
     return merged
 
 
 def clear_plugin_handler_cache() -> None:
     """Clear the cached plugin handler mapping (for tests or config reload)."""
-    sys.modules[__name__].__dict__["_plugin_handlers"] = None
+    _state.plugin_handlers = None
 
 
 def _write_response(source_group: str, request_id: str, response: dict[str, Any]) -> None:

@@ -31,7 +31,7 @@ Implementation lives in:
 
 from __future__ import annotations
 
-import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
@@ -84,16 +84,22 @@ class GatewayProto(Protocol):
 # Module-level singleton
 # ---------------------------------------------------------------------------
 
-_gateway: LiteLLMGateway | BuiltinGateway | None = None
+
+@dataclass
+class _GatewayState:
+    gateway: LiteLLMGateway | BuiltinGateway | None = None
+
+
+_state = _GatewayState()
 
 
 def get_gateway() -> LiteLLMGateway | BuiltinGateway | None:
     """Return the active gateway, or ``None`` if not started."""
-    return _gateway
+    return _state.gateway
 
 
 def _set_gateway(gateway: LiteLLMGateway | BuiltinGateway | None) -> None:
-    sys.modules[__name__].__dict__["_gateway"] = gateway
+    _state.gateway = gateway
 
 
 def resolve_container_host(container_host: str) -> str:
@@ -229,12 +235,12 @@ async def start_gateway(
         or getattr(s, "mcp_server_instances", {})
         or plugin_mcp_servers
     )
-    if isinstance(_gateway, LiteLLMGateway) and has_servers:
+    if isinstance(gateway, LiteLLMGateway) and has_servers:
         from pynchy.host.container_manager.mcp.manager import McpManager, set_mcp_manager
 
         mcp_mgr = McpManager(
             s,
-            _gateway,
+            gateway,
             plugin_mcp_servers=plugin_mcp_servers,
             plugin_trust_defaults=plugin_trust_defaults,
         )
@@ -255,6 +261,7 @@ async def stop_gateway() -> None:
         await mcp_mgr.stop_all()
         set_mcp_manager(None)
 
-    if _gateway is not None:
-        await _gateway.stop()
+    gateway = get_gateway()
+    if gateway is not None:
+        await gateway.stop()
         _set_gateway(None)

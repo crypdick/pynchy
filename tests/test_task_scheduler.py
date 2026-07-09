@@ -100,7 +100,7 @@ async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
     """Drive the public scheduler loop through one Temporal reconciliation poll."""
     import pynchy.host.orchestrator.task_scheduler as ts_mod
 
-    ts_mod._scheduler_running = False
+    ts_mod._state.scheduler_running = False
 
     def stop_after_poll(delay):
         raise asyncio.CancelledError
@@ -311,13 +311,16 @@ def sample_group():
 
 @pytest.fixture(autouse=True)
 def reset_scheduler_state(monkeypatch):
-    """Reset the scheduler's module-level globals before each test.
+    """Reset the scheduler's module-level state before each test.
 
-    ``_scheduler_running`` lives for the whole process; a raw rebind would leak
+    ``_state.scheduler_running`` lives for the whole process; a raw rebind would leak
     across tests and xdist workers. Using ``monkeypatch`` auto-reverts it,
     keeping tests order-independent.
     """
-    monkeypatch.setattr("pynchy.host.orchestrator.task_scheduler._scheduler_running", False)
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.task_scheduler._state.scheduler_running",
+        False,
+    )
 
 
 class TestStartSchedulerLoop:

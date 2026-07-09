@@ -17,8 +17,8 @@ are in :mod:`_mcp_litellm`.
 from __future__ import annotations
 
 import asyncio
-import sys
 import time
+from dataclasses import dataclass
 
 from pynchy.config import Settings, get_settings
 from pynchy.config.mcp import (
@@ -322,14 +322,20 @@ class McpManager:
 # Module singleton
 # ---------------------------------------------------------------------------
 
-_mcp_manager: McpManager | None = None
+
+@dataclass
+class _McpManagerState:
+    mcp_manager: McpManager | None = None
+
+
+_state = _McpManagerState()
 
 
 def get_mcp_manager() -> McpManager | None:
     """Return the active MCP manager, or ``None`` if not initialized."""
-    return _mcp_manager
+    return _state.mcp_manager
 
 
 def set_mcp_manager(manager: McpManager | None) -> None:
     """Set the module-level MCP manager singleton."""
-    sys.modules[__name__].__dict__["_mcp_manager"] = manager
+    _state.mcp_manager = manager

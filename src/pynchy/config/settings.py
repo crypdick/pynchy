@@ -20,16 +20,16 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 import warnings
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
     Iterable,
     Sequence,
 )
 from contextvars import ContextVar
+from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import (
@@ -469,19 +469,22 @@ def _detect_timezone() -> str:
 # Singleton + TOML writer
 # ---------------------------------------------------------------------------
 
-_settings: Settings | None = None
+
+@dataclass
+class _SettingsState:
+    settings: Settings | None = None
+
+
+_state = _SettingsState()
 
 
 def get_settings() -> Settings:
     """Lazy cached singleton."""
-    module = sys.modules[__name__]
-    settings = cast("Settings | None", module.__dict__["_settings"])
-    if settings is None:
-        settings = Settings()
-        module.__dict__["_settings"] = settings
-    return settings
+    if _state.settings is None:
+        _state.settings = Settings()
+    return _state.settings
 
 
 def reset_settings() -> None:
     """Clear the cached singleton (for tests)."""
-    sys.modules[__name__].__dict__["_settings"] = None
+    _state.settings = None
