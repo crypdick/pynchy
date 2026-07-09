@@ -132,6 +132,12 @@ def test_legacy_schema_keys_are_rejected(legacy_key: str) -> None:
         _settings_from_dict({legacy_key: {}})
 
 
+@pytest.mark.parametrize("unknown_key", ["profiels", "capabilities", "fallback_model"])
+def test_unknown_top_level_schema_keys_are_rejected(unknown_key: str) -> None:
+    with pytest.raises(ValidationError, match="Unknown config sections"):
+        _settings_from_dict({unknown_key: {}})
+
+
 @pytest.mark.parametrize(
     "old_key",
     [

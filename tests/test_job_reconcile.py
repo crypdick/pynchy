@@ -72,7 +72,7 @@ class TestJobReconcile:
         assert task.schedule_type == "cron"
         assert task.schedule_value == "0 8 * * *"
         assert task.context_mode == "isolated"
-        assert task.repo_access == "crypdick/pynchy"
+        assert task.repo_access is None
 
     async def test_one_time_agent_job_creates_once_task(self, db, monkeypatch, tmp_path):
         run_at = "2026-07-08T18:30:00-07:00"

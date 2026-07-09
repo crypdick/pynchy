@@ -294,7 +294,7 @@ def _scheduled_idle_timer(
 
 
 async def _merge_scheduled_task_worktree(task: ScheduledTask, *, error: str | None) -> None:
-    if error or not task.repo_access:
+    if error:
         return
 
     from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
@@ -339,7 +339,7 @@ async def _run_task_agent(
             [_scheduled_task_message(task)],
             _on_output,
             is_scheduled_task=True,
-            repo_access_override=task.repo_access,
+            repo_access_override=None,
             input_source="scheduled_task",
         )
         if agent_result == "error":

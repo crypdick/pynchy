@@ -450,8 +450,8 @@ class TestReconcileWorkspaces:
         # Should not raise
         await reconcile_workspaces(registered, [], register_fn)
 
-    async def test_repo_access_preserved_in_task(self, db, groups_dir):
-        """repo_access from config.toml should be set on the created task."""
+    async def test_repo_access_not_copied_to_task(self, db, groups_dir):
+        """Scheduled runs resolve workspace repos live instead of copying task state."""
         _write_workspace_yaml(
             groups_dir,
             "dev-agent",
@@ -477,7 +477,7 @@ class TestReconcileWorkspaces:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].repo_access == "owner/pynchy"
+        assert tasks[0].repo_access is None
 
     async def test_context_mode_preserved_in_task(self, db, groups_dir):
         """context_mode from config.toml should be set on the created task."""

@@ -105,7 +105,8 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
     resolved = resolve_workspace(config_group) if callable(resolve_workspace) else None
     contains_secrets = resolved.contains_secrets if resolved is not None else False
 
-    if is_admin or resolved is None:
+    del is_admin
+    if resolved is None:
         return WorkspaceSecurity(contains_secrets=contains_secrets)
 
     services: dict[str, ServiceTrustConfig] = {}

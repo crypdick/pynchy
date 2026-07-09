@@ -211,6 +211,10 @@ class Settings(BaseSettings):
                     f"{legacy}. Use [workspaces], [profiles], [tools], "
                     "[connections.*], and [command_center] instead."
                 )
+            allowed = set(cls.model_fields)
+            unknown = sorted(set(data) - allowed)
+            if unknown:
+                raise ValueError(f"Unknown config sections are not supported: {unknown}")
         return data
 
     @model_validator(mode="after")
