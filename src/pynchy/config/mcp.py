@@ -75,7 +75,7 @@ class McpServerConfig(BaseModel):
     # Script fields
     command: str | None = None  # executable to run (e.g., "uv") — required for type="script"
 
-    # Shared: docker + script
+    # Shared by docker and script server configs.
     args: list[str] = []
     port: int | None = None
     idle_timeout: int = 600  # seconds; 0 = never stop

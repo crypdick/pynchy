@@ -45,11 +45,6 @@ def _make_deps(channels: list | None = None) -> MagicMock:
     return deps
 
 
-# ---------------------------------------------------------------------------
-# broadcast()
-# ---------------------------------------------------------------------------
-
-
 class TestBroadcast:
     @pytest.mark.asyncio
     async def test_sends_to_all_connected_channels(self):
@@ -99,7 +94,7 @@ class TestBroadcast:
         ch.send_event.side_effect = RuntimeError("unexpected")
         deps = _make_deps([ch])
 
-        # RuntimeError is NOT in (OSError, TimeoutError, ConnectionError)
+        # RuntimeError is outside the expected network-error group.
         with pytest.raises(RuntimeError, match="unexpected"):
             await broadcast(deps, "group@g.us", _make_event(), suppress_errors=True)
 
@@ -152,11 +147,6 @@ class TestBroadcast:
 
         # Should not raise
         await broadcast(deps, "group@g.us", _make_event())
-
-
-# ---------------------------------------------------------------------------
-# finalize_stream_or_broadcast()
-# ---------------------------------------------------------------------------
 
 
 class TestFinalizeStreamOrBroadcast:

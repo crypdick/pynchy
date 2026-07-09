@@ -133,7 +133,7 @@ class TestTriggerGating:
             return True
         if trigger == "always":
             return True
-        # trigger == "mention"
+        # Mention-triggered groups require at least one matching message.
         return any(TRIGGER_PATTERN.search(m.content.strip()) for m in messages)
 
     def test_admin_group_always_processes(self, make_msg):

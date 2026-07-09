@@ -51,7 +51,7 @@ class TestWriteIpcFile:
     def test_filename_format(self, tmp_path):
         filename = write_ipc_file(tmp_path, {"type": "test"})
         assert filename.endswith(".json")
-        # Format: {timestamp_ms}-{random_hex}.json
+        # Filenames contain a timestamp prefix and random suffix.
         parts = filename.replace(".json", "").split("-")
         assert len(parts) >= 2
         # First part should be a timestamp (numeric)
@@ -335,11 +335,6 @@ class TestDeployAuth:
         assert "admin" in result.content[0].text.lower()
 
 
-# ---------------------------------------------------------------------------
-# call_tool: send_message
-# ---------------------------------------------------------------------------
-
-
 class TestSendMessage:
     """Test send_message tool."""
 
@@ -378,11 +373,6 @@ class TestSendMessage:
         files = list((tmp_path / "messages").glob("*.json"))
         data = json.loads(files[0].read_text(encoding="utf-8"))
         assert data["sender"] == "Researcher"
-
-
-# ---------------------------------------------------------------------------
-# call_tool: list_tasks
-# ---------------------------------------------------------------------------
 
 
 class TestListTasks:
@@ -525,11 +515,6 @@ class TestTaskLifecycle:
         ):
             result = await call_tool("cancel_task", {"task_id": "task-123"})
         assert "cancel" in result[0].text.lower()
-
-
-# ---------------------------------------------------------------------------
-# call_tool: list_todos / complete_todo
-# ---------------------------------------------------------------------------
 
 
 class TestTodoTools:

@@ -260,11 +260,6 @@ async def _run_with_trace_sequence(
     return channel, capture
 
 
-# ---------------------------------------------------------------------------
-# Tests: format_tool_preview()
-# ---------------------------------------------------------------------------
-
-
 class TestFormatToolPreview:
     """Unit tests for the format_tool_preview helper."""
 

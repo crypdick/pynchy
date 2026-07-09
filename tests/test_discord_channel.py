@@ -485,11 +485,6 @@ def test_plugin_returns_none_without_context():
     assert DiscordChannelPlugin().pynchy_create_channel(context=None) is None
 
 
-# ---------------------------------------------------------------------------
-# Streaming (post_event / update_event)
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_post_event_sends_preview_and_returns_message_id():
     ch = _channel()

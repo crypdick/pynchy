@@ -68,11 +68,6 @@ class TestIsLaunchdLoaded:
             assert is_launchd_loaded("com.pynchy") is False
 
 
-# ---------------------------------------------------------------------------
-# install_service (dispatch)
-# ---------------------------------------------------------------------------
-
-
 class TestInstallService:
     """Test platform-based dispatch."""
 

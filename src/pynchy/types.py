@@ -428,7 +428,6 @@ class Channel(Protocol):
     # Default true if not implemented.
     # prefix_assistant_name is NOT part of the protocol — use getattr with default.
 
-    # Optional: streaming message updates. Channels that support it implement:
-    #   post_event(jid, event) -> str | None     (returns message_id)
-    #   update_event(jid, message_id, event)     (updates in-place)
+    # Optional streaming message updates: channels can post an event, return a
+    # message id, then update that message in place.
     # Used by output_handler for real-time text streaming with a cursor indicator.

@@ -190,7 +190,8 @@ def check_token_expiry(slug: str, token: str) -> None:
         for line in result.stdout.splitlines():
             if line.lower().startswith("github-authentication-token-expiration:"):
                 expiry_str = line.split(":", 1)[1].strip()
-                # Format: "2024-11-30 09:00:00 UTC"
+                # GitHub returns the expiry as a UTC timestamp, for example
+                # "2024-11-30 09:00:00 UTC".
                 expiry = datetime.datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S %Z").replace(
                     tzinfo=datetime.UTC
                 )

@@ -833,11 +833,6 @@ class TestContainerState:
         assert result["gateway"]["litellm_container"] == "not_found"
 
 
-# ---------------------------------------------------------------------------
-# collect_status (orchestrator)
-# ---------------------------------------------------------------------------
-
-
 class TestCollectStatus:
     @pytest.mark.asyncio
     async def test_returns_all_sections(self):

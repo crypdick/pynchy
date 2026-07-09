@@ -73,14 +73,12 @@ class SlackChannel:
         self._on_chat_metadata = on_chat_metadata
         self._on_reaction = on_reaction
         self._on_ask_user_answer = on_ask_user_answer
-        # on_approval_decision(chat_jid, action, short_id, user_id)
         self._on_approval_decision = on_approval_decision
-        # on_agent_stop(group_name, user_id)
         self._on_agent_stop = on_agent_stop
         self._connected = False
         self._shutting_down = False
 
-        # Lazy-initialised in connect()
+        # Assigned when connect() builds the Slack app and socket handler.
         self._app: Any = None
         self._handler: Any = None
         self._handler_task: asyncio.Task[None] | None = None
