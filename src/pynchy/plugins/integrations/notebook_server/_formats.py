@@ -8,15 +8,10 @@ from __future__ import annotations
 
 import datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import Any, cast
+from typing import cast
 
 import nbformat
-from nbformat.notebooknode import (  # noqa: TC001, RUF100 - beartype resolves notebook node annotations at runtime.
-    NotebookNode,
-)
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
-
-_ = NotebookNode
 
 
 def generate_name() -> str:
@@ -40,8 +35,8 @@ def notebook_path(name: str, notebook_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _empty_notebook() -> Any:
-    nb: NotebookNode = new_notebook()
+def _empty_notebook() -> object:
+    nb = new_notebook()
     nb.metadata["kernelspec"] = {
         "display_name": "Python 3",
         "language": "python",
@@ -50,7 +45,7 @@ def _empty_notebook() -> Any:
     return nb
 
 
-def _flush_markdown_cell(nb: Any, lines: list[str]) -> list[str]:
+def _flush_markdown_cell(nb: object, lines: list[str]) -> list[str]:
     if not lines:
         return []
     content = "\n".join(lines).strip()
@@ -59,7 +54,7 @@ def _flush_markdown_cell(nb: Any, lines: list[str]) -> list[str]:
     return []
 
 
-def _append_code_cell(nb: Any, lines: list[str]) -> list[str]:
+def _append_code_cell(nb: object, lines: list[str]) -> list[str]:
     nb.cells.append(new_code_cell(source="\n".join(lines)))
     return []
 
@@ -72,7 +67,7 @@ def _ends_code_fence(line: str) -> bool:
     return line.strip() == "```"
 
 
-def parse_qmd(text: str) -> Any:
+def parse_qmd(text: str) -> object:
     """Parse a .qmd file into a notebook node.
 
     Code fences with ``{python}`` become code cells; everything else becomes
@@ -103,7 +98,7 @@ def parse_qmd(text: str) -> Any:
     return nb
 
 
-def serialize_qmd(nb: Any) -> str:
+def serialize_qmd(nb: object) -> str:
     """Serialize a notebook node to .qmd format."""
     parts: list[str] = []
     for cell in nb.cells:
@@ -119,14 +114,14 @@ def serialize_qmd(nb: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
-def load_notebook(path: Path) -> Any:
+def load_notebook(path: Path) -> object:
     """Load a notebook from disk (.ipynb or .qmd)."""
     if path.suffix == ".qmd":
         return parse_qmd(path.read_text(encoding="utf-8"))
-    return cast("NotebookNode", nbformat.read(str(path), as_version=4))
+    return cast("object", nbformat.read(str(path), as_version=4))
 
 
-def save_notebook(nb: Any, path: Path) -> None:
+def save_notebook(nb: object, path: Path) -> None:
     """Save a notebook to disk (.ipynb or .qmd)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.suffix == ".qmd":
