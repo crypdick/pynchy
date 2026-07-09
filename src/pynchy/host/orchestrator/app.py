@@ -5,17 +5,18 @@ Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003, RUF100 - beartype resolves app annotations at runtime.
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     import pluggy
 
     from pynchy.host.container_manager import OnOutput
+    from pynchy.plugins.memory import MemoryProvider
+    from pynchy.plugins.observers import ObserverProvider
 
 from pynchy.config import get_settings
-from pynchy.event_bus import EventBus
+from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     OnOutput,
 )
@@ -67,10 +68,10 @@ class PynchyApp:
         self.channels: list[Channel] = []
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
-        self._http_runner: Any | None = None
-        self._observers: list[Any] = []
-        self._memory: Any | None = None
-        self._subsystem_tasks: list[asyncio.Task[None]] = []
+        self._http_runner: object | None = None
+        self._observers: list[ObserverProvider] = []
+        self._memory: MemoryProvider | None = None
+        self._subsystem_tasks: list[object] = []
         self.plugin_manager: pluggy.PluginManager | None = None
 
         # Shared broadcast infrastructure — single code path for all channel sends.
@@ -103,28 +104,28 @@ class PynchyApp:
 
     def cancel_subsystem_tasks(self) -> None:
         for task in self._subsystem_tasks:
-            task.cancel()
+            cast("Any", task).cancel()
         self._subsystem_tasks.clear()
 
-    def add_subsystem_task(self, task: Any) -> None:
+    def add_subsystem_task(self, task: object) -> None:
         self._subsystem_tasks.append(task)
 
     async def cleanup_http_runner(self) -> None:
         if self._http_runner is None:
             return
-        await self._http_runner.cleanup()
+        await cast("Any", self._http_runner).cleanup()
 
-    def set_http_runner(self, runner: Any) -> None:
+    def set_http_runner(self, runner: object) -> None:
         self._http_runner = runner
 
-    def attach_observers(self, observers: list[Any]) -> None:
+    def attach_observers(self, observers: list[ObserverProvider]) -> None:
         self._observers = observers
 
     async def close_observers(self) -> None:
         for observer in self._observers:
             await observer.close()
 
-    async def set_memory_provider(self, memory: Any | None) -> None:
+    async def set_memory_provider(self, memory: MemoryProvider | None) -> None:
         self._memory = memory
         if self._memory:
             await self._memory.init()
@@ -250,7 +251,7 @@ class PynchyApp:
             input_source=input_source,
         )
 
-    def emit(self, event: Any) -> None:
+    def emit(self, event: Event) -> None:
         self.event_bus.emit(event)
 
     async def broadcast_to_channels(
@@ -286,10 +287,10 @@ class PynchyApp:
         """Create a HostMessageBroadcaster wired to this app's store and event bus."""
         from pynchy.state import store_message_direct
 
-        async def store_host_message(**kwargs: Any) -> None:
+        async def store_host_message(**kwargs: object) -> None:
             await store_message_direct(**kwargs, message_type="host")
 
-        async def store_system_notice(**kwargs: Any) -> None:
+        async def store_system_notice(**kwargs: object) -> None:
             await store_message_direct(**kwargs, message_type="user")
 
         return HostMessageBroadcaster(

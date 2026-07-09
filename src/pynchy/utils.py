@@ -12,8 +12,8 @@ import contextlib
 import json
 from asyncio.subprocess import PIPE
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
+    Awaitable,
     Callable,
-    Coroutine,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -88,22 +88,24 @@ def compute_next_run(
 
 
 def create_background_task(
-    coro: Coroutine[Any, Any, Any],
+    coro: Awaitable[Any],
     *,
     name: str | None = None,
-) -> asyncio.Task[Any]:
+) -> asyncio.Future[Any]:
     """Create an asyncio task that logs exceptions instead of swallowing them.
 
     A drop-in replacement for ``asyncio.create_task`` for fire-and-forget
     work (worktree merges, container stops) where we don't await the result
     but still want failures to appear in logs.
     """
-    task = asyncio.create_task(coro, name=name)
+    task = asyncio.ensure_future(coro)
+    if name is not None and isinstance(task, asyncio.Task):
+        task.set_name(name)
     task.add_done_callback(_log_task_exception)
     return task
 
 
-def _log_task_exception(task: asyncio.Task[Any]) -> None:
+def _log_task_exception(task: asyncio.Future[Any]) -> None:
     """Callback attached to background tasks — logs unhandled exceptions."""
     if task.cancelled():
         return
@@ -114,7 +116,7 @@ def _log_task_exception(task: asyncio.Task[Any]) -> None:
         # in a done-callback, not an except handler.
         logger.error(
             "Background task failed",
-            task_name=task.get_name(),
+            task_name=task.get_name() if isinstance(task, asyncio.Task) else None,
             exc_info=exc,
         )
 
