@@ -31,11 +31,13 @@ ENV PYTHONUNBUFFERED=1
 
 # Install CLI agent backends globally
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
-RUN curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR=/usr/local/bin sh \
+RUN curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/codex-install.sh \
+    && CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR=/usr/local/bin sh /tmp/codex-install.sh \
     && codex_target="$(readlink -f /usr/local/bin/codex)" \
     && cp "$codex_target" /usr/local/bin/codex.real \
     && mv /usr/local/bin/codex.real /usr/local/bin/codex \
-    && chmod 0755 /usr/local/bin/codex
+    && chmod 0755 /usr/local/bin/codex \
+    && rm -f /tmp/codex-install.sh
 
 # Install Claude Code plugins (loaded via Agent SDK's plugins option at runtime)
 RUN git clone --depth 1 https://github.com/obra/superpowers.git /opt/plugins/superpowers

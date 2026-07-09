@@ -53,6 +53,8 @@ def test_agent_dockerfile_installs_codex_as_agent_executable() -> None:
     """The image must not leave codex as an agent-inaccessible /root symlink."""
     dockerfile = Path("src/pynchy/agent/Dockerfile").read_text(encoding="utf-8")
 
+    assert "https://chatgpt.com/codex/install.sh -o /tmp/codex-install.sh" in dockerfile
+    assert "sh /tmp/codex-install.sh" in dockerfile
     assert "readlink -f /usr/local/bin/codex" in dockerfile
     assert "chmod 0755 /usr/local/bin/codex" in dockerfile
 
