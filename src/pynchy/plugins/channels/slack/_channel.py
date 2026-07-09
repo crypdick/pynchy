@@ -138,6 +138,42 @@ class SlackChannel:
     # Allowlist — delegated to self.allowlist
     # ------------------------------------------------------------------
 
+    @property
+    def connection_name(self) -> str:
+        return self._connection_name
+
+    @property
+    def slack_app(self) -> Any:
+        return self._app
+
+    @property
+    def allow_create(self) -> bool:
+        return self._allow_create
+
+    @property
+    def configured_chat_names(self) -> set[str]:
+        return set(self._chat_names)
+
+    def add_configured_chat_name(self, name: str) -> None:
+        self._chat_names.add(name)
+
+    def register_allowed_channel(self, name: str, channel_id: str) -> None:
+        self._chat_name_to_id[normalize_chat_name(name)] = channel_id
+        self._allowed_channel_ids.add(channel_id)
+
+    def allowed_channel_id_for_name(self, name: str) -> str | None:
+        return self._chat_name_to_id.get(normalize_chat_name(name))
+
+    def clear_allowed_channels(self) -> None:
+        self._allowed_channel_ids = set()
+        self._chat_name_to_id = {}
+
+    def is_allowed_channel(self, channel_id: str) -> bool:
+        return bool(self._allowed_channel_ids) and channel_id in self._allowed_channel_ids
+
+    def allowed_channel_count(self) -> int:
+        return len(self._allowed_channel_ids)
+
     async def create_group(self, name: str) -> str:
         return await self.allowlist.create_group(name)
 
@@ -145,10 +181,10 @@ class SlackChannel:
         return await self.allowlist.resolve_chat_jid(chat_name)
 
     def _register_allowed_channel(self, name: str, channel_id: str) -> None:
-        self.allowlist._register_allowed_channel(name, channel_id)
+        self.register_allowed_channel(name, channel_id)
 
     def _is_allowed_channel(self, channel_id: str) -> bool:
-        return self.allowlist._is_allowed_channel(channel_id)
+        return self.is_allowed_channel(channel_id)
 
     # ------------------------------------------------------------------
     # Inbound events — delegated to self.events

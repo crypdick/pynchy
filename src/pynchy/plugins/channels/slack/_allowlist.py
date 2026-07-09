@@ -2,9 +2,6 @@
 
 A composed collaborator of :class:`SlackChannel` (not a mixin). The channel
 constructs one of these and delegates its allowlist-related methods to it.
-The collaborator holds a back-reference to the channel and reads/writes the
-allowlist state (``_chat_names``, ``_chat_name_to_id``, ``_allowed_channel_ids``)
-and the live ``_app`` client directly on it.
 """
 
 from __future__ import annotations
@@ -35,22 +32,22 @@ class SlackAllowlist:
 
     def _require_app(self) -> Any:
         ch = self._channel
-        app = ch._app
+        app = ch.slack_app
         if app is None:
             raise RuntimeError("Slack app is not initialized")
         return app
 
+    def register_allowed_channel(self, name: str, channel_id: str) -> None:
+        self._channel.register_allowed_channel(name, channel_id)
+
     def _register_allowed_channel(self, name: str, channel_id: str) -> None:
-        ch = self._channel
-        normalized = normalize_chat_name(name)
-        ch._chat_name_to_id[normalized] = channel_id
-        ch._allowed_channel_ids.add(channel_id)
+        self.register_allowed_channel(name, channel_id)
+
+    def is_allowed_channel(self, channel_id: str) -> bool:
+        return self._channel.is_allowed_channel(channel_id)
 
     def _is_allowed_channel(self, channel_id: str) -> bool:
-        ch = self._channel
-        if not ch._allowed_channel_ids:
-            return False
-        return channel_id in ch._allowed_channel_ids
+        return self.is_allowed_channel(channel_id)
 
     async def _ensure_joined(self, channel_id: str, name: str) -> None:
         app = self._require_app()
@@ -65,49 +62,49 @@ class SlackAllowlist:
 
     async def _sync_allowed_channels(self) -> None:
         ch = self._channel
-        if not ch._chat_names:
-            logger.info("Slack connection has no configured chats", connection=ch._connection_name)
-            ch._allowed_channel_ids = set()
-            ch._chat_name_to_id = {}
+        configured_chat_names = ch.configured_chat_names
+        if not configured_chat_names:
+            logger.info("Slack connection has no configured chats", connection=ch.connection_name)
+            ch.clear_allowed_channels()
             return
 
-        for name in sorted(ch._chat_names):
+        for name in sorted(configured_chat_names):
             channel_id = await self._find_channel_by_name(name)
             if channel_id is None:
-                if ch._allow_create:
+                if ch.allow_create:
                     jid = await self.create_group(name)
                     channel_id = channel_id_from_jid(jid)
                 else:
                     logger.warning(
                         "Slack chat not found; skipping",
-                        connection=ch._connection_name,
+                        connection=ch.connection_name,
                         chat=name,
                     )
                     continue
             await self._ensure_joined(channel_id, name)
-            self._register_allowed_channel(name, channel_id)
+            self.register_allowed_channel(name, channel_id)
 
         logger.info(
             "Slack chats configured",
-            connection=ch._connection_name,
-            count=len(ch._allowed_channel_ids),
+            connection=ch.connection_name,
+            count=ch.allowed_channel_count(),
         )
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         """Resolve a configured chat name to a Slack JID."""
         ch = self._channel
         normalized = normalize_chat_name(chat_name)
-        if normalized in ch._chat_name_to_id:
-            return slack_jid(ch._chat_name_to_id[normalized])
+        if channel_id := ch.allowed_channel_id_for_name(normalized):
+            return slack_jid(channel_id)
 
         channel_id = await self._find_channel_by_name(normalized)
         if channel_id is None:
-            if ch._allow_create:
+            if ch.allow_create:
                 return await self.create_group(chat_name)
             return None
 
         await self._ensure_joined(channel_id, normalized)
-        self._register_allowed_channel(normalized, channel_id)
+        self.register_allowed_channel(normalized, channel_id)
         return slack_jid(channel_id)
 
     async def create_group(self, name: str) -> str:
@@ -145,8 +142,8 @@ class SlackAllowlist:
                     err=str(join_exc),
                 )
             logger.info("Reusing existing Slack channel", name=slack_name, channel_id=channel_id)
-        ch._chat_names.add(slack_name)
-        self._register_allowed_channel(slack_name, channel_id)
+        ch.add_configured_chat_name(slack_name)
+        self.register_allowed_channel(slack_name, channel_id)
         return slack_jid(channel_id)
 
     async def _find_channel_by_name(self, name: str) -> str | None:
