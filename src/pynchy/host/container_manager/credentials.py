@@ -28,6 +28,7 @@ def _read_gh_token() -> str | None:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -46,6 +47,7 @@ def _read_git_identity() -> tuple[str | None, str | None]:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                check=False,
             )
             if r.returncode == 0 and r.stdout.strip():
                 if key == "user.name":

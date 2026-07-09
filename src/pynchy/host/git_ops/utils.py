@@ -52,6 +52,7 @@ def run_git(
         start_new_session=True,
         env=_git_subprocess_env(env),
         timeout=timeout,
+        check=False,
     )
 
 

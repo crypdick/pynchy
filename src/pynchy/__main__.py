@@ -51,6 +51,7 @@ def _build() -> None:
     result = subprocess.run(
         [runtime.cli, "build", "-t", s.container.image, "."],
         cwd=str(container_dir),
+        check=False,
     )
     sys.exit(result.returncode)
 

@@ -57,7 +57,9 @@ class TestIsLaunchdLoaded:
             mock_run.return_value = Mock(returncode=0)
             assert is_launchd_loaded("com.pynchy") is True
             mock_run.assert_called_once_with(
-                ["launchctl", "print", "gui/501/com.pynchy"], capture_output=True
+                ["launchctl", "print", "gui/501/com.pynchy"],
+                capture_output=True,
+                check=False,
             )
 
     def test_returns_false_when_job_is_not_loaded(self):

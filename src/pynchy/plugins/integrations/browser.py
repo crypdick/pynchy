@@ -176,7 +176,7 @@ def has_display() -> bool:
     if not os.environ.get("DISPLAY"):
         return False
     try:
-        r = subprocess.run(["xdpyinfo"], capture_output=True, timeout=5)
+        r = subprocess.run(["xdpyinfo"], capture_output=True, timeout=5, check=False)
         return r.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -190,6 +190,7 @@ def display_is_live(display: str) -> bool:
             capture_output=True,
             timeout=3,
             env={**os.environ, "DISPLAY": display},
+            check=False,
         )
         return r.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -198,7 +199,7 @@ def display_is_live(display: str) -> bool:
 
 def _is_process_running(name: str) -> bool:
     """Check if a process with the given name is running (via pgrep)."""
-    return subprocess.run(["pgrep", "-x", name], capture_output=True).returncode == 0
+    return subprocess.run(["pgrep", "-x", name], capture_output=True, check=False).returncode == 0
 
 
 # ---------------------------------------------------------------------------

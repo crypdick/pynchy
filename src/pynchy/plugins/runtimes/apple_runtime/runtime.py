@@ -40,6 +40,7 @@ class AppleContainerRuntime:
             [self.cli, "ls", "--format", "json"],
             capture_output=True,
             text=True,
+            check=False,
         )
         import json
 

@@ -267,6 +267,7 @@ def host_create_pr_from_worktree(
         text=True,
         timeout=30,
         env=ctx.env,
+        check=False,
     )
 
     if pr_check.returncode == 0 and pr_check.stdout.strip():
@@ -314,6 +315,7 @@ def host_create_pr_from_worktree(
         text=True,
         timeout=30,
         env=ctx.env,
+        check=False,
     )
 
     if pr_create.returncode != 0:

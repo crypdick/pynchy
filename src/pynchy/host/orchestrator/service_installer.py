@@ -24,6 +24,7 @@ def is_launchd_loaded(label: str) -> bool:
     result = subprocess.run(
         ["launchctl", "print", f"{_launchd_domain()}/{label}"],
         capture_output=True,
+        check=False,
     )
     return result.returncode == 0
 
@@ -40,6 +41,7 @@ def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
         ["launchctl", "bootstrap", domain, str(plist_path)],
         capture_output=True,
         text=True,
+        check=False,
     )
     if is_launchd_loaded(label):
         return True
@@ -51,13 +53,14 @@ def _bootstrap_launchd_service(label: str, plist_path: Path) -> bool:
         stderr=result.stderr.strip() or None,
     )
     label_target = f"{domain}/{label}"
-    subprocess.run(["launchctl", "bootout", label_target], capture_output=True)
-    subprocess.run(["launchctl", "disable", label_target], capture_output=True)
-    subprocess.run(["launchctl", "enable", label_target], capture_output=True)
+    subprocess.run(["launchctl", "bootout", label_target], capture_output=True, check=False)
+    subprocess.run(["launchctl", "disable", label_target], capture_output=True, check=False)
+    subprocess.run(["launchctl", "enable", label_target], capture_output=True, check=False)
     result = subprocess.run(
         ["launchctl", "bootstrap", domain, str(plist_path)],
         capture_output=True,
         text=True,
+        check=False,
     )
     if is_launchd_loaded(label):
         return True
@@ -79,7 +82,7 @@ def _remove_launchd_extended_attrs(path: Path) -> None:
     config, so the installer strips them from the rendered service definition.
     """
     for attr in ("com.apple.quarantine", "com.apple.provenance"):
-        subprocess.run(["xattr", "-d", attr, str(path)], capture_output=True)
+        subprocess.run(["xattr", "-d", attr, str(path)], capture_output=True, check=False)
 
 
 def _launchd_path(home: Path, uv_path: str) -> str:
@@ -138,6 +141,7 @@ def _write_launchd_plist(
         subprocess.run(
             ["launchctl", "bootout", _launchd_domain(), str(dest)],
             capture_output=True,
+            check=False,
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(rendered, encoding="utf-8")
@@ -238,13 +242,16 @@ WantedBy=default.target
     subprocess.run(
         ["systemctl", "--user", "daemon-reload"],
         capture_output=True,
+        check=False,
     )
     subprocess.run(
         ["systemctl", "--user", "enable", "pynchy.service"],
         capture_output=True,
+        check=False,
     )
     # Enable lingering so the user service runs without an active login session
     subprocess.run(
         ["sudo", "loginctl", "enable-linger", home.name],
         capture_output=True,
+        check=False,
     )

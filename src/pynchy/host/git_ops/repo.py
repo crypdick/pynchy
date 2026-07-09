@@ -125,6 +125,7 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
         capture_output=True,
         text=True,
         env=env,
+        check=False,
     )
     if result.returncode != 0:
         stderr = _sanitize_token(result.stderr.strip(), token)
@@ -136,6 +137,7 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
         ["git", "remote", "set-url", "origin", f"https://github.com/{repo_ctx.slug}"],
         cwd=str(repo_ctx.root),
         capture_output=True,
+        check=False,
     )
     logger.info("Cloned repo", slug=repo_ctx.slug)
     return True
@@ -179,6 +181,7 @@ def check_token_expiry(slug: str, token: str) -> None:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         if result.returncode != 0:
             return  # Can't check — might be a classic token or network issue

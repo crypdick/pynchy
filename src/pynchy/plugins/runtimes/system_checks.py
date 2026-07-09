@@ -21,6 +21,7 @@ def ensure_container_system_running() -> None:
     result = subprocess.run(
         [runtime.cli, "image", "inspect", image],
         capture_output=True,
+        check=False,
     )
     if result.returncode != 0:
         container_dir = s.project_root / "src" / "pynchy" / "agent"
@@ -33,6 +34,7 @@ def ensure_container_system_running() -> None:
         build = subprocess.run(
             [runtime.cli, "build", "-t", image, "."],
             cwd=str(container_dir),
+            check=False,
         )
         if build.returncode != 0:
             raise RuntimeError(f"Failed to build container image '{image}'")
@@ -44,6 +46,7 @@ def ensure_container_system_running() -> None:
             subprocess.run(
                 [runtime.cli, "stop", name],
                 capture_output=True,
+                check=False,
             )
     if orphans:
         logger.info(

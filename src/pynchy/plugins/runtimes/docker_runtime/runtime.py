@@ -41,6 +41,7 @@ class DockerContainerRuntime:
             [self.cli, "ps", "--format", "{{json .}}"],
             capture_output=True,
             text=True,
+            check=False,
         )
         names: list[str] = []
         for line in result.stdout.strip().splitlines():

@@ -204,6 +204,7 @@ def install_pre_commit_hooks(repo_root: Path) -> None:
             capture_output=True,
             text=True,
             timeout=60,
+            check=False,
         )
         if result.returncode == 0:
             logger.info("Pre-commit hooks installed", repo=str(repo_root))

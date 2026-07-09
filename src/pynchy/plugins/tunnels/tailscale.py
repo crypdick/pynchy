@@ -39,6 +39,7 @@ class _TailscaleTunnel:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                check=False,
             )
             if result.returncode != 0:
                 self._error = f"exit code {result.returncode}"

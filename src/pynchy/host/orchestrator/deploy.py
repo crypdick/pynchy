@@ -42,6 +42,7 @@ def build_container_image(*, timeout: int = 600) -> BuildResult:
         capture_output=True,
         text=True,
         timeout=timeout,
+        check=False,
     )
     if result.returncode != 0:
         logger.error("Container rebuild failed", stderr=result.stderr[-500:])
