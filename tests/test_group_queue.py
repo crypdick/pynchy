@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import ContainerConfig, QueueConfig
+from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.orchestrator.concurrency import GroupQueue
 
 TASK_EXPLODED_MESSAGE = "task exploded"
@@ -327,8 +329,6 @@ class TestSendMessage:
 
     async def test_writes_ipc_file_when_active_with_folder(self, queue: GroupQueue, tmp_path):
         """Successful send_message writes an atomic JSON file to the IPC dir."""
-        import json
-
         completions: list[asyncio.Event] = []
 
         async def process_messages(group_jid: str) -> bool:
@@ -884,8 +884,6 @@ class TestCleanupIpcInput:
 
     def test_removes_all_files(self, tmp_path):
         """Should remove all files (json, sentinel, etc.) from the IPC input dir."""
-        from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-
         input_dir = tmp_path / "ipc" / "test-group" / "input"
         input_dir.mkdir(parents=True)
         (input_dir / "001.json").write_text('{"type": "message", "text": "stale"}')
@@ -899,14 +897,10 @@ class TestCleanupIpcInput:
 
     def test_noop_when_no_group_folder(self):
         """Should silently do nothing when group_folder is None."""
-        from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-
         clean_ipc_input_dir(None)  # No error raised
 
     def test_noop_when_dir_doesnt_exist(self, tmp_path):
         """Should silently do nothing when IPC input dir doesn't exist."""
-        from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
-
         with _patch_settings(max_concurrent=2, data_dir=tmp_path):
             clean_ipc_input_dir("nonexistent-group")
         # No error raised
