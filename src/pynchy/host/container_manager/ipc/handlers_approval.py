@@ -16,9 +16,10 @@ Two handler types are supported:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.handlers_service import _get_plugin_handlers
@@ -27,38 +28,54 @@ from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
 
 
+def _read_json_file(path: Path) -> dict[str, Any]:
+    return cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _unlink_missing_ok(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
+def _unlink_all_missing_ok(*paths: Path) -> None:
+    for path in paths:
+        path.unlink(missing_ok=True)
+
+
 async def process_approval_decision(
     decision_file: Path, source_group: str, *, deps: Any = None
 ) -> None:
     """Process an approval decision file — execute or deny the pending request."""
     try:
-        decision = json.loads(decision_file.read_text(encoding="utf-8"))
+        decision = await asyncio.to_thread(_read_json_file, decision_file)
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Failed to read decision file", path=str(decision_file), err=str(exc))
-        decision_file.unlink(missing_ok=True)
+        await asyncio.to_thread(_unlink_missing_ok, decision_file)
         return
 
     request_id = decision.get("request_id")
     if not request_id:
         logger.warning("Decision file missing request_id", path=str(decision_file))
-        decision_file.unlink(missing_ok=True)
+        await asyncio.to_thread(_unlink_missing_ok, decision_file)
         return
 
     # Find the corresponding pending approval
     s = get_settings()
     pending_file = s.data_dir / "ipc" / source_group / "pending_approvals" / f"{request_id}.json"
 
-    if not pending_file.exists():
+    if not await asyncio.to_thread(_path_exists, pending_file):
         logger.warning("No pending approval for decision", request_id=request_id)
-        decision_file.unlink(missing_ok=True)
+        await asyncio.to_thread(_unlink_missing_ok, decision_file)
         return
 
     try:
-        pending = json.loads(pending_file.read_text(encoding="utf-8"))
+        pending = await asyncio.to_thread(_read_json_file, pending_file)
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Failed to read pending file", path=str(pending_file), err=str(exc))
-        decision_file.unlink(missing_ok=True)
-        pending_file.unlink(missing_ok=True)
+        await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
 
     tool_name = pending.get("tool_name", "unknown")
@@ -92,8 +109,7 @@ async def process_approval_decision(
             approved=approved,
         )
 
-        pending_file.unlink(missing_ok=True)
-        decision_file.unlink(missing_ok=True)
+        await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
         return
 
     if approved:
@@ -112,7 +128,8 @@ async def process_approval_decision(
             request_id=request_id,
         )
     else:
-        write_ipc_response(
+        await asyncio.to_thread(
+            write_ipc_response,
             ipc_response_path(source_group, request_id),
             {"error": "Denied by user"},
         )
@@ -126,8 +143,7 @@ async def process_approval_decision(
         logger.info("Denied request", request_id=request_id, tool_name=tool_name)
 
     # Clean up files
-    pending_file.unlink(missing_ok=True)
-    decision_file.unlink(missing_ok=True)
+    await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
 
 
 async def _execute_service_approval(
@@ -142,7 +158,8 @@ async def _execute_service_approval(
 
     if handler is None:
         logger.warning("Approved tool no longer available", tool_name=tool_name)
-        write_ipc_response(
+        await asyncio.to_thread(
+            write_ipc_response,
             ipc_response_path(source_group, request_id),
             {"error": f"Approved but tool '{tool_name}' is no longer available"},
         )
@@ -150,7 +167,9 @@ async def _execute_service_approval(
         try:
             request_data["source_group"] = source_group
             response = await handler(request_data)
-            write_ipc_response(ipc_response_path(source_group, request_id), response)
+            await asyncio.to_thread(
+                write_ipc_response, ipc_response_path(source_group, request_id), response
+            )
             logger.info(
                 "Approved request executed",
                 request_id=request_id,
@@ -162,7 +181,8 @@ async def _execute_service_approval(
                 request_id=request_id,
                 err=str(exc),
             )
-            write_ipc_response(
+            await asyncio.to_thread(
+                write_ipc_response,
                 ipc_response_path(source_group, request_id),
                 {"error": f"Execution failed: {exc}"},
             )
@@ -188,7 +208,8 @@ async def _execute_ipc_approval(
             "Cannot dispatch IPC approval without deps",
             request_id=request_id,
         )
-        write_ipc_response(
+        await asyncio.to_thread(
+            write_ipc_response,
             ipc_response_path(source_group, request_id),
             {"error": "Internal error: IPC approval missing deps"},
         )
@@ -210,7 +231,8 @@ async def _execute_ipc_approval(
             request_id=request_id,
             err=str(exc),
         )
-        write_ipc_response(
+        await asyncio.to_thread(
+            write_ipc_response,
             ipc_response_path(source_group, request_id),
             {"error": f"Execution failed: {exc}"},
         )

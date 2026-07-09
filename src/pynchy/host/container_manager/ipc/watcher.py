@@ -61,6 +61,32 @@ def _log_sweep_error(message: str, exc: OSError, source_group: str) -> None:
     logger.error(message, err=str(exc), source_group=source_group)
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _mkdir_parents(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _unlink_path(path: Path) -> None:
+    path.unlink()
+
+
+def _read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _json_files_in_dir(path: Path) -> list[Path]:
+    if not path.exists():
+        return []
+    return sorted(f for f in path.iterdir() if f.suffix == ".json")
+
+
+def _group_folders_in_ipc_dir(ipc_base_dir: Path) -> list[str]:
+    return [f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"]
+
+
 async def _process_message_file(
     file_path: Path,
     source_group: str,
@@ -98,14 +124,14 @@ async def _process_message_file(
                     chat_jid=message.chat_jid,
                     source_group=source_group,
                 )
-        file_path.unlink()
+        await asyncio.to_thread(_unlink_path, file_path)
     except Exception:
         logger.exception(
             "Error processing IPC message",
             file=file_path.name,
             source_group=source_group,
         )
-        _move_to_error_dir(ipc_base_dir, source_group, file_path)
+        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
 
 
 async def _process_request_file(
@@ -126,19 +152,19 @@ async def _process_request_file(
 
         if envelope.kind == "refresh_groups":
             await _handle_signal(envelope.kind, source_group, is_admin, deps)
-            file_path.unlink()
+            await asyncio.to_thread(_unlink_path, file_path)
             return
 
         if _claim_request_for_execution(envelope, ipc_base_dir):
             await dispatch(envelope, source_group, is_admin, deps)
-        file_path.unlink()
+        await asyncio.to_thread(_unlink_path, file_path)
     except Exception:
         logger.exception(
             "Error processing IPC request",
             file=file_path.name,
             source_group=source_group,
         )
-        _move_to_error_dir(ipc_base_dir, source_group, file_path)
+        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
 
 
 def _get_output_handler(group_folder: str) -> OnOutput | None:
@@ -197,7 +223,7 @@ async def _process_claimed_output_file(
     """Process an output file after this task has claimed handler delivery."""
     try:
         try:
-            json_str = file_path.read_text(encoding="utf-8")
+            json_str = await asyncio.to_thread(_read_text, file_path)
         except FileNotFoundError:
             # Watchdog and the periodic runtime sweep can both discover the
             # same output file. Whichever loses that race should be a no-op.
@@ -228,25 +254,23 @@ async def _process_claimed_output_file(
         # the startup sweep to clean up.
         if handler is not None:
             with contextlib.suppress(FileNotFoundError):
-                file_path.unlink()
+                await asyncio.to_thread(_unlink_path, file_path)
     except Exception:
         logger.exception(
             "Error processing output file",
             file=file_path.name,
             source_group=source_group,
         )
-        _move_to_error_dir(ipc_base_dir, source_group, file_path)
+        await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
 
 
 async def _sweep_messages(
     messages_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
 ) -> int:
     """Replay pending message files. Returns the number processed."""
-    if not messages_dir.exists():
-        return 0
     try:
         count = 0
-        for file_path in sorted(f for f in messages_dir.iterdir() if f.suffix == ".json"):
+        for file_path in await asyncio.to_thread(_json_files_in_dir, messages_dir):
             await _process_message_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             count += 1
     except OSError as exc:
@@ -260,11 +284,9 @@ async def _sweep_requests(
     requests_dir: Path, source_group: str, is_admin: bool, ipc_base_dir: Path, deps: IpcDeps
 ) -> int:
     """Replay pending request files. Returns the number processed."""
-    if not requests_dir.exists():
-        return 0
     try:
         count = 0
-        for file_path in sorted(f for f in requests_dir.iterdir() if f.suffix == ".json"):
+        for file_path in await asyncio.to_thread(_json_files_in_dir, requests_dir):
             await _process_request_file(file_path, source_group, is_admin, ipc_base_dir, deps)
             count += 1
     except OSError as exc:
@@ -276,11 +298,9 @@ async def _sweep_requests(
 
 async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir: Path) -> int:
     """Process output files during live runtime recovery sweeps."""
-    if not output_dir.exists():
-        return 0
     try:
         count = 0
-        for file_path in sorted(f for f in output_dir.iterdir() if f.suffix == ".json"):
+        for file_path in await asyncio.to_thread(_json_files_in_dir, output_dir):
             await _process_output_file(file_path, source_group, ipc_base_dir)
             count += 1
     except OSError as exc:
@@ -294,15 +314,13 @@ async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir
 
 async def _sweep_approval_decisions(decisions_dir: Path, source_group: str, deps: IpcDeps) -> int:
     """Process approval decisions during live runtime recovery sweeps."""
-    if not decisions_dir.exists():
-        return 0
     try:
         count = 0
         from pynchy.host.container_manager.ipc.handlers_approval import (
             process_approval_decision,
         )
 
-        for file_path in sorted(f for f in decisions_dir.iterdir() if f.suffix == ".json"):
+        for file_path in await asyncio.to_thread(_json_files_in_dir, decisions_dir):
             await process_approval_decision(file_path, source_group, deps=deps)
             count += 1
     except OSError as exc:
@@ -379,9 +397,7 @@ async def _sweep_directory(
     Returns the total number of files handled (processed + cleaned).
     """
     try:
-        group_folders = [
-            f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
-        ]
+        group_folders = await asyncio.to_thread(_group_folders_in_ipc_dir, ipc_base_dir)
     except OSError as exc:
         logger.error("Error reading IPC base directory during sweep", err=str(exc))
         return 0
@@ -400,8 +416,8 @@ async def _sweep_directory(
         processed += await _sweep_requests(
             group_dir / "requests", source_group, is_admin, ipc_base_dir, deps
         )
-        cleaned += _clean_output_dir(group_dir / "output", source_group)
-        cleaned += _clean_stale_initial(group_dir / "input", source_group)
+        cleaned += await asyncio.to_thread(_clean_output_dir, group_dir / "output", source_group)
+        cleaned += await asyncio.to_thread(_clean_stale_initial, group_dir / "input", source_group)
 
     if cleaned > 0:
         logger.info("IPC startup sweep cleaned stale files", cleaned=cleaned)
@@ -417,9 +433,7 @@ async def _sweep_runtime_directory(
 ) -> int:
     """Sweep live IPC directories so missed watchdog events do not wedge sessions."""
     try:
-        group_folders = [
-            f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"
-        ]
+        group_folders = await asyncio.to_thread(_group_folders_in_ipc_dir, ipc_base_dir)
     except OSError as exc:
         logger.error("Error reading IPC base directory during runtime sweep", err=str(exc))
         return 0
@@ -465,7 +479,7 @@ async def _process_queue(
     while True:
         file_path = await queue.get()
         try:
-            if not file_path.exists():
+            if not await asyncio.to_thread(_path_exists, file_path):
                 continue
 
             relative = file_path.relative_to(ipc_base_dir)
@@ -514,7 +528,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
 
     s = get_settings()
     ipc_base_dir = s.data_dir / "ipc"
-    ipc_base_dir.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(_mkdir_parents, ipc_base_dir)
 
     # --- Startup sweep (crash recovery) ---
     swept = await _sweep_directory(ipc_base_dir, deps)

@@ -106,6 +106,24 @@ def _approval_decisions_dir(source_group: str) -> Path:
     return d
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _read_json_file(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _pending_approval_files(pending_dir: Path) -> list[Path]:
+    if not pending_dir.exists():
+        return []
+    return list(pending_dir.glob("*.json"))
+
+
+def _unlink_path(path: Path) -> None:
+    path.unlink()
+
+
 # -- Short ID generation -------------------------------------------------------
 
 
@@ -260,17 +278,18 @@ async def sweep_expired_approvals() -> list[dict[str, Any]]:
     """
     s = get_settings()
     ipc_dir = s.data_dir / "ipc"
-    if not ipc_dir.exists():
+    if not await asyncio.to_thread(_path_exists, ipc_dir):
         return []
 
     now = datetime.now(UTC)
     expired: list[dict[str, Any]] = []
 
-    for group in _ipc_groups(ipc_dir):
+    for group in await asyncio.to_thread(_ipc_groups, ipc_dir):
         pending_dir = ipc_dir / group / "pending_approvals"
         decisions_dir = ipc_dir / group / "approval_decisions"
         expired.extend(await _expire_pending_approvals(group, pending_dir, now))
-        _remove_orphaned_decisions(decisions_dir, _pending_request_ids(pending_dir))
+        pending_ids = await asyncio.to_thread(_pending_request_ids, pending_dir)
+        await asyncio.to_thread(_remove_orphaned_decisions, decisions_dir, pending_ids)
 
     return expired
 
@@ -284,11 +303,8 @@ async def _expire_pending_approvals(
     pending_dir: Path,
     now: datetime,
 ) -> list[dict[str, Any]]:
-    if not pending_dir.exists():
-        return []
-
     expired: list[dict[str, Any]] = []
-    for filepath in list(pending_dir.glob("*.json")):
+    for filepath in await asyncio.to_thread(_pending_approval_files, pending_dir):
         expired_approval = await _expired_pending_approval(group, filepath, now)
         if expired_approval is not None:
             expired.append(expired_approval)
@@ -301,7 +317,7 @@ async def _expired_pending_approval(
     now: datetime,
 ) -> dict[str, Any] | None:
     try:
-        data = cast("dict[str, Any]", json.loads(filepath.read_text(encoding="utf-8")))
+        data = cast("dict[str, Any]", await asyncio.to_thread(_read_json_file, filepath))
         timestamp = datetime.fromisoformat(data["timestamp"])
         age_seconds = (now - timestamp).total_seconds()
     except (json.JSONDecodeError, OSError, KeyError) as exc:
@@ -325,7 +341,8 @@ async def _auto_deny_expired_approval(
     data: dict[str, Any],
     age_seconds: float,
 ) -> None:
-    write_ipc_response(
+    await asyncio.to_thread(
+        write_ipc_response,
         ipc_response_path(group, data["request_id"]),
         {"error": "Approval expired (no response within timeout)"},
     )
@@ -336,7 +353,7 @@ async def _auto_deny_expired_approval(
         decision="approval_expired",
         request_id=data["request_id"],
     )
-    filepath.unlink()
+    await asyncio.to_thread(_unlink_path, filepath)
     logger.info(
         "Expired pending approval auto-denied",
         request_id=data["request_id"],
