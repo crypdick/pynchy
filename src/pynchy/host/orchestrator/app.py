@@ -202,8 +202,8 @@ class PynchyApp:
     ) -> None:
         await channel_handler.send_reaction_to_outbound(self, chat_jid, per_channel_ids, emoji)
 
-    async def set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None:
-        await channel_handler.set_typing_on_channels(self, chat_jid, is_typing)
+    async def set_typing_on_channels(self, chat_jid: str, *, is_typing: bool) -> None:
+        await channel_handler.set_typing_on_channels(self, chat_jid, is_typing=is_typing)
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_host_message(chat_jid, text)

@@ -40,6 +40,7 @@ def prepare_message_context(
     s: Settings,
     group: types.WorkspaceProfile,
     missed_messages: list[types.NewMessage],
+    *,
     is_admin_group: bool,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Format SDK messages and gather any reset-time system notices."""

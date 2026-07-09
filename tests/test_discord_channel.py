@@ -390,13 +390,13 @@ async def test_set_typing_starts_background_refresh_and_stops_cleanly():
     ch.client = object()
     fake = _FakeTypingChannel()
     ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
-    await ch.set_typing("discord:channel:1", True)
+    await ch.set_typing("discord:channel:1", is_typing=True)
     await asyncio.sleep(0)
 
     assert fake.typing_calls >= 1
     assert "discord:channel:1" in ch._typing_tasks
 
-    await ch.set_typing("discord:channel:1", False)
+    await ch.set_typing("discord:channel:1", is_typing=False)
 
     assert "discord:channel:1" not in ch._typing_tasks
 

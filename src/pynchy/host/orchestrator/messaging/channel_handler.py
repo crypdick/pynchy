@@ -89,7 +89,7 @@ async def send_reaction_to_outbound(
             logger.debug("Outbound reaction send failed", channel=ch_name, err=str(exc))
 
 
-async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bool) -> None:
+async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, *, is_typing: bool) -> None:
     """Set typing indicator on all channels that support it."""
     for ch in deps.channels:
         if ch.is_connected() and hasattr(ch, "set_typing"):
@@ -97,6 +97,6 @@ async def set_typing_on_channels(deps: ChannelDeps, chat_jid: str, is_typing: bo
             if not target_jid:
                 continue
             try:
-                await ch.set_typing(target_jid, is_typing)
+                await ch.set_typing(target_jid, is_typing=is_typing)
             except (OSError, TimeoutError, ConnectionError) as exc:
                 logger.debug("Typing indicator send failed", channel=ch.name, err=str(exc))

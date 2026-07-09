@@ -347,8 +347,8 @@ async def run_agent(
         on_output,
         extra_system_notices,
         input_source,
-        is_scheduled_task,
-        repo_access_override,
+        is_scheduled_task=is_scheduled_task,
+        repo_access_override=repo_access_override,
     )
 
     # --- Scheduled tasks: one-shot container, no persistent session ---

@@ -58,6 +58,7 @@ class SlackChannel:
         bot_token: str,
         app_token: str,
         chat_names: list[str],
+        *,
         allow_create: bool,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
@@ -211,7 +212,7 @@ class SlackChannel:
             return False
         return self._is_allowed_channel(_channel_id_from_jid(jid))
 
-    async def set_typing(self, jid: str, is_typing: bool) -> None:
+    async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Slack doesn't have a user-level typing indicator API, so this is a no-op."""
 
     # Unicode -> Slack emoji name mapping.  Callers may pass either format;

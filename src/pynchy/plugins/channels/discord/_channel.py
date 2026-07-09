@@ -373,7 +373,7 @@ class DiscordChannel:
         emoji = self._config.processing_ack_emoji
         return emoji if isinstance(emoji, str) or emoji is None else str(emoji)
 
-    async def set_typing(self, jid: str, is_typing: bool) -> None:
+    async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Keep Discord's transient typing signal alive while work is active."""
         if self.client is None or not self.owns_jid(jid):
             return

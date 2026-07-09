@@ -210,7 +210,7 @@ class WhatsAppChannel:
         with contextlib.suppress(Exception):
             await self._client.disconnect()
 
-    async def set_typing(self, jid: str, is_typing: bool) -> None:
+    async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         try:
             target = self._parse_jid(jid)
             from neonize.utils.enum import ChatPresence, ChatPresenceMedia

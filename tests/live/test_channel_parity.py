@@ -261,7 +261,7 @@ class TestReactionAndTypingParity:
         ]
         deps = _make_deps(channels)
 
-        await set_typing_on_channels(deps, CHAT_JID, True)
+        await set_typing_on_channels(deps, CHAT_JID, is_typing=True)
 
         # All our recording channels have set_typing, so all should get it
         for ch in channels:

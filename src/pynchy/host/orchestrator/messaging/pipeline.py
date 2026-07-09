@@ -90,7 +90,7 @@ class MessageHandlerDeps(Protocol):
 
     def processing_ack_emoji(self, chat_jid: str) -> str | None: ...
 
-    async def set_typing_on_channels(self, chat_jid: str, is_typing: bool) -> None: ...
+    async def set_typing_on_channels(self, chat_jid: str, *, is_typing: bool) -> None: ...
 
     async def catch_up_channels(self) -> None: ...
 
@@ -319,6 +319,7 @@ async def _should_skip_batch(
     chat_jid: str,
     group: types.WorkspaceProfile,
     missed_messages: list[types.NewMessage],
+    *,
     _is_admin_group: bool,
     _s: Settings,
 ) -> bool:
@@ -370,6 +371,7 @@ def _register_idle_zzz_callback(
     deps: MessageHandlerDeps,
     chat_jid: str,
     group: types.WorkspaceProfile,
+    *,
     output_sent_to_user: bool,
 ) -> None:
     """Register a zzz reaction to fire when the container actually hibernates
@@ -400,6 +402,7 @@ async def _finalize_cursor_and_retry(
     group: types.WorkspaceProfile,
     missed_messages: list[types.NewMessage],
     agent_result: str,
+    *,
     had_error: bool,
     output_sent_to_user: bool,
     learning_summary: learning_capture.LearningRunSummary,
@@ -475,11 +478,18 @@ async def process_group_messages(
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
     missed_messages = await get_messages_since(chat_jid, since_timestamp)
 
-    if await _should_skip_batch(deps, chat_jid, group, missed_messages, is_admin_group, s):
+    if await _should_skip_batch(
+        deps,
+        chat_jid,
+        group,
+        missed_messages,
+        _is_admin_group=is_admin_group,
+        _s=s,
+    ):
         return True
 
     messages, reset_system_notices = prepare_message_context(
-        s, group, missed_messages, is_admin_group
+        s, group, missed_messages, is_admin_group=is_admin_group
     )
 
     process_start = time.monotonic()
@@ -506,7 +516,12 @@ async def process_group_messages(
     process_ms = (time.monotonic() - process_start) * 1000
     await deps.set_typing_on_channels(chat_jid, is_typing=False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
-    _register_idle_zzz_callback(deps, chat_jid, group, output_sent_to_user)
+    _register_idle_zzz_callback(
+        deps,
+        chat_jid,
+        group,
+        output_sent_to_user=output_sent_to_user,
+    )
 
     logger.info(
         "Message processing complete",
@@ -522,8 +537,8 @@ async def process_group_messages(
         group,
         missed_messages,
         agent_result,
-        had_error,
-        output_sent_to_user,
-        learning_summary,
-        s,
+        had_error=had_error,
+        output_sent_to_user=output_sent_to_user,
+        learning_summary=learning_summary,
+        s=s,
     )

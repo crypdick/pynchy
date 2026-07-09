@@ -70,7 +70,7 @@ class RecordingChannel:
     async def disconnect(self) -> None:
         self.connected = False
 
-    async def set_typing(self, jid: str, is_typing: bool) -> None:
+    async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         self.typing_states.append((jid, is_typing))
 
     async def send_reaction(self, jid: str, message_id: str, sender: str, emoji: str) -> None:

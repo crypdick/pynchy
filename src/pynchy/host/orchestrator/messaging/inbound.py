@@ -154,7 +154,9 @@ async def _route_pending_messages(
 
     if deps.queue.is_active_task(group_jid):
         logger.info("route_trace", step="active_task_forward", group=group.name)
-        await _handle_message_during_task(deps, group_jid, group, formatted, last_content, is_btw)
+        await _handle_message_during_task(
+            deps, group_jid, group, formatted, last_content, is_btw=is_btw
+        )
         return
 
     if deps.queue.send_message(group_jid, formatted):
@@ -219,6 +221,7 @@ async def _handle_message_during_task(
     group: WorkspaceProfile,
     formatted: str,
     last_content: str,
+    *,
     is_btw: bool,
 ) -> None:
     """Handle an incoming message when a scheduled task is running.

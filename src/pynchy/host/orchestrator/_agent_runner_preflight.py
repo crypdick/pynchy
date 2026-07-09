@@ -76,6 +76,7 @@ async def _pre_container_setup(
     on_output: OnOutput | None,
     extra_system_notices: list[str] | None,
     input_source: str,
+    *,
     is_scheduled_task: bool,
     repo_access_override: str | None,
 ) -> _PreContainerResult:
@@ -86,7 +87,7 @@ async def _pre_container_setup(
         _resolved_pre_container_context(
             deps,
             group.folder,
-            group.is_admin,
+            is_admin=group.is_admin,
             repo_access_override=repo_access_override,
         )
     )
@@ -124,8 +125,8 @@ async def _pre_container_setup(
 def _resolved_pre_container_context(
     deps: _PreflightDeps,
     group_folder: str,
-    is_admin: bool,
     *,
+    is_admin: bool,
     repo_access_override: str | None,
 ) -> tuple[bool, str | None, list[str], str | None, str | None]:
     from pynchy.config.prompts import read_prompts

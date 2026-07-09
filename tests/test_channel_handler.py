@@ -191,20 +191,28 @@ class TestProcessingAckEmoji:
 
 class TestSetTypingOnChannels:
     @pytest.mark.asyncio
+    async def test_requires_keyword_bool(self):
+        ch = _make_channel(has_typing=True)
+        deps = _make_deps([ch])
+
+        with pytest.raises(TypeError):
+            await set_typing_on_channels(deps, "group@g.us", True)
+
+    @pytest.mark.asyncio
     async def test_sends_typing_to_capable_channels(self):
         ch = _make_channel(has_typing=True)
         deps = _make_deps([ch])
 
-        await set_typing_on_channels(deps, "group@g.us", True)
+        await set_typing_on_channels(deps, "group@g.us", is_typing=True)
 
-        ch.set_typing.assert_awaited_once_with("group@g.us", True)
+        ch.set_typing.assert_awaited_once_with("group@g.us", is_typing=True)
 
     @pytest.mark.asyncio
     async def test_skips_channels_without_set_typing(self):
         ch = _make_channel(has_typing=False)
         deps = _make_deps([ch])
 
-        await set_typing_on_channels(deps, "group@g.us", True)
+        await set_typing_on_channels(deps, "group@g.us", is_typing=True)
 
     @pytest.mark.asyncio
     async def test_catches_network_errors(self):
@@ -212,7 +220,7 @@ class TestSetTypingOnChannels:
         ch.set_typing.side_effect = TimeoutError("timeout")
         deps = _make_deps([ch])
 
-        await set_typing_on_channels(deps, "group@g.us", True)
+        await set_typing_on_channels(deps, "group@g.us", is_typing=True)
 
 
 # ---------------------------------------------------------------------------
