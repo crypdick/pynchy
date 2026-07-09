@@ -49,7 +49,9 @@ from agent_runner.agent_tools._registry import tool, tool_error
     },
     visible=lambda: _ipc.is_admin,
 )
-async def _register_group_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+async def _register_group_handle(  # noqa: RUF029, RUF100 - async tool API.
+    arguments: dict[str, Any],
+) -> list[TextContent] | CallToolResult:
     if not _ipc.is_admin:
         return tool_error("Only the admin group can register new groups.")
 

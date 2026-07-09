@@ -27,7 +27,10 @@ _WORKTREE_REASON = (
 )
 
 
-async def guard_git_hook(tool_name: str, tool_input: dict[str, Any]) -> HookDecision:
+async def guard_git_hook(  # noqa: RUF029, RUF100 - async hook API.
+    tool_name: str,
+    tool_input: dict[str, Any],
+) -> HookDecision:
     """Block git push/pull/rebase in Bash. Allow everything else."""
     if tool_name != "Bash":
         return HookDecision(allowed=True)

@@ -89,7 +89,9 @@ def _exit_container() -> NoReturn:
     {"type": "object", "properties": {}},
     visible=lambda: _ipc.is_scheduled_task,
 )
-async def _finished_work_handle(_arguments: dict[str, Any]) -> list[TextContent]:
+async def _finished_work_handle(  # noqa: RUF029, RUF100 - async tool API.
+    _arguments: dict[str, Any],
+) -> list[TextContent]:
     _ipc.write_request_file(
         "finished_work",
         {
@@ -139,7 +141,9 @@ async def _finished_work_handle(_arguments: dict[str, Any]) -> list[TextContent]
         },
     },
 )
-async def _reset_context_handle(arguments: dict[str, Any]) -> list[TextContent]:
+async def _reset_context_handle(  # noqa: RUF029, RUF100 - async tool API.
+    arguments: dict[str, Any],
+) -> list[TextContent]:
     data: dict[str, str] = {
         "chatJid": _ipc.chat_jid,
         "groupFolder": _ipc.group_folder,

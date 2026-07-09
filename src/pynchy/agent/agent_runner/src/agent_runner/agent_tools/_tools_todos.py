@@ -57,7 +57,9 @@ def _write_todos(todos: list[dict[str, Any]]) -> None:
         },
     },
 )
-async def _list_todos_handle(arguments: dict[str, Any]) -> list[TextContent]:
+async def _list_todos_handle(  # noqa: RUF029, RUF100 - async tool API.
+    arguments: dict[str, Any],
+) -> list[TextContent]:
     todos = _read_todos()
     include_done = arguments.get("include_done", False)
     if not include_done:
@@ -91,7 +93,9 @@ async def _list_todos_handle(arguments: dict[str, Any]) -> list[TextContent]:
         "required": ["todo_id"],
     },
 )
-async def _complete_todo_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+async def _complete_todo_handle(  # noqa: RUF029, RUF100 - async tool API.
+    arguments: dict[str, Any],
+) -> list[TextContent] | CallToolResult:
     todo_id = arguments.get("todo_id", "")
     todos = _read_todos()
 

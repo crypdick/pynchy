@@ -34,7 +34,7 @@ server = Server("pynchy")
 # mypy flags the wrapped handlers as untyped-decorator; nothing in our code
 # consumes these functions directly (the server registers them).
 @server.list_tools()  # type: ignore[untyped-decorator]
-async def list_tools() -> list[Tool]:
+async def list_tools() -> list[Tool]:  # noqa: RUF029, RUF100 - async MCP callback API.
     return all_tools()
 
 
