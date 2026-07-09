@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from pynchy.config.settings import validate_settings_mapping
+from pynchy.host.container_manager.security import gate as _gate_module
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     create_gate,
@@ -12,17 +14,17 @@ from pynchy.host.container_manager.security.gate import (
     get_gate_for_group,
     resolve_security,
 )
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState
+from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
+from pynchy.types import ContainerInput, ServiceTrustConfig, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
 def _cleanup():
     """Ensure no gates leak between tests."""
     yield
-    # Import the registry and clear it
-    from pynchy.host.container_manager.security import gate as _mod
 
-    _mod._gates.clear()
+    _gate_module._gates.clear()
 
 
 def _make_security(**services: ServiceTrustConfig) -> WorkspaceSecurity:
@@ -101,8 +103,6 @@ class TestSecurityGateTaintPersistence:
         assert not gate2.policy.corruption_tainted
 
     def test_admin_resolved_trust_keeps_forbidden_writes(self, monkeypatch):
-        from pynchy.config.settings import validate_settings_mapping
-
         settings = validate_settings_mapping(
             {
                 "profiles": {
@@ -192,8 +192,6 @@ class TestSecurityGateEvaluate:
 
 class TestResolveSecurity:
     def test_resolves_selected_tool_trust(self, monkeypatch):
-        from pynchy.config.settings import validate_settings_mapping
-
         settings = validate_settings_mapping(
             {
                 "profiles": {"worker": {"tools": ["safe-tool"]}},
@@ -225,8 +223,6 @@ class TestResolveSecurity:
         assert security.capabilities == {}
 
     def test_preserves_contains_secrets_from_resolved_profiles(self, monkeypatch):
-        from pynchy.config.settings import validate_settings_mapping
-
         settings = validate_settings_mapping(
             {
                 "profiles": {"worker": {"contains_secrets": True}},
@@ -241,9 +237,6 @@ class TestResolveSecurity:
         assert security.services == {}
 
     def test_dynamic_thread_uses_parent_workspace_security(self, monkeypatch):
-        from pynchy.config.settings import validate_settings_mapping
-        from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
-
         settings = validate_settings_mapping(
             {
                 "profiles": {
@@ -279,8 +272,6 @@ class TestResolveSecurity:
         }
 
     def test_admin_resolution_preserves_contains_secrets(self, monkeypatch):
-        from pynchy.config.settings import validate_settings_mapping
-
         settings = validate_settings_mapping(
             {
                 "profiles": {
@@ -319,8 +310,6 @@ class TestGateCreatedAtSpawn:
 class TestGateDestroyedOnRelease:
     def test_group_state_release_destroys_gate(self):
         """GroupState.release() should call destroy_gate."""
-        from pynchy.host.orchestrator.concurrency import GroupState
-
         create_gate("test-ws", 100.0, WorkspaceSecurity())
 
         state = GroupState()
@@ -335,8 +324,6 @@ class TestGateDestroyedOnRelease:
 
     def test_release_without_gate_is_noop(self):
         """Release when no gate exists should not raise."""
-        from pynchy.host.orchestrator.concurrency import GroupState
-
         state = GroupState()
         state.group_folder = "some-group"
         state.invocation_ts = 999.0
@@ -348,8 +335,6 @@ class TestGateDestroyedOnRelease:
 class TestInvocationTsOnContainerInput:
     def test_container_input_has_invocation_ts(self):
         """ContainerInput should have invocation_ts field with default 0.0."""
-        from pynchy.types import ContainerInput
-
         ci = ContainerInput(
             messages=[],
             group_folder="test",
@@ -365,8 +350,6 @@ class TestInvocationTsOnContainerInput:
 class TestRegisterProcessAcceptsInvocationTs:
     def test_register_process_stores_invocation_ts(self):
         """register_process() should accept and store invocation_ts."""
-        from pynchy.host.orchestrator.concurrency import GroupQueue
-
         queue = GroupQueue()
         queue.register_process(
             "test@g.us",
@@ -380,8 +363,6 @@ class TestRegisterProcessAcceptsInvocationTs:
 
     def test_register_process_defaults_invocation_ts_to_zero(self):
         """register_process() without invocation_ts should default to 0.0."""
-        from pynchy.host.orchestrator.concurrency import GroupQueue
-
         queue = GroupQueue()
         queue.register_process("test@g.us", None, "pynchy-test", group_folder="test-ws")
         state = queue._get_group("test@g.us")
