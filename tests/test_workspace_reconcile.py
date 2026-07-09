@@ -383,7 +383,7 @@ class TestReconcileWorkspaces:
 
         mock_channel = AsyncMock(spec=Channel)
         mock_channel.name = conn_ref
-        mock_channel.create_group = AsyncMock(side_effect=ValueError("not configured"))
+        mock_channel.create_group = AsyncMock(side_effect=OSError("transport unavailable"))
 
         registered: dict[str, WorkspaceProfile] = {}
         register_fn = AsyncMock()

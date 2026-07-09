@@ -73,11 +73,12 @@ async def ensure_workspace_registered(
 
     try:
         created_jid = await channel.create_group(display_name)
-    except (RuntimeError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one workspace must not block startup.
         logger.warning(
             "Workspace chat creation failed; skipping registration",
             folder=folder,
             display_name=display_name,
+            exc_type=type(exc).__name__,
             err=str(exc),
         )
         return None

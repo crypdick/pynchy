@@ -141,6 +141,27 @@ async def test_channel_history_catch_up_defers_until_temporal_runtime(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_channel_history_catch_up_degrades_on_dispatch_failure(monkeypatch) -> None:
+    app = PynchyApp()
+    start_called = False
+
+    def fail_to_start() -> Awaitable[None]:
+        nonlocal start_called
+        start_called = True
+        return _failed_awaitable(TimeoutError("temporal rpc timed out"))
+
+    monkeypatch.setattr(app, "start_channel_reconciliation", fail_to_start)
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.temporal.scheduler.temporal_scheduler_runtime_active",
+        lambda: True,
+    )
+
+    await app._catch_up_channel_history()
+
+    assert start_called is True
+
+
+@pytest.mark.asyncio
 async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled(
     monkeypatch,
 ) -> None:

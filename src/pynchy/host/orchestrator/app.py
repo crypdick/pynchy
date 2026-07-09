@@ -373,6 +373,12 @@ class PynchyApp:
             await self.start_channel_reconciliation()
         except TemporalRuntimeUnavailableError:
             logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
+        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; history catch-up is best-effort startup work.
+            logger.warning(
+                "Channel reconciliation skipped after startup dispatch failure",
+                exc_type=type(exc).__name__,
+                err=str(exc),
+            )
 
     # ------------------------------------------------------------------
     # Lifecycle (delegated to _lifecycle module)
