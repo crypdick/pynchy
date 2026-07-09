@@ -207,10 +207,6 @@ async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RU
 
     Returns list of expired question dicts.
     """
-    # Deferred import to avoid circular dependency:
-    # pending_questions -> ipc._write -> ipc.__init__ -> ipc._handlers_ask_user -> pending_questions
-    from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
-
     s = get_settings()
     ipc_dir = s.data_dir / "ipc"
     if not ipc_dir.exists():
@@ -238,20 +234,39 @@ async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RU
                 continue
 
             age = (now - ts).total_seconds()
-            if age > PENDING_QUESTION_TIMEOUT_SECONDS:
-                write_ipc_response(
-                    ipc_response_path(grp, data["request_id"]),
-                    {"error": "Question expired (no response within timeout)"},
+            if age <= PENDING_QUESTION_TIMEOUT_SECONDS:
+                continue
+            try:
+                _expire_pending_question(grp, filepath, data, age)
+            except (OSError, KeyError) as exc:
+                logger.warning(
+                    "Failed to process pending question during sweep",
+                    path=str(filepath),
+                    err=str(exc),
                 )
-
-                filepath.unlink()
-                expired.append(data)
-
-                logger.info(
-                    "Expired pending question auto-expired",
-                    request_id=data["request_id"],
-                    source_group=grp,
-                    age_seconds=round(age),
-                )
+                continue
+            expired.append(data)
 
     return expired
+
+
+def _expire_pending_question(
+    group_name: str, filepath: Path, data: dict[str, Any], age_seconds: float
+) -> None:
+    # Deferred import to avoid circular dependency:
+    # pending_questions -> ipc._write -> ipc.__init__ -> ipc._handlers_ask_user -> pending_questions
+    from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+
+    write_ipc_response(
+        ipc_response_path(group_name, data["request_id"]),
+        {"error": "Question expired (no response within timeout)"},
+    )
+
+    filepath.unlink()
+
+    logger.info(
+        "Expired pending question auto-expired",
+        request_id=data["request_id"],
+        source_group=group_name,
+        age_seconds=round(age_seconds),
+    )

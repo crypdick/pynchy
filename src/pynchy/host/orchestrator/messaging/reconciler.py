@@ -8,7 +8,7 @@ the canonical JID are skipped.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.state import (
@@ -19,6 +19,9 @@ from pynchy.state import (
     mark_delivery_error,
     message_exists,
     prune_stale_cursors,
+)
+from pynchy.state.outbound import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    PendingDelivery,
 )
 from pynchy.types import (
     Channel,
@@ -219,7 +222,7 @@ def _advance_inbound_cursor(cursor: str, timestamp: str) -> str:
 
 
 async def _deliver_pending_outbound_row(
-    ch: Channel, target_jid: str, row: Any, outbound_cursor: str
+    ch: Channel, target_jid: str, row: PendingDelivery, outbound_cursor: str
 ) -> str:
     event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
     await ch.send_event(target_jid, event)

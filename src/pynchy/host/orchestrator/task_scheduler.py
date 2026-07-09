@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    OnOutput,
+)
 from pynchy.logger import logger
 from pynchy.state import (
     get_task_run_logs,
@@ -349,14 +351,14 @@ async def _run_task_agent(
             repo_access_override=None,
             input_source="scheduled_task",
         )
+        if agent_result == "error":
+            error = error or "Agent returned error"
+        await _merge_scheduled_task_worktree(task, error=error)
     except Exception as exc:  # noqa: BLE001, RUF100 - task execution is a boundary; record the failure and continue.
         error = str(exc)
         logger.error("Task failed", task_id=task.id, error=error)
         return result, error
     else:
-        if agent_result == "error":
-            error = error or "Agent returned error"
-        await _merge_scheduled_task_worktree(task, error=error)
         return result, error
     finally:
         if idle_timer:
