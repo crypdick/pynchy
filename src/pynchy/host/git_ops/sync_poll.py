@@ -153,7 +153,7 @@ def _find_pynchy_repo_ctx(s: Settings, pynchy_root: Path) -> RepoContext | None:
     """Resolve pynchy's own RepoContext (for worktree notifications), if configured."""
     from pynchy.host.git_ops.repo import get_repo_context
 
-    for slug in s.repos:
+    for slug in s.repos.overrides:
         ctx = get_repo_context(slug)
         if ctx and ctx.root.resolve() == pynchy_root.resolve():
             return ctx

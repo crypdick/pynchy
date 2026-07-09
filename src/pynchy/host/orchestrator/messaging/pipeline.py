@@ -323,22 +323,9 @@ async def _should_skip_batch(
     if all(m.sender == "system_notice" for m in missed_messages):
         return True
 
-    # Intercept special commands before trigger check — magic commands
-    # (context reset, end session, redeploy) should work without a trigger
-    if await intercept_special_command(deps, chat_jid, group, missed_messages[-1]):
-        return True
-
-    # For non-admin groups, check if trigger is required and present
-    from pynchy.config.access import resolve_channel_config
-
-    resolved = resolve_channel_config(group.folder)
-    if not is_admin_group and resolved.trigger == "mention":
-        has_trigger = any(s.trigger_pattern.search(m.content.strip()) for m in missed_messages)
-        if not has_trigger:
-            return True
-
-    # Access check: if workspace-level access is "read", skip activation (still stored)
-    return resolved.access == "read"
+    # Intercept special commands before normal routing so commands like
+    # context reset, end session, and redeploy are handled immediately.
+    return await intercept_special_command(deps, chat_jid, group, missed_messages[-1])
 
 
 async def _announce_processing_start(

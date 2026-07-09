@@ -14,7 +14,6 @@ import subprocess
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from pynchy.config import get_settings
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -218,12 +217,8 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
 def resolve_git_policy(group_folder: str) -> str:
     """Resolve the effective git policy for a workspace.
 
-    Returns "merge-to-main" (default) or "pull-request".
+    The config schema exposes one first-class git policy: merge to main.
     """
-    s = get_settings()
-    ws_cfg = s.workspaces.get(group_folder)
-    if ws_cfg and ws_cfg.git_policy:
-        return ws_cfg.git_policy
     return GIT_POLICY_MERGE
 
 

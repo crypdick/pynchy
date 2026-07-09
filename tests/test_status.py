@@ -37,7 +37,7 @@ _EMPTY_STATS = {
 
 def _status_settings(*, repos: dict[str, Any] | None = None) -> SimpleNamespace:
     return SimpleNamespace(
-        repos=repos or {},
+        repos=SimpleNamespace(overrides=repos or {}),
         scheduler=SimpleNamespace(
             temporal_address="localhost:7233",
             temporal_namespace="default",
@@ -555,7 +555,7 @@ class TestCollectTemporal:
     @pytest.mark.asyncio
     async def test_surfaces_config_cluster_health_and_worker_state(self):
         settings = SimpleNamespace(
-            repos={},
+            repos=SimpleNamespace(overrides={}),
             scheduler=SimpleNamespace(
                 temporal_address="temporal.internal:7233",
                 temporal_namespace="pynchy",

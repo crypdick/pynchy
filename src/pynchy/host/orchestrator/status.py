@@ -179,7 +179,7 @@ def _collect_repos() -> dict[str, Any]:
     s = get_settings()
     result: dict[str, Any] = {}
 
-    for slug in s.repos:
+    for slug in s.repos.overrides:
         repo_ctx = get_repo_context(slug)
         if repo_ctx is None or not repo_ctx.root.exists():
             continue

@@ -78,31 +78,23 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
 
 
 # ---------------------------------------------------------------------------
-# Access check helpers
+# Channel ownership helpers
 # ---------------------------------------------------------------------------
 
 
 def _channel_allows_outbound(deps: BusDeps, chat_jid: str, channel_name: str) -> bool:
-    """Check if a channel's resolved access mode permits outbound messages.
+    """Check whether the workspace is bound to this channel.
 
-    Returns True if outbound is allowed (access is "write" or "readwrite").
-    Returns True if no workspace is found (default to allowing).
+    The sender is permissive at the schema layer and only enforces channel
+    ownership mapping.
     """
     group = _find_workspace_by_jid(deps, chat_jid)
     if group is None:
         return True
-    from pynchy.config.access import resolve_channel_config, resolve_workspace_connection_name
+    from pynchy.config.access import resolve_workspace_connection_name
 
     expected = resolve_workspace_connection_name(group.folder)
-    if expected and expected != channel_name:
-        return False
-
-    resolved = resolve_channel_config(
-        group.folder,
-        channel_jid=chat_jid,
-        channel_plugin_name=channel_name,
-    )
-    return resolved.access != "read"
+    return not (expected and expected != channel_name)
 
 
 def _find_workspace_by_jid(deps: BusDeps, chat_jid: str) -> object | None:
