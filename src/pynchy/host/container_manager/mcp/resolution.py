@@ -148,7 +148,7 @@ def resolve_workspace_servers(
     all_servers: dict[str, McpServerConfig],
     group_folder: str,
 ) -> list[str]:
-    """Expand workspace's mcp_servers list (groups + names) into concrete server names."""
+    """Expand resolved MCP tool names into concrete server names."""
     ws_config = _resolved_workspace_config(settings, group_folder)
     if not ws_config:
         return []
