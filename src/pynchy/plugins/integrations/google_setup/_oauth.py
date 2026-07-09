@@ -21,6 +21,12 @@ from pynchy.plugins.integrations.google_setup._paths import (
 )
 
 OAUTH_CALLBACK_HOST = "localhost"
+INVALID_CREDENTIALS_JSON_ERROR = "Invalid credentials JSON"
+TOKEN_EXCHANGE_FAILED_MESSAGE_TEMPLATE = "Token exchange failed: {error}"
+GOOGLE_API_URL_MUST_USE_HTTPS_ERROR = "Google API URL must use https"
+OAUTH_CALLBACK_TIMEOUT_ERROR = (
+    "OAuth callback not received within 5 minutes. Make sure you clicked 'Allow' in the browser."
+)
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -37,7 +43,7 @@ def parse_client_credentials(kp: Path) -> tuple[str, str]:
         data = json.load(f)
     client = data.get("installed") or data.get("web")
     if not client:
-        raise RuntimeError("Invalid credentials JSON")
+        raise RuntimeError(INVALID_CREDENTIALS_JSON_ERROR)
     return client["client_id"], client["client_secret"]
 
 
@@ -105,7 +111,9 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         tokens: dict[str, Any] = json.loads(resp.read())
 
     if "error" in tokens:
-        raise RuntimeError(f"Token exchange failed: {tokens['error']}")
+        raise RuntimeError(
+            TOKEN_EXCHANGE_FAILED_MESSAGE_TEMPLATE.format(error=tokens["error"])
+        )
 
     # Add expiry_date (ms) as expected by the googleapis Node.js client
     if "expires_in" in tokens:
@@ -117,7 +125,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
 def urlopen_https_request(req: urllib.request.Request) -> Any:
     scheme = urllib.parse.urlsplit(req.full_url).scheme.lower()
     if scheme != "https":
-        raise RuntimeError("Google API URL must use https")
+        raise RuntimeError(GOOGLE_API_URL_MUST_USE_HTTPS_ERROR)
     return urllib.request.urlopen(req)  # noqa: S310, RUF100 - scheme is constrained above.
 
 
@@ -150,10 +158,7 @@ async def run_oauth_flow(page: Page, kp: Path, scopes: str) -> dict[str, Any]:
     callback_server.shutdown()
 
     if not callback_received or not auth_codes:
-        raise RuntimeError(
-            "OAuth callback not received within 5 minutes. "
-            "Make sure you clicked 'Allow' in the browser."
-        )
+        raise RuntimeError(OAUTH_CALLBACK_TIMEOUT_ERROR)
 
     logger.info("Exchanging authorization code for tokens")
     tokens = exchange_code_for_tokens(auth_codes[0], client_id, client_secret)

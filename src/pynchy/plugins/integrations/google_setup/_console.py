@@ -21,6 +21,14 @@ from typing import TYPE_CHECKING, Any
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import GCP_CONSOLE, download_dir
 
+COULD_NOT_DETECT_CREDENTIAL_DOWNLOAD_ERROR = (
+    "Could not detect credential JSON download. "
+    "Download it manually and place at "
+    "data/chrome-profiles/<profile>/gcp-oauth.keys.json"
+)
+CREDENTIALS_FILE_NOT_FOUND_ERROR = "Credentials file not found at {path}"
+INVALID_CREDENTIALS_JSON_ERROR = "Invalid credentials JSON — missing 'installed' or 'web' key"
+
 if TYPE_CHECKING:
     from playwright.async_api import Page
 else:
@@ -317,19 +325,15 @@ async def create_oauth_credentials(page: Page, project_id: str) -> Path:
                 download = await download_info.value
                 await download.save_as(str(dest))
         except Exception as exc:  # noqa: BLE001, RUF100 - missing download remains a manual credential-creation path.
-            raise RuntimeError(
-                "Could not detect credential JSON download. "
-                "Download it manually and place at "
-                "data/chrome-profiles/<profile>/gcp-oauth.keys.json"
-            ) from exc
+            raise RuntimeError(COULD_NOT_DETECT_CREDENTIAL_DOWNLOAD_ERROR) from exc
 
     if not dest.exists():
-        raise RuntimeError(f"Credentials file not found at {dest}")
+        raise RuntimeError(CREDENTIALS_FILE_NOT_FOUND_ERROR.format(path=dest))
 
     with dest.open(encoding="utf-8") as f:
         data = json.load(f)
     if "installed" not in data and "web" not in data:
-        raise RuntimeError("Invalid credentials JSON — missing 'installed' or 'web' key")
+        raise RuntimeError(INVALID_CREDENTIALS_JSON_ERROR)
 
     logger.info("OAuth credentials saved", path=str(dest))
     return dest
