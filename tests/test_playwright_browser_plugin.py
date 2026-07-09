@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations.playwright_browser import PlaywrightBrowserPlugin
 
 
@@ -90,8 +91,6 @@ class TestSkillContent:
 class TestPluginRegistration:
     def test_plugin_is_registered(self):
         """The playwright plugin should be registered in the plugin manager."""
-        from pynchy.plugins import get_plugin_manager
-
         pm = get_plugin_manager()
         plugin = pm.get_plugin("builtin-playwright-browser")
         assert isinstance(plugin, PlaywrightBrowserPlugin)
