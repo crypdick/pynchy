@@ -209,6 +209,8 @@ def _sync_plugin_skill_path(
 
 def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
     dst_dir = skills_dst / skill_path.name
+    if dst_dir.exists() and _is_builtin_skill_source(skill_path):
+        return
     if (
         _is_learned_skill_copy(dst_dir)
         or _is_plugin_skill_copy_from(dst_dir, skill_path)
@@ -250,6 +252,21 @@ def _is_learned_skill_copy(dst_dir: Path) -> bool:
     return stat.S_ISREG(marker_stat.st_mode)
 
 
+def _is_builtin_skill_source(skill_path: Path) -> bool:
+    builtin_skill = _builtin_skill_dir(skill_path.name)
+    if not builtin_skill.exists():
+        return False
+
+    try:
+        return skill_path.resolve() == builtin_skill.resolve()
+    except OSError:
+        return False
+
+
+def _builtin_skill_dir(name: str) -> Path:
+    return get_settings().project_root / "src" / "pynchy" / "agent" / "skills" / name
+
+
 def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
     try:
         dst_stat = dst_dir.lstat()
@@ -282,10 +299,7 @@ def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path) -> bool:
     if any(path.name.startswith(".pynchy-") for path in dst_dir.iterdir()):
         return False
 
-    builtin_skill = (
-        get_settings().project_root / "src" / "pynchy" / "agent" / "skills" / skill_path.name
-    )
-    return not builtin_skill.exists()
+    return not _builtin_skill_dir(skill_path.name).exists()
 
 
 def _selected_learned_skill_names(

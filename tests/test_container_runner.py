@@ -1924,6 +1924,35 @@ class TestSyncSkills:
         ):
             _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
+    def test_plugin_skill_path_matching_builtin_source_is_safe(self, tmp_path: Path):
+        """Plugin hooks may expose a built-in skill source already copied."""
+        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "computer-use"
+        builtin_skill.mkdir(parents=True)
+        (builtin_skill / "SKILL.md").write_text(
+            "---\nname: computer-use\ntier: core\n---\n# Computer Use\n"
+        )
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(builtin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+
+        copied_skill = session_dir / "skills" / "computer-use" / "SKILL.md"
+        assert copied_skill.read_text() == (
+            "---\nname: computer-use\ntier: core\n---\n# Computer Use\n"
+        )
+
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
         session_dir = tmp_path / "session" / ".claude"
