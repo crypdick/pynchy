@@ -24,8 +24,10 @@ from pathlib import (
 from typing import Any, cast
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import _get_plugin_handlers
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
 
@@ -89,9 +91,7 @@ async def process_approval_decision(
     # MCP proxy approvals: resolve the awaiting Future, don't execute here.
     # The proxy handler holds the HTTP connection open and handles execution.
     if handler_type == "mcp_proxy":
-        from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
-
-        resolved = resolve_mcp_proxy_approval(request_id, approved=approved)
+        resolved = security_approval.resolve_mcp_proxy_approval(request_id, approved=approved)
         if not resolved:
             logger.warning(
                 "MCP proxy approval Future not found (timed out?)",
@@ -203,8 +203,6 @@ async def _execute_ipc_approval(
     Admin-only: host-mutating ops already passed admin checks before
     cop_gate was invoked.
     """
-    from pynchy.host.container_manager.ipc.registry import dispatch
-
     if deps is None:
         logger.error(
             "Cannot dispatch IPC approval without deps",
@@ -219,7 +217,7 @@ async def _execute_ipc_approval(
 
     try:
         request_data["_cop_approved"] = True
-        await dispatch(request_data, source_group, is_admin=True, deps=deps)
+        await registry.dispatch(request_data, source_group, is_admin=True, deps=deps)
         # Note: the IPC handler writes its own response file on success.
         # We write one here only on failure to ensure the container unblocks.
         logger.info(
