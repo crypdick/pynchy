@@ -86,6 +86,24 @@ _INSTALL_INSTRUCTIONS = {
     ),
 }
 
+_CHROME_PATH_MISSING_MESSAGE = (
+    "CHROME_PATH={path!r} does not exist. Install Chrome/Chromium and update CHROME_PATH in .env."
+)
+_CHROME_NOT_INSTALLED_MESSAGE = (
+    "Chrome/Chromium is not installed (or not in a standard location).\n"
+    "\n"
+    "{instructions}\n"
+    "\n"
+    "After installing, either ensure the binary is in a standard path or "
+    "set CHROME_PATH in .env to point to it."
+)
+_XVFB_EXITED_MESSAGE = "Xvfb exited immediately (code {returncode})"
+_X11VNC_EXITED_MESSAGE = "x11vnc exited immediately (code {returncode})"
+_WEBSOCKIFY_EXITED_MESSAGE = "websockify exited immediately (code {returncode})"
+_HEADLESS_DISPLAY_REQUIRED_MESSAGE = (
+    "Headless display requires: {error}. Install with: apt install xvfb x11vnc novnc"
+)
+
 
 def _detect_chrome() -> str | None:
     """Auto-detect Chrome/Chromium in well-known locations.
@@ -127,10 +145,7 @@ def chrome_path() -> str:
     path = os.environ.get("CHROME_PATH", "")
     if path:
         if not Path(path).is_file():
-            raise RuntimeError(
-                f"CHROME_PATH={path!r} does not exist. Install Chrome/Chromium "
-                "and update CHROME_PATH in .env."
-            )
+            raise RuntimeError(_CHROME_PATH_MISSING_MESSAGE.format(path=path))
         return path
 
     # 2. Auto-detect
@@ -141,14 +156,7 @@ def chrome_path() -> str:
     # 3. Not found — give platform-specific install instructions
     platform_key = "darwin" if sys.platform == "darwin" else "linux"
     instructions = _INSTALL_INSTRUCTIONS[platform_key]
-    raise RuntimeError(
-        "Chrome/Chromium is not installed (or not in a standard location).\n"
-        "\n"
-        f"{instructions}\n"
-        "\n"
-        "After installing, either ensure the binary is in a standard path or "
-        "set CHROME_PATH in .env to point to it."
-    )
+    raise RuntimeError(_CHROME_NOT_INSTALLED_MESSAGE.format(instructions=instructions))
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +288,7 @@ def _launch_virtual_display_processes(
         stack.callback(stop_procs, procs)
         time.sleep(0.5)
         if xvfb.poll() is not None:
-            raise RuntimeError(f"Xvfb exited immediately (code {xvfb.returncode})")
+            raise RuntimeError(_XVFB_EXITED_MESSAGE.format(returncode=xvfb.returncode))
 
         x11vnc = subprocess.Popen(  # noqa: S603, RUF100 - fixed argv to resolved x11vnc path.
             [
@@ -299,7 +307,7 @@ def _launch_virtual_display_processes(
         procs.append(x11vnc)
         time.sleep(0.5)
         if x11vnc.poll() is not None:
-            raise RuntimeError(f"x11vnc exited immediately (code {x11vnc.returncode})")
+            raise RuntimeError(_X11VNC_EXITED_MESSAGE.format(returncode=x11vnc.returncode))
 
         ws_cmd = [tool_paths["websockify"], str(_NOVNC_PORT), f"localhost:{_VNC_PORT}"]
         if Path(_NOVNC_WEB_DIR).is_dir():
@@ -312,7 +320,9 @@ def _launch_virtual_display_processes(
         procs.append(websockify_proc)
         time.sleep(0.5)
         if websockify_proc.poll() is not None:
-            raise RuntimeError(f"websockify exited immediately (code {websockify_proc.returncode})")
+            raise RuntimeError(
+                _WEBSOCKIFY_EXITED_MESSAGE.format(returncode=websockify_proc.returncode)
+            )
         stack.pop_all()
     return procs
 
@@ -370,9 +380,7 @@ def start_virtual_display() -> tuple[list[subprocess.Popen[bytes]], str]:
     try:
         tool_paths = _resolve_executables("Xvfb", "x11vnc", "websockify")
     except RuntimeError as exc:
-        raise RuntimeError(
-            f"Headless display requires: {exc}. Install with: apt install xvfb x11vnc novnc"
-        ) from exc
+        raise RuntimeError(_HEADLESS_DISPLAY_REQUIRED_MESSAGE.format(error=exc)) from exc
 
     novnc_url = _resolve_novnc_url()
 
