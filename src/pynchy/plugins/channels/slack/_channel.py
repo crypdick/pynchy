@@ -146,6 +146,15 @@ class SlackChannel:
     def slack_app(self) -> Any:
         return self._app
 
+    def require_slack_app(self) -> Any:
+        if self._app is None:
+            raise RuntimeError("Slack app is not initialized")
+        return self._app
+
+    @property
+    def bot_user_id(self) -> str:
+        return self._bot_user_id
+
     @property
     def on_ask_user_answer(self) -> Callable[[str, dict[str, Any]], None] | None:
         return self._on_ask_user_answer
@@ -157,6 +166,31 @@ class SlackChannel:
     @property
     def on_agent_stop(self) -> Callable[[str, str], None] | None:
         return self._on_agent_stop
+
+    async def resolve_user_name(self, user_id: str) -> str:
+        return await self._resolve_user_name(user_id)
+
+    async def resolve_channel_name(self, channel_id: str) -> str:
+        return await self._resolve_channel_name(channel_id)
+
+    def emit_chat_metadata(self, jid: str, timestamp: str, name: str | None) -> None:
+        self._on_chat_metadata(jid, timestamp, name)
+
+    def emit_message(self, jid: str, message: NewMessage) -> None:
+        self._on_message(jid, message)
+
+    def emit_reaction(self, jid: str, timestamp: str, user: str, emoji: str) -> None:
+        if self._on_reaction is not None:
+            self._on_reaction(jid, timestamp, user, emoji)
+
+    def track_slack_ts(self, ts: str, now: float, *, ttl_seconds: float = 120.0) -> bool:
+        if ts in self._seen_ts:
+            return True
+        if len(self._seen_ts) >= self._seen_ts_max:
+            cutoff = now - ttl_seconds
+            self._seen_ts = {k: v for k, v in self._seen_ts.items() if v > cutoff}
+        self._seen_ts[ts] = now
+        return False
 
     @property
     def allow_create(self) -> bool:

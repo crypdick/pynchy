@@ -35,6 +35,21 @@ class SlackInteractions:
 
     _channel: SlackChannel
 
+    async def on_ask_user_interaction(
+        self, body: dict[str, Any], action: dict[str, Any]
+    ) -> None:
+        await self._on_ask_user_interaction(body, action)
+
+    async def on_approval_interaction(
+        self, body: dict[str, Any], action: dict[str, Any]
+    ) -> None:
+        await self._on_approval_interaction(body, action)
+
+    async def on_agent_stop_interaction(
+        self, body: dict[str, Any], action: dict[str, Any]
+    ) -> None:
+        await self._on_agent_stop_interaction(body, action)
+
     async def _finalize_decision(  # noqa: PLR0913, RUF100 - shared callback helper keeps interaction handlers small.
         self,
         body: dict[str, Any],

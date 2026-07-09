@@ -41,11 +41,7 @@ class SlackEvents:
     _channel: SlackChannel
 
     def _require_app(self) -> Any:
-        ch = self._channel
-        app = ch._app
-        if app is None:
-            raise RuntimeError("Slack app is not initialized")
-        return app
+        return self._channel.require_slack_app()
 
     def register_handlers(self) -> None:
         self._register_handlers()
@@ -54,19 +50,19 @@ class SlackEvents:
         ch = self._channel
         app = self._require_app()
 
-        # slack_bolt is untyped to mypy (ignore_missing_imports), so ``ch._app``
+        # slack_bolt is untyped to mypy (ignore_missing_imports), so the app
         # is ``Any`` and its ``.event()``/``.action()`` decorators register as
         # untyped — hence the per-handler ``untyped-decorator`` ignores below.
 
         @app.event("message")  # type: ignore[untyped-decorator]
         async def _handle_message(event: dict[str, Any], say: Any) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
-            await self._on_slack_message(event)
+            await self.on_slack_message(event)
 
         @app.event("app_mention")  # type: ignore[untyped-decorator]
         async def _handle_mention(event: dict[str, Any], say: Any) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
-            await self._on_slack_message(event)
+            await self.on_slack_message(event)
 
         @app.event("reaction_added")  # type: ignore[untyped-decorator]
         async def _handle_reaction(event: dict[str, Any]) -> None:
@@ -78,7 +74,7 @@ class SlackEvents:
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
             await ack()
-            await ch.interactions._on_ask_user_interaction(body, action)
+            await ch.interactions.on_ask_user_interaction(body, action)
 
         # --- Approval button handlers (Approve/Deny from approval gate) ---
         @app.action(COP_APPROVAL_ACTION_RE)  # type: ignore[untyped-decorator]
@@ -86,7 +82,7 @@ class SlackEvents:
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
             await ack()
-            await ch.interactions._on_approval_interaction(body, action)
+            await ch.interactions.on_approval_interaction(body, action)
 
         # --- Agent stop button handler ---
         @app.action(AGENT_STOP_ACTION_RE)  # type: ignore[untyped-decorator]
@@ -94,7 +90,7 @@ class SlackEvents:
             ack: Any, body: dict[str, Any], action: dict[str, Any]
         ) -> None:
             await ack()
-            await ch.interactions._on_agent_stop_interaction(body, action)
+            await ch.interactions.on_agent_stop_interaction(body, action)
 
         # --- Slack Assistant panel (sidebar DM experience) ---
         self._register_assistant_handlers()
@@ -133,14 +129,14 @@ class SlackEvents:
 
             if not channel_id or not user_id:
                 return
-            if not ch.allowlist._is_allowed_channel(channel_id):
+            if not ch.is_allowed_channel(channel_id):
                 return
 
             jid = slack_jid(channel_id)
-            sender_name = await ch._resolve_user_name(user_id)
+            sender_name = await ch.resolve_user_name(user_id)
             timestamp = datetime.now(UTC).isoformat()
 
-            ch._on_chat_metadata(jid, timestamp, f"assistant:{user_id}")
+            ch.emit_chat_metadata(jid, timestamp, f"assistant:{user_id}")
 
             msg = NewMessage(
                 id=f"slack-assistant-{ts}",
@@ -156,7 +152,7 @@ class SlackEvents:
                 },
             )
             logger.info("Slack assistant message", user=user_id, text_len=len(text))
-            ch._on_message(jid, msg)
+            ch.emit_message(jid, msg)
 
         app = self._require_app()
         app.use(assistant)
@@ -171,10 +167,10 @@ class SlackEvents:
         inline rather than stripped so context is preserved.
         """
         ch = self._channel
-        if not ch._bot_user_id:
+        if not ch.bot_user_id:
             return text
         trigger = f"@{get_settings().agent.name}"
-        return re.sub(rf"<@{re.escape(ch._bot_user_id)}>", trigger, text).strip()
+        return re.sub(rf"<@{re.escape(ch.bot_user_id)}>", trigger, text).strip()
 
     def _normalize_bot_mention(self, text: str) -> str:
         return self.normalize_bot_mention(text)
@@ -185,15 +181,7 @@ class SlackEvents:
         Keeps a bounded dict so memory doesn't grow without limit.
         """
         ch = self._channel
-        now = time.monotonic()
-        if ts in ch._seen_ts:
-            return True
-        # Evict stale entries when the dict gets too large
-        if len(ch._seen_ts) >= ch._seen_ts_max:
-            cutoff = now - 120  # 2 minutes
-            ch._seen_ts = {k: v for k, v in ch._seen_ts.items() if v > cutoff}
-        ch._seen_ts[ts] = now
-        return False
+        return ch.track_slack_ts(ts, time.monotonic())
 
     def _dedup_ts(self, ts: str) -> bool:
         return self.dedup_ts(ts)
@@ -215,7 +203,7 @@ class SlackEvents:
 
         if not channel_id or not user_id:
             return
-        if not ch.allowlist._is_allowed_channel(channel_id):
+        if not ch.is_allowed_channel(channel_id):
             return
 
         # Deduplicate: Slack fires both `message` and `app_mention` events
@@ -230,14 +218,14 @@ class SlackEvents:
         text = self.normalize_bot_mention(text)
 
         # Resolve display name (fall back to user ID)
-        sender_name = await ch._resolve_user_name(user_id)
+        sender_name = await ch.resolve_user_name(user_id)
 
         # Compute timestamp once for both metadata and message
         timestamp = datetime.now(UTC).isoformat()
 
         # Report chat metadata so workspace auto-register can pick it up
-        chat_name = await ch._resolve_channel_name(channel_id)
-        ch._on_chat_metadata(jid, timestamp, chat_name)
+        chat_name = await ch.resolve_channel_name(channel_id)
+        ch.emit_chat_metadata(jid, timestamp, chat_name)
 
         msg = NewMessage(
             id=f"slack-{ts}",
@@ -256,7 +244,7 @@ class SlackEvents:
             user=user_id,
             text_len=len(text),
         )
-        ch._on_message(jid, msg)
+        ch.emit_message(jid, msg)
 
     async def _on_slack_message(self, event: dict[str, Any]) -> None:
         await self.on_slack_message(event)
@@ -264,9 +252,6 @@ class SlackEvents:
     async def _on_slack_reaction(self, event: dict[str, Any]) -> None:
         """Route an inbound Slack reaction to the pynchy reaction callback."""
         ch = self._channel
-        if not ch._on_reaction:
-            return
-
         user_id = event.get("user", "")
         reaction = event.get("reaction", "")
         item = event.get("item", {})
@@ -275,8 +260,8 @@ class SlackEvents:
 
         if not channel_id or not user_id or not reaction:
             return
-        if not ch.allowlist._is_allowed_channel(channel_id):
+        if not ch.is_allowed_channel(channel_id):
             return
 
         jid = slack_jid(channel_id)
-        ch._on_reaction(jid, message_ts, user_id, reaction)
+        ch.emit_reaction(jid, message_ts, user_id, reaction)
