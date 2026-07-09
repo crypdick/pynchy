@@ -20,8 +20,13 @@ class TemporalSchedulerStatusSnapshot:
     last_error: str | None = None
 
 
-_scheduler_deps: Any | None = None
-_temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
+@dataclass
+class _RuntimeState:
+    scheduler_deps: Any | None = None
+    temporal_scheduler_status: TemporalSchedulerStatusSnapshot = TemporalSchedulerStatusSnapshot()
+
+
+_state = _RuntimeState()
 
 
 def _utc_timestamp() -> str:
@@ -30,18 +35,16 @@ def _utc_timestamp() -> str:
 
 def reset_temporal_scheduler_status() -> None:
     """Clear the in-process Temporal worker status snapshot."""
-    global _temporal_scheduler_status
-    _temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
+    _state.temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
 
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
     """Return the in-process Temporal worker status snapshot."""
-    return asdict(_temporal_scheduler_status)
+    return asdict(_state.temporal_scheduler_status)
 
 
 def _update_temporal_scheduler_status(**changes: Any) -> None:
-    global _temporal_scheduler_status
-    _temporal_scheduler_status = replace(_temporal_scheduler_status, **changes)
+    _state.temporal_scheduler_status = replace(_state.temporal_scheduler_status, **changes)
 
 
 def _activity_workflow_id() -> str | None:
@@ -63,11 +66,10 @@ def _record_activity_result(task_id: str, result: str, error: str | None = None)
 
 def bind_scheduler_deps(deps: Any | None) -> None:
     """Bind app dependencies for Temporal activities running in this process."""
-    global _scheduler_deps
-    _scheduler_deps = deps
+    _state.scheduler_deps = deps
 
 
 def _require_scheduler_deps() -> Any:
-    if _scheduler_deps is None:
+    if _state.scheduler_deps is None:
         raise RuntimeError("Temporal scheduler dependencies are not bound")
-    return _scheduler_deps
+    return _state.scheduler_deps

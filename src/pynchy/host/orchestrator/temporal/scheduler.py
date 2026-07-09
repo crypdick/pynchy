@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import sys
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
@@ -132,7 +133,7 @@ class TemporalRuntimeUnavailableError(RuntimeError):
 
 def temporal_scheduler_runtime_active() -> bool:
     """Return whether this process currently has an active Temporal runtime."""
-    return _active_runtime is not None
+    return getattr(sys.modules[__name__], "_active_runtime", None) is not None
 
 
 def reset_temporal_scheduler_status() -> None:
@@ -148,11 +149,11 @@ def get_temporal_scheduler_status() -> dict[str, Any]:
 async def _require_active_runtime() -> TemporalSchedulerRuntime:
     """Return the active runtime, waiting briefly for startup to finish."""
     deadline = asyncio.get_running_loop().time() + 10.0
-    while _active_runtime is None:
+    while getattr(sys.modules[__name__], "_active_runtime", None) is None:
         if asyncio.get_running_loop().time() >= deadline:
             raise TemporalRuntimeUnavailableError("Temporal scheduler runtime has not been started")
         await asyncio.sleep(0.05)
-    return _active_runtime
+    return sys.modules[__name__]._active_runtime
 
 
 async def start_learning_review_workflow(packet: LearningPacket) -> None:
@@ -222,7 +223,7 @@ class TemporalSchedulerRuntime:
         self._worker_stack = contextlib.AsyncExitStack()
 
     async def __aenter__(self) -> TemporalSchedulerRuntime:
-        global _active_runtime
+        module = sys.modules[__name__]
         bind_scheduler_deps(self.deps)
         try:
             self.client = await Client.connect(
@@ -262,7 +263,7 @@ class TemporalSchedulerRuntime:
             bind_scheduler_deps(None)
             _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
             raise
-        _active_runtime = self
+        module._active_runtime = self
         _update_temporal_scheduler_status(worker_running=True, last_error=None)
         logger.info(
             "Temporal scheduler runtime started",
@@ -278,11 +279,11 @@ class TemporalSchedulerRuntime:
         exc: BaseException | None,
         _tb: TracebackType | None,
     ) -> None:
-        global _active_runtime
+        module = sys.modules[__name__]
         await self._worker_stack.aclose()
         bind_scheduler_deps(None)
-        if _active_runtime is self:
-            _active_runtime = None
+        if getattr(module, "_active_runtime", None) is self:
+            module._active_runtime = None
         _update_temporal_scheduler_status(worker_running=False)
 
     async def start_scheduled_agent_task(self, task: ScheduledTask) -> None:

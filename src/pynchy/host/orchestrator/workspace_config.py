@@ -12,7 +12,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
     Iterable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +51,12 @@ class WorkspaceSpec:
     config: WorkspaceConfig
 
 
-_plugin_workspace_specs: dict[str, WorkspaceSpec] = {}
+@dataclass
+class _WorkspaceConfigState:
+    plugin_workspace_specs: dict[str, WorkspaceSpec] = field(default_factory=dict)
+
+
+_state = _WorkspaceConfigState()
 _DYNAMIC_THREAD_DELIMITER = "__thread_"
 
 
@@ -82,8 +87,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
 
     Plugin workspace configs are merged with config.toml in `load_workspace_config`.
     """
-    global _plugin_workspace_specs
-    _plugin_workspace_specs = {}
+    _state.plugin_workspace_specs.clear()
     if plugin_manager is None:
         return
 
@@ -104,7 +108,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
             logger.warning("Invalid workspace config from plugin", folder=folder, err=str(exc))
             continue
 
-        _plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed)
+        _state.plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed)
 
 
 def _workspace_specs() -> dict[str, WorkspaceSpec]:
@@ -114,7 +118,7 @@ def _workspace_specs() -> dict[str, WorkspaceSpec]:
     so startup can seed missing files even when config is overridden by the user.
     """
     s = get_settings()
-    merged = dict(_plugin_workspace_specs)
+    merged = dict(_state.plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
         merged[folder] = WorkspaceSpec(config=cfg)
     return merged

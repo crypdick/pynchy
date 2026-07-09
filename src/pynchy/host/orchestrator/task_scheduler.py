@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -117,14 +118,16 @@ class TemporalRuntime(Protocol):
 
 def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: Any) -> Any:
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
-    global TemporalSchedulerRuntime
-    if TemporalSchedulerRuntime is None:
+    module = sys.modules[__name__]
+    runtime_cls = getattr(module, "TemporalSchedulerRuntime", None)
+    if runtime_cls is None:
         from pynchy.host.orchestrator.temporal.scheduler import (
             TemporalSchedulerRuntime as _TemporalSchedulerRuntime,
         )
 
-        TemporalSchedulerRuntime = _TemporalSchedulerRuntime
-    return TemporalSchedulerRuntime(deps, scheduler_config)
+        runtime_cls = _TemporalSchedulerRuntime
+        module.TemporalSchedulerRuntime = runtime_cls
+    return runtime_cls(deps, scheduler_config)
 
 
 def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:
@@ -134,12 +137,12 @@ def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:
 
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
     """Start the scheduler polling loop."""
-    global _scheduler_running
+    module = sys.modules[__name__]
     async with _scheduler_lock:
-        if _scheduler_running:
+        if getattr(module, "_scheduler_running", False):
             logger.debug("Scheduler loop already running, skipping duplicate start")
             return
-        _scheduler_running = True
+        module._scheduler_running = True
     scheduler_config = get_settings().scheduler
     logger.info("Scheduler loop started", backend="temporal")
 
@@ -148,7 +151,7 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
             await _run_scheduler_loop(deps, temporal_runtime)
     finally:
         async with _scheduler_lock:
-            _scheduler_running = False
+            module._scheduler_running = False
 
 
 async def _run_scheduler_loop(

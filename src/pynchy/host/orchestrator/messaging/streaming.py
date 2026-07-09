@@ -226,24 +226,27 @@ class TraceBatcher:
             timer.cancel()
 
 
-# Module-level singleton
-_trace_batcher: TraceBatcher | None = None
+@dataclass
+class _TraceBatcherState:
+    trace_batcher: TraceBatcher | None = None
+
+
+_state = _TraceBatcherState()
 
 
 def init_trace_batcher(deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
     """Initialise the module-level TraceBatcher. Called once at startup."""
-    global _trace_batcher
-    _trace_batcher = TraceBatcher(deps, cooldown)
+    _state.trace_batcher = TraceBatcher(deps, cooldown)
 
 
 def get_trace_batcher() -> TraceBatcher | None:
     """Return the current TraceBatcher (or None before init)."""
-    return _trace_batcher
+    return _state.trace_batcher
 
 
 async def enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, event: OutboundEvent) -> None:
     """Enqueue via batcher if available, otherwise broadcast directly."""
-    if _trace_batcher is not None:
-        _trace_batcher.enqueue(chat_jid, event)
+    if _state.trace_batcher is not None:
+        _state.trace_batcher.enqueue(chat_jid, event)
     else:
         await deps.broadcast_to_channels(chat_jid, event)

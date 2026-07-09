@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import subprocess  # noqa: S404, RUF100 - used for subprocess exception types in status collection.
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -40,16 +41,18 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves status ann
     TaskRunLog,
 )
 
-# Module-level wall-clock start time for uptime reporting.
-# Monotonic _start_time in http_server.py is for duration math only;
-# we need a real timestamp for the "started_at" field.
-_started_at: datetime | None = None
+
+@dataclass
+class _StatusState:
+    started_at: datetime | None = None
+
+
+_state = _StatusState()
 
 
 def record_start_time() -> None:
     """Called once at service startup to record the wall-clock start time."""
-    global _started_at
-    _started_at = datetime.now(UTC)
+    _state.started_at = datetime.now(UTC)
 
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
@@ -148,7 +151,7 @@ def _collect_service(deps: StatusDeps, start_time_monotonic: float) -> dict[str,
     status = "shutting_down" if deps.is_shutting_down() else "ok"
     return {
         "status": status,
-        "started_at": _started_at.isoformat() if _started_at else None,
+        "started_at": _state.started_at.isoformat() if _state.started_at else None,
         "uptime_seconds": round(time.monotonic() - start_time_monotonic),
     }
 
