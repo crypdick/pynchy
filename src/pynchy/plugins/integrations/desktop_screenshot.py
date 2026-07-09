@@ -79,7 +79,7 @@ def _screenshot_path(*, source_group: str, label: object) -> Path:
     return get_settings().data_dir / "ipc" / source_group / "screenshots" / filename
 
 
-def _screenshot_dir(*, settings: Any, source_group: str) -> Path:
+def _screenshot_dir(*, settings: object, source_group: str) -> Path:
     return Path(settings.data_dir) / "ipc" / source_group / "screenshots"
 
 
@@ -100,7 +100,7 @@ def _latest_screenshot(base_dir: Path) -> Path:
 
 def _resolve_screenshot_path(
     *,
-    settings: Any,
+    settings: object,
     source_group: str,
     image_path: object,
 ) -> Path:
@@ -146,7 +146,7 @@ def _prompt(data: dict[str, Any]) -> str:
     return _DEFAULT_ANALYSIS_PROMPT
 
 
-def _model(data: dict[str, Any], settings: Any) -> str:
+def _model(data: dict[str, Any], settings: object) -> str:
     model = data.get("model")
     if isinstance(model, str) and model.strip():
         return model

@@ -17,6 +17,9 @@ policy enforcement.
 from __future__ import annotations
 
 import os
+from collections.abc import (
+    Sequence,  # noqa: TC003, RUF100 - beartype resolves CalDAV protocol annotations at runtime.
+)
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -33,10 +36,11 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 # CalDAV helpers
 # ---------------------------------------------------------------------------
 
-_caldav_client_cache: dict[str, Any] = {}  # keyed by server name
+
+_caldav_client_cache: dict[str, object] = {}  # keyed by server name
 
 
-def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> Any:
+def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> object:
     """Get or create a cached DAVClient for a named server."""
     import caldav
 
@@ -79,7 +83,9 @@ def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerConfig) -> bool:
     return True
 
 
-def _filter_calendars(calendars: list[Any], server_cfg: CalDAVServerConfig) -> list[Any]:
+def _filter_calendars(
+    calendars: Sequence[object], server_cfg: CalDAVServerConfig
+) -> list[object]:
     """Filter a list of CalDAV calendar objects by allow/ignore rules."""
     return [c for c in calendars if c.name and _is_calendar_visible(c.name, server_cfg)]
 
@@ -124,7 +130,7 @@ def _resolve_calendar(
     server_name: str,
     server_cfg: CalDAVServerConfig,
     calendar_name: str | None,
-) -> Any:
+) -> object:
     """Resolve a calendar object from a specific server.
 
     If calendar_name is None, returns the first visible calendar.
@@ -152,7 +158,7 @@ def _resolve_calendar(
     raise ValueError(msg)
 
 
-def _parse_event(component: Any) -> dict[str, Any]:
+def _parse_event(component: object) -> dict[str, Any]:
     """Extract event fields from an iCalendar VEVENT component."""
 
     def _get(key: str) -> str | None:
