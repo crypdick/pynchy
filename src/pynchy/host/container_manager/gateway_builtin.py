@@ -12,7 +12,7 @@ import secrets
 from collections.abc import (
     Mapping,  # noqa: TC003, RUF100 - beartype resolves gateway header signatures at runtime.
 )
-from typing import Any
+from typing import cast
 
 import aiohttp
 from aiohttp import web
@@ -51,13 +51,14 @@ def _resolve_provider(path: str) -> tuple[str, str] | None:
 async def _relay_upstream_response(
     *,
     session: aiohttp.ClientSession,
-    request: Any,
+    request: object,
     upstream_url: str,
     headers: dict[str, str],
     body: bytes,
 ) -> web.StreamResponse:
+    proxy_request = cast("web.Request", request)
     async with session.request(
-        method=request.method,
+        method=proxy_request.method,
         url=upstream_url,
         headers=headers,
         data=body,
@@ -72,7 +73,7 @@ async def _relay_upstream_response(
             status=upstream.status,
             headers=resp_headers,
         )
-        await response.prepare(request)
+        await response.prepare(proxy_request)
 
         async for chunk in upstream.content.iter_any():
             await response.write(chunk)
@@ -166,10 +167,11 @@ class BuiltinGateway:
 
     # Avoid annotating this as web.Request: beartype inspects aiohttp's
     # typing.MutableMapping base and emits a PEP 585 warning.
-    async def _proxy_handler(self, request: Any) -> web.StreamResponse:
-        path = f"/{request.match_info.get('path', '')}"
+    async def _proxy_handler(self, request: object) -> web.StreamResponse:
+        proxy_request = cast("web.Request", request)
+        path = f"/{proxy_request.match_info.get('path', '')}"
 
-        if not self._validate_auth(request.headers):
+        if not self._validate_auth(proxy_request.headers):
             return web.Response(status=401, text="Unauthorized")
 
         result = _resolve_provider(path)
@@ -188,8 +190,8 @@ class BuiltinGateway:
         if session is None:
             raise RuntimeError(_SESSION_NOT_INITIALIZED_ERROR)
 
-        headers = self._build_upstream_headers(request.headers, provider)
-        body = await request.read()
+        headers = self._build_upstream_headers(proxy_request.headers, provider)
+        body = await proxy_request.read()
 
         try:
             return await _relay_upstream_response(

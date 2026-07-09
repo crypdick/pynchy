@@ -14,7 +14,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -40,6 +40,20 @@ _CREDENTIAL_STUB_FIELDS_ERROR = "OneCLI credential stub needs containerPath and 
 _OBJECT_FIELD_ERROR = "OneCLI {} must be an object"
 _STRING_ENTRIES_ERROR = "OneCLI {} entries must be strings"
 _LIST_FIELD_ERROR = "OneCLI {} must be a list"
+
+
+@runtime_checkable
+class _UrlopenResponse(Protocol):
+    def __enter__(self) -> _UrlopenResponse: ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: object,
+    ) -> object: ...
+
+    def read(self) -> bytes: ...
 
 
 class OneCliError(RuntimeError):
@@ -159,7 +173,7 @@ class OneCliClient:
             return raw.decode()
 
 
-def _urlopen_http_request(request: Request, *, timeout: int | float) -> Any:
+def _urlopen_http_request(request: Request, *, timeout: int | float) -> _UrlopenResponse:
     scheme = urlsplit(request.full_url).scheme.lower()
     if scheme not in {"http", "https"}:
         raise OneCliError(_URL_SCHEME_ERROR)
@@ -337,7 +351,7 @@ def _materialize_container_config(
     return OneCliMaterial(env_vars=env_vars, mounts=mounts, warnings=warnings)
 
 
-def _string_dict(value: Any, *, field: str) -> dict[str, str]:
+def _string_dict(value: object, *, field: str) -> dict[str, str]:
     if not isinstance(value, dict):
         raise OneCliError(_OBJECT_FIELD_ERROR.format(field))
     result: dict[str, str] = {}
@@ -348,7 +362,7 @@ def _string_dict(value: Any, *, field: str) -> dict[str, str]:
     return result
 
 
-def _string_list(value: Any, *, field: str) -> list[str]:
+def _string_list(value: object, *, field: str) -> list[str]:
     if not isinstance(value, list):
         raise OneCliError(_LIST_FIELD_ERROR.format(field))
     if not all(isinstance(item, str) for item in value):
