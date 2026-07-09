@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-# allow: private-test-imports — private helper for async agent core
-from agent_runner.cores.openai import _ContainerPatchEditor
+from agent_runner.cores.openai import ContainerPatchEditor
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
 
 @pytest.mark.asyncio
 async def test_patch_editor_file_lifecycle(tmp_path: Path) -> None:
-    editor = _ContainerPatchEditor()
+    editor = ContainerPatchEditor()
 
     created_path = tmp_path / "nested" / "file.txt"
     create_result = await editor.create_file(
@@ -38,7 +37,7 @@ async def test_patch_editor_file_lifecycle(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_patch_editor_missing_update_returns_failed(tmp_path: Path) -> None:
-    editor = _ContainerPatchEditor()
+    editor = ContainerPatchEditor()
 
     missing_path = tmp_path / "missing.txt"
     result = await editor.update_file(

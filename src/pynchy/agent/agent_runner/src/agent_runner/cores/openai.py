@@ -172,7 +172,7 @@ def _delete_patch_file(path: Path) -> None:
     path.unlink(missing_ok=True)
 
 
-class _ContainerPatchEditor(ApplyPatchEditor):
+class ContainerPatchEditor(ApplyPatchEditor):
     """Applies patches to files on the container filesystem."""
 
     async def create_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
@@ -371,7 +371,7 @@ class OpenAIAgentCore:
                         before_tool_hooks=self._before_tool_hooks,
                     )
                 ),
-                ApplyPatchTool(editor=_ContainerPatchEditor()),
+                ApplyPatchTool(editor=ContainerPatchEditor()),
                 WebSearchTool(),
             ],
             mcp_servers=self._mcp_servers,
