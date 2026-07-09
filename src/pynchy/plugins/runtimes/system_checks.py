@@ -13,6 +13,11 @@ from pynchy.host.container_manager.cleanup import (
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
 
+_MISSING_IMAGE_AND_DOCKERFILE_ERROR = (
+    "Container image '{image}' not found and no Dockerfile at {dockerfile}"
+)
+_CONTAINER_BUILD_FAILED_ERROR = "Failed to build container image '{image}'"
+
 
 def ensure_container_system_running() -> None:
     """Verify container runtime is available and reap orphaned agent containers."""
@@ -29,10 +34,10 @@ def ensure_container_system_running() -> None:
     )
     if result.returncode != 0:
         container_dir = s.project_root / "src" / "pynchy" / "agent"
-        if not (container_dir / "Dockerfile").exists():
+        dockerfile = container_dir / "Dockerfile"
+        if not dockerfile.exists():
             raise RuntimeError(
-                f"Container image '{image}' not found and "
-                f"no Dockerfile at {container_dir / 'Dockerfile'}"
+                _MISSING_IMAGE_AND_DOCKERFILE_ERROR.format(image=image, dockerfile=dockerfile)
             )
         logger.info("Container image not found, building...", image=image)
         try:
@@ -44,7 +49,7 @@ def ensure_container_system_running() -> None:
         finally:
             cleanup_runtime_builder(runtime)
         if build.returncode != 0:
-            raise RuntimeError(f"Failed to build container image '{image}'")
+            raise RuntimeError(_CONTAINER_BUILD_FAILED_ERROR.format(image=image))
 
     reap_orphaned_agent_containers(runtime=runtime)
     cleanup_runtime_images(runtime)

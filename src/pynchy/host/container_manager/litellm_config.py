@@ -12,6 +12,8 @@ import yaml
 from pynchy.logger import logger
 
 PLACEHOLDER_RE = re.compile(r"\.\.\.|YOUR_|CHANGE_ME|REPLACE_|xxx{3,}", re.IGNORECASE)
+_MODEL_LIST_TYPE_ERROR = "LiteLLM config model_list must be a list"
+_MODEL_LIST_ENTRY_TYPE_ERROR = "LiteLLM config model_list entries must be mappings"
 
 
 @dataclass(frozen=True)
@@ -66,9 +68,9 @@ def _copy_unvalidated_config(
 def _model_list(config: dict[str, Any]) -> list[dict[str, Any]]:
     model_list = config["model_list"]
     if not isinstance(model_list, list):
-        raise TypeError("LiteLLM config model_list must be a list")
+        raise TypeError(_MODEL_LIST_TYPE_ERROR)
     if not all(isinstance(entry, dict) for entry in model_list):
-        raise TypeError("LiteLLM config model_list entries must be mappings")
+        raise TypeError(_MODEL_LIST_ENTRY_TYPE_ERROR)
     return model_list
 
 

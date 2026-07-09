@@ -26,6 +26,9 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconc
 )
 from pynchy.utils import compute_next_run
 
+_JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt or prompt_file"
+_JOB_SCHEDULE_REQUIRED_ERROR = "job {job_name!r} requires schedule or at"
+
 
 def _job_task_id(job_name: str) -> str:
     return f"job-{job_name.replace('_', '-')}"
@@ -37,7 +40,7 @@ def _job_prompt(job_name: str, settings: Settings) -> str:
         return job.prompt
     prompt_file = job.prompt_file
     if prompt_file is None:
-        raise ValueError(f"agent job {job_name!r} requires prompt or prompt_file")
+        raise ValueError(_JOB_PROMPT_REQUIRED_ERROR.format(job_name=job_name))
     path = settings.project_root / prompt_file
     return path.read_text()
 
@@ -50,7 +53,7 @@ def _job_schedule(
         return "cron", job.schedule, compute_next_run("cron", job.schedule, settings.timezone)
     at = job.at
     if at is None:
-        raise ValueError(f"job {job_name!r} requires schedule or at")
+        raise ValueError(_JOB_SCHEDULE_REQUIRED_ERROR.format(job_name=job_name))
     return "once", at, at
 
 
