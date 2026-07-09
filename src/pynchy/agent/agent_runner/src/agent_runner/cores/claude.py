@@ -38,6 +38,8 @@ from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
+_CLAUDE_CORE_NOT_STARTED = "ClaudeAgentCore not started (call start() first)"
+
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
@@ -317,7 +319,7 @@ class ClaudeAgentCore:
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query using Claude SDK."""
         if self._client is None:
-            raise RuntimeError("ClaudeAgentCore not started (call start() first)")
+            raise RuntimeError(_CLAUDE_CORE_NOT_STARTED)
 
         _log(f"Starting query (session: {self._session_id or 'new'})...")
 

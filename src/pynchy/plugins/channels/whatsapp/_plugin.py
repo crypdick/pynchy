@@ -11,6 +11,10 @@ import pluggy
 from pynchy.logger import logger
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+_DUPLICATE_AUTH_DB_PATH = (
+    "WhatsApp auth_db_path must be unique per connection: "
+    "{first_name} and {second_name} both use {path}"
+)
 
 
 def _public_module() -> Any:
@@ -48,8 +52,11 @@ class WhatsAppPlugin:
             key = str(auth_db_path)
             if key in seen_paths:
                 raise ValueError(
-                    "WhatsApp auth_db_path must be unique per connection: "
-                    f"{seen_paths[key]} and {name} both use {key}"
+                    _DUPLICATE_AUTH_DB_PATH.format(
+                        first_name=seen_paths[key],
+                        second_name=name,
+                        path=key,
+                    )
                 )
             seen_paths[key] = name
             channels.append(
