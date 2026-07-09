@@ -123,6 +123,15 @@ class ContainerSession:
             return False
         return self.proc.returncode is None or self._runtime_alive_after_proc_exit
 
+    @property
+    def output_handler(self) -> OnOutput | None:
+        """Return the callback currently receiving output for this session."""
+        return self._on_output
+
+    def set_idle_timeout(self, timeout_seconds: float) -> None:
+        """Set the idle timeout used when this session returns to idle."""
+        self._idle_timeout = timeout_seconds
+
     def start(self, proc: asyncio.subprocess.Process) -> None:
         """Attach to a spawned container process and start background monitors.
 
@@ -430,7 +439,7 @@ def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:
     session = get_session(group_folder)
     if session is None:
         return None
-    return session._on_output
+    return session.output_handler
 
 
 async def create_session(
@@ -463,7 +472,7 @@ async def create_session(
 
     session = ContainerSession(group_folder, container_name)
     if idle_timeout_override is not None:
-        session._idle_timeout = idle_timeout_override
+        session.set_idle_timeout(idle_timeout_override)
     session.start(proc)
     _sessions[group_folder] = session
 

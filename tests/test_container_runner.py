@@ -2962,15 +2962,15 @@ class TestContainerSessionSignalQueryDone:
         assert session._query_done.is_set()
 
     async def test_signal_query_done_clears_output_handler(self):
-        """signal_query_done() should clear the _on_output callback."""
+        """signal_query_done() should clear the active output callback."""
         from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("test-group", "pynchy-test-group")
-        session._on_output = AsyncMock()  # simulate active handler
+        session.set_output_handler(AsyncMock())
 
         session.signal_query_done()
 
-        assert session._on_output is None
+        assert session.output_handler is None
 
     async def test_signal_query_done_resets_idle_timer(self):
         """signal_query_done() should restart the idle timer.
@@ -2981,7 +2981,7 @@ class TestContainerSessionSignalQueryDone:
         from pynchy.host.container_manager.session import ContainerSession
 
         session = ContainerSession("test-group", "pynchy-test-group")
-        session._idle_timeout = 0
+        session.set_idle_timeout(0.0)
 
         # Create a real timer handle to verify cancellation
         loop = asyncio.get_running_loop()
@@ -3027,12 +3027,12 @@ class TestContainerSessionSignalQueryDone:
         # Simulate a query in progress
         session.set_output_handler(handler)
         assert not session._query_done.is_set()
-        assert session._on_output is handler
+        assert session.output_handler is handler
 
         # Signal query done
         session.signal_query_done()
         assert session._query_done.is_set()
-        assert session._on_output is None
+        assert session.output_handler is None
 
 
 class TestGetSessionOutputHandler:
