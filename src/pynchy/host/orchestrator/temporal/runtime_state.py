@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
-from typing import Any
 
 from temporalio import activity
 
@@ -24,7 +23,7 @@ class TemporalSchedulerStatusSnapshot:
 
 @dataclass
 class _RuntimeState:
-    scheduler_deps: Any | None = None
+    scheduler_deps: object | None = None
     temporal_scheduler_status: TemporalSchedulerStatusSnapshot = TemporalSchedulerStatusSnapshot()
 
 
@@ -40,12 +39,12 @@ def reset_temporal_scheduler_status() -> None:
     _state.temporal_scheduler_status = TemporalSchedulerStatusSnapshot()
 
 
-def get_temporal_scheduler_status() -> dict[str, Any]:
+def get_temporal_scheduler_status() -> dict[str, object]:
     """Return the in-process Temporal worker status snapshot."""
     return asdict(_state.temporal_scheduler_status)
 
 
-def _update_temporal_scheduler_status(**changes: Any) -> None:
+def _update_temporal_scheduler_status(**changes: object) -> None:
     _state.temporal_scheduler_status = replace(_state.temporal_scheduler_status, **changes)
 
 
@@ -66,12 +65,12 @@ def _record_activity_result(task_id: str, result: str, error: str | None = None)
     )
 
 
-def bind_scheduler_deps(deps: Any | None) -> None:
+def bind_scheduler_deps(deps: object | None) -> None:
     """Bind app dependencies for Temporal activities running in this process."""
     _state.scheduler_deps = deps
 
 
-def _require_scheduler_deps() -> Any:
+def _require_scheduler_deps() -> object:
     if _state.scheduler_deps is None:
         raise RuntimeError(_SCHEDULER_DEPS_NOT_BOUND)
     return _state.scheduler_deps
