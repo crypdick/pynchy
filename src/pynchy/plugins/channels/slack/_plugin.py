@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
+from typing import Any, Protocol, cast, runtime_checkable
 
 import pluggy
 
+from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves plugin config annotations at runtime.
+    SlackConnectionConfig,
+)
+from pynchy.config.settings import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 from pynchy.logger import logger
+from pynchy.types import (
+    NewMessage,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+)
 
 from ._cache import TtlCache
 from ._channel import SlackChannel
@@ -22,11 +34,23 @@ __all__ = [
 ]
 
 
-def _public_module() -> Any:
-    return sys.modules[__package__]
+@runtime_checkable
+class _SlackPublicModule(Protocol):
+    def get_settings(self) -> Settings: ...
 
 
-def _channel_context(context: Any) -> tuple[Any, Any, Any, Any] | None:
+def _public_module() -> _SlackPublicModule:
+    return cast("_SlackPublicModule", sys.modules[__package__])
+
+
+def _channel_context(
+    context: object | None,
+) -> tuple[
+    Callable[[str, NewMessage], None],
+    Callable[[str, str, str | None], None],
+    Callable[[str, str, str, str], None] | None,
+    Callable[[str, dict[str, Any]], None] | None,
+] | None:
     """Return the callbacks SlackChannel needs, or ``None`` when unavailable."""
     if context is None:
         return None
@@ -45,12 +69,12 @@ def _channel_context(context: Any) -> tuple[Any, Any, Any, Any] | None:
 def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack connection config.
     *,
     name: str,
-    cfg: Any,
-    settings: Any,
-    on_message: Any,
-    on_metadata: Any,
-    on_reaction: Any,
-    on_ask_user_answer: Any,
+    cfg: SlackConnectionConfig,
+    settings: Settings,
+    on_message: Callable[[str, NewMessage], None],
+    on_metadata: Callable[[str, str, str | None], None],
+    on_reaction: Callable[[str, str, str, str], None] | None,
+    on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None,
 ) -> SlackChannel | None:
     """Build one SlackChannel or log why that connection was skipped."""
     connection_name = name
@@ -101,9 +125,15 @@ class SlackChannelPlugin:
     """Built-in plugin that activates when Slack tokens are configured."""
 
     @hookimpl
-    def pynchy_create_channel(self, context: Any) -> list[SlackChannel] | None:
+    def pynchy_create_channel(
+        self, context: object | None
+    ) -> list[SlackChannel] | None:
         settings = _public_module().get_settings()
-        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "slack"}
+        configs = {
+            name: cast("SlackConnectionConfig", cfg)
+            for name, cfg in settings.connections.items()
+            if cfg.type == "slack"
+        }
         if not configs:
             logger.debug("Slack channel skipped — no connections configured")
             return None

@@ -8,10 +8,12 @@ from __future__ import annotations
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from typing import Any
 
-from pynchy.event_bus import (
-    EventBus,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    AgentActivityEvent,
+    ChatClearedEvent,
+    EventBus,
+    MessageEvent,
 )
 from pynchy.logger import logger
 
@@ -46,7 +48,7 @@ class SqliteEventObserver:
     # Event handlers
     # ------------------------------------------------------------------
 
-    async def _on_message(self, event: Any) -> None:
+    async def _on_message(self, event: MessageEvent) -> None:
         await self._store(
             "message",
             event.chat_jid,
@@ -57,21 +59,26 @@ class SqliteEventObserver:
             },
         )
 
-    async def _on_activity(self, event: Any) -> None:
+    async def _on_activity(self, event: AgentActivityEvent) -> None:
         await self._store(
             "agent_activity",
             event.chat_jid,
             {"active": event.active},
         )
 
-    async def _on_clear(self, event: Any) -> None:
+    async def _on_clear(self, event: ChatClearedEvent) -> None:
         await self._store("chat_cleared", event.chat_jid, {})
 
     # ------------------------------------------------------------------
     # Storage
     # ------------------------------------------------------------------
 
-    async def _store(self, event_type: str, chat_jid: str | None, payload: dict[str, Any]) -> None:
+    async def _store(
+        self,
+        event_type: str,
+        chat_jid: str | None,
+        payload: dict[str, object],
+    ) -> None:
         try:
             from pynchy.state import store_event
 

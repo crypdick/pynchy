@@ -6,9 +6,17 @@ All hooks use the "pynchy" namespace and are validated by pluggy at registration
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pluggy
+
+if TYPE_CHECKING:
+    from pynchy.plugins.channel_runtime import ChannelPluginContext
+    from pynchy.plugins.memory import MemoryProvider
+    from pynchy.plugins.observers import ObserverProvider
+    from pynchy.plugins.runtimes.detection import RuntimeProvider
+    from pynchy.plugins.tunnels import TunnelProvider
+    from pynchy.types import Channel
 
 hookspec = pluggy.HookspecMarker("pynchy")
 
@@ -22,7 +30,7 @@ class PynchySpec:
     """
 
     @hookspec
-    def pynchy_container_runtime(self) -> Any | None:
+    def pynchy_container_runtime(self) -> RuntimeProvider | None:
         """Provide a container runtime implementation.
 
         Runtime plugins can return an object with:
@@ -37,7 +45,7 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_tunnel(self) -> Any | None:
+    def pynchy_tunnel(self) -> TunnelProvider | None:
         """Provide a tunnel provider implementation.
 
         Tunnel plugins detect and report network tunnel connectivity
@@ -53,7 +61,7 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_agent_core_info(self) -> dict[str, Any]:
+    def pynchy_agent_core_info(self) -> dict[str, object]:
         """Provide agent core implementation info.
 
         The agent core is the LLM framework that powers the agent (Claude SDK,
@@ -85,7 +93,9 @@ class PynchySpec:
         raise NotImplementedError
 
     @hookspec
-    def pynchy_create_channel(self, context: Any) -> Any | None:
+    def pynchy_create_channel(
+        self, context: ChannelPluginContext
+    ) -> Channel | list[Channel] | None:
         """Create a communication channel instance.
 
         Channels are long-running services that receive messages from external
@@ -100,7 +110,7 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_service_handler(self) -> dict[str, Any]:
+    def pynchy_service_handler(self) -> dict[str, object]:
         """Provide host-side service tool handlers.
 
         Host-side handlers process IPC service requests from container MCP tools.
@@ -114,7 +124,7 @@ class PynchySpec:
         raise NotImplementedError
 
     @hookspec
-    def pynchy_observer(self) -> Any | None:
+    def pynchy_observer(self) -> ObserverProvider | None:
         """Provide an event observer implementation.
 
         Observers subscribe to the EventBus and persist or process events
@@ -129,7 +139,7 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_memory(self) -> Any | None:
+    def pynchy_memory(self) -> MemoryProvider | None:
         """Provide a memory backend implementation.
 
         Returns:
@@ -145,7 +155,7 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
+    def pynchy_mcp_server_spec(self) -> dict[str, object] | list[dict[str, object]]:
         """Provide an MCP server specification.
 
         Plugin-provided MCP servers are merged with config.toml definitions.
@@ -172,7 +182,7 @@ class PynchySpec:
         raise NotImplementedError
 
     @hookspec
-    def pynchy_workspace_spec(self) -> dict[str, Any]:
+    def pynchy_workspace_spec(self) -> dict[str, object]:
         """Provide a managed workspace definition.
 
         Workspace plugins can ship periodic agents or preconfigured workspaces
