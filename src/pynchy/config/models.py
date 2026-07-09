@@ -85,6 +85,8 @@ class _StrictModel(BaseModel):
 
 
 class AgentConfig(_StrictModel):
+    name: str = "pynchy"
+    trigger_aliases: list[str] = []
     default_core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
     model: str | None = None
 
@@ -484,10 +486,6 @@ class McpTool(_ToolTrustConfig):
     mcp: McpToolConfig
 
 
-BuiltinToolConfig = BuiltinTool
-LinearToolConfig = LinearTool
-
-
 ToolConfig = Annotated[
     BuiltinTool | LinearTool | McpTool,
     Field(discriminator="type"),
@@ -498,6 +496,9 @@ class DiscordConnectionTomlConfig(_StrictModel):
     type: Literal["discord"]
     bot_token_env: str
     application_id: str | None = None
+    dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
+    allow_from: list[str] = []
+    group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
 
 
 ConnectionConfig = DiscordConnectionTomlConfig

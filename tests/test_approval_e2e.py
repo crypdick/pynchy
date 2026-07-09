@@ -81,6 +81,7 @@ def _make_ws_settings(tmp_path: Path):
         def __init__(self):
             self.workspaces = {}
             self.services = {}
+            self.tools = {}
             self.data_dir = tmp_path
 
     return FakeSettings()

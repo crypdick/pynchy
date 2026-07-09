@@ -118,8 +118,8 @@ def _resolve_send_targets(
 ) -> list[tuple[Channel, str]]:
     """Resolve which channels should receive an outbound event.
 
-    Returns ``(channel, target_jid)`` pairs for channels that are connected,
-    allowed outbound by access rules, and own the JID.
+    Returns ``(channel, target_jid)`` pairs for connected channels that own
+    the JID.
     """
     targets: list[tuple[Channel, str]] = []
     for ch in deps.channels:

@@ -23,20 +23,13 @@ class TestJobReconcile:
     def _patch_settings(self, monkeypatch, tmp_path, *, jobs: dict[str, JobConfig]):
         settings = make_settings(
             groups_dir=tmp_path / "groups",
-            universal=ProfileConfig(context_mode="group"),
             profiles={
                 "admin": ProfileConfig(
                     is_admin=True,
-                    repo_access="crypdick/pynchy",
-                    context_mode="isolated",
+                    repo="crypdick/pynchy",
                 )
             },
-            workspaces={
-                "admin": WorkspaceConfig(
-                    profile="admin",
-                    chat="connection.slack.synapse.chat.admin",
-                )
-            },
+            workspaces={"admin": WorkspaceConfig(profiles=["admin"])},
             jobs=jobs,
         )
         monkeypatch.setattr(

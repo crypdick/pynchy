@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.host.orchestrator.workspace_config import load_workspace_config
 from pynchy.logger import logger
 from pynchy.state import (
     get_task_run_logs,
@@ -399,19 +398,12 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
     # completion time, which matters for long-running tasks.
     await _advance_next_run_guard(task, s.timezone)
 
-    # Idle timer: close container stdin after IDLE_TIMEOUT of no output,
-    # so the container exits instead of hanging at waitForIpcMessage.
-    ws_config = load_workspace_config(task.group_folder)
-    idle_enabled = (
-        ws_config.idle_terminate if ws_config and ws_config.idle_terminate is not None else True
-    )
-
     await _broadcast_task_start(deps, task)
     result, error = await _run_task_agent(
         task,
         deps,
         group,
-        idle_enabled=idle_enabled,
+        idle_enabled=True,
         idle_timeout=s.idle_timeout,
     )
     logger.info(

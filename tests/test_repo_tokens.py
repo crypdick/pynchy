@@ -18,7 +18,8 @@ from unittest.mock import MagicMock, patch
 from conftest import make_settings
 from pydantic import SecretStr
 
-from pynchy.config import RepoConfig, WorkspaceConfig
+from pynchy.config import WorkspaceConfig
+from pynchy.config.models import RepoConfig, ReposConfig
 from pynchy.host.container_manager import credentials
 from pynchy.host.container_manager.onecli import OneCliMaterial
 from pynchy.host.git_ops.repo import (
@@ -49,6 +50,10 @@ BROAD_TOKEN = "ghp_broad_token_xyz"
 GH_CLI_TOKEN = "gho_cli_token_789"
 
 
+def _repos(overrides: dict[str, RepoConfig] | None = None) -> ReposConfig:
+    return ReposConfig(overrides=overrides or {})
+
+
 # ---------------------------------------------------------------------------
 # get_repo_token() resolution chain
 # ---------------------------------------------------------------------------
@@ -58,7 +63,7 @@ class TestGetRepoToken:
     def test_per_repo_token_wins(self):
         """Per-repo token takes highest priority."""
         s = make_settings(
-            repos={REPO_SLUG: RepoConfig(token=SecretStr(SCOPED_TOKEN))},
+            repos=_repos({REPO_SLUG: RepoConfig(token=SecretStr(SCOPED_TOKEN))}),
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
         with (
@@ -73,7 +78,7 @@ class TestGetRepoToken:
     def test_broad_token_fallback(self):
         """Falls back to secrets.gh_token when no per-repo token."""
         s = make_settings(
-            repos={REPO_SLUG: RepoConfig()},
+            repos=_repos({REPO_SLUG: RepoConfig()}),
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
         with (
@@ -88,7 +93,7 @@ class TestGetRepoToken:
     def test_gh_cli_fallback(self):
         """Falls back to gh CLI when no config tokens."""
         s = make_settings(
-            repos={REPO_SLUG: RepoConfig()},
+            repos=_repos({REPO_SLUG: RepoConfig()}),
             secrets=MagicMock(gh_token=None),
         )
         with (
@@ -103,7 +108,7 @@ class TestGetRepoToken:
     def test_no_token_available(self):
         """Returns None when no token is available anywhere."""
         s = make_settings(
-            repos={REPO_SLUG: RepoConfig()},
+            repos=_repos({REPO_SLUG: RepoConfig()}),
             secrets=MagicMock(gh_token=None),
         )
         with (
@@ -115,7 +120,7 @@ class TestGetRepoToken:
     def test_unknown_slug_uses_fallback(self):
         """Slug not in repos config still gets fallback tokens."""
         s = make_settings(
-            repos={},
+            repos=_repos(),
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
         with (
@@ -284,17 +289,11 @@ class TestContainerCredentialInjection:
         """Non-admin container with repo_access gets the repo-scoped token."""
         s = make_settings(
             data_dir=tmp_path,
-            repos={REPO_SLUG: RepoConfig(token=SecretStr(SCOPED_TOKEN))},
-            workspaces={
-                "code-improver": WorkspaceConfig(
-                    name="Code Improver",
-                    is_admin=False,
-                    repo_access=REPO_SLUG,
-                ),
-            },
+            repos=_repos({REPO_SLUG: RepoConfig(token=SecretStr(SCOPED_TOKEN))}),
+            workspaces={"code-improver": WorkspaceConfig()},
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
-        fake_resolved = MagicMock(repo_access=REPO_SLUG)
+        fake_resolved = MagicMock(repo=[REPO_SLUG])
         with (
             patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
@@ -319,14 +318,11 @@ class TestContainerCredentialInjection:
         s = make_settings(
             data_dir=tmp_path,
             workspaces={
-                "basic-group": WorkspaceConfig(
-                    name="Basic",
-                    is_admin=False,
-                ),
+                "basic-group": WorkspaceConfig(),
             },
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
-        fake_resolved = MagicMock(repo_access=None)
+        fake_resolved = MagicMock(repo=[])
         with (
             patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
@@ -349,17 +345,11 @@ class TestContainerCredentialInjection:
         """Non-admin with repo_access but no token configured gets no GH_TOKEN."""
         s = make_settings(
             data_dir=tmp_path,
-            repos={REPO_SLUG: RepoConfig()},  # no token
-            workspaces={
-                "code-improver": WorkspaceConfig(
-                    name="Code Improver",
-                    is_admin=False,
-                    repo_access=REPO_SLUG,
-                ),
-            },
+            repos=_repos({REPO_SLUG: RepoConfig()}),
+            workspaces={"code-improver": WorkspaceConfig()},
             secrets=MagicMock(gh_token=SecretStr(BROAD_TOKEN)),
         )
-        fake_resolved = MagicMock(repo_access=REPO_SLUG)
+        fake_resolved = MagicMock(repo=[REPO_SLUG])
         with (
             patch("pynchy.host.container_manager.credentials.get_settings", return_value=s),
             patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),

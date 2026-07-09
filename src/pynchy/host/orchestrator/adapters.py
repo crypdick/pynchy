@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.event_bus import EventBus
-from pynchy.state import clear_session, get_active_task_for_group, get_chat_history
+from pynchy.state import clear_session, get_all_tasks, get_chat_history
 from pynchy.types import (
     Channel,
     GroupFolder,
@@ -364,24 +364,24 @@ class PeriodicAgentManager:
         self._groups = groups_dict
 
     async def get_periodic_agents(self) -> list[dict[str, Any]]:
-        """Get status of all periodic agents."""
-        from pynchy.host.orchestrator.workspace_config import load_workspace_config
-
+        """Get status of scheduled agent tasks."""
+        groups_by_folder = {group.folder: group for group in self._groups.values()}
         results = []
-        for group in self._groups.values():
-            config = load_workspace_config(group.folder)
-            if config is None or not config.is_periodic:
+        for task in await get_all_tasks():
+            if task.schedule_type != "cron":
                 continue
-            task = await get_active_task_for_group(group.folder)
+            group = groups_by_folder.get(task.group_folder)
+            if group is None:
+                continue
             results.append(
                 {
                     "name": group.name,
                     "folder": group.folder,
-                    "schedule": config.schedule,
-                    "context_mode": config.context_mode,
-                    "last_run": task.last_run if task else None,
-                    "next_run": task.next_run if task else None,
-                    "status": task.status if task else "no_task",
+                    "schedule": task.schedule_value,
+                    "context_mode": task.context_mode,
+                    "last_run": task.last_run,
+                    "next_run": task.next_run,
+                    "status": task.status,
                 }
             )
         return results

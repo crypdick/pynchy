@@ -13,7 +13,7 @@ from pynchy.config import get_settings
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.logger import logger
-from pynchy.state import get_messages_since
+from pynchy.state import get_active_task_for_group, get_messages_since
 from pynchy.types import WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import write_json_atomic
 
@@ -87,21 +87,18 @@ async def send_boot_notification(deps: StartupDeps) -> None:
 
 async def recover_pending_messages(deps: StartupDeps) -> None:
     """Startup recovery: check for unprocessed messages in registered groups."""
-    from pynchy.host.orchestrator.workspace_config import load_workspace_config
-
     for chat_jid, group in deps.workspaces.items():
-        # Skip periodic (scheduled) workspaces — they run on their own
-        # schedule via the task scheduler, not through message recovery.
+        # Scheduled workspaces run through the task scheduler, not recovery.
         # Without this guard, any stale is_from_me=0 message triggers an
         # agent run via the message handler path.  If that run commits and
         # pushes (e.g. code-improver), sync_poll detects HEAD drift and
         # deploys, sending SIGTERM before the message handler can advance
         # last_agent_timestamp.  On restart, recovery finds the same
         # message again → infinite restart loop.
-        ws_config = load_workspace_config(group.folder)
-        if ws_config and ws_config.is_periodic:
+        task = await get_active_task_for_group(group.folder)
+        if task is not None and task.schedule_type == "cron":
             logger.debug(
-                "Skipping recovery for periodic workspace",
+                "Skipping recovery for scheduled workspace",
                 chat_jid=chat_jid,
                 group=group.folder,
             )

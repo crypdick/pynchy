@@ -117,14 +117,14 @@ class TestCreatePeriodicAgent:
         return make_settings(
             groups_dir=tmp_path,
             project_root=tmp_path,
-            command_center=CommandCenterConfig(connection="connection.slack.main"),
+            command_center=CommandCenterConfig(connection="main"),
         )
 
     @staticmethod
     def _channel(created_jid: str) -> AsyncMock:
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value=created_jid)
-        mock_channel.name = "connection.slack.main"
+        mock_channel.name = "main"
         return mock_channel
 
     async def _dispatch_create_periodic_agent(
@@ -139,6 +139,7 @@ class TestCreatePeriodicAgent:
                 return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
+            patch("pynchy.host.orchestrator.workspace_config.add_job_to_toml"),
         ):
             await dispatch(payload, "admin-1", True, deps)
         return add_ws
@@ -161,6 +162,7 @@ class TestCreatePeriodicAgent:
                 return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
+            patch("pynchy.host.orchestrator.workspace_config.add_job_to_toml") as add_job,
         ):
             mp.setenv("TZ", "UTC")
             await dispatch(
@@ -176,6 +178,7 @@ class TestCreatePeriodicAgent:
                 deps,
             )
             add_ws.assert_called_once()
+            add_job.assert_called_once()
 
         # 1. Folder created
         agent_dir = tmp_path / "daily-briefing"
@@ -248,8 +251,8 @@ class TestCreatePeriodicAgent:
         # CLAUDE.md should be preserved
         assert (agent_dir / "CLAUDE.md").read_text() == "# Keep this content"
 
-    async def test_respects_context_mode(self, deps, tmp_path, monkeypatch):
-        """context_mode should be passed through to the task."""
+    async def test_periodic_agent_task_is_isolated(self, deps, tmp_path, monkeypatch):
+        """Periodic agent tasks are isolated regardless of request hints."""
         mock_channel = self._channel("iso@g.us")
         deps._channels = [mock_channel]
 
@@ -262,7 +265,7 @@ class TestCreatePeriodicAgent:
                 "profile": "pynchy-worker",
                 "schedule": "0 9 * * *",
                 "prompt": "Isolated task",
-                "context_mode": "isolated",
+                "context_mode": "group",
             },
         )
 
@@ -270,8 +273,10 @@ class TestCreatePeriodicAgent:
         assert len(tasks) == 1
         assert tasks[0].context_mode == "isolated"
 
-    async def test_invalid_context_mode_defaults_to_group(self, deps, tmp_path, monkeypatch):
-        """Invalid context_mode should default to 'group'."""
+    async def test_invalid_context_mode_still_creates_isolated_task(
+        self, deps, tmp_path, monkeypatch
+    ):
+        """Invalid context_mode is ignored by config-backed jobs."""
         mock_channel = self._channel("bad@g.us")
         deps._channels = [mock_channel]
 
@@ -290,7 +295,7 @@ class TestCreatePeriodicAgent:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].context_mode == "group"
+        assert tasks[0].context_mode == "isolated"
 
     async def test_no_channel_support(self, deps, tmp_path, monkeypatch):
         """Without create_group support, should create config but no task."""

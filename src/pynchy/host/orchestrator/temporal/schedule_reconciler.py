@@ -37,7 +37,6 @@ from pynchy.host.orchestrator.temporal.workflows import (
     DatabaseHostJobWorkflow,
     ScheduledAgentTaskWorkflow,
 )
-from pynchy.host.orchestrator.workspace_config import get_repo_access_groups
 from pynchy.types import HostJob, ScheduledTask
 
 
@@ -215,7 +214,10 @@ def _repo_root_for_slug(settings: Any, repo_slug: str) -> Path | None:
 
 def _external_repo_sync_slugs(settings: Any) -> list[str]:
     slugs: set[str] = set()
-    slugs.update(get_repo_access_groups(settings.workspaces.keys()).keys())
+    for workspace_name in settings.workspaces:
+        resolved = settings.resolved_workspace_config(workspace_name)
+        if resolved is not None:
+            slugs.update(resolved.repo)
 
     external: list[str] = []
     for repo_slug in sorted(slugs):

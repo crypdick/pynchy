@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import LearningConfig, ProfileConfig
+from pynchy.config.models import LearningConfig
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -507,8 +507,8 @@ class TestProcessGroupMessages:
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_non_admin_trigger_required_but_missing(self, tmp_path):
-        """Non-admin group, required trigger missing → skip."""
+    async def test_non_admin_without_trigger_still_runs(self, tmp_path):
+        """Workspace config no longer gates non-admin runs on mention triggers."""
         group = _make_group(is_admin=False)
         deps = _make_deps(groups={"g@g.us": group})
         msg = _make_message("hello")
@@ -521,7 +521,7 @@ class TestProcessGroupMessages:
             result = await process_group_messages(deps, "g@g.us")
 
         assert result is True
-        deps.run_agent.assert_not_awaited()
+        deps.run_agent.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_cursor_rollback_on_save_state_failure(self, tmp_path):
@@ -1226,8 +1226,8 @@ class TestBtwNonInterruptingMessages:
 
     @pytest.fixture(autouse=True)
     def _allow_all_senders(self, monkeypatch):
-        """Bypass allowed_users filtering so routing tests aren't blocked by access control."""
-        settings = make_settings(universal=ProfileConfig(allowed_users=["*"]))
+        """Route sender checks through permissive test settings."""
+        settings = make_settings()
         monkeypatch.setattr("pynchy.config.access.get_settings", lambda: settings)
 
     @pytest.mark.asyncio

@@ -76,7 +76,7 @@ async def reconcile_agent_jobs(
 
         schedule_type, schedule_value, next_run = _job_schedule(job_name, settings)
         prompt = _job_prompt(job_name, settings)
-        context_mode: Literal["group", "isolated"] = job.context_mode or "group"
+        context_mode: Literal["isolated"] = "isolated"
         repo_access = resolved.repo[0] if resolved.repo else None
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)

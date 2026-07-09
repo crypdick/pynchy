@@ -130,23 +130,26 @@ async def _handle_create_periodic_agent(
         if not allowed:
             return
 
+    from pynchy.config.jobs import JobConfig
     from pynchy.config.models import WorkspaceConfig
-    from pynchy.host.orchestrator.workspace_config import add_workspace_to_toml
+    from pynchy.host.orchestrator.workspace_config import add_job_to_toml, add_workspace_to_toml
 
     setup = _periodic_agent_setup(request)
     if setup is None:
         return
 
-    config = WorkspaceConfig(
-        name=request.name,
-        profile=request.profile,
-        chat=setup.chat_ref,
-        schedule=request.schedule,
-        prompt=request.prompt,
-        context_mode=request.context_mode,
-        trigger="always",
+    add_workspace_to_toml(
+        request.name,
+        WorkspaceConfig.model_validate({"profiles": [request.profile]}),
     )
-    add_workspace_to_toml(request.name, config)
+    add_job_to_toml(
+        request.name,
+        JobConfig(
+            workspace=request.name,
+            schedule=request.schedule,
+            prompt=request.prompt,
+        ),
+    )
 
     claude_md_path = setup.group_dir / "CLAUDE.md"
     if not claude_md_path.exists():
@@ -173,7 +176,7 @@ async def _handle_create_periodic_agent(
         jid=jid,
         name=agent_display_name,
         folder=request.name,
-        trigger=f"@{setup.settings.agent.name}",
+        trigger="@pynchy",
         added_at=datetime.now(UTC).isoformat(),
     )
     deps.register_workspace(profile)
@@ -189,7 +192,7 @@ async def _handle_create_periodic_agent(
             prompt=request.prompt,
             schedule_type="cron",
             schedule_value=request.schedule,
-            context_mode=request.context_mode,
+            context_mode="isolated",
             next_run=next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),

@@ -98,142 +98,76 @@ def test_get_connection_returns_none_for_missing_discord():
     assert conns.get_connection("discord", "nope") is None
 
 
-def test_settings_accept_discord_workspace_channel_ref():
+def test_settings_accept_discord_connection_with_workspace_profile():
     settings = Settings(
-        connection=ConnectionsConfig(
-            discord={
-                "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
-                    dm_policy="allowlist",
-                    group_policy="allowlist",
-                    chat={
-                        "123": {
-                            "require_mention": False,
-                            "channels": {"456": {"enabled": True}},
-                        }
-                    },
-                )
+        connections={
+            "mybot": {
+                "type": "discord",
+                "bot_token_env": "DISCORD_BOT_TOKEN",
+                "dm_policy": "allowlist",
+                "group_policy": "allowlist",
             }
-        ),
-        profiles=_profiles(),
-        workspaces={
-            "discord-admin": WorkspaceConfig(
-                profile="admin",
-                chat="connection.discord.mybot.chat.123.channels.456",
-            )
         },
+        profiles=_profiles(),
+        workspaces={"discord-admin": WorkspaceConfig(profiles=["admin"])},
     )
 
-    assert settings.workspaces["discord-admin"].chat == (
-        "connection.discord.mybot.chat.123.channels.456"
-    )
+    assert settings.workspaces["discord-admin"].profiles == ["admin"]
 
 
-def test_settings_accept_discord_workspace_name_ref():
+def test_settings_accept_discord_named_channel_config():
     settings = Settings(
-        connection=ConnectionsConfig(
-            discord={
-                "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
-                    dm_policy="allowlist",
-                    group_policy="allowlist",
-                    chat={
-                        "synapse": {
-                            "name": "Synapse",
-                            "require_mention": False,
-                            "channels": {
-                                "code-improver": {
-                                    "name": "code-improver",
-                                    "enabled": True,
-                                }
-                            },
-                        }
-                    },
-                )
+        connections={
+            "mybot": {
+                "type": "discord",
+                "bot_token_env": "DISCORD_BOT_TOKEN",
+                "dm_policy": "allowlist",
+                "group_policy": "allowlist",
             }
-        ),
-        profiles=_profiles(),
-        workspaces={
-            "discord-admin": WorkspaceConfig(
-                profile="admin",
-                chat="connection.discord.mybot.chat.synapse.channels.code-improver",
-            )
         },
+        profiles=_profiles(),
+        workspaces={"discord-admin": WorkspaceConfig(profiles=["admin"])},
     )
 
-    assert settings.workspaces["discord-admin"].chat == (
-        "connection.discord.mybot.chat.synapse.channels.code-improver"
-    )
+    assert settings.connections["mybot"].type == "discord"
 
 
-def test_settings_accept_discord_workspace_direct_ref_when_user_allowed():
+def test_settings_accept_discord_dm_allowlist_with_workspace_profile():
     settings = Settings(
-        connection=ConnectionsConfig(
-            discord={
-                "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
-                    dm_policy="allowlist",
-                    allow_from=["discord:42"],
-                    group_policy="disabled",
-                )
+        connections={
+            "mybot": {
+                "type": "discord",
+                "bot_token_env": "DISCORD_BOT_TOKEN",
+                "dm_policy": "allowlist",
+                "allow_from": ["discord:42"],
+                "group_policy": "disabled",
             }
-        ),
-        profiles=_profiles(),
-        workspaces={
-            "discord-dm": WorkspaceConfig(
-                profile="admin",
-                chat="connection.discord.mybot.chat.direct.42",
-            )
         },
+        profiles=_profiles(),
+        workspaces={"discord-dm": WorkspaceConfig(profiles=["admin"])},
     )
 
-    assert settings.workspaces["discord-dm"].chat == "connection.discord.mybot.chat.direct.42"
+    assert settings.connections["mybot"].allow_from == ["discord:42"]
 
 
-def test_settings_accept_discord_workspace_direct_name_ref_when_user_allowed():
+def test_settings_accept_discord_dm_name_allowlist_with_workspace_profile():
     settings = Settings(
-        connection=ConnectionsConfig(
-            discord={
-                "mybot": DiscordConnectionConfig(
-                    bot_token_env="DISCORD_BOT_TOKEN",
-                    dm_policy="allowlist",
-                    allow_from=["ricardo"],
-                    group_policy="disabled",
-                )
+        connections={
+            "mybot": {
+                "type": "discord",
+                "bot_token_env": "DISCORD_BOT_TOKEN",
+                "dm_policy": "allowlist",
+                "allow_from": ["ricardo"],
+                "group_policy": "disabled",
             }
-        ),
-        profiles=_profiles(),
-        workspaces={
-            "discord-dm": WorkspaceConfig(
-                profile="admin",
-                chat="connection.discord.mybot.chat.direct.ricardo",
-            )
         },
+        profiles=_profiles(),
+        workspaces={"discord-dm": WorkspaceConfig(profiles=["admin"])},
     )
 
-    assert settings.workspaces["discord-dm"].chat == (
-        "connection.discord.mybot.chat.direct.ricardo"
-    )
+    assert settings.connections["mybot"].allow_from == ["ricardo"]
 
 
-def test_settings_reject_discord_workspace_channel_ref_missing_config():
-    with pytest.raises(ValidationError, match="unknown Discord channel"):
-        Settings(
-            connection=ConnectionsConfig(
-                discord={
-                    "mybot": DiscordConnectionConfig(
-                        bot_token_env="DISCORD_BOT_TOKEN",
-                        dm_policy="allowlist",
-                        group_policy="allowlist",
-                        chat={"123": {"require_mention": True, "channels": {}}},
-                    )
-                }
-            ),
-            profiles=_profiles(),
-            workspaces={
-                "discord-admin": WorkspaceConfig(
-                    profile="admin",
-                    chat="connection.discord.mybot.chat.123.channels.456",
-                )
-            },
-        )
+def test_workspace_chat_ref_is_not_part_of_config_schema():
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        WorkspaceConfig(profile="admin", chat="connection.discord.mybot.chat.123.channels.456")

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config import get_settings, reset_settings
+from pynchy.config.jobs import JobConfig
 from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.toml_io import mutate_config_toml
@@ -135,7 +136,14 @@ def load_resolved_config(group_folder: str) -> ResolvedWorkspaceConfig | None:
     if load_workspace_config(group_folder) is None:
         return None
 
-    return get_settings().resolved_workspace_config(group_folder)
+    s = get_settings()
+    resolved = s.resolved_workspace_config(group_folder)
+    if resolved is not None:
+        return resolved
+    parent_folder = _parent_folder_for_dynamic_thread(group_folder)
+    if parent_folder is not None:
+        return s.resolved_workspace_config(parent_folder)
+    return None
 
 
 def _first_repo(resolved: ResolvedWorkspaceConfig | None) -> str | None:
@@ -289,4 +297,26 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     mutate_config_toml(toml_path, _mutate)
 
     # Reset so next get_settings() re-reads the file
+    reset_settings()
+
+
+def add_job_to_toml(job_name: str, config: JobConfig) -> None:
+    """Programmatically add a job to config.toml using tomlkit."""
+    import tomlkit
+
+    toml_path = Path("config.toml")
+
+    def _mutate(doc: Any) -> None:
+        if "jobs" not in doc:
+            doc.add("jobs", tomlkit.table(is_super_table=True))
+
+        job_table = tomlkit.table()
+        data = config.model_dump(exclude_none=True, exclude_defaults=True)
+        for key, value in data.items():
+            job_table.add(key, value)
+
+        doc["jobs"][job_name] = job_table
+
+    mutate_config_toml(toml_path, _mutate)
+
     reset_settings()

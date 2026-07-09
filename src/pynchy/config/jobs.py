@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from croniter import croniter
 from pydantic import field_validator, model_validator
 
@@ -28,7 +26,6 @@ class JobConfig(_StrictModel):
     cwd: str | None = None
     timeout_seconds: int | None = None
     quiet_on_success: bool | None = None
-    context_mode: Literal["group", "isolated"] | None = None
 
     @property
     def is_host(self) -> bool:

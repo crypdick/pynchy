@@ -361,7 +361,7 @@ class TestCreatePeriodicAgentCopGate:
 
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="agent@g.us")
-        mock_channel.name = "connection.slack.main"
+        mock_channel.name = "main"
         deps._channels = [mock_channel]
 
         with (
@@ -374,10 +374,11 @@ class TestCreatePeriodicAgentCopGate:
                 return_value=make_settings(
                     groups_dir=tmp_path,
                     project_root=tmp_path,
-                    command_center=CommandCenterConfig(connection="connection.slack.main"),
+                    command_center=CommandCenterConfig(connection="main"),
                 ),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml"),
+            patch("pynchy.host.orchestrator.workspace_config.add_job_to_toml"),
         ):
             await dispatch(
                 {

@@ -10,12 +10,7 @@ from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
-from pynchy.host.git_ops.sync import (
-    GIT_POLICY_PR,
-    host_create_pr_from_worktree,
-    host_sync_worktree,
-    resolve_git_policy,
-)
+from pynchy.host.git_ops.sync import host_sync_worktree
 from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.logger import logger
@@ -156,31 +151,21 @@ async def _handle_sync_worktree_to_main(
         logger.info("sync_worktree_to_main: no repo_ctx", group=source_group)
         return
 
-    policy = resolve_git_policy(source_group)
+    result, pre_merge_sha, deploy_info = await asyncio.to_thread(
+        _sync_merge_and_check_deploy, source_group, repo_ctx
+    )
+    write_ipc_response(result_dir / f"{request_id}.json", result)
 
-    if policy == GIT_POLICY_PR:
-        result = await asyncio.to_thread(host_create_pr_from_worktree, source_group, repo_ctx)
-        write_ipc_response(result_dir / f"{request_id}.json", result)
-        # PR policy doesn't change main — no worktree notifications or deploy needed
-    else:
-        # Run blocking git operations (fetch, merge, push, diff) on a thread
-        # to avoid blocking the event loop — same pattern as the PR path above.
-        result, pre_merge_sha, deploy_info = await asyncio.to_thread(
-            _sync_merge_and_check_deploy, source_group, repo_ctx
-        )
-        write_ipc_response(result_dir / f"{request_id}.json", result)
+    if result.get("success"):
+        # IpcDeps satisfies WorktreeNotifyDeps directly.
+        await host_notify_worktree_updates(source_group, deps, repo_ctx)
 
-        if result.get("success"):
-            # IpcDeps satisfies WorktreeNotifyDeps directly — no adapter needed.
-            await host_notify_worktree_updates(source_group, deps, repo_ctx)
-
-            if deploy_info is not None:
-                await deps.trigger_deploy(pre_merge_sha, rebuild=deploy_info)
+        if deploy_info is not None:
+            await deps.trigger_deploy(pre_merge_sha, rebuild=deploy_info)
 
     logger.info(
         "sync_worktree_to_main handled",
         group=source_group,
-        policy=policy,
         success=result.get("success"),
     )
 
