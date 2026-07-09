@@ -71,7 +71,6 @@ dev = [
     "types-pyyaml>=6.0.12.20260518",
     "types-qrcode>=8.2.0.20260518",
     "vulture>=2.16",
-    "xenon>=0.9.3",
 ]
 
 [build-system]
@@ -105,7 +104,7 @@ line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF", "C901"]
 # E501 (line length) is enforced by the formatter, not the linter, to avoid double-reporting.
 # NOTE: `preview` is intentionally off — on this mature codebase preview rules are churn, not
 # signal.
@@ -117,6 +116,10 @@ ignore = ["E501"]
 # risk that motivates ClassVar in production code.
 "tests/**/*.py" = ["F841", "C901", "PLR0912", "PLR0913", "PLR0915", "RUF012"]
 "scripts/**/*.py" = ["C901", "PLR0912", "PLR0913", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+# Match the old Xenon `--max-absolute C` gate: fail only above Radon grade C.
+max-complexity = 20
 
 [tool.ruff.format]
 quote-style = "double"

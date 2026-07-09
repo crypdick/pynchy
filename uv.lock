@@ -1824,18 +1824,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mando"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/35/24/cd70d5ae6d35962be752feccb7dca80b5e0c2d450e995b16abd6275f3296/mando-0.7.1.tar.gz", hash = "sha256:18baa999b4b613faefb00eac4efadcf14f510b59b924b66e08289aa1de8c3500", size = 37868, upload-time = "2022-02-24T08:12:27.316Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/f0/834e479e47e499b6478e807fb57b31cc2db696c4db30557bb6f5aea4a90b/mando-0.7.1-py2.py3-none-any.whl", hash = "sha256:26ef1d70928b6057ee3ca12583d73c63e05c49de8972d620c278a7b206581a8a", size = 28149, upload-time = "2022-02-24T08:12:25.24Z" },
-]
-
-[[package]]
 name = "markdown"
 version = "3.10.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3042,7 +3030,6 @@ dev = [
     { name = "types-pyyaml" },
     { name = "types-qrcode" },
     { name = "vulture" },
-    { name = "xenon" },
 ]
 
 [package.metadata]
@@ -3107,7 +3094,6 @@ dev = [
     { name = "types-pyyaml", specifier = ">=6.0.12.20260518" },
     { name = "types-qrcode", specifier = ">=8.2.0.20260518" },
     { name = "vulture", specifier = ">=2.16" },
-    { name = "xenon", specifier = ">=0.9.3" },
 ]
 
 [[package]]
@@ -3469,19 +3455,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8f/b2/7fc2931bfae0af02d5f53b174e9cf701adbb35f39d69c2af63d4a39f81a9/qrcode-8.2.tar.gz", hash = "sha256:35c3f2a4172b33136ab9f6b3ef1c00260dd2f66f858f24d88418a015f446506c", size = 43317, upload-time = "2025-05-01T15:44:24.726Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dd/b8/d2d6d731733f51684bbf76bf34dab3b70a9148e8f2cef2bb544fccec681a/qrcode-8.2-py3-none-any.whl", hash = "sha256:16e64e0716c14960108e85d853062c9e8bba5ca8252c0b4d0231b9df4060ff4f", size = 45986, upload-time = "2025-05-01T15:44:22.781Z" },
-]
-
-[[package]]
-name = "radon"
-version = "6.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama" },
-    { name = "mando" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/6d/98e61600febf6bd929cf04154537c39dc577ce414bafbfc24a286c4fa76d/radon-6.0.1.tar.gz", hash = "sha256:d1ac0053943a893878940fedc8b19ace70386fc9c9bf0a09229a44125ebf45b5", size = 1874992, upload-time = "2023-03-26T06:24:38.868Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/f7/d00d9b4a0313a6be3a3e0818e6375e15da6d7076f4ae47d1324e7ca986a1/radon-6.0.1-py2.py3-none-any.whl", hash = "sha256:632cc032364a6f8bb1010a2f6a12d0f14bc7e5ede76585ef29dc0cecf4cd8859", size = 52784, upload-time = "2023-03-26T06:24:33.949Z" },
 ]
 
 [[package]]
@@ -4335,20 +4308,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/79/2b/8ae5f59ab852c8fe32dd37c1aa058eb98aca118fec2d3af5c3cd56fffb7b/x_wr_timezone-2.0.1.tar.gz", hash = "sha256:9166c40e6ffd4c0edebabc354e1a1e2cffc1bb473f88007694793757685cc8c3", size = 18212, upload-time = "2025-02-06T17:10:40.913Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/b7/4bac35b4079b76c07d8faddf89467e9891b1610cfe8d03b0ebb5610e4423/x_wr_timezone-2.0.1-py3-none-any.whl", hash = "sha256:e74a53b9f4f7def8138455c240e65e47c224778bce3c024fcd6da2cbe91ca038", size = 11102, upload-time = "2025-02-06T17:10:39.192Z" },
-]
-
-[[package]]
-name = "xenon"
-version = "0.9.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyyaml" },
-    { name = "radon" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/7c/2b341eaeec69d514b635ea18481885a956d196a74322a4b0942ef0c31691/xenon-0.9.3.tar.gz", hash = "sha256:4a7538d8ba08aa5d79055fb3e0b2393c0bd6d7d16a4ab0fcdef02ef1f10a43fa", size = 9883, upload-time = "2024-10-21T10:27:53.722Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/5d/29ff8665b129cafd147d90b86e92babee32e116e3c84447107da3e77f8fb/xenon-0.9.3-py2.py3-none-any.whl", hash = "sha256:6e2c2c251cc5e9d01fe984e623499b13b2140fcbf74d6c03a613fa43a9347097", size = 8966, upload-time = "2024-10-21T10:27:51.121Z" },
 ]
 
 [[package]]

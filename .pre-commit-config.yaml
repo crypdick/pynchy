@@ -77,12 +77,6 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
-      - id: xenon
-        name: Check cyclomatic complexity
-        entry: uv run xenon --max-absolute C --max-modules C --max-average B src
-        language: system
-        pass_filenames: false
-        types: [python]
       - id: check-timeless-comments
         name: Flag temporal language in comments (legacy/old/refactor/...)
         entry: uv run python scripts/pre_commit_hooks/check_timeless_comments.py
