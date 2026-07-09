@@ -24,7 +24,6 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import McpServerConfig, SdkPluginConfig, SystemPromptPreset
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
-from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 from agent_runner.hooks import (
     AGNOSTIC_TO_CLAUDE,
     BeforeToolUseHook,
@@ -33,6 +32,8 @@ from agent_runner.hooks import (
     load_hooks,
 )
 from agent_runner.transcript_archive import archive_transcript
+
+from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable

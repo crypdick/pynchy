@@ -1,6 +1,6 @@
 """Tests for notebook .qmd/.ipynb format parsing, serialization, and round-trips.
 
-Functions are imported directly from the ``notebook_server`` package submodules.
+Functions are imported from the public ``notebook_server`` package surface.
 No sys.argv patching needed — the submodules have no module-level side effects.
 """
 
@@ -11,16 +11,14 @@ import pytest
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 try:
-    from pynchy.plugins.integrations.notebook_server._formats import (
+    from pynchy.plugins.integrations.notebook_server import (
         load_notebook,
         notebook_path,
+        outputs_for_agent,
         parse_qmd,
+        save_cell_images,
         save_notebook,
         serialize_qmd,
-    )
-    from pynchy.plugins.integrations.notebook_server._output import (
-        outputs_for_agent,
-        save_cell_images,
     )
 except ImportError:
     pytest.skip("notebook_server deps not installed", allow_module_level=True)

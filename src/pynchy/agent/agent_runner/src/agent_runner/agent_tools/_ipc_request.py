@@ -21,7 +21,7 @@ from mcp.types import TextContent
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from agent_runner.agent_tools._ipc import IPC_DIR, write_request_file
+from ._ipc import IPC_DIR, write_request_file
 
 RESPONSES_DIR = IPC_DIR / "responses"
 

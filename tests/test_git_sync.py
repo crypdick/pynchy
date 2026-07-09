@@ -16,8 +16,7 @@ import pytest
 from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc.write import write_ipc_response
-from pynchy.host.git_ops import sync_poll
-from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
+from pynchy.host.git_ops import host_notify_worktree_updates, sync_poll
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import host_sync_worktree
 from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy

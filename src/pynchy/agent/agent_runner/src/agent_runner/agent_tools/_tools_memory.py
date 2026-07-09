@@ -4,7 +4,7 @@ These tools provide persistent, searchable memory across sessions.
 Memories are stored per-workspace with BM25-ranked full-text search.
 """
 
-from agent_runner.agent_tools._registry import register_ipc_tool
+from ._registry import register_ipc_tool
 
 register_ipc_tool(
     name="save_memory",

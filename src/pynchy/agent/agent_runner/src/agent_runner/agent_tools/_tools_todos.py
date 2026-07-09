@@ -15,7 +15,7 @@ from typing import Any, cast
 
 from mcp.types import CallToolResult, TextContent
 
-from agent_runner.agent_tools._registry import tool, tool_error
+from ._registry import tool, tool_error
 
 _TODOS_FILE = Path("/workspace/ipc/todos.json")
 

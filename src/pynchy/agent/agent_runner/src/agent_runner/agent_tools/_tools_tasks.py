@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
 
-from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import ToolEntry, register, tool, tool_error
+from . import _ipc
+from ._registry import ToolEntry, register, tool, tool_error
 
 if TYPE_CHECKING:
     from pathlib import Path

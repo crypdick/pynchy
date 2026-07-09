@@ -12,12 +12,6 @@ from conftest import make_settings
 
 from pynchy.host.container_manager.security import mount_security
 from pynchy.host.container_manager.security.mount_security import (
-    _optional_bool_value,  # allow: private-test-imports - direct type contracts
-    _parse_allowed_root,  # allow: private-test-imports - direct type contracts
-    _parse_allowlist_table,  # allow: private-test-imports - direct type contracts
-    _required_bool,  # allow: private-test-imports - direct type contracts
-    _required_list,  # allow: private-test-imports - direct type contracts
-    _string_value,  # allow: private-test-imports - direct type contracts
     generate_allowlist_template,
     load_mount_allowlist,
     validate_additional_mounts,
@@ -229,6 +223,22 @@ path = 123
         ):
             assert load_mount_allowlist() is None
 
+    def test_invalid_allowed_root_table_returns_none(self, tmp_path: Path):
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(
+            allowlist,
+            """
+non_admin_read_only = true
+blocked_patterns = []
+allowed_roots = ["not-a-table"]
+""".strip(),
+        )
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            assert load_mount_allowlist() is None
+
     def test_invalid_blocked_pattern_entry_returns_none(self, tmp_path: Path):
         allowlist = tmp_path / "mount-allowlist.toml"
         _write_allowlist(
@@ -247,36 +257,29 @@ path = "~/projects"
         ):
             assert load_mount_allowlist() is None
 
-
-class TestTypeValidation:
     @pytest.mark.parametrize(
-        ("call", "expected"),
+        "content",
         [
-            (_required_list, "must be an array"),
-            (_required_bool, "must be a boolean"),
-            (_string_value, "must be a string"),
+            """
+non_admin_read_only = true
+blocked_patterns = "not-a-list"
+allowed_roots = []
+""",
+            """
+non_admin_read_only = "not-a-bool"
+blocked_patterns = []
+allowed_roots = []
+""",
         ],
     )
-    def test_basic_type_checks_raise_typeerror(self, call, expected):
-        table = {"value": "not-the-right-type"}
-        if call is _required_list or call is _required_bool:
-            with pytest.raises(TypeError, match=expected):
-                call(table, "value")
-        else:
-            with pytest.raises(TypeError, match=expected):
-                call(123, field_name="value")
-
-    def test_optional_bool_type_check_raises_typeerror(self):
-        with pytest.raises(TypeError, match="must be a boolean"):
-            _optional_bool_value("nope", field_name="value", default=True)
-
-    def test_parse_allowed_root_requires_mapping(self):
-        with pytest.raises(TypeError, match="must be a table"):
-            _parse_allowed_root([], index=0)
-
-    def test_parse_allowlist_table_requires_mapping(self):
-        with pytest.raises(TypeError, match="must decode to a TOML table"):
-            _parse_allowlist_table([])
+    def test_invalid_required_top_level_types_return_none(self, tmp_path: Path, content: str):
+        allowlist = tmp_path / "mount-allowlist.toml"
+        _write_allowlist(allowlist, content.strip())
+        with patch(
+            "pynchy.host.container_manager.security.mount_security.get_settings",
+            return_value=_test_settings(allowlist),
+        ):
+            assert load_mount_allowlist() is None
 
 
 class TestValidateMount:

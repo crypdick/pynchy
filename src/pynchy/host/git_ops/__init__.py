@@ -1,11 +1,16 @@
 """Git operations — sync, worktrees, and shared helpers."""
 
 from pynchy.host.git_ops._worktree_merge import (
+    background_merge_worktree,
     merge_and_push_worktree,
     merge_worktree,
     merge_worktree_with_policy,
 )
-from pynchy.host.git_ops._worktree_notify import WorktreeNotifyDeps, host_notify_worktree_updates
+from pynchy.host.git_ops._worktree_notify import (
+    WorktreeNotifyDeps,
+    build_rebase_notice,
+    host_notify_worktree_updates,
+)
 from pynchy.host.git_ops.sync import (
     GitSyncDeps,
     host_sync_worktree,
@@ -38,6 +43,8 @@ __all__ = [
     "WorktreeError",
     "WorktreeNotifyDeps",
     "WorktreeResult",
+    "background_merge_worktree",
+    "build_rebase_notice",
     "count_commits",
     "count_unpushed_commits",
     "detect_main_branch",

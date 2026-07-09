@@ -12,8 +12,8 @@ from typing import Any, NoReturn
 
 from mcp.types import CallToolResult, TextContent
 
-from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import tool, tool_error
+from . import _ipc
+from ._registry import tool, tool_error
 
 # -- sync_worktree_to_main --
 

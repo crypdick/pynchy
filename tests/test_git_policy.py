@@ -452,7 +452,7 @@ class TestMergeWorktreeWithPolicy:
             ),
             patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
         ):
-            from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
+            from pynchy.host.git_ops import merge_worktree_with_policy
 
             await merge_worktree_with_policy("agent-1")
 
@@ -464,7 +464,7 @@ class TestMergeWorktreeWithPolicy:
             "pynchy.host.git_ops.repo.resolve_repos_for_group",
             return_value=[],
         ):
-            from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
+            from pynchy.host.git_ops import merge_worktree_with_policy
 
             await merge_worktree_with_policy("no-repo")
 
@@ -476,7 +476,7 @@ class TestBackgroundMergePolicy:
         group.folder = "agent-1"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.host.git_ops._worktree_merge import background_merge_worktree
+            from pynchy.host.git_ops import background_merge_worktree
 
             background_merge_worktree(group)
 
@@ -491,7 +491,7 @@ class TestBackgroundMergePolicy:
         group.folder = "no-repo"
 
         with patch("pynchy.utils.create_background_task") as mock_task:
-            from pynchy.host.git_ops._worktree_merge import background_merge_worktree
+            from pynchy.host.git_ops import background_merge_worktree
 
             background_merge_worktree(group)
 

@@ -28,7 +28,9 @@ async def _ipc_bash_check(command: str) -> HookDecision:
 
     Reuses the existing ipc_service_request machinery (watchdog-based).
     """
-    from agent_runner.agent_tools._ipc_request import ipc_service_request
+    from agent_runner.agent_tools._ipc_request import (  # noqa: PLC2701, RUF100 - repo style forbids parent-relative imports for this lazy sibling import.
+        ipc_service_request,
+    )
 
     results = await ipc_service_request(
         "bash_check",

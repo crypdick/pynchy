@@ -17,7 +17,8 @@ from agents.mcp import (
 )
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
-from agent_runner.cores._openai_tool_parsing import extract_tool_call, extract_tool_result
+
+from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable

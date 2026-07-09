@@ -9,7 +9,7 @@ These tools write IPC requests that the host processes after applying
 policy middleware.
 """
 
-from agent_runner.agent_tools._registry import register_ipc_tool
+from ._registry import register_ipc_tool
 
 register_ipc_tool(
     name="list_calendars",

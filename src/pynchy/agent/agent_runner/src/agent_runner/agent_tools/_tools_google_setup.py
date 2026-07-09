@@ -11,7 +11,7 @@ profiles are available.
 
 import os
 
-from agent_runner.agent_tools._registry import register_ipc_tool
+from ._registry import register_ipc_tool
 
 _raw = os.environ.get("PYNCHY_CHROME_PROFILES", "")
 _profiles = [p.strip() for p in _raw.split(",") if p.strip()]

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from conftest import make_settings
 
-from pynchy.host.git_ops._worktree_notify import build_rebase_notice
+from pynchy.host.git_ops import build_rebase_notice
 from pynchy.host.git_ops.sync_poll import (
     get_local_head_sha,
     host_source_files_changed,

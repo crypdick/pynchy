@@ -76,7 +76,7 @@ def register_ipc_tool(
     Use this for tools that are pure IPC proxies — no local validation
     or custom logic, just forwarding to the host.
     """
-    from agent_runner.agent_tools._ipc_request import ipc_service_request
+    from ._ipc_request import ipc_service_request
 
     # Pre-compute defaults from schema so the handler closure is fast.
     defaults: dict[str, Any] = {}

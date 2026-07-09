@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
-from agent_runner.cores._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
+
+from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

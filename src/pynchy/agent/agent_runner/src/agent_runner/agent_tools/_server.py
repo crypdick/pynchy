@@ -5,27 +5,33 @@ Discovers tools from the registry instead of hardcoding them.
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent, Tool
 
-# Import tool modules to trigger self-registration
-import agent_runner.agent_tools._tools_admin
-import agent_runner.agent_tools._tools_ask_user
-import agent_runner.agent_tools._tools_calendar
-import agent_runner.agent_tools._tools_computer_use
-import agent_runner.agent_tools._tools_desktop_screenshot
-import agent_runner.agent_tools._tools_google_setup
-import agent_runner.agent_tools._tools_lifecycle
-import agent_runner.agent_tools._tools_memory
-import agent_runner.agent_tools._tools_messaging
-import agent_runner.agent_tools._tools_slack_tokens
-import agent_runner.agent_tools._tools_tasks
-import agent_runner.agent_tools._tools_todos
-import agent_runner.agent_tools._tools_x
-from agent_runner.agent_tools._registry import all_tools, get_handler
+from ._registry import all_tools, get_handler
+
+_TOOL_MODULES = (
+    "_tools_admin",
+    "_tools_ask_user",
+    "_tools_calendar",
+    "_tools_computer_use",
+    "_tools_desktop_screenshot",
+    "_tools_google_setup",
+    "_tools_lifecycle",
+    "_tools_memory",
+    "_tools_messaging",
+    "_tools_slack_tokens",
+    "_tools_tasks",
+    "_tools_todos",
+    "_tools_x",
+)
+
+for module_name in _TOOL_MODULES:
+    import_module(f"{__package__}.{module_name}")
 
 server = Server("pynchy")
 

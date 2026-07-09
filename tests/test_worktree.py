@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.git_ops._worktree_merge import merge_and_push_worktree, merge_worktree
+from pynchy.host.git_ops import merge_and_push_worktree, merge_worktree
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.worktree import (
     WorktreeError,

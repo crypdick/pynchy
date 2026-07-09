@@ -1,6 +1,6 @@
 """Computer-use tool backed by host-side Cua Driver."""
 
-from agent_runner.agent_tools._registry import register_ipc_tool
+from ._registry import register_ipc_tool
 
 _ACTIONS = [
     "capture",

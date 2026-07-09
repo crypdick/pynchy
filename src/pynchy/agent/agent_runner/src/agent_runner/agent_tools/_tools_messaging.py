@@ -6,8 +6,8 @@ from typing import Any
 
 from mcp.types import TextContent
 
-from agent_runner.agent_tools import _ipc
-from agent_runner.agent_tools._registry import tool
+from . import _ipc
+from ._registry import tool
 
 
 @tool(

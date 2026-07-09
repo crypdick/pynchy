@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from agent_runner.agent_tools._ipc_request import ipc_service_request
-from agent_runner.agent_tools._registry import tool, tool_error
+from ._ipc_request import ipc_service_request
+from ._registry import tool, tool_error
 
 if TYPE_CHECKING:
     from mcp.types import CallToolResult, TextContent

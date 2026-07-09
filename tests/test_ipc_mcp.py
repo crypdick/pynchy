@@ -1,7 +1,6 @@
 """Tests for src/pynchy/agent/agent_runner/src/agent_runner/agent_tools/.
 
-Tests IPC file writing, schedule validation, tool authorization, and
-task listing logic.
+Tests schedule validation, tool authorization, messaging, and task listing logic.
 """
 
 from __future__ import annotations
@@ -17,56 +16,13 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.agent_tools._ipc import write_ipc_file
+from agent_runner.agent_tools import call_tool, list_tools
 
 
 def _read_request_file(path: Path) -> tuple[dict, dict]:
     """Read a canonical request envelope and return (envelope, payload)."""
     envelope = json.loads(path.read_text(encoding="utf-8"))
     return envelope, envelope["payload"]
-
-
-# ---------------------------------------------------------------------------
-# write_ipc_file
-# ---------------------------------------------------------------------------
-
-
-class TestWriteIpcFile:
-    """Test atomic IPC file writing."""
-
-    def test_creates_directory(self, tmp_path):
-        target = tmp_path / "subdir"
-        write_ipc_file(target, {"type": "test"})
-        assert target.exists()
-        files = list(target.glob("*.json"))
-        assert len(files) == 1
-
-    def test_file_content_valid_json(self, tmp_path):
-        data = {"type": "message", "text": "hello"}
-        write_ipc_file(tmp_path, data)
-        files = list(tmp_path.glob("*.json"))
-        content = json.loads(files[0].read_text(encoding="utf-8"))
-        assert content == data
-
-    def test_filename_format(self, tmp_path):
-        filename = write_ipc_file(tmp_path, {"type": "test"})
-        assert filename.endswith(".json")
-        # Filenames contain a timestamp prefix and random suffix.
-        parts = filename.replace(".json", "").split("-")
-        assert len(parts) >= 2
-        # First part should be a timestamp (numeric)
-        assert parts[0].isdigit()
-
-    def test_no_temp_files_left(self, tmp_path):
-        write_ipc_file(tmp_path, {"type": "test"})
-        tmp_files = list(tmp_path.glob("*.tmp"))
-        assert len(tmp_files) == 0
-
-    def test_multiple_writes_unique_filenames(self, tmp_path):
-        f1 = write_ipc_file(tmp_path, {"n": 1})
-        f2 = write_ipc_file(tmp_path, {"n": 2})
-        assert f1 != f2
-        assert len(list(tmp_path.glob("*.json"))) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +51,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_valid_cron(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
             result = await call_tool(
@@ -112,7 +67,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_cron_returns_error(self):
-        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -129,7 +83,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_valid_interval(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
             result = await call_tool(
@@ -144,7 +97,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_interval_negative(self):
-        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -160,7 +112,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_interval_non_numeric(self):
-        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -174,7 +125,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_interval_zero(self):
-        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -188,7 +138,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_valid_once(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
             result = await call_tool(
@@ -203,7 +152,6 @@ class TestScheduleTaskValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_once_timestamp(self):
-        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool(
             "schedule_task",
@@ -219,7 +167,6 @@ class TestScheduleTaskValidation:
     @pytest.mark.asyncio
     async def test_non_admin_cannot_set_target_group(self, tmp_path):
         """Non-admin groups should have target_group ignored."""
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
@@ -244,7 +191,6 @@ class TestScheduleTaskValidation:
     @pytest.mark.asyncio
     async def test_admin_can_set_target_group(self, tmp_path):
         """Admin groups should be able to set target_group."""
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", True),
@@ -276,7 +222,6 @@ class TestRegisterGroupAuth:
 
     @pytest.mark.asyncio
     async def test_non_admin_register_group_rejected(self):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
@@ -297,7 +242,6 @@ class TestRegisterGroupAuth:
 
     @pytest.mark.asyncio
     async def test_admin_register_group_accepted(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", True),
@@ -326,7 +270,6 @@ class TestDeployAuth:
 
     @pytest.mark.asyncio
     async def test_non_admin_deploy_rejected(self):
-        from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._ipc.is_admin", False):
             result = await call_tool("deploy_changes", {})
@@ -340,7 +283,6 @@ class TestSendMessage:
 
     @pytest.mark.asyncio
     async def test_basic_send(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
@@ -361,7 +303,6 @@ class TestSendMessage:
 
     @pytest.mark.asyncio
     async def test_send_with_sender(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
@@ -380,7 +321,6 @@ class TestListTasks:
 
     @pytest.mark.asyncio
     async def test_no_tasks_file(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path):
             result = await call_tool("list_tasks", {})
@@ -389,7 +329,6 @@ class TestListTasks:
 
     @pytest.mark.asyncio
     async def test_empty_task_list(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text("[]")
@@ -402,7 +341,6 @@ class TestListTasks:
 
     @pytest.mark.asyncio
     async def test_admin_sees_all_tasks(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         tasks = [
             {
@@ -435,7 +373,6 @@ class TestListTasks:
 
     @pytest.mark.asyncio
     async def test_non_admin_sees_own_tasks_only(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         tasks = [
             {
@@ -478,7 +415,6 @@ class TestTaskLifecycle:
 
     @pytest.mark.asyncio
     async def test_pause_task(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
@@ -494,7 +430,6 @@ class TestTaskLifecycle:
 
     @pytest.mark.asyncio
     async def test_resume_task(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
@@ -506,7 +441,6 @@ class TestTaskLifecycle:
 
     @pytest.mark.asyncio
     async def test_cancel_task(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with (
             patch("agent_runner.agent_tools._ipc.group_folder", "test"),
@@ -522,7 +456,6 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_list_todos_empty(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", tmp_path / "todos.json"):
             result = await call_tool("list_todos", {})
@@ -531,7 +464,6 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_list_todos_shows_pending(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         todos_file = tmp_path / "todos.json"
         todos_file.write_text(
@@ -555,7 +487,6 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_list_todos_hides_done_by_default(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         todos_file = tmp_path / "todos.json"
         todos_file.write_text(
@@ -580,7 +511,6 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_list_todos_include_done(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         todos_file = tmp_path / "todos.json"
         todos_file.write_text(
@@ -605,7 +535,6 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_complete_todo(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         todos_file = tmp_path / "todos.json"
         todos_file.write_text(
@@ -632,7 +561,6 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_complete_todo_not_found(self, tmp_path):
-        from agent_runner.agent_tools._server import call_tool
 
         todos_file = tmp_path / "todos.json"
         todos_file.write_text(json.dumps([]))
@@ -654,7 +582,6 @@ class TestUnknownTool:
 
     @pytest.mark.asyncio
     async def test_unknown_tool(self):
-        from agent_runner.agent_tools._server import call_tool
 
         result = await call_tool("nonexistent_tool", {})
         assert isinstance(result, list)
@@ -671,7 +598,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_admin_sees_deploy(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", True),
@@ -683,7 +609,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_non_admin_no_deploy(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
@@ -695,7 +620,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_admin_sees_register_group(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", True),
@@ -707,7 +631,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_non_admin_no_register_group(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
@@ -719,7 +642,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_scheduled_task_sees_finished_work(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
@@ -731,7 +653,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_non_scheduled_no_finished_work(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
@@ -743,7 +664,6 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_all_base_tools_present(self):
-        from agent_runner.agent_tools._server import list_tools
 
         with (
             patch("agent_runner.agent_tools._ipc.is_admin", False),
