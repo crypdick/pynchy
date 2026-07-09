@@ -114,6 +114,7 @@ class _ActiveRuntimeState:
 
 _state = _ActiveRuntimeState()
 _WORKFLOW_MODULE = "pynchy.host.orchestrator.temporal.workflows"
+_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR = "Temporal scheduler runtime has not been started"
 __all__ = [
     "TemporalRuntimeUnavailableError",
     "TemporalSchedulerRuntime",
@@ -157,7 +158,7 @@ async def _require_active_runtime() -> TemporalSchedulerRuntime:
     deadline = asyncio.get_running_loop().time() + 10.0
     while _state.active_runtime is None:
         if asyncio.get_running_loop().time() >= deadline:
-            raise TemporalRuntimeUnavailableError("Temporal scheduler runtime has not been started")
+            raise TemporalRuntimeUnavailableError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
         await asyncio.sleep(0.05)
     return _state.active_runtime
 
@@ -293,7 +294,7 @@ class TemporalSchedulerRuntime:
     async def start_scheduled_agent_task(self, task: ScheduledTask) -> None:
         """Start a Temporal workflow for the due task if one is not already running."""
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
         workflow_id = agent_task_workflow_id(task)
         await self._start_workflow(
@@ -306,7 +307,7 @@ class TemporalSchedulerRuntime:
     async def start_learning_review(self, packet: LearningPacket) -> None:
         """Start a Temporal workflow for one hidden learning review packet."""
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
         await self._start_workflow(
             LearningReviewWorkflow.run,
@@ -319,7 +320,7 @@ class TemporalSchedulerRuntime:
     async def start_interactive_message_turn(self, chat_jid: str) -> None:
         """Start a Temporal workflow for pending messages in one chat."""
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
         settings = get_settings()
         await self._start_workflow(
@@ -335,7 +336,7 @@ class TemporalSchedulerRuntime:
     async def start_deploy(self, request: DeployRequest) -> None:
         """Start a Temporal workflow for a deploy handoff."""
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
         await self._start_workflow(
             DeployWorkflow.run,
@@ -348,7 +349,7 @@ class TemporalSchedulerRuntime:
     async def start_channel_reconciliation(self) -> None:
         """Start a Temporal workflow for immediate channel reconciliation."""
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
         await self._start_workflow(
             ChannelReconciliationWorkflow.run,
@@ -360,7 +361,7 @@ class TemporalSchedulerRuntime:
     async def reconcile_schedules(self) -> None:
         """Reconcile Pynchy's desired scheduled work into Temporal schedules."""
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
         await reconcile_temporal_schedules(
             self,
             get_settings_fn=get_settings,
@@ -397,7 +398,7 @@ class TemporalSchedulerRuntime:
         id_reuse_policy: WorkflowIDReusePolicy = WorkflowIDReusePolicy.REJECT_DUPLICATE,
     ) -> None:
         if self.client is None:
-            raise RuntimeError("Temporal scheduler runtime has not been started")
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
         start_kwargs: dict[str, Any] = {
             "args": list(args),
