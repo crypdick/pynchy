@@ -199,14 +199,11 @@ select = [
     "W",
     "YTT",
 ]
-# TRY003 is intentionally skipped: simple domain errors do not need exception-class
-# constructors just to centralize messages.
 # The remaining ignores are the current baseline surfaced by Strictify's expanded
 # anti-slop profile. Delete these entries as focused cleanup lands.
 ignore = [
     "ANN401",
     "PLC0415",
-    "TRY003",
 ]
 
 [tool.ruff.lint.per-file-ignores]
