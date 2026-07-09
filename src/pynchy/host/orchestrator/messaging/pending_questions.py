@@ -196,7 +196,7 @@ def update_message_id(request_id: str, source_group: str, message_id: str) -> No
 # -- Startup sweep -------------------------------------------------------------
 
 
-async def sweep_expired_questions() -> list[dict[str, Any]]:
+async def sweep_expired_questions() -> list[dict[str, Any]]:  # noqa: RUF029, RUF100 - IPC startup awaits the recovery sweep API.
     """Find and auto-expire stale pending questions (crash recovery).
 
     Called on startup alongside ``sweep_expired_approvals()``.  Writes an

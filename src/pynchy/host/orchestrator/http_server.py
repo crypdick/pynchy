@@ -85,7 +85,7 @@ class HttpDeps(Protocol):
 # ------------------------------------------------------------------
 
 
-async def _handle_health(request: Any) -> Any:
+async def _handle_health(request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
     deps: HttpDeps = request.app[deps_key]
     return web.json_response(
         {
@@ -192,7 +192,7 @@ async def _handle_status(request: Any) -> Any:
 # ------------------------------------------------------------------
 
 
-async def _handle_api_groups(request: Any) -> Any:
+async def _handle_api_groups(request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
     """Return registered groups."""
     deps: HttpDeps = request.app[deps_key]
     return web.json_response(deps.get_groups())

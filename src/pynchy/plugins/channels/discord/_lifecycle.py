@@ -48,7 +48,7 @@ class DiscordLifecycle:
         ch.events.register()
 
         @client.event
-        async def on_ready() -> None:
+        async def on_ready() -> None:  # noqa: RUF029, RUF100 - discord.py event callbacks are async.
             ch.bot_user_id = str(client.user.id) if client.user else ""
             ch._connected = True
             logger.info("Connected to Discord", connection=ch.name, bot_user_id=ch.bot_user_id)

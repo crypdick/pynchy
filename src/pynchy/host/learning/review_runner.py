@@ -25,7 +25,7 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
             f"group {packet.group_folder!r} profile {packet.profile!r}"
         )
 
-    async def on_output(_output: Any) -> None:
+    async def on_output(_output: Any) -> None:  # noqa: RUF029, RUF100 - run_agent expects an async output callback.
         return None
 
     reviewer_jid = f"learning-review:{paths.profile_slug}"

@@ -233,7 +233,7 @@ def build_app(*, workspace: str | None = None) -> Any:
     return app
 
 
-async def _handle_health(_request: Any) -> Any:
+async def _handle_health(_request: Any) -> Any:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
     return web.json_response({"status": "ok", "service": "pynchy-linear"})
 
 

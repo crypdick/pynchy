@@ -97,7 +97,7 @@ def create_proxy_app(
     return app
 
 
-async def _start_http_session(app: Any) -> None:
+async def _start_http_session(app: Any) -> None:  # noqa: RUF029, RUF100 - aiohttp startup callbacks are async.
     app[_STATE_KEY].http_session = aiohttp.ClientSession()
 
 
@@ -145,7 +145,7 @@ def _session_gate(proxy_request: _ProxyRequest) -> Any:
     return web.json_response({"error": "No security context for this session"}, status=403)
 
 
-async def _rpc_payload(body: bytes) -> dict[str, Any]:
+def _rpc_payload(body: bytes) -> dict[str, Any]:
     try:
         return _json.loads(body) if body else {}
     except (ValueError, UnicodeDecodeError):
@@ -264,7 +264,7 @@ async def _proxy_handler(request: Any) -> Any:
         return gate
 
     body = await request.read()
-    rpc = await _rpc_payload(body)
+    rpc = _rpc_payload(body)
     outbound_decision = await _maybe_gate_outbound_call(state, proxy_request, gate, rpc)
     if outbound_decision is not None:
         return outbound_decision
