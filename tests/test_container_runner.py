@@ -636,6 +636,8 @@ class TestContainerArgs:
     def test_includes_name_and_image(self):
         args = build_container_args([], "my-container")
         assert args[:3] == ["run", "--name", "my-container"]
+        assert "--label" in args
+        assert "com.pynchy.role=agent" in args
         # Last arg is the image
         assert args[-1].endswith("-agent:latest")
 
@@ -2936,6 +2938,21 @@ class TestGetSessionOutputHandler:
 class TestSessionStartOnlyStderr:
     """Tests that session.start() only starts stderr reader and proc monitor (not stdout)."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_container_record_cleanup(self):
+        with (
+            patch(
+                "pynchy.host.container_manager.session._docker_rm_force",
+                new_callable=AsyncMock,
+            ) as cleanup,
+            patch(
+                "pynchy.host.container_manager.session._runtime_container_running",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            self.container_record_cleanup = cleanup
+            yield cleanup
+
     async def test_start_creates_stderr_task(self):
         """start() should create a stderr reader task."""
         from pynchy.host.container_manager.session import ContainerSession
@@ -3002,6 +3019,19 @@ class TestSessionStartOnlyStderr:
         assert session._dead is True
         assert session._died_before_pulse is True
         assert session._query_done.is_set()
+
+    async def test_proc_monitor_removes_exited_container_record(self):
+        """Exited containers should be removed even when no teardown command runs."""
+        from pynchy.host.container_manager.session import ContainerSession
+
+        session = ContainerSession("record-cleanup-test", "pynchy-record-cleanup-test")
+        proc = FakeProcess()
+
+        session.start(proc)  # type: ignore[arg-type]
+        proc.close(code=0)
+        await asyncio.sleep(0.05)
+
+        self.container_record_cleanup.assert_awaited_once_with("pynchy-record-cleanup-test")
 
     async def test_proc_monitor_clean_exit_no_died_before_pulse(self):
         """A clean exit (code 0) during query should NOT set _died_before_pulse."""

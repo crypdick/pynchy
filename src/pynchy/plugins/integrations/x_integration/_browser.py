@@ -8,7 +8,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir
 from pynchy.plugins.integrations.x_integration._display import ensure_xvfb
@@ -74,7 +74,7 @@ _BROWSER_ARGS = [
 async def is_visible(locator: Locator) -> bool:
     """Check locator visibility without raising on detached elements."""
     try:
-        return cast("bool", await locator.is_visible())
+        return await locator.is_visible()
     except Exception:  # noqa: BLE001, RUF100  # allow: exception-handling - detached elements are treated as not visible.
         return False
 

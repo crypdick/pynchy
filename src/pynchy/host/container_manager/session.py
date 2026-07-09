@@ -372,6 +372,11 @@ class ContainerSession:
             container=self.container_name,
             exit_code=exit_code,
         )
+        if not was_stopping:
+            create_background_task(
+                _docker_rm_force(self.container_name),
+                name=f"remove-exited-container-{self.container_name}",
+            )
 
     async def _read_stderr(self, stream: asyncio.StreamReader) -> None:
         """Long-lived stderr reader — logs container stderr lines."""
@@ -409,6 +414,11 @@ def get_session(group_folder: GroupFolder) -> ContainerSession | None:
         _sessions.pop(group_folder, None)
         return None
     return session
+
+
+def active_session_container_names() -> set[str]:
+    """Return container names owned by live in-process sessions."""
+    return {session.container_name for session in _sessions.values() if session.is_alive}
 
 
 def get_session_output_handler(group_folder: GroupFolder) -> OnOutput | None:

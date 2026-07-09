@@ -21,6 +21,10 @@ The default runtime on Linux and the fallback on macOS. Requires the `docker` CL
 
 The default runtime on macOS. Uses Apple's native container framework for lower overhead. Requires the `container` CLI (`brew install container`). Falls back to Docker if not installed.
 
+## Container Lifecycle
+
+Pynchy labels agent containers and removes stopped agent containers when it observes a session exit or starts the host service. Running or paused agent containers owned by an active in-process session stay protected. Unowned running or paused agent containers are reaped after `[container].orphan_reap_age_ms` (default: `604800000`, seven days). This cleanup does not prune container images. On Apple Container, Pynchy removes the BuildKit builder after Pynchy-controlled image builds so builder snapshots do not accumulate.
+
 ## Container Mounts
 
 | Host Path | Container Path | Access | Groups |

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-import contextlib
 import subprocess  # noqa: S404, RUF100 - system checks use fixed no-shell runtime CLI argv.
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.cleanup import (
+    cleanup_runtime_builder,
+    reap_orphaned_agent_containers,
+)
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
 
 
 def ensure_container_system_running() -> None:
-    """Verify container runtime is available and stop orphaned containers."""
+    """Verify container runtime is available and reap orphaned agent containers."""
     runtime = get_runtime()
     runtime.ensure_running()
 
@@ -31,26 +34,15 @@ def ensure_container_system_running() -> None:
                 f"no Dockerfile at {container_dir / 'Dockerfile'}"
             )
         logger.info("Container image not found, building...", image=image)
-        build = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
-            [runtime.cli, "build", "-t", image, "."],
-            cwd=str(container_dir),
-            check=False,
-        )
+        try:
+            build = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
+                [runtime.cli, "build", "-t", image, "."],
+                cwd=str(container_dir),
+                check=False,
+            )
+        finally:
+            cleanup_runtime_builder(runtime)
         if build.returncode != 0:
             raise RuntimeError(f"Failed to build container image '{image}'")
 
-    # Kill orphaned pynchy containers left running
-    orphans = runtime.list_running_containers("pynchy-")
-    for name in orphans:
-        with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
-                [runtime.cli, "stop", name],
-                capture_output=True,
-                check=False,
-            )
-    if orphans:
-        logger.info(
-            "Stopped orphaned containers",
-            count=len(orphans),
-            names=orphans,
-        )
+    reap_orphaned_agent_containers(runtime=runtime)

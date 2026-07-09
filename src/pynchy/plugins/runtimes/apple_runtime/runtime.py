@@ -2,8 +2,80 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell container CLI argv.
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+from pynchy.host.container_manager.labels import (
+    AGENT_CONTAINER_LABEL,
+    AGENT_CONTAINER_LABEL_VALUE,
+)
+
+
+@dataclass(frozen=True)
+class RuntimeContainer:
+    """Container record from Apple Container."""
+
+    name: str
+    state: str
+    image: str
+    created_at: datetime | None
+    labels: dict[str, str]
+
+    @property
+    def is_agent_container(self) -> bool:
+        if self.labels.get(AGENT_CONTAINER_LABEL) == AGENT_CONTAINER_LABEL_VALUE:
+            return True
+        return self.name.startswith("pynchy-") and self.image.startswith("pynchy-agent:")
+
+
+def _parse_created_at(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def _container_name(item: dict[str, Any]) -> str:
+    config = item.get("configuration")
+    if not isinstance(config, dict):
+        return ""
+    name = config.get("id")
+    return name if isinstance(name, str) else ""
+
+
+def _container_state(item: dict[str, Any]) -> str:
+    status = item.get("status")
+    if isinstance(status, dict):
+        state = status.get("state")
+        return state if isinstance(state, str) else ""
+    return status if isinstance(status, str) else ""
+
+
+def _container_image(item: dict[str, Any]) -> str:
+    config = item.get("configuration")
+    if not isinstance(config, dict):
+        return ""
+    image = config.get("image")
+    if isinstance(image, dict):
+        reference = image.get("reference")
+        return reference if isinstance(reference, str) else ""
+    return image if isinstance(image, str) else ""
+
+
+def _container_labels(item: dict[str, Any]) -> dict[str, str]:
+    config = item.get("configuration")
+    if not isinstance(config, dict):
+        return {}
+    raw = config.get("labels")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}
 
 
 class AppleContainerRuntime:
@@ -35,21 +107,60 @@ class AppleContainerRuntime:
                     "Apple Container system is required but failed to start"
                 ) from exc
 
-    def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
+    def list_containers(self, prefix: str = "pynchy-") -> list[RuntimeContainer]:
         result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
-            [self.cli, "ls", "--format", "json"],
+            [self.cli, "ls", "--all", "--format", "json"],
             capture_output=True,
             text=True,
             check=False,
         )
-        import json
-
         containers = json.loads(result.stdout or "[]")
-        names: list[str] = []
-        for c in containers:
-            status = c.get("status")
-            state = status.get("state") if isinstance(status, dict) else status
-            name = c.get("configuration", {}).get("id", "")
-            if state == "running" and name.startswith(prefix):
-                names.append(name)
-        return names
+        records: list[RuntimeContainer] = []
+        for item in containers:
+            if not isinstance(item, dict):
+                continue
+            name = _container_name(item)
+            if not name.startswith(prefix):
+                continue
+            config = item.get("configuration")
+            created_at = config.get("creationDate") if isinstance(config, dict) else None
+            records.append(
+                RuntimeContainer(
+                    name=name,
+                    state=_container_state(item),
+                    image=_container_image(item),
+                    created_at=_parse_created_at(created_at),
+                    labels=_container_labels(item),
+                )
+            )
+        return records
+
+    def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
+        return [
+            container.name
+            for container in self.list_containers(prefix=prefix)
+            if container.state == "running"
+        ]
+
+    def remove_container(self, name: str, *, force: bool = True) -> bool:
+        args = [self.cli, "rm"]
+        if force:
+            args.append("--force")
+        args.append(name)
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            args,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def cleanup_builder(self) -> None:
+        """Remove Apple Container's BuildKit container after Pynchy image builds."""
+        for args in (("builder", "stop"), ("builder", "rm", "--force")):
+            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+                [self.cli, *args],
+                capture_output=True,
+                text=True,
+                check=False,
+            )

@@ -28,6 +28,7 @@ from pynchy.host.container_manager.process import OnOutput
 from pynchy.host.container_manager.session import (
     ContainerSession,
     SessionDiedError,
+    active_session_container_names,
     create_session,
     destroy_all_sessions,
     destroy_session,
@@ -40,6 +41,7 @@ __all__ = [
     "ContainerSession",
     "OnOutput",
     "SessionDiedError",
+    "active_session_container_names",
     "create_session",
     "destroy_all_sessions",
     "destroy_session",

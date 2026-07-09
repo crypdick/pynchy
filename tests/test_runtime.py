@@ -116,9 +116,9 @@ class TestDockerRuntime:
         rt = DockerContainerRuntime()
         ndjson = "\n".join(
             [
-                json.dumps({"Names": "pynchy-group1-123"}),
-                json.dumps({"Names": "pynchy-group2-456"}),
-                json.dumps({"Names": "other-container"}),
+                json.dumps({"Names": "pynchy-group1-123", "State": "running"}),
+                json.dumps({"Names": "pynchy-group2-456", "State": "running"}),
+                json.dumps({"Names": "other-container", "State": "running"}),
             ]
         )
         with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
@@ -132,6 +132,45 @@ class TestDockerRuntime:
             mock_run.return_value.stdout = ""
             result = rt.list_running_containers("pynchy-")
         assert result == []
+
+    def test_list_containers_marks_agent_by_label_or_legacy_image(self):
+        rt = DockerContainerRuntime()
+        ndjson = "\n".join(
+            [
+                json.dumps(
+                    {
+                        "Names": "pynchy-labeled",
+                        "State": "running",
+                        "Image": "custom:latest",
+                        "Labels": "com.pynchy.role=agent",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "Names": "pynchy-legacy",
+                        "State": "exited",
+                        "Image": "pynchy-agent:latest",
+                        "Labels": "",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "Names": "pynchy-litellm",
+                        "State": "running",
+                        "Image": "ghcr.io/berriai/litellm:main-latest",
+                        "Labels": "",
+                    }
+                ),
+            ]
+        )
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = ndjson
+            result = rt.list_containers("pynchy-")
+
+        assert [item.name for item in result if item.is_agent_container] == [
+            "pynchy-labeled",
+            "pynchy-legacy",
+        ]
 
     def test_ensure_running_calls_docker_info(self):
         rt = DockerContainerRuntime()
@@ -176,6 +215,58 @@ class TestAppleRuntime:
             mock_run.return_value.stdout = output
             result = rt.list_running_containers("pynchy-")
         assert result == ["pynchy-admin-1"]
+
+    def test_list_containers_marks_agent_by_label_or_legacy_image(self):
+        rt = AppleContainerRuntime()
+        output = json.dumps(
+            [
+                {
+                    "configuration": {
+                        "id": "pynchy-labeled",
+                        "image": {"reference": "custom:latest"},
+                        "labels": {"com.pynchy.role": "agent"},
+                    },
+                    "status": {"state": "running"},
+                },
+                {
+                    "configuration": {
+                        "id": "pynchy-legacy",
+                        "image": {"reference": "pynchy-agent:latest"},
+                        "labels": {},
+                    },
+                    "status": {"state": "stopped"},
+                },
+                {
+                    "configuration": {
+                        "id": "pynchy-litellm",
+                        "image": {"reference": "ghcr.io/berriai/litellm:main-latest"},
+                        "labels": {},
+                    },
+                    "status": {"state": "running"},
+                },
+            ]
+        )
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.stdout = output
+            result = rt.list_containers("pynchy-")
+
+        assert [item.name for item in result if item.is_agent_container] == [
+            "pynchy-labeled",
+            "pynchy-legacy",
+        ]
+
+    def test_cleanup_builder_stops_and_removes_buildkit(self):
+        rt = AppleContainerRuntime()
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            rt.cleanup_builder()
+
+        assert mock_run.call_args_list[0].args[0] == ["container", "builder", "stop"]
+        assert mock_run.call_args_list[1].args[0] == [
+            "container",
+            "builder",
+            "rm",
+            "--force",
+        ]
 
 
 class TestGetRuntime:

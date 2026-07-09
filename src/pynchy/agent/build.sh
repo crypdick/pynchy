@@ -22,6 +22,15 @@ else
     exit 1
 fi
 
+cleanup_apple_builder() {
+    if [ "$RUNTIME" = "container" ] && [ "${PYNCHY_KEEP_APPLE_BUILDER:-}" != "1" ]; then
+        echo "Cleaning Apple Container builder..."
+        $RUNTIME builder stop >/dev/null 2>&1 || true
+        $RUNTIME builder rm --force >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_apple_builder EXIT
+
 IMAGE_NAME="pynchy-agent"
 TAG="${1:-latest}"
 
@@ -51,9 +60,16 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
         MCP_PIDS+=($!)
     done
     # Wait for all parallel MCP builds; fail the script if any fails.
+    MCP_FAILED=0
     for pid in "${MCP_PIDS[@]}"; do
-        wait "$pid" || { echo "MCP image build failed (pid $pid)"; exit 1; }
+        if ! wait "$pid"; then
+            echo "MCP image build failed (pid $pid)"
+            MCP_FAILED=1
+        fi
     done
+    if [ "$MCP_FAILED" -ne 0 ]; then
+        exit 1
+    fi
     echo "All MCP images built."
 fi
 

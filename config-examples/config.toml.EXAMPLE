@@ -40,8 +40,11 @@
 # Maximum container output size in bytes (10MB default)
 # max_output_size = 10485760
 
-# Idle timeout in milliseconds (30 minutes default)
-# idle_timeout_ms = 1800000
+# Idle timeout in milliseconds (15 minutes default)
+# idle_timeout_ms = 900000
+
+# Age threshold before unowned running/paused agent containers are reaped
+# orphan_reap_age_ms = 604800000
 
 # Maximum concurrent agent containers
 # max_concurrent = 5

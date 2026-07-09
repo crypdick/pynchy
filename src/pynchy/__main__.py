@@ -47,6 +47,7 @@ def _tui(host: str) -> None:
 
 def _build() -> None:
     from pynchy.config import get_settings
+    from pynchy.host.container_manager.cleanup import cleanup_runtime_builder
     from pynchy.plugins.runtimes.detection import get_runtime
 
     s = get_settings()
@@ -58,11 +59,14 @@ def _build() -> None:
         sys.exit(1)
 
     _stdout_line(f"Building {s.container.image} with {runtime.cli}...")
-    result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
-        [runtime.cli, "build", "-t", s.container.image, "."],
-        cwd=str(container_dir),
-        check=False,
-    )
+    try:
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
+            [runtime.cli, "build", "-t", s.container.image, "."],
+            cwd=str(container_dir),
+            check=False,
+        )
+    finally:
+        cleanup_runtime_builder(runtime)
     sys.exit(result.returncode)
 
 

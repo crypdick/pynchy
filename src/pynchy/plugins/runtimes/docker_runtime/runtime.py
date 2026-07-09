@@ -7,8 +7,53 @@ import shutil
 import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell Docker/open argv.
 import sys
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
+from pynchy.host.container_manager.labels import (
+    AGENT_CONTAINER_LABEL,
+    AGENT_CONTAINER_LABEL_VALUE,
+)
 from pynchy.logger import logger
+
+
+@dataclass(frozen=True)
+class RuntimeContainer:
+    """Container record from Docker."""
+
+    name: str
+    state: str
+    image: str
+    created_at: datetime | None
+    labels: dict[str, str]
+
+    @property
+    def is_agent_container(self) -> bool:
+        if self.labels.get(AGENT_CONTAINER_LABEL) == AGENT_CONTAINER_LABEL_VALUE:
+            return True
+        return self.name.startswith("pynchy-") and self.image.startswith("pynchy-agent:")
+
+
+def _parse_created_at(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S %z %Z", "%Y-%m-%d %H:%M:%S %z"):
+        try:
+            return datetime.strptime(value, fmt).astimezone(UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_labels(value: object) -> dict[str, str]:
+    if not isinstance(value, str) or not value:
+        return {}
+    result: dict[str, str] = {}
+    for item in value.split(","):
+        key, sep, raw_value = item.partition("=")
+        if sep and key:
+            result[key] = raw_value
+    return result
 
 
 class DockerContainerRuntime:
@@ -37,21 +82,11 @@ class DockerContainerRuntime:
                 ) from exc
 
     def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
-        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
-            [self.cli, "ps", "--format", "{{json .}}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        names: list[str] = []
-        for line in result.stdout.strip().splitlines():
-            if not line:
-                continue
-            c = json.loads(line)
-            name = c.get("Names", "")
-            if name.startswith(prefix):
-                names.append(name)
-        return names
+        return [
+            container.name
+            for container in self.list_containers(prefix=prefix)
+            if container.state == "running"
+        ]
 
     # ------------------------------------------------------------------
 
@@ -90,3 +125,44 @@ class DockerContainerRuntime:
             "Docker Desktop was launched but the daemon did not become ready "
             "within 60s. Check Docker Desktop for errors."
         ) from original_exc
+
+    def list_containers(self, prefix: str = "pynchy-") -> list[RuntimeContainer]:
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            [self.cli, "ps", "-a", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        containers: list[RuntimeContainer] = []
+        for line in result.stdout.strip().splitlines():
+            if not line:
+                continue
+            item = json.loads(line)
+            name = item.get("Names", "")
+            if not isinstance(name, str) or not name.startswith(prefix):
+                continue
+            state = item.get("State", "")
+            image = item.get("Image", "")
+            containers.append(
+                RuntimeContainer(
+                    name=name,
+                    state=state if isinstance(state, str) else "",
+                    image=image if isinstance(image, str) else "",
+                    created_at=_parse_created_at(item.get("CreatedAt")),
+                    labels=_parse_labels(item.get("Labels")),
+                )
+            )
+        return containers
+
+    def remove_container(self, name: str, *, force: bool = True) -> bool:
+        args = [self.cli, "rm"]
+        if force:
+            args.append("-f")
+        args.append(name)
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            args,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0

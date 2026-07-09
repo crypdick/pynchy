@@ -107,6 +107,7 @@ class ContainerConfig(_StrictModel):
     # so a finished container hibernates gracefully via the cooperative _close
     # sentinel before the hard timeout would race docker stop -> SIGKILL (137).
     idle_timeout_ms: int = 900000  # 15 minutes
+    orphan_reap_age_ms: int = 604800000  # 7 days
     max_concurrent: int = 10
     runtime: str | None = None  # "docker" | plugin runtime name (e.g. "apple") | None
 
