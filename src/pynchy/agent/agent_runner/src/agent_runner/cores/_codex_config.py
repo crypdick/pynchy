@@ -48,7 +48,7 @@ def _append_mapping_table(lines: list[str], name: str, values: dict[str, object]
         return
     lines.extend(["", f"[{name}]"])
     for key, value in values.items():
-        lines.append(f"{_toml_key(str(key))} = {_toml_value(value)}")
+        lines.append(f"{_toml_key(str(key))} = {_toml_value(str(value))}")
 
 
 def _mcp_server_lines(name: str, spec: dict[str, object]) -> list[str]:
