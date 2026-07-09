@@ -6,7 +6,7 @@ Workspaces are configured chat roots. A workspace binds one Discord/Slack channe
 
 ## What Workspace Specs Do
 
-A workspace spec declares: "this channel should exist and should use this profile." The profile carries policy and capabilities such as admin status, repo access, model routing, MCP servers, skills, and whether the workspace filesystem contains secrets.
+A workspace spec declares which profiles a workspace selects. Profiles carry admin status, repo mounts, model routing, selected tools, skills, and whether the workspace filesystem contains secrets.
 
 At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. Config-backed jobs under `[jobs.*]` create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [prompts](../usage/prompts.md) rather than seeded files.
 
@@ -38,34 +38,29 @@ For config-backed jobs, the reconciler compares the database row against `config
 - **`schedule`** — also recalculates `next_run` when the cron expression changes
 - **`prompt`** — updates the prompt sent to the agent on each scheduled run
 - **delivery chat** — follows the target workspace's current registered JID
-- **`repo_access`** — updates the repo worktree mount from the target profile
-- **`context_mode`** — updates the scheduled run context mode
+- **`repo`** — updates the repo worktree mounts from the selected profiles
+- **`model`** — updates the model override from the selected profiles
 
-To change a schedule, prompt, repo access, or model override, edit `config.toml` and restart the service. No manual database edits required.
+To change a schedule, prompt, repo mount, or model override, edit `config.toml` and restart the service. No manual database edits required.
 
 ## Workspace Config Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `profile` | `str` | Name of a profile from `[profiles.*]` |
-| `chat` | `str` | Connection chat ref, such as `connection.discord.main.chat.synapse.channels.admin` |
-| `name` | `str` | Display name (defaults to folder titlecased) |
+| `profiles` | `list[str]` | Profile names from `[profiles.*]`, applied in order |
 
 ## Profile Config Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tags` | `list[str]` | Capability tags used by prompt, MCP, and skill selection |
+| `includes` | `list[str]` | Profiles to compose before this profile |
+| `prompts` | `list[str]` | Prompt names to include |
+| `skills` | `list[str]` | Skill names to include |
+| `tools` | `list[str]` | Tool names from `[tools.*]` to select |
+| `repo` | `list[str]` or `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts project worktrees |
+| `model` | `str` | Optional model override |
 | `is_admin` | `bool` | Whether workspaces using this profile get admin privileges |
 | `contains_secrets` | `bool` | Whether workspace files may contain secrets |
-| `repo_access` | `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts a project worktree |
-| `model` | `str` | Optional model override |
-| `fallback_model` | `str` | Optional fallback model override |
-| `context_mode` | `str` | `"group"` (shared session) or `"isolated"` (fresh each scheduled run) |
-| `trigger` | `str` | `"mention"` or `"always"` — whether @mention is required |
-| `skills` | `list[str]` | Skill tier names and/or skill names to include; `"*"` = include all |
-| `mcp_servers` | `list[str]` | MCP server names and group names to attach |
-| `security` | `dict` | Per-workspace service trust overrides |
 
 ---
 

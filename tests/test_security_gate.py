@@ -10,6 +10,7 @@ from pynchy.host.container_manager.security.gate import (
     destroy_gate,
     get_gate,
     get_gate_for_group,
+    resolve_security,
 )
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
@@ -157,6 +158,75 @@ class TestSecurityGateEvaluate:
         gate = SecurityGate(security)
         result = gate.evaluate_read("blocked")
         assert not result.allowed
+
+
+class TestResolveSecurity:
+    def test_resolves_selected_tool_trust(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"worker": {"tools": ["safe-tool"]}},
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {
+                    "safe-tool": {
+                        "type": "builtin",
+                        "name": "safe-tool",
+                        "public_source": False,
+                        "secret_data": False,
+                        "public_sink": False,
+                        "dangerous_writes": False,
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security("research")
+
+        assert security.services == {
+            "safe-tool": ServiceTrustConfig(
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            )
+        }
+        assert security.capabilities == {}
+
+    def test_preserves_contains_secrets_from_resolved_profiles(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"worker": {"contains_secrets": True}},
+                "workspaces": {"research": {"profiles": ["worker"]}},
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security("research")
+
+        assert security.contains_secrets is True
+        assert security.services == {}
+
+    def test_admin_resolution_preserves_contains_secrets(self, monkeypatch):
+        from pynchy.config.settings import validate_settings_mapping
+
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "admin": {"is_admin": True, "contains_secrets": True},
+                },
+                "workspaces": {"admin": {"profiles": ["admin"]}},
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security("admin", is_admin=True)
+
+        assert security.contains_secrets is True
+        assert security.services == {}
 
 
 # ---------------------------------------------------------------------------

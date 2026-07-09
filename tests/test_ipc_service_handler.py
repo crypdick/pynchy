@@ -9,7 +9,7 @@ import pytest
 from conftest import NullIpcDeps
 
 from pynchy import state
-from pynchy.config.models import WorkspaceConfig
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security import gate
@@ -84,10 +84,12 @@ def _make_settings(**kwargs):
 
     class FakeSettings:
         def __init__(self):
+            self.profiles = {"test-profile": ProfileConfig(**kwargs)}
             self.workspaces = {
-                "test-ws": WorkspaceConfig(name="test", **kwargs),
+                "test-ws": WorkspaceConfig(profiles=["test-profile"]),
             }
             self.services = {}
+            self.tools = {}
 
     return FakeSettings()
 
