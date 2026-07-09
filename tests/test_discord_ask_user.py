@@ -10,6 +10,9 @@ import pytest
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel
 
+DISCORD_BOT_ENV = "X"
+DISCORD_BOT_VALUE = "token"
+
 REQUEST_ID = "req-discord-123"
 
 
@@ -60,9 +63,9 @@ def _make_channel(*, on_ask_user_answer: object | None = None) -> DiscordChannel
     return DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(
-            bot_token_env="X", dm_policy="open", group_policy="disabled"
+            bot_token_env=DISCORD_BOT_ENV, dm_policy="open", group_policy="disabled"
         ),
-        bot_token="token",
+        bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
         on_ask_user_answer=on_ask_user_answer,

@@ -8,6 +8,7 @@ manager class itself.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import signal
@@ -93,13 +94,7 @@ async def ensure_script_running(instance: McpInstance) -> None:
         command=cmd,
     )
 
-    instance.process = subprocess.Popen(
-        cmd,
-        env=merged_env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        start_new_session=True,  # own process group for clean shutdown
-    )
+    instance.process = await asyncio.to_thread(_start_script_process, cmd, merged_env)
 
     # Health-check via localhost using instance port (unique per workspace)
     health_url = f"http://localhost:{instance.port}"
@@ -124,6 +119,19 @@ async def ensure_script_running(instance: McpInstance) -> None:
         raise
 
     logger.info("MCP script ready", instance_id=instance.instance_id)
+
+
+def _start_script_process(
+    cmd: list[str],
+    env: dict[str, str],
+) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        cmd,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        start_new_session=True,  # own process group for clean shutdown
+    )
 
 
 # ---------------------------------------------------------------------------

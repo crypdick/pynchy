@@ -66,17 +66,20 @@ TEST_GROUP = WorkspaceProfile(
 os.environ.setdefault("CALDAV_TEST_WORK_PASS", "workpass")  # pragma: allowlist secret
 os.environ.setdefault("CALDAV_TEST_PERSONAL_PASS", "personalpass")  # pragma: allowlist secret
 
+WORK_ENV_VAR = "CALDAV_TEST_WORK_PASS"  # pragma: allowlist secret
+PERSONAL_ENV_VAR = "CALDAV_TEST_PERSONAL_PASS"  # pragma: allowlist secret
+
 WORK_SERVER = CalDAVServerConfig(
     url="https://work.nextcloud.com/remote.php/dav/",
     username="user@work.com",
-    password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
+    password_env=WORK_ENV_VAR,
     default_calendar="meetings",
 )
 
 PERSONAL_SERVER = CalDAVServerConfig(
     url="https://personal.nextcloud.com/remote.php/dav/",
     username="me@example.com",
-    password_env="CALDAV_TEST_PERSONAL_PASS",  # pragma: allowlist secret
+    password_env=PERSONAL_ENV_VAR,
 )
 
 CALDAV_CONFIG = CalDAVConfig(
@@ -212,7 +215,7 @@ def _single_server_cfg(*, allow=None, ignore=None):
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
+                password_env=WORK_ENV_VAR,
                 allow=allow,
                 ignore=ignore,
             ),
@@ -491,7 +494,7 @@ async def test_list_calendar_filtered_out():
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
+                password_env=WORK_ENV_VAR,
                 ignore=["secret-cal"],
             ),
         },
@@ -546,7 +549,7 @@ async def test_list_calendars_respects_ignore():
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
+                password_env=WORK_ENV_VAR,
                 ignore=["trash"],
             ),
         },
@@ -576,7 +579,7 @@ async def test_list_calendars_respects_allow():
             "work": CalDAVServerConfig(
                 url="http://x",
                 username="u",
-                password_env="CALDAV_TEST_WORK_PASS",  # pragma: allowlist secret
+                password_env=WORK_ENV_VAR,
                 allow=["meetings"],
             ),
         },

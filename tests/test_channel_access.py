@@ -29,6 +29,9 @@ from pynchy.config.models import (
     WorkspaceConfig,
 )
 
+SLACK_BOT_ENV = "BOT"
+SLACK_APP_ENV = "APP"
+
 
 def _settings_with(
     *,
@@ -132,8 +135,8 @@ class TestResolveChannelConfig:
         connections = ConnectionsConfig(
             slack={
                 "main": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     security=ChannelOverrideConfig(access="read", trust=False),
                     chat={"general": ConnectionChatConfig()},
                 )
@@ -154,8 +157,8 @@ class TestResolveChannelConfig:
         connections = ConnectionsConfig(
             slack={
                 "main": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     security=ChannelOverrideConfig(access="read"),
                     chat={
                         "general": ConnectionChatConfig(
@@ -184,8 +187,8 @@ class TestResolveChannelConfig:
         connections = ConnectionsConfig(
             slack={
                 "main": SlackConnectionConfig(
-                    bot_token_env="BOT",
-                    app_token_env="APP",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     chat={
                         "general": ConnectionChatConfig(
                             security=ChannelOverrideConfig(access="read")

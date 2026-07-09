@@ -14,14 +14,17 @@ from pynchy.config.models import (
     WorkspaceConfig,
 )
 
+SLACK_BOT_ENV = "SLACK_BOT_TOKEN"
+SLACK_APP_ENV = "SLACK_APP_TOKEN"
+
 
 def _settings_with_slack(**overrides) -> Settings:
     defaults = {
         "connection": ConnectionsConfig(
             slack={
                 "synapse": SlackConnectionConfig(
-                    bot_token_env="SLACK_BOT_TOKEN",
-                    app_token_env="SLACK_APP_TOKEN",
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
                     chat={"admin": {}, "pynchy": {}},
                 )
             }
