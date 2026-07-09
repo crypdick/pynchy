@@ -63,9 +63,9 @@ def _failed_awaitable(exc: Exception) -> Awaitable[Any]:
 
 
 def _noop_docker_rm(name: str) -> Awaitable[None]:
-    """No-op replacement for _docker_rm_force in tests.
+    """No-op replacement for docker_rm_force in tests.
 
-    _docker_rm_force spawns a real subprocess (``container rm -f``) which
+    docker_rm_force spawns a real subprocess (``container rm -f``) which
     hangs in the test environment where there is no container runtime.
     """
     return _completed_awaitable()
@@ -91,15 +91,15 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
-        # Patch _docker_rm_force which spawns a real subprocess to remove
+        # Patch docker_rm_force which spawns a real subprocess to remove
         # containers — would hang in the test environment.  Must patch at both
-        # the canonical location (_process) and the import site (_session)
+        # the canonical location (process) and the import site (session)
         # because Python's from-import creates a separate reference.
         stack.enter_context(
-            patch("pynchy.host.container_manager.process._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.process.docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
-            patch("pynchy.host.container_manager.session._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
         yield
 

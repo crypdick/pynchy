@@ -283,7 +283,7 @@ class TestContainerProcessHelpers:
     async def test_reap_apple_runtime_orphans_signals_exact_runtime_match(self):
         """Only the runtime process for the exact Apple container UUID is reaped."""
         from pynchy.host.container_manager.process import (
-            _reap_apple_runtime_orphans,  # allow: private-test-imports - Apple runtime recovery
+            reap_apple_runtime_orphans,
         )
 
         runtime = MagicMock(cli="container")
@@ -318,7 +318,7 @@ class TestContainerProcessHelpers:
             ),
             patch("pynchy.host.container_manager.process.os.kill", side_effect=fake_kill),
         ):
-            reaped = await _reap_apple_runtime_orphans("pynchy-code-improver")
+            reaped = await reap_apple_runtime_orphans("pynchy-code-improver")
 
         assert reaped is True
         assert signals == [(123, signal.SIGTERM)]
@@ -326,7 +326,7 @@ class TestContainerProcessHelpers:
     async def test_force_remove_times_out_and_kills_hung_runtime_cli(self):
         """Apple Container cleanup can hang on stopped containers with orphaned runtimes."""
         from pynchy.host.container_manager.process import (
-            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+            docker_rm_force,
         )
 
         proc = HangingProcess()
@@ -343,7 +343,7 @@ class TestContainerProcessHelpers:
             patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
             patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
         ):
-            await _docker_rm_force("pynchy-code-improver")
+            await docker_rm_force("pynchy-code-improver")
 
         assert proc.killed is True
         create_proc.assert_awaited_once_with(
@@ -358,7 +358,7 @@ class TestContainerProcessHelpers:
     async def test_force_remove_reaps_apple_runtime_orphan_after_quick_return(self):
         """Apple delete can return while the stopped container runtime remains alive."""
         from pynchy.host.container_manager.process import (
-            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+            docker_rm_force,
         )
 
         completed_delete = FakeProcess()
@@ -372,11 +372,11 @@ class TestContainerProcessHelpers:
                 new=AsyncMock(side_effect=[completed_delete, retry_delete]),
             ) as create_proc,
             patch(
-                "pynchy.host.container_manager.process._reap_apple_runtime_orphans",
+                "pynchy.host.container_manager.process.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
             ) as reap_orphan,
         ):
-            await _docker_rm_force("pynchy-code-improver")
+            await docker_rm_force("pynchy-code-improver")
 
         reap_orphan.assert_awaited_once_with("pynchy-code-improver")
         assert create_proc.await_count == 2
@@ -384,7 +384,7 @@ class TestContainerProcessHelpers:
     async def test_force_remove_retries_after_reaping_apple_runtime_orphan(self):
         """If Apple delete hangs, reap the orphaned runtime and retry cleanup once."""
         from pynchy.host.container_manager.process import (
-            _docker_rm_force,  # allow: private-test-imports - external cleanup side effect
+            docker_rm_force,
         )
 
         hung_delete = HangingProcess()
@@ -397,13 +397,13 @@ class TestContainerProcessHelpers:
                 new=AsyncMock(side_effect=[hung_delete, completed_delete]),
             ) as create_proc,
             patch(
-                "pynchy.host.container_manager.process._reap_apple_runtime_orphans",
+                "pynchy.host.container_manager.process.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
             ) as reap_orphan,
             patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
             patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
         ):
-            await _docker_rm_force("pynchy-code-improver")
+            await docker_rm_force("pynchy-code-improver")
 
         assert hung_delete.killed is True
         reap_orphan.assert_awaited_once_with("pynchy-code-improver")
@@ -2993,7 +2993,7 @@ class TestGetSessionOutputHandler:
         with (
             patch("pynchy.host.container_manager.process._graceful_stop", new=AsyncMock()),
             patch(
-                "pynchy.host.container_manager.session._docker_rm_force",
+                "pynchy.host.container_manager.session.docker_rm_force",
                 new=AsyncMock(),
             ),
         ):
@@ -3048,7 +3048,7 @@ class TestSessionStartOnlyStderr:
     def _patch_container_record_cleanup(self):
         with (
             patch(
-                "pynchy.host.container_manager.session._docker_rm_force",
+                "pynchy.host.container_manager.session.docker_rm_force",
                 new_callable=AsyncMock,
             ) as cleanup,
             patch(
@@ -3260,7 +3260,7 @@ class TestSessionStartOnlyStderr:
             patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
             patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
             patch(
-                "pynchy.host.container_manager.session._reap_apple_runtime_orphans",
+                "pynchy.host.container_manager.session.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
             ) as reap_orphan,
         ):
@@ -3299,7 +3299,7 @@ class TestSessionStartOnlyStderr:
             patch("pynchy.host.container_manager.session._RUNTIME_START_GRACE_SECONDS", 0.02),
             patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
             patch(
-                "pynchy.host.container_manager.session._reap_apple_runtime_orphans",
+                "pynchy.host.container_manager.session.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
             ) as reap_orphan,
         ):

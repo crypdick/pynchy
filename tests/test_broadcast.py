@@ -51,7 +51,7 @@ def _make_message(
 
 
 async def _noop_docker_rm(name: str) -> None:
-    """No-op replacement for _docker_rm_force in tests."""
+    """No-op replacement for docker_rm_force in tests."""
 
 
 @contextlib.contextmanager
@@ -75,10 +75,10 @@ def _patch_test_settings(tmp_path: Path):
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         stack.enter_context(
-            patch("pynchy.host.container_manager.process._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.process.docker_rm_force", _noop_docker_rm)
         )
         stack.enter_context(
-            patch("pynchy.host.container_manager.session._docker_rm_force", _noop_docker_rm)
+            patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
         yield
 

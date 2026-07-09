@@ -36,8 +36,8 @@ from pynchy.host.container_manager.ipc.write import (
 )
 from pynchy.host.container_manager.process import (
     OnOutput,
-    _docker_rm_force,
-    _reap_apple_runtime_orphans,
+    docker_rm_force,
+    reap_apple_runtime_orphans,
 )
 from pynchy.logger import logger
 from pynchy.types import (
@@ -213,7 +213,7 @@ class ContainerSession:
             await _graceful_stop(self.proc, self.container_name)
 
         # Force remove (handles cases where graceful stop didn't clean up)
-        await _docker_rm_force(self.container_name)
+        await docker_rm_force(self.container_name)
 
         # Cancel background tasks
         for task in (self._proc_monitor_task, self._runtime_monitor_task, self._stderr_task):
@@ -331,7 +331,7 @@ class ContainerSession:
             proc.kill()
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(proc.wait(), timeout=_RUNTIME_CLI_KILL_WAIT_SECONDS)
-        await _reap_apple_runtime_orphans(self.container_name)
+        await reap_apple_runtime_orphans(self.container_name)
         await self._mark_container_exited(1)
 
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
@@ -374,7 +374,7 @@ class ContainerSession:
         )
         if not was_stopping:
             create_background_task(
-                _docker_rm_force(self.container_name),
+                docker_rm_force(self.container_name),
                 name=f"remove-exited-container-{self.container_name}",
             )
 
@@ -444,7 +444,7 @@ async def create_session(
     Assumes the caller has already cleared any stale container with the
     same name *before* spawning ``proc``.  Stale IPC files are cleaned here.
 
-    IMPORTANT: Do NOT call ``_docker_rm_force(container_name)`` here.
+    IMPORTANT: Do NOT call ``docker_rm_force(container_name)`` here.
     By this point the container is already running — force-removing it
     would race with (and potentially kill) the just-spawned process.
     The existing session's ``stop()`` call below handles its container,

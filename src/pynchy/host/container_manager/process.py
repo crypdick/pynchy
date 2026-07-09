@@ -3,7 +3,7 @@
 Provides:
   - is_query_done_pulse() — detects query-done events in the IPC output stream
   - _graceful_stop() — stops a container gracefully, killing it if it times out
-  - _docker_rm_force() — async force-remove a container by name
+  - docker_rm_force() — async force-remove a container by name
   - OnOutput type alias — callback for output events
 """
 
@@ -197,7 +197,7 @@ def _signal_pid(pid: int, sig: signal.Signals, container_name: str) -> None:
         )
 
 
-async def _reap_apple_runtime_orphans(container_name: str) -> bool:
+async def reap_apple_runtime_orphans(container_name: str) -> bool:
     """Kill orphaned Apple runtime processes left behind for stopped containers.
 
     Apple Container can report a container as stopped while its
@@ -233,7 +233,7 @@ async def _reap_apple_runtime_orphans(container_name: str) -> bool:
     return True
 
 
-async def _docker_rm_force(container_name: str) -> None:
+async def docker_rm_force(container_name: str) -> None:
     """Force-remove a container by name, ignoring expected errors.
 
     Async counterpart of :func:`_docker.remove_container` — used by the
@@ -242,7 +242,7 @@ async def _docker_rm_force(container_name: str) -> None:
     """
     try:
         await _run_rm_force(container_name, _RM_FORCE_TIMEOUT_SECONDS)
-        if await _reap_apple_runtime_orphans(container_name):
+        if await reap_apple_runtime_orphans(container_name):
             await _run_rm_force(container_name, _RM_FORCE_KILL_WAIT_SECONDS)
     except OSError as exc:
         # OSError covers FileNotFoundError (CLI missing) and other
