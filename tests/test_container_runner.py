@@ -1807,6 +1807,61 @@ class TestSyncSkills:
         assert ext_dst.exists()
         assert (ext_dst / "skill.md").read_text() == "# External Skill"
 
+    def test_plugin_skills_are_resynced(self, tmp_path: Path):
+        """Repeated syncs update plugin skills in persistent session dirs."""
+        plugin_skill = tmp_path / "plugins" / "ext-skill"
+        plugin_skill.mkdir(parents=True)
+        skill_md = plugin_skill / "SKILL.md"
+        skill_md.write_text("# External Skill\nfirst")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            skill_md.write_text("# External Skill\nsecond")
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+
+        ext_dst = session_dir / "skills" / "ext-skill"
+        assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
+
+    def test_unmarked_prior_plugin_skill_copy_is_resynced(self, tmp_path: Path):
+        """Old plugin copies without markers are upgraded on the next sync."""
+        plugin_skill = tmp_path / "plugins" / "ext-skill"
+        plugin_skill.mkdir(parents=True)
+        skill_md = plugin_skill / "SKILL.md"
+        skill_md.write_text("# External Skill\nsecond")
+
+        session_dir = tmp_path / "session" / ".claude"
+        ext_dst = session_dir / "skills" / "ext-skill"
+        ext_dst.mkdir(parents=True)
+        (ext_dst / "SKILL.md").write_text("# External Skill\nfirst")
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        with _patch_settings(tmp_path):
+            _sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+
+        assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
+
     def test_bad_plugin_skill_path_does_not_block_later_plugin_skill(
         self,
         tmp_path: Path,

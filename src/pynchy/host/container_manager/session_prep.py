@@ -24,6 +24,7 @@ from pynchy.logger import logger
 
 _DEFAULT_TIER = "community"
 _LEARNED_TIER = "learned"
+_PLUGIN_SKILL_MARKER = ".pynchy-plugin-skill"
 _LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
 
 
@@ -208,7 +209,11 @@ def _sync_plugin_skill_path(
 
 def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
     dst_dir = skills_dst / skill_path.name
-    if _is_learned_skill_copy(dst_dir):
+    if (
+        _is_learned_skill_copy(dst_dir)
+        or _is_plugin_skill_copy_from(dst_dir, skill_path)
+        or _is_unmarked_plugin_skill_copy(dst_dir, skill_path)
+    ):
         shutil.rmtree(dst_dir)
     if dst_dir.exists():
         raise ValueError(
@@ -218,6 +223,7 @@ def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
         )
 
     shutil.copytree(skill_path, dst_dir)
+    (dst_dir / _PLUGIN_SKILL_MARKER).write_text(f"{skill_path.resolve()}\n")
     logger.info("Synced plugin skill", skill=skill_path.name)
 
 
@@ -242,6 +248,44 @@ def _is_learned_skill_copy(dst_dir: Path) -> bool:
     except OSError:
         return False
     return stat.S_ISREG(marker_stat.st_mode)
+
+
+def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
+    try:
+        dst_stat = dst_dir.lstat()
+    except OSError:
+        return False
+    if not stat.S_ISDIR(dst_stat.st_mode):
+        return False
+
+    marker = dst_dir / _PLUGIN_SKILL_MARKER
+    try:
+        marker_stat = marker.lstat()
+    except OSError:
+        return False
+    if not stat.S_ISREG(marker_stat.st_mode):
+        return False
+
+    try:
+        return marker.read_text().strip() == str(skill_path.resolve())
+    except OSError:
+        return False
+
+
+def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path) -> bool:
+    if not dst_dir.exists() or not dst_dir.is_dir():
+        return False
+    marker = dst_dir / _PLUGIN_SKILL_MARKER
+    if marker.exists():
+        return False
+
+    if any(path.name.startswith(".pynchy-") for path in dst_dir.iterdir()):
+        return False
+
+    builtin_skill = (
+        get_settings().project_root / "src" / "pynchy" / "agent" / "skills" / skill_path.name
+    )
+    return not builtin_skill.exists()
 
 
 def _selected_learned_skill_names(
