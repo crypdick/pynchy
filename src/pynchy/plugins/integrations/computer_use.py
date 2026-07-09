@@ -19,6 +19,21 @@ from pynchy.config import get_settings
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 _CONTAINER_ARTIFACT_DIR = "/workspace/ipc/computer-use"
+_POSITIVE_INT_ERROR = "{field} must be a positive integer"
+_INVALID_SOURCE_GROUP_ERROR = "Missing or invalid source group for computer_use request."
+_QUERY_ERROR = "query must be a non-empty string"
+_COORDINATE_ERROR = "coordinate must be [x, y] with non-negative integer values"
+_KEYS_ERROR = "keys must be a shortcut string or a list of key names"
+_KEYS_MINIMUM_ERROR = "keys must include at least one key"
+_TEXT_ERROR = "text must be a string"
+_CLICK_COORDINATE_ERROR = "click actions require element or coordinate"
+_SECONDS_ERROR = "seconds must be a non-negative number"
+_CUA_DRIVER_FAILED_ERROR = "cua-driver {action} failed: {error}"
+_CUA_DRIVER_SCREENSHOT_ERROR = "cua-driver {action} did not create the screenshot file"
+_NON_MACOS_ERROR = "computer_use is only supported on macOS hosts."
+_MISSING_CUA_DRIVER_ERROR = (
+    "cua-driver is not installed on the host; install Cua Driver before using computer_use."
+)
 _PASSTHROUGH_CONTROL_KEYS = {
     "type",
     "request_id",
@@ -44,6 +59,7 @@ _VALID_ACTIONS = {
     "wait",
     "check_permissions",
 }
+_VALID_ACTION_ERROR = f"action must be one of {', '.join(sorted(_VALID_ACTIONS))}"
 
 
 def _timestamp() -> str:
@@ -69,7 +85,7 @@ def _source_group(data: dict[str, Any]) -> str | None:
 
 def _positive_int(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError(f"{field} must be a positive integer")
+        raise ValueError(_POSITIVE_INT_ERROR.format(field=field))
     return value
 
 
@@ -85,7 +101,7 @@ async def _run_computer_use_action(
     data: dict[str, Any],
 ) -> dict[str, Any]:
     if source_group is None:
-        raise RuntimeError("Missing or invalid source group for computer_use request.")
+        raise RuntimeError(_INVALID_SOURCE_GROUP_ERROR)
 
     action = _action(data)
     if action == "wait":
@@ -122,7 +138,7 @@ async def _run_computer_use_action(
 def _action(data: dict[str, Any]) -> str:
     action = data.get("action")
     if not isinstance(action, str) or action not in _VALID_ACTIONS:
-        raise ValueError(f"action must be one of {', '.join(sorted(_VALID_ACTIONS))}")
+        raise ValueError(_VALID_ACTION_ERROR)
     return action
 
 
@@ -139,7 +155,7 @@ def _window_payload(data: dict[str, Any]) -> dict[str, Any]:
     query = data.get("query")
     if query is not None:
         if not isinstance(query, str) or not query:
-            raise ValueError("query must be a non-empty string")
+            raise ValueError(_QUERY_ERROR)
         payload["query"] = query
     return payload
 
@@ -161,7 +177,7 @@ def _coordinate(data: dict[str, Any]) -> tuple[int, int] | None:
         or len(raw) != 2
         or any(isinstance(part, bool) or not isinstance(part, int) or part < 0 for part in raw)
     ):
-        raise ValueError("coordinate must be [x, y] with non-negative integer values")
+        raise ValueError(_COORDINATE_ERROR)
     return raw[0], raw[1]
 
 
@@ -172,9 +188,9 @@ def _keys(data: dict[str, Any]) -> list[str]:
     elif isinstance(raw, list) and all(isinstance(part, str) and part for part in raw):
         keys = [part.lower() for part in raw]
     else:
-        raise ValueError("keys must be a shortcut string or a list of key names")
+        raise ValueError(_KEYS_ERROR)
     if not keys:
-        raise ValueError("keys must include at least one key")
+        raise ValueError(_KEYS_MINIMUM_ERROR)
     return keys
 
 
@@ -184,7 +200,7 @@ def _cua_action_and_payload(action: str, data: dict[str, Any]) -> tuple[str, dic
     if action == "type":
         text = data.get("text")
         if not isinstance(text, str):
-            raise ValueError("text must be a string")
+            raise ValueError(_TEXT_ERROR)
         payload = _base_payload(data)
         payload["text"] = text
         return "type_text", payload
@@ -200,12 +216,12 @@ def _cua_action_and_payload(action: str, data: dict[str, Any]) -> tuple[str, dic
         if coord := _coordinate(data):
             payload["x"], payload["y"] = coord
         if "element_index" not in payload and ("x" not in payload or "y" not in payload):
-            raise ValueError("click actions require element or coordinate")
+            raise ValueError(_CLICK_COORDINATE_ERROR)
         return action, payload
     if action == "wait":
         seconds = data.get("seconds", 1.0)
         if isinstance(seconds, bool) or not isinstance(seconds, int | float) or seconds < 0:
-            raise ValueError("seconds must be a non-negative number")
+            raise ValueError(_SECONDS_ERROR)
         return action, {"seconds": seconds}
     return action, _base_payload(data)
 
@@ -233,7 +249,7 @@ async def _run_cua(
     output = stdout.decode(errors="replace").strip()
     if proc.returncode != 0:
         error = stderr.decode(errors="replace").strip() or output or f"exit code {proc.returncode}"
-        raise RuntimeError(f"cua-driver {action} failed: {error}")
+        raise RuntimeError(_CUA_DRIVER_FAILED_ERROR.format(action=action, error=error))
 
     result: dict[str, Any] = {
         "cua_action": action,
@@ -241,7 +257,7 @@ async def _run_cua(
     }
     if screenshot_path is not None:
         if not await asyncio.to_thread(screenshot_path.exists):
-            raise RuntimeError(f"cua-driver {action} did not create the screenshot file")
+            raise RuntimeError(_CUA_DRIVER_SCREENSHOT_ERROR.format(action=action))
         screenshot_stat = await asyncio.to_thread(screenshot_path.stat)
         result["screenshot"] = {
             "host_path": str(screenshot_path),
@@ -254,7 +270,7 @@ async def _run_cua(
 
 async def _handle_computer_use(data: dict[str, Any]) -> dict[str, Any]:
     if platform.system() != "Darwin":
-        return {"error": "computer_use is only supported on macOS hosts."}
+        return {"error": _NON_MACOS_ERROR}
 
     source_group = _source_group(data)
     if source_group is None:
@@ -262,12 +278,7 @@ async def _handle_computer_use(data: dict[str, Any]) -> dict[str, Any]:
 
     binary = shutil.which("cua-driver")
     if binary is None:
-        return {
-            "error": (
-                "cua-driver is not installed on the host; install Cua Driver before using "
-                "computer_use."
-            )
-        }
+        return {"error": _MISSING_CUA_DRIVER_ERROR}
 
     try:
         return await _run_computer_use_action(binary, source_group, data)
