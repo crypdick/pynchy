@@ -3,12 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config import Settings
 from pynchy.config.models import (
     ServiceTrustTomlConfig,
     WorkspaceSecurityTomlConfig,
     WorkspaceServiceOverride,
 )
+from pynchy.config.settings import validate_settings_mapping
 
 
 def test_service_trust_toml_defaults():
@@ -67,18 +67,22 @@ def test_workspace_service_override_rejects_non_forbidden():
 
 def test_admin_profile_with_public_source_tool_is_rejected() -> None:
     with pytest.raises(ValidationError, match="Admin workspace"):
-        Settings(
-            profiles={"admin": {"is_admin": True, "tools": ["browser"]}},
-            workspaces={"admin": {"profiles": ["admin"]}},
-            tools={"browser": {"type": "builtin", "name": "browser", "public_source": True}},
+        validate_settings_mapping(
+            {
+                "profiles": {"admin": {"is_admin": True, "tools": ["browser"]}},
+                "workspaces": {"admin": {"profiles": ["admin"]}},
+                "tools": {"browser": {"type": "builtin", "name": "browser", "public_source": True}},
+            }
         )
 
 
 def test_admin_profile_with_non_public_source_tool_passes() -> None:
-    settings = Settings(
-        profiles={"admin": {"is_admin": True, "tools": ["shell"]}},
-        workspaces={"admin": {"profiles": ["admin"]}},
-        tools={"shell": {"type": "builtin", "name": "shell", "public_source": False}},
+    settings = validate_settings_mapping(
+        {
+            "profiles": {"admin": {"is_admin": True, "tools": ["shell"]}},
+            "workspaces": {"admin": {"profiles": ["admin"]}},
+            "tools": {"shell": {"type": "builtin", "name": "shell", "public_source": False}},
+        }
     )
 
     assert settings.resolved_workspace_config("admin").tools == ["shell"]

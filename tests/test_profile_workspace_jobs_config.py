@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from pynchy.config import Settings
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.settings import validate_settings_mapping
 
 
 def _settings(**overrides) -> Settings:
@@ -16,7 +17,7 @@ def _settings(**overrides) -> Settings:
         "workspaces": {"admin": WorkspaceConfig(profiles=["admin"])},
     }
     defaults.update(overrides)
-    return Settings(**defaults)
+    return validate_settings_mapping(defaults)
 
 
 def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
@@ -42,9 +43,11 @@ def test_settings_use_profiles_and_workspaces_as_public_config_names() -> None:
 
 def test_legacy_sandbox_sections_are_rejected() -> None:
     with pytest.raises(ValidationError, match="Legacy config sections"):
-        Settings(
-            profiles={"admin": ProfileConfig(is_admin=True)},
-            sandbox={"admin": {"profiles": ["admin"]}},
+        validate_settings_mapping(
+            {
+                "profiles": {"admin": ProfileConfig(is_admin=True)},
+                "sandbox": {"admin": {"profiles": ["admin"]}},
+            }
         )
 
 

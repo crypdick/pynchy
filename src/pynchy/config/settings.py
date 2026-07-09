@@ -12,7 +12,7 @@ Usage::
     from pynchy.config import get_settings
 
     s = get_settings()
-    print(s.agent.name)
+    print(s.agent.default_core)
     print(s.container.image)
 """
 
@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from collections.abc import Sequence
+from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -61,6 +63,10 @@ from pynchy.config.models import (
     ServiceTrustTomlConfig,
     ToolConfig,
     WorkspaceConfig,
+)
+
+_HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
+    "pynchy_hermetic_settings_sources", default=False
 )
 
 
@@ -284,24 +290,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_connections(self) -> Settings:
-        """Validate that connection refs point to configured connections/chats.
-
-        Uses ConnectionsConfig.get_connection() for platform-generic lookups
-        so this validator doesn't need to hardcode platform names.
-        """
+        """Validate command_center.connection against [connections.<name>]."""
         _validated_command_center_connection(self)
         return self
 
     @model_validator(mode="after")
     def _validate_admin_clean_room(self) -> Settings:
-        """Reject admin workspaces that reference public_source MCPs.
-
-        Admin workspaces are the most privileged — they must never be
-        corruption-tainted by MCP servers that pull from public/untrusted
-        sources.  An MCP not declared in ``[services]`` is treated as
-        ``public_source=True`` (maximally cautious default), so it is also
-        blocked.
-        """
+        """Reject admin workspaces that resolve to public-source tools."""
         for ws_name, ws in self.workspaces.items():
             resolved = self.resolved_workspace_config(ws_name)
             if resolved is None or not resolved.is_admin:
@@ -366,6 +361,8 @@ class Settings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Priority: init > env vars > .env > config.toml > file secrets."""
+        if _HERMETIC_SETTINGS_SOURCES.get():
+            return (init_settings,)
         return (
             init_settings,
             env_settings,
@@ -419,6 +416,21 @@ class Settings(BaseSettings):
     def worktrees_dir(self) -> Path:
         """Base directory for all worktrees: data/worktrees/<owner>/<repo>/."""
         return self.data_dir / "worktrees"
+
+
+def validate_settings_mapping(data: dict[str, Any]) -> Settings:
+    """Validate explicit settings data without reading env, dotenv, or config.toml."""
+    token = _HERMETIC_SETTINGS_SOURCES.set(True)
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"Config key `toml_file` is set in model_config",
+                category=UserWarning,
+            )
+            return Settings(**data)
+    finally:
+        _HERMETIC_SETTINGS_SOURCES.reset(token)
 
 
 # ---------------------------------------------------------------------------
