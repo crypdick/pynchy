@@ -19,11 +19,12 @@ _MAX_BUTTONS_PER_ROW = 5
 _MAX_BUTTONS_TOTAL = 25
 _TEXT_MODAL_CUSTOM_ID = f"{_ASK_USER_PREFIX}:text"
 _SELECT_CUSTOM_ID = f"{_ASK_USER_PREFIX}:select"
+_ASK_USER_VIEW_MISSING = "Discord ask_user callback called before the view was attached"
 
 
 def _require_ask_user_view(view: discord.ui.View | None) -> DiscordAskUserView:
     if view is None:
-        raise RuntimeError("Discord ask_user callback called before the view was attached")
+        raise RuntimeError(_ASK_USER_VIEW_MISSING)
     return cast("DiscordAskUserView", view)
 
 

@@ -21,6 +21,8 @@ CHANNEL_KIND = "channel"
 GROUP_KIND = "group"
 
 _KINDS = frozenset({DM_KIND, CHANNEL_KIND, GROUP_KIND})
+_NOT_DISCORD_JID = "not a Discord jid: {jid!r}"
+_UNKNOWN_DISCORD_JID_KIND = "unknown Discord jid kind: {kind!r}"
 
 
 @dataclass(frozen=True)
@@ -58,10 +60,10 @@ def parse_jid(jid: str) -> DiscordJid:
     unknown kind.
     """
     if not is_discord_jid(jid):
-        raise ValueError(f"not a Discord jid: {jid!r}")
+        raise ValueError(_NOT_DISCORD_JID.format(jid=jid))
     kind, _, snowflake = jid.removeprefix(JID_PREFIX).partition(":")
     if kind not in _KINDS:
-        raise ValueError(f"unknown Discord jid kind: {kind!r}")
+        raise ValueError(_UNKNOWN_DISCORD_JID_KIND.format(kind=kind))
     return DiscordJid(kind=kind, snowflake=snowflake)
 
 

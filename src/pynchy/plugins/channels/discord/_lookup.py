@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+_DISCORD_CHANNEL_NAME_EMPTY = "Discord channel name cannot be empty"
+
 
 def same_name(left: str | None, right: str | None) -> bool:
     return bool(left and right and left.casefold() == right.casefold())
@@ -27,5 +29,5 @@ def normalize_discord_channel_name(name: str) -> str:
     normalized = re.sub(r"[^a-z0-9_-]+", "-", name.strip().lower())
     normalized = re.sub(r"-+", "-", normalized).strip("-_")
     if not normalized:
-        raise ValueError("Discord channel name cannot be empty")
+        raise ValueError(_DISCORD_CHANNEL_NAME_EMPTY)
     return normalized[:100]
