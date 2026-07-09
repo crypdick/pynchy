@@ -14,3 +14,12 @@ def test_take_screenshot_tool_is_advertised() -> None:
     assert "take_screenshot" in tools
     schema = tools["take_screenshot"].inputSchema
     assert schema["properties"]["mode"]["enum"] == ["full", "selection", "window"]
+
+
+def test_analyze_screenshot_tool_is_advertised() -> None:
+    tools = {tool.name: tool for tool in all_tools()}
+
+    assert "analyze_screenshot" in tools
+    schema = tools["analyze_screenshot"].inputSchema
+    assert "image_path" in schema["properties"]
+    assert "prompt" in schema["properties"]

@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from pynchy.plugins import get_plugin_manager
-from pynchy.plugins.integrations.desktop_screenshot import DesktopScreenshotPlugin
+from pynchy.plugins.integrations.desktop_screenshot import (
+    DesktopScreenshotPlugin,
+    _build_vision_request,  # allow: private-test-imports -- pin multimodal payload.
+    _resolve_screenshot_path,  # allow: private-test-imports -- pin path confinement.
+)
 
 
 class _FakeProcess:
@@ -33,6 +37,7 @@ def test_desktop_screenshot_plugin_is_registered() -> None:
     assert "builtin-desktop-screenshot" in [pm.get_name(p) for p in pm.get_plugins()]
     handlers = pm.get_plugin("builtin-desktop-screenshot").pynchy_service_handler()
     assert "take_screenshot" in handlers["tools"]
+    assert "analyze_screenshot" in handlers["tools"]
 
 
 @pytest.mark.asyncio
@@ -167,3 +172,96 @@ async def test_take_screenshot_returns_command_failure(tmp_path: Path) -> None:
         result = await handler({"source_group": "admin"})
 
     assert result == {"error": "screencapture failed: permission denied"}
+
+
+def test_resolve_screenshot_path_accepts_container_path(tmp_path: Path) -> None:
+    settings = SimpleNamespace(data_dir=tmp_path)
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png bytes")
+
+    result = _resolve_screenshot_path(
+        settings=settings,
+        source_group="admin",
+        image_path="/workspace/ipc/screenshots/screen.png",
+    )
+
+    assert result == screenshot
+
+
+def test_resolve_screenshot_path_rejects_other_workspace(tmp_path: Path) -> None:
+    settings = SimpleNamespace(data_dir=tmp_path)
+    outside = tmp_path / "ipc" / "other" / "screenshots" / "screen.png"
+    outside.parent.mkdir(parents=True)
+    outside.write_bytes(b"png bytes")
+
+    with pytest.raises(ValueError, match="workspace screenshots"):
+        _resolve_screenshot_path(
+            settings=settings,
+            source_group="admin",
+            image_path=str(outside),
+        )
+
+
+def test_resolve_screenshot_path_defaults_to_latest_png(tmp_path: Path) -> None:
+    settings = SimpleNamespace(data_dir=tmp_path)
+    screenshot_dir = tmp_path / "ipc" / "admin" / "screenshots"
+    screenshot_dir.mkdir(parents=True)
+    old = screenshot_dir / "20260709T010000Z-old.png"
+    latest = screenshot_dir / "20260709T020000Z-latest.png"
+    old.write_bytes(b"old")
+    latest.write_bytes(b"latest")
+
+    result = _resolve_screenshot_path(settings=settings, source_group="admin", image_path=None)
+
+    assert result == latest
+
+
+def test_build_vision_request_uses_responses_image_input() -> None:
+    request = _build_vision_request(
+        image_bytes=b"png bytes",
+        prompt="Read the screen",
+        model="gpt-5.5",
+        max_output_tokens=123,
+    )
+
+    assert request["model"] == "gpt-5.5"
+    assert request["max_output_tokens"] == 123
+    content = request["input"][0]["content"]
+    assert content[0] == {"type": "input_text", "text": "Read the screen"}
+    assert content[1]["type"] == "input_image"
+    assert content[1]["image_url"].startswith("data:image/png;base64,")
+
+
+@pytest.mark.asyncio
+async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: Path) -> None:
+    handler = DesktopScreenshotPlugin().pynchy_service_handler()["tools"]["analyze_screenshot"]
+    settings = SimpleNamespace(data_dir=tmp_path, agent=SimpleNamespace(model="gpt-5.5"))
+    screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png bytes")
+
+    with (
+        patch("pynchy.plugins.integrations.desktop_screenshot.get_settings", return_value=settings),
+        patch(
+            "pynchy.plugins.integrations.desktop_screenshot._request_vision_analysis",
+            new=AsyncMock(return_value="The screen shows a terminal."),
+        ) as request_vision,
+    ):
+        result = await handler(
+            {
+                "source_group": "admin",
+                "image_path": "/workspace/ipc/screenshots/screen.png",
+                "prompt": "What changed?",
+            }
+        )
+
+    request_vision.assert_awaited_once()
+    assert result == {
+        "result": {
+            "analysis": "The screen shows a terminal.",
+            "container_path": "/workspace/ipc/screenshots/screen.png",
+            "format": "png",
+            "model": "gpt-5.5",
+        }
+    }

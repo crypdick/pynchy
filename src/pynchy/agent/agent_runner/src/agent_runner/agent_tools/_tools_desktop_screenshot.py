@@ -38,3 +38,39 @@ register_ipc_tool(
         },
     },
 )
+
+register_ipc_tool(
+    name="analyze_screenshot",
+    description=(
+        "Analyze a PNG captured by take_screenshot using the host LLM gateway. "
+        "Pass image_path from take_screenshot's container_path, or omit image_path "
+        "to analyze the newest screenshot in /workspace/ipc/screenshots."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "image_path": {
+                "type": "string",
+                "description": (
+                    "Screenshot path returned by take_screenshot, usually "
+                    "/workspace/ipc/screenshots/<filename>.png. If omitted, analyzes "
+                    "the latest screenshot for this workspace."
+                ),
+            },
+            "prompt": {
+                "type": "string",
+                "description": "Question or instruction for analyzing the screenshot.",
+            },
+            "model": {
+                "type": "string",
+                "description": "Optional LiteLLM/OpenAI-compatible vision model route.",
+            },
+            "max_output_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 1200,
+                "description": "Maximum tokens to return from the vision model.",
+            },
+        },
+    },
+)

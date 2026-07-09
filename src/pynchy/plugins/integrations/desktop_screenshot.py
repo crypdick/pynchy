@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import platform
 import re
 import subprocess  # noqa: S404, RUF100 - uses PIPE constants with fixed screencapture argv.
@@ -10,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import aiohttp
 import pluggy
 
 from pynchy.config import get_settings
@@ -20,6 +22,11 @@ _SCREENSHOT_BIN = "/usr/sbin/screencapture"
 _CONTAINER_SCREENSHOT_DIR = "/workspace/ipc/screenshots"
 _VALID_MODES = {"full", "selection", "window"}
 _ScreenshotRequest = tuple[str, Path, list[str]]
+_DEFAULT_ANALYSIS_PROMPT = (
+    "Analyze this desktop screenshot. Describe the visible UI state, read any important text, "
+    "and call out actionable details."
+)
+_DEFAULT_MAX_OUTPUT_TOKENS = 1200
 
 
 def _timestamp() -> str:
@@ -64,6 +71,51 @@ def _screenshot_path(*, source_group: str, label: object) -> Path:
     return get_settings().data_dir / "ipc" / source_group / "screenshots" / filename
 
 
+def _screenshot_dir(*, settings: Any, source_group: str) -> Path:
+    return Path(settings.data_dir) / "ipc" / source_group / "screenshots"
+
+
+def _path_is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+    except ValueError:
+        return False
+    return True
+
+
+def _latest_screenshot(base_dir: Path) -> Path:
+    screenshots = sorted(base_dir.glob("*.png"), key=lambda path: path.name)
+    if not screenshots:
+        raise ValueError("No screenshots found for this workspace.")
+    return screenshots[-1]
+
+
+def _resolve_screenshot_path(
+    *,
+    settings: Any,
+    source_group: str,
+    image_path: object,
+) -> Path:
+    base_dir = _screenshot_dir(settings=settings, source_group=source_group)
+    if not isinstance(image_path, str) or not image_path.strip():
+        candidate = _latest_screenshot(base_dir)
+    elif image_path.startswith(f"{_CONTAINER_SCREENSHOT_DIR}/"):
+        candidate = base_dir / Path(image_path).name
+    else:
+        raw = Path(image_path)
+        candidate = raw if raw.is_absolute() else base_dir / raw.name
+
+    resolved_base = base_dir.resolve(strict=False)
+    resolved_candidate = candidate.resolve(strict=False)
+    if not _path_is_relative_to(resolved_candidate, resolved_base):
+        raise ValueError("Screenshot path must stay inside this workspace screenshots directory.")
+    if resolved_candidate.suffix.lower() != ".png":
+        raise ValueError("Only PNG screenshots can be analyzed.")
+    if not resolved_candidate.exists():
+        raise ValueError(f"Screenshot not found: {resolved_candidate.name}")
+    return resolved_candidate
+
+
 def _command(data: dict[str, Any], output_path: Path, mode: str) -> list[str]:
     args = [_SCREENSHOT_BIN, "-x", "-t", "png"]
     if data.get("include_cursor") is True:
@@ -77,6 +129,95 @@ def _command(data: dict[str, Any], output_path: Path, mode: str) -> list[str]:
         args.extend(["-i", "-w"])
     args.append(str(output_path))
     return args
+
+
+def _prompt(data: dict[str, Any]) -> str:
+    prompt = data.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        return prompt
+    return _DEFAULT_ANALYSIS_PROMPT
+
+
+def _model(data: dict[str, Any], settings: Any) -> str:
+    model = data.get("model")
+    if isinstance(model, str) and model.strip():
+        return model
+    configured = getattr(getattr(settings, "agent", None), "model", None)
+    return configured or "gpt-5.5"
+
+
+def _max_output_tokens(data: dict[str, Any]) -> int:
+    raw = data.get("max_output_tokens", _DEFAULT_MAX_OUTPUT_TOKENS)
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        raise ValueError("max_output_tokens must be a positive integer")
+    return raw
+
+
+def _build_vision_request(
+    *,
+    image_bytes: bytes,
+    prompt: str,
+    model: str,
+    max_output_tokens: int,
+) -> dict[str, Any]:
+    encoded = base64.b64encode(image_bytes).decode()
+    return {
+        "model": model,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"},
+                ],
+            }
+        ],
+        "max_output_tokens": max_output_tokens,
+    }
+
+
+def _response_text(data: dict[str, Any]) -> str:
+    output_text = data.get("output_text")
+    if isinstance(output_text, str) and output_text:
+        return output_text
+
+    chunks: list[str] = []
+    output = data.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            chunks.extend(
+                block["text"]
+                for block in content
+                if isinstance(block, dict) and isinstance(block.get("text"), str)
+            )
+    if chunks:
+        return "\n".join(chunks)
+    raise RuntimeError("Vision response did not include text output.")
+
+
+async def _request_vision_analysis(body: dict[str, Any]) -> str:
+    from pynchy.host.container_manager.gateway import get_gateway
+
+    gateway = get_gateway()
+    if gateway is None:
+        raise RuntimeError("LLM gateway is not running.")
+
+    url = f"http://localhost:{gateway.port}/v1/responses"
+    headers = {
+        "Authorization": f"Bearer {gateway.key}",
+        "Content-Type": "application/json",
+    }
+    async with (
+        aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=300)) as session,
+        session.post(url, headers=headers, json=body) as response,
+    ):
+        response.raise_for_status()
+        return _response_text(await response.json())
 
 
 async def _handle_take_screenshot(data: dict[str, Any]) -> dict[str, Any]:
@@ -129,9 +270,51 @@ def _screenshot_request(data: dict[str, Any]) -> _ScreenshotRequest | dict[str, 
     return (mode, output_path, command)
 
 
+async def _handle_analyze_screenshot(data: dict[str, Any]) -> dict[str, Any]:
+    source_group = _source_group(data)
+    if source_group is None:
+        return {"error": "Missing or invalid source group for screenshot analysis request."}
+
+    settings = get_settings()
+    try:
+        screenshot_path = _resolve_screenshot_path(
+            settings=settings,
+            source_group=source_group,
+            image_path=data.get("image_path"),
+        )
+        model = _model(data, settings)
+        body = _build_vision_request(
+            image_bytes=screenshot_path.read_bytes(),
+            prompt=_prompt(data),
+            model=model,
+            max_output_tokens=_max_output_tokens(data),
+        )
+        analysis = await _request_vision_analysis(body)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    except OSError as exc:
+        return {"error": f"Failed to read screenshot: {exc}"}
+    except (aiohttp.ClientError, RuntimeError) as exc:
+        return {"error": f"Vision analysis failed: {exc}"}
+
+    return {
+        "result": {
+            "analysis": analysis,
+            "container_path": f"{_CONTAINER_SCREENSHOT_DIR}/{screenshot_path.name}",
+            "format": "png",
+            "model": model,
+        }
+    }
+
+
 class DesktopScreenshotPlugin:
     """Expose a macOS desktop screenshot service tool."""
 
     @hookimpl
     def pynchy_service_handler(self) -> dict[str, Any]:
-        return {"tools": {"take_screenshot": _handle_take_screenshot}}
+        return {
+            "tools": {
+                "take_screenshot": _handle_take_screenshot,
+                "analyze_screenshot": _handle_analyze_screenshot,
+            }
+        }
