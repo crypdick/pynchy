@@ -21,13 +21,19 @@ import warnings
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from typing import Any
+from typing import Protocol, TypeGuard, runtime_checkable
 
 import pluggy
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.plugins.hookspecs import PynchySpec
+
+
+@runtime_checkable
+class _PluginSettings(Protocol):
+    plugins: object
+
 
 __all__ = [
     "collect_hook_results",
@@ -123,10 +129,11 @@ def _clear_import_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
         asyncio.set_event_loop(None)
 
 
-def _register_builtin_plugins(pm: pluggy.PluginManager, settings: Any) -> None:
+def _register_builtin_plugins(pm: pluggy.PluginManager, settings: _PluginSettings) -> None:
     """Register built-in plugins from the static registry."""
+    plugin_map = settings.plugins
     for module_path, class_name, config_key in _BUILTIN_PLUGIN_SPECS:
-        plugin_cfg = settings.plugins.get(config_key)
+        plugin_cfg = plugin_map.get(config_key)
         if plugin_cfg is not None and not plugin_cfg.enabled:
             logger.info("Plugin disabled via config", plugin=config_key)
             continue
@@ -194,13 +201,13 @@ def get_plugin_manager() -> pluggy.PluginManager:
     return pm
 
 
-def collect_hook_results(
+def collect_hook_results[T](
     hook_attr: str,
-    validator: Callable[[Any], bool],
+    validator: Callable[[object], TypeGuard[T]],
     label: str,
     *,
     pm: pluggy.PluginManager | None = None,
-) -> list[Any]:
+) -> list[T]:
     """Call a pluggy hook and return validated results.
 
     Handles plugin manager retrieval, hook invocation, and filtering
@@ -226,7 +233,7 @@ def collect_hook_results(
         logger.exception("Failed to resolve %s plugins", label)
         return []
 
-    results: list[Any] = []
+    results: list[T] = []
     for item in provided:
         if item is None:
             continue

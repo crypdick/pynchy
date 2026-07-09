@@ -7,7 +7,6 @@ import shutil
 import subprocess  # noqa: S404, RUF100 - runtime adapter uses fixed no-shell container CLI argv.
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 from pynchy.host.container_manager.labels import (
     AGENT_CONTAINER_LABEL,
@@ -36,7 +35,7 @@ class RuntimeContainer:
         return self.name.startswith("pynchy-") and self.image.startswith("pynchy-agent:")
 
 
-def _parse_created_at(value: Any) -> datetime | None:
+def _parse_created_at(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
@@ -45,7 +44,7 @@ def _parse_created_at(value: Any) -> datetime | None:
         return None
 
 
-def _container_name(item: dict[str, Any]) -> str:
+def _container_name(item: dict[str, object]) -> str:
     config = item.get("configuration")
     if not isinstance(config, dict):
         return ""
@@ -53,7 +52,7 @@ def _container_name(item: dict[str, Any]) -> str:
     return name if isinstance(name, str) else ""
 
 
-def _container_state(item: dict[str, Any]) -> str:
+def _container_state(item: dict[str, object]) -> str:
     status = item.get("status")
     if isinstance(status, dict):
         state = status.get("state")
@@ -61,7 +60,7 @@ def _container_state(item: dict[str, Any]) -> str:
     return status if isinstance(status, str) else ""
 
 
-def _container_image(item: dict[str, Any]) -> str:
+def _container_image(item: dict[str, object]) -> str:
     config = item.get("configuration")
     if not isinstance(config, dict):
         return ""
@@ -72,7 +71,7 @@ def _container_image(item: dict[str, Any]) -> str:
     return image if isinstance(image, str) else ""
 
 
-def _container_labels(item: dict[str, Any]) -> dict[str, str]:
+def _container_labels(item: dict[str, object]) -> dict[str, str]:
     config = item.get("configuration")
     if not isinstance(config, dict):
         return {}

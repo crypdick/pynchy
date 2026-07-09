@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import Any
 
 import pluggy
 
@@ -26,7 +25,7 @@ def _get_backend() -> SqliteMemoryBackend:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_save_memory(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -47,7 +46,7 @@ async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
     return {"result": result}
 
 
-async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_recall_memories(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -66,7 +65,7 @@ async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
     return {"result": {"memories": results, "count": len(results)}}
 
 
-async def _handle_forget_memory(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_forget_memory(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -80,7 +79,7 @@ async def _handle_forget_memory(data: dict[str, Any]) -> dict[str, Any]:
     return {"result": result}
 
 
-async def _handle_list_memories(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_list_memories(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
     if not source_group:
         return {"error": "Missing source_group"}
@@ -97,13 +96,13 @@ class SqliteMemoryPlugin:
     """Plugin providing SQLite FTS5-backed persistent memory."""
 
     @hookimpl
-    def pynchy_memory(self) -> Any | None:
+    def pynchy_memory(self) -> SqliteMemoryBackend:
         backend = _get_backend()
         logger.debug("SQLite memory backend provided")
         return backend
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, Any]:
+    def pynchy_service_handler(self) -> dict[str, object]:
         return {
             "tools": {
                 "save_memory": _handle_save_memory,

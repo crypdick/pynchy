@@ -6,7 +6,7 @@ WireGuard, etc.) can be provided by plugins via ``pynchy_tunnel``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from pynchy.logger import logger
 
@@ -29,7 +29,7 @@ class TunnelProvider(Protocol):
     def status_summary(self) -> str: ...
 
 
-def _is_valid_tunnel_provider(candidate: Any) -> bool:
+def _is_valid_tunnel_provider(candidate: object) -> TypeGuard[TunnelProvider]:
     return all(
         [
             hasattr(candidate, "name"),

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pluggy
 
 from .runtime import AppleContainerRuntime
@@ -15,5 +13,5 @@ class AppleRuntimePlugin:
     """Plugin providing Apple Container runtime detection."""
 
     @hookimpl
-    def pynchy_container_runtime(self) -> Any | None:
+    def pynchy_container_runtime(self) -> AppleContainerRuntime:
         return AppleContainerRuntime()

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 from functools import cache
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 
 from pynchy.logger import logger
 
@@ -31,7 +31,7 @@ class RuntimeProvider(Protocol):
     def list_running_containers(self, prefix: str = "pynchy-") -> list[str]: ...
 
 
-def _is_valid_plugin_runtime(candidate: Any) -> bool:
+def _is_valid_plugin_runtime(candidate: object) -> TypeGuard[RuntimeProvider]:
     return all(
         [
             hasattr(candidate, "name"),

@@ -6,7 +6,7 @@ Built-in observers live under ``plugins/observers/``.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 
 from pynchy.event_bus import (
     EventBus,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
@@ -27,7 +27,7 @@ class ObserverProvider(Protocol):
     async def close(self) -> None: ...
 
 
-def _is_valid_observer(candidate: Any) -> bool:
+def _is_valid_observer(candidate: object) -> TypeGuard[ObserverProvider]:
     return all(
         [
             hasattr(candidate, "name"),

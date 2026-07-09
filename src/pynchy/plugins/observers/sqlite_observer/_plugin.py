@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pluggy
 
 from .observer import SqliteEventObserver
@@ -17,5 +15,5 @@ class SqliteObserverPlugin:
     """Plugin providing SQLite-backed event persistence."""
 
     @hookimpl
-    def pynchy_observer(self) -> Any | None:
+    def pynchy_observer(self) -> SqliteEventObserver:
         return SqliteEventObserver()

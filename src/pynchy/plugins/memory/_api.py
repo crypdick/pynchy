@@ -6,7 +6,7 @@ Built-in backends live under ``plugins/memory/``.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Protocol, TypeGuard, cast, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.types import (
@@ -30,8 +30,8 @@ class MemoryProvider(Protocol):
         key: str,
         content: str,
         category: str = "core",
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...
+        metadata: dict[str, object] | None = None,
+    ) -> dict[str, object]: ...
 
     async def recall(
         self,
@@ -39,20 +39,20 @@ class MemoryProvider(Protocol):
         query: str,
         category: str | None = None,
         limit: int = 5,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, object]]: ...
 
-    async def forget(self, group_folder: GroupFolder, key: str) -> dict[str, Any]: ...
+    async def forget(self, group_folder: GroupFolder, key: str) -> dict[str, object]: ...
 
     async def list_keys(
         self,
         group_folder: GroupFolder,
         category: str | None = None,
-    ) -> list[dict[str, Any]]: ...
+    ) -> list[dict[str, object]]: ...
 
     async def close(self) -> None: ...
 
 
-def _is_valid_provider(candidate: Any) -> bool:
+def _is_valid_provider(candidate: object) -> TypeGuard[MemoryProvider]:
     return all(
         [
             hasattr(candidate, "name"),
