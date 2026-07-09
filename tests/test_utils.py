@@ -163,6 +163,7 @@ class TestCreateBackgroundTask:
         result_holder: list[str] = []
 
         async def success():
+            await asyncio.sleep(0)
             result_holder.append("done")
 
         task = create_background_task(success(), name="test-success")
@@ -174,6 +175,7 @@ class TestCreateBackgroundTask:
         """A failing coroutine should log the exception via the done callback."""
 
         async def fail():
+            await asyncio.sleep(0)
             raise RuntimeError("intentional failure")
 
         task = create_background_task(fail(), name="test-failure")
