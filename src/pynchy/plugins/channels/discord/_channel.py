@@ -42,6 +42,7 @@ from ._events import DiscordEvents, build_message_metadata, normalized_message_c
 from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
+from ._provisioning import create_discord_group
 
 _MESSAGE_ID_PREFIX = "discord-"
 _TYPING_REFRESH_SECONDS = 8.0
@@ -124,6 +125,12 @@ class DiscordChannel:
         # v1 assumes a single Discord connection; every discord: jid is ours.
         return is_discord_jid(jid)
 
+    def allows_registered_workspace_jid(self, jid: str, *, is_dm: bool) -> bool:
+        """Return whether a runtime-registered workspace may bypass chat config."""
+        if is_dm or self._config.group_policy != "allowlist" or self.workspaces is None:
+            return False
+        return jid in self.workspaces()
+
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         target = resolve_discord_chat_target(self._config, chat_name)
         if target is None:
@@ -193,34 +200,7 @@ class DiscordChannel:
         return None
 
     async def create_group(self, name: str) -> str:
-        """Create or reuse a configured Discord text channel and return its JID."""
-        if self.client is None:
-            raise RuntimeError("Discord client is not connected")
-        target = resolve_discord_chat_target(self._config, name)
-        if target is None or target.kind != "channel":
-            raise ValueError(f"Discord chat ref is not a configured guild channel: {name}")
-
-        existing = await self._find_configured_channel(target)
-        if existing is not None:
-            return channel_jid(str(existing.id))
-
-        guild = await self._find_configured_guild(target)
-        if guild is None:
-            raise RuntimeError(f"Discord guild not found for configured chat: {name}")
-
-        channel_name = self._configured_channel_name(target)
-        channel = await guild.create_text_channel(
-            channel_name,
-            reason="Pynchy configured workspace channel",
-        )
-        logger.info(
-            "Created Discord channel",
-            connection=self.name,
-            guild=getattr(guild, "name", None),
-            channel=channel_name,
-            channel_id=str(channel.id),
-        )
-        return channel_jid(str(channel.id))
+        return await create_discord_group(self, name)
 
     async def _find_configured_channel(self, target: DiscordChatTarget) -> Any | None:
         guild = await self._find_configured_guild(target)

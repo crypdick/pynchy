@@ -304,6 +304,26 @@ async def test_create_group_creates_named_discord_channel():
 
 
 @pytest.mark.asyncio
+async def test_create_group_creates_workspace_channel_from_display_name():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            group_policy="allowlist",
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    guild = _FakeDiscordGuild(123, "Synapse", [])
+    ch.client = _FakeDiscordClient([guild])
+
+    assert await ch.create_group("System Review") == "discord:channel:789"
+    assert guild.created == ["system-review"]
+
+
+@pytest.mark.asyncio
 async def test_send_event_chunks_long_text_with_safe_mentions():
     ch = _channel()
     ch.client = object()  # non-None so the guard passes

@@ -117,6 +117,8 @@ def _guild(
 
 async def _delivered_messages(
     msg: SimpleNamespace,
+    *,
+    workspaces: dict[str, object] | None = None,
     **cfg_kwargs: Any,
 ) -> list[tuple[str, NewMessage]]:
     delivered: list[tuple[str, NewMessage]] = []
@@ -126,6 +128,7 @@ async def _delivered_messages(
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda _jid, _timestamp, _chat_name: None,
+        workspaces=lambda: workspaces or {},
     )
     channel.bot_user_id = BOT_ID
 
@@ -134,8 +137,13 @@ async def _delivered_messages(
     return delivered
 
 
-async def _is_delivered(msg: SimpleNamespace, **cfg_kwargs: Any) -> bool:
-    return bool(await _delivered_messages(msg, **cfg_kwargs))
+async def _is_delivered(
+    msg: SimpleNamespace,
+    *,
+    workspaces: dict[str, object] | None = None,
+    **cfg_kwargs: Any,
+) -> bool:
+    return bool(await _delivered_messages(msg, workspaces=workspaces, **cfg_kwargs))
 
 
 # --- bot filtering -----------------------------------------------------------
@@ -189,6 +197,14 @@ async def test_group_disabled_denies_guild_message():
 
 async def test_group_allowlist_denies_unconfigured_guild():
     assert await _is_delivered(_guild(mentions_bot=True), group_policy="allowlist") is False
+
+
+async def test_group_allowlist_allows_registered_workspace_channel():
+    assert await _is_delivered(
+        _guild(channel_id="c1", mentions_bot=False),
+        group_policy="allowlist",
+        workspaces={"discord:channel:c1": object()},
+    )
 
 
 async def test_group_open_allows_mentioned_message_in_unconfigured_guild():

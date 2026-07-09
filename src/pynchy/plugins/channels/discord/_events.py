@@ -208,10 +208,12 @@ class DiscordEvents:
         ctx = build_inbound_context(message, ch.bot_user_id)
         if self._dedup(str(message.id)):
             return
-        if ch.access.decide(ctx) != "allow":
+        jid = jid_for(ctx)
+        if ch.access.decide(ctx) != "allow" and not ch.allows_registered_workspace_jid(
+            jid, is_dm=ctx.is_dm
+        ):
             return
 
-        jid = jid_for(ctx)
         sender_name = getattr(message.author, "display_name", None) or str(message.author)
         created = getattr(message, "created_at", None)
         timestamp = created.isoformat() if created else datetime.now(UTC).isoformat()
