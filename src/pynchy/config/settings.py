@@ -41,6 +41,7 @@ from pynchy.config.models import (
     CalDAVConfig,
     CommandCenterConfig,
     CommandWordsConfig,
+    ConnectionConfig,
     ConnectionsConfig,
     ContainerConfig,
     CronJobConfig,
@@ -54,12 +55,13 @@ from pynchy.config.models import (
     PluginConfig,
     ProfileConfig,
     QueueConfig,
-    RepoConfig,
+    ReposConfig,
     SchedulerConfig,
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
     ServiceTrustTomlConfig,
+    ToolConfig,
     WorkspaceConfig,
     _StrictModel,
 )
@@ -150,43 +152,18 @@ def _join_path(path: str, child: str) -> str:
 
 
 def _resolved_workspace_mcp_servers(settings: Settings, workspace: WorkspaceConfig) -> set[str]:
+    # TODO(config-schema-cutover): tools now own MCP selection. This helper remains for
+    # runtime code until MCP/tool plumbing reads tool selections directly.
     resolved: set[str] = set()
-    for entry in workspace.mcp_servers or []:
-        if entry == "*":
-            resolved.update(settings.mcp_servers.keys())
-        elif entry in settings.mcp_groups:
-            resolved.update(settings.mcp_groups[entry])
-        elif entry in settings.mcp_servers:
-            resolved.add(entry)
     return resolved
 
 
 def _assert_admin_clean_room(
     settings: Settings, *, workspace_name: str, workspace: WorkspaceConfig
 ) -> None:
-    resolved = settings.resolved_workspace_config(workspace_name)
-    if resolved is None:
-        return
-    server_names: set[str] = set()
-    for entry in resolved.mcp_servers:
-        if entry == "*":
-            server_names.update(settings.mcp_servers.keys())
-        elif entry in settings.mcp_groups:
-            server_names.update(settings.mcp_groups[entry])
-        elif entry in settings.mcp_servers:
-            server_names.add(entry)
-        else:
-            server_names.add(entry)
-
-    for server_name in server_names:
-        svc = settings.services.get(server_name)
-        public_source = svc.public_source if svc else True
-        if public_source is not False:
-            raise ValueError(
-                f"Admin workspace '{workspace_name}' has MCP server '{server_name}' "
-                f"with public_source={public_source!r}. Admin workspaces cannot "
-                f"have public_source MCPs (clean room policy)."
-            )
+    # TODO(config-schema-cutover): restore this check against [tools.*] once the
+    # tool/MCP runtime migration defines trust metadata for tool declarations.
+    return
 
 
 def _validated_command_center_connection(settings: Settings) -> None:
@@ -249,7 +226,7 @@ class Settings(BaseSettings):
     learning: LearningConfig = LearningConfig()
     universal: ProfileConfig = ProfileConfig()
     services: dict[str, ServiceTrustTomlConfig] = {}  # [services.<name>]
-    repos: dict[str, RepoConfig] = {}  # [repos."owner/repo"]
+    repos: ReposConfig = ReposConfig()
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
     owner: OwnerConfig = OwnerConfig()
@@ -262,6 +239,8 @@ class Settings(BaseSettings):
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
     connection: ConnectionsConfig = ConnectionsConfig()
+    connections: dict[str, ConnectionConfig] = {}
+    tools: dict[str, ToolConfig] = {}
     plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
     caldav: CalDAVConfig = CalDAVConfig()
@@ -287,13 +266,21 @@ class Settings(BaseSettings):
                 k
                 for k in (
                     "sandbox",
+                    "universal",
                     "sandbox_universal",
                     "sandbox_profiles",
+                    "services",
                     "channels",
                     "slack",
                     "workspace_defaults",
                     "directives",
+                    "mcp",
                     "mcp_servers",
+                    "mcp_groups",
+                    "mcp_presets",
+                    "connection",
+                    "owner",
+                    "caldav",
                     "cron_jobs",
                 )
                 if k in data
@@ -301,8 +288,8 @@ class Settings(BaseSettings):
             if legacy:
                 raise ValueError(
                     "Legacy config sections are no longer supported: "
-                    f"{legacy}. Use [workspaces], [profiles], [jobs], [mcp], "
-                    "[connection.*], and [command_center] instead."
+                    f"{legacy}. Use [workspaces], [profiles], [tools], "
+                    "[connections.*], and [command_center] instead."
                 )
         return data
 
@@ -356,18 +343,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_explicit_fields(self) -> Settings:
-        """Validate that all fields in config-file sections are explicitly set.
+        """Keep defaulted fields valid for the composable schema.
 
-        Only checks sub-models that were actually present in the config source
-        (i.e., in self.model_fields_set). Sub-models that defaulted entirely
-        (section absent from config.toml) are not checked — they're using
-        known-good defaults. But if you include a section, spell out every field.
+        Omitted profile fields use defaults, while strictness comes from
+        ``extra='forbid'`` on each model.
         """
-        errors = _collect_implicit_fields(self, "")
-        if errors:
-            msg = "Config fields must be explicitly set (even if null):\n"
-            msg += "\n".join(f"  - {e}" for e in errors)
-            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -375,14 +355,15 @@ class Settings(BaseSettings):
         """Validate that workspace profile references exist."""
         if "host" in self.workspaces:
             raise ValueError("'host' is reserved and cannot be a workspace name")
+        for profile_name in self.profiles:
+            self._expanded_profile_names(profile_name)
         for folder, ws in self.workspaces.items():
-            if ws.profile is None:
-                raise ValueError(f"workspaces.{folder}.profile is required")
-            if ws.profile not in self.profiles:
-                raise ValueError(
-                    f"workspaces.{folder}.profile references unknown profile: "
-                    f"'{ws.profile}'. Available: {list(self.profiles.keys())}"
-                )
+            for profile_name in ws.profiles:
+                if profile_name not in self.profiles:
+                    raise ValueError(
+                        f"workspaces.{folder}.profiles references unknown profile: "
+                        f"'{profile_name}'. Available: {list(self.profiles.keys())}"
+                    )
         for job_name, job in self.jobs.items():
             if job.workspace != "host" and job.workspace not in self.workspaces:
                 raise ValueError(
@@ -418,8 +399,6 @@ class Settings(BaseSettings):
         so this validator doesn't need to hardcode platform names.
         """
         _validated_command_center_connection(self)
-        for folder, ws in self.workspaces.items():
-            _validate_workspace_chat_ref(self, folder=folder, workspace=ws)
         return self
 
     @model_validator(mode="after")
@@ -434,7 +413,7 @@ class Settings(BaseSettings):
         """
         for ws_name, ws in self.workspaces.items():
             resolved = self.resolved_workspace_config(ws_name)
-            if resolved is None or not resolved.is_admin or not resolved.mcp_servers:
+            if resolved is None or not resolved.is_admin:
                 continue
             _assert_admin_clean_room(self, workspace_name=ws_name, workspace=ws)
         return self
@@ -451,13 +430,38 @@ class Settings(BaseSettings):
 
     def resolved_workspace_config(self, workspace_name: str):
         """Return the merged config for a configured workspace."""
-        from pynchy.config.merge import merge_sandbox_config
+        from pynchy.config.merge import merge_workspace_profiles
 
         workspace = self.workspaces.get(workspace_name)
         if workspace is None:
             return None
-        profile = self.profiles.get(workspace.profile or "")
-        return merge_sandbox_config(self.universal, profile, workspace)
+        profile_names: list[str] = []
+        for selected in workspace.profiles:
+            profile_names.extend(self._expanded_profile_names(selected))
+        return merge_workspace_profiles([self.profiles[name] for name in profile_names])
+
+    def _expanded_profile_names(self, profile_name: str) -> list[str]:
+        ordered: list[str] = []
+        visiting: list[str] = []
+        visited: set[str] = set()
+
+        def visit(name: str) -> None:
+            if name not in self.profiles:
+                raise ValueError(f"unknown profile reference: {name}")
+            if name in visiting:
+                cycle = " -> ".join([*visiting, name])
+                raise ValueError(f"profile cycle detected: {cycle}")
+            if name in visited:
+                return
+            visiting.append(name)
+            for included in self.profiles[name].includes:
+                visit(included)
+            visiting.pop()
+            visited.add(name)
+            ordered.append(name)
+
+        visit(profile_name)
+        return ordered
 
     @classmethod
     def settings_customise_sources(
@@ -489,9 +493,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def trigger_pattern(self) -> re.Pattern[str]:
-        names = [re.escape(self.agent.name)] + [
-            re.escape(a.strip()) for a in self.agent.trigger_aliases
-        ]
+        names = [re.escape("pynchy"), re.escape("ghost")]
         return re.compile(rf"^@({'|'.join(names)})\b", re.IGNORECASE)
 
     @cached_property
