@@ -10,6 +10,14 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
+from pynchy.host.orchestrator.messaging.pending_questions import (
+    create_pending_question,
+    find_pending_question,
+    resolve_pending_question,
+    sweep_expired_questions,
+    update_message_id,
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -32,8 +40,6 @@ def settings(tmp_path: Path):
 
 class TestCreatePendingQuestion:
     def test_creates_pending_file(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import create_pending_question
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -68,8 +74,6 @@ class TestCreatePendingQuestion:
         assert "timestamp" in data
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import create_pending_question
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -92,11 +96,6 @@ class TestCreatePendingQuestion:
 
 class TestFindPendingQuestion:
     def test_finds_by_request_id(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            find_pending_question,
-        )
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -116,11 +115,6 @@ class TestFindPendingQuestion:
         assert result["source_group"] == "grp1"
 
     def test_finds_across_groups(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            find_pending_question,
-        )
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -140,8 +134,6 @@ class TestFindPendingQuestion:
         assert result["source_group"] == "grp2"
 
     def test_returns_none_when_missing(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import find_pending_question
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -152,8 +144,6 @@ class TestFindPendingQuestion:
 
     def test_returns_none_when_no_ipc_dir(self, tmp_path: Path):
         """No ipc/ directory at all."""
-        from pynchy.host.orchestrator.messaging.pending_questions import find_pending_question
-
         s = make_settings(data_dir=tmp_path / "empty")
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=s
@@ -168,11 +158,6 @@ class TestFindPendingQuestion:
 
 class TestResolvePendingQuestion:
     def test_deletes_the_file(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            resolve_pending_question,
-        )
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -192,8 +177,6 @@ class TestResolvePendingQuestion:
 
     def test_no_error_when_already_resolved(self, ipc_dir: Path, settings):
         """Resolving a nonexistent file should log a warning but not raise."""
-        from pynchy.host.orchestrator.messaging.pending_questions import resolve_pending_question
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -206,11 +189,6 @@ class TestResolvePendingQuestion:
 
 class TestUpdateMessageId:
     def test_updates_message_id(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            update_message_id,
-        )
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -233,11 +211,6 @@ class TestUpdateMessageId:
         assert data["questions"] == [{"question": "Pick"}]
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            update_message_id,
-        )
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -257,8 +230,6 @@ class TestUpdateMessageId:
 
     def test_no_error_when_file_missing(self, ipc_dir: Path, settings):
         """Updating message_id on a nonexistent file should warn but not raise."""
-        from pynchy.host.orchestrator.messaging.pending_questions import update_message_id
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -272,11 +243,6 @@ class TestUpdateMessageId:
 class TestSweepExpiredQuestions:
     @pytest.mark.asyncio
     async def test_expires_old_pending(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            sweep_expired_questions,
-        )
-
         with (
             patch(
                 "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
@@ -314,11 +280,6 @@ class TestSweepExpiredQuestions:
 
     @pytest.mark.asyncio
     async def test_keeps_fresh_pending(self, ipc_dir: Path, settings):
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            create_pending_question,
-            sweep_expired_questions,
-        )
-
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings",
             return_value=settings,
@@ -339,8 +300,6 @@ class TestSweepExpiredQuestions:
     @pytest.mark.asyncio
     async def test_empty_ipc_dir_returns_empty(self, tmp_path: Path):
         """No ipc/ directory at all should return empty list."""
-        from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
-
         s = make_settings(data_dir=tmp_path / "empty")
         with patch(
             "pynchy.host.orchestrator.messaging.pending_questions.get_settings", return_value=s
@@ -352,8 +311,6 @@ class TestSweepExpiredQuestions:
     @pytest.mark.asyncio
     async def test_corrupt_json_handled_gracefully(self, ipc_dir: Path, settings):
         """Corrupt JSON files should be skipped without raising."""
-        from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
-
         # Create a corrupt file directly
         pending_dir = ipc_dir / "grp" / "pending_questions"
         pending_dir.mkdir(parents=True)
