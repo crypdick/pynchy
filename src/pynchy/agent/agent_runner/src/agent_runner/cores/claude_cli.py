@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 # well above the 64 KiB default to avoid "chunk exceeded the limit" on big lines.
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CORE_NAME = "claude-cli"
+_MISSING_STREAM_ERROR = "{core_name} subprocess missing {stream_name} stream after creation"
 
 
 def _log(message: str) -> None:
@@ -52,7 +53,9 @@ def _log(message: str) -> None:
 
 def _require_stream[TStream](stream: TStream | None, stream_name: str) -> TStream:
     if stream is None:
-        raise RuntimeError(f"{_CORE_NAME} subprocess missing {stream_name} stream after creation")
+        raise RuntimeError(
+            _MISSING_STREAM_ERROR.format(core_name=_CORE_NAME, stream_name=stream_name)
+        )
     return stream
 
 

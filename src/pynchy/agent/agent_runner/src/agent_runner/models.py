@@ -16,6 +16,8 @@ import types
 from dataclasses import dataclass
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
+_CONTAINER_INPUT_TYPE_ERROR = "ContainerInput.{name}: expected {expected}, got {actual}"
+
 
 def _is_union_origin(origin: object) -> bool:
     return origin is Union or origin is types.UnionType
@@ -107,7 +109,11 @@ class ContainerInput:
         for name, value in kwargs.items():
             if not _matches_hint(value, hints[name]):
                 raise TypeError(
-                    f"ContainerInput.{name}: expected {hints[name]}, got {type(value).__name__}"
+                    _CONTAINER_INPUT_TYPE_ERROR.format(
+                        name=name,
+                        expected=hints[name],
+                        actual=type(value).__name__,
+                    )
                 )
         return cls(**kwargs)
 

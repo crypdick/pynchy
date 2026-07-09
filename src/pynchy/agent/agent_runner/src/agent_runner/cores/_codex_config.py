@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _PYNCHY_LITELLM_PROVIDER = "pynchy_litellm"
+_UNSUPPORTED_TOML_VALUE_ERROR = "Unsupported TOML value: {value!r}"
+_CODEX_GATEWAY_REQUIREMENTS_ERROR = (
+    "Codex core requires {requirements} from the Pynchy LLM gateway"
+)
 # Pynchy's container and mount policy are the isolation boundary. Codex's
 # inner bubblewrap layer rejects tracked symlinked instruction dirs such as
 # .agents -> .claude inside a writable project mount.
@@ -36,7 +40,7 @@ def _toml_value(value: Any) -> str:
         return json.dumps(value)
     if isinstance(value, list | tuple):
         return "[" + ", ".join(_toml_value(item) for item in value) + "]"
-    raise TypeError(f"Unsupported TOML value: {value!r}")
+    raise TypeError(_UNSUPPORTED_TOML_VALUE_ERROR.format(value=value))
 
 
 def _append_mapping_table(lines: list[str], name: str, values: Any) -> None:
@@ -95,7 +99,7 @@ def gateway_base_url_from_env() -> str:
     ]
     if missing:
         joined = ", ".join(missing)
-        raise RuntimeError(f"Codex core requires {joined} from the Pynchy LLM gateway")
+        raise RuntimeError(_CODEX_GATEWAY_REQUIREMENTS_ERROR.format(requirements=joined))
     return _append_v1(os.environ["OPENAI_BASE_URL"])
 
 
