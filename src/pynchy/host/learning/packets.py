@@ -32,6 +32,8 @@ _MAX_TIMESTAMP_CHARS = 40
 _MAX_TOOL_NAME_CHARS = 48
 _MAX_ERROR_SNIPPET_CHARS = 240
 _MAX_TOOL_COUNT_VALUE = 999
+_MISSING_LEARNING_RESULT_ERROR = "Successful learning output is missing result text"
+_MISSING_TOOL_ERROR_CONTENT_ERROR = "Recovered tool error output is missing tool_result_content"
 
 
 @dataclass
@@ -55,7 +57,7 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
     if _is_successful_result(output):
         result = output.result
         if result is None:
-            raise RuntimeError("Successful learning output is missing result text")
+            raise RuntimeError(_MISSING_LEARNING_RESULT_ERROR)
         summary.final_answer = _sanitize_text(result)
 
     if output.type == "tool_use" and output.tool_name:
@@ -71,7 +73,7 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
     if _is_recovered_tool_error(output):
         error_content = output.tool_result_content
         if error_content is None:
-            raise RuntimeError("Recovered tool error output is missing tool_result_content")
+            raise RuntimeError(_MISSING_TOOL_ERROR_CONTENT_ERROR)
         _append_error_snippet(summary, error_content)
 
 

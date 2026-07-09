@@ -10,6 +10,11 @@ from pathlib import Path
 from pynchy.config.settings import Settings, get_settings
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
+_VAULT_ROOT_REQUIRED_ERROR = (
+    "learning.obsidian.vault_root is required when learning is enabled"
+)
+_PROFILE_ROOT_TEMPLATE_ERROR = "learning.obsidian.default_profile_root must be a valid template"
+_PATH_OUTSIDE_VAULT_ERROR = "learning paths must stay inside learning.obsidian.vault_root"
 
 
 @dataclass(frozen=True)
@@ -51,9 +56,7 @@ def resolve_learning_paths(
 
     obsidian = config.obsidian
     if not obsidian.vault_root:
-        raise LearningConfigError(
-            "learning.obsidian.vault_root is required when learning is enabled"
-        )
+        raise LearningConfigError(_VAULT_ROOT_REQUIRED_ERROR)
 
     vault_root = Path(obsidian.vault_root).expanduser().resolve()
     profile = (
@@ -96,9 +99,7 @@ def _render_profile_root(template: str, profile_slug: str) -> Path:
     try:
         return Path(template.format(profile=profile_slug))
     except (IndexError, KeyError, ValueError) as exc:
-        raise LearningConfigError(
-            "learning.obsidian.default_profile_root must be a valid template"
-        ) from exc
+        raise LearningConfigError(_PROFILE_ROOT_TEMPLATE_ERROR) from exc
 
 
 def _resolve_under_vault(vault_root: Path, vault_relative_path: Path) -> Path:
@@ -106,9 +107,7 @@ def _resolve_under_vault(vault_root: Path, vault_relative_path: Path) -> Path:
     try:
         resolved.relative_to(vault_root)
     except ValueError as exc:
-        raise LearningConfigError(
-            "learning paths must stay inside learning.obsidian.vault_root"
-        ) from exc
+        raise LearningConfigError(_PATH_OUTSIDE_VAULT_ERROR) from exc
     return resolved
 
 

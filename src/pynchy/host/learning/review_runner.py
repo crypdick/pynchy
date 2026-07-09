@@ -13,6 +13,10 @@ from pynchy.host.learning.reviewer import build_review_prompt, should_review
 from pynchy.types import WorkspaceProfile
 
 RunAgent = Callable[..., Awaitable[str]]
+_LEARNING_PATHS_UNAVAILABLE_ERROR = (
+    "learning paths unavailable for group {group_folder!r} profile {profile!r}"
+)
+_LEARNING_REVIEWER_RESULT_ERROR = "learning reviewer returned {result!r}"
 
 
 async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> str:
@@ -23,8 +27,10 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
     paths = resolve_learning_paths(packet.group_folder, profile_override=packet.profile)
     if paths is None:
         raise RuntimeError(
-            "learning paths unavailable for "
-            f"group {packet.group_folder!r} profile {packet.profile!r}"
+            _LEARNING_PATHS_UNAVAILABLE_ERROR.format(
+                group_folder=packet.group_folder,
+                profile=packet.profile,
+            )
         )
 
     async def on_output(_output: Any) -> None:  # noqa: RUF029, RUF100 - run_agent expects an async output callback.
@@ -49,4 +55,4 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
     )
     if result == "success":
         return "completed"
-    raise RuntimeError(f"learning reviewer returned {result!r}")
+    raise RuntimeError(_LEARNING_REVIEWER_RESULT_ERROR.format(result=result))
