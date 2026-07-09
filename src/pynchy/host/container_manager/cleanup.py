@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.session import active_session_container_names
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
 
@@ -114,7 +115,6 @@ def reap_orphaned_agent_containers(
     orphan_age_ms: int | None = None,
 ) -> list[ReapedContainer]:
     """Remove agent containers that are not owned by a live session."""
-    from pynchy.host.container_manager.session import active_session_container_names
 
     resolved_runtime = runtime if runtime is not None else get_runtime()
     protected = active_names if active_names is not None else active_session_container_names()
