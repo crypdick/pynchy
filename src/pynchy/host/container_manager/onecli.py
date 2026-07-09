@@ -28,6 +28,18 @@ from pynchy.types import VolumeMount
 
 _GATEWAY_SKILL_DIR = "onecli-gateway"
 _GATEWAY_SKILL_MARKER = ".pynchy-onecli-skill"
+_HTTP_CONTAINER_CONFIG_ERROR = "OneCLI container config failed with HTTP {}"
+_HTTP_AGENT_CREATE_ERROR = "OneCLI agent create failed with HTTP {}"
+_INVALID_JSON_ERROR = "OneCLI returned invalid JSON"
+_NON_OBJECT_JSON_ERROR = "OneCLI returned a non-object JSON response"
+_URL_SCHEME_ERROR = "OneCLI URL must use http or https"
+_UNAVAILABLE_ERROR = "OneCLI is enabled but unavailable: {}"
+_CREDENTIAL_STUBS_LIST_ERROR = "OneCLI credentialStubs must be a list"
+_CREDENTIAL_STUB_OBJECT_ERROR = "OneCLI credential stub must be an object"
+_CREDENTIAL_STUB_FIELDS_ERROR = "OneCLI credential stub needs containerPath and content"
+_OBJECT_FIELD_ERROR = "OneCLI {} must be an object"
+_STRING_ENTRIES_ERROR = "OneCLI {} entries must be strings"
+_LIST_FIELD_ERROR = "OneCLI {} must be a list"
 
 
 class OneCliError(RuntimeError):
@@ -82,7 +94,7 @@ class OneCliClient:
         except HTTPError as exc:
             if exc.code == 404:
                 raise OneCliAgentNotFoundError(agent) from exc
-            raise OneCliError(f"OneCLI container config failed with HTTP {exc.code}") from exc
+            raise OneCliError(_HTTP_CONTAINER_CONFIG_ERROR.format(exc.code)) from exc
 
     def create_agent(self, *, name: str, identifier: str) -> None:
         payload = {"name": name, "identifier": identifier}
@@ -90,7 +102,7 @@ class OneCliClient:
             self._request_json("POST", "/v1/agents", payload=payload)
         except HTTPError as exc:
             if exc.code != 409:
-                raise OneCliError(f"OneCLI agent create failed with HTTP {exc.code}") from exc
+                raise OneCliError(_HTTP_AGENT_CREATE_ERROR.format(exc.code)) from exc
 
     def get_gateway_skill(self, *, agent_framework: str = "claude") -> str:
         query = urlencode({"agent_framework": agent_framework})
@@ -127,9 +139,9 @@ class OneCliClient:
         try:
             data = json.loads(raw.decode() if raw else "{}")
         except json.JSONDecodeError as exc:
-            raise OneCliError("OneCLI returned invalid JSON") from exc
+            raise OneCliError(_INVALID_JSON_ERROR) from exc
         if not isinstance(data, dict):
-            raise OneCliError("OneCLI returned a non-object JSON response")
+            raise OneCliError(_NON_OBJECT_JSON_ERROR)
         return data
 
     def _request_text(self, method: str, path: str) -> str:
@@ -150,7 +162,7 @@ class OneCliClient:
 def _urlopen_http_request(request: Request, *, timeout: int | float) -> Any:
     scheme = urlsplit(request.full_url).scheme.lower()
     if scheme not in {"http", "https"}:
-        raise OneCliError("OneCLI URL must use http or https")
+        raise OneCliError(_URL_SCHEME_ERROR)
     return urlopen(request, timeout=timeout)  # noqa: S310, RUF100 - scheme is constrained above.
 
 
@@ -275,7 +287,7 @@ def collect_onecli_status() -> dict[str, Any]:
 
 def _handle_unavailable(config: OneCliConfig, reason: str) -> None:
     if config.fail_closed:
-        raise OneCliError(f"OneCLI is enabled but unavailable: {reason}")
+        raise OneCliError(_UNAVAILABLE_ERROR.format(reason))
     logger.warning("OneCLI unavailable; falling back to native credentials", reason=reason)
 
 
@@ -307,14 +319,14 @@ def _materialize_container_config(
 
     stubs = container_config.get("credentialStubs", [])
     if not isinstance(stubs, list):
-        raise OneCliError("OneCLI credentialStubs must be a list")
+        raise OneCliError(_CREDENTIAL_STUBS_LIST_ERROR)
     for stub in stubs:
         if not isinstance(stub, dict):
-            raise OneCliError("OneCLI credential stub must be an object")
+            raise OneCliError(_CREDENTIAL_STUB_OBJECT_ERROR)
         container_path = stub.get("containerPath")
         content = stub.get("content")
         if not isinstance(container_path, str) or not isinstance(content, str):
-            raise OneCliError("OneCLI credential stub needs containerPath and content")
+            raise OneCliError(_CREDENTIAL_STUB_FIELDS_ERROR)
         normalized_container_path = _normalize_container_path(container_path)
         host_path = base_dir / "stubs" / _safe_material_filename(normalized_container_path)
         host_path.parent.mkdir(parents=True, exist_ok=True)
@@ -327,20 +339,20 @@ def _materialize_container_config(
 
 def _string_dict(value: Any, *, field: str) -> dict[str, str]:
     if not isinstance(value, dict):
-        raise OneCliError(f"OneCLI {field} must be an object")
+        raise OneCliError(_OBJECT_FIELD_ERROR.format(field))
     result: dict[str, str] = {}
     for key, item in value.items():
         if not isinstance(key, str) or not isinstance(item, str):
-            raise OneCliError(f"OneCLI {field} entries must be strings")
+            raise OneCliError(_STRING_ENTRIES_ERROR.format(field))
         result[key] = item
     return result
 
 
 def _string_list(value: Any, *, field: str) -> list[str]:
     if not isinstance(value, list):
-        raise OneCliError(f"OneCLI {field} must be a list")
+        raise OneCliError(_LIST_FIELD_ERROR.format(field))
     if not all(isinstance(item, str) for item in value):
-        raise OneCliError(f"OneCLI {field} entries must be strings")
+        raise OneCliError(_STRING_ENTRIES_ERROR.format(field))
     return list(value)
 
 
