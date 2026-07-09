@@ -27,6 +27,7 @@ from pynchy.types import (
 )
 
 _MCP_CONTAINER_PREFIX = "pynchy-mcp"
+_SERVER_NAME_MUST_BE_NON_EMPTY = "server_name must be a non-empty string"
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +207,7 @@ def resolve_kwargs(settings: Settings, group_folder: str, server_name: str) -> d
     if group_folder not in settings.workspaces:
         return {}
     if not server_name:
-        raise ValueError("server_name must be a non-empty string")
+        raise ValueError(_SERVER_NAME_MUST_BE_NON_EMPTY)
 
     raw_kwargs: dict[str, Any] = {}
 

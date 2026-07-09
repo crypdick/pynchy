@@ -56,6 +56,9 @@ class _ProxyState:
 # Typed app key -- set once at construction, never reassigned.
 _STATE_KEY: web.AppKey[_ProxyState] = web.AppKey("proxy_state", t=_ProxyState)
 
+_MCP_PROXY_NO_BOUND_ADDRESSES = "MCP proxy server did not bind any addresses"
+_MCP_PROXY_HTTP_SESSION_UNINITIALIZED = "MCP proxy ClientSession not initialized"
+
 
 @dataclass(frozen=True)
 class _ProxyRequest:
@@ -124,7 +127,7 @@ async def _cleanup_http_session(app: Any) -> None:
 def _runner_port(runner: web.AppRunner) -> int:
     addresses = runner.addresses
     if not addresses:
-        raise RuntimeError("MCP proxy server did not bind any addresses")
+        raise RuntimeError(_MCP_PROXY_NO_BOUND_ADDRESSES)
 
     address = addresses[0]
     return int(address[1])
@@ -295,7 +298,7 @@ async def _proxy_handler(request: Any) -> Any:
 
     session = state.http_session
     if session is None:
-        raise RuntimeError("MCP proxy ClientSession not initialized")
+        raise RuntimeError(_MCP_PROXY_HTTP_SESSION_UNINITIALIZED)
     return await _forward_to_backend(
         _BackendForwardContext(
             session=session,
