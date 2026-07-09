@@ -16,6 +16,7 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
+import agent_runner.core as core_mod
 from agent_runner.core import AgentCore, AgentCoreConfig
 from agent_runner.registry import create_agent_core
 
@@ -108,8 +109,6 @@ class TestInstantiationFailures:
                 raise RuntimeError(CONSTRUCTOR_EXPLODED_MESSAGE)
 
         # Temporarily inject our broken class into the agent_runner.core module
-        import agent_runner.core as core_mod
-
         monkeypatch.setattr(core_mod, "BrokenCore", BrokenCore, raising=False)
 
         config = _make_config()
@@ -122,8 +121,6 @@ class TestInstantiationFailures:
         class ExplodingCore:
             def __init__(self, config: AgentCoreConfig) -> None:
                 raise ValueError(BAD_CONFIG_VALUE_MESSAGE)
-
-        import agent_runner.core as core_mod
 
         monkeypatch.setattr(core_mod, "ExplodingCore", ExplodingCore, raising=False)
 
@@ -150,8 +147,6 @@ class TestProtocolCheck:
             def __init__(self, config: AgentCoreConfig) -> None:
                 pass
 
-        import agent_runner.core as core_mod
-
         monkeypatch.setattr(core_mod, "NotAnAgentCore", NotAnAgentCore, raising=False)
 
         config = _make_config()
@@ -177,8 +172,6 @@ class TestProtocolCheck:
             @property
             def session_id(self) -> str | None:
                 return self._session_id
-
-        import agent_runner.core as core_mod
 
         monkeypatch.setattr(core_mod, "FakeCore", FakeCore, raising=False)
 
@@ -218,8 +211,6 @@ class TestConfigForwarding:
             @property
             def session_id(self) -> str | None:
                 return self._session_id
-
-        import agent_runner.core as core_mod
 
         monkeypatch.setattr(core_mod, "InspectorCore", InspectorCore, raising=False)
 
