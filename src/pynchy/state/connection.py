@@ -68,6 +68,23 @@ def _get_db() -> aiosqlite.Connection:
     return _state.db
 
 
+async def _stop_connection(db: aiosqlite.Connection) -> None:
+    """Stop the worker thread using the public stop future.
+
+    ``aiosqlite.Connection.stop()`` returns a future that resolves once the
+    background worker has processed the shutdown sentinel. Waiting on that
+    future avoids reaching into the private ``_thread`` attribute while keeping
+    the existing bounded shutdown behavior.
+    """
+    future = db.stop()
+    if future is None:
+        return
+
+    done, _pending = await asyncio.wait({future}, timeout=2)
+    if future in done:
+        await future
+
+
 async def _update_by_id(
     table: str,
     row_id: str,
@@ -127,9 +144,7 @@ async def init_test_database() -> None:
     directly on the worker queue and lets the thread exit on its own.
     """
     if _state.db is not None:
-        _state.db.stop()
-        if _state.db._thread is not None and _state.db._thread.is_alive():
-            _state.db._thread.join(timeout=2)
+        await _stop_connection(_state.db)
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
     _state.db = db
