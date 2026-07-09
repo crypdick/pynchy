@@ -47,6 +47,9 @@ class SlackEvents:
             raise RuntimeError("Slack app is not initialized")
         return app
 
+    def register_handlers(self) -> None:
+        self._register_handlers()
+
     def _register_handlers(self) -> None:
         ch = self._channel
         app = self._require_app()
@@ -158,7 +161,7 @@ class SlackEvents:
         app = self._require_app()
         app.use(assistant)
 
-    def _normalize_bot_mention(self, text: str) -> str:
+    def normalize_bot_mention(self, text: str) -> str:
         """Rewrite the bot's ``<@BOT_ID>`` mention as the canonical trigger.
 
         Slack sends mentions as ``<@UBOTID>`` which is meaningless to the
@@ -173,7 +176,10 @@ class SlackEvents:
         trigger = f"@{get_settings().agent.name}"
         return re.sub(rf"<@{re.escape(ch._bot_user_id)}>", trigger, text).strip()
 
-    def _dedup_ts(self, ts: str) -> bool:
+    def _normalize_bot_mention(self, text: str) -> str:
+        return self.normalize_bot_mention(text)
+
+    def dedup_ts(self, ts: str) -> bool:
         """Return True if this ``ts`` was already seen (duplicate event).
 
         Keeps a bounded dict so memory doesn't grow without limit.
@@ -189,7 +195,10 @@ class SlackEvents:
         ch._seen_ts[ts] = now
         return False
 
-    async def _on_slack_message(self, event: dict[str, Any]) -> None:
+    def _dedup_ts(self, ts: str) -> bool:
+        return self.dedup_ts(ts)
+
+    async def on_slack_message(self, event: dict[str, Any]) -> None:
         """Route an inbound Slack event to the pynchy message callback."""
         ch = self._channel
         # Ignore bot messages, edits, and deletions
@@ -211,14 +220,14 @@ class SlackEvents:
 
         # Deduplicate: Slack fires both `message` and `app_mention` events
         # for the same @mention message — skip the second one.
-        if self._dedup_ts(ts):
+        if self.dedup_ts(ts):
             return
 
         jid = slack_jid(channel_id)
 
         # Rewrite the bot's Slack-native @mention as the canonical
         # trigger word so the downstream trigger pattern still matches.
-        text = self._normalize_bot_mention(text)
+        text = self.normalize_bot_mention(text)
 
         # Resolve display name (fall back to user ID)
         sender_name = await ch._resolve_user_name(user_id)
@@ -248,6 +257,9 @@ class SlackEvents:
             text_len=len(text),
         )
         ch._on_message(jid, msg)
+
+    async def _on_slack_message(self, event: dict[str, Any]) -> None:
+        await self.on_slack_message(event)
 
     async def _on_slack_reaction(self, event: dict[str, Any]) -> None:
         """Route an inbound Slack reaction to the pynchy reaction callback."""

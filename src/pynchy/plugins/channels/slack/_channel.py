@@ -129,10 +129,10 @@ class SlackChannel:
         self.lifecycle.prepare_shutdown()
 
     def _on_handler_done(self, task: asyncio.Task[None]) -> None:
-        self.lifecycle._on_handler_done(task)
+        self.lifecycle.on_handler_done(task)
 
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
-        await self.lifecycle._reconnect_with_backoff(delay)
+        await self.lifecycle.reconnect_with_backoff(delay)
 
     # ------------------------------------------------------------------
     # Allowlist — delegated to self.allowlist
@@ -191,16 +191,16 @@ class SlackChannel:
     # ------------------------------------------------------------------
 
     def _register_handlers(self) -> None:
-        self.events._register_handlers()
+        self.events.register_handlers()
 
     async def _on_slack_message(self, event: dict[str, Any]) -> None:
-        await self.events._on_slack_message(event)
+        await self.events.on_slack_message(event)
 
     def _dedup_ts(self, ts: str) -> bool:
-        return self.events._dedup_ts(ts)
+        return self.events.dedup_ts(ts)
 
     def _normalize_bot_mention(self, text: str) -> str:
-        return self.events._normalize_bot_mention(text)
+        return self.events.normalize_bot_mention(text)
 
     # ------------------------------------------------------------------
     # Channel protocol

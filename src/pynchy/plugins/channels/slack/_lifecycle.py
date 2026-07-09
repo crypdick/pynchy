@@ -102,6 +102,9 @@ class SlackLifecycle:
     # Internal: reconnect on unexpected task exit
     # ------------------------------------------------------------------
 
+    def on_handler_done(self, task: asyncio.Task[None]) -> None:
+        self._on_handler_done(task)
+
     def _on_handler_done(self, task: asyncio.Task[None]) -> None:
         """Called when the Socket Mode handler task exits for any reason."""
         ch = self._channel
@@ -121,6 +124,9 @@ class SlackLifecycle:
             # Event loop is shutting down — can't schedule reconnect.
             coro.close()
             logger.debug("Cannot schedule Slack reconnect — event loop closing")
+
+    async def reconnect_with_backoff(self, delay: float = 5.0) -> None:
+        await self._reconnect_with_backoff(delay)
 
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
         """Reconnect with exponential backoff, capped at 5 minutes."""
