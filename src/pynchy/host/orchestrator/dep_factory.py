@@ -170,7 +170,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         def get_active_sessions(self) -> dict[str, str]:
             return session_manager.get_active_sessions(app.workspaces)
 
-        async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+        async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,
                 workspaces=app.workspaces,
@@ -244,7 +244,7 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
         def workspaces(self) -> dict[str, Any]:
             return app.workspaces
 
-        async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+        async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,
                 workspaces=app.workspaces,

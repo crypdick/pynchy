@@ -59,7 +59,7 @@ async def _setup_db():
 
 def _store(
     *,
-    id: str,
+    message_id: str,
     chat_jid: str,
     sender: str,
     sender_name: str,
@@ -68,7 +68,7 @@ def _store(
     is_from_me: bool = False,
 ) -> NewMessage:
     return NewMessage(
-        id=id,
+        id=message_id,
         chat_jid=chat_jid,
         sender=sender,
         sender_name=sender_name,
@@ -128,7 +128,7 @@ class TestStoreMessage:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="msg-1",
+                message_id="msg-1",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -148,7 +148,7 @@ class TestStoreMessage:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="msg-2",
+                message_id="msg-2",
                 chat_jid="group@g.us",
                 sender="111@s.whatsapp.net",
                 sender_name="Dave",
@@ -165,7 +165,7 @@ class TestStoreMessage:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="msg-3",
+                message_id="msg-3",
                 chat_jid="group@g.us",
                 sender="me@s.whatsapp.net",
                 sender_name="Me",
@@ -186,7 +186,7 @@ class TestStoreMessage:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="msg-dup",
+                message_id="msg-dup",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -196,7 +196,7 @@ class TestStoreMessage:
         )
         await store_message(
             _store(
-                id="msg-dup",
+                message_id="msg-dup",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -224,7 +224,7 @@ class TestGetMessagesSince:
         ]:
             await store_message(
                 _store(
-                    id=id_,
+                    message_id=id_,
                     chat_jid="group@g.us",
                     sender=f"{sender}@s.whatsapp.net",
                     sender_name=sender,
@@ -234,7 +234,7 @@ class TestGetMessagesSince:
             )
         # Bot message — excluded by sender filter, not content prefix
         await store_message_direct(
-            id="m3",
+            message_id="m3",
             chat_jid="group@g.us",
             sender="bot",
             sender_name="pynchy",
@@ -275,7 +275,7 @@ class TestGetNewMessages:
         ]:
             await store_message(
                 _store(
-                    id=id_,
+                    message_id=id_,
                     chat_jid=chat,
                     sender="user@s.whatsapp.net",
                     sender_name="User",
@@ -285,7 +285,7 @@ class TestGetNewMessages:
             )
         # Bot message — excluded by sender filter
         await store_message_direct(
-            id="a3",
+            message_id="a3",
             chat_jid="group1@g.us",
             sender="bot",
             sender_name="pynchy",
@@ -426,7 +426,7 @@ class TestSenderFiltering:
         # Real user messages (should pass filter)
         await store_message(
             _store(
-                id="m-user",
+                message_id="m-user",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -435,7 +435,7 @@ class TestSenderFiltering:
             )
         )
         await store_message_direct(
-            id="m-tui",
+            message_id="m-tui",
             chat_jid="group@g.us",
             sender="tui-user",
             sender_name="You",
@@ -444,7 +444,7 @@ class TestSenderFiltering:
             is_from_me=False,
         )
         await store_message_direct(
-            id="m-deploy",
+            message_id="m-deploy",
             chat_jid="group@g.us",
             sender="deploy",
             sender_name="deploy",
@@ -454,7 +454,7 @@ class TestSenderFiltering:
         )
         # Slack user message — sender is a Slack user ID (no @ sign)
         await store_message_direct(
-            id="m-slack",
+            message_id="m-slack",
             chat_jid="group@g.us",
             sender="U07ABC123",
             sender_name="Bob",
@@ -473,7 +473,7 @@ class TestSenderFiltering:
             ("bot", "bot"),
         ]:
             await store_message_direct(
-                id=f"m-{id_suffix}",
+                message_id=f"m-{id_suffix}",
                 chat_jid="group@g.us",
                 sender=sender,
                 sender_name=sender,
@@ -599,7 +599,7 @@ class TestChatClearedAt:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="old-msg",
+                message_id="old-msg",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -609,7 +609,7 @@ class TestChatClearedAt:
         )
         await store_message(
             _store(
-                id="new-msg",
+                message_id="new-msg",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -629,7 +629,7 @@ class TestChatClearedAt:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="msg-1",
+                message_id="msg-1",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -639,7 +639,7 @@ class TestChatClearedAt:
         )
         await store_message(
             _store(
-                id="msg-2",
+                message_id="msg-2",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -676,7 +676,7 @@ class TestStoreMessageDirect:
     async def test_stores_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message_direct(
-            id="meta-msg",
+            message_id="meta-msg",
             chat_jid="group@g.us",
             sender="123@s.whatsapp.net",
             sender_name="Alice",
@@ -695,7 +695,7 @@ class TestStoreMessageDirect:
     async def test_stores_without_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message_direct(
-            id="no-meta",
+            message_id="no-meta",
             chat_jid="group@g.us",
             sender="123@s.whatsapp.net",
             sender_name="Alice",
@@ -1042,7 +1042,7 @@ class TestChatHistoryLimit:
         for i in range(10):
             await store_message(
                 _store(
-                    id=f"msg-{i}",
+                    message_id=f"msg-{i}",
                     chat_jid="group@g.us",
                     sender="123@s.whatsapp.net",
                     sender_name="Alice",
@@ -1062,7 +1062,7 @@ class TestChatHistoryLimit:
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         await store_message(
             _store(
-                id="old",
+                message_id="old",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -1072,7 +1072,7 @@ class TestChatHistoryLimit:
         )
         await store_message(
             _store(
-                id="new",
+                message_id="new",
                 chat_jid="group@g.us",
                 sender="123@s.whatsapp.net",
                 sender_name="Alice",
@@ -1316,7 +1316,7 @@ class TestMessagingStats:
         await store_chat_metadata("g@g.us", "2026-01-01T00:00:00", "Test")
         await store_message(
             _store(
-                id="m1",
+                message_id="m1",
                 chat_jid="g@g.us",
                 sender="u@s",
                 sender_name="Alice",
@@ -1326,7 +1326,7 @@ class TestMessagingStats:
         )
         await store_message(
             _store(
-                id="m2",
+                message_id="m2",
                 chat_jid="g@g.us",
                 sender="u@s",
                 sender_name="Alice",

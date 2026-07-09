@@ -206,10 +206,8 @@ select = [
 # The remaining ignores are the current baseline surfaced by Strictify's expanded
 # anti-slop profile. Delete these entries as focused cleanup lands.
 ignore = [
-    "A002",
     "ANN001",
     "ANN002",
-    "ANN202",
     "ANN204",
     "ANN401",
     "ARG001",
@@ -224,7 +222,6 @@ ignore = [
     "E501",
     "ERA001",
     "FBT001",
-    "FBT002",
     "ISC004",
     "PLC0415",
     "PLC2701",

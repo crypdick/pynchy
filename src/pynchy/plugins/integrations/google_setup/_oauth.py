@@ -50,7 +50,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
     done = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
+        def do_GET(self) -> None:
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             code = query.get("code", [None])[0]
             if code:

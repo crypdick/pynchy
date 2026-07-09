@@ -41,7 +41,7 @@ async def record_security_event(
     metadata = {k: v for k, v in metadata.items() if v is not None}
 
     await store_message_direct(
-        id=f"audit-{request_id or int(time.time() * 1000)}",
+        message_id=f"audit-{request_id or int(time.time() * 1000)}",
         chat_jid=chat_jid,
         sender="security",
         sender_name="security",

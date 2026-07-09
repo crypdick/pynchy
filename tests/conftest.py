@@ -119,7 +119,7 @@ class NullIpcDeps:
 
     def register_workspace(self, profile) -> None: ...
 
-    async def sync_group_metadata(self, force) -> None: ...
+    async def sync_group_metadata(self, *, force) -> None: ...
 
     async def get_available_groups(self) -> list:
         return []
@@ -143,7 +143,7 @@ class NullIpcDeps:
     def channels(self) -> list:
         return []
 
-    async def trigger_deploy(self, previous_sha, rebuild=True) -> None: ...
+    async def trigger_deploy(self, previous_sha, *, rebuild=True) -> None: ...
 
 
 class NullChannel:
@@ -286,7 +286,7 @@ def make_msg():
 
     def _make(
         *,
-        id: str = "1",
+        message_id: str = "1",
         chat_jid: str = "group@g.us",
         sender: str = "123@s.whatsapp.net",
         sender_name: str = "Alice",
@@ -295,7 +295,7 @@ def make_msg():
         is_from_me: bool | None = None,
     ) -> NewMessage:
         return NewMessage(
-            id=id,
+            id=message_id,
             chat_jid=chat_jid,
             sender=sender,
             sender_name=sender_name,

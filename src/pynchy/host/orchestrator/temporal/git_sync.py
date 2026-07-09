@@ -81,7 +81,7 @@ class _TemporalGitSyncDeps:
         )
         return manager.get_active_sessions(self.workspaces())
 
-    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+    async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 
         workspaces = self.workspaces()

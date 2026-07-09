@@ -618,7 +618,7 @@ class _RecordingGitSyncDeps:
     def __init__(self) -> None:
         self.deploy_calls: list[tuple[str, bool]] = []
 
-    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+    async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         self.deploy_calls.append((previous_sha, rebuild))
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:

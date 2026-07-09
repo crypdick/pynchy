@@ -90,7 +90,7 @@ async def test_prune_security_audit_deletes_old_entries():
     """Test that pruning removes old security entries."""
     # Insert old security audit entry
     await store_message_direct(
-        id="audit-old",
+        message_id="audit-old",
         chat_jid="group@test",
         sender="security",
         sender_name="security",
@@ -114,7 +114,7 @@ async def test_prune_security_audit_preserves_chat_messages():
     """Test that pruning does NOT delete regular chat messages."""
     # Insert old security audit entry
     await store_message_direct(
-        id="audit-old",
+        message_id="audit-old",
         chat_jid="group@test",
         sender="security",
         sender_name="security",
@@ -126,7 +126,7 @@ async def test_prune_security_audit_preserves_chat_messages():
 
     # Insert old regular chat message
     await store_message_direct(
-        id="chat-old",
+        message_id="chat-old",
         chat_jid="group@test",
         sender="user@s.whatsapp.net",
         sender_name="User",

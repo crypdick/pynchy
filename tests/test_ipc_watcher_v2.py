@@ -72,7 +72,7 @@ class MockDeps(NullIpcDeps):
     def register_workspace(self, profile: WorkspaceProfile) -> None:
         self._groups[profile.jid] = profile
 
-    async def sync_group_metadata(self, force: bool) -> None:
+    async def sync_group_metadata(self, *, force: bool) -> None:
         self.sync_calls.append(force)
 
     async def get_available_groups(self) -> list[Any]:

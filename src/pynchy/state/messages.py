@@ -39,7 +39,7 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
         message_type: One of 'user', 'assistant', 'system', 'host', 'tool_result'
     """
     await store_message_direct(
-        id=msg.id,
+        message_id=msg.id,
         chat_jid=msg.chat_jid,
         sender=msg.sender,
         sender_name=msg.sender_name,
@@ -52,7 +52,7 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
 
 async def store_message_direct(
     *,
-    id: str,
+    message_id: str,
     chat_jid: str,
     sender: str,
     sender_name: str,
@@ -76,7 +76,7 @@ async def store_message_direct(
         "message_type, metadata) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            id,
+            message_id,
             chat_jid,
             sender,
             sender_name,

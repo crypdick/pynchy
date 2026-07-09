@@ -355,7 +355,7 @@ class MockDeps(NullIpcDeps):
     def enqueue_message_check(self, group_jid: str) -> None:
         self.enqueued_checks.append(group_jid)
 
-    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+    async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         self.deploy_calls.append((previous_sha, rebuild))
 
 

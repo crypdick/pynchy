@@ -249,10 +249,10 @@ class WhatsAppChannel:
             return None
         return matches[0]
 
-    async def sync_group_metadata(self, force: bool = False) -> None:
+    async def sync_group_metadata(self, *, force: bool = False) -> None:
         await self._sync_group_metadata(force=force)
 
-    async def _sync_group_metadata(self, force: bool = False) -> None:
+    async def _sync_group_metadata(self, *, force: bool = False) -> None:
         if not force:
             last_sync = await get_last_group_sync()
             if last_sync:

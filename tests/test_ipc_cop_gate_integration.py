@@ -74,7 +74,7 @@ class MockDeps:
         self.registered.append(profile)
         self._groups[profile.jid] = profile
 
-    async def sync_group_metadata(self, force: bool) -> None:
+    async def sync_group_metadata(self, *, force: bool) -> None:
         pass
 
     async def get_available_groups(self) -> list[Any]:
@@ -107,7 +107,7 @@ class MockDeps:
     def channels(self) -> list:
         return self._channels
 
-    async def trigger_deploy(self, previous_sha: str, rebuild: bool = True) -> None:
+    async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         pass
 
 

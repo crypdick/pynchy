@@ -207,14 +207,14 @@ class TestHostMessageBroadcaster:
         broadcaster, _, store_host_fn, _, _ = self._make_broadcaster()
         await broadcaster.broadcast_host_message("group@g.us", "Test")
 
-        msg_id = store_host_fn.call_args.kwargs["id"]
+        msg_id = store_host_fn.call_args.kwargs["message_id"]
         assert msg_id.startswith("host-")
 
     async def test_system_notice_id_starts_with_sys_notice_prefix(self):
         broadcaster, _, _, store_notice_fn, _ = self._make_broadcaster()
         await broadcaster.broadcast_system_notice("group@g.us", "Test")
 
-        msg_id = store_notice_fn.call_args.kwargs["id"]
+        msg_id = store_notice_fn.call_args.kwargs["message_id"]
         assert msg_id.startswith("sys-notice-")
 
 

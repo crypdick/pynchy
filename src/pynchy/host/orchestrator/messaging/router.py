@@ -360,7 +360,7 @@ async def _handle_final_result(
 
     msg_type = "host" if sender == "host" else "assistant"
     await store_message_direct(
-        id=generate_message_id("bot"),
+        message_id=generate_message_id("bot"),
         chat_jid=chat_jid,
         sender=sender,
         sender_name=sender_name,

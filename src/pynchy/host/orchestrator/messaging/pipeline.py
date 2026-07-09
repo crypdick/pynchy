@@ -195,7 +195,7 @@ async def execute_direct_command(
     output_text = f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
 
     await store_message_direct(
-        id=generate_message_id("cmd"),
+        message_id=generate_message_id("cmd"),
         chat_jid=chat_jid,
         sender="command_output",
         sender_name="command",

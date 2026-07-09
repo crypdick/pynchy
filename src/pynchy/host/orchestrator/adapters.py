@@ -126,7 +126,7 @@ class HostMessageBroadcaster:
 
         ts = datetime.now(UTC).isoformat()
         await store_fn(
-            id=generate_message_id(id_prefix),
+            message_id=generate_message_id(id_prefix),
             chat_jid=chat_jid,
             sender=sender,
             sender_name=sender_name,
@@ -342,11 +342,11 @@ class GroupMetadataManager:
         """Get list of all available groups."""
         return await self._get_available_groups()
 
-    async def sync_group_metadata(self, force: bool) -> None:
+    async def sync_group_metadata(self, *, force: bool) -> None:
         """Sync group metadata from channels."""
         for channel in self._channels:
             if hasattr(channel, "sync_group_metadata"):
-                await channel.sync_group_metadata(force)
+                await channel.sync_group_metadata(force=force)
 
     def channels(self) -> list[Channel]:
         """Return all channels."""

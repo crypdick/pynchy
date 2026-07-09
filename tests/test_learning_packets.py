@@ -65,14 +65,14 @@ def _group() -> WorkspaceProfile:
 def _message(
     content: str,
     *,
-    id: str = "msg-1",
+    message_id: str = "msg-1",
     message_type: str = "user",
     sender: str = "user@example.com",
     sender_name: str = "Alice",
     timestamp: str = "2026-07-07T10:00:00Z",
 ) -> NewMessage:
     return NewMessage(
-        id=id,
+        id=message_id,
         chat_jid="slack:C123",
         sender=sender,
         sender_name=sender_name,
@@ -91,7 +91,7 @@ def _pathological_messages(count: int = 30) -> list[NewMessage]:
     return [
         _message(
             f"long content {index} {'m' * 400}",
-            id=f"message-{index}-{'i' * 400}",
+            message_id=f"message-{index}-{'i' * 400}",
             sender_name=f"Sender {index} {'s' * 400}",
             timestamp=f"2026-07-07T10:00:{index:02d}.000Z",
         )
@@ -247,10 +247,10 @@ def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
 ) -> None:
     settings = _settings(tmp_path=tmp_path, packet_max_chars=120)
     messages = [
-        _message("this user message is much too long", id="msg-user"),
-        _message("host only", id="msg-host", message_type="host"),
-        _message("tool output", id="msg-tool", message_type="tool_result"),
-        _message("notice", id="msg-notice", sender="system_notice"),
+        _message("this user message is much too long", message_id="msg-user"),
+        _message("host only", message_id="msg-host", message_type="host"),
+        _message("tool output", message_id="msg-tool", message_type="tool_result"),
+        _message("notice", message_id="msg-notice", sender="system_notice"),
     ]
 
     with _patch_learning_settings(settings):
@@ -314,7 +314,7 @@ def test_build_packet_bounds_bursty_turn_as_one_packet(tmp_path: Path) -> None:
     messages = [
         _message(
             "message body " * 80,
-            id=f"msg-{index}-{'x' * 80}",
+            message_id=f"msg-{index}-{'x' * 80}",
             sender_name=f"Sender {index} {'y' * 80}",
             timestamp=f"2026-07-07T10:00:{index:02d}Z",
         )
@@ -424,8 +424,8 @@ def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) ->
 def test_packet_provenance_and_profile_come_from_group_configuration(tmp_path: Path) -> None:
     settings = _settings(tmp_path=tmp_path, packet_max_chars=200, profile="Research Lab")
     messages = [
-        _message("first", id="msg-1", timestamp="2026-07-07T10:00:00Z"),
-        _message("second", id="msg-2", timestamp="2026-07-07T10:00:01Z"),
+        _message("first", message_id="msg-1", timestamp="2026-07-07T10:00:00Z"),
+        _message("second", message_id="msg-2", timestamp="2026-07-07T10:00:01Z"),
     ]
 
     with _patch_learning_settings(settings):

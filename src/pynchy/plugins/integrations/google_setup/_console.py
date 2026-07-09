@@ -46,7 +46,13 @@ async def wait_for_login(page) -> None:
         await page.wait_for_timeout(2000)
 
 
-async def try_step(page, step_fn, fallback_msg: str, done_check=None, timeout: int = 60):
+async def try_step(
+    page,
+    step_fn,
+    fallback_msg: str,
+    done_check=None,
+    timeout: int = 60,
+) -> None:
     """Attempt an automated Console step; fall back to manual + noVNC."""
     try:
         await step_fn(page)
@@ -104,7 +110,7 @@ async def ensure_project(page, project_id: str) -> None:
     await page.wait_for_timeout(5000)
     await dismiss_modals(page)
 
-    async def _automate(p):
+    async def _automate(p) -> None:
         name_input = p.get_by_role("textbox").first
         await name_input.click()
         await name_input.fill(project_id)
@@ -157,7 +163,7 @@ async def ensure_api(page, project_id: str, api_id: str) -> None:
         logger.info("API already enabled (no Enable button found)", api=api_id)
         return
 
-    async def _automate(p):
+    async def _automate(p) -> None:
         btn = p.get_by_role("button", name=re.compile(r"^enable$", re.I))
         await btn.click()
         await p.wait_for_timeout(5000)
@@ -191,7 +197,7 @@ async def ensure_consent_screen(page, project_id: str) -> None:
         logger.info("OAuth consent screen already configured")
         return
 
-    async def _automate(p):
+    async def _automate(p) -> None:
         external = p.get_by_text("External", exact=False).first
         await external.click()
         await p.wait_for_timeout(500)
@@ -250,7 +256,7 @@ async def create_oauth_credentials(page, project_id: str) -> Path:
 
     dest = dl_dir / "gcp-oauth.keys.json"
 
-    async def _automate(p):
+    async def _automate(p) -> None:
         type_dropdown = p.locator("mat-select, [role='listbox'], [role='combobox']").first
         await type_dropdown.click()
         await p.wait_for_timeout(500)

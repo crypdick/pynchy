@@ -259,16 +259,25 @@ class TestTemporalSchedulerRuntime:
                 self.calls = []
 
             async def start_workflow(
-                self, workflow, *posargs, id, task_queue, id_reuse_policy, args=()
+                self,
+                workflow,
+                *posargs,
+                workflow_id=None,
+                task_queue,
+                id_reuse_policy,
+                args=(),
+                **kwargs,
             ):
                 assert len(posargs) <= 1
                 workflow_args = tuple(args)
                 assert not (posargs and workflow_args)
+                resolved_workflow_id = kwargs.get("id", workflow_id)
+                assert resolved_workflow_id is not None
                 self.calls.append(
                     {
                         "workflow": workflow,
                         "args": posargs or workflow_args,
-                        "id": id,
+                        "id": resolved_workflow_id,
                         "task_queue": task_queue,
                         "id_reuse_policy": id_reuse_policy,
                     }
@@ -297,10 +306,18 @@ class TestTemporalSchedulerRuntime:
 
         class FakeClient:
             async def start_workflow(
-                self, workflow, *posargs, id, task_queue, id_reuse_policy, args=()
+                self,
+                workflow,
+                *posargs,
+                workflow_id=None,
+                task_queue,
+                id_reuse_policy,
+                args=(),
+                **kwargs,
             ):
                 assert len(posargs) <= 1
                 assert not (posargs and args)
+                assert kwargs.get("id", workflow_id) is not None
 
         temporal_scheduler.reset_temporal_scheduler_status()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")

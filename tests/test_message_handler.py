@@ -110,7 +110,7 @@ def _make_group(
 def _make_message(
     content: str = "hello",
     *,
-    id: str = "msg-1",
+    message_id: str = "msg-1",
     chat_jid: str = "group@g.us",
     sender: str = "user@s.whatsapp.net",
     sender_name: str = "Alice",
@@ -118,7 +118,7 @@ def _make_message(
     is_from_me: bool | None = None,
 ) -> NewMessage:
     return NewMessage(
-        id=id,
+        id=message_id,
         chat_jid=chat_jid,
         sender=sender,
         sender_name=sender_name,
@@ -670,7 +670,7 @@ class TestProcessGroupMessages:
         group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.handle_streamed_output = AsyncMock(return_value=False)
-        msg = _make_message("hello", timestamp="new-ts", id="msg-42")
+        msg = _make_message("hello", timestamp="new-ts", message_id="msg-42")
 
         with (
             patch(_P_SETTINGS) as ms,
@@ -695,7 +695,7 @@ class TestProcessGroupMessages:
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.handle_streamed_output = AsyncMock(return_value=False)
         deps.processing_ack_emoji.return_value = "👀"
-        msg = _make_message("hello", timestamp="new-ts", id="msg-42")
+        msg = _make_message("hello", timestamp="new-ts", message_id="msg-42")
 
         with (
             patch(_P_SETTINGS) as ms,
@@ -717,7 +717,7 @@ class TestProcessGroupMessages:
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.handle_streamed_output = AsyncMock(return_value=False)
         deps.processing_ack_emoji.return_value = None
-        msg = _make_message("hello", timestamp="new-ts", id="msg-42")
+        msg = _make_message("hello", timestamp="new-ts", message_id="msg-42")
 
         with (
             patch(_P_SETTINGS) as ms,
@@ -763,14 +763,14 @@ class TestProcessGroupMessages:
 
         notice = _make_message(
             "[System Notice] Auto-rebased 1 commit(s) onto your worktree.",
-            id="notice-1",
+            message_id="notice-1",
             sender="system_notice",
             sender_name="System",
             timestamp="ts-1",
         )
         user_msg = _make_message(
             "hello",
-            id="msg-1",
+            message_id="msg-1",
             sender="user@s.whatsapp.net",
             sender_name="Alice",
             timestamp="ts-2",
@@ -817,7 +817,7 @@ class TestProcessGroupMessages:
         group = _make_group(is_admin=True)
         deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
 
-        msg = _make_message("hello", id="msg-42", timestamp="new-ts")
+        msg = _make_message("hello", message_id="msg-42", timestamp="new-ts")
 
         # run_agent must invoke the on_output callback so output_sent_to_user
         # is set to True inside process_group_messages.
@@ -1430,12 +1430,12 @@ class TestBtwNonInterruptingMessages:
 
         msg1 = _make_message(
             "do something urgent",
-            id="msg-1",
+            message_id="msg-1",
             timestamp="ts-1",
         )
         msg2 = _make_message(
             "btw also consider this",
-            id="msg-2",
+            message_id="msg-2",
             timestamp="ts-2",
         )
 
@@ -1606,14 +1606,14 @@ class TestBtwNonInterruptingMessages:
 
         notice = _make_message(
             "[System Notice] Auto-rebased 1 commit(s).",
-            id="notice-1",
+            message_id="notice-1",
             sender="system_notice",
             sender_name="System",
             timestamp="ts-1",
         )
         user_msg = _make_message(
             "hello",
-            id="msg-1",
+            message_id="msg-1",
             sender="user@s.whatsapp.net",
             sender_name="Alice",
             timestamp="ts-2",
@@ -1688,8 +1688,8 @@ class TestBtwNonInterruptingMessages:
         deps.queue.is_active_task.return_value = False
         deps.queue.send_message.return_value = False
 
-        msg1 = _make_message("hello", id="msg-1", timestamp="ts-1")
-        msg2 = _make_message("world", id="msg-2", timestamp="ts-2")
+        msg1 = _make_message("hello", message_id="msg-1", timestamp="ts-1")
+        msg2 = _make_message("world", message_id="msg-2", timestamp="ts-2")
 
         with (
             patch(_PR_SETTINGS, return_value=_loop_settings_mock()),

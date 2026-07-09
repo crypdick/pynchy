@@ -83,11 +83,11 @@ def _make_group(
 def _make_message(
     content: str = "hello",
     *,
-    id: str = "msg-1",
+    message_id: str = "msg-1",
     timestamp: str = "2024-01-01T00:00:01.000Z",
 ) -> NewMessage:
     return NewMessage(
-        id=id,
+        id=message_id,
         chat_jid="g@g.us",
         sender="user@s.whatsapp.net",
         sender_name="Alice",
@@ -121,7 +121,7 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
 ) -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
-    msg = _make_message("what should we remember?", id="msg-42", timestamp="new-ts")
+    msg = _make_message("what should we remember?", message_id="msg-42", timestamp="new-ts")
 
     async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
         if on_output:
@@ -163,7 +163,7 @@ async def test_enabled_learning_logs_capture_attempt(
 ) -> None:
     group = _make_group()
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
-    msg = _make_message("remember this", id="msg-42", timestamp="new-ts")
+    msg = _make_message("remember this", message_id="msg-42", timestamp="new-ts")
     caplog.set_level(logging.INFO)
 
     async def _run_agent(_group, _jid, _msgs, on_output=None, *_args, **_kwargs):
@@ -209,17 +209,17 @@ async def test_learning_review_packet_includes_follow_up_dispatched_during_activ
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": previous_cursor})
     initial = _make_message(
         "first question",
-        id="msg-initial",
+        message_id="msg-initial",
         timestamp="2026-07-07T10:00:01.000Z",
     )
     initial_tail = _make_message(
         "clarifying detail",
-        id="msg-initial-tail",
+        message_id="msg-initial-tail",
         timestamp="2026-07-07T10:00:02.000Z",
     )
     follow_up = _make_message(
         "more context",
-        id="msg-follow-up",
+        message_id="msg-follow-up",
         timestamp="2026-07-07T10:00:03.000Z",
     )
     settings = _settings_mock(
@@ -274,7 +274,7 @@ async def test_learning_review_is_skipped_when_expanded_fetch_fails(tmp_path: Pa
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     initial = _make_message(
         "first question",
-        id="msg-initial",
+        message_id="msg-initial",
         timestamp="2026-07-07T10:00:01Z",
     )
     follow_up_timestamp = "2026-07-07T10:00:02Z"
@@ -375,7 +375,7 @@ async def test_review_after_turn_false_skips_follow_up_expansion_and_learning_st
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     initial = _make_message(
         "first question",
-        id="msg-initial",
+        message_id="msg-initial",
         timestamp="2026-07-07T10:00:01Z",
     )
     follow_up_timestamp = "2026-07-07T10:00:02Z"
@@ -454,7 +454,7 @@ async def test_learning_disabled_skips_follow_up_expansion_and_learning_start(
     deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={"g@g.us": "old-ts"})
     initial = _make_message(
         "first question",
-        id="msg-initial",
+        message_id="msg-initial",
         timestamp="2026-07-07T10:00:01Z",
     )
     follow_up_timestamp = "2026-07-07T10:00:02Z"

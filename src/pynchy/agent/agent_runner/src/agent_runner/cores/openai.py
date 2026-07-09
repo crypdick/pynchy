@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
 
 from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
@@ -60,7 +60,10 @@ def _is_model_not_found(exc: Exception) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _make_shell_executor(cwd: str, before_tool_hooks: list[BeforeToolUseHook] | None = None):
+def _make_shell_executor(
+    cwd: str,
+    before_tool_hooks: list[BeforeToolUseHook] | None = None,
+) -> Callable[[Any], Awaitable[str]]:
     """Create a shell executor bound to a specific working directory.
 
     Args:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,7 +25,13 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import McpServerConfig, SdkPluginConfig, SystemPromptPreset
 
 from ..core import AgentCoreConfig, AgentEvent
-from ..hooks import AGNOSTIC_TO_CLAUDE, HookEvent, before_tool_use_roster, load_hooks
+from ..hooks import (
+    AGNOSTIC_TO_CLAUDE,
+    BeforeToolUseHook,
+    HookEvent,
+    before_tool_use_roster,
+    load_hooks,
+)
 from ..transcript_archive import archive_transcript
 from ._tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
@@ -40,7 +46,10 @@ def _log(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _create_pre_compact_hook():
+def _create_pre_compact_hook() -> Callable[
+    [dict[str, Any], str | None, HookContext],
+    Awaitable[dict[str, Any]],
+]:
     """Create a PreCompact hook that archives the transcript.
 
     The claude-cli core wires the same archival via a ``PreCompact`` command
@@ -66,7 +75,9 @@ def _create_pre_compact_hook():
 # ---------------------------------------------------------------------------
 
 
-def _wrap_before_tool_use(hook_fn):
+def _wrap_before_tool_use(
+    hook_fn: BeforeToolUseHook,
+) -> Callable[[dict[str, Any], str | None, HookContext], Awaitable[dict[str, Any]]]:
     """Wrap a BEFORE_TOOL_USE hook as a Claude SDK PreToolUse hook.
 
     Our agnostic hooks have signature (tool_name, tool_input) -> HookDecision.

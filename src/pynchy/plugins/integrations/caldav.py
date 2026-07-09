@@ -35,7 +35,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 _caldav_client_cache: dict[str, Any] = {}  # keyed by server name
 
 
-def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig):
+def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> Any:
     """Get or create a cached DAVClient for a named server."""
     import caldav
 
@@ -112,7 +112,11 @@ def _resolve_server(
     return server_name, server_cfg, cal_name
 
 
-def _resolve_calendar(server_name: str, server_cfg: CalDAVServerConfig, calendar_name: str | None):
+def _resolve_calendar(
+    server_name: str,
+    server_cfg: CalDAVServerConfig,
+    calendar_name: str | None,
+) -> Any:
     """Resolve a calendar object from a specific server.
 
     If calendar_name is None, returns the first visible calendar.
