@@ -29,26 +29,38 @@ def _stderr_line(message: str) -> None:
 
 
 def _run() -> None:
-    from dotenv import load_dotenv
+    from dotenv import (  # noqa: PLC0415, RUF100 - CLI entrypoint keeps heavy app imports lazy.
+        load_dotenv,
+    )
 
     load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
 
-    from pynchy.host.orchestrator.app import PynchyApp
+    from pynchy.host.orchestrator.app import (  # noqa: PLC0415, RUF100 - avoid importing the orchestrator for --help and other subcommands.
+        PynchyApp,
+    )
 
     app = PynchyApp()
     asyncio.run(app.run())
 
 
 def _tui(host: str) -> None:
-    from pynchy.plugins.channels.tui.client import run_tui
+    from pynchy.plugins.channels.tui.client import (  # noqa: PLC0415, RUF100 - TUI dependencies are only needed for --tui.
+        run_tui,
+    )
 
     run_tui(host)
 
 
 def _build() -> None:
-    from pynchy.config import get_settings
-    from pynchy.host.container_manager.cleanup import cleanup_runtime_builder
-    from pynchy.plugins.runtimes.detection import get_runtime
+    from pynchy.config import (  # noqa: PLC0415, RUF100 - build command loads settings only when invoked.
+        get_settings,
+    )
+    from pynchy.host.container_manager.cleanup import (  # noqa: PLC0415, RUF100 - runtime cleanup is build-command specific.
+        cleanup_runtime_builder,
+    )
+    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime probing is build-command specific.
+        get_runtime,
+    )
 
     s = get_settings()
     runtime = get_runtime()
@@ -71,10 +83,15 @@ def _build() -> None:
 
 
 def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> None:
-    from pynchy.config import get_settings
-    from pynchy.host.migration_backups import prune_migration_backups
+    from pynchy.config import (  # noqa: PLC0415, RUF100 - prune command loads settings only when invoked.
+        get_settings,
+    )
+    from pynchy.host.migration_backups import (  # noqa: PLC0415, RUF100 - prune implementation is command specific.
+        prune_migration_backups,
+    )
 
-    backups_dir = Path(path) if path else get_settings().project_root / "data" / "migration-backups"
+    project_root = get_settings().project_root
+    backups_dir = Path(path) if path else project_root / "data" / "migration-backups"
     result = prune_migration_backups(backups_dir, keep=keep, dry_run=not apply)
     action = "Removed" if apply else "Would remove"
 
