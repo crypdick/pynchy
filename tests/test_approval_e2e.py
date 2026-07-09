@@ -18,9 +18,11 @@ from conftest import NullIpcDeps, make_settings
 
 from pynchy import state
 from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security import gate
 from pynchy.host.container_manager.security.gate import create_gate
+from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 if TYPE_CHECKING:
@@ -185,8 +187,6 @@ class TestApprovalE2E:
         approval_settings,
         short_id: str,
     ) -> None:
-        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
-
         with patch(
             "pynchy.host.container_manager.security.approval.get_settings",
             return_value=approval_settings,
@@ -200,8 +200,6 @@ class TestApprovalE2E:
         approval_settings,
         mock_handler: AsyncMock,
     ) -> None:
-        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
-
         clear_plugin_handler_cache()
         with (
             patch(
@@ -341,8 +339,6 @@ class TestApprovalE2E:
         short_id = pending_data["short_id"]
 
         # Step 2: User denies
-        from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
-
         with patch(
             "pynchy.host.container_manager.security.approval.get_settings",
             return_value=approval_settings,
@@ -350,8 +346,6 @@ class TestApprovalE2E:
             await handle_approval_command(deps, "chat@g.us", "deny", short_id, "testuser")
 
         # Step 3: IPC handler processes denial
-        from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
-
         decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
         decision_files = list(decisions_dir.glob("*.json"))
 
