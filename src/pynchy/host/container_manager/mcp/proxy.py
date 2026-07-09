@@ -17,7 +17,7 @@ import json as _json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 from aiohttp import web
@@ -71,7 +71,7 @@ class _ProxyRequest:
 @dataclass(frozen=True)
 class _BackendForwardContext:
     session: aiohttp.ClientSession
-    request: Any
+    request: web.Request
     backend_url: str
     tail: str
     body: bytes
@@ -86,7 +86,7 @@ def create_proxy_app(
     *,
     trust_map: dict[str, dict[str, Any]] | None = None,
     approval_fn: ApprovalRequestFn | None = None,
-) -> Any:
+) -> object:
     """Create the aiohttp proxy application.
 
     Args:
@@ -113,15 +113,16 @@ def create_proxy_app(
     return app
 
 
-async def _start_http_session(app: Any) -> None:  # noqa: RUF029, RUF100 - aiohttp startup callbacks are async.
-    app[_STATE_KEY].http_session = aiohttp.ClientSession()
+async def _start_http_session(app: object) -> None:  # noqa: RUF029, RUF100 - aiohttp startup callbacks are async.
+    cast("web.Application", app)[_STATE_KEY].http_session = aiohttp.ClientSession()
 
 
-async def _cleanup_http_session(app: Any) -> None:
-    session = app[_STATE_KEY].http_session
+async def _cleanup_http_session(app: object) -> None:
+    web_app = cast("web.Application", app)
+    session = web_app[_STATE_KEY].http_session
     if session:
         await session.close()
-        app[_STATE_KEY].http_session = None
+        web_app[_STATE_KEY].http_session = None
 
 
 def _runner_port(runner: web.AppRunner) -> int:
@@ -133,7 +134,7 @@ def _runner_port(runner: web.AppRunner) -> int:
     return int(address[1])
 
 
-def _proxy_request(request: Any) -> Any:
+def _proxy_request(request: web.Request) -> _ProxyRequest | web.Response:
     try:
         invocation_ts = float(request.match_info["invocation_ts"])
     except (ValueError, TypeError):
@@ -147,7 +148,7 @@ def _proxy_request(request: Any) -> Any:
     )
 
 
-def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> Any:
+def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> str | web.Response:
     backend_url = state.instance_urls.get(proxy_request.instance_id)
     if backend_url is not None:
         return backend_url
@@ -157,7 +158,7 @@ def _backend_url(state: _ProxyState, proxy_request: _ProxyRequest) -> Any:
     )
 
 
-def _session_gate(proxy_request: _ProxyRequest) -> Any:
+def _session_gate(proxy_request: _ProxyRequest) -> SecurityGate | web.Response:
     gate = get_gate(proxy_request.group_folder, proxy_request.invocation_ts)
     if gate is not None:
         return gate
@@ -182,7 +183,7 @@ async def _maybe_gate_outbound_call(
     proxy_request: _ProxyRequest,
     gate: SecurityGate,
     rpc: dict[str, Any],
-) -> Any:
+) -> web.Response | None:
     if rpc.get("method") != "tools/call":
         return None
 
@@ -226,7 +227,7 @@ def _mcp_capability_id(instance_id: str, rpc: dict[str, Any]) -> str:
     return f"mcp.{instance_id}.{tool_name.strip()}"
 
 
-def _forwarded_headers(request: Any) -> dict[str, str]:
+def _forwarded_headers(request: web.Request) -> dict[str, str]:
     return {
         key: value
         for key, value in request.headers.items()
@@ -268,7 +269,7 @@ async def _backend_response(
 
 async def _forward_to_backend(
     context: _BackendForwardContext,
-) -> Any:
+) -> web.Response:
     try:
         return await _backend_response(context)
     except aiohttp.ClientError as exc:
@@ -276,7 +277,7 @@ async def _forward_to_backend(
         return web.json_response({"error": "MCP backend unavailable"}, status=502)
 
 
-async def _proxy_handler(request: Any) -> Any:
+async def _proxy_handler(request: web.Request) -> web.Response:
     """Route an MCP request through SecurityGate to the backend."""
     proxy_request = _proxy_request(request)
     if isinstance(proxy_request, web.Response):
@@ -320,7 +321,7 @@ async def _await_human_approval(
     instance_id: str,
     rpc: dict[str, Any],
     reason: str,
-) -> Any:
+) -> web.Response | None:
     """Block the HTTP connection until the human approves or denies.
 
     Returns a web.Response to send back to the client if denied/timed out,
@@ -341,7 +342,8 @@ async def _await_human_approval(
     request_id = str(uuid.uuid4())
     fut = register_mcp_proxy_approval(request_id)
 
-    tool_name = rpc.get("params", {}).get("name", instance_id)
+    raw_tool_name = rpc.get("params", {}).get("name")
+    tool_name = raw_tool_name if isinstance(raw_tool_name, str) else instance_id
     await state.approval_fn(group_folder, tool_name, rpc, request_id)
 
     logger.info(
