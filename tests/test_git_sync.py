@@ -21,6 +21,7 @@ from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import host_sync_worktree
 from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.host.git_ops.worktree import ensure_worktree
+from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -207,8 +208,6 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import WorkspaceProfile
-
         deps = self._make_deps(
             {
                 "jid-1@g.us": WorkspaceProfile(
@@ -250,8 +249,6 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "file2.txt")
         _git(project, "commit", "-m", "second change")
 
-        from pynchy.types import WorkspaceProfile
-
         deps = self._make_deps(
             {
                 "jid-1@g.us": WorkspaceProfile(
@@ -288,8 +285,6 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import WorkspaceProfile
-
         deps = self._make_deps(
             {
                 "jid-1@g.us": WorkspaceProfile(
@@ -322,8 +317,6 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
 
-        from pynchy.types import WorkspaceProfile
-
         deps = self._make_deps(
             {
                 "jid-1@g.us": WorkspaceProfile(
@@ -347,8 +340,6 @@ class TestHostNotifyWorktreeUpdates:
         """No notification when worktree is already current."""
         repo_ctx = git_env["repo_ctx"]
         ensure_worktree("agent-1", repo_ctx)
-
-        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
@@ -378,8 +369,6 @@ class TestHostNotifyWorktreeUpdates:
         (project / "new.txt").write_text("main update")
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
-
-        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
@@ -412,8 +401,6 @@ class TestHostNotifyWorktreeUpdates:
         (project / "new.txt").write_text("main update")
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
-
-        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
@@ -451,8 +438,6 @@ class TestHostNotifyWorktreeUpdates:
         _git(project, "add", "README.md")
         _git(project, "commit", "-m", "main edit README")
 
-        from pynchy.types import WorkspaceProfile
-
         deps = self._make_deps(
             {
                 "jid-1@g.us": WorkspaceProfile(
@@ -486,8 +471,6 @@ class TestHostNotifyWorktreeUpdates:
         (project / "new.txt").write_text("main update")
         _git(project, "add", "new.txt")
         _git(project, "commit", "-m", "advance main")
-
-        from pynchy.types import WorkspaceProfile
 
         deps = self._make_deps(
             {
