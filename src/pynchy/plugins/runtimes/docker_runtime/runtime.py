@@ -16,6 +16,18 @@ from pynchy.host.container_manager.labels import (
 )
 from pynchy.logger import logger
 
+_DOCKER_REQUIRED_BUT_NOT_RUNNING = (
+    "Docker is required but not running. Start with: sudo systemctl start docker"
+)
+_DOCKER_DESKTOP_REQUIRED_BUT_COULD_NOT_BE_STARTED = (
+    "Docker Desktop is required but could not be started. "
+    "Install from https://www.docker.com/products/docker-desktop/"
+)
+_DOCKER_DESKTOP_DID_NOT_BECOME_READY = (
+    "Docker Desktop was launched but the daemon did not become ready "
+    "within 60s. Check Docker Desktop for errors."
+)
+
 
 @dataclass(frozen=True)
 class RuntimeContainer:
@@ -77,9 +89,7 @@ class DockerContainerRuntime:
             if sys.platform == "darwin":
                 self._start_docker_desktop(exc)
             else:
-                raise RuntimeError(
-                    "Docker is required but not running. Start with: sudo systemctl start docker"
-                ) from exc
+                raise RuntimeError(_DOCKER_REQUIRED_BUT_NOT_RUNNING) from exc
 
     def list_running_containers(self, prefix: str = "pynchy-") -> list[str]:
         return [
@@ -102,8 +112,7 @@ class DockerContainerRuntime:
             )
         except (subprocess.CalledProcessError, FileNotFoundError) as exc:
             raise RuntimeError(
-                "Docker Desktop is required but could not be started. "
-                "Install from https://www.docker.com/products/docker-desktop/"
+                _DOCKER_DESKTOP_REQUIRED_BUT_COULD_NOT_BE_STARTED
             ) from exc
 
         for i in range(30):
@@ -121,10 +130,7 @@ class DockerContainerRuntime:
             else:
                 return
 
-        raise RuntimeError(
-            "Docker Desktop was launched but the daemon did not become ready "
-            "within 60s. Check Docker Desktop for errors."
-        ) from original_exc
+        raise RuntimeError(_DOCKER_DESKTOP_DID_NOT_BECOME_READY) from original_exc
 
     def list_containers(self, prefix: str = "pynchy-") -> list[RuntimeContainer]:
         result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
