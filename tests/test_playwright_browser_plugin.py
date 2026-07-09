@@ -26,6 +26,13 @@ class TestMcpServerSpec:
         port_idx = args.index("--port")
         assert args[port_idx + 1] == "{port}"
 
+    def test_host_is_loopback_only(self):
+        plugin = PlaywrightBrowserPlugin()
+        spec = plugin.pynchy_mcp_server_spec()
+        args = spec["args"]
+        host_idx = args.index("--host")
+        assert args[host_idx + 1] == "localhost"
+
     def test_browser_runs_headed_by_default(self, monkeypatch):
         monkeypatch.delenv("PYNCHY_BROWSER_HEADLESS", raising=False)
 

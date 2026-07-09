@@ -120,6 +120,32 @@ def test_oauth_exchange_rejects_non_https_endpoint_before_opening(
         google_oauth.exchange_code_for_tokens("code", "client-id", "client-secret")
 
 
+def test_oauth_callback_server_binds_to_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, int]] = []
+
+    class FakeServer(google_oauth.HTTPServer):
+        def __init__(self, server_address, _handler) -> None:
+            calls.append(server_address)
+
+        def serve_forever(self) -> None:
+            return None
+
+    class FakeThread:
+        def __init__(self, *, target, daemon: bool) -> None:
+            self._target = target
+            self.daemon = daemon
+
+        def start(self) -> None:
+            self._target()
+
+    monkeypatch.setattr(google_oauth, "HTTPServer", FakeServer)
+    monkeypatch.setattr(google_oauth.threading, "Thread", FakeThread)
+
+    google_oauth.start_callback_server()
+
+    assert calls == [(google_oauth.OAUTH_CALLBACK_HOST, google_oauth.OAUTH_CALLBACK_PORT)]
+
+
 def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -48,6 +48,8 @@ from ._output import (
     save_cell_images,
 )
 
+CONTAINER_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - notebook MCP/Jupyter run in Docker and must be reachable from sibling containers and Tailscale.
+
 # ---------------------------------------------------------------------------
 # CLI argument parsing (workspace kwargs arrive as --key value pairs)
 # ---------------------------------------------------------------------------
@@ -418,7 +420,7 @@ def _start_jupyterlab() -> None:
             sys.executable,
             "-m",
             "jupyterlab",
-            "--ip=0.0.0.0",
+            f"--ip={CONTAINER_BIND_HOST}",
             f"--port={ARGS.lab_port}",
             "--no-browser",
             f"--notebook-dir={NOTEBOOK_DIR}",
@@ -442,4 +444,4 @@ if __name__ == "__main__":
     print(f"Notebook directory: {NOTEBOOK_DIR}", flush=True)
     print(f"Workspace directory: {WORKSPACE_DIR}", flush=True)
 
-    mcp.run(transport="http", host="0.0.0.0", port=ARGS.port)
+    mcp.run(transport="http", host=CONTAINER_BIND_HOST, port=ARGS.port)

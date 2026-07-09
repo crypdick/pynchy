@@ -18,6 +18,7 @@ import pluggy
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 _BROWSER_MCP_PORT = 9100
+_BROWSER_MCP_HOST = "localhost"
 _TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
@@ -30,7 +31,7 @@ def _browser_mcp_args() -> list[str]:
             "--port",
             "{port}",
             "--host",
-            "0.0.0.0",
+            _BROWSER_MCP_HOST,
         ]
     )
     return args

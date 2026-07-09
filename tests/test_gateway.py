@@ -25,6 +25,7 @@ from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
 _GATEWAY_MOD = "pynchy.host.container_manager.gateway"
 _LITELLM_MOD = "pynchy.host.container_manager.gateway_litellm"
 _DOCKER_MOD = "pynchy.host.container_manager.docker"
+ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test data for intentional container-reachable gateway binds.
 
 _LITELLM_KWARGS = {
     "port": 4000,
@@ -493,16 +494,22 @@ class TestLiteLLMGatewayStart:
 
 class TestBuiltinGateway:
     def test_generates_ephemeral_key(self):
-        gw = BuiltinGateway(port=4010, host="0.0.0.0", container_host="host.docker.internal")
+        gw = BuiltinGateway(
+            port=4010, host=ALL_INTERFACE_BIND_HOST, container_host="host.docker.internal"
+        )
         assert gw.key.startswith("gw-")
         assert len(gw.key) > 20
 
     def test_base_url(self):
-        gw = BuiltinGateway(port=4010, host="0.0.0.0", container_host="host.docker.internal")
+        gw = BuiltinGateway(
+            port=4010, host=ALL_INTERFACE_BIND_HOST, container_host="host.docker.internal"
+        )
         assert gw.base_url == "http://host.docker.internal:4010"
 
     def test_has_provider_false_before_start(self):
-        gw = BuiltinGateway(port=4010, host="0.0.0.0", container_host="host.docker.internal")
+        gw = BuiltinGateway(
+            port=4010, host=ALL_INTERFACE_BIND_HOST, container_host="host.docker.internal"
+        )
         assert gw.has_provider("anthropic") is False
         assert gw.has_provider("openai") is False
 
@@ -512,7 +519,9 @@ class TestBuiltinGatewayAuthHeaders:
 
     @staticmethod
     def _make_gateway(provider: str) -> BuiltinGateway:
-        gw = BuiltinGateway(port=4010, host="0.0.0.0", container_host="host.docker.internal")
+        gw = BuiltinGateway(
+            port=4010, host=ALL_INTERFACE_BIND_HOST, container_host="host.docker.internal"
+        )
         gw._credentials = {
             provider: {"type": "api_key", "value": "sk-secret"},
         }
@@ -648,7 +657,7 @@ class TestGatewayModeSelection:
             gateway=GatewayConfig(
                 litellm_config=None,
                 port=4010,
-                host="0.0.0.0",
+                host=ALL_INTERFACE_BIND_HOST,
                 container_host="host.docker.internal",
             )
         )

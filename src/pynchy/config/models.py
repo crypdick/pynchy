@@ -78,6 +78,8 @@ ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
 ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
 ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
 
+CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - agent containers must reach the host gateway through the configured container_host.
+
 
 class _StrictModel(BaseModel):
     """Base for all config sub-models — reject unknown keys so typos fail loudly."""
@@ -145,7 +147,7 @@ class GatewayConfig(_StrictModel):
     """
 
     port: int = 4010  # set to 4000 when using litellm mode
-    host: str = "0.0.0.0"  # bind address
+    host: str = CONTAINER_REACHABLE_BIND_HOST  # bind address
     container_host: str = "host.docker.internal"  # hostname containers use to reach host
     litellm_config: str | None = None  # path to litellm_config.yaml; None = builtin mode
     litellm_image: str = "ghcr.io/berriai/litellm:main-latest"

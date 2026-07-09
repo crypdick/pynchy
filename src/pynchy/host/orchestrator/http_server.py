@@ -31,6 +31,7 @@ from pynchy.logger import logger
 from pynchy.types import NewMessage
 
 _start_time = time.monotonic()
+REMOTE_HTTP_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - documented Tailscale/firewall-gated API listener for remote clients.
 
 # Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
 deps_key: web.AppKey[HttpDeps] = web.AppKey("deps")
@@ -302,7 +303,7 @@ async def start_http_server(
     runner = web.AppRunner(app)
     await runner.setup()
     port = get_settings().server.port
-    site = web.TCPSite(runner, "0.0.0.0", port)
+    site = web.TCPSite(runner, REMOTE_HTTP_BIND_HOST, port)
     await site.start()
     logger.info("HTTP server listening", port=port)
     return runner

@@ -31,6 +31,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 DEFAULT_PORT = 8474
+LOCAL_MCP_BIND_HOST = "localhost"
 WORKSPACE_APP_KEY = web.AppKey("workspace", object)
 
 
@@ -428,7 +429,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", DEFAULT_PORT)))
     parser.add_argument("--workspace")
     args = parser.parse_args(argv)
-    web.run_app(build_app(workspace=args.workspace), host="0.0.0.0", port=args.port)
+    web.run_app(build_app(workspace=args.workspace), host=LOCAL_MCP_BIND_HOST, port=args.port)
 
 
 if __name__ == "__main__":

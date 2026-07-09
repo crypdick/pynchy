@@ -20,6 +20,8 @@ from pynchy.plugins.integrations.google_setup._paths import (
     credentials_path,
 )
 
+OAUTH_CALLBACK_HOST = "localhost"
+
 
 def parse_client_credentials(kp: Path) -> tuple[str, str]:
     """Extract client_id and client_secret from the GCP OAuth JSON."""
@@ -35,7 +37,7 @@ def build_auth_url(client_id: str, scopes: str) -> str:
     """Build the Google OAuth authorization URL."""
     params = {
         "client_id": client_id,
-        "redirect_uri": f"http://localhost:{OAUTH_CALLBACK_PORT}",
+        "redirect_uri": f"http://{OAUTH_CALLBACK_HOST}:{OAUTH_CALLBACK_PORT}",
         "response_type": "code",
         "scope": scopes,
         "access_type": "offline",
@@ -68,7 +70,7 @@ def start_callback_server() -> tuple[threading.Event, list[str], HTTPServer]:
         def log_message(self, *args: object) -> None:
             pass
 
-    server = HTTPServer(("0.0.0.0", OAUTH_CALLBACK_PORT), Handler)
+    server = HTTPServer((OAUTH_CALLBACK_HOST, OAUTH_CALLBACK_PORT), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return done, auth_codes, server
@@ -81,7 +83,7 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
             "code": code,
             "client_id": client_id,
             "client_secret": client_secret,
-            "redirect_uri": f"http://localhost:{OAUTH_CALLBACK_PORT}",
+            "redirect_uri": f"http://{OAUTH_CALLBACK_HOST}:{OAUTH_CALLBACK_PORT}",
             "grant_type": "authorization_code",
         }
     ).encode()

@@ -25,6 +25,8 @@ from pynchy.host.container_manager.mcp.resolution import (
     resolve_all_instances,
 )
 
+ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test fixture for pass-through MCP args that intentionally contain bind-all data.
+
 # ---------------------------------------------------------------------------
 # expand_arg_placeholders
 # ---------------------------------------------------------------------------
@@ -32,9 +34,9 @@ from pynchy.host.container_manager.mcp.resolution import (
 
 class TestExpandArgPlaceholders:
     def test_basic_substitution(self):
-        args = ["--port", "{port}", "--host", "0.0.0.0"]
+        args = ["--port", "{port}", "--host", ALL_INTERFACE_BIND_HOST]
         result = expand_arg_placeholders(args, {"port": "9100"})
-        assert result == ["--port", "9100", "--host", "0.0.0.0"]
+        assert result == ["--port", "9100", "--host", ALL_INTERFACE_BIND_HOST]
 
     def test_multiple_placeholders(self):
         args = ["--dir", "data/{workspace}/profiles", "--port", "{port}"]
@@ -42,9 +44,9 @@ class TestExpandArgPlaceholders:
         assert result == ["--dir", "data/research/profiles", "--port", "9101"]
 
     def test_no_op_passthrough(self):
-        args = ["--headless", "--host", "0.0.0.0"]
+        args = ["--headless", "--host", ALL_INTERFACE_BIND_HOST]
         result = expand_arg_placeholders(args, {"port": "9100"})
-        assert result == ["--headless", "--host", "0.0.0.0"]
+        assert result == ["--headless", "--host", ALL_INTERFACE_BIND_HOST]
 
     def test_missing_key_left_as_is(self):
         args = ["--dir", "{unknown}"]
