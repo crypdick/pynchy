@@ -9,6 +9,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from pynchy.host.container_manager.mcp.proxy import McpProxy, create_proxy_app
 from pynchy.host.container_manager.security import approval, gate
 from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import CopVerdict
@@ -72,8 +73,6 @@ async def mock_backend():
 class TestMcpProxyRouting:
     async def test_proxy_forwards_to_backend(self, mock_backend):
         """Proxy should forward requests to the correct backend."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
@@ -93,8 +92,6 @@ class TestMcpProxyRouting:
 
     async def test_proxy_404_unknown_instance(self):
         """Proxy should return 404 for unknown MCP instances."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         app = create_proxy_app({})
         client = TestClient(TestServer(app))
         await client.start_server()
@@ -107,8 +104,6 @@ class TestMcpProxyRouting:
 
     async def test_proxy_403_no_gate(self):
         """Proxy should return 403 when no SecurityGate exists for the session."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         app = create_proxy_app({"browser": "http://localhost:9999/mcp"})
         client = TestClient(TestServer(app))
         await client.start_server()
@@ -121,8 +116,6 @@ class TestMcpProxyRouting:
 
     async def test_proxy_502_backend_unavailable(self):
         """Proxy should return 502 when the backend is unreachable."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
@@ -142,8 +135,6 @@ class TestMcpProxyRouting:
 
     async def test_proxy_400_invalid_invocation_ts(self):
         """Proxy should return 400 for non-numeric invocation_ts."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         app = create_proxy_app({"browser": "http://localhost:9999/mcp"})
         client = TestClient(TestServer(app))
         await client.start_server()
@@ -163,8 +154,6 @@ class TestMcpProxyRouting:
 class TestMcpProxyFencing:
     async def test_public_source_response_is_fenced(self, mock_backend):
         """Responses from public_source=true servers should be fenced."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={
                 "browser": ServiceTrustConfig(
@@ -198,8 +187,6 @@ class TestMcpProxyFencing:
 
     async def test_non_public_source_not_fenced(self, mock_backend):
         """Responses from non-public_source servers should NOT be fenced."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
@@ -225,8 +212,6 @@ class TestMcpProxyFencing:
 
     async def test_cop_flagged_content_is_blocked(self, mock_backend):
         """When Cop flags content, it should be replaced with a warning."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         with patch(
             "pynchy.host.container_manager.mcp.proxy.inspect_inbound",
             new_callable=AsyncMock,
@@ -266,8 +251,6 @@ class TestMcpProxyFencing:
 
     async def test_fencing_sets_corruption_taint(self, mock_backend):
         """Reading from a public_source server should set corruption taint on the gate."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={
                 "browser": ServiceTrustConfig(
@@ -314,8 +297,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_forbidden_write_denied(self, mock_backend):
         """A tools/call to a service with dangerous_writes=forbidden should be denied."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"browser": ServiceTrustConfig(dangerous_writes="forbidden")}
         )
@@ -345,8 +326,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_capability_deny_blocks_specific_tool_before_backend(self, mock_backend):
         """A denied MCP capability should not reach the backend."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"email": _SAFE_TRUST},
             capabilities={"mcp.email.send": CapabilityRule(decision="deny")},
@@ -378,8 +357,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_capability_wildcard_needs_human_can_be_approved(self, mock_backend):
         """A wildcard MCP capability can require human approval."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"email": _SAFE_TRUST},
             capabilities={"mcp.email.*": CapabilityRule(decision="needs_human")},
@@ -416,8 +393,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_needs_human_blocks_and_approves(self, mock_backend):
         """A tools/call that needs_human should block until human approves."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"browser": ServiceTrustConfig(dangerous_writes=True)}
         )
@@ -459,8 +434,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_needs_human_blocks_and_denies(self, mock_backend):
         """A tools/call denied by human should return 403."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"browser": ServiceTrustConfig(dangerous_writes=True)}
         )
@@ -497,8 +470,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_needs_human_no_approval_fn_returns_403(self, mock_backend):
         """Without an approval_fn, needs_human should return 403 immediately."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"browser": ServiceTrustConfig(dangerous_writes=True)}
         )
@@ -528,8 +499,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_safe_write_allowed_through(self, mock_backend):
         """A tools/call to a fully-safe service should pass through."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
@@ -554,8 +523,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_non_tools_call_not_gated(self, mock_backend):
         """Non-tools/call MCP methods (e.g. resources/read) should not be write-gated."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(
             services={"browser": ServiceTrustConfig(dangerous_writes="forbidden")}
         )
@@ -582,8 +549,6 @@ class TestMcpProxyOutboundGating:
 
     async def test_malformed_json_body_passes_through(self, mock_backend):
         """Non-JSON request bodies should be forwarded without write gating."""
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
@@ -610,8 +575,6 @@ class TestMcpProxyOutboundGating:
 class TestMcpProxyLifecycle:
     async def test_start_and_stop(self):
         """McpProxy should start on a dynamic port and stop cleanly."""
-        from pynchy.host.container_manager.mcp.proxy import McpProxy
-
         proxy = McpProxy()
         port = await proxy.start({})
         assert port > 0
@@ -624,8 +587,6 @@ class TestMcpProxyLifecycle:
         Uses TestClient (in-process) instead of real TCP to avoid
         port-binding issues under pytest-xdist workers.
         """
-        from pynchy.host.container_manager.mcp.proxy import create_proxy_app
-
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
 
