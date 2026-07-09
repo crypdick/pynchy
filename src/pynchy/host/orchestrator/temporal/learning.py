@@ -45,7 +45,7 @@ async def run_learning_review(packet_payload: dict[str, Any]) -> str:
 
 
 async def _run_learning_review(packet: LearningPacket, deps: SchedulerDependencies) -> str:
-    async def run_agent_via_queue(*args: Any, **kwargs: Any) -> str:
+    async def run_agent_via_queue(*args: object, **kwargs: object) -> str:
         return await _run_agent_via_queue(deps, *args, **kwargs)
 
     return await _run_learning_review_agent(packet, run_agent_via_queue)
@@ -53,8 +53,8 @@ async def _run_learning_review(packet: LearningPacket, deps: SchedulerDependenci
 
 async def _run_agent_via_queue(
     deps: SchedulerDependencies,
-    *args: Any,
-    **kwargs: Any,
+    *args: object,
+    **kwargs: object,
 ) -> str:
     loop = asyncio.get_running_loop()
     result_future: asyncio.Future[str] = loop.create_future()
@@ -93,7 +93,7 @@ async def _run_agent_via_queue(
         raise
 
 
-def _learning_run_group_jid(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+def _learning_run_group_jid(args: tuple[object, ...], kwargs: dict[str, object]) -> str:
     if len(args) >= 2 and isinstance(args[1], str):
         return args[1]
 
