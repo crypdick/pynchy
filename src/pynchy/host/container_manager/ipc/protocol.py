@@ -21,6 +21,19 @@ from pynchy.types import ChatJid, ContainerConfig, GroupFolder
 
 IPC_SCHEMA_VERSION = 1
 
+UNKNOWN_SIGNAL_TYPE_MESSAGE = "Unknown signal type: {signal!r}"
+SIGNAL_PAYLOAD_KEYS_MESSAGE = (
+    "Signal {signal!r} contains unexpected payload keys: {extra_keys}. "
+    "Signals must be payload-free."
+)
+MISSING_ENVELOPE_FIELDS_MESSAGE = "Missing IPC request envelope fields: {fields}"
+UNSUPPORTED_SCHEMA_VERSION_MESSAGE = "Unsupported IPC request schema_version: {value!r}"
+UNKNOWN_REQUEST_KIND_MESSAGE = "Unknown IPC request kind: {kind!r}"
+NON_EMPTY_STRING_MESSAGE = "{label} must be a non-empty string"
+STRING_OR_NULL_MESSAGE = "{label} must be a string or null"
+PAYLOAD_OBJECT_MESSAGE = "IPC request envelope payload must be an object"
+INVALID_SIGNAL_TYPE_MESSAGE = "Not a valid signal type: {signal_type!r}"
+
 # Tier 1: Signal-only IPC types (no payload crosses the boundary)
 SIGNAL_TYPES = frozenset(
     {
@@ -84,15 +97,12 @@ def validate_signal(data: dict[str, Any]) -> str | None:
         return None
 
     if signal not in SIGNAL_TYPES:
-        raise ValueError(f"Unknown signal type: {signal!r}")
+        raise ValueError(UNKNOWN_SIGNAL_TYPE_MESSAGE.format(signal=signal))
 
     # Signals must not carry payload data beyond the signal field itself
     extra_keys = set(data.keys()) - {"signal", "timestamp"}
     if extra_keys:
-        raise ValueError(
-            f"Signal {signal!r} contains unexpected payload keys: {extra_keys}. "
-            "Signals must be payload-free."
-        )
+        raise ValueError(SIGNAL_PAYLOAD_KEYS_MESSAGE.format(signal=signal, extra_keys=extra_keys))
 
     return cast("str", signal)
 
@@ -204,26 +214,26 @@ def _require_envelope_fields(data: dict[str, Any]) -> None:
     }
     missing = sorted(required - set(data))
     if missing:
-        raise ValueError(f"Missing IPC request envelope fields: {', '.join(missing)}")
+        raise ValueError(MISSING_ENVELOPE_FIELDS_MESSAGE.format(fields=", ".join(missing)))
 
 
 def _envelope_schema_version(value: Any) -> int:
     if value != IPC_SCHEMA_VERSION:
-        raise ValueError(f"Unsupported IPC request schema_version: {value!r}")
+        raise ValueError(UNSUPPORTED_SCHEMA_VERSION_MESSAGE.format(value=value))
     return IPC_SCHEMA_VERSION
 
 
 def _request_kind(value: Any) -> str:
     kind = _required_string_field("IPC request envelope kind", value)
     if not _is_known_request_kind(kind):
-        raise ValueError(f"Unknown IPC request kind: {kind!r}")
+        raise ValueError(UNKNOWN_REQUEST_KIND_MESSAGE.format(kind=kind))
     return kind
 
 
 def _required_string_field(label: str, value: Any) -> str:
     if isinstance(value, str) and value:
         return value
-    raise ValueError(f"{label} must be a non-empty string")
+    raise ValueError(NON_EMPTY_STRING_MESSAGE.format(label=label))
 
 
 def _optional_string_field(label: str, value: Any) -> str | None:
@@ -231,13 +241,13 @@ def _optional_string_field(label: str, value: Any) -> str | None:
         return None
     if isinstance(value, str):
         return value
-    raise ValueError(f"{label} must be a string or null")
+    raise ValueError(STRING_OR_NULL_MESSAGE.format(label=label))
 
 
 def _payload_object(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return cast("dict[str, Any]", value)
-    raise ValueError("IPC request envelope payload must be an object")
+    raise ValueError(PAYLOAD_OBJECT_MESSAGE)
 
 
 def make_ipc_request(  # noqa: PLR0913, RUF100 - canonical envelope builder keeps transport fields explicit.
@@ -286,7 +296,7 @@ def make_signal(signal_type: str) -> dict[str, str]:
     This is the canonical format for signal-only IPC files.
     """
     if signal_type not in SIGNAL_TYPES:
-        raise ValueError(f"Not a valid signal type: {signal_type!r}")
+        raise ValueError(INVALID_SIGNAL_TYPE_MESSAGE.format(signal_type=signal_type))
     return {"signal": signal_type}
 
 
