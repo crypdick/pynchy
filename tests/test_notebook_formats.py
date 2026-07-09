@@ -6,6 +6,8 @@ No sys.argv patching needed — the submodules have no module-level side effects
 
 from __future__ import annotations
 
+import base64
+
 import nbformat
 import pytest
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
@@ -319,8 +321,6 @@ class TestOutputsForAgent:
         assert result[0]["text"] == "42"
 
     def test_image_without_path_shows_has_image(self):
-        import base64
-
         fake_png = base64.b64encode(b"fake image data").decode()
         outputs = [
             {
@@ -335,8 +335,6 @@ class TestOutputsForAgent:
         assert fake_png not in str(result)
 
     def test_image_with_path_shows_path(self):
-        import base64
-
         fake_png = base64.b64encode(b"fake image data").decode()
         outputs = [
             {
@@ -401,8 +399,6 @@ class TestSaveCellImages:
     """Tests for save_cell_images: extract PNG data and write to disk."""
 
     def test_saves_png_to_disk(self, tmp_path):
-        import base64
-
         png_data = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
         outputs = [
             {
@@ -430,8 +426,6 @@ class TestSaveCellImages:
         assert not (tmp_path / "test-nb_files").exists()
 
     def test_multiple_images_numbered(self, tmp_path):
-        import base64
-
         png1 = base64.b64encode(b"img1").decode()
         png2 = base64.b64encode(b"img2").decode()
         outputs = [
