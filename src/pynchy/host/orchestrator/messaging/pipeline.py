@@ -54,13 +54,6 @@ class MessageHandlerDeps(Protocol):
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
 
-    # Transient (not persisted): furthest message timestamp dispatched to the
-    # active container.  Distinct from last_agent_timestamp, which only advances
-    # on successful completion.  Used by the routing loop as the get_messages_since
-    # baseline so follow-up pipes don't re-include messages already being handled.
-    @property
-    def _dispatched_through(self) -> dict[str, str]: ...
-
     # The "seen" cursor for the polling loop (distinct from per-group agent cursors)
     last_timestamp: str
 
@@ -68,6 +61,12 @@ class MessageHandlerDeps(Protocol):
     def queue(self) -> GroupQueue: ...
 
     async def save_state(self) -> None: ...
+
+    def routing_cursor(self, chat_jid: str) -> str: ...
+
+    def mark_dispatched(self, chat_jid: str, timestamp: str) -> None: ...
+
+    def pop_dispatched(self, chat_jid: str, default: str) -> str: ...
 
     async def handle_context_reset(self, chat_jid: str, group: Group, timestamp: str) -> None: ...
 
@@ -325,7 +324,7 @@ def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str
     get_messages_since baseline so follow-up pipes don't re-include messages
     that are already being handled by the active container.
     """
-    deps._dispatched_through[chat_jid] = new_timestamp
+    deps.mark_dispatched(chat_jid, new_timestamp)
 
 
 async def _should_skip_batch(
@@ -418,7 +417,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
     """
     # Pop the dispatched marker; include any follow-ups piped while this
     # container was running (tracked by the routing loop via _mark_dispatched).
-    dispatched = request.deps._dispatched_through.pop(
+    dispatched = request.deps.pop_dispatched(
         request.chat_jid, request.missed_messages[-1].timestamp
     )
     final_cursor = max(request.missed_messages[-1].timestamp, dispatched)

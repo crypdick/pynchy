@@ -79,14 +79,7 @@ def _allowed_group_messages(
 
 
 def _routing_cursor(deps: MessageHandlerDeps, group_jid: str) -> str:
-    # Use the furthest of the processed cursor and the dispatched-but-not-yet-
-    # completed cursor.  When a container is active, _dispatched_through is
-    # ahead of last_agent_timestamp so follow-up pipes don't re-include the
-    # messages the container is already handling.
-    return max(
-        deps.last_agent_timestamp.get(group_jid, ""),
-        deps._dispatched_through.get(group_jid, ""),
-    )
+    return deps.routing_cursor(group_jid)
 
 
 async def _pending_messages_for_group(

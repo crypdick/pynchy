@@ -62,9 +62,22 @@ def _make_deps(
     deps = MagicMock(spec=MessageHandlerDeps)
     deps.workspaces = groups or {}
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
-    deps._dispatched_through = {}
+    dispatched_through = {}
     deps.last_timestamp = last_timestamp
     deps.channels = []  # empty by default; tests that need channel routing set this explicitly
+    deps.routing_cursor = MagicMock(
+        side_effect=lambda jid: max(
+            deps.last_agent_timestamp.get(jid, ""),
+            dispatched_through.get(jid, ""),
+        )
+    )
+    deps.mark_dispatched = MagicMock(
+        side_effect=lambda jid, timestamp: dispatched_through.__setitem__(jid, timestamp)
+    )
+    deps.pop_dispatched = MagicMock(
+        side_effect=lambda jid, default: dispatched_through.pop(jid, default)
+    )
+    deps.dispatched_timestamp = MagicMock(side_effect=lambda jid: dispatched_through.get(jid))
 
     # Async helpers
     deps.save_state = AsyncMock()
@@ -996,7 +1009,7 @@ def _observe_at_run(deps):
 
     async def _capture(*_args, **_kwargs):
         await asyncio.sleep(0)
-        observed["dispatched"] = deps._dispatched_through.get("g@g.us")
+        observed["dispatched"] = deps.dispatched_timestamp("g@g.us")
         observed["cursor"] = deps.last_agent_timestamp.get("g@g.us")
         observed["saves"] = deps.save_state.await_count
         return "success"

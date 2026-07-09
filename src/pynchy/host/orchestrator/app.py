@@ -94,6 +94,21 @@ class PynchyApp:
         """Return whether shutdown has started."""
         return self._shutting_down
 
+    def routing_cursor(self, chat_jid: str) -> str:
+        """Return the cursor used to fetch messages for routing."""
+        return max(
+            self.last_agent_timestamp.get(chat_jid, ""),
+            self._dispatched_through.get(chat_jid, ""),
+        )
+
+    def mark_dispatched(self, chat_jid: str, timestamp: str) -> None:
+        """Record the furthest message timestamp dispatched to an active container."""
+        self._dispatched_through[chat_jid] = timestamp
+
+    def pop_dispatched(self, chat_jid: str, default: str) -> str:
+        """Return and clear the in-memory dispatched timestamp for a chat."""
+        return self._dispatched_through.pop(chat_jid, default)
+
     # ------------------------------------------------------------------
     # State persistence
     # ------------------------------------------------------------------
