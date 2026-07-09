@@ -47,10 +47,10 @@ from pynchy.host.container_manager.snapshots import write_groups_snapshot, write
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.orchestrator.agent_runner import (
-    _session_model_mismatch,  # allow: private-test-imports
     PreContainerResult,
     build_admin_system_notices,
     build_container_input,
+    run_agent,
     session_tracking_output_handler,
 )
 from pynchy.types import (
@@ -1573,13 +1573,13 @@ class TestContainerInputAgentCoreConfig:
     """Test model configuration passed from host settings into agent cores."""
 
     @staticmethod
-    def _ctx() -> PreContainerResult:
+    def _ctx(session_id: str | None = None) -> PreContainerResult:
         return PreContainerResult(
             is_admin=False,
             repo_access=None,
             repo_accesses=[],
             system_prompt_append=None,
-            session_id=None,
+            session_id=session_id,
             system_notices=[],
             agent_core_module="agent_runner.cores.codex",
             agent_core_class="CodexCLIAgentCore",
@@ -1658,26 +1658,76 @@ class TestContainerInputAgentCoreConfig:
 
         assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
 
-    def test_codex_session_without_model_tag_mismatches_configured_model(self):
-        assert _session_model_mismatch(
-            "codex:019f47ec-2cc1-7920-84e7-64e85277a1ad",
-            {"model": "gpt-5.5"},
-        )
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("session_id", "should_reset"),
+        [
+            ("codex:019f47ec-2cc1-7920-84e7-64e85277a1ad", True),
+            ("codex:gpt-5.5:019f47ec-2cc1-7920-84e7-64e85277a1ad", False),
+            ("codex:gpt-5.6-sol:019f47ec-2cc1-7920-84e7-64e85277a1ad", True),
+            ("claude-session-1", False),
+        ],
+    )
+    async def test_run_agent_resets_only_incompatible_codex_sessions(
+        self, session_id: str, should_reset: bool
+    ):
+        from pynchy.config import AgentConfig
 
-    def test_codex_session_with_matching_model_tag_is_compatible(self):
-        assert not _session_model_mismatch(
-            "codex:gpt-5.5:019f47ec-2cc1-7920-84e7-64e85277a1ad",
-            {"model": "gpt-5.5"},
-        )
+        class _Deps:
+            def __init__(self) -> None:
+                self.sessions = {TEST_GROUP.folder: session_id}
+                self.session_cleared: set[str] = set()
+                self.workspaces: dict[str, WorkspaceProfile] = {}
+                self.queue = MagicMock()
+                self.plugin_manager = None
 
-    def test_codex_session_with_different_model_tag_mismatches(self):
-        assert _session_model_mismatch(
-            "codex:gpt-5.6-sol:019f47ec-2cc1-7920-84e7-64e85277a1ad",
-            {"model": "gpt-5.5"},
-        )
+            async def get_available_groups(self) -> list[dict[str, object]]:
+                return []
 
-    def test_non_codex_session_compatibility_is_not_model_gated(self):
-        assert not _session_model_mismatch("claude-session-1", {"model": "gpt-5.5"})
+            async def broadcast_agent_input(
+                self,
+                chat_jid: str,
+                messages: list[dict[str, object]],
+                *,
+                source: str = "user",
+            ) -> None:
+                return None
+
+        deps = _Deps()
+        ctx = self._ctx(session_id)
+        settings = make_settings(agent=AgentConfig(model="gpt-5.5"))
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch("pynchy.host.orchestrator.agent_runner.get_session", return_value=None),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._cold_start",
+                new_callable=AsyncMock,
+                return_value="success",
+            ) as cold_start,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.destroy_session",
+                new_callable=AsyncMock,
+            ) as destroy_session,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.clear_session",
+                new_callable=AsyncMock,
+            ) as clear_session,
+        ):
+            result = await run_agent(deps, TEST_GROUP, "chat", [])
+
+        assert result == "success"
+        cold_ctx = cold_start.await_args.args[4]
+        expected_session_id = None if should_reset else session_id
+        assert cold_ctx.session_id == expected_session_id
+        assert (TEST_GROUP.folder in deps.sessions) is not should_reset
+        assert destroy_session.await_count == int(should_reset)
+        assert clear_session.await_count == int(should_reset)
 
 
 class TestAgentRunnerPreContainerHelpers:
