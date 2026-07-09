@@ -22,7 +22,7 @@ from pynchy.types import ContainerOutput, GroupFolder, SessionId, WorkspaceProfi
 
 @dataclass
 class PreContainerResult:
-    """Values produced by _pre_container_setup, consumed by warm/cold/scheduled paths."""
+    """Values produced by pre_container_setup, consumed by warm/cold/scheduled paths."""
 
     is_admin: bool
     repo_access: str | None
@@ -38,7 +38,7 @@ class PreContainerResult:
 
 
 @dataclass(frozen=True)
-class _PreContainerSetupRequest:
+class PreContainerSetupRequest:
     deps: _PreflightDeps
     group: WorkspaceProfile
     chat_jid: str
@@ -81,10 +81,10 @@ def session_id_from_output(output: ContainerOutput) -> str | None:
     return session_id if isinstance(session_id, str) and session_id else None
 
 
-async def _pre_container_setup(request: _PreContainerSetupRequest) -> PreContainerResult:
+async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
     is_admin, repo_access, repo_accesses, system_prompt_append, session_id = (
-        _resolved_pre_container_context(
+        resolved_pre_container_context(
             request.deps,
             request.group.folder,
             is_admin=request.group.is_admin,
@@ -94,7 +94,7 @@ async def _pre_container_setup(request: _PreContainerSetupRequest) -> PreContain
     await request.deps.broadcast_agent_input(
         request.chat_jid, request.messages, source=request.input_source
     )
-    snapshot_ms = await _write_container_snapshots(
+    snapshot_ms = await write_container_snapshots(
         request.deps,
         request.group.folder,
         is_admin=is_admin,
@@ -102,7 +102,7 @@ async def _pre_container_setup(request: _PreContainerSetupRequest) -> PreContain
     wrapped_on_output = session_tracking_output_handler(
         request.deps, request.group.folder, request.on_output
     )
-    system_notices = _merged_system_notices(
+    system_notices = merged_system_notices(
         build_admin_system_notices(
             request.group.folder, is_admin=is_admin, repo_access=repo_access
         ),
@@ -128,7 +128,7 @@ async def _pre_container_setup(request: _PreContainerSetupRequest) -> PreContain
     )
 
 
-def _resolved_pre_container_context(
+def resolved_pre_container_context(
     deps: _PreflightDeps,
     group_folder: str,
     *,
@@ -150,7 +150,7 @@ def _resolved_pre_container_context(
     return is_admin, repo_access, repo_accesses, system_prompt_append, session_id
 
 
-async def _write_container_snapshots(
+async def write_container_snapshots(
     deps: _PreflightDeps,
     group_folder: str,
     *,
@@ -222,7 +222,7 @@ def build_admin_system_notices(
     return system_notices
 
 
-def _merged_system_notices(
+def merged_system_notices(
     system_notices: list[str],
     extra_system_notices: list[str] | None,
 ) -> list[str]:

@@ -39,12 +39,10 @@ if TYPE_CHECKING:
 
 
 PreContainerResult = _preflight.PreContainerResult
-_pre_container_setup = _preflight._pre_container_setup
-_resolved_pre_container_context = _preflight._resolved_pre_container_context
-_write_container_snapshots = _preflight._write_container_snapshots
+PreContainerSetupRequest = _preflight.PreContainerSetupRequest
+pre_container_setup = _preflight.pre_container_setup
 session_tracking_output_handler = _preflight.session_tracking_output_handler
 build_admin_system_notices = _preflight.build_admin_system_notices
-_merged_system_notices = _preflight._merged_system_notices
 session_id_from_output = _preflight.session_id_from_output
 
 _CODEX_SESSION_PREFIX = "codex:"
@@ -384,8 +382,8 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         await destroy_session(group.folder)
 
     # Pre-container setup is shared by all paths (warm, cold, scheduled).
-    ctx = await _pre_container_setup(
-        _preflight._PreContainerSetupRequest(
+    ctx = await pre_container_setup(
+        PreContainerSetupRequest(
             deps=deps,
             group=group,
             chat_jid=chat_jid,
