@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +11,10 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
+from pynchy.host.container_manager import orchestrator
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
+from pynchy.host.container_manager.mcp import litellm
+from pynchy.host.container_manager.mcp.manager import McpManager
 from pynchy.host.container_manager.mcp.proxy import McpProxy
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
 
@@ -67,8 +71,6 @@ class TestMcpManagerHasProxy:
 
     def test_init_creates_proxy(self, tmp_path):
         """McpManager.__init__ should create an McpProxy instance."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         settings = make_settings(data_dir=tmp_path)
         gateway = MagicMock(spec=LiteLLMGateway)
 
@@ -109,8 +111,6 @@ class TestLiteLLMSyncRuntimeTypes:
     @pytest.mark.asyncio
     async def test_sync_mcp_endpoints_accepts_real_gateway(self, tmp_path):
         """sync_mcp_endpoints should not crash resolving LiteLLMGateway."""
-        from pynchy.host.container_manager.mcp import litellm
-
         gateway = _make_gateway(tmp_path)
 
         def api_request(*_args, **_kwargs):
@@ -129,8 +129,6 @@ class TestLiteLLMSyncRuntimeTypes:
 class TestLiteLLMSyncEndpoints:
     @pytest.mark.asyncio
     async def test_sync_mcp_endpoints_deduplicates_and_deletes_stale_entries(self, tmp_path):
-        from pynchy.host.container_manager.mcp import litellm
-
         gateway = _make_gateway(tmp_path)
         calls: list[tuple[str, str, dict[str, object] | None]] = []
 
@@ -178,8 +176,6 @@ class TestLiteLLMSyncEndpoints:
 
     @pytest.mark.asyncio
     async def test_sync_mcp_endpoints_registers_missing_instance(self, tmp_path):
-        from pynchy.host.container_manager.mcp import litellm
-
         gateway = _make_gateway(tmp_path)
         calls: list[tuple[str, str, dict[str, object] | None]] = []
 
@@ -226,8 +222,6 @@ class TestGetDirectServerConfigsProxy:
 
     def test_includes_proxy_url(self):
         """Configs should contain the proxy URL pattern with group/ts/iid."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()
         mgr._proxy._port = 8080
@@ -250,8 +244,6 @@ class TestGetDirectServerConfigsProxy:
 
     def test_default_container_host_resolves_for_apple_runtime(self):
         """Apple Container needs the host gateway IP, not Docker's DNS name."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()
         mgr._proxy._port = 8080
@@ -275,8 +267,6 @@ class TestGetDirectServerConfigsProxy:
 
     def test_empty_when_no_proxy(self):
         """Should return empty list when proxy not started (port=0)."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()  # port=0 (not started)
         mgr._workspace_instances = {"test-ws": ["browser"]}
@@ -287,8 +277,6 @@ class TestGetDirectServerConfigsProxy:
 
     def test_empty_when_no_instances(self):
         """Should return empty list for unknown workspace."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()
         mgr._proxy._port = 8080
@@ -299,8 +287,6 @@ class TestGetDirectServerConfigsProxy:
 
     def test_skips_missing_instances(self):
         """Should skip instance IDs that don't exist in _instances dict."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()
         mgr._proxy._port = 8080
@@ -320,8 +306,6 @@ class TestGetDirectServerConfigsProxy:
 
     def test_accepts_invocation_ts_parameter(self):
         """get_direct_server_configs should accept invocation_ts parameter."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()
         mgr._proxy._port = 9090
@@ -346,8 +330,6 @@ class TestStopAllStopsProxy:
     @pytest.mark.asyncio
     async def test_stop_all_calls_proxy_stop(self):
         """stop_all() should call self._proxy.stop()."""
-        from pynchy.host.container_manager.mcp.manager import McpManager
-
         mgr = McpManager.__new__(McpManager)
         mgr._proxy = McpProxy()
         mgr._instances = {}
@@ -378,10 +360,6 @@ class TestOrchestratorPassesInvocationTs:
         This is a structural test -- we verify the specific call pattern
         ``get_direct_server_configs(..., invocation_ts=...)`` exists in the source.
         """
-        import inspect
-
-        from pynchy.host.container_manager import orchestrator
-
         source = inspect.getsource(orchestrator._spawn_container)
         assert "get_direct_server_configs" in source
         # The invocation_ts kwarg must appear in the get_direct_server_configs call
