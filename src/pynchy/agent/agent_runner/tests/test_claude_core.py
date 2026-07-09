@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 from agent_runner.core import AgentCoreConfig
@@ -22,27 +23,27 @@ def _core(session_id: str | None = None) -> ClaudeAgentCore:
     )
 
 
+@dataclass(slots=True)
 class _ThinkingBlock:
-    def __init__(self, thinking: str):
-        self.thinking = thinking
+    thinking: str
 
 
+@dataclass(slots=True)
 class _ToolUseBlock:
-    def __init__(self, name: str, tool_input):
-        self.name = name
-        self.input = tool_input
+    name: str
+    input: object
 
 
+@dataclass(slots=True)
 class _ToolResultBlock:
-    def __init__(self, tool_use_id: str, content, is_error: bool = False):
-        self.tool_use_id = tool_use_id
-        self.content = content
-        self.is_error = is_error
+    tool_use_id: str
+    content: object
+    is_error: bool = False
 
 
+@dataclass(slots=True)
 class _TextBlock:
-    def __init__(self, text: str):
-        self.text = text
+    text: str
 
 
 def test_system_event_updates_session_id():

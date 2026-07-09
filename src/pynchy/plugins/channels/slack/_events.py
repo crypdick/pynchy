@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -31,11 +32,11 @@ else:
     SlackChannel = object
 
 
+@dataclass(slots=True)
 class SlackEvents:
     """Inbound event ingestion for :class:`SlackChannel`."""
 
-    def __init__(self, channel: SlackChannel) -> None:
-        self._channel = channel
+    _channel: SlackChannel
 
     def _register_handlers(self) -> None:
         ch = self._channel

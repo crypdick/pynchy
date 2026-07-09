@@ -184,9 +184,10 @@ def expand_arg_placeholders(args: list[str], placeholders: dict[str, str]) -> li
     """
     expanded: list[str] = []
     for arg in args:
+        expanded_arg = arg
         for key, value in placeholders.items():
-            arg = arg.replace(f"{{{key}}}", value)
-        expanded.append(arg)
+            expanded_arg = expanded_arg.replace(f"{{{key}}}", value)
+        expanded.append(expanded_arg)
     return expanded
 
 

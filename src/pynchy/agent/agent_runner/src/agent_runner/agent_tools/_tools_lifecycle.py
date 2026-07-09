@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import random
+import secrets
 import time
 from pathlib import Path
 from typing import Any, NoReturn
@@ -31,7 +31,7 @@ from agent_runner.agent_tools._registry import tool, tool_error
     {"type": "object", "properties": {}},
 )
 async def _sync_worktree_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
-    request_id = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}"
+    request_id = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}"
     _ipc.write_request_file(
         "sync_worktree_to_main",
         {

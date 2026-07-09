@@ -8,6 +8,7 @@ history catch-up filtering) rather than the gateway glue in _lifecycle.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -87,10 +88,10 @@ class _FakeUser:
         return self.created_dm
 
 
+@dataclass(slots=True)
 class _FakeDiscordTextChannel:
-    def __init__(self, channel_id: int, name: str) -> None:
-        self.id = channel_id
-        self.name = name
+    id: int
+    name: str
 
 
 class _FakeDiscordUser:

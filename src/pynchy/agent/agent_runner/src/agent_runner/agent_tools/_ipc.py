@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-import random
+import secrets
 import time
 import uuid
 from datetime import UTC, datetime
@@ -27,7 +27,7 @@ def write_ipc_file(directory: Path, data: dict[str, Any]) -> str:
     """Write an IPC file atomically (temp file + rename)."""
     directory.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}.json"
+    filename = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}.json"
     filepath = directory / filename
 
     temp_path = filepath.with_suffix(".json.tmp")

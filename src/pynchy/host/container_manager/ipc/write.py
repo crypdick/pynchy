@@ -11,7 +11,7 @@ never sees a partially-written file.
 from __future__ import annotations
 
 import contextlib
-import random
+import secrets
 import time
 from pathlib import Path
 from typing import Any
@@ -34,7 +34,7 @@ def write_ipc_message(group_folder: str, text: str) -> None:
     never sees a partially-written file.
     """
     input_dir = _ipc_input_dir(group_folder)
-    filename = f"{int(time.time() * 1000)}-{random.randbytes(3).hex()}.json"
+    filename = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}.json"
     write_json_atomic(input_dir / filename, {"type": "message", "text": text})
 
 

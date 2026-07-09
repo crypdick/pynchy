@@ -207,11 +207,11 @@ def _scrub_model(obj: BaseModel) -> None:
             continue
 
         if isinstance(val, SecretStr):
-            object.__setattr__(obj, name, None)
+            setattr(obj, name, None)
         elif isinstance(val, BaseModel):
             _scrub_model(val)
         elif isinstance(val, str) and _CREDENTIAL_RE.search(val):
-            object.__setattr__(obj, name, "")
+            setattr(obj, name, "")
         elif isinstance(val, dict):
             for v in val.values():
                 if isinstance(v, BaseModel):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from collections.abc import AsyncIterator
@@ -178,6 +179,7 @@ class ClaudeAgentCore:
     def __init__(self, config: AgentCoreConfig) -> None:
         self.config = config
         self._client: ClaudeSDKClient | None = None
+        self._client_stack = contextlib.AsyncExitStack()
         self._session_id: str | None = config.session_id
 
     async def start(self) -> None:
@@ -222,7 +224,7 @@ class ClaudeAgentCore:
 
         # Create and enter client context
         self._client = ClaudeSDKClient(options)
-        await self._client.__aenter__()
+        await self._client_stack.enter_async_context(self._client)
 
     def _system_event(self, message: SystemMessage) -> AgentEvent:
         """Map a system message and update the session when initialized."""
@@ -334,7 +336,7 @@ class ClaudeAgentCore:
         """Clean up Claude SDK client."""
         if self._client is not None:
             try:
-                await self._client.__aexit__(None, None, None)
+                await self._client_stack.aclose()
             except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
                 _log(f"Error during client cleanup: {exc}")
             finally:

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import random
+import secrets
 import string
 from datetime import UTC, datetime
 from pathlib import Path
@@ -127,13 +127,13 @@ def generate_short_id(source_group: str) -> str:
             continue
 
     for _ in range(100):
-        candidate = "".join(random.choices(_SHORT_ID_ALPHABET, k=2))
+        candidate = "".join(secrets.choice(_SHORT_ID_ALPHABET) for _ in range(2))
         if candidate not in existing:
             return candidate
 
     # Extremely unlikely — 1296 pending approvals in one group.
     # Fall back to 3-char ID.
-    return "".join(random.choices(_SHORT_ID_ALPHABET, k=3))
+    return "".join(secrets.choice(_SHORT_ID_ALPHABET) for _ in range(3))
 
 
 # -- State operations ----------------------------------------------------------

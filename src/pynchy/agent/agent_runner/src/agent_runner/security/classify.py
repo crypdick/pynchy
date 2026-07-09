@@ -146,16 +146,16 @@ def _extract_tokens(command: str) -> list[str]:
     """
     segments = _SHELL_SPLIT.split(command)
     tokens: list[str] = []
-    for seg in segments:
-        seg = seg.strip()
-        if not seg:
+    for segment in segments:
+        stripped_segment = segment.strip()
+        if not stripped_segment:
             continue
         # Strip env var prefixes (e.g. LC_ALL=C before the real command).
-        seg = _ENV_PREFIX.sub("", seg).strip()
-        if not seg:
+        stripped_segment = _ENV_PREFIX.sub("", stripped_segment).strip()
+        if not stripped_segment:
             continue
         # First whitespace-delimited token is the command name.
-        parts = seg.split()
+        parts = stripped_segment.split()
         if parts:
             tokens.append(parts[0])
     return tokens

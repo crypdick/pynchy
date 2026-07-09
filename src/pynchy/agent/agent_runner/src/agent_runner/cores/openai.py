@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 from collections.abc import AsyncIterator, Callable
 from typing import Any, cast
@@ -297,7 +298,7 @@ class OpenAIAgentCore:
         self._model_fallback: str | None = None
         self._before_tool_hooks: list[BeforeToolUseHook] = []
         self._mcp_servers: list[MCPServer] = []
-        self._mcp_contexts: list[Any] = []
+        self._mcp_stack = contextlib.AsyncExitStack()
         previous = _normalize_response_id(config.session_id)
         self._previous_response_id: str | None = previous
         self._session_id: str | None = previous
@@ -345,43 +346,46 @@ class OpenAIAgentCore:
     async def start(self) -> None:
         """Initialize OpenAI Agent with tools and MCP servers."""
         _disable_tracing()
-        # Convert config.mcp_servers dict → MCPServer* instances
-        for name, spec in self.config.mcp_servers.items():
-            built = self._build_mcp_server(name, spec)
-            if built is not None:
-                self._mcp_servers.append(built)
+        try:
+            # Convert config.mcp_servers dict → MCPServer* instances
+            for name, spec in self.config.mcp_servers.items():
+                built = self._build_mcp_server(name, spec)
+                if built is not None:
+                    self._mcp_servers.append(built)
 
-        # Enter MCP server async contexts
-        for server in self._mcp_servers:
-            ctx = await server.__aenter__()
-            self._mcp_contexts.append(ctx)
+            # Enter MCP server async contexts
+            for server in self._mcp_servers:
+                await self._mcp_stack.enter_async_context(server)
 
-        # Build system instructions
-        instructions = (
-            "You are a helpful assistant running inside a container. "
-            "You have shell access and can edit files."
-        )
-        if self.config.system_prompt_append:
-            instructions += "\n\n" + self.config.system_prompt_append
+            # Build system instructions
+            instructions = (
+                "You are a helpful assistant running inside a container. "
+                "You have shell access and can edit files."
+            )
+            if self.config.system_prompt_append:
+                instructions += "\n\n" + self.config.system_prompt_append
 
-        model = self.config.extra.get("model", "openai/gpt-5.5")
-        self._model_primary = model
-        self._model_fallback = self.config.extra.get("fallback_model")
-        self._instructions = instructions
+            model = self.config.extra.get("model", "openai/gpt-5.5")
+            self._model_primary = model
+            self._model_fallback = self.config.extra.get("fallback_model")
+            self._instructions = instructions
 
-        # Build security hooks list via the shared single-source roster so this
-        # core enforces exactly the same gate as the Claude/claude-cli cores.
-        from agent_runner.hooks import before_tool_use_roster, load_hooks
+            # Build security hooks list via the shared single-source roster so this
+            # core enforces exactly the same gate as the Claude/claude-cli cores.
+            from agent_runner.hooks import before_tool_use_roster, load_hooks
 
-        self._before_tool_hooks = before_tool_use_roster(load_hooks(self.config.plugin_hooks))
+            self._before_tool_hooks = before_tool_use_roster(load_hooks(self.config.plugin_hooks))
 
-        _log(
-            f"Creating agent with model={self._model_primary}, "
-            f"fallback={self._model_fallback}, "
-            f"mcp_servers={len(self._mcp_servers)}, "
-            f"security_hooks={len(self._before_tool_hooks)}"
-        )
-        self._agent = self._make_agent(self._model_primary)
+            _log(
+                f"Creating agent with model={self._model_primary}, "
+                f"fallback={self._model_fallback}, "
+                f"mcp_servers={len(self._mcp_servers)}, "
+                f"security_hooks={len(self._before_tool_hooks)}"
+            )
+            self._agent = self._make_agent(self._model_primary)
+        except Exception:
+            await self._mcp_stack.aclose()
+            raise
 
     def _query_models(self) -> tuple[str, ...]:
         """Return the ordered model list for a query attempt."""
@@ -468,13 +472,11 @@ class OpenAIAgentCore:
 
     async def stop(self) -> None:
         """Clean up MCP server contexts."""
-        for server in reversed(self._mcp_servers):
-            try:
-                await server.__aexit__(None, None, None)
-            except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
-                _log(f"Error closing MCP server: {exc}")
+        try:
+            await self._mcp_stack.aclose()
+        except Exception as exc:  # allow: exception-handling — cleanup; logged via _log()
+            _log(f"Error closing MCP server: {exc}")
         self._mcp_servers.clear()
-        self._mcp_contexts.clear()
         self._agent = None
 
     @property

@@ -11,6 +11,7 @@ callbacks to it. It holds a back-reference to the channel to reach the live
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pynchy.logger import logger
@@ -28,11 +29,11 @@ else:
     SlackChannel = object
 
 
+@dataclass(slots=True)
 class SlackInteractions:
     """Interactive Block Kit callbacks for :class:`SlackChannel`."""
 
-    def __init__(self, channel: SlackChannel) -> None:
-        self._channel = channel
+    _channel: SlackChannel
 
     async def _finalize_decision(
         self,

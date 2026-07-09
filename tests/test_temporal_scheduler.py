@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -18,11 +20,11 @@ from pynchy.types import HostJob, ScheduledTask
 from pynchy.utils import ShellResult
 
 
+@dataclass
 class NullSchedulerDeps:
     """Structural fake for SchedulerDependencies."""
 
-    def __init__(self):
-        self.queue = GroupQueue()
+    queue: GroupQueue = field(default_factory=GroupQueue)
 
     def workspaces(self):
         return {}
@@ -122,18 +124,13 @@ def temporal_task() -> ScheduledTask:
 class TestTemporalSchedulerRuntime:
     @staticmethod
     def _capturing_worker(captured: dict[str, object]):
-        class FakeWorker:
-            def __init__(self, *args, workflows, activities, **kwargs):
-                captured["workflows"] = workflows
-                captured["activities"] = activities
+        @asynccontextmanager
+        async def fake_worker(*args, workflows, activities, **kwargs):
+            captured["workflows"] = workflows
+            captured["activities"] = activities
+            yield object()
 
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, _tb):
-                pass
-
-        return FakeWorker
+        return fake_worker
 
     @staticmethod
     def _assert_registered_temporal_workflows(
@@ -639,30 +636,23 @@ class TestTemporalSchedulerRuntime:
     async def test_worker_lifecycle_updates_running_status(self, monkeypatch):
         import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
-        class FakeWorker:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc, _tb):
-                return None
-
         async def fake_connect(*args, **kwargs):
             return object()
 
+        @asynccontextmanager
+        async def fake_worker(*args, **kwargs):
+            yield object()
+
         temporal_scheduler.reset_temporal_scheduler_status()
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
-        monkeypatch.setattr(temporal_scheduler, "Worker", FakeWorker)
+        monkeypatch.setattr(temporal_scheduler, "Worker", fake_worker)
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
         )
 
-        await runtime.__aenter__()
-        assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is True
+        async with runtime:
+            assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is True
 
-        await runtime.__aexit__(None, None, None)
         assert temporal_scheduler.get_temporal_scheduler_status()["worker_running"] is False
 
     @pytest.mark.asyncio
@@ -680,10 +670,8 @@ class TestTemporalSchedulerRuntime:
             deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
         )
 
-        await runtime.__aenter__()
-        self._assert_registered_temporal_workflows(captured, temporal_scheduler)
-
-        await runtime.__aexit__(None, None, None)
+        async with runtime:
+            self._assert_registered_temporal_workflows(captured, temporal_scheduler)
 
     @pytest.mark.asyncio
     async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch):
@@ -704,7 +692,8 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fail_connect)
 
         with pytest.raises(RuntimeError, match="temporal unavailable"):
-            await runtime.__aenter__()
+            async with runtime:
+                pass
 
         with pytest.raises(RuntimeError, match="dependencies are not bound"):
             temporal_scheduler._require_scheduler_deps()

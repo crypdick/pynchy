@@ -166,8 +166,8 @@ def _parse_schema_columns(schema: str) -> dict[str, list[tuple[str, str]]]:
         table = match.group(1)
         body = match.group(2)
         cols: list[tuple[str, str]] = []
-        for line in body.split("\n"):
-            line = line.strip().rstrip(",")
+        for raw_line in body.split("\n"):
+            line = raw_line.strip().rstrip(",")
             if not line or line.startswith("--"):
                 continue
             # Skip constraints (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK, INDEX)
