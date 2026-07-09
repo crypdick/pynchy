@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pynchy.config.models import WorkspaceConfig
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
@@ -272,8 +273,6 @@ class TestCheckDeployContinuation:
         )
 
         # Patch load_workspace_config: periodic for code-improver, non-periodic for others
-        from pynchy.config.models import WorkspaceConfig
-
         def mock_load(folder):
             if folder == "code-improver":
                 return WorkspaceConfig(schedule="0 */1 * * *", prompt="Run task.")
@@ -323,8 +322,6 @@ class TestCheckDeployContinuation:
             "pynchy.host.orchestrator.startup_handler.get_settings",
             type("S", (), {"data_dir": tmp_path}),
         )
-
-        from pynchy.config.models import WorkspaceConfig
 
         monkeypatch.setattr(
             "pynchy.host.orchestrator.workspace_config.load_workspace_config",
