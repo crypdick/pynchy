@@ -12,12 +12,23 @@ from uuid import uuid4
 
 import pytest
 from conftest import make_settings
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 
+import pynchy.host.orchestrator.temporal.channel_reconciliation as temporal_channel_reconciliation
+import pynchy.host.orchestrator.temporal.deploy as temporal_deploy
+import pynchy.host.orchestrator.temporal.host_jobs as temporal_host_jobs
+import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
+import pynchy.host.orchestrator.temporal.learning as temporal_learning
+import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
+import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
 from pynchy.config import CronJobConfig, ProfileConfig, RepoConfig, SchedulerConfig, WorkspaceConfig
 from pynchy.config.models import ReposConfig
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.deploy import BuildResult
 from pynchy.types import HostJob, ScheduledTask
 from pynchy.utils import ShellResult
 
@@ -153,22 +164,13 @@ class TestTemporalSchedulerRuntime:
     def _assert_registered_temporal_workflows(
         captured: dict[str, object], temporal_scheduler
     ) -> None:
-        from pynchy.host.orchestrator.temporal.workflows import (
-            ChannelReconciliationWorkflow,
-            DeployWorkflow,
-            ExternalGitSyncWorkflow,
-            HostGitSyncWorkflow,
-            InteractiveMessageWorkflow,
-            LearningReviewWorkflow,
-        )
-
         assert {
-            InteractiveMessageWorkflow,
-            LearningReviewWorkflow,
-            DeployWorkflow,
-            HostGitSyncWorkflow,
-            ExternalGitSyncWorkflow,
-            ChannelReconciliationWorkflow,
+            temporal_workflows.InteractiveMessageWorkflow,
+            temporal_workflows.LearningReviewWorkflow,
+            temporal_workflows.DeployWorkflow,
+            temporal_workflows.HostGitSyncWorkflow,
+            temporal_workflows.ExternalGitSyncWorkflow,
+            temporal_workflows.ChannelReconciliationWorkflow,
         }.issubset(set(captured["workflows"]))
         assert {
             temporal_scheduler.run_interactive_message_turn,
@@ -207,7 +209,6 @@ class TestTemporalSchedulerRuntime:
         assert status["last_result"] == result
 
     def test_scheduler_status_defaults_to_stopped(self):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         temporal_scheduler.reset_temporal_scheduler_status()
 
@@ -224,7 +225,6 @@ class TestTemporalSchedulerRuntime:
         }
 
     def test_scheduler_workflow_runner_passes_through_workflow_module(self):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         runner = temporal_scheduler.scheduler_workflow_runner()
 
@@ -233,44 +233,32 @@ class TestTemporalSchedulerRuntime:
         )
 
     def test_agent_task_workflow_id_is_stable_and_temporal_safe(self, temporal_task):
-        from pynchy.host.orchestrator.temporal.scheduler import agent_task_workflow_id
-
-        workflow_id = agent_task_workflow_id(temporal_task)
+        workflow_id = temporal_scheduler.agent_task_workflow_id(temporal_task)
 
         assert workflow_id == "pynchy-agent-task-task-with-spaces-2026-07-07T09-00-00-00-00"
 
     def test_agent_task_schedule_id_is_stable_and_temporal_safe(self, temporal_task):
-        from pynchy.host.orchestrator.temporal.scheduler import agent_task_schedule_id
-
-        schedule_id = agent_task_schedule_id(temporal_task)
+        schedule_id = temporal_scheduler.agent_task_schedule_id(temporal_task)
 
         assert schedule_id == "pynchy-agent-schedule-task-with-spaces"
 
     def test_learning_review_workflow_id_is_stable_and_temporal_safe(self, learning_packet):
-        from pynchy.host.orchestrator.temporal.scheduler import learning_review_workflow_id
-
-        workflow_id = learning_review_workflow_id(learning_packet)
+        workflow_id = temporal_scheduler.learning_review_workflow_id(learning_packet)
 
         assert workflow_id == "pynchy-learning-review-learning-job-one"
 
     def test_interactive_message_workflow_id_is_stable_and_temporal_safe(self):
-        from pynchy.host.orchestrator.temporal.scheduler import interactive_message_workflow_id
-
-        workflow_id = interactive_message_workflow_id("slack:C123/with spaces")
+        workflow_id = temporal_scheduler.interactive_message_workflow_id("slack:C123/with spaces")
 
         assert workflow_id == "pynchy-interactive-turn-slack-C123-with-spaces"
 
     def test_deploy_workflow_id_is_stable_and_temporal_safe(self):
-        from pynchy.host.orchestrator.temporal.scheduler import deploy_workflow_id
-
-        workflow_id = deploy_workflow_id("abc1234/with spaces")
+        workflow_id = temporal_scheduler.deploy_workflow_id("abc1234/with spaces")
 
         assert workflow_id == "pynchy-deploy-abc1234-with-spaces"
 
     @pytest.mark.asyncio
     async def test_start_scheduled_agent_task_uses_configured_task_queue(self, temporal_task):
-        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
-
         class FakeClient:
             def __init__(self):
                 self.calls = []
@@ -305,7 +293,9 @@ class TestTemporalSchedulerRuntime:
             temporal_namespace="default",
             temporal_task_queue="pynchy-test",
         )
-        runtime = TemporalSchedulerRuntime(deps=NullSchedulerDeps(), scheduler_config=scheduler)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=scheduler
+        )
         runtime.client = FakeClient()
 
         await runtime.start_scheduled_agent_task(temporal_task)
@@ -319,7 +309,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_start_scheduled_agent_task_updates_status(self, temporal_task):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         class FakeClient:
             async def start_workflow(
@@ -356,19 +345,18 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_start_learning_review_starts_temporal_workflow(self, learning_packet):
-        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
-        from pynchy.host.orchestrator.temporal.workflows import LearningReviewWorkflow
-
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
-        runtime = TemporalSchedulerRuntime(deps=NullSchedulerDeps(), scheduler_config=scheduler)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=scheduler
+        )
         runtime.client = client
 
         await runtime.start_learning_review(learning_packet)
 
         assert len(client.started_workflows) == 1
         workflow, args, kwargs = client.started_workflows[0]
-        assert workflow == LearningReviewWorkflow.run
+        assert workflow == temporal_workflows.LearningReviewWorkflow.run
         assert args == (packet_to_payload(learning_packet), 3)
         assert kwargs["id"] == "pynchy-learning-review-learning-job-one"
         assert kwargs["task_queue"] == "pynchy-test"
@@ -376,19 +364,18 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_start_interactive_message_turn_starts_temporal_workflow(self):
-        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
-        from pynchy.host.orchestrator.temporal.workflows import InteractiveMessageWorkflow
-
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
-        runtime = TemporalSchedulerRuntime(deps=NullSchedulerDeps(), scheduler_config=scheduler)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=scheduler
+        )
         runtime.client = client
 
         await runtime.start_interactive_message_turn("slack:C123")
 
         assert len(client.started_workflows) == 1
         workflow, args, kwargs = client.started_workflows[0]
-        assert workflow == InteractiveMessageWorkflow.run
+        assert workflow == temporal_workflows.InteractiveMessageWorkflow.run
         assert args == ("slack:C123", 6, 5.0)
         assert kwargs["id"] == "pynchy-interactive-turn-slack-C123"
         assert kwargs["task_queue"] == "pynchy-test"
@@ -396,14 +383,7 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_start_deploy_starts_temporal_workflow(self):
-        from pynchy.host.orchestrator.temporal.deploy import (
-            DeployRequest,
-            deploy_request_to_payload,
-        )
-        from pynchy.host.orchestrator.temporal.scheduler import TemporalSchedulerRuntime
-        from pynchy.host.orchestrator.temporal.workflows import DeployWorkflow
-
-        request = DeployRequest(
+        request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="abc123",
             previous_sha="def456",
@@ -413,15 +393,17 @@ class TestTemporalSchedulerRuntime:
         )
         client = FakeScheduleClient()
         scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
-        runtime = TemporalSchedulerRuntime(deps=NullSchedulerDeps(), scheduler_config=scheduler)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=scheduler
+        )
         runtime.client = client
 
         await runtime.start_deploy(request)
 
         assert len(client.started_workflows) == 1
         workflow, args, kwargs = client.started_workflows[0]
-        assert workflow == DeployWorkflow.run
-        assert args == (deploy_request_to_payload(request),)
+        assert workflow == temporal_workflows.DeployWorkflow.run
+        assert args == (temporal_deploy.deploy_request_to_payload(request),)
         assert kwargs["id"] == "pynchy-deploy-abc123"
         assert kwargs["task_queue"] == "pynchy-test"
         assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE"
@@ -430,8 +412,6 @@ class TestTemporalSchedulerRuntime:
     async def test_reconcile_creates_temporal_schedule_for_recurring_agent_task(
         self, monkeypatch, temporal_task
     ):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
@@ -466,10 +446,6 @@ class TestTemporalSchedulerRuntime:
     async def test_reconcile_starts_once_agent_task_as_delayed_workflow(
         self, monkeypatch, temporal_task
     ):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
-        from pynchy.host.orchestrator.temporal.workflows import ScheduledAgentTaskWorkflow
-
         temporal_task.schedule_type = "once"
         temporal_task.schedule_value = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
         temporal_task.next_run = temporal_task.schedule_value
@@ -495,7 +471,7 @@ class TestTemporalSchedulerRuntime:
         )
         assert len(client.started_workflows) == 1
         workflow, args, kwargs = client.started_workflows[0]
-        assert workflow == ScheduledAgentTaskWorkflow.run
+        assert workflow == temporal_workflows.ScheduledAgentTaskWorkflow.run
         assert args == (temporal_task.id,)
         assert kwargs["id"].startswith("pynchy-agent-task-task-with-spaces-")
         assert kwargs["task_queue"] == "pynchy-test"
@@ -503,10 +479,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_reconcile_starts_once_database_host_job_as_delayed_workflow(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
-        from pynchy.host.orchestrator.temporal.workflows import DatabaseHostJobWorkflow
-
         due_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
         host_job = HostJob(
             id="host/job one",
@@ -537,7 +509,7 @@ class TestTemporalSchedulerRuntime:
 
         assert len(client.started_workflows) == 1
         workflow, args, kwargs = client.started_workflows[0]
-        assert workflow == DatabaseHostJobWorkflow.run
+        assert workflow == temporal_workflows.DatabaseHostJobWorkflow.run
         assert args == (host_job.id,)
         assert kwargs["id"].startswith("pynchy-host-job-host-job-one-")
         assert kwargs["task_queue"] == "pynchy-test"
@@ -545,8 +517,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_database_host_job(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 
         host_job = HostJob(
             id="host/job one",
@@ -583,8 +553,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_config_cron_job(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
@@ -618,7 +586,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_quiet_success_config_host_job_suppresses_success_output_log(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.host_jobs as temporal_host_jobs
 
         settings = make_settings(
             cron_jobs={
@@ -648,8 +615,6 @@ class TestTemporalSchedulerRuntime:
     async def test_reconcile_creates_temporal_schedules_for_git_sync_and_channel_reconcile(
         self, monkeypatch, tmp_path
     ):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
@@ -691,8 +656,6 @@ class TestTemporalSchedulerRuntime:
     async def test_reconcile_uses_flat_host_repo_root_for_external_sync_detection(
         self, monkeypatch, tmp_path
     ):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
@@ -721,8 +684,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_reconcile_accepts_awaitable_schedule_list(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 
         client = AwaitableScheduleListClient()
         stale_schedule_id = "pynchy-agent-schedule-stale"
@@ -743,7 +704,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_worker_lifecycle_updates_running_status(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         def fake_connect(*args, **kwargs):
             return asyncio.sleep(0, result=object())
@@ -766,7 +726,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_worker_registers_temporal_orchestration_workflows(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         captured = {}
 
@@ -784,7 +743,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         def fail_connect(*args, **kwargs):
             raise RuntimeError(TEMPORAL_UNAVAILABLE_MESSAGE)
@@ -815,7 +773,6 @@ class TestTemporalSchedulerRuntime:
     async def test_run_scheduled_agent_activity_uses_shared_runner(
         self, monkeypatch, temporal_task
     ):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         deps = NullSchedulerDeps()
         called = {}
@@ -850,8 +807,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_learning_review_activity_uses_bound_deps(self, monkeypatch, learning_packet):
-        import pynchy.host.orchestrator.temporal.learning as temporal_learning
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         deps = NullSchedulerDeps()
         called = {}
@@ -881,8 +836,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_interactive_message_activity_uses_bound_deps(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         deps = NullSchedulerDeps()
         called = {}
@@ -914,8 +867,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_interactive_message_activity_retries_unhandled_turn(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         def fake_process_message_turn(_runner_deps, _chat_jid):
             return asyncio.sleep(0, result=False)
@@ -930,15 +881,10 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_builds_then_finalizes(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.deploy as temporal_deploy
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        from pynchy.host.orchestrator.deploy import BuildResult
-        from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-
         deps = NullSchedulerDeps()
         deps.broadcast_host_message = AsyncMock()
         finalize_deploy = AsyncMock()
-        request = DeployRequest(
+        request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="new-sha",
             previous_sha="old-sha",
@@ -977,15 +923,10 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_reports_build_failure(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.deploy as temporal_deploy
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        from pynchy.host.orchestrator.deploy import BuildResult
-        from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-
         deps = NullSchedulerDeps()
         deps.broadcast_host_message = AsyncMock()
         finalize_deploy = AsyncMock()
-        request = DeployRequest(
+        request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="new-sha",
             previous_sha="old-sha",
@@ -1024,9 +965,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_channel_reconciliation_activity_uses_bound_deps(self, monkeypatch):
-        import pynchy.host.orchestrator.temporal.channel_reconciliation as temporal_channels
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-
         deps = NullSchedulerDeps()
         called = {}
 
@@ -1035,7 +973,7 @@ class TestTemporalSchedulerRuntime:
             return asyncio.sleep(0, result=None)
 
         monkeypatch.setattr(
-            temporal_channels,
+            temporal_channel_reconciliation,
             "reconcile_all_channels",
             fake_reconcile_all_channels,
         )
@@ -1047,7 +985,7 @@ class TestTemporalSchedulerRuntime:
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
 
-        result = await temporal_channels.run_channel_reconciliation()
+        result = await temporal_channel_reconciliation.run_channel_reconciliation()
 
         assert result == "completed"
         assert called == {"deps": deps}
@@ -1058,7 +996,6 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         temporal_task.status = "paused"
 
@@ -1089,7 +1026,6 @@ class TestTemporalSchedulerRuntime:
     async def test_run_scheduled_agent_activity_retries_failed_runner(
         self, monkeypatch, temporal_task
     ):
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 
         def fake_get_task_by_id(task_id: str):
             return asyncio.sleep(0, result=temporal_task)
@@ -1115,12 +1051,6 @@ class TestTemporalSchedulerRuntime:
         self, monkeypatch, temporal_task
     ):
         """Temporal can run the Pynchy workflow and activity path end to end."""
-        from temporalio.testing import WorkflowEnvironment
-        from temporalio.worker import Worker
-
-        import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
-        from pynchy.host.orchestrator.temporal.workflows import ScheduledAgentTaskWorkflow
-
         deps = NullSchedulerDeps()
         called = {}
         task_queue = f"pynchy-temporal-test-{uuid4()}"
@@ -1142,12 +1072,12 @@ class TestTemporalSchedulerRuntime:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
-                workflows=[ScheduledAgentTaskWorkflow],
+                workflows=[temporal_workflows.ScheduledAgentTaskWorkflow],
                 activities=[temporal_scheduler.run_scheduled_agent_task],
                 workflow_runner=temporal_scheduler.scheduler_workflow_runner(),
             ):
                 result = await env.client.execute_workflow(
-                    ScheduledAgentTaskWorkflow.run,
+                    temporal_workflows.ScheduledAgentTaskWorkflow.run,
                     temporal_task.id,
                     id=f"pynchy-temporal-test-{uuid4()}",
                     task_queue=task_queue,
