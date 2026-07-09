@@ -2,6 +2,16 @@
 
 Add external tool servers to pynchy using the [Model Context Protocol](https://modelcontextprotocol.io/). MCP servers give agents tools beyond the built-ins — Slack, Playwright, databases, or any service with an MCP server.
 
+## Built-in browser server
+
+Pynchy ships a built-in `browser` MCP server backed by `@playwright/mcp`. It
+runs as a host subprocess so browser windows appear on the host desktop. The
+built-in browser is headed by default, which matches modern anti-bot reality
+better than forcing Playwright's headless mode.
+
+Set `PYNCHY_BROWSER_HEADLESS=true` in the host environment only when the host has
+no display or you deliberately want the older headless behavior.
+
 ## Adding a server
 
 Define it in `config.toml`:

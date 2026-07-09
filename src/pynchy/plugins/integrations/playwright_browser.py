@@ -9,6 +9,7 @@ The MCP proxy applies content fencing and Cop inspection automatically.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,22 @@ import pluggy
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 _BROWSER_MCP_PORT = 9100
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def _browser_mcp_args() -> list[str]:
+    args = ["@playwright/mcp@latest"]
+    if os.environ.get("PYNCHY_BROWSER_HEADLESS", "").strip().lower() in _TRUE_ENV_VALUES:
+        args.append("--headless")
+    args.extend(
+        [
+            "--port",
+            "{port}",
+            "--host",
+            "0.0.0.0",
+        ]
+    )
+    return args
 
 
 class PlaywrightBrowserPlugin:
@@ -34,14 +51,7 @@ class PlaywrightBrowserPlugin:
         return {
             "name": "browser",
             "command": "npx",
-            "args": [
-                "@playwright/mcp@latest",
-                "--headless",
-                "--port",
-                "{port}",
-                "--host",
-                "0.0.0.0",
-            ],
+            "args": _browser_mcp_args(),
             "port": _BROWSER_MCP_PORT,
             "transport": "streamable_http",
             "idle_timeout": 300,

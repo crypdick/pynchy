@@ -20,6 +20,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) | [Container isolation](../architecture/container-isolation.md) |
 | `google-setup` | Service Handler + MCP Server | Google Drive and Calendar setup — GCP project creation, API enablement, OAuth authorization. Provides base MCP server specs for `gdrive` and `gcal`. | Always active | [Google Drive](../usage/gdrive.md) |
 | `desktop-screenshot` | Service Handler | Capture the macOS host desktop with `screencapture` and return host/container paths. | macOS Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
+| `playwright-browser` | MCP Server | General browser-control tools backed by `@playwright/mcp`; runs headed by default on the host. | `PYNCHY_BROWSER_HEADLESS=true` for headless hosts | [MCP servers](../usage/mcp.md) |
 | `slack-token-extractor` | Service Handler | Extracts fresh Slack browser tokens (xoxc/xoxd) from persistent browser sessions. | Always active | — |
 | `x-integration` | Service Handler | Post tweets, like, reply, retweet, and quote on X (Twitter) via browser automation. | Always active | — |
 | `linear` | MCP Server | Linear task-tracking tools for listing teams/issues and creating issues. | `LINEAR_API_KEY` + workspace `mcp_servers = ["linear"]` | [Linear](../usage/linear.md) |

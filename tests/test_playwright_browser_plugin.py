@@ -26,6 +26,22 @@ class TestMcpServerSpec:
         port_idx = args.index("--port")
         assert args[port_idx + 1] == "{port}"
 
+    def test_browser_runs_headed_by_default(self, monkeypatch):
+        monkeypatch.delenv("PYNCHY_BROWSER_HEADLESS", raising=False)
+
+        plugin = PlaywrightBrowserPlugin()
+        spec = plugin.pynchy_mcp_server_spec()
+
+        assert "--headless" not in spec["args"]
+
+    def test_browser_can_be_forced_headless_for_headless_hosts(self, monkeypatch):
+        monkeypatch.setenv("PYNCHY_BROWSER_HEADLESS", "true")
+
+        plugin = PlaywrightBrowserPlugin()
+        spec = plugin.pynchy_mcp_server_spec()
+
+        assert "--headless" in spec["args"]
+
     def test_trust_defaults_set(self):
         plugin = PlaywrightBrowserPlugin()
         spec = plugin.pynchy_mcp_server_spec()
