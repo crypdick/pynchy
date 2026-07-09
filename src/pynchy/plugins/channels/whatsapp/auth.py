@@ -80,11 +80,11 @@ def _print_qr(qr_data: bytes) -> None:
 
 def _register_auth_callbacks(client: NewAClient, state: _AuthState, auth_db: str) -> None:
     @client.event.qr  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-    async def on_qr(_client: NewAClient, qr_data: bytes) -> None:
+    async def on_qr(_client: NewAClient, qr_data: bytes) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
         _print_qr(qr_data)
 
     @client.event(ConnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-    async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
+    async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
         _stdout_line()
         _stdout_line("[OK] Successfully authenticated with WhatsApp")
         _stdout_line(f"     Credentials saved to {auth_db}")
@@ -92,18 +92,18 @@ def _register_auth_callbacks(client: NewAClient, state: _AuthState, auth_db: str
         state.done.set()
 
     @client.event(PairStatusEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-    async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:
+    async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
         _stdout_line(f"  Paired as {ev.ID.User}")
 
     @client.event(LoggedOutEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-    async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
+    async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
         _stdout_line()
         _stdout_line("[ERROR] Logged out. Delete data/neonize.db and try again.")
         state.exit_code = 1
         state.done.set()
 
     @client.event(ConnectFailureEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-    async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:
+    async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
         _stdout_line()
         _stdout_line("[ERROR] Connection failed. Please try again.")
         state.exit_code = 1

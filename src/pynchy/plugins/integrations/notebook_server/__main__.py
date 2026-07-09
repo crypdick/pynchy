@@ -243,7 +243,7 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
+async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
     """Add a markdown cell to the notebook.
 
     Args:
@@ -269,7 +269,7 @@ async def add_markdown(kernel_id: str, content: str) -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
+async def save_as(kernel_id: str, name: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
     """Save the current notebook under a different name.
 
     Args:
@@ -298,7 +298,7 @@ async def save_as(kernel_id: str, name: str) -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def read_notebook(name: str) -> dict[str, Any]:
+async def read_notebook(name: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
     """Read an existing notebook without starting a kernel.
 
     Args:
@@ -337,7 +337,7 @@ async def read_notebook(name: str) -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def list_notebooks() -> dict[str, Any]:
+async def list_notebooks() -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
     """List saved notebooks in the notebook directory.
 
     Returns:
@@ -362,7 +362,7 @@ async def list_notebooks() -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def list_kernels() -> dict[str, Any]:
+async def list_kernels() -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
     """List active kernels and their notebook names.
 
     Returns:
@@ -383,7 +383,7 @@ async def list_kernels() -> dict[str, Any]:
 
 
 @mcp.tool()  # type: ignore[untyped-decorator]
-async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:
+async def shutdown_kernel(kernel_id: str) -> dict[str, Any]:  # noqa: RUF029, RUF100 - FastMCP may await tools.
     """Save and shut down a kernel.
 
     Args:

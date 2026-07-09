@@ -110,7 +110,7 @@ class WhatsAppChannel:
 
     def _register_events(self) -> None:
         @self._client.event(ConnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-        async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
+        async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
             self._connected = True
             logger.info("Connected to WhatsApp")
             if self._client.me:
@@ -127,11 +127,11 @@ class WhatsAppChannel:
             self._first_connect.set()
 
         @self._client.event(DisconnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-        async def on_disconnected(_client: NewAClient, _ev: DisconnectedEv) -> None:
+        async def on_disconnected(_client: NewAClient, _ev: DisconnectedEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
             self._connected = False
 
         @self._client.event(LoggedOutEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-        async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
+        async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
             self._connected = False
             logger.error(
                 "Logged out from WhatsApp. Run 'uv run pynchy-whatsapp-auth' to re-authenticate."
@@ -139,12 +139,12 @@ class WhatsAppChannel:
             sys.exit(0)
 
         @self._client.event(ConnectFailureEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-        async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:
+        async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
             self._connected = False
             logger.error("WhatsApp connection failed")
 
         @self._client.event(PairStatusEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
-        async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:
+        async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:  # noqa: RUF029, RUF100 - neonize may await events.
             logger.info("WhatsApp paired", user=ev.ID.User)
 
         @self._client.event(MessageEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped

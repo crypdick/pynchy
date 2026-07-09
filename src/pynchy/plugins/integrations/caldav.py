@@ -183,7 +183,7 @@ def _parse_event(component: Any) -> dict[str, Any]:
 
 
 @service_tool
-async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
     """Discover all visible calendars across all configured servers."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
@@ -201,7 +201,7 @@ async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:
 
 
 @service_tool
-async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
     """List calendar events within a date range."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
@@ -235,7 +235,7 @@ async def _handle_list_calendar(data: dict[str, Any]) -> dict[str, Any]:
 
 
 @service_tool
-async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
     """Create a calendar event."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
@@ -267,7 +267,7 @@ async def _handle_create_event(data: dict[str, Any]) -> dict[str, Any]:
 
 
 @service_tool
-async def _handle_delete_event(data: dict[str, Any]) -> dict[str, Any]:
+async def _handle_delete_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa: RUF029, RUF100 - service_tool awaits handlers.
     """Delete a calendar event by UID."""
     cfg = _caldav_config()
     if err := _check_configured(cfg):
