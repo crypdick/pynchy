@@ -178,6 +178,30 @@ class TestDockerRuntime:
             rt.ensure_running()
         mock_run.assert_called_once_with(["docker", "info"], capture_output=True, check=True)
 
+    def test_prune_images_prunes_dangling_images(self):
+        rt = DockerContainerRuntime()
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+
+            assert rt.prune_images() is True
+
+        mock_run.assert_called_once_with(
+            ["docker", "image", "prune", "-f"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+
+    def test_prune_images_can_prune_all_unused_images(self):
+        rt = DockerContainerRuntime()
+        with patch("pynchy.plugins.runtimes.docker_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+
+            assert rt.prune_images(all_images=True) is True
+
+        assert mock_run.call_args.args[0] == ["docker", "image", "prune", "-f", "-a"]
+
     def test_docker_not_running_on_linux_raises(self):
         rt = DockerContainerRuntime()
         with (
@@ -267,6 +291,31 @@ class TestAppleRuntime:
             "rm",
             "--force",
         ]
+
+    def test_prune_images_prunes_dangling_images(self):
+        rt = AppleContainerRuntime()
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+
+            assert rt.prune_images() is True
+
+        mock_run.assert_called_once_with(
+            ["container", "image", "prune"],
+            capture_output=True,
+            text=True,
+            input="",
+            timeout=300,
+            check=False,
+        )
+
+    def test_prune_images_can_prune_all_unused_images(self):
+        rt = AppleContainerRuntime()
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+
+            assert rt.prune_images(all_images=True) is True
+
+        assert mock_run.call_args.args[0] == ["container", "image", "prune", "--all"]
 
 
 class TestGetRuntime:

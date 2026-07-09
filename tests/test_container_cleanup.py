@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from pynchy.host.container_manager.cleanup import reap_orphaned_agent_containers
+from pynchy.host.container_manager.cleanup import (
+    cleanup_runtime_images,
+    reap_orphaned_agent_containers,
+)
 
 
 @dataclass
@@ -25,6 +28,7 @@ class FakeRuntime:
     def __init__(self, containers: list[FakeRuntimeContainer]) -> None:
         self.containers = containers
         self.removed: list[str] = []
+        self.pruned_images: list[bool] = []
 
     def list_containers(self, prefix: str = "pynchy-") -> list[FakeRuntimeContainer]:
         return [item for item in self.containers if item.name.startswith(prefix)]
@@ -32,6 +36,10 @@ class FakeRuntime:
     def remove_container(self, name: str, *, force: bool = True) -> bool:
         assert force is True
         self.removed.append(name)
+        return True
+
+    def prune_images(self, *, all_images: bool = False) -> bool:
+        self.pruned_images.append(all_images)
         return True
 
 
@@ -140,3 +148,11 @@ def test_ignores_non_agent_pynchy_container() -> None:
 
     assert result == []
     assert runtime.removed == []
+
+
+def test_cleanup_runtime_images_prunes_dangling_images_only() -> None:
+    runtime = FakeRuntime([])
+
+    assert cleanup_runtime_images(runtime) is True
+
+    assert runtime.pruned_images == [False]

@@ -166,3 +166,17 @@ class DockerContainerRuntime:
             check=False,
         )
         return result.returncode == 0
+
+    def prune_images(self, *, all_images: bool = False) -> bool:
+        """Prune dangling images, or every unreferenced image when requested."""
+        args = [self.cli, "image", "prune", "-f"]
+        if all_images:
+            args.append("-a")
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            args,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+        return result.returncode == 0

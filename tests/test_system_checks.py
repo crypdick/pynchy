@@ -39,6 +39,7 @@ class TestEnsureContainerSystemRunning:
         runtime.list_running_containers.return_value = []
         runtime.list_containers.return_value = []
         runtime.remove_container.return_value = True
+        runtime.prune_images.return_value = True
         return runtime
 
     @staticmethod
@@ -58,6 +59,7 @@ class TestEnsureContainerSystemRunning:
             ensure_container_system_running()
 
         mock_runtime.ensure_running.assert_called_once()
+        mock_runtime.prune_images.assert_called_once_with(all_images=False)
 
     def test_image_missing_builds(self, mock_runtime, tmp_path):
         """Image not found — should trigger build."""

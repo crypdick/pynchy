@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess  # noqa: S404, RUF100 - cleanup catches fixed-runtime subprocess failures.
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
@@ -92,6 +93,18 @@ def cleanup_runtime_builder(runtime: object) -> None:
         cleanup_builder()
     except OSError as exc:
         logger.warning("Failed to clean container builder", err=str(exc))
+
+
+def cleanup_runtime_images(runtime: object) -> bool:
+    """Let runtimes discard dangling image layers without deleting tagged images."""
+    prune_images = getattr(runtime, "prune_images", None)
+    if not callable(prune_images):
+        return False
+    try:
+        return bool(prune_images(all_images=False))
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("Failed to prune container images", err=str(exc))
+        return False
 
 
 def reap_orphaned_agent_containers(

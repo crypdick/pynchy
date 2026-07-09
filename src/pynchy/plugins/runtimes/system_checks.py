@@ -7,6 +7,7 @@ import subprocess  # noqa: S404, RUF100 - system checks use fixed no-shell runti
 from pynchy.config import get_settings
 from pynchy.host.container_manager.cleanup import (
     cleanup_runtime_builder,
+    cleanup_runtime_images,
     reap_orphaned_agent_containers,
 )
 from pynchy.logger import logger
@@ -46,3 +47,4 @@ def ensure_container_system_running() -> None:
             raise RuntimeError(f"Failed to build container image '{image}'")
 
     reap_orphaned_agent_containers(runtime=runtime)
+    cleanup_runtime_images(runtime)

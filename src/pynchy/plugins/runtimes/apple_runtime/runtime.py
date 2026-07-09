@@ -164,3 +164,18 @@ class AppleContainerRuntime:
                 text=True,
                 check=False,
             )
+
+    def prune_images(self, *, all_images: bool = False) -> bool:
+        """Prune dangling images, or every unreferenced image when requested."""
+        args = [self.cli, "image", "prune"]
+        if all_images:
+            args.append("--all")
+        result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            args,
+            capture_output=True,
+            text=True,
+            input="",
+            timeout=300,
+            check=False,
+        )
+        return result.returncode == 0

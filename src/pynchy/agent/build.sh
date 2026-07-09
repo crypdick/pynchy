@@ -22,14 +22,23 @@ else
     exit 1
 fi
 
-cleanup_apple_builder() {
+cleanup_runtime_build_state() {
     if [ "$RUNTIME" = "container" ] && [ "${PYNCHY_KEEP_APPLE_BUILDER:-}" != "1" ]; then
         echo "Cleaning Apple Container builder..."
         $RUNTIME builder stop >/dev/null 2>&1 || true
         $RUNTIME builder rm --force >/dev/null 2>&1 || true
     fi
+
+    if [ "${PYNCHY_PRUNE_IMAGES:-1}" != "0" ]; then
+        echo "Pruning dangling container images..."
+        if [ "$RUNTIME" = "docker" ]; then
+            $RUNTIME image prune -f >/dev/null 2>&1 || true
+        else
+            $RUNTIME image prune >/dev/null 2>&1 || true
+        fi
+    fi
 }
-trap cleanup_apple_builder EXIT
+trap cleanup_runtime_build_state EXIT
 
 IMAGE_NAME="pynchy-agent"
 TAG="${1:-latest}"
