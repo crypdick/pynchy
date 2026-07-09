@@ -6,12 +6,11 @@ without sending a follow-up text message.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
+from pynchy import utils
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.types import OutboundEvent
+from pynchy.types import OutboundEvent, OutboundEventType
 
 
 @runtime_checkable
@@ -63,13 +62,11 @@ async def handle_reaction(
     elif action == "interrupt":
         if deps.queue.is_active_task(jid):
             deps.queue.clear_pending_tasks(jid)
-            from pynchy.utils import create_background_task
 
-            create_background_task(
+            utils.create_background_task(
                 deps.queue.stop_active_process(jid),
                 name=f"reaction-interrupt-{jid[:20]}",
             )
-            from pynchy.types import OutboundEvent, OutboundEventType
 
             await deps.broadcast_to_channels(
                 jid,
