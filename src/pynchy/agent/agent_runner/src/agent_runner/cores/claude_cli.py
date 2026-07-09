@@ -42,7 +42,8 @@ _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
-    print(f"[claude-cli-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    sys.stderr.write(f"[claude-cli-core] {message}\n")
+    sys.stderr.flush()
 
 
 class ClaudeCLIAgentCore:

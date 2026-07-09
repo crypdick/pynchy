@@ -83,10 +83,8 @@ BeforeToolUseHook = Callable[[str, dict[str, Any]], Awaitable[HookDecision]]
 
 def _hook_log(message: str) -> None:
     """Write a hook-loader diagnostic to stderr."""
-    print(  # allow: print-statements — stderr diagnostic channel; no logger available
-        f"[agent-runner] {message}",
-        file=sys.stderr,
-    )
+    sys.stderr.write(f"[agent-runner] {message}\n")
+    sys.stderr.flush()
 
 
 def _load_hook_module(name: str, module_path: str) -> object | None:

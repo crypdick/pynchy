@@ -25,7 +25,8 @@ from agent_runner.hooks import BeforeToolUseHook
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[openai-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    sys.stderr.write(f"[openai-core] {message}\n")
+    sys.stderr.flush()
 
 
 def _normalize_response_id(value: str | None) -> str | None:

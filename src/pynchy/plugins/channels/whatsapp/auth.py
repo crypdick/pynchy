@@ -29,6 +29,18 @@ class _AuthState:
     exit_code: int = 0
 
 
+def _stdout_line(message: str = "") -> None:
+    sys.stdout.write(f"{message}\n")
+    sys.stdout.flush()
+
+
+def _stdout_text(text: str) -> None:
+    sys.stdout.write(text)
+    if not text.endswith("\n"):
+        sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
 def _configure_neonize_event_loop() -> None:
     # Neonize keeps module-level loop references; patch both modules so events
     # and internal tasks bind to this running loop.
@@ -44,17 +56,17 @@ def _auth_db_path() -> str:
 
 
 def _print_already_authenticated() -> None:
-    print("[OK] Already authenticated with WhatsApp")  # allow: print-statements
-    print("     Delete data/neonize.db to force re-authentication.")  # allow: print-statements
+    _stdout_line("[OK] Already authenticated with WhatsApp")
+    _stdout_line("     Delete data/neonize.db to force re-authentication.")
 
 
 def _print_auth_instructions() -> None:
-    print("Starting WhatsApp authentication...")  # allow: print-statements
-    print("Scan the QR code with WhatsApp:")  # allow: print-statements
-    print("  1. Open WhatsApp on your phone")  # allow: print-statements
-    print("  2. Tap Settings -> Linked Devices -> Link a Device")  # allow: print-statements
-    print("  3. Point your camera at the QR code below")  # allow: print-statements
-    print()  # allow: print-statements
+    _stdout_line("Starting WhatsApp authentication...")
+    _stdout_line("Scan the QR code with WhatsApp:")
+    _stdout_line("  1. Open WhatsApp on your phone")
+    _stdout_line("  2. Tap Settings -> Linked Devices -> Link a Device")
+    _stdout_line("  3. Point your camera at the QR code below")
+    _stdout_line()
 
 
 def _print_qr(qr_data: bytes) -> None:
@@ -63,7 +75,7 @@ def _print_qr(qr_data: bytes) -> None:
     qr.make()
     buf = io.StringIO()
     qr.print_ascii(out=buf, invert=True)
-    print(buf.getvalue(), flush=True)  # allow: print-statements
+    _stdout_text(buf.getvalue())
 
 
 def _register_auth_callbacks(client: NewAClient, state: _AuthState, auth_db: str) -> None:
@@ -73,29 +85,27 @@ def _register_auth_callbacks(client: NewAClient, state: _AuthState, auth_db: str
 
     @client.event(ConnectedEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_connected(_client: NewAClient, _ev: ConnectedEv) -> None:
-        print()  # allow: print-statements
-        print("[OK] Successfully authenticated with WhatsApp")  # allow: print-statements
-        print(f"     Credentials saved to {auth_db}")  # allow: print-statements
-        print("     You can now run pynchy.")  # allow: print-statements
+        _stdout_line()
+        _stdout_line("[OK] Successfully authenticated with WhatsApp")
+        _stdout_line(f"     Credentials saved to {auth_db}")
+        _stdout_line("     You can now run pynchy.")
         state.done.set()
 
     @client.event(PairStatusEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_pair_status(_client: NewAClient, ev: PairStatusEv) -> None:
-        print(f"  Paired as {ev.ID.User}")  # allow: print-statements
+        _stdout_line(f"  Paired as {ev.ID.User}")
 
     @client.event(LoggedOutEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_logged_out(_client: NewAClient, _ev: LoggedOutEv) -> None:
-        print()  # allow: print-statements
-        print(
-            "[ERROR] Logged out. Delete data/neonize.db and try again."
-        )  # allow: print-statements
+        _stdout_line()
+        _stdout_line("[ERROR] Logged out. Delete data/neonize.db and try again.")
         state.exit_code = 1
         state.done.set()
 
     @client.event(ConnectFailureEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
     async def on_connect_failure(_client: NewAClient, _ev: ConnectFailureEv) -> None:
-        print()  # allow: print-statements
-        print("[ERROR] Connection failed. Please try again.")  # allow: print-statements
+        _stdout_line()
+        _stdout_line("[ERROR] Connection failed. Please try again.")
         state.exit_code = 1
         state.done.set()
 
@@ -117,9 +127,8 @@ async def authenticate() -> None:
 
     This is an interactive CLI entry point (``pynchy-whatsapp-auth``): it renders
     a QR code and step-by-step instructions to the terminal for the user to scan.
-    The ``print()`` calls below are intentional user-facing console output — they
-    must reach stdout regardless of log configuration, so they are exempted from
-    the structured-logging rule.
+    The stdout writes below are intentional user-facing console output — they
+    must reach stdout regardless of log configuration.
     """
     _configure_neonize_event_loop()
     auth_db = _auth_db_path()
@@ -139,8 +148,8 @@ def main() -> None:
     try:
         asyncio.run(authenticate())
     except KeyboardInterrupt:
-        print()  # allow: print-statements
-        print("Authentication cancelled.")  # allow: print-statements
+        _stdout_line()
+        _stdout_line("Authentication cancelled.")
         sys.exit(1)
 
 

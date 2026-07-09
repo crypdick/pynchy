@@ -33,7 +33,8 @@ _PLUGIN_HOOKS_ENV = "PYNCHY_PLUGIN_HOOKS"
 
 
 def _log(message: str) -> None:
-    print(f"[cli-hook] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    sys.stderr.write(f"[cli-hook] {message}\n")
+    sys.stderr.flush()
 
 
 def _load_roster() -> tuple[BeforeToolUseHook, ...]:

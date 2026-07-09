@@ -118,6 +118,13 @@ _sessions: dict[str, KernelSession] = {}
 
 
 # FastMCP's decorator is untyped, so each tool needs a local mypy ignore.
+
+
+def _stdout_line(message: str) -> None:
+    sys.stdout.write(f"{message}\n")
+    sys.stdout.flush()
+
+
 @mcp.tool()  # type: ignore[untyped-decorator]
 async def start_kernel(name: str | None = None) -> dict[str, Any]:
     """Start an IPython kernel, optionally loading an existing notebook.
@@ -430,7 +437,7 @@ def _start_jupyterlab() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    print(f"JupyterLab started on port {ARGS.lab_port}", flush=True)
+    _stdout_line(f"JupyterLab started on port {ARGS.lab_port}")
 
 
 # ---------------------------------------------------------------------------
@@ -440,8 +447,8 @@ def _start_jupyterlab() -> None:
 if __name__ == "__main__":
     _start_jupyterlab()
 
-    print(f"Notebook server starting on port {ARGS.port}", flush=True)
-    print(f"Notebook directory: {NOTEBOOK_DIR}", flush=True)
-    print(f"Workspace directory: {WORKSPACE_DIR}", flush=True)
+    _stdout_line(f"Notebook server starting on port {ARGS.port}")
+    _stdout_line(f"Notebook directory: {NOTEBOOK_DIR}")
+    _stdout_line(f"Workspace directory: {WORKSPACE_DIR}")
 
     mcp.run(transport="http", host=CONTAINER_BIND_HOST, port=ARGS.port)

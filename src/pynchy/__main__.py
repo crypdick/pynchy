@@ -18,6 +18,16 @@ _DEFAULT_PORT = "8484"
 _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
 
 
+def _stdout_line(message: str) -> None:
+    sys.stdout.write(f"{message}\n")
+    sys.stdout.flush()
+
+
+def _stderr_line(message: str) -> None:
+    sys.stderr.write(f"{message}\n")
+    sys.stderr.flush()
+
+
 def _run() -> None:
     from dotenv import load_dotenv
 
@@ -44,10 +54,10 @@ def _build() -> None:
     container_dir = s.project_root / "src" / "pynchy" / "agent"
 
     if not (container_dir / "Dockerfile").exists():
-        print(f"Error: No Dockerfile at {container_dir / 'Dockerfile'}", file=sys.stderr)
+        _stderr_line(f"Error: No Dockerfile at {container_dir / 'Dockerfile'}")
         sys.exit(1)
 
-    print(f"Building {s.container.image} with {runtime.cli}...")
+    _stdout_line(f"Building {s.container.image} with {runtime.cli}...")
     result = subprocess.run(
         [runtime.cli, "build", "-t", s.container.image, "."],
         cwd=str(container_dir),

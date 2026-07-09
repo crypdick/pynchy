@@ -33,7 +33,8 @@ class TranscriptMessage(TypedDict):
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
-    print(f"[transcript-archive] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    sys.stderr.write(f"[transcript-archive] {message}\n")
+    sys.stderr.flush()
 
 
 def _sanitize_filename(summary: str) -> str:

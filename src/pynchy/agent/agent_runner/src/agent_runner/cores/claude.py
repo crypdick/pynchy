@@ -38,7 +38,8 @@ from agent_runner.transcript_archive import archive_transcript
 
 def _log(message: str) -> None:
     """Log to stderr (captured by host container runner)."""
-    print(f"[claude-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    sys.stderr.write(f"[claude-core] {message}\n")
+    sys.stderr.flush()
 
 
 # ---------------------------------------------------------------------------

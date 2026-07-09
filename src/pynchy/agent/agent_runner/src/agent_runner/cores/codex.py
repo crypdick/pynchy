@@ -31,7 +31,8 @@ _CODEX_SESSION_PREFIX = "codex:"
 
 def _log(message: str) -> None:
     """Log to stderr (captured by the host container runner)."""
-    print(f"[codex-cli-core] {message}", file=sys.stderr, flush=True)  # allow: print-statements
+    sys.stderr.write(f"[codex-cli-core] {message}\n")
+    sys.stderr.flush()
 
 
 def _codex_home() -> Path:
