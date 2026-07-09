@@ -297,7 +297,7 @@ class SlackBlocksFormatter:
             "Glob": "pattern",
         }
         if tool_name in simple_fields:
-            return cast(str, tool_input.get(simple_fields[tool_name], tool_name))
+            return cast("str", tool_input.get(simple_fields[tool_name], tool_name))
         if tool_name == "Edit":
             return _edit_tool_code(tool_name, tool_input)
         if tool_name == "Grep":

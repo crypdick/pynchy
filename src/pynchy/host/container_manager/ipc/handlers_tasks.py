@@ -217,7 +217,7 @@ def _group_folder(value: Any) -> GroupFolder | None:
 
 def _schedule_type(value: Any) -> Literal["cron", "interval", "once"] | None:
     if value in ("cron", "interval", "once"):
-        return cast(Literal["cron", "interval", "once"], value)
+        return cast("Literal['cron', 'interval', 'once']", value)
     return None
 
 

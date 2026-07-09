@@ -24,7 +24,7 @@ class InteractiveMessageWorkflow:
         initial_retry_seconds: float,
     ) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_interactive_message_turn",
                 chat_jid,
@@ -45,7 +45,7 @@ class DeployWorkflow:
     @workflow.run
     async def run(self, deploy_payload: dict[str, Any]) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_deploy",
                 deploy_payload,
@@ -62,7 +62,7 @@ class HostGitSyncWorkflow:
     @workflow.run
     async def run(self) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_host_git_sync",
                 start_to_close_timeout=timedelta(minutes=10),
@@ -78,7 +78,7 @@ class ExternalGitSyncWorkflow:
     @workflow.run
     async def run(self, repo_slug: str) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_external_git_sync",
                 repo_slug,
@@ -95,7 +95,7 @@ class ChannelReconciliationWorkflow:
     @workflow.run
     async def run(self) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_channel_reconciliation",
                 start_to_close_timeout=timedelta(minutes=10),
@@ -111,7 +111,7 @@ class ScheduledAgentTaskWorkflow:
     @workflow.run
     async def run(self, task_id: str) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_scheduled_agent_task",
                 task_id,
@@ -132,7 +132,7 @@ class DatabaseHostJobWorkflow:
     @workflow.run
     async def run(self, job_id: str) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_database_host_job",
                 job_id,
@@ -148,7 +148,7 @@ class ConfigHostCronWorkflow:
     @workflow.run
     async def run(self, job_name: str) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_config_host_cron_job",
                 job_name,
@@ -164,7 +164,7 @@ class LearningReviewWorkflow:
     @workflow.run
     async def run(self, packet_payload: dict[str, Any], maximum_attempts: int) -> str:
         return cast(
-            str,
+            "str",
             await workflow.execute_activity(
                 "run_learning_review",
                 packet_payload,

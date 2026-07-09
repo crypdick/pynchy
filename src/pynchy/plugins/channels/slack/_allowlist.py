@@ -155,7 +155,7 @@ class SlackAllowlist:
             resp = await ch._app.client.conversations_list(**kwargs)
             for chan in resp.get("channels", []):
                 if chan.get("name") == name:
-                    return cast(str, chan["id"])
+                    return cast("str", chan["id"])
             cursor = resp.get("response_metadata", {}).get("next_cursor")
             if not cursor:
                 break

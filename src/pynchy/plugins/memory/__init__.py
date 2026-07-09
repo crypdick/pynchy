@@ -69,5 +69,5 @@ def get_memory_provider() -> MemoryProvider | None:
     providers = collect_hook_results("pynchy_memory", _is_valid_provider, "memory")
     if providers:
         logger.info("Memory provider discovered", name=providers[0].name)
-        return cast(MemoryProvider, providers[0])
+        return cast("MemoryProvider", providers[0])
     return None

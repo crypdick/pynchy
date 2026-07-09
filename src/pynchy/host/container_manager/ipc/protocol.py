@@ -94,7 +94,7 @@ def validate_signal(data: dict[str, Any]) -> str | None:
             "Signals must be payload-free."
         )
 
-    return cast(str, signal)
+    return cast("str", signal)
 
 
 def parse_ipc_file(file_path: Path) -> dict[str, Any]:

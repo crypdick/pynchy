@@ -229,7 +229,7 @@ class ClaudeAgentCore:
             # Agnostic hook names (from AGNOSTIC_TO_CLAUDE) are a superset of the
             # SDK's HookEvent literals, so the dict is typed str-keyed at assembly
             # time and handed to the SDK boundary as-is.
-            hooks=cast(Any, claude_hooks) if claude_hooks else None,
+            hooks=cast("Any", claude_hooks) if claude_hooks else None,
             plugins=plugins,
         )
 

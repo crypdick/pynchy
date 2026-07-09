@@ -233,7 +233,7 @@ def _command_center_channel(
 ) -> _CreateGroupChannel | None:
     return next(
         (
-            cast(_CreateGroupChannel, channel)
+            cast("_CreateGroupChannel", channel)
             for channel in channels
             if getattr(channel, "name", None) == command_center and hasattr(channel, "create_group")
         ),

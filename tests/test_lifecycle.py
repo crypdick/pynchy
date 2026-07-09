@@ -130,7 +130,7 @@ async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled
     monkeypatch,
 ) -> None:
     app = PynchyApp()
-    app.queue = cast(Any, _RecordingQueue())
+    app.queue = cast("Any", _RecordingQueue())
     timers: list[Any] = []
 
     class FakeTimer:
@@ -167,7 +167,7 @@ async def test_shutdown_watchdog_outlasts_container_stop_budget_and_is_cancelled
 @pytest.mark.asyncio
 async def test_shutdown_app_exits_zero_after_cleanup_when_requested(monkeypatch) -> None:
     app = PynchyApp()
-    app.queue = cast(Any, _RecordingQueue())
+    app.queue = cast("Any", _RecordingQueue())
     exit_codes: list[int] = []
 
     class FakeTimer:
@@ -250,7 +250,7 @@ async def test_start_subsystems_does_not_start_local_learning_worker(
         awaitable: Awaitable[None], *, name: str | None = None
     ) -> _RecordedTask:
         if inspect.iscoroutine(awaitable):
-            cast(Coroutine[Any, Any, None], awaitable).close()
+            cast("Coroutine[Any, Any, None]", awaitable).close()
         task = _RecordedTask(name=name or "")
         created_task_names.append(task.name)
         return task

@@ -67,7 +67,7 @@ _BROWSER_ARGS = [
 async def is_visible(locator) -> bool:
     """Check locator visibility without raising on detached elements."""
     try:
-        return cast(bool, await locator.is_visible())
+        return cast("bool", await locator.is_visible())
     except Exception:  # allow: exception-handling — detached element treated as not visible
         return False
 

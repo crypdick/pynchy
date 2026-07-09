@@ -271,7 +271,7 @@ async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) 
 
     s = get_settings()
 
-    scheduler_deps = cast(SchedulerDependencies, app)
+    scheduler_deps = cast("SchedulerDependencies", app)
     app._subsystem_tasks.append(
         create_background_task(start_scheduler_loop(scheduler_deps), name="scheduler")
     )

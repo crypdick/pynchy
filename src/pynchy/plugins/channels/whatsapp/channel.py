@@ -230,7 +230,7 @@ class WhatsAppChannel:
 
     async def create_group(self, name: str) -> str:
         group_info = await self._client.create_group(name)
-        return cast(str, Jid2String(group_info.JID))
+        return cast("str", Jid2String(group_info.JID))
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None:
         """Resolve a WhatsApp chat name to a JID using stored metadata."""
