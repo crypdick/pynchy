@@ -24,7 +24,7 @@ Select the Linear capability through a profile. For Pynchy's workspace todo-boar
 integration, declare a Linear tool and select it from the profile:
 
 ```toml
-[tools.task_tracking]
+[tools.linear]
 type = "linear"
 public_source = false
 secret_data = false
@@ -32,7 +32,7 @@ public_sink = true
 dangerous_writes = false
 
 [profiles.project]
-tools = ["task_tracking"]
+tools = ["linear"]
 
 [workspaces.code-improver]
 profiles = ["project"]

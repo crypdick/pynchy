@@ -320,10 +320,15 @@
 # Agents reference calendars as "server/calendar_name" or just "calendar_name"
 # (resolved against the default server). "primary" maps to default_calendar.
 
-# [caldav]
+# [tools.caldav]
+# type = "caldav"
 # default_server = "work"  # which server when no prefix given
+# public_source = false
+# secret_data = false
+# public_sink = false
+# dangerous_writes = false
 
-# [caldav.servers.work]
+# [tools.caldav.servers.work]
 # url = "https://work.nextcloud.com/remote.php/dav/"
 # username = "user@work.com"
 # password_env = "CALDAV_WORK_PASSWORD"  # env var in .env; see config-examples/.env.EXAMPLE  # pragma: allowlist secret
@@ -331,7 +336,7 @@
 # allow = ["meetings", "standup"]  # optional: only expose these calendars
 # ignore = ["trash"]               # optional: hide these (ignored if allow is set)
 
-# [caldav.servers.personal]
+# [tools.caldav.servers.personal]
 # url = "https://personal.nextcloud.com/remote.php/dav/"
 # username = "me@example.com"
 # password_env = "CALDAV_PERSONAL_PASSWORD"  # pragma: allowlist secret

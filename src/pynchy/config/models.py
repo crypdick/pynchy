@@ -20,6 +20,7 @@ from typing import Annotated, Literal, NewType
 from croniter import croniter
 from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 
+from pynchy.config.caldav import CalDAVConfig
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 
 # Reference strings whose well-formedness is proven by a validator. Carrying
@@ -444,6 +445,10 @@ class LinearTool(_ToolTrustConfig):
     project_name_template: str | None = None
 
 
+class CalDAVTool(_ToolTrustConfig, CalDAVConfig):
+    type: Literal["caldav"]
+
+
 class McpToolConfig(_StrictModel):
     """MCP provider/runtime config nested under ``[tools.<name>.mcp]``."""
 
@@ -490,7 +495,7 @@ class McpTool(_ToolTrustConfig):
 
 
 ToolConfig = Annotated[
-    BuiltinTool | LinearTool | McpTool,
+    BuiltinTool | LinearTool | CalDAVTool | McpTool,
     Field(discriminator="type"),
 ]
 
@@ -579,20 +584,6 @@ class QueueConfig(_StrictModel):
 
 class PluginConfig(_StrictModel):
     enabled: bool = True
-
-
-class CalDAVServerConfig(_StrictModel):
-    url: str
-    username: str
-    password_env: str | None = None  # env var name; resolves at runtime via os.environ
-    default_calendar: str | None = None  # what "primary" resolves to; None → first discovered
-    allow: list[str] | None = None  # only expose these calendars (case-insensitive)
-    ignore: list[str] | None = None  # hide these (case-insensitive; ignored if allow set)
-
-
-class CalDAVConfig(_StrictModel):
-    default_server: str = ""  # which server to use when no server prefix given
-    servers: dict[str, CalDAVServerConfig] = {}
 
 
 class SecurityConfig(_StrictModel):

@@ -158,7 +158,7 @@ class TestReconcileWorkspaces:
         # Create existing task with old schedule
         await create_task(
             ScheduledTask(
-                id="periodic-monitor-abc123",
+                id="job-monitor",
                 group_folder="monitor",
                 chat_jid="monitor@g.us",
                 prompt="Monitor systems",
@@ -201,7 +201,7 @@ class TestReconcileWorkspaces:
 
         await create_task(
             ScheduledTask(
-                id="periodic-monitor-abc123",
+                id="job-monitor",
                 group_folder="monitor",
                 chat_jid="monitor@g.us",
                 prompt="Old monitoring prompt",  # OLD prompt
@@ -244,7 +244,7 @@ class TestReconcileWorkspaces:
 
         await create_task(
             ScheduledTask(
-                id="periodic-monitor-abc123",
+                id="runtime-monitor-abc123",
                 group_folder="monitor",
                 chat_jid="monitor@g.us",
                 prompt="Monitor systems",
@@ -270,12 +270,11 @@ class TestReconcileWorkspaces:
         register_fn = AsyncMock()
         await reconcile_workspaces(registered, [], register_fn)
 
-        # The config-backed job owns the active task; the unmanaged task is paused.
+        # The config-backed job owns its own row; unmanaged runtime tasks are left alone.
         tasks = await get_all_tasks()
-        assert {task.id for task in tasks} == {"job-monitor", "periodic-monitor-abc123"}
+        assert {task.id for task in tasks} == {"job-monitor", "runtime-monitor-abc123"}
         active = [task for task in tasks if task.status == "active"]
-        assert len(active) == 1
-        assert active[0].id == "job-monitor"
+        assert {task.id for task in active} == {"job-monitor", "runtime-monitor-abc123"}
 
     async def test_creates_chat_group_for_unregistered_workspace(self, db, monkeypatch, tmp_path):
         """Workspace with no DB entry should create a chat group via channel."""

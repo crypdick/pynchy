@@ -107,12 +107,16 @@ Your own Nextcloud calendar — you own the data, events aren't secrets, writes 
 
 ```toml
 [tools.caldav]
-type = "builtin"
-name = "caldav"
+type = "caldav"
 public_source = false
 secret_data = false
 public_sink = false
 dangerous_writes = false
+
+[tools.caldav.servers.nextcloud]
+url = "https://nextcloud.example.com/remote.php/dav"
+username = "me@example.com"
+password_env = "CALDAV_PASSWORD"  # pragma: allowlist secret
 ```
 
 Result: no gating. Agents read and write freely.

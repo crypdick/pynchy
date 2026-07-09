@@ -15,7 +15,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[slack] bot_token / app_token` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
 | `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active | [Channels](../usage/channels.md) |
 | `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active | [Memory](../usage/memory.md) |
-| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[caldav] url / username / password` + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
+| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[tools.caldav]` server config + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
 | `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) | [Container isolation](../architecture/container-isolation.md) |
 | `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) | [Container isolation](../architecture/container-isolation.md) |
 | `google-setup` | Service Handler + MCP Server | Google Drive and Calendar setup — GCP project creation, API enablement, OAuth authorization. Provides base MCP server specs for `gdrive` and `gcal`. | Always active | [Google Drive](../usage/gdrive.md) |

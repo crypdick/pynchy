@@ -41,6 +41,31 @@ def _sync_merge_and_check_deploy(
     return result, pre_merge_sha, deploy_info
 
 
+def _aggregate_sync_results(
+    sync_results: list[tuple[Any, dict[str, Any], str, bool | None]],
+) -> tuple[dict[str, Any], str, bool | None]:
+    success = all(result.get("success") for _repo_ctx, result, _sha, _deploy in sync_results)
+    deploy_item = next(
+        (
+            (pre_merge_sha, deploy_info)
+            for _repo_ctx, _result, pre_merge_sha, deploy_info in sync_results
+            if deploy_info is not None
+        ),
+        ("unknown", None),
+    )
+    return (
+        {
+            "success": success,
+            "message": "All repo worktrees synced."
+            if success
+            else "One or more repo syncs failed.",
+            "repos": {repo_ctx.slug: result for repo_ctx, result, _sha, _deploy in sync_results},
+        },
+        deploy_item[0],
+        deploy_item[1],
+    )
+
+
 async def _handle_reset_context(
     data: dict[str, Any],
     source_group: str,
@@ -121,7 +146,7 @@ async def _handle_sync_worktree_to_main(
 ) -> None:
     import asyncio
 
-    from pynchy.host.git_ops.repo import resolve_repo_for_group
+    from pynchy.host.git_ops.repo import resolve_repos_for_group
 
     request_id = data.get("request_id", "")
 
@@ -142,8 +167,8 @@ async def _handle_sync_worktree_to_main(
 
     result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
 
-    repo_ctx = resolve_repo_for_group(source_group)
-    if repo_ctx is None:
+    repo_contexts = resolve_repos_for_group(source_group)
+    if not repo_contexts:
         write_ipc_response(
             result_dir / f"{request_id}.json",
             {"success": False, "message": "No repo configured for this group."},
@@ -151,14 +176,19 @@ async def _handle_sync_worktree_to_main(
         logger.info("sync_worktree_to_main: no repo_ctx", group=source_group)
         return
 
-    result, pre_merge_sha, deploy_info = await asyncio.to_thread(
-        _sync_merge_and_check_deploy, source_group, repo_ctx
-    )
+    sync_results: list[tuple[Any, dict[str, Any], str, bool | None]] = []
+    for repo_ctx in repo_contexts:
+        repo_result, repo_pre_merge_sha, repo_deploy_info = await asyncio.to_thread(
+            _sync_merge_and_check_deploy, source_group, repo_ctx
+        )
+        sync_results.append((repo_ctx, repo_result, repo_pre_merge_sha, repo_deploy_info))
+    result, pre_merge_sha, deploy_info = _aggregate_sync_results(sync_results)
     write_ipc_response(result_dir / f"{request_id}.json", result)
 
     if result.get("success"):
         # IpcDeps satisfies WorktreeNotifyDeps directly.
-        await host_notify_worktree_updates(source_group, deps, repo_ctx)
+        for repo_ctx, _repo_result, _repo_sha, _repo_deploy in sync_results:
+            await host_notify_worktree_updates(source_group, deps, repo_ctx)
 
         if deploy_info is not None:
             await deps.trigger_deploy(pre_merge_sha, rebuild=deploy_info)

@@ -313,6 +313,27 @@ class TestResolveAllInstancesPortOffset:
         inst = next(iter(state.instances.values()))
         assert inst.port == 9100
 
+    def test_dynamic_thread_uses_parent_workspace_instances(self):
+        mgr = self._make_manager(
+            workspaces={"admin": ["browser"]},
+            tool_mcp_configs={
+                "browser": {
+                    "runtime": "script",
+                    "command": "npx",
+                    "port": 9100,
+                },
+            },
+        )
+        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
+        mgr._instances = state.instances
+        mgr._workspace_instances = state.workspace_instances
+
+        parent_ids = mgr.get_workspace_instance_ids("admin")
+        child_ids = mgr.get_workspace_instance_ids("admin__thread_discord-channel-thread")
+
+        assert child_ids == parent_ids
+        assert child_ids
+
     def test_inject_workspace_independent_port_counters_per_server(self):
         mgr = self._make_manager(
             workspaces={

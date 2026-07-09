@@ -60,7 +60,6 @@ def make_settings(**overrides):
         ServerConfig,
         Settings,
     )
-    from pynchy.config.models import ProfileConfig
 
     # Separate cached properties from model fields
     cached = {k: overrides.pop(k) for k in list(overrides) if k in _CACHED_PROPERTY_NAMES}
@@ -71,7 +70,6 @@ def make_settings(**overrides):
         "server": ServerConfig(),
         "logging": LoggingConfig(),
         "secrets": SecretsConfig(),
-        "universal": ProfileConfig(),
         "profiles": {},
         "workspaces": {},
         "commands": CommandWordsConfig(),

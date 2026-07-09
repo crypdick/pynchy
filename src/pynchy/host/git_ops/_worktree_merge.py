@@ -93,13 +93,14 @@ async def merge_worktree_with_policy(group_folder: str) -> None:
     """
     import asyncio
 
-    from pynchy.host.git_ops.repo import resolve_repo_for_group
+    from pynchy.host.git_ops.repo import resolve_repos_for_group
 
-    repo_ctx = resolve_repo_for_group(group_folder)
-    if repo_ctx is None:
+    repo_contexts = resolve_repos_for_group(group_folder)
+    if not repo_contexts:
         return
 
-    await asyncio.to_thread(merge_and_push_worktree, group_folder, repo_ctx)
+    for repo_ctx in repo_contexts:
+        await asyncio.to_thread(merge_and_push_worktree, group_folder, repo_ctx)
 
 
 def background_merge_worktree(group: WorkspaceProfile) -> None:

@@ -342,8 +342,8 @@ class TestIpcPolicyRouting:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
@@ -380,8 +380,8 @@ class TestIpcPolicyRouting:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
@@ -413,8 +413,8 @@ class TestIpcPolicyRouting:
                 return_value=make_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
@@ -444,8 +444,8 @@ class TestMergeWorktreeWithPolicy:
         mock_repo = MagicMock()
         with (
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=mock_repo,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[mock_repo],
             ),
             patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
         ):
@@ -458,8 +458,8 @@ class TestMergeWorktreeWithPolicy:
     async def test_no_repo_access_does_nothing(self):
         """Groups without repo_access skip entirely."""
         with patch(
-            "pynchy.host.git_ops.repo.resolve_repo_for_group",
-            return_value=None,
+            "pynchy.host.git_ops.repo.resolve_repos_for_group",
+            return_value=[],
         ):
             from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 

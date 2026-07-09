@@ -39,7 +39,6 @@ from pynchy.config.jobs import JobConfig
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
 from pynchy.config.models import (
     AgentConfig,
-    CalDAVConfig,
     CommandCenterConfig,
     CommandWordsConfig,
     ConnectionConfig,
@@ -95,6 +94,40 @@ def _validated_command_center_connection(settings: Settings) -> None:
         raise ValueError(f"command_center.connection references unknown connection: {connection}")
 
 
+def _validate_owner_aliases(settings: Settings) -> None:
+    for connection_name, connection in settings.connections.items():
+        _validate_owner_alias(
+            connection_name,
+            connection.type,
+            getattr(connection.security, "allowed_users", None)
+            if connection.security is not None
+            else None,
+            settings,
+        )
+        for chat_name, chat in getattr(connection, "chat", {}).items():
+            _validate_owner_alias(
+                f"{connection_name}.chat.{chat_name}",
+                connection.type,
+                getattr(chat.security, "allowed_users", None) if chat.security else None,
+                settings,
+            )
+
+
+def _validate_owner_alias(
+    scope: str,
+    platform: str,
+    allowed_users: list[str] | None,
+    settings: Settings,
+) -> None:
+    if not allowed_users or "owner" not in allowed_users:
+        return
+    if platform == "whatsapp":
+        return
+    if platform == "slack" and settings.owner.slack:
+        return
+    raise ValueError(f"{scope} uses allowed_users=['owner'] but no owner is configured")
+
+
 # ---------------------------------------------------------------------------
 # Root Settings
 # ---------------------------------------------------------------------------
@@ -133,7 +166,6 @@ class Settings(BaseSettings):
     tools: dict[str, ToolConfig] = {}
     plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
-    caldav: CalDAVConfig = CalDAVConfig()
 
     # Chrome profiles — generic list of names; any MCP server can attach to one.
     # Each profile maps to a host directory at data/chrome-profiles/{name}/.
@@ -164,6 +196,7 @@ class Settings(BaseSettings):
                     "owner",
                     "caldav",
                     "cron_jobs",
+                    "git_policy",
                 )
                 if k in data
             ]
@@ -235,6 +268,7 @@ class Settings(BaseSettings):
     def _validate_connections(self) -> Settings:
         """Validate command_center.connection against [connections.<name>]."""
         _validated_command_center_connection(self)
+        _validate_owner_aliases(self)
         return self
 
     @model_validator(mode="after")

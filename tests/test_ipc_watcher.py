@@ -303,8 +303,8 @@ class TestSyncWorktreeIpc:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
@@ -344,8 +344,8 @@ class TestSyncWorktreeIpc:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.git_ops.repo.resolve_repo_for_group",
-                return_value=fake_repo_ctx,
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",

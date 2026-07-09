@@ -26,15 +26,15 @@ Where code lives. For how it works, see the [architecture overview](https://pync
 | `src/pynchy/host/container_manager/` | Container orchestration — mounts, credentials, process management |
 | `src/pynchy/host/container_manager/mcp/` | MCP lifecycle — LiteLLM sync, Docker on-demand, team provisioning |
 | `src/pynchy/host/container_manager/security/` | Security policy middleware and audit logging |
-| `src/pynchy/config/` | Pydantic BaseSettings config (TOML + env overrides), MCP config, directives |
+| `src/pynchy/config/` | Pydantic BaseSettings config (TOML + env overrides), MCP config, prompts |
 | `src/pynchy/config/mcp.py` | MCP server config models (`McpServerConfig`) |
 | `src/pynchy/host/orchestrator/concurrency.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/host/orchestrator/task_scheduler.py` | Runs scheduled tasks |
-| `src/pynchy/config/directives.py` | Scoped system prompt directive resolution |
+| `src/pynchy/config/prompts.py` | Scoped system prompt resolution |
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
 | `src/pynchy/agent/` | Container-side code — skills, agent runner, build scripts |
-| `directives/` | System prompt directive markdown files |
+| `prompts/` | System prompt markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
 | `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
 | `backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
@@ -51,7 +51,7 @@ Where code lives. For how it works, see the [architecture overview](https://pync
 
 ## Expert Pushback Policy
 
-Treat the user as a peer, not someone to serve: push back directly on inelegant or unsound proposals, advocate for the right solution, and only yield on an explicit "I insist". The full protocol and worked example live in [`directives/base.md`](directives/base.md#expert-pushback-policy).
+Treat the user as a peer, not someone to serve: push back directly on inelegant or unsound proposals, advocate for the right solution, and only yield on an explicit "I insist". The full protocol and worked example live in [`prompts/base.md`](prompts/base.md#expert-pushback-policy).
 
 ## Python & Tool Usage
 

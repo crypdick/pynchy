@@ -23,6 +23,7 @@ from pynchy.config.models import (
     WhatsAppConnectionConfig,
     WorkspaceConfig,
 )
+from pynchy.config.settings import Settings
 from pynchy.types import NewMessage, WorkspaceProfile
 
 
@@ -320,6 +321,35 @@ class TestFilterAllowedMessages:
 
         assert filtered == messages
 
+    def test_chat_security_overrides_connection_security(self):
+        settings = make_settings(
+            connections={
+                "synapse": SlackConnectionConfig(
+                    bot_token_env="BOT",
+                    app_token_env="APP",
+                    security=ChannelOverrideConfig(allowed_users=["slack:U04CONNECTION"]),
+                    chat={
+                        "C123": ConnectionChatConfig(
+                            security=ChannelOverrideConfig(allowed_users=["slack:U04CHAT"])
+                        )
+                    },
+                )
+            }
+        )
+        group = WorkspaceProfile(
+            jid="slack:C123",
+            name="Team",
+            folder="team",
+            trigger="@pynchy",
+            added_at="2026-01-01T00:00:00Z",
+        )
+        messages = [_message("U04CONNECTION"), _message("U04CHAT")]
+
+        with patch("pynchy.config.access.get_settings", return_value=settings):
+            filtered = filter_allowed_messages(messages, group, "synapse")
+
+        assert [msg.sender for msg in filtered] == ["U04CHAT"]
+
 
 class TestChannelOverrideConfig:
     def test_all_none_is_valid(self):
@@ -376,3 +406,26 @@ class TestConnectionsConfigGetConnection:
         cfg = ConnectionChatConfig(security=ChannelOverrideConfig(access="read"))
         assert cfg.security is not None
         assert cfg.security.access == "read"
+
+    def test_slack_owner_alias_requires_owner_config(self):
+        with pytest.raises(ValueError, match="no owner is configured"):
+            Settings(
+                connections={
+                    "synapse": SlackConnectionConfig(
+                        bot_token_env="BOT",
+                        app_token_env="APP",
+                        security=ChannelOverrideConfig(allowed_users=["owner"]),
+                    )
+                }
+            )
+
+    def test_whatsapp_owner_alias_does_not_need_owner_config(self):
+        settings = Settings(
+            connections={
+                "phone": WhatsAppConnectionConfig(
+                    security=ChannelOverrideConfig(allowed_users=["owner"])
+                )
+            }
+        )
+
+        assert settings.connections["phone"].security.allowed_users == ["owner"]

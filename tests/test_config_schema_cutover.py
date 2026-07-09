@@ -42,7 +42,7 @@ def test_new_schema_parses_minimal_config() -> None:
         [profiles.base]
         prompts = ["base"]
         skills = ["python"]
-        tools = ["shell", "linear"]
+        tools = ["shell", "linear", "caldav"]
         repo = "owner/project"
         model = "chatgpt/gpt-5.3-codex"
         is_admin = false
@@ -58,6 +58,15 @@ def test_new_schema_parses_minimal_config() -> None:
         [tools.linear]
         type = "linear"
         workspace = "PYN"
+
+        [tools.caldav]
+        type = "caldav"
+        default_server = "nextcloud"
+
+        [tools.caldav.servers.nextcloud]
+        url = "https://nextcloud.example.com/remote.php/dav"
+        username = "me@example.com"
+        password_env = "CALDAV_PASSWORD"  # pragma: allowlist secret
 
         [tools.docs]
         type = "mcp"
@@ -82,6 +91,7 @@ def test_new_schema_parses_minimal_config() -> None:
     assert settings.workspaces["engineering"].profiles == ["base"]
     assert settings.tools["shell"].type == "builtin"
     assert settings.tools["linear"].type == "linear"
+    assert settings.tools["caldav"].type == "caldav"
     assert settings.tools["docs"].type == "mcp"
     assert settings.connections["synapse"].type == "discord"
     assert settings.command_center.connection == "synapse"
@@ -108,6 +118,7 @@ def test_new_schema_parses_minimal_config() -> None:
         "workspace_defaults",
         "directives",
         "cron_jobs",
+        "git_policy",
     ],
 )
 def test_legacy_schema_keys_are_rejected(legacy_key: str) -> None:

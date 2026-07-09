@@ -126,9 +126,9 @@ Each rule decision is:
 | `needs_human` | Require human approval before the call proceeds |
 | `deny` | Block the capability |
 
-Capability maps merge through the same workspace cascade as profiles:
-`universal` < `profiles.<name>` < `workspaces.<name>`. More
-specific entries replace less specific entries with the same capability ID.
+Capability maps merge through composable profiles selected by each workspace.
+When multiple profiles define the same capability ID, later workspace profile
+entries replace earlier entries.
 
 ### 5b. Bash Security Gate
 

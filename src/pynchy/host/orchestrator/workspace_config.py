@@ -62,6 +62,11 @@ def _parent_folder_for_dynamic_thread(folder: str) -> str | None:
     return parent
 
 
+def static_workspace_folder(folder: str) -> str:
+    """Return the configured parent workspace folder for dynamic thread folders."""
+    return _parent_folder_for_dynamic_thread(folder) or folder
+
+
 def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> None:
     """Cache workspace specs exported by plugins.
 
@@ -182,21 +187,22 @@ def get_repo_access_groups(folders: Iterable[str]) -> dict[str, list[str]]:
 async def _pause_orphaned_tasks(
     specs: dict[str, WorkspaceSpec], desired_job_task_ids: set[str]
 ) -> None:
-    """Pause active scheduled tasks whose workspace is not periodic/configured."""
-    periodic_folders: set[str] = set()
+    """Pause config-owned job tasks without a matching config declaration."""
+    assert specs is not None
     all_tasks = await get_all_tasks()
     for task in all_tasks:
         if task.status != "active":
             continue
         if task.id in desired_job_task_ids:
             continue
-        if task.group_folder not in periodic_folders:
-            await update_task(task.id, {"status": "paused"})
-            logger.info(
-                "Paused orphaned scheduled task",
-                task_id=task.id,
-                folder=task.group_folder,
-            )
+        if not task.id.startswith(("job-", "periodic-")):
+            continue
+        await update_task(task.id, {"status": "paused"})
+        logger.info(
+            "Paused orphaned config job task",
+            task_id=task.id,
+            folder=task.group_folder,
+        )
 
 
 async def _remove_orphaned_workspaces(

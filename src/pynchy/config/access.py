@@ -7,7 +7,7 @@ connection-level channel security, not workspace/profile config.
 from __future__ import annotations
 
 from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profiles
-from pynchy.config.models import ChannelOverrideConfig, OwnerConfig
+from pynchy.config.models import ChannelOverrideConfig, ConnectionConfig, OwnerConfig
 from pynchy.config.refs import channel_platform_from_name
 from pynchy.config.settings import get_settings
 from pynchy.types import NewMessage
@@ -142,7 +142,7 @@ def filter_allowed_messages(
     if getattr(group, "is_admin", False):
         return messages
 
-    security = _connection_security(channel_plugin_name)
+    security = _message_security(channel_plugin_name, messages)
     if security is None or security.allowed_users is None:
         return messages
 
@@ -167,13 +167,42 @@ def filter_allowed_messages(
     ]
 
 
-def _connection_security(channel_plugin_name: str | None) -> ChannelOverrideConfig | None:
-    if channel_plugin_name is None:
-        return None
-    connection = get_settings().connections.get(channel_plugin_name)
+def _message_security(
+    channel_plugin_name: str | None, messages: list[NewMessage]
+) -> ChannelOverrideConfig | None:
+    connection = _connection_config(channel_plugin_name)
     if connection is None:
         return None
+    for msg in messages:
+        if security := _chat_security(connection, msg.chat_jid):
+            return security
     return connection.security
+
+
+def _connection_config(channel_plugin_name: str | None) -> ConnectionConfig | None:
+    if channel_plugin_name is None:
+        return None
+    return get_settings().connections.get(channel_plugin_name)
+
+
+def _chat_security(connection: ConnectionConfig, chat_jid: str) -> ChannelOverrideConfig | None:
+    for chat_name, chat_cfg in connection.chat.items():
+        if not _chat_name_matches_jid(chat_name, chat_jid):
+            continue
+        security = chat_cfg.security
+        if security is not None:
+            return security
+    return None
+
+
+def _chat_name_matches_jid(chat_name: str, chat_jid: str) -> bool:
+    lowered_name = chat_name.casefold()
+    lowered_jid = chat_jid.casefold()
+    if lowered_name == lowered_jid:
+        return True
+    if lowered_jid.startswith("slack:") and lowered_jid[6:] == lowered_name:
+        return True
+    return lowered_jid.endswith(f":{lowered_name}")
 
 
 def _policy_channel_name(channel_plugin_name: str | None) -> str | None:
@@ -182,7 +211,7 @@ def _policy_channel_name(channel_plugin_name: str | None) -> str | None:
     platform = channel_platform_from_name(channel_plugin_name)
     if platform in _KNOWN_CHANNEL_PLATFORMS:
         return platform
-    connection = get_settings().connections.get(channel_plugin_name)
+    connection = _connection_config(channel_plugin_name)
     if connection is None:
         return channel_plugin_name
     return connection.type
