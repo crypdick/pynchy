@@ -71,6 +71,23 @@ def test_mcp_tool_provider_config_parses_credentials_path():
     assert cfg.mcp.credentials_path == "/gdrive-server/credentials.json"
 
 
+@pytest.mark.parametrize(
+    ("mcp_config", "error"),
+    [
+        ({"runtime": "script", "port": 8080}, "Script MCP tools require 'command'"),
+        ({"runtime": "script", "command": "uv"}, "Script MCP tools require 'port'"),
+        ({"runtime": "docker", "port": 8080}, "Docker MCP tools require 'image'"),
+        ({"runtime": "docker", "image": "mcp/example:latest"}, "Docker MCP tools require 'port'"),
+        ({"runtime": "url"}, "URL MCP tools require 'url'"),
+    ],
+)
+def test_mcp_tool_provider_config_rejects_incomplete_runtime_config(
+    mcp_config: dict[str, object], error: str
+) -> None:
+    with pytest.raises(ValidationError, match=error):
+        TypeAdapter(ToolConfig).validate_python({"type": "mcp", "mcp": mcp_config})
+
+
 def test_profile_selecting_unknown_tool_is_rejected() -> None:
     with pytest.raises(ValidationError, match="unknown tool"):
         validate_settings_mapping(

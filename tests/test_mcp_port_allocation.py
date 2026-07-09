@@ -403,13 +403,17 @@ class TestResolveAllInstancesPortOffset:
         assert list(state.instances) == ["linear"]
         assert state.workspace_instances == {"code-improver": ["linear"]}
 
-    def test_linear_mcp_is_implicit_for_all_workspaces_with_api_key(self, monkeypatch):
+    def test_linear_mcp_requires_explicit_tool_selection_with_api_key(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
-        settings = make_settings(
-            workspaces={
-                "alpha": WorkspaceConfig(),
-                "beta": WorkspaceConfig(),
-            },
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"linear-access": {"tools": ["linear"]}},
+                "workspaces": {
+                    "alpha": {},
+                    "beta": {"profiles": ["linear-access"]},
+                },
+                "tools": {"linear": {"type": "mcp"}},
+            }
         )
         all_servers = {
             "linear": McpServerConfig(
@@ -434,6 +438,7 @@ class TestResolveAllInstancesPortOffset:
 
         state = resolve_all_instances(settings, all_servers)
 
-        assert set(state.workspace_instances) == {"alpha", "beta"}
-        assert len(state.instances) == 2
-        assert sorted(instance.port for instance in state.instances.values()) == [8474, 8475]
+        assert set(state.workspace_instances) == {"beta"}
+        assert state.workspace_instances["beta"][0].startswith("linear_")
+        assert len(state.instances) == 1
+        assert next(iter(state.instances.values())).port == 8474

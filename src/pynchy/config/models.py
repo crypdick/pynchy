@@ -461,6 +461,26 @@ class McpToolConfig(_StrictModel):
     auth_value_env: str | None = None
     credentials_path: str | None = None
 
+    @model_validator(mode="after")
+    def validate_explicit_runtime_config(self) -> McpToolConfig:
+        if "runtime" not in self.model_fields_set:
+            return self
+
+        if self.runtime == "docker":
+            if not self.image:
+                raise ValueError("Docker MCP tools require 'image'")
+            if self.port is None:
+                raise ValueError("Docker MCP tools require 'port'")
+        elif self.runtime == "url":
+            if not self.url:
+                raise ValueError("URL MCP tools require 'url'")
+        elif self.runtime == "script":
+            if not self.command:
+                raise ValueError("Script MCP tools require 'command'")
+            if self.port is None:
+                raise ValueError("Script MCP tools require 'port'")
+        return self
+
 
 class McpTool(_ToolTrustConfig):
     type: Literal["mcp"]

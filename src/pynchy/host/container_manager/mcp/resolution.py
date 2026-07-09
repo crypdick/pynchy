@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any
@@ -175,8 +174,6 @@ def resolve_workspace_servers(
         return []
 
     configured_servers = [name for name in ws_config.tools if name in all_servers]
-    if os.environ.get("LINEAR_API_KEY") and "linear" in all_servers:
-        configured_servers.append("linear")
 
     servers: set[str] = set()
     for entry in configured_servers:

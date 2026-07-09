@@ -5,16 +5,22 @@ Imported by :mod:`pynchy.config` to keep that file lean.
 
 Example TOML::
 
-    [mcp.playwright]
-    type = "docker"
+    [tools.playwright]
+    type = "mcp"
+
+    [tools.playwright.mcp]
+    runtime = "docker"
     image = "mcp/playwright:latest"
     args = ["--headless", "--port", "8931", "--host", "0.0.0.0", "--allowed-hosts", "*"]
     port = 8931
     transport = "http"
     idle_timeout = 600
 
-    [mcp.slack_mcp_acme]
-    type = "docker"
+    [tools.slack_mcp_acme]
+    type = "mcp"
+
+    [tools.slack_mcp_acme.mcp]
+    runtime = "docker"
     image = "ghcr.io/korotovsky/slack-mcp-server:latest"
     port = 8080
     transport = "http"
@@ -22,15 +28,21 @@ Example TOML::
     env_forward.SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME"
     env_forward.SLACK_MCP_XOXD_TOKEN = "SLACK_XOXD_ACME"
 
-    [mcp.some-remote-api]
-    type = "url"
+    [tools.some-remote-api]
+    type = "mcp"
+
+    [tools.some-remote-api.mcp]
+    runtime = "url"
     url = "https://api.example.com/mcp"
     transport = "streamable_http"
     auth_value_env = "SOME_API_KEY"
 
     # Host script MCP (subprocess managed by pynchy):
-    [mcp.my_custom_tool]
-    type = "script"
+    [tools.my_custom_tool]
+    type = "mcp"
+
+    [tools.my_custom_tool.mcp]
+    runtime = "script"
     command = "uv"
     args = ["run", "scripts/my-tool.py"]
     port = 8080

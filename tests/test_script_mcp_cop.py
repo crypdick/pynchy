@@ -87,8 +87,13 @@ def _make_settings_with_mcp(
     so this only needs to provide tool provider config for the cop gate check.
     """
     mock_s = MagicMock()
+    mcp_config = {
+        "script": {"runtime": "script", "command": "uv", "port": 8474},
+        "docker": {"runtime": "docker", "image": "mcp/example:latest", "port": 8080},
+        "url": {"runtime": "url", "url": "https://example.com/mcp"},
+    }[mcp_type]
     mock_s.tools = {
-        tool_name: McpTool(type="mcp", mcp=McpToolConfig(runtime=mcp_type)),
+        tool_name: McpTool(type="mcp", mcp=McpToolConfig(**mcp_config)),
     }
     mock_s.workspaces = {}
     if tmp_path is not None:
