@@ -109,7 +109,9 @@ def resolve_container_host(container_host: str) -> str:
     if container_host != _DEFAULT_CONTAINER_HOST:
         return container_host
 
-    from pynchy.plugins.runtimes.detection import get_runtime
+    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when resolving the default host
+        get_runtime,
+    )
 
     try:
         runtime_name = get_runtime().name
@@ -148,7 +150,9 @@ def collect_plugin_mcp_servers(
     if plugin_manager is None:
         return {}, {}
 
-    from pynchy.config.mcp import McpServerConfig
+    from pynchy.config.mcp import (  # noqa: PLC0415, RUF100 - defer MCP model import until plugin specs are collected
+        McpServerConfig,
+    )
 
     result: dict[str, McpServerConfig] = {}
     trust_defaults: dict[str, ServiceTrustConfig] = {}
@@ -236,7 +240,10 @@ async def start_gateway(
         or plugin_mcp_servers
     )
     if isinstance(gateway, LiteLLMGateway) and has_servers:
-        from pynchy.host.container_manager.mcp.manager import McpManager, set_mcp_manager
+        from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415, RUF100 - defer MCP manager setup until LiteLLM gateway is ready
+            McpManager,
+            set_mcp_manager,
+        )
 
         mcp_mgr = McpManager(
             s,
@@ -254,7 +261,10 @@ async def stop_gateway() -> None:
     """Stop the gateway if running."""
 
     # Stop MCP containers before stopping the gateway
-    from pynchy.host.container_manager.mcp.manager import get_mcp_manager, set_mcp_manager
+    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415, RUF100 - defer MCP manager import until shutdown actually needs it
+        get_mcp_manager,
+        set_mcp_manager,
+    )
 
     mcp_mgr = get_mcp_manager()
     if mcp_mgr is not None:
