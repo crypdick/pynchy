@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import subprocess  # noqa: S404, RUF100 - used only for subprocess exception types.
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
 
@@ -14,6 +15,7 @@ from pynchy.config.settings import (
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
+    get_repo_context,
 )
 from pynchy.host.git_ops.sync import (
     GitSyncDeps,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
@@ -36,8 +38,6 @@ def get_local_head_sha(repo_root: Path | None = None) -> str:
 
 def _host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
-    import subprocess  # noqa: S404, RUF100 - used only for subprocess exception types.
-
     try:
         main = detect_main_branch(cwd=repo_root)
         result = run_git("ls-remote", "origin", f"refs/heads/{main}", cwd=repo_root, env=env)
@@ -157,8 +157,6 @@ def _hash_config_files() -> str:
 
 def _find_pynchy_repo_ctx(s: Settings, pynchy_root: Path) -> RepoContext | None:
     """Resolve pynchy's own RepoContext (for worktree notifications), if configured."""
-    from pynchy.host.git_ops.repo import get_repo_context
-
     for slug in s.repos.overrides:
         ctx = get_repo_context(slug)
         if ctx and ctx.root.resolve() == pynchy_root.resolve():

@@ -22,6 +22,8 @@ from collections.abc import (
 from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
 
+import pynchy.config as pynchy_config
+import pynchy.host.git_ops.repo as repo_manager
 from pynchy.config import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves worktree signatures at runtime.
 )
@@ -290,29 +292,26 @@ def reconcile_worktrees_at_startup(
     Args:
         repo_groups: Dict mapping slug → list of group folder names.
     """
-    from pynchy.config import get_settings
-    from pynchy.host.git_ops.repo import (
-        check_token_expiry,
-        ensure_repo_cloned,
-        get_repo_context,
-        get_repo_token,
-    )
-
     repo_groups = repo_groups or {}
 
     # Source base path worktrees are relocated from
-    s = get_settings()
+    s = pynchy_config.get_settings()
     old_base = s.home_dir / ".config" / "pynchy" / "worktrees"
 
     for slug, folders in repo_groups.items():
-        repo_ctx = _startup_repo_context(s, slug, get_repo_context)
+        repo_ctx = _startup_repo_context(s, slug, repo_manager.get_repo_context)
         if repo_ctx is None:
             continue
-        _warn_if_repo_token_missing(s, slug, check_token_expiry, get_repo_token)
+        _warn_if_repo_token_missing(
+            s,
+            slug,
+            repo_manager.check_token_expiry,
+            repo_manager.get_repo_token,
+        )
         if not _prepare_repo_for_startup(
             repo_ctx,
             slug,
-            ensure_repo_cloned,
+            repo_manager.ensure_repo_cloned,
             old_base,
             s.project_root,
         ):
