@@ -34,6 +34,10 @@ from pynchy.state.chats import (
     update_chat_name,
 )
 from pynchy.state.connection import _get_db, init_database, init_test_database
+from pynchy.state.conversation_events import (
+    get_conversation_event_pointers_since,
+    store_conversation_event_pointer,
+)
 from pynchy.state.events import store_event
 from pynchy.state.groups import (
     delete_workspace_profile,
@@ -94,6 +98,9 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "_get_db",
     "init_database",
     "init_test_database",
+    # conversation_events
+    "get_conversation_event_pointers_since",
+    "store_conversation_event_pointer",
     # channel_cursors
     "advance_cursors_atomic",
     "get_channel_cursor",

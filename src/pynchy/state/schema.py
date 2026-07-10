@@ -144,6 +144,26 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_chat ON events(chat_jid);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
 
+CREATE TABLE IF NOT EXISTS conversation_events (
+    event_id TEXT PRIMARY KEY,
+    turn_id TEXT NOT NULL,
+    chat_jid TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    sender_name TEXT,
+    message_type TEXT NOT NULL,
+    source_message_id TEXT,
+    content_preview TEXT NOT NULL,
+    phoenix_ref TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_conversation_events_chat_time
+ON conversation_events(chat_jid, timestamp);
+CREATE INDEX IF NOT EXISTS idx_conversation_events_turn
+ON conversation_events(turn_id);
+
 CREATE TABLE IF NOT EXISTS registered_groups (
     jid TEXT PRIMARY KEY,
     name TEXT NOT NULL,

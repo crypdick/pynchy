@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import pytest
+
+from pynchy.conversation.events import ConversationEvent, ConversationEventKind
+from pynchy.conversation.phoenix import PhoenixEventRef
+from pynchy.state import (
+    get_conversation_event_pointers_since,
+    init_test_database,
+    store_conversation_event_pointer,
+)
+from pynchy.state.conversation_events import (
+    _decode_metadata,  # noqa: PLC2701  # allow: private-test-imports - review requested decoder coverage.
+)
+
+
+def _event(
+    event_id: str,
+    timestamp: str,
+    metadata: dict[str, object] | None = None,
+) -> ConversationEvent:
+    return ConversationEvent(
+        event_id=event_id,
+        turn_id="turn_1",
+        chat_jid="slack:C123",
+        timestamp=timestamp,
+        kind=ConversationEventKind.USER_MESSAGE,
+        sender="alice",
+        sender_name="Alice",
+        content=f"body {event_id}",
+        message_type="user",
+        metadata=metadata or {"source": "test"},
+    )
+
+
+async def test_store_and_load_projection_pointer() -> None:
+    await init_test_database()
+    event = _event("evt_1", "2026-07-10T00:00:00+00:00")
+    await store_conversation_event_pointer(
+        event,
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+
+    rows = await get_conversation_event_pointers_since("slack:C123", None)
+
+    assert len(rows) == 1
+    assert rows[0]["event_id"] == "evt_1"
+    assert rows[0]["content_preview"] == "body evt_1"
+    assert rows[0]["phoenix_ref"] == "phoenix:event:evt_1"
+    assert rows[0]["metadata"] == {"source": "test"}
+
+
+async def test_since_filter_is_exclusive() -> None:
+    await init_test_database()
+    await store_conversation_event_pointer(
+        _event("evt_1", "2026-07-10T00:00:00+00:00"),
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+    await store_conversation_event_pointer(
+        _event("evt_2", "2026-07-10T00:01:00+00:00"),
+        PhoenixEventRef("evt_2", "phoenix:event:evt_2"),
+    )
+
+    rows = await get_conversation_event_pointers_since(
+        "slack:C123",
+        "2026-07-10T00:00:00+00:00",
+    )
+
+    assert [row["event_id"] for row in rows] == ["evt_2"]
+
+
+async def test_store_projection_pointer_decodes_nested_metadata() -> None:
+    await init_test_database()
+    event = _event(
+        "evt_1",
+        "2026-07-10T00:00:00+00:00",
+        metadata={"source": "test", "nested": {"items": ["one", {"two": 2}]}},
+    )
+
+    await store_conversation_event_pointer(
+        event,
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+
+    rows = await get_conversation_event_pointers_since("slack:C123", None)
+
+    assert rows[0]["metadata"] == {
+        "source": "test",
+        "nested": {"items": ["one", {"two": 2}]},
+    }
+
+
+async def test_store_projection_pointer_rejects_mismatched_phoenix_ref() -> None:
+    await init_test_database()
+    event = _event("evt_1", "2026-07-10T00:00:00+00:00")
+
+    with pytest.raises(
+        ValueError,
+        match="Phoenix ref event_id 'evt_2' does not match event 'evt_1'",
+    ):
+        await store_conversation_event_pointer(
+            event,
+            PhoenixEventRef("evt_2", "phoenix:event:evt_2"),
+        )
+
+    rows = await get_conversation_event_pointers_since("slack:C123", None)
+    assert rows == []
+
+
+def test_decode_metadata_returns_empty_dict_for_malformed_json() -> None:
+    assert _decode_metadata("{not valid json") == {}
