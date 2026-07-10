@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+import pynchy.config as pynchy_config
 from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     chrome_path,
@@ -77,9 +78,7 @@ def _check_workspace_access(
     if not source_group:
         return None
 
-    from pynchy.config import get_settings
-
-    ws = get_settings().workspaces.get(source_group)
+    ws = pynchy_config.get_settings().workspaces.get(source_group)
     is_admin = bool(ws.is_admin) if ws else False
     if is_admin:
         return None
@@ -201,7 +200,9 @@ async def _run_interactive_setup_body(
     steps_done: list[str],
     novnc_url: str | None,
 ) -> dict[str, object]:
-    from playwright.async_api import async_playwright
+    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional browser automation dependency.
+        async_playwright,
+    )
 
     async with async_playwright() as pw:
         context = await pw.chromium.launch_persistent_context(

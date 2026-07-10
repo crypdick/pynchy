@@ -6,6 +6,7 @@ from typing import Any
 
 import pluggy
 
+import pynchy.config as pynchy_config
 from pynchy.plugins.integrations.google_setup._handler import handle_setup_google
 
 hookimpl = pluggy.HookimplMarker("pynchy")
@@ -52,10 +53,8 @@ class GoogleSetupPlugin:
 
     @hookimpl
     def pynchy_service_handler(self) -> dict[str, Any]:
-        from pynchy.config import get_settings
-
         tools: dict[str, Any] = {}
-        for profile in get_settings().chrome_profiles:
+        for profile in pynchy_config.get_settings().chrome_profiles:
             # Closure captures profile by value via default arg
             async def _handler(data: dict[str, Any], _profile: str = profile) -> dict[str, Any]:
                 data["chrome_profile"] = _profile
