@@ -15,6 +15,7 @@ from pynchy.host.container_manager.onecli import prepare_onecli_material
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.container_manager.session_prep import sync_skills, write_settings_json
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
+from pynchy.host.learning.mirror import prepare_vault_mount_root
 from pynchy.host.learning.paths import LearningConfigError, resolve_learning_paths
 from pynchy.host.learning.skills import iter_learned_skill_dirs
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
@@ -23,6 +24,7 @@ from pynchy.types import VolumeMount, WorkspaceProfile
 _LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR = (
     "learning.obsidian.vault_root must be an existing directory"
 )
+_LEARNING_REVIEW_FOLDER_PREFIX = "learning-review-"
 
 
 @dataclass(frozen=True)
@@ -145,7 +147,10 @@ def _effective_repo_mounts(
 def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _LearningMountContext:
     resolved = load_resolved_config(group_folder)
     workspace_skills = resolved.skills if resolved else None
-    learning_paths = resolve_learning_paths(group_folder)
+    learning_paths = resolve_learning_paths(
+        group_folder,
+        profile_override=_learning_profile_override_for_group(group_folder),
+    )
     learned_skill_paths: list[Path] | None = None
     if learning_paths is None:
         return _LearningMountContext(
@@ -158,7 +163,7 @@ def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _Learn
     learning_paths.skills_root.mkdir(parents=True, exist_ok=True)
     mounts.append(
         VolumeMount(
-            str(learning_paths.vault_root),
+            str(prepare_vault_mount_root(learning_paths)),
             learning_paths.vault_mount_path,
             readonly=False,
         )
@@ -274,6 +279,13 @@ def _add_validated_additional_mounts(
             for mount in validated
         ]
     )
+
+
+def _learning_profile_override_for_group(group_folder: str) -> str | None:
+    if not group_folder.startswith(_LEARNING_REVIEW_FOLDER_PREFIX):
+        return None
+    profile_slug = group_folder.removeprefix(_LEARNING_REVIEW_FOLDER_PREFIX)
+    return profile_slug or None
 
 
 def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:

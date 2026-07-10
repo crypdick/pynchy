@@ -130,6 +130,7 @@ _SETTINGS_MODULES = [
     _CR_ORCH,
     "pynchy.host.container_manager.snapshots",
     "pynchy.host.learning.paths",
+    "pynchy.host.learning.mirror",
     "pynchy.host.learning.skills",
     "pynchy.host.orchestrator.workspace_config",
 ]

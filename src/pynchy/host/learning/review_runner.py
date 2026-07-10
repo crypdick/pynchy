@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+from pynchy.host.learning.mirror import sync_vault_mount_mirror
 from pynchy.host.learning.packet_models import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     LearningPacket,
 )
@@ -53,5 +54,6 @@ async def run_learning_review(packet: LearningPacket, run_agent: RunAgent) -> st
         input_source="hidden_learning_review",
     )
     if result == "success":
+        sync_vault_mount_mirror(paths)
         return "completed"
     raise RuntimeError(_LEARNING_REVIEWER_RESULT_ERROR.format(result=result))
