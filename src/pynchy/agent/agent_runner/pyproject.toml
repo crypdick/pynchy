@@ -128,14 +128,6 @@ select = [
     "W",
     "YTT",
 ]
-ignore = [
-    "ANN002",
-    "ANN204",
-    "PLC2701",
-    "SLF001",
-    "TRY003",
-]
-
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "PLR0912", "PLR0913", "PLR0915", "RUF012", "S101", "SLF"]
 "src/agent_runner/agent_tools/_server.py" = ["F401"]
