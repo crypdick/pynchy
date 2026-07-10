@@ -1708,6 +1708,81 @@ class TestContainerInputAgentCoreConfig:
         assert destroy_session.await_count == int(should_reset)
         assert clear_session.await_count == int(should_reset)
 
+    @pytest.mark.asyncio
+    async def test_run_agent_dispatches_host_execution_mode_to_host_runner(self, tmp_path: Path):
+        class _Deps:
+            def __init__(self) -> None:
+                self.sessions: dict[str, str] = {"host-group": "session-0"}
+                self.session_cleared: set[str] = set()
+                self.workspaces: dict[str, WorkspaceProfile] = {}
+                self.queue = MagicMock()
+                self.plugin_manager = None
+
+            async def get_available_groups(self) -> list[dict[str, object]]:
+                return []
+
+            async def broadcast_agent_input(
+                self,
+                chat_jid: str,
+                messages: list[dict[str, object]],
+                *,
+                source: str = "user",
+            ) -> None:
+                return None
+
+        group = WorkspaceProfile(
+            jid="host@g.us",
+            name="Host Group",
+            folder="host-group",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        deps = _Deps()
+        ctx = self._ctx("session-0")
+        ctx.is_admin = True
+        settings = make_settings(
+            profiles={
+                "host-admin": ProfileConfig(
+                    is_admin=True,
+                    execution_mode="host",
+                    cwd=str(tmp_path),
+                )
+            },
+            workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.run_host_input",
+                new_callable=AsyncMock,
+                return_value="success",
+            ) as run_host_input,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._cold_start",
+                new_callable=AsyncMock,
+                return_value="container-called",
+            ) as cold_start,
+        ):
+            result = await run_agent(deps, group, "chat", [{"content": "hi"}])
+
+        assert result == "success"
+        cold_start.assert_not_awaited()
+        run_host_input.assert_awaited_once()
+        input_data = run_host_input.await_args.args[0]
+        assert input_data.group_folder == "host-group"
+        assert input_data.session_id == "session-0"
+        assert run_host_input.await_args.kwargs["cwd"] == tmp_path
+
 
 class TestAgentRunnerPreContainerHelpers:
     @pytest.mark.asyncio

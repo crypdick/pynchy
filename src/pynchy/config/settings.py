@@ -29,7 +29,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import (
@@ -59,7 +59,6 @@ from pynchy.config.models import (
     McpToolConfig,
     OneCliConfig,
     PluginConfig,
-    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     QueueConfig,
     ReposConfig,
     SchedulerConfig,
@@ -69,6 +68,12 @@ from pynchy.config.models import (
     ToolConfig,
     WorkspaceConfig,
 )
+from pynchy.config.profiles import (
+    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+)
+
+if TYPE_CHECKING:
+    from pydantic.fields import FieldInfo
 
 _HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
     "pynchy_hermetic_settings_sources", default=False
@@ -89,7 +94,7 @@ class _FilteredDotenvSettingsSource(PydanticBaseSettingsSource):
         allowed = set(self.settings_cls.model_fields)
         return {key: value for key, value in data.items() if key in allowed}
 
-    def get_field_value(self, field: object, field_name: str) -> tuple[object, str, bool]:
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[object, str, bool]:
         return self._wrapped.get_field_value(field, field_name)
 
 
@@ -150,9 +155,7 @@ def _validate_owner_alias(
         return
     if platform == "whatsapp":
         return
-    message = (
-        f"{scope} uses allowed_users=['owner']; owner aliases are only supported for WhatsApp"
-    )
+    message = f"{scope} uses allowed_users=['owner']; owner aliases are only supported for WhatsApp"
     raise ValueError(message)
 
 
@@ -307,6 +310,22 @@ class Settings(BaseSettings):
                 quiet_on_success=job.quiet_on_success or False,
             )
         self.cron_jobs = derived
+        return self
+
+    @model_validator(mode="after")
+    def _validate_host_execution_workspaces(self) -> Settings:
+        for workspace_name in self.workspaces:
+            resolved = self.resolved_workspace_config(workspace_name)
+            if resolved is None or resolved.execution_mode != "host":
+                continue
+            if not resolved.is_admin:
+                raise ValueError(
+                    f"workspaces.{workspace_name}: execution_mode = 'host' requires is_admin = true"
+                )
+            if not resolved.cwd:
+                raise ValueError(
+                    f"workspaces.{workspace_name}: execution_mode = 'host' requires cwd"
+                )
         return self
 
     @model_validator(mode="after")

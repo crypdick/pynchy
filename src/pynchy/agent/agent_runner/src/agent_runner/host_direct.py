@@ -1,0 +1,131 @@
+"""One-shot direct host runner for agent cores.
+
+This module is launched by the Pynchy host process. It deliberately avoids
+Pynchy's container-only file IPC and built-in MCP server: stdin carries one
+input envelope, stdout streams ``ContainerOutput`` JSON lines, and stderr is
+reserved for runner/core logs.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import sys
+
+from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
+from agent_runner.main import build_sdk_messages, event_to_output
+from agent_runner.models import ContainerInput, ContainerOutput
+from agent_runner.registry import create_agent_core
+
+
+def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> AgentCoreConfig:
+    """Build core config for direct host execution."""
+    extra = {
+        **(container_input.agent_core_config or {}),
+        "pynchy_hooks_enabled": False,
+    }
+    return AgentCoreConfig(
+        cwd=cwd,
+        session_id=container_input.session_id,
+        group_folder=container_input.group_folder,
+        chat_jid=container_input.chat_jid,
+        is_admin=container_input.is_admin,
+        is_scheduled_task=container_input.is_scheduled_task,
+        system_prompt_append=container_input.system_prompt_append,
+        mcp_servers={},
+        plugin_hooks=[],
+        extra=extra,
+    )
+
+
+def _write_output(output: ContainerOutput) -> None:
+    sys.stdout.write(json.dumps(output.to_dict()) + "\n")
+    sys.stdout.flush()
+
+
+def _write_error(error: str, session_id: str | None = None) -> None:
+    _write_output(ContainerOutput(status="error", new_session_id=session_id, error=error))
+
+
+def _build_prompt(container_input: ContainerInput) -> str:
+    prompt = build_sdk_messages(container_input.messages)
+    if container_input.is_scheduled_task:
+        prompt = (
+            "[SCHEDULED TASK]\n"
+            "This is an automated scheduled task, not a live user conversation. "
+            "Complete the requested work and then stop.\n\n" + prompt
+        )
+    if container_input.system_notices:
+        notices_text = "\n".join(
+            f"[System Notice] {notice}" for notice in container_input.system_notices
+        )
+        prompt = notices_text + "\n\n" + prompt
+    return prompt
+
+
+def _event_session_id(event: AgentEvent, fallback: str | None) -> str | None:
+    if event.type == "system":
+        session_id = (event.data.get("system_data") or {}).get("session_id")
+        if isinstance(session_id, str) and session_id:
+            return session_id
+    return fallback
+
+
+async def _run_query(core: AgentCore, prompt: str, session_id: str | None) -> str | None:
+    current_session_id = session_id
+    async for event in core.query(prompt):
+        current_session_id = _event_session_id(event, current_session_id)
+        if core.session_id:
+            current_session_id = core.session_id
+        _write_output(event_to_output(event, current_session_id))
+    return core.session_id or current_session_id
+
+
+def _read_envelope() -> tuple[ContainerInput, str]:
+    raw = sys.stdin.read()
+    envelope = json.loads(raw)
+    if not isinstance(envelope, dict):
+        raise TypeError("host runner input must be a JSON object")
+    raw_input = envelope.get("input")
+    cwd = envelope.get("cwd")
+    if not isinstance(raw_input, dict):
+        raise TypeError("host runner input.input must be a JSON object")
+    if not isinstance(cwd, str) or not cwd:
+        raise TypeError("host runner input.cwd must be a non-empty string")
+    return ContainerInput.from_dict(raw_input), cwd
+
+
+async def _main_async() -> int:
+    try:
+        container_input, cwd = _read_envelope()
+        core = create_agent_core(
+            container_input.agent_core_module,
+            container_input.agent_core_class,
+            build_host_core_config(container_input, cwd=cwd),
+        )
+    except Exception as exc:  # noqa: BLE001, RUF100 - report startup failures to host.  # allow: exception-handling
+        _write_error(f"Failed to start host runner: {exc}")
+        return 1
+
+    session_id = container_input.session_id
+    try:
+        await core.start()
+        session_id = await _run_query(core, _build_prompt(container_input), session_id)
+    except Exception as exc:  # noqa: BLE001, RUF100 - report agent failures to host.  # allow: exception-handling
+        _write_error(str(exc), session_id)
+        return 1
+    finally:
+        try:
+            await core.stop()
+        except Exception as exc:  # noqa: BLE001, RUF100 - report cleanup failure on stderr.  # allow: exception-handling
+            sys.stderr.write(f"[host-direct] error stopping core: {exc}\n")
+            sys.stderr.flush()
+    return 0
+
+
+def main() -> None:
+    raise SystemExit(asyncio.run(_main_async()))
+
+
+if __name__ == "__main__":
+    main()

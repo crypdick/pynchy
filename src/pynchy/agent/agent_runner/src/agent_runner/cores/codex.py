@@ -155,6 +155,7 @@ class CodexCLIAgentCore:
             self.config.mcp_servers,
             gateway_base_url=gateway_base_url,
             model=_configured_model(self.config.extra),
+            hooks_enabled=bool(self.config.extra.get("pynchy_hooks_enabled", True)),
         )
 
         self._env = os.environ.copy()

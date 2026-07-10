@@ -59,6 +59,8 @@ To change a schedule, prompt, repo mount, or model override, edit `config.toml` 
 | `tools` | `list[str]` | Tool names from `[tools.*]` to select |
 | `repo` | `list[str]` or `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts project worktrees |
 | `model` | `str` | Optional model override |
+| `execution_mode` | `"container"` or `"host"` | Where the selected agent core runs; defaults to container execution |
+| `cwd` | `str` | Working directory for host execution |
 | `is_admin` | `bool` | Whether workspaces using this profile get admin privileges |
 | `contains_secrets` | `bool` | Whether workspace files may contain secrets |
 

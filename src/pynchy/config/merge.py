@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pynchy.config.models import (
+from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
 from pynchy.types import CapabilityRule
@@ -29,6 +29,8 @@ class ResolvedWorkspaceConfig:
     tools: list[str]
     repo: list[str]
     model: str | None
+    execution_mode: str
+    cwd: str | None
     is_admin: bool
     contains_secrets: bool
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
@@ -41,6 +43,8 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     tools: list[str] = []
     repo: list[str] = []
     model: str | None = None
+    execution_mode = "container"
+    cwd: str | None = None
     is_admin = False
     contains_secrets = False
     capabilities: dict[str, CapabilityRule] = {}
@@ -52,6 +56,10 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         repo.extend(profile.repo)
         if profile.model is not None:
             model = profile.model
+        if profile.execution_mode is not None:
+            execution_mode = profile.execution_mode
+        if profile.cwd is not None:
+            cwd = profile.cwd
         is_admin = is_admin or profile.is_admin
         contains_secrets = contains_secrets or profile.contains_secrets
         capabilities.update(
@@ -67,6 +75,8 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         tools=_deduplicate(tools),
         repo=_deduplicate(repo),
         model=model,
+        execution_mode=execution_mode,
+        cwd=cwd,
         is_admin=is_admin,
         contains_secrets=contains_secrets,
         capabilities=capabilities,

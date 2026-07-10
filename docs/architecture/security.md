@@ -24,6 +24,10 @@ Agents execute in Apple Container (macOS) or Docker (Linux), providing:
 
 The container boundary limits the attack surface to what's mounted, rather than relying on application-level permission checks.
 
+### Direct Host Execution
+
+Admin workspaces can set `execution_mode = "host"` with an explicit `cwd`. This mode runs the selected agent core as a host child process and does not use container isolation, file IPC, mounts, or Pynchy's built-in MCP server. Use it only for trusted operator workspaces where direct host access is the point of the workspace.
+
 ### 2. Mount Security
 
 **External Allowlist** — Mount permissions live at `~/.config/pynchy/mount-allowlist.toml`:

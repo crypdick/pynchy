@@ -79,6 +79,8 @@ def test_empty_profile_sequence_resolves_to_empty_defaults() -> None:
         tools=[],
         repo=[],
         model=None,
+        execution_mode="container",
+        cwd=None,
         is_admin=False,
         contains_secrets=False,
     )

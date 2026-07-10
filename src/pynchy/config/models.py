@@ -376,33 +376,21 @@ class CommandCenterConfig(_StrictModel):
     connection: ValidatedConnectionName | None = None
 
 
-class CapabilityTomlConfig(_StrictModel):
-    """Profile-level semantic capability policy for tool surfaces."""
+def __getattr__(name: str) -> object:
+    if name == "CapabilityTomlConfig":
+        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy compatibility re-export avoids an import cycle.
+            CapabilityTomlConfig,
+        )
 
-    decision: Literal["allow", "deny", "needs_human"]
+        return CapabilityTomlConfig
+    if name == "ProfileConfig":
+        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy compatibility re-export avoids an import cycle.
+            ProfileConfig,
+        )
 
-
-class ProfileConfig(_StrictModel):
-    """Composable workspace profile config."""
-
-    includes: list[ValidatedProfileName] = Field(default_factory=list)
-    prompts: list[str] = Field(default_factory=list)
-    skills: list[str] = Field(default_factory=list)
-    tools: list[ValidatedToolName] = Field(default_factory=list)
-    repo: list[ValidatedRepoSlug] = Field(default_factory=list)
-    model: str | None = None
-    is_admin: bool = False
-    contains_secrets: bool = False
-    capabilities: dict[str, CapabilityTomlConfig] = Field(default_factory=dict)
-
-    @field_validator("repo", mode="before")
-    @classmethod
-    def normalize_repo(cls, v: str | list[str] | None) -> list[str]:
-        if v is None:
-            return []
-        if isinstance(v, str):
-            return [v]
-        return v
+        return ProfileConfig
+    message = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(message)
 
 
 class RepoConfig(_StrictModel):

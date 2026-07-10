@@ -1,6 +1,6 @@
 # Agent Cores
 
-The agent core determines which LLM SDK or CLI powers agents inside the container. Pynchy ships with several built-in cores, and you can add more (Ollama, local models, etc.) via plugins.
+The agent core determines which LLM SDK or CLI powers agents. Pynchy ships with several built-in cores, and you can add more via plugins.
 
 ## Switching Cores
 
@@ -19,6 +19,24 @@ PYNCHY_AGENT_CORE=codex
 ```
 
 Restart Pynchy after changing the core.
+
+## Execution Mode
+
+Workspaces run in containers by default. Trusted admin workspaces can opt into direct host execution:
+
+```toml
+[profiles.local-admin]
+is_admin = true
+execution_mode = "host"
+cwd = "/path/to/workspace"
+
+[workspaces.local-admin]
+profiles = ["local-admin"]
+```
+
+`execution_mode = "host"` runs the selected agent core as a host child process in `cwd`. It does not mount workspace directories, create IPC directories, expose Pynchy's built-in MCP server, or apply the container sandbox. Model routing still comes from the selected core and LiteLLM config.
+
+Host execution requires an admin workspace and an explicit `cwd`.
 
 ## Profile Model Overrides
 

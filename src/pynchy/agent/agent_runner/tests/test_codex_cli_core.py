@@ -16,7 +16,11 @@ from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.codex import CodexCLIAgentCore
 
 
-def _core(session_id: str | None = None) -> CodexCLIAgentCore:
+def _core(
+    session_id: str | None = None,
+    *,
+    extra: dict[str, object] | None = None,
+) -> CodexCLIAgentCore:
     return CodexCLIAgentCore(
         AgentCoreConfig(
             cwd="/workspace/repos/owner/project",
@@ -39,7 +43,7 @@ def _core(session_id: str | None = None) -> CodexCLIAgentCore:
                     "auth_value_env": "REMOTE_TOKEN",
                 },
             },
-            extra={"model": "gpt-5.2-codex"},
+            extra=extra or {"model": "gpt-5.2-codex"},
         )
     )
 
@@ -95,6 +99,18 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     hooks = config["hooks"]["PreToolUse"]
     assert hooks[0]["matcher"] == "*"
     assert hooks[0]["hooks"][0]["command"].endswith("-m agent_runner.security.hook_entry")
+
+
+def test_start_can_disable_pynchy_hooks_for_host_direct_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
+    core = _core(extra={"model": "gpt-5.2-codex", "pynchy_hooks_enabled": False})
+
+    asyncio.run(core.start())
+
+    config = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert "hooks" not in config
+    assert "features" not in config
 
 
 def test_start_rejects_missing_gateway_env(tmp_path, monkeypatch):
