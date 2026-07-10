@@ -9,6 +9,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
 
+from pynchy import state
 from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     AgentActivityEvent,
     ChatClearedEvent,
@@ -28,12 +29,6 @@ class SqliteEventObserver:
 
     def subscribe(self, event_bus: EventBus) -> None:
         """Subscribe to all event types and persist each to SQLite."""
-        from pynchy.event_bus import (
-            AgentActivityEvent,
-            ChatClearedEvent,
-            MessageEvent,
-        )
-
         self._unsubs.append(event_bus.subscribe(MessageEvent, self._on_message))
         self._unsubs.append(event_bus.subscribe(AgentActivityEvent, self._on_activity))
         self._unsubs.append(event_bus.subscribe(ChatClearedEvent, self._on_clear))
@@ -80,9 +75,7 @@ class SqliteEventObserver:
         payload: dict[str, object],
     ) -> None:
         try:
-            from pynchy.state import store_event
-
-            await store_event(event_type, chat_jid, payload)
+            await state.store_event(event_type, chat_jid, payload)
         except Exception as exc:  # noqa: BLE001, RUF100 - event persistence is best-effort observer behavior.
             logger.warning(
                 "SQLite observer failed to store event",
