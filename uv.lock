@@ -200,6 +200,24 @@ wheels = [
 ]
 
 [[package]]
+name = "arize-phoenix-client"
+version = "2.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-sdk" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ab/c2/27c9400434586ead98393d46b0a5f07acca8c096775da2de1da1ec6fd6d9/arize_phoenix_client-2.12.0.tar.gz", hash = "sha256:7e65c0a44aa0d8958590e677f4ba7356f9782478d9d0f232ef8309173611a4ad", size = 233108, upload-time = "2026-07-03T03:15:54.576Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b4/40/dc9f7cc7631bde16b73be67e920db6d120c5f2c57cb72452fd94b8bee89b/arize_phoenix_client-2.12.0-py3-none-any.whl", hash = "sha256:7e5603d934991c9d30462eb52519c88d9289d3b9658e82378328a2a56feffa59", size = 212695, upload-time = "2026-07-03T03:15:53.099Z" },
+]
+
+[[package]]
 name = "arize-phoenix-otel"
 version = "0.16.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3322,6 +3340,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiosqlite" },
+    { name = "arize-phoenix-client" },
     { name = "arize-phoenix-otel" },
     { name = "beartype" },
     { name = "croniter" },
@@ -3419,6 +3438,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "arize-phoenix-client", specifier = ">=2.4.0" },
     { name = "arize-phoenix-otel", specifier = ">=0.16.0" },
     { name = "beartype", specifier = ">=0.22.9" },
     { name = "caldav", marker = "extra == 'caldav'", specifier = ">=1.4.0" },

@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from aiosqlite import Row
+
+    from pynchy.conversation.phoenix import ConversationBodyReader
 else:
     Row = Any
 
 from pynchy.state.connection import _get_db
 from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
-    pointer_to_message,
+    hydrate_pointer_to_message,
 )
 from pynchy.types import NewMessage
 
@@ -163,15 +165,31 @@ async def _get_legacy_messages_since(
     return [_row_to_message(row) for row in rows]
 
 
-async def get_messages_since(chat_jid: str, since_timestamp: str | None) -> list[NewMessage]:
+async def get_messages_since(
+    chat_jid: str,
+    since_timestamp: str | None,
+    *,
+    body_reader: object | None = None,
+) -> list[NewMessage]:
     """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     legacy = await _get_legacy_messages_since(chat_jid, since_timestamp)
     projected_rows = await get_conversation_event_pointers_since(chat_jid, since_timestamp)
-    projected = [
-        pointer_to_message(row)
-        for row in projected_rows
-        if row["message_type"] not in {"assistant", "host"}
-    ]
+    legacy_message_ids = {message.id for message in legacy}
+    projected = []
+    for row in projected_rows:
+        if row["message_type"] in {"assistant", "host"}:
+            continue
+        if row["event_id"] in legacy_message_ids:
+            continue
+        source_message_id = row.get("source_message_id")
+        if isinstance(source_message_id, str) and source_message_id in legacy_message_ids:
+            continue
+        projected.append(
+            await hydrate_pointer_to_message(
+                row,
+                cast("ConversationBodyReader | None", body_reader),
+            )
+        )
     return sorted([*legacy, *projected], key=lambda msg: (msg.timestamp, msg.id))
 
 

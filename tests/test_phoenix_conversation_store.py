@@ -7,7 +7,9 @@ import pytest
 import pynchy.conversation.phoenix as phoenix
 from pynchy.conversation.events import ConversationEvent, ConversationEventKind
 from pynchy.conversation.phoenix import (
+    PhoenixConversationBodyReader,
     PhoenixConversationStore,
+    PhoenixReadError,
     PhoenixWriteError,
     phoenix_tracer,
 )
@@ -55,6 +57,21 @@ class FakeProvider:
         return FakeTracer()
 
 
+class FakeSpans:
+    def __init__(self, spans: list[dict[str, object]]) -> None:
+        self.spans = spans
+        self.calls: list[dict[str, object]] = []
+
+    def get_spans(self, **kwargs: object) -> list[dict[str, object]]:
+        self.calls.append(kwargs)
+        return self.spans
+
+
+class FakePhoenixClient:
+    def __init__(self, spans: list[dict[str, object]]) -> None:
+        self.spans = FakeSpans(spans)
+
+
 def _event() -> ConversationEvent:
     return ConversationEvent(
         event_id="evt_1",
@@ -84,6 +101,60 @@ async def test_write_event_wraps_tracer_failures() -> None:
     store = PhoenixConversationStore(tracer=FailingTracer())
     with pytest.raises(PhoenixWriteError, match="Failed to write conversation event evt_1"):
         await store.write_event(_event())
+
+
+async def test_read_event_content_fetches_span_content_by_event_id() -> None:
+    client = FakePhoenixClient(
+        [
+            {
+                "attributes": {
+                    "pynchy.event_id": "evt_1",
+                    "pynchy.content": "full phoenix body",
+                }
+            }
+        ]
+    )
+    reader = PhoenixConversationBodyReader(project_name="pynchy", client=client)
+
+    content = await reader.read_event_content("evt_1")
+
+    assert content == "full phoenix body"
+    assert client.spans.calls == [
+        {
+            "project_identifier": "pynchy",
+            "attributes": {"pynchy.event_id": "evt_1"},
+            "limit": 1,
+        }
+    ]
+
+
+async def test_read_event_content_falls_back_to_body_span_event() -> None:
+    client = FakePhoenixClient(
+        [
+            {
+                "attributes": {"pynchy.event_id": "evt_1"},
+                "events": [
+                    {
+                        "name": "pynchy.conversation.body",
+                        "attributes": {"pynchy.content": "event body"},
+                    }
+                ],
+            }
+        ]
+    )
+    reader = PhoenixConversationBodyReader(project_name="pynchy", client=client)
+
+    assert await reader.read_event_content("evt_1") == "event body"
+
+
+async def test_read_event_content_raises_when_phoenix_content_missing() -> None:
+    reader = PhoenixConversationBodyReader(
+        project_name="pynchy",
+        client=FakePhoenixClient([{"attributes": {"pynchy.event_id": "evt_1"}}]),
+    )
+
+    with pytest.raises(PhoenixReadError, match="evt_1"):
+        await reader.read_event_content("evt_1")
 
 
 def test_phoenix_tracer_accepts_positional_project_name(monkeypatch: pytest.MonkeyPatch) -> None:
