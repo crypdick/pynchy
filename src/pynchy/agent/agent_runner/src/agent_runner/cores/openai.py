@@ -5,9 +5,18 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from agents import Agent, ApplyPatchTool, Runner, ShellTool, WebSearchTool
+from agents import (
+    Agent,
+    ApplyPatchTool,
+    ItemHelpers,
+    Runner,
+    ShellTool,
+    WebSearchTool,
+    set_tracing_disabled,
+)
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
 from agents.mcp import (
     MCPServer,
@@ -16,13 +25,13 @@ from agents.mcp import (
     MCPServerStreamableHttp,
 )
 
+from agent_runner import hooks
 from agent_runner.core import AgentCoreConfig, AgentEvent
 
 from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
-    from pathlib import Path
 
     from agent_runner.hooks import BeforeToolUseHook
 
@@ -48,8 +57,6 @@ def _normalize_response_id(value: str | None) -> str | None:
 def _disable_tracing() -> None:
     """Disable OpenAI Agents SDK tracing to avoid 401s in LiteLLM mode."""
     try:
-        from agents import set_tracing_disabled
-
         set_tracing_disabled(disabled=True)
         _log("Tracing disabled")
     except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
@@ -181,8 +188,6 @@ class ContainerPatchEditor(ApplyPatchEditor):
     """Applies patches to files on the container filesystem."""
 
     async def create_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
-        from pathlib import Path
-
         try:
             await asyncio.to_thread(
                 _create_patch_file,
@@ -194,8 +199,6 @@ class ContainerPatchEditor(ApplyPatchEditor):
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
-        from pathlib import Path
-
         try:
             updated = await asyncio.to_thread(
                 _update_patch_file,
@@ -209,8 +212,6 @@ class ContainerPatchEditor(ApplyPatchEditor):
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
-        from pathlib import Path
-
         try:
             await asyncio.to_thread(_delete_patch_file, Path(op.path))
             return ApplyPatchResult(status="completed")
@@ -259,8 +260,6 @@ def _handle_tool_call_output_item(item: object) -> AgentEvent:
 
 
 def _handle_message_output_item(item: object) -> AgentEvent | None:
-    from agents import ItemHelpers
-
     text = ItemHelpers.text_message_output(cast("Any", item))
     if text:
         return AgentEvent(type="text", data={"text": text})
@@ -409,9 +408,9 @@ class OpenAIAgentCore:
 
         # Build security hooks list via the shared single-source roster so this
         # core enforces exactly the same gate as the Claude/claude-cli cores.
-        from agent_runner.hooks import before_tool_use_roster, load_hooks
-
-        self._before_tool_hooks = before_tool_use_roster(load_hooks(self.config.plugin_hooks))
+        self._before_tool_hooks = hooks.before_tool_use_roster(
+            hooks.load_hooks(self.config.plugin_hooks)
+        )
 
         _log(
             f"Creating agent with model={self._model_primary}, "
