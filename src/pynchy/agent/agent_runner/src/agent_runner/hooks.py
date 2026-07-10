@@ -171,8 +171,12 @@ def builtin_before_tool_hooks() -> list[BeforeToolUseHook]:
     should not compose the full gate by hand -- use
     :func:`before_tool_use_roster` so every core enforces the same set.
     """
-    from agent_runner.security.bash_gate import bash_security_hook
-    from agent_runner.security.guard_git import guard_git_hook
+    from agent_runner.security.bash_gate import (  # noqa: PLC0415, RUF100 - bash_gate imports HookDecision from this module.
+        bash_security_hook,
+    )
+    from agent_runner.security.guard_git import (  # noqa: PLC0415, RUF100 - guard hook imports HookDecision from this module.
+        guard_git_hook,
+    )
 
     return [bash_security_hook, guard_git_hook]
 

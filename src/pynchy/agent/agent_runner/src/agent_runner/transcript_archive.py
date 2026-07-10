@@ -216,7 +216,9 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
 
         # Best-effort: also save to structured memory for search
         try:
-            from .agent_tools._ipc_request import ipc_service_request
+            from .agent_tools._ipc_request import (  # noqa: PLC0415, RUF100 - only needed for best-effort memory archival.
+                ipc_service_request,
+            )
 
             await ipc_service_request(
                 "save_memory",
