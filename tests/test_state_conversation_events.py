@@ -6,6 +6,7 @@ from pynchy.conversation.events import ConversationEvent, ConversationEventKind
 from pynchy.conversation.phoenix import PhoenixEventRef
 from pynchy.state import (
     get_conversation_event_pointers_since,
+    get_messages_since,
     init_test_database,
     store_conversation_event_pointer,
 )
@@ -88,6 +89,43 @@ async def test_store_projection_pointer_decodes_nested_metadata() -> None:
         "source": "test",
         "nested": {"items": ["one", {"two": 2}]},
     }
+
+
+async def test_get_messages_since_includes_projected_conversation_events() -> None:
+    await init_test_database()
+    await store_conversation_event_pointer(
+        _event("evt_1", "2026-07-10T00:00:00+00:00"),
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+    messages = await get_messages_since("slack:C123", "")
+    assert len(messages) == 1
+    assert messages[0].id == "evt_1"
+    assert messages[0].content == "body evt_1"
+    assert messages[0].metadata is not None
+    assert messages[0].metadata["phoenix_ref"] == "phoenix:event:evt_1"
+
+
+async def test_get_messages_since_excludes_projected_assistant_events() -> None:
+    await init_test_database()
+    await store_conversation_event_pointer(
+        ConversationEvent(
+            event_id="evt_1",
+            turn_id="turn_1",
+            chat_jid="slack:C123",
+            timestamp="2026-07-10T00:00:00+00:00",
+            kind=ConversationEventKind.ASSISTANT_MESSAGE,
+            sender="assistant",
+            sender_name="Pynchy",
+            content="body evt_1",
+            message_type="assistant",
+            metadata={"source": "test"},
+        ),
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+
+    messages = await get_messages_since("slack:C123", "")
+
+    assert messages == []
 
 
 async def test_store_projection_pointer_rejects_mismatched_phoenix_ref() -> None:

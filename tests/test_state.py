@@ -287,6 +287,11 @@ class TestGetMessagesSince:
         # 3 user messages (bot message excluded by sender filter)
         assert len(msgs) == 3
 
+    async def test_returns_all_messages_when_timestamp_is_none(self):
+        msgs = await get_messages_since("group@g.us", None)
+        # 3 user messages (bot message excluded by sender filter)
+        assert len(msgs) == 3
+
 
 # --- getNewMessages ---
 

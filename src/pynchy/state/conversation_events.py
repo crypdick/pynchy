@@ -12,6 +12,7 @@ from pynchy.conversation.phoenix import (
     PhoenixEventRef,  # noqa: TC001 - beartype resolves annotations.
 )
 from pynchy.state.connection import _get_db
+from pynchy.types import NewMessage
 
 
 def _metadata_json(event: ConversationEvent) -> str:
@@ -64,6 +65,23 @@ def _decode_metadata(value: str | None) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return decoded if isinstance(decoded, dict) else {}
+
+
+def pointer_to_message(row: dict[str, Any]) -> NewMessage:
+    metadata = dict(row.get("metadata") or {})
+    metadata["phoenix_ref"] = row["phoenix_ref"]
+    metadata["turn_id"] = row["turn_id"]
+    return NewMessage(
+        id=row["event_id"],
+        chat_jid=row["chat_jid"],
+        sender=row["sender"],
+        sender_name=row["sender_name"],
+        content=row["content_preview"],
+        timestamp=row["timestamp"],
+        is_from_me=row["message_type"] in {"assistant", "host"},
+        message_type=row["message_type"],
+        metadata=metadata,
+    )
 
 
 async def get_conversation_event_pointers_since(

@@ -11,6 +11,10 @@ else:
     Row = Any
 
 from pynchy.state.connection import _get_db
+from pynchy.state.conversation_events import (
+    get_conversation_event_pointers_since,
+    pointer_to_message,
+)
 from pynchy.types import NewMessage
 
 
@@ -135,21 +139,40 @@ async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[N
     return messages, new_timestamp
 
 
-async def get_messages_since(chat_jid: str, since_timestamp: str) -> list[NewMessage]:
+async def _get_legacy_messages_since(
+    chat_jid: str,
+    since_timestamp: str | None,
+) -> list[NewMessage]:
     """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     db = _get_db()
     sql = """
         SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
                message_type, metadata
         FROM messages
-        WHERE chat_jid = ? AND timestamp > ?
+        WHERE chat_jid = ?
               AND is_from_me = 0
-        ORDER BY timestamp
     """
-    cursor = await db.execute(sql, (chat_jid, since_timestamp))
+    params = [chat_jid]
+    if since_timestamp is not None:
+        sql += " AND timestamp > ?"
+        params.append(since_timestamp)
+    sql += " ORDER BY timestamp"
+    cursor = await db.execute(sql, params)
     rows = await cursor.fetchall()
 
     return [_row_to_message(row) for row in rows]
+
+
+async def get_messages_since(chat_jid: str, since_timestamp: str | None) -> list[NewMessage]:
+    """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
+    legacy = await _get_legacy_messages_since(chat_jid, since_timestamp)
+    projected_rows = await get_conversation_event_pointers_since(chat_jid, since_timestamp)
+    projected = [
+        pointer_to_message(row)
+        for row in projected_rows
+        if row["message_type"] not in {"assistant", "host"}
+    ]
+    return sorted([*legacy, *projected], key=lambda msg: (msg.timestamp, msg.id))
 
 
 async def get_messaging_stats() -> dict[str, int | str | None]:
