@@ -20,8 +20,6 @@ _LOGINCTL = "/usr/bin/loginctl"
 
 def is_launchd_managed() -> bool:
     """Check if this process was started by launchd (PPID 1)."""
-    import os
-
     return os.getppid() == 1
 
 

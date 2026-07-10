@@ -255,7 +255,10 @@ def _expire_pending_question(
 ) -> None:
     # Deferred import to avoid circular dependency:
     # pending_questions -> ipc._write -> ipc.__init__ -> ipc._handlers_ask_user -> pending_questions
-    from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+    from pynchy.host.container_manager.ipc.write import (  # noqa: PLC0415, RUF100 - avoids pending_questions <-> IPC handler import cycle.
+        ipc_response_path,
+        write_ipc_response,
+    )
 
     write_ipc_response(
         ipc_response_path(group_name, data["request_id"]),

@@ -12,6 +12,7 @@ from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves 
     Settings,
 )
 from pynchy.host.git_ops.utils import is_repo_dirty
+from pynchy.host.orchestrator.messaging import formatter as message_formatter
 from pynchy.logger import logger
 
 
@@ -44,9 +45,7 @@ def prepare_message_context(
     is_admin_group: bool,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Format SDK messages and gather any reset-time system notices."""
-    from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
-
-    messages = format_messages_for_sdk(missed_messages)
+    messages = message_formatter.format_messages_for_sdk(missed_messages)
     dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
     reset_system_notices = _check_dirty_repo(group.name, dirty_check_file) if is_admin_group else []
     return messages, reset_system_notices

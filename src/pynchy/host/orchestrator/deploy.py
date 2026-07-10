@@ -13,6 +13,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves deploy 
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from pynchy import state as pynchy_state
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.utils import write_json_atomic
@@ -82,10 +83,8 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
             active groups. Merged with the single session_id/chat_jid pair.
     """
     # 0. Persist deploy metadata in router_state for /status endpoint
-    from pynchy.state import set_router_state
-
-    await set_router_state("last_deploy_at", datetime.now(UTC).isoformat())
-    await set_router_state("last_deploy_sha", commit_sha)
+    await pynchy_state.set_router_state("last_deploy_at", datetime.now(UTC).isoformat())
+    await pynchy_state.set_router_state("last_deploy_sha", commit_sha)
 
     # 1. Build merged active_sessions dict
     merged_sessions: dict[str, str] = dict(active_sessions) if active_sessions else {}
