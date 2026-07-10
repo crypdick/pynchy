@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+import os
 import re
 
 import pytest
 from pydantic import BaseModel, SecretStr
 
+import pynchy.state.connection as db_conn
+from pynchy.config import (
+    AgentConfig,
+    CommandCenterConfig,
+    CommandWordsConfig,
+    ConnectionsConfig,
+    ContainerConfig,
+    IntervalsConfig,
+    LoggingConfig,
+    QueueConfig,
+    SchedulerConfig,
+    SecretsConfig,
+    SecurityConfig,
+    ServerConfig,
+    Settings,
+)
 from pynchy.state import init_test_database
 from pynchy.types import InboundFetchResult, NewMessage
 
@@ -45,22 +62,6 @@ def make_settings(**overrides):
         s = make_settings(container=ContainerConfig(max_concurrent=3))
         s = make_settings(project_root=tmp_path, groups_dir=tmp_path / "groups")
     """
-    from pynchy.config import (
-        AgentConfig,
-        CommandCenterConfig,
-        CommandWordsConfig,
-        ConnectionsConfig,
-        ContainerConfig,
-        IntervalsConfig,
-        LoggingConfig,
-        QueueConfig,
-        SchedulerConfig,
-        SecretsConfig,
-        SecurityConfig,
-        ServerConfig,
-        Settings,
-    )
-
     # Separate cached properties from model fields
     cached = {k: overrides.pop(k) for k in list(overrides) if k in _CACHED_PROPERTY_NAMES}
 
@@ -231,8 +232,6 @@ def _clean_git_env():
     variables, causing ``git worktree add`` and similar commands to fail with
     ``fatal: .git/index: index file open failed: Not a directory``.
     """
-    import os
-
     for var in ("GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE"):
         os.environ.pop(var, None)
 
@@ -249,8 +248,6 @@ def reset_settings(monkeypatch):
     Tests that mock ``get_settings()`` at the call site are unaffected — their
     mock takes precedence over the cached singleton.
     """
-    from pynchy.config import Settings
-
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     monkeypatch.setitem(Settings.model_config, "toml_file", None)
     safe = make_settings()
@@ -271,8 +268,6 @@ def _close_test_database():
     close the loop before an async session fixture can tear down.
     """
     yield
-    import pynchy.state.connection as db_conn
-
     if db_conn._state.db is not None:
         db_conn._state.db.stop()
         if db_conn._state.db._thread is not None and db_conn._state.db._thread.is_alive():
