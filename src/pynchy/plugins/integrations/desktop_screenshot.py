@@ -15,6 +15,7 @@ import aiohttp
 import pluggy
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager import gateway
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -209,15 +210,13 @@ def _response_text(data: dict[str, Any]) -> str:
 
 
 async def _request_vision_analysis(body: dict[str, Any]) -> str:
-    from pynchy.host.container_manager.gateway import get_gateway
-
-    gateway = get_gateway()
-    if gateway is None:
+    gateway_instance = gateway.get_gateway()
+    if gateway_instance is None:
         raise RuntimeError(_GATEWAY_NOT_RUNNING_ERROR)
 
-    url = f"http://localhost:{gateway.port}/v1/responses"
+    url = f"http://localhost:{gateway_instance.port}/v1/responses"
     headers = {
-        "Authorization": f"Bearer {gateway.key}",
+        "Authorization": f"Bearer {gateway_instance.key}",
         "Content-Type": "application/json",
     }
     async with (
