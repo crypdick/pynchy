@@ -69,7 +69,7 @@ def _find_dotenv() -> Path:
 
 
 def _update_dotenv_var(dotenv_path: Path, key: str, value: str) -> None:
-    import dotenv
+    import dotenv  # noqa: PLC0415, RUF100 - optional dotenv dependency is only needed when writing extracted tokens.
 
     dotenv_path.touch(exist_ok=True)
     dotenv.set_key(str(dotenv_path), key, value)
@@ -106,7 +106,9 @@ async def _extract_tokens(
     2. Otherwise, if we landed on ``/client/``, extract xoxc from localStorage.
     3. xoxd always comes from the ``d`` cookie.
     """
-    from playwright.async_api import async_playwright
+    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional Playwright dependency is only needed for token extraction.
+        async_playwright,
+    )
 
     async with async_playwright() as pw:
         context = await pw.chromium.launch_persistent_context(
@@ -226,7 +228,9 @@ async def _run_slack_session_setup(
     request: _SlackSetupRequest,
     novnc_url: str | None,
 ) -> dict[str, Any]:
-    from playwright.async_api import async_playwright
+    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional Playwright dependency is only needed for interactive setup.
+        async_playwright,
+    )
 
     async with async_playwright() as pw, contextlib.AsyncExitStack() as stack:
         context = await pw.chromium.launch_persistent_context(
