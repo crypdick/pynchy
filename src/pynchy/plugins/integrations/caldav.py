@@ -42,7 +42,7 @@ _caldav_client_cache: dict[str, object] = {}  # keyed by server name
 
 def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> object:
     """Get or create a cached DAVClient for a named server."""
-    import caldav
+    import caldav  # noqa: PLC0415, RUF100 - optional integration dependency loaded only when CalDAV is used.
 
     if name not in _caldav_client_cache:
         password = os.environ.get(server_cfg.password_env) if server_cfg.password_env else None

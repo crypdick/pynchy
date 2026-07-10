@@ -16,7 +16,9 @@ from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
 def generate_name() -> str:
     """Generate a notebook name: YYYY-MM-DD-adjective-animal."""
-    from ubuntu_namer import generate
+    from ubuntu_namer import (  # noqa: PLC0415, RUF100 - optional plugin dependency.
+        generate,
+    )
 
     today = datetime.datetime.now(datetime.UTC).date().isoformat()
     slug = generate()  # e.g. "ailing-amoeba"
