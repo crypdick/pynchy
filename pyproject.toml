@@ -199,12 +199,6 @@ select = [
     "W",
     "YTT",
 ]
-# The remaining ignores are the current baseline surfaced by Strictify's expanded
-# anti-slop profile. Delete these entries as focused cleanup lands.
-ignore = [
-    "PLC0415",
-]
-
 [tool.ruff.lint.per-file-ignores]
 # Tests legitimately capture unused returns, assert directly, touch private implementation
 # details, use boolean positional helpers, and use high-complexity parameterized setup.
