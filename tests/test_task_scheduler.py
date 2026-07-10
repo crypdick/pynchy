@@ -244,6 +244,7 @@ class MockSchedulerDeps:
         is_scheduled_task=False,
         repo_access_override=None,
         input_source="user",
+        turn_id=None,
     ) -> str:
         self.agent_runs.append(
             {
@@ -254,6 +255,7 @@ class MockSchedulerDeps:
                 "is_scheduled_task": is_scheduled_task,
                 "repo_access_override": repo_access_override,
                 "input_source": input_source,
+                "turn_id": turn_id,
             }
         )
         if self._run_agent_side_effect:
@@ -265,14 +267,15 @@ class MockSchedulerDeps:
                 is_scheduled_task=is_scheduled_task,
                 repo_access_override=repo_access_override,
                 input_source=input_source,
+                turn_id=turn_id,
             )
             if inspect.isawaitable(result):
                 return await result
             return result
         return self._run_agent_result
 
-    async def handle_streamed_output(self, chat_jid, group, result) -> bool:
-        self.streamed_outputs.append((chat_jid, group, result))
+    async def handle_streamed_output(self, chat_jid, group, result, *, turn_id=None) -> bool:
+        self.streamed_outputs.append((chat_jid, group, result, turn_id))
         return bool(result.result)
 
 
@@ -607,6 +610,8 @@ class TestRunScheduledAgent:
         run = mock_deps.agent_runs[0]
         assert run["is_scheduled_task"] is True
         assert run["input_source"] == "scheduled_task"
+        assert isinstance(run["turn_id"], str)
+        assert run["turn_id"].startswith("turn_")
         assert run["chat_jid"] == "test@g.us"
         # Verify prompt was passed as a user message
         assert len(run["messages"]) == 1
@@ -686,6 +691,7 @@ class TestRunScheduledAgent:
         # Should have delegated to handle_streamed_output
         assert len(mock_deps.streamed_outputs) == 1
         assert mock_deps.streamed_outputs[0][0] == "test@g.us"
+        assert mock_deps.streamed_outputs[0][3] == mock_deps.agent_runs[0]["turn_id"]
 
     @pytest.mark.asyncio
     async def test_calculates_next_run_for_cron_schedule(

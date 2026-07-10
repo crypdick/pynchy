@@ -27,7 +27,13 @@ def _ipc_input_dir(group_folder: str) -> Path:
     return d
 
 
-def write_ipc_message(group_folder: str, text: str) -> None:
+def write_ipc_message(
+    group_folder: str,
+    text: str,
+    *,
+    turn_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
     """Write a JSON message file to a group's IPC input directory.
 
     Uses atomic write (tmp → rename) so the container's file watcher
@@ -35,7 +41,12 @@ def write_ipc_message(group_folder: str, text: str) -> None:
     """
     input_dir = _ipc_input_dir(group_folder)
     filename = f"{int(time.time() * 1000)}-{secrets.token_hex(3)}.json"
-    write_json_atomic(input_dir / filename, {"type": "message", "text": text})
+    payload: dict[str, object] = {"type": "message", "text": text}
+    if turn_id is not None:
+        payload["turn_id"] = turn_id
+    if metadata:
+        payload["metadata"] = metadata
+    write_json_atomic(input_dir / filename, payload)
 
 
 def write_ipc_close_sentinel(group_folder: str) -> None:

@@ -37,6 +37,7 @@ class PreContainerResult:
     wrapped_on_output: OnOutput
     config_timeout: float
     snapshot_ms: float
+    turn_id: str | None = None
 
 
 @dataclass(frozen=True)

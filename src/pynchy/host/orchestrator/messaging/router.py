@@ -101,12 +101,6 @@ _last_tool_name: dict[str, str] = {}
 _MAX_TOOL_OUTPUT = 4000
 
 
-def _placeholder_turn_id() -> str:
-    # TODO(Task 8): replace with the real agent turn ID once it is threaded
-    # through the output pipeline.
-    return new_turn_id()
-
-
 @dataclass(frozen=True)
 class _FinalResultRequest:
     deps: OutputDeps
@@ -115,6 +109,7 @@ class _FinalResultRequest:
     result: ContainerOutput
     ts: str
     stream_state: StreamState | None
+    turn_id: str
 
 
 def _truncate_output(content: str) -> str:
@@ -384,7 +379,7 @@ async def _handle_final_result(request: _FinalResultRequest) -> bool:
     await request.deps.conversation_sink.append(
         ConversationEvent(
             event_id=new_event_id(),
-            turn_id=_placeholder_turn_id(),
+            turn_id=request.turn_id,
             chat_jid=request.chat_jid,
             timestamp=request.ts,
             kind=(
@@ -444,6 +439,8 @@ async def handle_streamed_output(
     chat_jid: str,
     group: WorkspaceProfile,
     result: ContainerOutput,
+    *,
+    turn_id: str | None = None,
 ) -> bool:
     """Handle a streamed output from the container agent.
 
@@ -491,5 +488,6 @@ async def handle_streamed_output(
             result=result,
             ts=ts,
             stream_state=stream_state,
+            turn_id=turn_id or new_turn_id(),
         )
     )

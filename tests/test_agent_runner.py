@@ -19,9 +19,10 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.core import AgentEvent
-from agent_runner.ipc import drain_ipc_input, should_close
+from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.ipc import drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
+    apply_followup_metadata,
     build_core_config,
     build_sdk_messages,
     event_to_output,
@@ -392,6 +393,26 @@ class TestDrainIpcInput:
             assert result == ["hello"]
             assert not msg_file.exists()  # File should be consumed
 
+    def test_message_envelope_preserves_turn_metadata(self, tmp_path):
+        msg_file = tmp_path / "001.json"
+        msg_file.write_text(
+            json.dumps(
+                {
+                    "type": "message",
+                    "text": "hello",
+                    "turn_id": "turn_2",
+                    "metadata": {"pynchy_turn_id": "turn_2", "source": "warm"},
+                }
+            )
+        )
+        with patch("agent_runner.ipc.IPC_INPUT_DIR", tmp_path):
+            result = drain_ipc_messages()
+
+        assert len(result) == 1
+        assert result[0].text == "hello"
+        assert result[0].turn_id == "turn_2"
+        assert result[0].metadata == {"pynchy_turn_id": "turn_2", "source": "warm"}
+
     def test_multiple_messages_sorted(self, tmp_path):
         (tmp_path / "002.json").write_text(json.dumps({"type": "message", "text": "second"}))
         (tmp_path / "001.json").write_text(json.dumps({"type": "message", "text": "first"}))
@@ -533,3 +554,39 @@ class TestBuildCoreConfig:
         ci = self._make_input(agent_core_config={"model": "opus"})
         config = build_core_config(ci)
         assert config.extra == {"model": "opus"}
+
+    def test_turn_metadata_added_to_extra_config(self):
+        ci = self._make_input(turn_id="turn_1", agent_core_config={"model": "opus"})
+        config = build_core_config(ci)
+        assert config.extra["metadata"] == {
+            "pynchy_turn_id": "turn_1",
+            "pynchy_chat_jid": "123@g.us",
+            "pynchy_group_folder": "test-group",
+        }
+
+    def test_followup_metadata_updates_warm_core_config(self):
+        config = AgentCoreConfig(
+            cwd="/workspace/group",
+            session_id="resp_1",
+            group_folder="test-group",
+            chat_jid="123@g.us",
+            is_admin=True,
+            is_scheduled_task=False,
+            turn_id="turn_1",
+            extra={"metadata": {"pynchy_turn_id": "turn_1", "stable": "yes"}},
+        )
+
+        apply_followup_metadata(
+            config,
+            turn_id="turn_2",
+            metadata={"source": "warm"},
+        )
+
+        assert config.turn_id == "turn_2"
+        assert config.extra["metadata"] == {
+            "pynchy_turn_id": "turn_2",
+            "pynchy_chat_jid": "123@g.us",
+            "pynchy_group_folder": "test-group",
+            "stable": "yes",
+            "source": "warm",
+        }

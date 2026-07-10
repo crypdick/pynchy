@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -372,6 +373,65 @@ class TestOpenAIQueryModel:
             await self._collect_events(core, "hello")
 
         assert calls == ["primary-model"]
+
+    @pytest.mark.asyncio
+    async def test_run_streamed_passes_metadata_via_run_config(self, monkeypatch):
+        try:
+            from agent_runner.cores import openai as openai_core  # noqa: PLC0415, RUF100
+        except ImportError:
+            pytest.skip("openai-agents not installed")
+
+        core = self._make_core()
+        core.config.extra["metadata"] = {"pynchy_turn_id": "turn_1"}
+        calls: list[dict[str, object]] = []
+
+        class FakeResult:
+            last_response_id = "resp_1"
+            final_output = "ok"
+
+            async def stream_events(self):
+                for event in ():
+                    yield event
+
+        def fake_run_streamed(
+            _agent: object,
+            *,
+            input: str,  # noqa: A002 - mirrors the pinned SDK keyword.
+            previous_response_id: str | None = None,
+            auto_previous_response_id: bool = False,
+            run_config: object | None = None,
+        ) -> FakeResult:
+            calls.append(
+                {
+                    "input": input,
+                    "previous_response_id": previous_response_id,
+                    "auto_previous_response_id": auto_previous_response_id,
+                    "run_config": run_config,
+                }
+            )
+            return FakeResult()
+
+        monkeypatch.setattr(openai_core.Runner, "run_streamed", fake_run_streamed)
+
+        events = [event async for event in core._run_streamed("hello", "primary-model")]
+
+        assert events[-1].type == "result"
+        assert calls[0]["previous_response_id"] is None
+        assert calls[0]["auto_previous_response_id"] is True
+        run_config = calls[0]["run_config"]
+        assert run_config is not None
+        assert run_config.model_settings.metadata == {"pynchy_turn_id": "turn_1"}
+        assert run_config.trace_metadata == {"pynchy_turn_id": "turn_1"}
+
+    def test_pinned_runner_signature_uses_run_config_not_metadata(self):
+        try:
+            from agent_runner.cores import openai as openai_core  # noqa: PLC0415, RUF100
+        except ImportError:
+            pytest.skip("openai-agents not installed")
+
+        params = inspect.signature(openai_core.Runner.run_streamed).parameters
+        assert "run_config" in params
+        assert "metadata" not in params
 
 
 # ---------------------------------------------------------------------------

@@ -119,10 +119,16 @@ class MessageHandlerDeps(Protocol):
         extra_system_notices: list[str] | None = None,
         *,
         input_source: str = "user",
+        turn_id: str | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(
-        self, chat_jid: str, group: Group, result: types.ContainerOutput
+        self,
+        chat_jid: str,
+        group: Group,
+        result: types.ContainerOutput,
+        *,
+        turn_id: str | None = None,
     ) -> bool: ...
 
 
@@ -311,9 +317,10 @@ async def _handle_reset_handoff(
         return True
 
     logger.info("Processing reset handoff", group=group.name)
+    turn_id = new_turn_id()
 
     async def handoff_on_output(result: types.ContainerOutput) -> None:
-        await deps.handle_streamed_output(chat_jid, group, result)
+        await deps.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
 
     reset_messages = [
         {
@@ -327,7 +334,12 @@ async def _handle_reset_handoff(
     ]
 
     result = await deps.run_agent(
-        group, chat_jid, reset_messages, handoff_on_output, input_source="reset_handoff"
+        group,
+        chat_jid,
+        reset_messages,
+        handoff_on_output,
+        input_source="reset_handoff",
+        turn_id=turn_id,
     )
 
     if reset_data.get("needsDirtyRepoCheck"):
@@ -528,19 +540,25 @@ async def process_group_messages(
     had_error = False
     output_sent_to_user = False
     learning_summary = learning_capture.LearningRunSummary()
+    turn_id = new_turn_id()
 
     async def on_output(result: types.ContainerOutput) -> None:
         nonlocal had_error, output_sent_to_user
 
         learning_capture.observe_learning_output(learning_summary, result)
-        sent = await deps.handle_streamed_output(chat_jid, group, result)
+        sent = await deps.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
         if sent:
             output_sent_to_user = True
         if result.status == "error":
             had_error = True
 
     agent_result = await deps.run_agent(
-        group, chat_jid, messages, on_output, reset_system_notices or None
+        group,
+        chat_jid,
+        messages,
+        on_output,
+        reset_system_notices or None,
+        turn_id=turn_id,
     )
 
     process_ms = (time.monotonic() - process_start) * 1000

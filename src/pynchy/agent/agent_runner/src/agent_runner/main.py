@@ -21,7 +21,7 @@ from .ipc import (
     log,
     read_initial_input,
     should_close,
-    wait_for_ipc_message,
+    wait_for_ipc_followup,
     write_output,
 )
 from .models import ContainerInput, ContainerOutput
@@ -140,6 +140,14 @@ def _agent_cwd(container_input: ContainerInput) -> str:
     return "/workspace/group"
 
 
+def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:
+    return {
+        "pynchy_turn_id": turn_id,
+        "pynchy_chat_jid": chat_jid,
+        "pynchy_group_folder": group_folder,
+    }
+
+
 def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     """Build AgentCoreConfig from ContainerInput."""
     # Directives are resolved host-side and passed in via system_prompt_append.
@@ -152,13 +160,24 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
     # latency. System notices are prepended to the user prompt in main() instead.
 
     # Build extra config from agent_core_config
-    extra = container_input.agent_core_config or {}
+    extra = dict(container_input.agent_core_config or {})
+    if container_input.turn_id:
+        metadata = dict(extra.get("metadata") or {})
+        metadata.update(
+            _turn_metadata(
+                container_input.turn_id,
+                container_input.chat_jid,
+                container_input.group_folder,
+            )
+        )
+        extra["metadata"] = metadata
 
     return AgentCoreConfig(
         cwd=_agent_cwd(container_input),
         session_id=container_input.session_id,
         group_folder=container_input.group_folder,
         chat_jid=container_input.chat_jid,
+        turn_id=container_input.turn_id,
         is_admin=container_input.is_admin,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=system_prompt_append,
@@ -284,7 +303,9 @@ def _build_initial_prompt(container_input: ContainerInput) -> str:
     return prompt
 
 
-async def _create_and_start_core(container_input: ContainerInput) -> AgentCore:
+async def _create_and_start_core(
+    container_input: ContainerInput,
+) -> tuple[AgentCore, AgentCoreConfig]:
     """Create and start the agent core, exiting the process on failure."""
     core_config = build_core_config(container_input)
 
@@ -307,7 +328,7 @@ async def _create_and_start_core(container_input: ContainerInput) -> AgentCore:
         write_output(ContainerOutput(status="error", error=f"Failed to start agent core: {exc}"))
         sys.exit(1)
 
-    return core
+    return core, core_config
 
 
 async def _run_single_query(
@@ -350,7 +371,26 @@ async def _run_single_query(
     return new_session_id, result_count, closed_during_query
 
 
-async def _drive_conversation_loop(core: AgentCore, prompt: str, session_id: str | None) -> None:
+def apply_followup_metadata(
+    core_config: AgentCoreConfig, *, turn_id: str | None, metadata: dict[str, object]
+) -> None:
+    if turn_id is None and not metadata:
+        return
+
+    merged = dict(core_config.extra.get("metadata") or {})
+    merged.update(metadata)
+    if turn_id is not None:
+        core_config.turn_id = turn_id
+        merged.update(_turn_metadata(turn_id, core_config.chat_jid, core_config.group_folder))
+    core_config.extra["metadata"] = merged
+
+
+async def _drive_conversation_loop(
+    core: AgentCore,
+    core_config: AgentCoreConfig,
+    prompt: str,
+    session_id: str | None,
+) -> None:
     """Run the conversation loop until the host closes the IPC channel."""
     while True:
         new_session_id, result_count, closed_during_query = await _run_single_query(
@@ -375,19 +415,25 @@ async def _drive_conversation_loop(core: AgentCore, prompt: str, session_id: str
 
         log("Query ended, waiting for next IPC message...")
 
-        next_message = await wait_for_ipc_message()
-        if next_message is None:
+        followup = await wait_for_ipc_followup()
+        if followup is None:
             log("Close sentinel received, exiting")
             break
 
-        log(f"Got new message ({len(next_message)} chars), starting new query")
-        prompt = next_message
+        apply_followup_metadata(core_config, turn_id=followup.turn_id, metadata=followup.metadata)
+        log(f"Got new message ({len(followup.text)} chars), starting new query")
+        prompt = followup.text
 
 
-async def _run_conversation_loop(core: AgentCore, prompt: str, session_id: str | None) -> None:
+async def _run_conversation_loop(
+    core: AgentCore,
+    core_config: AgentCoreConfig,
+    prompt: str,
+    session_id: str | None,
+) -> None:
     """Drive query → wait-for-next-message cycles until the host signals close."""
     try:
-        await _drive_conversation_loop(core, prompt, session_id)
+        await _drive_conversation_loop(core, core_config, prompt, session_id)
 
     except Exception as exc:  # allow: exception-handling; loop  # noqa: BLE001, RUF100
         error_message = str(exc)
@@ -412,5 +458,5 @@ async def main() -> None:
         IPC_INPUT_CLOSE_SENTINEL.unlink()
 
     prompt = _build_initial_prompt(container_input)
-    core = await _create_and_start_core(container_input)
-    await _run_conversation_loop(core, prompt, container_input.session_id)
+    core, core_config = await _create_and_start_core(container_input)
+    await _run_conversation_loop(core, core_config, prompt, container_input.session_id)

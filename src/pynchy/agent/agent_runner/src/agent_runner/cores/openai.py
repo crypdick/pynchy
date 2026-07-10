@@ -12,6 +12,8 @@ from agents import (
     Agent,
     ApplyPatchTool,
     ItemHelpers,
+    ModelSettings,
+    RunConfig,
     Runner,
     ShellTool,
     WebSearchTool,
@@ -61,6 +63,12 @@ def _disable_tracing() -> None:
         _log("Tracing disabled")
     except Exception as exc:  # allow: exception-handling; best-effort  # noqa: BLE001, RUF100
         _log(f"Tracing disable skipped: {exc}")
+
+
+def _metadata_as_strings(metadata: object) -> dict[str, str] | None:
+    if not isinstance(metadata, dict):
+        return None
+    return {str(key): str(value) for key, value in metadata.items()}
 
 
 async def _run_before_tool_use_hooks(
@@ -447,12 +455,17 @@ class OpenAIAgentCore:
             else self._make_agent(model)
         )
 
-        result = Runner.run_streamed(
-            agent,
-            input=prompt,
-            previous_response_id=self._previous_response_id,
-            auto_previous_response_id=True,
-        )
+        kwargs: dict[str, object] = {
+            "previous_response_id": self._previous_response_id,
+            "auto_previous_response_id": True,
+        }
+        if metadata := _metadata_as_strings(self.config.extra.get("metadata")):
+            kwargs["run_config"] = RunConfig(
+                model_settings=ModelSettings(metadata=metadata),
+                trace_metadata=metadata,
+            )
+
+        result = Runner.run_streamed(agent, input=prompt, **kwargs)
 
         async for event in result.stream_events():
             agent_event: AgentEvent | None = None

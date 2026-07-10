@@ -74,6 +74,7 @@ class ContainerInput:
     group_folder: str
     chat_jid: str
     is_admin: bool
+    turn_id: str | None = None
     session_id: str | None = None
     is_scheduled_task: bool = False
     system_notices: list[str] | None = None

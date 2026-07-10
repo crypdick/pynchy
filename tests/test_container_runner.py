@@ -1560,7 +1560,11 @@ class TestContainerInputAgentCoreConfig:
     """Test model configuration passed from host settings into agent cores."""
 
     @staticmethod
-    def _ctx(session_id: str | None = None) -> PreContainerResult:
+    def _ctx(
+        session_id: str | None = None,
+        *,
+        turn_id: str | None = None,
+    ) -> PreContainerResult:
         return PreContainerResult(
             is_admin=False,
             repo_access=None,
@@ -1573,6 +1577,7 @@ class TestContainerInputAgentCoreConfig:
             wrapped_on_output=AsyncMock(),
             config_timeout=30.0,
             snapshot_ms=0.0,
+            turn_id=turn_id,
         )
 
     def test_agent_model_settings_flow_to_core_config(self):
@@ -1585,7 +1590,9 @@ class TestContainerInputAgentCoreConfig:
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex"}
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
+        assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
     def test_default_agent_model_flows_to_core_config(self):
         settings = make_settings()
@@ -1593,7 +1600,22 @@ class TestContainerInputAgentCoreConfig:
         with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
             result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config is None
+        assert result.agent_core_config is not None
+        assert "model" not in result.agent_core_config
+
+    def test_turn_id_flows_to_container_input_and_core_metadata(self):
+        settings = make_settings()
+
+        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
+            result = build_container_input([], self._ctx(turn_id="turn_1"), "chat", TEST_GROUP)
+
+        assert result.turn_id == "turn_1"
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["metadata"] == {
+            "pynchy_turn_id": "turn_1",
+            "pynchy_chat_jid": "chat",
+            "pynchy_group_folder": TEST_GROUP.folder,
+        }
 
     def test_workspace_model_overrides_global_agent_model(self):
         profiles, workspace = _profile_workspace(
@@ -1615,7 +1637,9 @@ class TestContainerInputAgentCoreConfig:
         ):
             result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex-spark"
+        assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
     def test_workspace_model_override_replaces_global_model(self):
         profiles, workspace = _profile_workspace(
@@ -1637,7 +1661,9 @@ class TestContainerInputAgentCoreConfig:
         ):
             result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
 
-        assert result.agent_core_config == {"model": "chatgpt/gpt-5.3-codex-spark"}
+        assert result.agent_core_config is not None
+        assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex-spark"
+        assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -2919,6 +2945,18 @@ class TestInputToDictEdgeCases:
         )
         d = input_to_dict(inp)
         assert "agent_core_config" not in d
+
+    def test_turn_id_included_when_set(self):
+        """turn_id should appear when not None."""
+        inp = ContainerInput(
+            messages=[],
+            group_folder="g",
+            chat_jid="j@g.us",
+            is_admin=False,
+            turn_id="turn_1",
+        )
+        d = input_to_dict(inp)
+        assert d["turn_id"] == "turn_1"
 
 
 # ---------------------------------------------------------------------------

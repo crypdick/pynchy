@@ -107,9 +107,9 @@ class ContainerSession:
         self.group_folder = group_folder
         self.container_name = container_name
         self.proc: asyncio.subprocess.Process | None = None
-        self._proc_monitor_task: asyncio.Task[None] | None = None
-        self._runtime_monitor_task: asyncio.Task[None] | None = None
-        self._stderr_task: asyncio.Task[None] | None = None
+        self._proc_monitor_task: asyncio.Future[Any] | None = None
+        self._runtime_monitor_task: asyncio.Future[Any] | None = None
+        self._stderr_task: asyncio.Future[Any] | None = None
         self._on_output: OnOutput | None = None
         self._query_done = asyncio.Event()
         self._dead = False
@@ -183,9 +183,15 @@ class ContainerSession:
         self._on_output = None
         self._reset_idle_timer()
 
-    async def send_ipc_message(self, text: str) -> None:
+    async def send_ipc_message(
+        self,
+        text: str,
+        *,
+        turn_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         """Write a JSON message file to the container's IPC input directory."""
-        write_ipc_message(self.group_folder, text)
+        write_ipc_message(self.group_folder, text, turn_id=turn_id, metadata=metadata)
 
     async def wait_for_query_done(self, query_timeout_seconds: float) -> None:
         """Wait for the query-done pulse or container death.

@@ -150,6 +150,13 @@ class TestContainerInputFields:
         result = read_initial_input()
         assert result.agent_core_config == core_config
 
+    def test_turn_id(self, input_dir: Path) -> None:
+        data = _minimal_input(turn_id="turn_1")
+        (input_dir / "initial.json").write_text(json.dumps(data))
+
+        result = read_initial_input()
+        assert result.turn_id == "turn_1"
+
     def test_defaults_when_optional_fields_omitted(self, input_dir: Path) -> None:
         """Verify defaults for all optional fields when only required fields are provided."""
         data = _minimal_input()
@@ -159,6 +166,7 @@ class TestContainerInputFields:
         expected_defaults = {
             "session_id": None,
             "is_scheduled_task": False,
+            "turn_id": None,
             "system_notices": None,
             "repo_access": None,
             "agent_core_module": "agent_runner.cores.openai",

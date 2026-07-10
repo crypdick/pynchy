@@ -23,6 +23,7 @@ class AgentCoreConfig:
         session_id: Optional session ID for resuming (core-specific semantics)
         group_folder: Group folder name
         chat_jid: Canonical chat identifier
+        turn_id: Conversation turn identifier for host/Phoenix correlation
         is_admin: Whether this is the admin group
         is_scheduled_task: Whether this is a scheduled task (vs interactive message)
         system_prompt_append: Additional system context (global CLAUDE.md + system notices)
@@ -37,6 +38,7 @@ class AgentCoreConfig:
     chat_jid: str
     is_admin: bool
     is_scheduled_task: bool
+    turn_id: str | None = None
     system_prompt_append: str | None = None
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
     plugin_hooks: list[dict[str, str]] = field(default_factory=list)

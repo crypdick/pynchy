@@ -17,6 +17,7 @@ import pynchy.host.container_manager.mcp.manager as mcp_manager
 import pynchy.host.container_manager.process as container_process
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
+from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (
     ContainerSession,
     OnOutput,
@@ -137,6 +138,14 @@ def _format_messages_for_ipc(
     return "\n".join(parts)
 
 
+def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:
+    return {
+        "pynchy_turn_id": turn_id,
+        "pynchy_chat_jid": chat_jid,
+        "pynchy_group_folder": group_folder,
+    }
+
+
 def build_container_input(
     messages: list[dict[str, Any]],
     ctx: PreContainerResult,
@@ -150,9 +159,14 @@ def build_container_input(
     Shared by cold start and scheduled task paths to avoid duplicating
     the field mapping.
     """
-    agent_core_config = _agent_core_config_from_settings(group.folder)
+    resolved_turn_id = ctx.turn_id or new_turn_id()
+    agent_core_config = dict(_agent_core_config_from_settings(group.folder) or {})
+    metadata = dict(agent_core_config.get("metadata") or {})
+    metadata.update(_turn_metadata(resolved_turn_id, chat_jid, group.folder))
+    agent_core_config["metadata"] = metadata
     return ContainerInput(
         messages=messages,
+        turn_id=resolved_turn_id,
         session_id=ctx.session_id,
         group_folder=group.folder,
         chat_jid=chat_jid,
@@ -168,7 +182,7 @@ def build_container_input(
     )
 
 
-def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, str] | None:
+def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, Any] | None:
     s = get_settings()
     resolved_model = s.agent.model
     if group_folder is not None:
@@ -176,7 +190,7 @@ def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[st
         if resolved is not None and resolved.model:
             resolved_model = resolved.model
 
-    result: dict[str, str] = {}
+    result: dict[str, Any] = {}
     if resolved_model:
         result["model"] = resolved_model
     return result or None
@@ -194,7 +208,7 @@ def _codex_session_model(session_id: str) -> str | None:
 
 def _session_model_mismatch(
     session_id: str | None,
-    agent_core_config: dict[str, str] | None,
+    agent_core_config: dict[str, Any] | None,
 ) -> bool:
     """Return True when a stored Codex session cannot safely resume this model."""
     if not session_id or not session_id.startswith(_CODEX_SESSION_PREFIX):
@@ -297,7 +311,12 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
     formatted = _format_messages_for_ipc(request.messages, request.ctx.system_notices or None)
 
     # Send via IPC
-    await request.session.send_ipc_message(formatted)
+    turn_id = request.ctx.turn_id or new_turn_id()
+    await request.session.send_ipc_message(
+        formatted,
+        turn_id=turn_id,
+        metadata=_turn_metadata(turn_id, request.chat_jid, request.group.folder),
+    )
 
     return await _await_query(
         request.session, request.group, request.ctx.config_timeout, "warm query"
@@ -358,6 +377,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     is_scheduled_task: bool = False,
     repo_access_override: str | None = None,
     input_source: str = "user",
+    turn_id: str | None = None,
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
 
@@ -373,6 +393,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             ("user", "scheduled_task", "reset_handoff", "hidden_learning_review").
     """
     run_agent_start = time.monotonic()
+    resolved_turn_id = turn_id or new_turn_id()
 
     # Scheduled tasks need a clean slate — destroy any persistent session first.
     if is_scheduled_task:
@@ -392,6 +413,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             repo_access_override=repo_access_override,
         )
     )
+    ctx.turn_id = resolved_turn_id
 
     # --- Scheduled tasks: one-shot container, no persistent session ---
     if is_scheduled_task:
@@ -468,7 +490,13 @@ async def _run_scheduled_task(
     On CancelledError (deploy SIGTERM), the session is preserved so
     deploy_continuation can resume the task on restart.
     """
-    input_data = build_container_input(messages, ctx, chat_jid, group, is_scheduled_task=True)
+    input_data = build_container_input(
+        messages,
+        ctx,
+        chat_jid,
+        group,
+        is_scheduled_task=True,
+    )
     container_name = oneshot_container_name(group.folder)
     interrupted = False
 

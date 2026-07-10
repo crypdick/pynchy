@@ -20,7 +20,9 @@ import json
 import os
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -32,6 +34,15 @@ IPC_INPUT_CLOSE_SENTINEL = IPC_INPUT_DIR / "_close"
 INITIAL_INPUT_FILE = IPC_INPUT_DIR / "initial.json"
 
 IPC_OUTPUT_DIR = Path("/workspace/ipc/output")
+
+
+@dataclass(frozen=True)
+class IpcMessage:
+    """Follow-up message delivered to a warm persistent container."""
+
+    text: str
+    turn_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -91,8 +102,26 @@ def should_close() -> bool:
     return False
 
 
-def drain_ipc_input() -> list[str]:
-    """Drain all pending IPC input messages. Returns messages found."""
+def _parse_ipc_message(data: object) -> IpcMessage | None:
+    if not isinstance(data, dict) or data.get("type") != "message" or not data.get("text"):
+        return None
+
+    text = data["text"]
+    if not isinstance(text, str):
+        return None
+
+    turn_id = data.get("turn_id")
+    raw_metadata = data.get("metadata")
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    return IpcMessage(
+        text=text,
+        turn_id=turn_id if isinstance(turn_id, str) else None,
+        metadata=metadata,
+    )
+
+
+def drain_ipc_messages() -> list[IpcMessage]:
+    """Drain all pending IPC input messages. Returns parsed follow-up envelopes."""
     try:
         IPC_INPUT_DIR.mkdir(parents=True, exist_ok=True)
         files = sorted(f for f in IPC_INPUT_DIR.iterdir() if f.suffix == ".json")
@@ -100,18 +129,23 @@ def drain_ipc_input() -> list[str]:
         log(f"IPC drain error: {exc}")
         return []
     else:
-        messages: list[str] = []
+        messages: list[IpcMessage] = []
         for file_path in files:
             try:
                 data = json.loads(file_path.read_text())
                 file_path.unlink()
-                if isinstance(data, dict) and data.get("type") == "message" and data.get("text"):
-                    messages.append(data["text"])
+                if message := _parse_ipc_message(data):
+                    messages.append(message)
             except (json.JSONDecodeError, OSError) as exc:
                 log(f"Failed to process input file {file_path.name}: {exc}")
                 with contextlib.suppress(OSError):
                     file_path.unlink()
         return messages
+
+
+def drain_ipc_input() -> list[str]:
+    """Drain all pending IPC input messages. Returns only message text."""
+    return [message.text for message in drain_ipc_messages()]
 
 
 class _InputEventHandler(FileSystemEventHandler):
@@ -144,11 +178,20 @@ class _InputEventHandler(FileSystemEventHandler):
             self._signal_if_relevant(event.dest_path)
 
 
-async def wait_for_ipc_message() -> str | None:
-    """Wait for an incoming IPC message or _close sentinel.
+def _combine_ipc_messages(messages: list[IpcMessage]) -> IpcMessage:
+    text = "\n".join(message.text for message in messages)
+    turn_id = next((message.turn_id for message in reversed(messages) if message.turn_id), None)
+    metadata: dict[str, Any] = {}
+    for message in messages:
+        metadata.update(message.metadata)
+    return IpcMessage(text=text, turn_id=turn_id, metadata=metadata)
+
+
+async def wait_for_ipc_followup() -> IpcMessage | None:
+    """Wait for an incoming IPC follow-up envelope or _close sentinel.
 
     Uses watchdog to detect incoming files in IPC_INPUT_DIR instead of polling.
-    Returns the messages as a single string, or None if _close.
+    Returns combined message text and metadata, or None if _close.
     """
     loop = asyncio.get_running_loop()
     wakeup = asyncio.Event()
@@ -170,9 +213,9 @@ async def wait_for_ipc_message() -> str | None:
         while True:
             if should_close():
                 return None
-            messages = drain_ipc_input()
+            messages = drain_ipc_messages()
             if messages:
-                return "\n".join(messages)
+                return _combine_ipc_messages(messages)
             # Watchdog should wake this promptly; polling covers missed/unavailable events.
             try:
                 await asyncio.wait_for(wakeup.wait(), timeout=0.2)
@@ -183,3 +226,9 @@ async def wait_for_ipc_message() -> str | None:
         if observer_started:
             observer.stop()
             observer.join(timeout=2)
+
+
+async def wait_for_ipc_message() -> str | None:
+    """Wait for incoming IPC text or _close sentinel."""
+    followup = await wait_for_ipc_followup()
+    return followup.text if followup is not None else None

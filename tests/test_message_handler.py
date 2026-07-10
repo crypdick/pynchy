@@ -607,7 +607,7 @@ class TestProcessGroupMessages:
 
         # run_agent invokes the on_output callback to simulate
         # output being sent before error.
-        async def mock_run_agent(group, jid, msgs, on_output=None, notices=None):
+        async def mock_run_agent(group, jid, msgs, on_output=None, notices=None, **_kwargs):
             if on_output:
                 output = ContainerOutput(type="result", result="hello", status="error")
                 await on_output(output)

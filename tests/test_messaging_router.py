@@ -264,10 +264,11 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="Hello user!")
 
-        result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output, turn_id="turn_1")
 
         assert result is True
         saved_event = deps.conversation_sink.append.await_args.args[0]
+        assert saved_event.turn_id == "turn_1"
         assert saved_event.kind == ConversationEventKind.ASSISTANT_MESSAGE
         assert saved_event.chat_jid == "g@g.us"
         assert saved_event.sender == "bot"

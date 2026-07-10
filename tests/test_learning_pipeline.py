@@ -452,7 +452,10 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
         result = await process_group_messages(deps, "g@g.us")
 
     assert result is True
-    deps.handle_streamed_output.assert_awaited_once_with("g@g.us", group, output)
+    deps.handle_streamed_output.assert_awaited_once()
+    args = deps.handle_streamed_output.await_args
+    assert args.args == ("g@g.us", group, output)
+    assert args.kwargs["turn_id"].startswith("turn_")
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
     temporal_start.assert_not_awaited()
 

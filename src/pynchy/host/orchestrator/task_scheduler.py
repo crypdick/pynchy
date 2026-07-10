@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from temporalio import activity
 
 from pynchy.config import get_settings
+from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     OnOutput,
 )
@@ -63,10 +64,16 @@ class SchedulerDependencies(Protocol):
         is_scheduled_task: bool = False,
         repo_access_override: str | None = None,
         input_source: str = "user",
+        turn_id: str | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(
-        self, chat_jid: str, group: WorkspaceProfile, result: ContainerOutput
+        self,
+        chat_jid: str,
+        group: WorkspaceProfile,
+        result: ContainerOutput,
+        *,
+        turn_id: str | None = None,
     ) -> bool: ...
 
 
@@ -136,9 +143,7 @@ class TemporalRuntime(Protocol):
     async def reconcile_schedules(self) -> None: ...
 
 
-def _build_temporal_runtime(
-    deps: SchedulerDependencies, scheduler_config: object
-) -> object:
+def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: object) -> object:
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
     runtime_cls = TemporalSchedulerRuntime
     if runtime_cls is None:
@@ -326,6 +331,7 @@ async def _run_task_agent(
 ) -> tuple[str | None, str | None]:
     result: str | None = None
     error: str | None = None
+    turn_id = new_turn_id()
     idle_timer = _scheduled_idle_timer(
         deps,
         task,
@@ -335,7 +341,7 @@ async def _run_task_agent(
 
     async def _on_output(streamed: ContainerOutput) -> None:
         nonlocal result, error
-        await deps.handle_streamed_output(task.chat_jid, group, streamed)
+        await deps.handle_streamed_output(task.chat_jid, group, streamed, turn_id=turn_id)
         if idle_timer:
             idle_timer.reset()
         if streamed.result:
@@ -355,6 +361,7 @@ async def _run_task_agent(
             is_scheduled_task=True,
             repo_access_override=None,
             input_source="scheduled_task",
+            turn_id=turn_id,
         )
         if agent_result == "error":
             error = error or "Agent returned error"

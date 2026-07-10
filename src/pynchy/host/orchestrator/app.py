@@ -259,6 +259,7 @@ class PynchyApp:
         is_scheduled_task: bool = False,
         repo_access_override: str | None = None,
         input_source: str = "user",
+        turn_id: str | None = None,
     ) -> str:
         return await agent_runner.run_agent(
             self,
@@ -270,6 +271,7 @@ class PynchyApp:
             is_scheduled_task=is_scheduled_task,
             repo_access_override=repo_access_override,
             input_source=input_source,
+            turn_id=turn_id,
         )
 
     def emit(self, event: Event) -> None:
@@ -354,9 +356,16 @@ class PynchyApp:
         )
 
     async def handle_streamed_output(
-        self, chat_jid: str, group: WorkspaceProfile, result: ContainerOutput
+        self,
+        chat_jid: str,
+        group: WorkspaceProfile,
+        result: ContainerOutput,
+        *,
+        turn_id: str | None = None,
     ) -> bool:
-        return await output_handler.handle_streamed_output(self, chat_jid, group, result)
+        return await output_handler.handle_streamed_output(
+            self, chat_jid, group, result, turn_id=turn_id
+        )
 
     # ------------------------------------------------------------------
     # Group management
