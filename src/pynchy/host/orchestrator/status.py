@@ -57,7 +57,7 @@ def record_start_time() -> None:
 
 def get_temporal_scheduler_status() -> dict[str, Any]:
     """Return worker status lazily so status imports do not import the scheduler."""
-    from pynchy.host.orchestrator.temporal.scheduler import (
+    from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - status module must not import the Temporal scheduler at module load.
         get_temporal_scheduler_status as _get_temporal_scheduler_status,
     )
 
@@ -395,7 +395,7 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
 
 async def _check_litellm_readiness(port: int, key: str) -> dict[str, Any]:
     try:
-        import aiohttp
+        import aiohttp  # noqa: PLC0415, RUF100 - gateway readiness is optional best-effort status collection.
     except Exception as exc:  # noqa: BLE001, RUF100 - gateway health is best-effort status collection.
         logger.debug("Gateway health check failed", err=str(exc))
         return {"ready": None}
