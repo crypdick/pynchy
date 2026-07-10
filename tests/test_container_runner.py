@@ -645,7 +645,7 @@ class TestMountBuilding:
 
         assert all(m.container_path != "/workspace/vault" for m in mounts)
 
-    def test_learning_enabled_mounts_vault_readwrite(self, tmp_path: Path):
+    def test_learning_enabled_mounts_vault_readwrite(self, monkeypatch, tmp_path: Path):
         vault = tmp_path / "vault"
         vault.mkdir()
         learning = LearningConfig(
@@ -658,6 +658,10 @@ class TestMountBuilding:
 
         with _patch_settings(tmp_path, learning=learning):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
+            monkeypatch.setattr(
+                "pynchy.host.container_manager.mounts.prepare_vault_mount_root",
+                lambda paths: paths.vault_root,
+            )
 
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 

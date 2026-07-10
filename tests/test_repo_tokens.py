@@ -443,6 +443,87 @@ class TestGitEnvWithToken:
         assert "GIT_CONFIG_VALUE_1" not in env
         get_token.assert_not_called()
 
+    def test_onecli_git_proxy_rewrites_container_host_for_host_processes(self, tmp_path: Path):
+        """Host git must not receive container-only proxy hostnames."""
+        ca_host_path = tmp_path / "onecli-ca.pem"
+        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
+        material = OneCliMaterial(
+            env_vars={
+                "HTTPS_PROXY": "http://host.docker.internal:10255",
+                "HTTP_PROXY": "http://host.docker.internal:10255",
+                "https_proxy": "http://host.docker.internal:10255",
+                "http_proxy": "http://host.docker.internal:10255",
+                "SSL_CERT_FILE": ca_container_path,
+            },
+            mounts=[
+                VolumeMount(
+                    host_path=str(ca_host_path),
+                    container_path=ca_container_path,
+                    readonly=True,
+                )
+            ],
+            warnings=[],
+        )
+        s = make_settings()
+        s.onecli.enabled = True
+
+        with (
+            patch("pynchy.host.git_ops.utils.get_settings", return_value=s),
+            patch(
+                "pynchy.host.git_ops.utils.prepare_onecli_material",
+                return_value=material,
+                create=True,
+            ),
+            patch("pynchy.host.git_ops.repo.get_repo_token") as get_token,
+        ):
+            env = git_env_with_token(REPO_SLUG, group_folder=None)
+
+        assert env is not None
+        assert env["HTTPS_PROXY"] == "http://localhost:10255"
+        assert env["HTTP_PROXY"] == "http://localhost:10255"
+        assert env["https_proxy"] == "http://localhost:10255"
+        assert env["http_proxy"] == "http://localhost:10255"
+        assert env["SSL_CERT_FILE"] == str(ca_host_path)
+        assert env["GIT_TERMINAL_PROMPT"] == "0"
+        get_token.assert_not_called()
+
+    def test_onecli_git_env_uses_materialized_ca_for_git(self, tmp_path: Path):
+        """Host git uses OneCLI's materialized CA bundle for TLS verification."""
+        ca_host_path = tmp_path / "onecli-ca.pem"
+        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-gateway-ca.pem"))
+        material = OneCliMaterial(
+            env_vars={
+                "HTTPS_PROXY": "http://localhost:10255",
+                "NODE_EXTRA_CA_CERTS": ca_container_path,
+            },
+            mounts=[
+                VolumeMount(
+                    host_path=str(ca_host_path),
+                    container_path=ca_container_path,
+                    readonly=True,
+                )
+            ],
+            warnings=[],
+        )
+        s = make_settings()
+        s.onecli.enabled = True
+
+        with (
+            patch("pynchy.host.git_ops.utils.get_settings", return_value=s),
+            patch(
+                "pynchy.host.git_ops.utils.prepare_onecli_material",
+                return_value=material,
+                create=True,
+            ),
+            patch("pynchy.host.git_ops.repo.get_repo_token") as get_token,
+        ):
+            env = git_env_with_token(REPO_SLUG, group_folder=None)
+
+        assert env is not None
+        assert env["NODE_EXTRA_CA_CERTS"] == str(ca_host_path)
+        assert env["GIT_SSL_CAINFO"] == str(ca_host_path)
+        get_token.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # check_token_expiry
