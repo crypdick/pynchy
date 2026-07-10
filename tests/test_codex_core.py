@@ -9,6 +9,7 @@ from conftest import make_settings
 
 from pynchy.host.container_manager.mounts import build_volume_mounts
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.agent_cores.codex import CodexAgentCorePlugin
 from pynchy.types import WorkspaceProfile
 
 
@@ -24,8 +25,6 @@ def _group(folder: str = "codex-group") -> WorkspaceProfile:
 
 def test_codex_plugin_info_structure() -> None:
     """The built-in plugin advertises the Codex CLI-backed core."""
-    from pynchy.plugins.agent_cores.codex import CodexAgentCorePlugin
-
     info = CodexAgentCorePlugin().pynchy_agent_core_info()
 
     assert info == {
