@@ -119,8 +119,6 @@ class TestWhatsAppSendEvent:
 
     def test_whatsapp_formatter_is_text_formatter(self):
         """WhatsAppChannel's formatter should be TextFormatter."""
-        from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-
         ch = _make_whatsapp_channel()
         assert isinstance(ch.formatter, TextFormatter)
 
