@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
+from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations.linear import LinearClient, LinearError, LinearMcpPlugin, build_app
 
 
@@ -67,8 +68,6 @@ class TestLinearMcpPlugin:
         }
 
     def test_plugin_is_registered(self):
-        from pynchy.plugins import get_plugin_manager
-
         pm = get_plugin_manager()
 
         assert isinstance(pm.get_plugin("builtin-linear"), LinearMcpPlugin)
