@@ -87,6 +87,7 @@ _last_result_ids: dict[str, dict[str, str]] = {}
 # Tool names whose tool_result content should be broadcast in full
 # instead of the generic "📋 tool result" placeholder.
 _VERBOSE_RESULT_TOOLS = frozenset({"ExitPlanMode", "EnterPlanMode"})
+_CHANNEL_SUPPRESSED_SYSTEM_SUBTYPES = frozenset({"init", "thread.started"})
 
 # Tracks the last tool_use name per chat so we can enrich the subsequent tool_result.
 _last_tool_name: dict[str, str] = {}
@@ -264,7 +265,7 @@ async def _handle_tool_result(deps: OutputDeps, chat_jid: str, result: Container
 async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
     """Handle a system trace event.
 
-    Emits to EventBus. Suppresses init events from channels since they fire
+    Emits to EventBus. Suppresses lifecycle events from channels since they fire
     on every query and add no value for the user.
     """
     subtype = result.system_subtype or ""
@@ -281,9 +282,9 @@ async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutpu
 
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type="system", data=data))
 
-    # Suppress init from channels — the descriptive text above is still
+    # Suppress lifecycle events from channels — the descriptive text above is still
     # available to live EventBus consumers for debugging.
-    if subtype != "init":
+    if subtype not in _CHANNEL_SUPPRESSED_SYSTEM_SUBTYPES:
         await enqueue_or_broadcast(deps, chat_jid, _make_event("system", channel_text))
 
 

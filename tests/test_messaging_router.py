@@ -457,6 +457,27 @@ class TestHandleStreamedOutput:
         assert "unknown" in channel_text
 
     @pytest.mark.asyncio
+    async def test_codex_thread_started_system_event_is_trace_only(self):
+        """Codex thread lifecycle events should not leak into channels."""
+        deps = _make_deps()
+        group = _make_group()
+        output = _make_output(
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:gpt-5.2-codex:thread-1"},
+        )
+
+        await handle_streamed_output(deps, "g@g.us", group, output)
+
+        deps.broadcast_to_channels.assert_not_awaited()
+        event = deps.emit.call_args[0][0]
+        assert event.trace_type == "system"
+        assert event.data == {
+            "subtype": "thread.started",
+            "data": {"session_id": "codex:gpt-5.2-codex:thread-1"},
+        }
+
+    @pytest.mark.asyncio
     async def test_host_channel_text_prefixed_with_house(self):
         """Host messages should use HOST event type."""
         deps = _make_deps()
