@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from temporalio import activity
 
+from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,
@@ -34,6 +35,4 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
 
 
 async def _process_interactive_message_turn(deps: object, chat_jid: str) -> bool:
-    from pynchy.host.orchestrator.messaging.pipeline import process_group_messages
-
-    return await process_group_messages(deps, chat_jid)
+    return await messaging_pipeline.process_group_messages(deps, chat_jid)
