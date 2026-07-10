@@ -134,7 +134,9 @@ async def with_browser(
     Manages Xvfb display, lock-file cleanup, Playwright lifecycle.
     Used by action tools (``setup_x_session`` has its own VNC flow).
     """
-    from playwright.async_api import async_playwright
+    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional browser automation dependency.
+        async_playwright,
+    )
 
     ensure_xvfb()
     x_profile = profile_dir("x")

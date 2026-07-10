@@ -60,7 +60,9 @@ async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _run_x_session_setup(timeout_seconds: int, novnc_url: str | None) -> dict[str, Any]:
-    from playwright.async_api import async_playwright
+    from playwright.async_api import (  # noqa: PLC0415, RUF100 - optional browser automation dependency.
+        async_playwright,
+    )
 
     x_profile = profile_dir("x")
     cleanup_lock_files(x_profile)

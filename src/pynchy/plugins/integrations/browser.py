@@ -30,6 +30,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import socket
 import subprocess  # noqa: S404, RUF100 - fixed argv process helpers; never uses shell=True.
 import sys
 import time
@@ -268,8 +269,6 @@ _NOVNC_WEB_DIR = "/usr/share/novnc"
 
 def _resolve_novnc_url() -> str:
     """Build the noVNC URL using the real hostname."""
-    import socket
-
     host = socket.gethostname()
     return f"http://{host}:{_NOVNC_PORT}/vnc.html?autoconnect=true"
 
