@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+import pynchy.config as pynchy_config
 from pynchy.config.models import (
     ReposConfig,  # noqa: TC001, RUF100 - beartype resolves repo context settings at runtime.
 )
@@ -55,9 +56,7 @@ def get_repo_context(slug: str) -> RepoContext | None:
     explicit override supplies a different path or token. Container mounts
     remain owner-qualified via :func:`repo_container_path`.
     """
-    from pynchy.config import get_settings
-
-    s = get_settings()
+    s = pynchy_config.get_settings()
 
     owner, repo_name = _slug_to_parts(slug)
     root = repo_host_root(s, slug)
@@ -98,10 +97,11 @@ def get_repo_token(slug: str) -> str | None:
     2. secrets.gh_token — host's broad token (medium priority)
     3. gh auth token — auto-discovered from gh CLI (lowest priority)
     """
-    from pynchy.config import get_settings
-    from pynchy.host.container_manager.credentials import _read_gh_token
+    from pynchy.host.container_manager.credentials import (  # noqa: PLC0415, RUF100 - importing container_manager.credentials at module load creates a git_ops/container_manager cycle.
+        _read_gh_token,
+    )
 
-    s = get_settings()
+    s = pynchy_config.get_settings()
     repo_cfg = s.repos.overrides.get(slug)
     if repo_cfg and repo_cfg.token:
         return repo_cfg.token.get_secret_value()
@@ -132,7 +132,9 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
 
     repo_ctx.root.parent.mkdir(parents=True, exist_ok=True)
 
-    from pynchy.host.git_ops.utils import git_env_with_token
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - keep git_ops.utils dependency lazy during git_ops package initialization.
+        git_env_with_token,
+    )
 
     env = git_env_with_token(repo_ctx.slug)
     token = env.get("GH_TOKEN") if env else None
@@ -170,7 +172,9 @@ def resolve_repo_for_group(group_folder: str) -> RepoContext | None:
 
 def resolve_repos_for_group(group_folder: str) -> list[RepoContext]:
     """Return every resolved repo context for a workspace, preserving profile order."""
-    from pynchy.host.orchestrator.workspace_config import load_resolved_config
+    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100 - workspace config is orchestrator-owned and only needed for group resolution.
+        load_resolved_config,
+    )
 
     resolved = load_resolved_config(group_folder)
     if resolved is None or not resolved.repo:
