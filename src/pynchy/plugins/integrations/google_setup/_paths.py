@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 
+import pynchy.config as config
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     Settings,
 )
@@ -84,9 +85,7 @@ def compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
     Checks which resolved MCP tool names reference this profile across all
     workspaces. Returns (space-separated scopes, sorted API IDs).
     """
-    from pynchy.config import get_settings
-
-    settings = get_settings()
+    settings = config.get_settings()
     scopes: set[str] = set()
     apis: set[str] = set()
 
@@ -106,9 +105,7 @@ def compute_scopes_for_profile(profile_name: str) -> tuple[str, list[str]]:
 
 def workspace_chrome_profiles(source_group: str) -> set[str]:
     """Return the chrome profiles selected by a workspace's MCP tools."""
-    from pynchy.config import get_settings
-
-    s = get_settings()
+    s = config.get_settings()
     resolved = s.resolved_workspace_config(source_group)
     if not resolved:
         return set()
