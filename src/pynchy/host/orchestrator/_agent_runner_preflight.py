@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+import pynchy.config.prompts as prompt_config
+import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager import (
     OnOutput,
@@ -135,14 +137,11 @@ def resolved_pre_container_context(
     is_admin: bool,
     repo_access_override: str | None,
 ) -> tuple[bool, str | None, list[str], str | None, str | None]:
-    from pynchy.config.prompts import read_prompts
-    from pynchy.host.orchestrator.workspace_config import load_resolved_config
-
-    resolved = load_resolved_config(group_folder)
+    resolved = workspace_config.load_resolved_config(group_folder)
     resolved_repos = list(resolved.repo) if resolved else []
     repo_accesses = [repo_access_override] if repo_access_override is not None else resolved_repos
     repo_access = repo_accesses[0] if repo_accesses else None
-    system_prompt_append = read_prompts(
+    system_prompt_append = prompt_config.read_prompts(
         resolved.prompts if resolved else [],
         get_settings().project_root,
     )
