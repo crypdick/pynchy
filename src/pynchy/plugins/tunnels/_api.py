@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
+import pynchy.plugins as pynchy_plugins
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -65,9 +66,12 @@ def check_tunnels(pm: pluggy.PluginManager) -> None:
 
     Non-fatal: logs warnings but never raises.
     """
-    from pynchy.plugins import collect_hook_results
-
-    tunnels = collect_hook_results("pynchy_tunnel", _is_valid_tunnel_provider, "tunnel", pm=pm)
+    tunnels = pynchy_plugins.collect_hook_results(
+        "pynchy_tunnel",
+        _is_valid_tunnel_provider,
+        "tunnel",
+        pm=pm,
+    )
 
     if not tunnels:
         logger.info("No tunnel plugins registered")
