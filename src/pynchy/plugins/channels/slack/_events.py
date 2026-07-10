@@ -132,7 +132,9 @@ class SlackEvents:
 
     def _register_assistant_handlers(self) -> None:
         """Register Slack Assistant API handlers for the sidebar panel."""
-        from slack_bolt.middleware.assistant.async_assistant import AsyncAssistant
+        from slack_bolt.middleware.assistant.async_assistant import (  # noqa: PLC0415, RUF100 - optional Slack SDK loaded only when Slack connects.
+            AsyncAssistant,
+        )
 
         ch = self._channel
         assistant = cast("_SlackAssistant", AsyncAssistant())
