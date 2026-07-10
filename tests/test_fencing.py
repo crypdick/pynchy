@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pynchy.host.container_manager.security.fencing import fence_untrusted_content, sanitize_markers
 
 
@@ -49,7 +51,6 @@ class TestFenceUntrustedContent:
 
     def test_fence_ids_match(self):
         result = fence_untrusted_content("stuff", source="browser")
-        import re
 
         ids = re.findall(r'id="([^"]+)"', result)
         assert len(ids) == 2
