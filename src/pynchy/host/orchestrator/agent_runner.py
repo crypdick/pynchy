@@ -13,6 +13,9 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+import pynchy.host.container_manager.mcp.manager as mcp_manager
+import pynchy.host.container_manager.process as container_process
+import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager import (
     ContainerSession,
@@ -169,11 +172,9 @@ def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[st
     s = get_settings()
     resolved_model = s.agent.model
     if group_folder is not None:
-        from pynchy.host.orchestrator.workspace_config import load_resolved_config
-
-        workspace_config = load_resolved_config(group_folder)
-        if workspace_config is not None and workspace_config.model:
-            resolved_model = workspace_config.model
+        resolved = workspace_config.load_resolved_config(group_folder)
+        if resolved is not None and resolved.model:
+            resolved_model = resolved.model
 
     result: dict[str, str] = {}
     if resolved_model:
@@ -279,9 +280,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
 async def _warm_query(request: _WarmQueryRequest) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
     # Ensure MCP servers are running (they may have stopped since last query)
-    from pynchy.host.container_manager.mcp.manager import get_mcp_manager
-
-    mcp_mgr = get_mcp_manager()
+    mcp_mgr = mcp_manager.get_mcp_manager()
     if mcp_mgr is not None:
         await mcp_mgr.ensure_workspace_running(request.group.folder)
 
@@ -325,9 +324,7 @@ async def _cold_start(
     # After a service restart or container crash, a dead Docker container may
     # still exist with this stable name, causing `docker run` to fail with
     # exit code 125 (name conflict).
-    from pynchy.host.container_manager.process import docker_rm_force
-
-    await docker_rm_force(container_name)
+    await container_process.docker_rm_force(container_name)
 
     idle_timeout = get_settings().idle_timeout
 
