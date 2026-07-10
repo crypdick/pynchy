@@ -251,7 +251,7 @@ async def _sweep_approval_decisions(decisions_dir: Path, source_group: str, deps
     """Process approval decisions during live runtime recovery sweeps."""
     try:
         count = 0
-        from pynchy.host.container_manager.ipc.handlers_approval import (
+        from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - approval handler imports service dispatch; keep watcher startup narrow.
             process_approval_decision,
         )
 
@@ -306,13 +306,17 @@ def _clean_stale_initial(input_dir: Path, source_group: str) -> int:
 
 async def _sweep_expired_state() -> None:
     """Auto-deny/expire stale approvals and pending questions left from a crash."""
-    from pynchy.host.container_manager.security.approval import sweep_expired_approvals
+    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - approval state pulls IPC dispatch helpers; load only when sweeping.
+        sweep_expired_approvals,
+    )
 
     expired = await sweep_expired_approvals()
     if expired:
         logger.info("Expired approvals auto-denied during sweep", count=len(expired))
 
-    from pynchy.host.orchestrator.messaging.pending_questions import sweep_expired_questions
+    from pynchy.host.orchestrator.messaging.pending_questions import (  # noqa: PLC0415, RUF100 - messaging state is only needed for recovery sweeps.
+        sweep_expired_questions,
+    )
 
     expired_qs = await sweep_expired_questions()
     if expired_qs:
@@ -464,7 +468,7 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
     elif queued.subdir == "output":
         await _process_output_file(queued.path, queued.source_group, ipc_base_dir)
     elif queued.subdir == "approval_decisions":
-        from pynchy.host.container_manager.ipc.handlers_approval import (
+        from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - approval handler imports service dispatch; keep watcher startup narrow.
             process_approval_decision,
         )
 
