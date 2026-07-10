@@ -103,6 +103,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
         agent_core_module="agent_runner.cores.codex",
         agent_core_class="CodexCLIAgentCore",
     )
+    fake_openai_key = "test-key"  # pragma: allowlist secret
 
     status = await run_host_input(
         input_data,
@@ -111,7 +112,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
         timeout_seconds=5,
         env={
             "OPENAI_BASE_URL": "http://127.0.0.1:4000",
-            "OPENAI_API_KEY": "test-key",  # pragma: allowlist secret
+            "OPENAI_API_KEY": fake_openai_key,
         },
     )
 
@@ -128,7 +129,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
     assert created["cmd"][3].endswith("src/pynchy/agent/agent_runner")
     assert created["cmd"][4] == "python"
     assert created["kwargs"]["cwd"] == str(tmp_path)
-    assert created["kwargs"]["env"]["OPENAI_API_KEY"] == "test-key"
+    assert created["kwargs"]["env"]["OPENAI_API_KEY"] == fake_openai_key
     assert fake_proc.stdin.closed is True
 
     payload = json.loads(fake_proc.stdin.buffer.decode())

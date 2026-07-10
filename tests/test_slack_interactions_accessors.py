@@ -11,6 +11,16 @@ SLACK_BOT_VALUE = "xoxb-fake"
 SLACK_APP_VALUE = "xapp-fake"
 
 
+class _FakeSlackClient:
+    def __init__(self) -> None:
+        self.chat_update = AsyncMock(return_value={"ok": True})
+
+
+class _FakeSlackApp:
+    def __init__(self) -> None:
+        self.client = _FakeSlackClient()
+
+
 def _make_channel(*, on_ask_user_answer: object | None = None) -> SlackChannel:
     channel = SlackChannel(
         connection_name="test-conn",
@@ -23,8 +33,7 @@ def _make_channel(*, on_ask_user_answer: object | None = None) -> SlackChannel:
         on_reaction=None,
         on_ask_user_answer=on_ask_user_answer,
     )
-    channel.slack_app = MagicMock()
-    channel.slack_app.client.chat_update = AsyncMock(return_value={"ok": True})
+    channel.slack_app = _FakeSlackApp()
     channel.register_allowed_channel("general", "C12345")
     return channel
 

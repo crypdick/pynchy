@@ -382,13 +382,13 @@ class CommandCenterConfig(_StrictModel):
 
 def __getattr__(name: str) -> object:
     if name == "CapabilityTomlConfig":
-        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy compatibility re-export avoids an import cycle.
+        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy re-export keeps imports acyclic.
             CapabilityTomlConfig,
         )
 
         return CapabilityTomlConfig
     if name == "ProfileConfig":
-        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy compatibility re-export avoids an import cycle.
+        from pynchy.config.profiles import (  # noqa: PLC0415, RUF100 - lazy re-export keeps imports acyclic.
             ProfileConfig,
         )
 

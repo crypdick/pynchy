@@ -7,11 +7,15 @@ from unittest.mock import MagicMock
 from pynchy.plugins.channels.slack import SlackChannel
 
 
+def _fixture_token(prefix: str) -> str:
+    return f"{prefix}-fixture"
+
+
 def _make_channel(*, on_ask_user_answer: object | None = None) -> SlackChannel:
     return SlackChannel(
         connection_name="test-conn",
-        bot_token="xoxb-fake",
-        app_token="xapp-fake",
+        bot_token=_fixture_token("xoxb"),
+        app_token=_fixture_token("xapp"),
         chat_names=["general"],
         allow_create=False,
         on_message=MagicMock(),

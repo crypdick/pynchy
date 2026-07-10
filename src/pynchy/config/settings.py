@@ -25,11 +25,10 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotat
     Iterable,
     Sequence,
 )
-from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import (
@@ -38,9 +37,6 @@ from pydantic_settings import (
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
-
-if TYPE_CHECKING:
-    from pydantic.fields import FieldInfo
 
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
@@ -77,28 +73,11 @@ from pynchy.config.scheduler_models import (
     QueueConfig,
     SchedulerConfig,
 )
-
-_HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
-    "pynchy_hermetic_settings_sources", default=False
+from pynchy.config.settings_sources import (
+    FilteredDotenvSettingsSource,
+    hermetic_settings_sources,
+    hermetic_settings_sources_enabled,
 )
-
-
-class _FilteredDotenvSettingsSource(PydanticBaseSettingsSource):
-    """Drop bare dotenv secrets before root schema validation runs."""
-
-    def __init__(
-        self, wrapped: PydanticBaseSettingsSource, settings_cls: type[BaseSettings]
-    ) -> None:
-        super().__init__(settings_cls)
-        self._wrapped = wrapped
-
-    def __call__(self) -> dict[str, Any]:
-        data = self._wrapped()
-        allowed = set(self.settings_cls.model_fields)
-        return {key: value for key, value in data.items() if key in allowed}
-
-    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[object, str, bool]:
-        return self._wrapped.get_field_value(field, field_name)
 
 
 def _assert_admin_clean_room(
@@ -408,12 +387,12 @@ class Settings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Priority: init > env vars > .env > config.toml > file secrets."""
-        if _HERMETIC_SETTINGS_SOURCES.get():
+        if hermetic_settings_sources_enabled():
             return (init_settings,)
         return (
             init_settings,
             env_settings,
-            _FilteredDotenvSettingsSource(dotenv_settings, settings_cls),
+            FilteredDotenvSettingsSource(dotenv_settings, settings_cls),
             TomlConfigSettingsSource(settings_cls),
             file_secret_settings,
         )
@@ -467,17 +446,13 @@ class Settings(BaseSettings):
 
 def validate_settings_mapping(data: dict[str, Any]) -> Settings:
     """Validate explicit settings data without reading env, dotenv, or config.toml."""
-    token = _HERMETIC_SETTINGS_SOURCES.set(True)
-    try:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=r"Config key `toml_file` is set in model_config",
-                category=UserWarning,
-            )
-            return Settings(**data)
-    finally:
-        _HERMETIC_SETTINGS_SOURCES.reset(token)
+    with hermetic_settings_sources(), warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Config key `toml_file` is set in model_config",
+            category=UserWarning,
+        )
+        return Settings(**data)
 
 
 # ---------------------------------------------------------------------------
