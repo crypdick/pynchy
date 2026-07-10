@@ -20,6 +20,7 @@ from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
     configure_plugin_workspaces,
+    dynamic_thread_folder,
     reconcile_workspaces,
 )
 from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
@@ -859,6 +860,34 @@ class TestReconcileWorkspaces:
                 folder="active-agent",
                 trigger="@Pynchy",
                 added_at=datetime.now(UTC).isoformat(),
+            ),
+        }
+
+        register_fn = AsyncMock()
+        unregister_fn = AsyncMock()
+        await reconcile_workspaces(registered, [], register_fn, unregister_fn=unregister_fn)
+
+        unregister_fn.assert_not_called()
+
+    async def test_does_not_remove_dynamic_thread_when_parent_workspace_is_configured(
+        self, db, groups_dir
+    ):
+        """Dynamic thread registrations inherit the lifecycle of their configured parent."""
+        _write_workspace_yaml(
+            groups_dir,
+            "research",
+            {"is_admin": False},
+        )
+        thread_jid = "discord:channel:thread"
+
+        registered = {
+            thread_jid: WorkspaceProfile(
+                jid=thread_jid,
+                name="Research/thread",
+                folder=dynamic_thread_folder("research", thread_jid),
+                trigger="@Pynchy",
+                added_at=datetime.now(UTC).isoformat(),
+                is_admin=False,
             ),
         }
 

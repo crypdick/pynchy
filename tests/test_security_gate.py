@@ -271,6 +271,37 @@ class TestResolveSecurity:
             )
         }
 
+    def test_dynamic_thread_uses_parent_workspace_capability_rules(self, monkeypatch):
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "worker": {
+                        "tools": ["email"],
+                        "capabilities": {
+                            "mcp.email.send": {"decision": "deny"},
+                            "mcp.email.preview": {"decision": "allow"},
+                        },
+                    }
+                },
+                "workspaces": {"research": {"profiles": ["worker"]}},
+                "tools": {
+                    "email": {
+                        "type": "builtin",
+                        "public_source": False,
+                        "secret_data": False,
+                        "public_sink": False,
+                        "dangerous_writes": False,
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        security = resolve_security(dynamic_thread_folder("research", "thread:123"))
+
+        assert security.capabilities["mcp.email.send"].decision == "deny"
+        assert security.capabilities["mcp.email.preview"].decision == "allow"
+
     def test_admin_resolution_preserves_contains_secrets(self, monkeypatch):
         settings = validate_settings_mapping(
             {

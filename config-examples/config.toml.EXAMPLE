@@ -207,6 +207,10 @@
 # is_admin = true
 # contains_secrets = true
 # model = "chatgpt/gpt-5.3-codex"
+#
+# Semantic capability rules target a specific tool surface.
+# [profiles.pynchy-admin.capabilities."mcp.email.send"]
+# decision = "needs_human"  # "allow", "deny", or "needs_human"
 
 # [profiles.pynchy-worker]
 # prompts = ["pynchy-code-improver"]

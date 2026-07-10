@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from croniter import croniter
 from pydantic import field_validator, model_validator
 
@@ -10,6 +12,7 @@ from pynchy.config.models import _StrictModel
 _JOB_WORKSPACE_EMPTY_ERROR = "job workspace cannot be empty"
 _JOB_COMMAND_EMPTY_ERROR = "host job command cannot be empty"
 _JOB_TIMEOUT_SECONDS_ERROR = "timeout_seconds must be positive"
+_JOB_AT_ERROR = "job at must be an ISO datetime"
 _JOB_SHAPE_ERROR = "jobs require exactly one of schedule or at"
 _HOST_JOB_COMMAND_ERROR = "host jobs require command"
 _HOST_JOB_SCHEDULE_ERROR = "host jobs require schedule"
@@ -47,6 +50,17 @@ class JobConfig(_StrictModel):
         if v is not None and not croniter.is_valid(v):
             msg = f"Invalid cron expression: {v}"
             raise ValueError(msg)
+        return v
+
+    @field_validator("at")
+    @classmethod
+    def validate_job_at(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        try:
+            datetime.fromisoformat(v)
+        except ValueError as exc:
+            raise ValueError(_JOB_AT_ERROR) from exc
         return v
 
     @field_validator("workspace")

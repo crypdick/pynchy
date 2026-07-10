@@ -62,6 +62,23 @@ Write to tool
 
 A payload scanner also runs on every outbound write. If it spots credential patterns (API keys, tokens, passwords), the write escalates to human approval regardless of taint state.
 
+## Capability Rules
+
+Use tool trust fields for broad service risk. Use profile capability rules when a specific MCP tool call needs a sharper policy than the rest of the service.
+
+```toml
+[profiles.finance-assistant]
+tools = ["email"]
+
+[profiles.finance-assistant.capabilities."mcp.email.send"]
+decision = "needs_human"
+
+[profiles.finance-assistant.capabilities."mcp.email.delete"]
+decision = "deny"
+```
+
+Capability IDs use dotted segments. MCP tool calls use `mcp.<tool-name>.<call-name>`. A trailing `.*` applies to all matching calls, such as `mcp.email.*`. Valid decisions are `allow`, `deny`, and `needs_human`.
+
 ## Configuration Examples
 
 ### Personal calendar (fully trusted)

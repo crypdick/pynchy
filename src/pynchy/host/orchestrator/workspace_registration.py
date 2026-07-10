@@ -44,7 +44,11 @@ def _workspace_security(
     _config: WorkspaceConfig, resolved: ResolvedWorkspaceConfig
 ) -> WorkspaceSecurity:
     services: dict[str, ServiceTrustConfig] = {}
-    return WorkspaceSecurity(services=services, contains_secrets=resolved.contains_secrets)
+    return WorkspaceSecurity(
+        services=services,
+        contains_secrets=resolved.contains_secrets,
+        capabilities=dict(resolved.capabilities),
+    )
 
 
 async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration boundary keeps the full workspace creation contract explicit.

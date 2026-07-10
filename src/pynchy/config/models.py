@@ -376,6 +376,12 @@ class CommandCenterConfig(_StrictModel):
     connection: ValidatedConnectionName | None = None
 
 
+class CapabilityTomlConfig(_StrictModel):
+    """Profile-level semantic capability policy for tool surfaces."""
+
+    decision: Literal["allow", "deny", "needs_human"]
+
+
 class ProfileConfig(_StrictModel):
     """Composable workspace profile config."""
 
@@ -387,6 +393,7 @@ class ProfileConfig(_StrictModel):
     model: str | None = None
     is_admin: bool = False
     contains_secrets: bool = False
+    capabilities: dict[str, CapabilityTomlConfig] = Field(default_factory=dict)
 
     @field_validator("repo", mode="before")
     @classmethod

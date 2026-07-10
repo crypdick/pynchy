@@ -232,9 +232,13 @@ async def _remove_orphaned_workspaces(
         return
     config_folders = set(specs.keys())
     for jid, profile in list(workspaces.items()):
-        if profile.folder not in config_folders and not profile.is_admin:
-            await unregister_fn(jid)
-            logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
+        if profile.folder in config_folders or profile.is_admin:
+            continue
+        parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
+        if parent_folder in config_folders:
+            continue
+        await unregister_fn(jid)
+        logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
 
 
 async def reconcile_workspaces(

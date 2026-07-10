@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pynchy.config.models import (
     ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
+from pynchy.types import CapabilityRule
 
 
 def _deduplicate(items: list[str]) -> list[str]:
@@ -30,6 +31,7 @@ class ResolvedWorkspaceConfig:
     model: str | None
     is_admin: bool
     contains_secrets: bool
+    capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
 
 def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspaceConfig:
@@ -41,6 +43,7 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     model: str | None = None
     is_admin = False
     contains_secrets = False
+    capabilities: dict[str, CapabilityRule] = {}
 
     for profile in profiles:
         prompts.extend(profile.prompts)
@@ -51,6 +54,12 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
             model = profile.model
         is_admin = is_admin or profile.is_admin
         contains_secrets = contains_secrets or profile.contains_secrets
+        capabilities.update(
+            {
+                capability: CapabilityRule(decision=rule.decision)
+                for capability, rule in profile.capabilities.items()
+            }
+        )
 
     return ResolvedWorkspaceConfig(
         prompts=_deduplicate(prompts),
@@ -60,4 +69,5 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         model=model,
         is_admin=is_admin,
         contains_secrets=contains_secrets,
+        capabilities=capabilities,
     )

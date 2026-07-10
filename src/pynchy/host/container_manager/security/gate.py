@@ -124,4 +124,5 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
     return WorkspaceSecurity(
         services=services,
         contains_secrets=contains_secrets,
+        capabilities=dict(resolved.capabilities),
     )

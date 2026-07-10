@@ -100,6 +100,38 @@ def test_one_time_agent_job_uses_at_instead_of_schedule() -> None:
     assert job.schedule is None
 
 
+def test_one_time_agent_job_rejects_invalid_at_timestamp() -> None:
+    with pytest.raises(ValidationError, match="job at must be an ISO datetime"):
+        JobConfig(
+            enabled=True,
+            at="tomorrow-ish",
+            workspace="admin",
+            prompt="Cancel the subscription.",
+        )
+
+
+def test_profile_capability_rules_resolve_into_workspace_policy() -> None:
+    settings = _settings(
+        profiles={
+            "worker": {
+                "tools": ["email"],
+                "capabilities": {
+                    "mcp.email.send": {"decision": "deny"},
+                    "mcp.email.preview": {"decision": "allow"},
+                },
+            }
+        },
+        workspaces={"admin": WorkspaceConfig(profiles=["worker"])},
+        tools={"email": {"type": "builtin"}},
+    )
+
+    resolved = settings.resolved_workspace_config("admin")
+
+    assert resolved is not None
+    assert resolved.capabilities["mcp.email.send"].decision == "deny"
+    assert resolved.capabilities["mcp.email.preview"].decision == "allow"
+
+
 def test_job_requires_exactly_one_schedule_shape() -> None:
     with pytest.raises(ValidationError, match="exactly one of schedule or at"):
         JobConfig(
