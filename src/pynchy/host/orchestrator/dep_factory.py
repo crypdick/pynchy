@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.config import get_settings
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
@@ -227,12 +228,10 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             }
 
         def get_gateway_info(self) -> dict[str, Any]:
-            from pynchy.host.container_manager.gateway import LiteLLMGateway, get_gateway
-
-            gw = get_gateway()
+            gw = gateway_manager.get_gateway()
             if gw is None:
                 return {"mode": "none"}
-            mode = "litellm" if isinstance(gw, LiteLLMGateway) else "builtin"
+            mode = "litellm" if isinstance(gw, gateway_manager.LiteLLMGateway) else "builtin"
             return {"mode": mode, "port": gw.port, "key": gw.key}
 
         def get_active_sessions_count(self) -> int:
