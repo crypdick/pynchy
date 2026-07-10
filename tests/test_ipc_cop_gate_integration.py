@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import init_test_database, make_settings
 
+from pynchy.config.models import CommandCenterConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.state import get_all_host_jobs, get_all_tasks
 from pynchy.types import WorkspaceProfile
@@ -358,8 +359,6 @@ class TestCreatePeriodicAgentCopGate:
 
     async def test_cop_approved_skips_gate(self, deps, tmp_path):
         """When _cop_approved is set, cop_gate is not called."""
-        from pynchy.config.models import CommandCenterConfig
-
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="agent@g.us")
         mock_channel.name = "main"

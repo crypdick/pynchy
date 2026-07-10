@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -913,8 +914,6 @@ class TestResetContextExecution:
                 True,
                 deps,
             )
-
-            import json
 
             reset_file = tmp_path / "data" / "ipc" / "admin-1" / "reset_prompt.json"
             assert reset_file.exists()
