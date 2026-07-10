@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from aiosqlite import Row
-else:
-    Row = Any
+from typing import Any
 
 from pynchy.conversation.phoenix import (
     ConversationBodyReader,  # noqa: TC001 - beartype resolves annotations.
@@ -19,33 +14,17 @@ from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
     hydrate_pointer_to_message,
 )
-from pynchy.types import NewMessage
-
-
-def _row_to_message(row: Row) -> NewMessage:
-    """Convert a database row to a NewMessage."""
-    metadata_str = row["metadata"]
-
-    try:
-        is_from_me: bool | None = bool(row["is_from_me"])
-    except (KeyError, IndexError):
-        is_from_me = None
-
-    return NewMessage(
-        id=row["id"],
-        chat_jid=row["chat_jid"],
-        sender=row["sender"],
-        sender_name=row["sender_name"],
-        content=row["content"],
-        timestamp=row["timestamp"],
-        is_from_me=is_from_me,
-        message_type=row["message_type"] or "user",
-        metadata=json.loads(metadata_str) if metadata_str else None,
-    )
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves state API annotations.
+    NewMessage,
+)
 
 
 async def store_message(msg: NewMessage, message_type: str = "user") -> None:
-    """Store a message with full content.
+    """SQLite-only low-level row writer.
+
+    Live conversation ingestion writes durable bodies through ``ConversationSink``
+    and leaves only pointer projections in SQLite. This helper remains for
+    non-conversation rows and narrow state tests.
 
     Args:
         msg: The message to store
@@ -76,7 +55,10 @@ async def store_message_direct(  # noqa: PLR0913, RUF100 - DB row writer keeps t
     message_type: str = "user",
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Store a message directly with explicit fields.
+    """SQLite-only low-level row writer with explicit fields.
+
+    Do not use this for chat history. Conversation content belongs in Phoenix
+    via ``ConversationSink``; SQLite stores the projection pointer.
 
     Args:
         message_type: One of 'user', 'assistant', 'system', 'host', 'tool_result'
@@ -108,63 +90,59 @@ async def message_exists(msg_id: str, chat_jid: str) -> bool:
     """Check if a message with the given ID and chat JID already exists."""
     db = _get_db()
     cursor = await db.execute(
-        "SELECT 1 FROM messages WHERE id = ? AND chat_jid = ? LIMIT 1",
+        """
+        SELECT 1 FROM conversation_events
+        WHERE source_message_id = ? AND chat_jid = ?
+        LIMIT 1
+        """,
         (msg_id, chat_jid),
     )
     return await cursor.fetchone() is not None
 
 
+def _is_inbound_projection(row: dict[str, Any]) -> bool:
+    return row["kind"] != "system_notice" and row["message_type"] not in {"assistant", "host"}
+
+
+async def _hydrate_projected_messages_since(
+    chat_jid: str,
+    since_timestamp: str | None,
+    *,
+    body_reader: ConversationBodyReader | None = None,
+    inbound_only: bool,
+) -> list[NewMessage]:
+    projected_rows = await get_conversation_event_pointers_since(chat_jid, since_timestamp)
+    projected = []
+    reader = body_reader
+    for row in projected_rows:
+        if inbound_only and not _is_inbound_projection(row):
+            continue
+        if reader is None:
+            reader = default_body_reader()
+        projected.append(await hydrate_pointer_to_message(row, reader))
+    return projected
+
+
 async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:
-    """Get messages across multiple groups since a timestamp."""
+    """Get inbound conversation projections across multiple groups since a timestamp."""
     if not jids:
         return [], last_timestamp
 
-    db = _get_db()
-    placeholders = ",".join("?" for _ in jids)
-    # S608 audit: only the number of SQLite value placeholders is dynamic.
-    sql = f"""
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-               message_type, metadata
-        FROM messages
-        WHERE timestamp > ? AND chat_jid IN ({placeholders})
-              AND is_from_me = 0
-        ORDER BY timestamp
-    """  # noqa: S608, RUF100
-    cursor = await db.execute(sql, [last_timestamp, *jids])
-    rows = await cursor.fetchall()
+    messages = []
+    reader = default_body_reader()
+    for jid in jids:
+        messages.extend(
+            await _hydrate_projected_messages_since(
+                jid,
+                last_timestamp,
+                body_reader=reader,
+                inbound_only=True,
+            )
+        )
 
-    messages = [_row_to_message(row) for row in rows]
-
-    new_timestamp = last_timestamp
-    for msg in messages:
-        if msg.timestamp > new_timestamp:
-            new_timestamp = msg.timestamp
-
+    messages.sort(key=lambda msg: (msg.timestamp, msg.id))
+    new_timestamp = max((msg.timestamp for msg in messages), default=last_timestamp)
     return messages, new_timestamp
-
-
-async def _get_legacy_messages_since(
-    chat_jid: str,
-    since_timestamp: str | None,
-) -> list[NewMessage]:
-    """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
-    db = _get_db()
-    sql = """
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-               message_type, metadata
-        FROM messages
-        WHERE chat_jid = ?
-              AND is_from_me = 0
-    """
-    params = [chat_jid]
-    if since_timestamp is not None:
-        sql += " AND timestamp > ?"
-        params.append(since_timestamp)
-    sql += " ORDER BY timestamp"
-    cursor = await db.execute(sql, params)
-    rows = await cursor.fetchall()
-
-    return [_row_to_message(row) for row in rows]
 
 
 async def get_messages_since(
@@ -173,24 +151,14 @@ async def get_messages_since(
     *,
     body_reader: ConversationBodyReader | None = None,
 ) -> list[NewMessage]:
-    """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
-    legacy = await _get_legacy_messages_since(chat_jid, since_timestamp)
-    projected_rows = await get_conversation_event_pointers_since(chat_jid, since_timestamp)
-    legacy_message_ids = {message.id for message in legacy}
-    projected = []
-    reader = body_reader
-    for row in projected_rows:
-        if row["kind"] == "system_notice" or row["message_type"] in {"assistant", "host"}:
-            continue
-        if row["event_id"] in legacy_message_ids:
-            continue
-        source_message_id = row.get("source_message_id")
-        if isinstance(source_message_id, str) and source_message_id in legacy_message_ids:
-            continue
-        if reader is None:
-            reader = default_body_reader()
-        projected.append(await hydrate_pointer_to_message(row, reader))
-    return sorted([*legacy, *projected], key=lambda msg: (msg.timestamp, msg.id))
+    """Get inbound conversation projections for a specific chat since a timestamp."""
+    projected = await _hydrate_projected_messages_since(
+        chat_jid,
+        since_timestamp,
+        body_reader=body_reader,
+        inbound_only=True,
+    )
+    return sorted(projected, key=lambda msg: (msg.timestamp, msg.id))
 
 
 async def get_messaging_stats() -> dict[str, int | str | None]:
@@ -207,9 +175,13 @@ async def get_messaging_stats() -> dict[str, int | str | None]:
     cursor = await db.execute(
         """
         SELECT
-            (SELECT COUNT(*) FROM messages WHERE is_from_me = 0) AS total_inbound,
+            (SELECT COUNT(*) FROM conversation_events
+             WHERE kind != 'system_notice' AND message_type NOT IN ('assistant', 'host'))
+                AS total_inbound,
             (SELECT COUNT(*) FROM outbound_ledger) AS total_outbound,
-            (SELECT MAX(timestamp) FROM messages WHERE is_from_me = 0) AS last_received_at,
+            (SELECT MAX(timestamp) FROM conversation_events
+             WHERE kind != 'system_notice' AND message_type NOT IN ('assistant', 'host'))
+                AS last_received_at,
             (SELECT MAX(timestamp) FROM outbound_ledger) AS last_sent_at,
             (SELECT COUNT(*) FROM outbound_deliveries WHERE delivered_at IS NULL)
                 AS pending_deliveries
@@ -255,36 +227,12 @@ async def get_chat_history(
     cleared_row = await cleared_cursor.fetchone()
     cleared_at = cleared_row["cleared_at"] if cleared_row and cleared_row["cleared_at"] else None
 
-    params: list[object] = [chat_jid]
-    sql = """
-        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-               message_type, metadata
-        FROM messages
-        WHERE chat_jid = ?
-    """
-    if cleared_at:
-        sql += " AND timestamp > ?"
-        params.append(cleared_at)
-    sql += " ORDER BY timestamp DESC LIMIT ?"
-    params.append(limit)
+    projected = await _hydrate_projected_messages_since(
+        chat_jid,
+        cleared_at,
+        body_reader=body_reader,
+        inbound_only=False,
+    )
 
-    cursor = await db.execute(sql, params)
-    rows = await cursor.fetchall()
-
-    legacy = [_row_to_message(row) for row in rows]
-    projected_rows = await get_conversation_event_pointers_since(chat_jid, cleared_at)
-    legacy_message_ids = {message.id for message in legacy}
-    projected = []
-    reader = body_reader
-    for row in projected_rows:
-        if row["event_id"] in legacy_message_ids:
-            continue
-        source_message_id = row.get("source_message_id")
-        if isinstance(source_message_id, str) and source_message_id in legacy_message_ids:
-            continue
-        if reader is None:
-            reader = default_body_reader()
-        projected.append(await hydrate_pointer_to_message(row, reader))
-
-    merged = sorted([*legacy, *projected], key=lambda msg: (msg.timestamp, msg.id), reverse=True)
+    merged = sorted(projected, key=lambda msg: (msg.timestamp, msg.id), reverse=True)
     return list(reversed(merged[:limit]))

@@ -17,6 +17,7 @@ from conftest import NullChannel, make_settings
 
 import pynchy.state.messages as state_messages
 from pynchy import state
+from pynchy.conversation.events import ConversationEvent, ConversationEventKind
 from pynchy.conversation.phoenix import PhoenixEventRef
 from pynchy.conversation.sink import ConversationSink
 from pynchy.host.container_manager import serialization
@@ -26,14 +27,12 @@ from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 from pynchy.plugins.channel_runtime import ChannelPluginContext
-from pynchy.state import get_chat_history, set_router_state, store_message
+from pynchy.state import get_chat_history, set_router_state
 from pynchy.types import NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
     from pathlib import Path
-
-    from pynchy.conversation.events import ConversationEvent
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
@@ -92,6 +91,24 @@ class _InMemoryConversationBodyStore:
 
     async def read_event_content(self, event_id: str) -> str:
         return self.bodies[event_id]
+
+
+async def _seed_message(app: PynchyApp, msg: NewMessage) -> None:
+    await app.conversation_sink.append(
+        ConversationEvent(
+            event_id=f"evt_{msg.id}",
+            turn_id=f"turn_{msg.id}",
+            chat_jid=msg.chat_jid,
+            timestamp=msg.timestamp,
+            kind=ConversationEventKind.USER_MESSAGE,
+            sender=msg.sender,
+            sender_name=msg.sender_name,
+            content=msg.content,
+            message_type=msg.message_type or "user",
+            source_message_id=msg.id,
+            metadata={"source": "test"},
+        )
+    )
 
 
 @contextlib.contextmanager
@@ -392,7 +409,7 @@ class TestProcessGroupMessages:
     async def test_processes_triggered_message(self, app: PynchyApp, tmp_path: Path):
         """A triggered message should spawn a container and return the result."""
         msg = _make_message(content="@pynchy what is 2+2?")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         fake_proc = FakeProcess(
             output={
@@ -426,7 +443,7 @@ class TestProcessGroupMessages:
     async def test_trace_events_forwarded_to_channels(self, app: PynchyApp, tmp_path: Path):
         """Thinking and tool_use trace events should be sent to channels, not just results."""
         msg = _make_message(content="@pynchy do something complex")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         # Simulate a realistic agent session: thinking -> tool_use -> result
         fake_proc = FakeProcess()
@@ -459,7 +476,7 @@ class TestProcessGroupMessages:
     async def test_processes_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
         """Workspace config no longer gates non-admin groups on mention triggers."""
         msg = _make_message(content="just a regular message without trigger")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         result = await app._process_group_messages("group@g.us")
         assert result is False
@@ -467,7 +484,7 @@ class TestProcessGroupMessages:
     async def test_rolls_back_cursor_on_error(self, app: PynchyApp, tmp_path: Path):
         """On agent error (before any output), cursor should roll back for retry."""
         msg = _make_message(content="@pynchy fail please")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         fake_proc = FakeProcess()
 
@@ -512,7 +529,7 @@ class TestProcessGroupMessages:
             ),
         }
         msg = _make_message(chat_jid="main@g.us", content="no trigger needed")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         fake_proc = FakeProcess(
             output={
@@ -602,7 +619,7 @@ class TestRecoverPendingMessages:
     async def test_enqueues_groups_with_pending_messages(self, app: PynchyApp):
         # Store a message but don't advance the cursor
         msg = _make_message(content="missed message")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         started = []
 
@@ -658,7 +675,7 @@ class TestTraceLocalPersistence:
     async def test_thinking_and_tool_use_not_persisted(self, app: PynchyApp, tmp_path: Path):
         """Thinking and tool_use events should not be copied into chat history."""
         msg = _make_message(content="@pynchy do something")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         fake_proc = FakeProcess()
 
@@ -707,7 +724,7 @@ class TestTraceLocalPersistence:
     async def test_system_trace_not_persisted(self, app: PynchyApp, tmp_path: Path):
         """System trace payloads should not be copied into chat history."""
         msg = _make_message(content="@pynchy hello")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         fake_proc = FakeProcess()
 
@@ -748,7 +765,7 @@ class TestTraceLocalPersistence:
     async def test_result_metadata_not_persisted(self, app: PynchyApp, tmp_path: Path):
         """Result metadata should not be copied into chat history."""
         msg = _make_message(content="@pynchy hello")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         fake_proc = FakeProcess()
 

@@ -15,6 +15,9 @@ from unittest.mock import patch
 import pytest
 from conftest import NullChannel, init_test_database, make_settings
 
+from pynchy.conversation.events import ConversationEvent, ConversationEventKind
+from pynchy.conversation.phoenix import PhoenixEventRef
+from pynchy.conversation.sink import ConversationSink
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
@@ -22,7 +25,8 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_http_deps
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
-from pynchy.state import store_message
+from pynchy.state import messages as state_messages
+from pynchy.state.conversation_events import store_conversation_event_pointer
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -56,6 +60,36 @@ def _make_message(
 
 async def _noop_docker_rm(name: str) -> None:
     """No-op replacement for docker_rm_force in tests."""
+
+
+class _BodyStore:
+    def __init__(self) -> None:
+        self.bodies: dict[str, str] = {}
+
+    async def write_event(self, event: ConversationEvent) -> PhoenixEventRef:
+        self.bodies[event.event_id] = event.content
+        return PhoenixEventRef(event_id=event.event_id, trace_ref=f"fake:{event.event_id}")
+
+    async def read_event_content(self, event_id: str) -> str:
+        return self.bodies[event_id]
+
+
+async def _seed_message(app: PynchyApp, msg: NewMessage) -> None:
+    await app.conversation_sink.append(
+        ConversationEvent(
+            event_id=f"evt_{msg.id}",
+            turn_id=f"turn_{msg.id}",
+            chat_jid=msg.chat_jid,
+            timestamp=msg.timestamp,
+            kind=ConversationEventKind.USER_MESSAGE,
+            sender=msg.sender,
+            sender_name=msg.sender_name,
+            content=msg.content,
+            message_type=msg.message_type or "user",
+            source_message_id=msg.id,
+            metadata={"source": "test"},
+        )
+    )
 
 
 @contextlib.contextmanager
@@ -183,9 +217,15 @@ class EventCapture:
 
 
 @pytest.fixture
-async def app(tmp_path: Path):
+async def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     await init_test_database()
     a = PynchyApp()
+    body_store = _BodyStore()
+    a._conversation_sink = ConversationSink(  # allow: private-test-access - offline sink.
+        body_store=body_store,
+        store_pointer=store_conversation_event_pointer,
+    )
+    monkeypatch.setattr(state_messages, "default_body_reader", lambda: body_store)
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
             jid="group@g.us",
@@ -209,7 +249,7 @@ async def _run_with_trace_sequence(
     Returns (channel, event_capture) for assertions.
     """
     msg = _make_message(content="@pynchy do something")
-    await store_message(msg)
+    await _seed_message(app, msg)
 
     fake_proc = FakeProcess()
 
@@ -434,7 +474,7 @@ class TestBroadcastConsistency:
     async def test_direct_command_shows_output(self, app: PynchyApp, tmp_path: Path):
         """!command output should reach both channels and EventBus with actual stdout."""
         msg = _make_message(content="!echo hello world")
-        await store_message(msg)
+        await _seed_message(app, msg)
 
         channel = FakeChannel()
         app.channels = [channel]

@@ -60,7 +60,6 @@ from pynchy.state import (
     get_router_state,
     save_router_state_batch,
     set_workspace_profile,
-    store_message,
 )
 from pynchy.types import (
     Channel,
@@ -479,12 +478,10 @@ class PynchyApp:
         and triggers queue processing, bypassing user-message filters
         (allowed_users, trigger patterns) that would reject system messages.
 
-        NOTE: This intentionally uses a direct store_message call with
-        is_from_me=False because the LLM polling loop (get_messages_since)
-        only returns is_from_me=0 rows.  broadcast_host_message and
-        broadcast_system_notice both set is_from_me=True, so they can't
-        be used here.  The host message below ensures the user sees what
-        was forwarded (token stream transparency).
+        The forwarded answer is treated as inbound conversation content so the
+        next agent turn can pick it up through the Phoenix-backed projection.
+        The host message below ensures the user sees what was forwarded
+        (token stream transparency).
         """
         msg = NewMessage(
             id=f"ask-user-answer-{uuid.uuid4().hex[:8]}",
@@ -496,7 +493,21 @@ class PynchyApp:
             is_from_me=False,
             message_type="system",
         )
-        await store_message(msg)
+        await self.conversation_sink.append(
+            ConversationEvent(
+                event_id=new_event_id(),
+                turn_id=new_turn_id(),
+                chat_jid=chat_jid,
+                timestamp=msg.timestamp,
+                kind=ConversationEventKind.USER_MESSAGE,
+                sender=msg.sender,
+                sender_name=msg.sender_name,
+                content=msg.content,
+                message_type=msg.message_type or "system",
+                source_message_id=msg.id,
+                metadata={"source": "ask_user_answer", "is_from_me": False},
+            )
+        )
         await self.broadcast_host_message(chat_jid, "\U0001f60e Answer forwarded to agent")
         await self.start_interactive_turn(chat_jid)
 

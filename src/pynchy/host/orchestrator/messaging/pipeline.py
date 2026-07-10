@@ -363,6 +363,15 @@ def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str
     deps.mark_dispatched(chat_jid, new_timestamp)
 
 
+def _turn_id_for_batch(messages: list[types.NewMessage]) -> str:
+    for message in reversed(messages):
+        metadata = message.metadata or {}
+        turn_id = metadata.get("turn_id")
+        if isinstance(turn_id, str):
+            return turn_id
+    return new_turn_id()
+
+
 async def _should_skip_batch(
     deps: MessageHandlerDeps,
     chat_jid: str,
@@ -540,7 +549,7 @@ async def process_group_messages(
     had_error = False
     output_sent_to_user = False
     learning_summary = learning_capture.LearningRunSummary()
-    turn_id = new_turn_id()
+    turn_id = _turn_id_for_batch(missed_messages)
 
     async def on_output(result: types.ContainerOutput) -> None:
         nonlocal had_error, output_sent_to_user

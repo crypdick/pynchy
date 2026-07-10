@@ -179,7 +179,7 @@ async def test_get_messages_since_raises_when_projected_body_hydration_fails() -
         await get_messages_since("slack:C123", "", body_reader=FakeBodyReader({}))
 
 
-async def test_get_messages_since_orders_legacy_and_hydrated_projected_rows() -> None:
+async def test_get_messages_since_ignores_legacy_rows_after_cutover() -> None:
     await init_test_database()
     await store_chat_metadata("slack:C123", "2026-07-10T00:00:00+00:00")
     await store_message_direct(
@@ -202,11 +202,11 @@ async def test_get_messages_since_orders_legacy_and_hydrated_projected_rows() ->
         body_reader=FakeBodyReader({"evt_1": "projected body"}),
     )
 
-    assert [message.id for message in messages] == ["evt_1", "legacy_1"]
-    assert [message.content for message in messages] == ["projected body", "legacy body"]
+    assert [message.id for message in messages] == ["evt_1"]
+    assert [message.content for message in messages] == ["projected body"]
 
 
-async def test_get_messages_since_prefers_legacy_row_over_duplicate_projection() -> None:
+async def test_get_messages_since_hydrates_projection_even_when_legacy_duplicate_exists() -> None:
     await init_test_database()
     await store_chat_metadata("slack:C123", "2026-07-10T00:00:00+00:00")
     await store_message_direct(
@@ -230,9 +230,9 @@ async def test_get_messages_since_prefers_legacy_row_over_duplicate_projection()
 
     messages = await get_messages_since("slack:C123", "", body_reader=reader)
 
-    assert [message.id for message in messages] == ["source_1"]
-    assert messages[0].content == "legacy full body"
-    assert reader.calls == []
+    assert [message.id for message in messages] == ["evt_1"]
+    assert messages[0].content == "projected duplicate body"
+    assert reader.calls == ["evt_1"]
 
 
 async def test_get_messages_since_reuses_default_body_reader(

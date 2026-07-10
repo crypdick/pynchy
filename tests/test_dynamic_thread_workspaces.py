@@ -8,6 +8,8 @@ import pytest
 from conftest import NullChannel, init_test_database, make_settings
 
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.conversation.phoenix import PhoenixEventRef
+from pynchy.conversation.sink import ConversationSink
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder, load_resolved_config
@@ -19,6 +21,11 @@ class _DiscordChannel(NullChannel):
 
     def owns_jid(self, jid) -> bool:
         return str(jid).startswith("discord:")
+
+
+class _BodyStore:
+    async def write_event(self, event):
+        return PhoenixEventRef(event_id=event.event_id, trace_ref=f"fake:{event.event_id}")
 
 
 class _Deps:
@@ -40,6 +47,10 @@ class _Deps:
         }
         self.registered = []
         self.emitted = []
+        self.conversation_sink = ConversationSink(
+            body_store=_BodyStore(),
+            store_pointer=_ignore_pointer,
+        )
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None:
         self.workspaces[profile.jid] = profile
@@ -51,6 +62,10 @@ class _Deps:
 
     def emit(self, event) -> None:
         self.emitted.append(event)
+
+
+async def _ignore_pointer(*_args) -> None:
+    pass
 
 
 @pytest.fixture
