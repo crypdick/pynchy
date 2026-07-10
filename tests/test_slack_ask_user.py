@@ -43,11 +43,11 @@ def _make_channel(
         on_ask_user_answer=on_ask_user_answer,
     )
     # Stub the Slack app so we don't need a real Socket Mode connection
-    ch._app = MagicMock()
-    ch._app.client.chat_postMessage = AsyncMock(return_value={"ts": "1234567890.123456"})
-    ch._app.client.chat_update = AsyncMock(return_value={"ok": True})
+    ch.slack_app = MagicMock()
+    ch.slack_app.client.chat_postMessage = AsyncMock(return_value={"ts": "1234567890.123456"})
+    ch.slack_app.client.chat_update = AsyncMock(return_value={"ok": True})
     # Mark the test channel as allowed
-    ch._allowed_channel_ids.add(allowed_channel_id)
+    ch.register_allowed_channel("general", allowed_channel_id)
     return ch
 
 
@@ -87,7 +87,7 @@ def _multi_questions() -> list[dict]:
 
 
 def _posted_blocks(channel: SlackChannel) -> list[dict]:
-    return channel._app.client.chat_postMessage.call_args.kwargs["blocks"]
+    return channel.slack_app.client.chat_postMessage.call_args.kwargs["blocks"]
 
 
 def _section_block(blocks: list[dict]) -> dict:
@@ -124,7 +124,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
 
-        ch._app.client.chat_postMessage.assert_called_once()
+        ch.slack_app.client.chat_postMessage.assert_called_once()
         blocks = _posted_blocks(ch)
 
         block_types = [b["type"] for b in blocks]
@@ -181,7 +181,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _multi_questions())
 
-        call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
+        call_kwargs = ch.slack_app.client.chat_postMessage.call_args.kwargs
         blocks = call_kwargs["blocks"]
 
         # Count sections — should be at least 2 (one per question)
@@ -201,13 +201,13 @@ class TestSendAskUser:
         ch = _make_channel()
         result = await ch.send_ask_user("slack:WRONG", REQUEST_ID, _questions_with_options())
         assert result is None
-        ch._app.client.chat_postMessage.assert_not_called()
+        ch.slack_app.client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_none_when_no_app(self) -> None:
         """send_ask_user should return None if the app is not initialized."""
         ch = _make_channel()
-        ch._app = None
+        ch.slack_app = None
         result = await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
         assert result is None
 
@@ -217,7 +217,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
 
-        call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
+        call_kwargs = ch.slack_app.client.chat_postMessage.call_args.kwargs
         assert "text" in call_kwargs
         assert len(call_kwargs["text"]) > 0
 
@@ -227,7 +227,7 @@ class TestSendAskUser:
         ch = _make_channel()
         await ch.send_ask_user(JID, REQUEST_ID, _questions_with_options())
 
-        call_kwargs = ch._app.client.chat_postMessage.call_args.kwargs
+        call_kwargs = ch.slack_app.client.chat_postMessage.call_args.kwargs
         blocks = call_kwargs["blocks"]
         actions_block = next(
             b
@@ -252,7 +252,7 @@ class TestBlockActionHandlers:
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
         assert action_handler is not None
 
         ack = AsyncMock()
@@ -304,7 +304,7 @@ class TestBlockActionHandlers:
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
         ack = AsyncMock()
         body = {
@@ -341,8 +341,8 @@ class TestBlockActionHandlers:
 
         await action_handler(ack=ack, body=body, action=body["actions"][0])
 
-        ch._app.client.chat_update.assert_called_once()
-        update_kwargs = ch._app.client.chat_update.call_args.kwargs
+        ch.slack_app.client.chat_update.assert_called_once()
+        update_kwargs = ch.slack_app.client.chat_update.call_args.kwargs
         assert update_kwargs["channel"] == CHANNEL_ID
         assert update_kwargs["ts"] == "1234567890.123456"
         assert "React" in update_kwargs["text"]
@@ -354,7 +354,7 @@ class TestBlockActionHandlers:
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
         assert action_handler is not None
 
         ack = AsyncMock()
@@ -397,7 +397,7 @@ class TestBlockActionHandlers:
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
         ack = AsyncMock()
         body = {
@@ -444,7 +444,7 @@ class TestBlockActionHandlers:
         ch = _make_channel(on_ask_user_answer=callback)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
         ack = AsyncMock()
         body = {
@@ -463,7 +463,7 @@ class TestBlockActionHandlers:
         await action_handler(ack=ack, body=body, action=body["actions"][0])
         ack.assert_called_once()
         callback.assert_not_called()
-        ch._app.client.chat_update.assert_not_called()
+        ch.slack_app.client.chat_update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_no_callback_no_error(self) -> None:
@@ -471,7 +471,7 @@ class TestBlockActionHandlers:
         ch = _make_channel(on_ask_user_answer=None)
         ch._register_handlers()
 
-        action_handler = _extract_action_handler(ch._app, pattern=ASK_USER_ACTION_RE)
+        action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
         ack = AsyncMock()
         body = {

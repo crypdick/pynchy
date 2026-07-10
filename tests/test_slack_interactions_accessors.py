@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from pynchy.plugins.channels.slack._channel import SlackChannel
-from pynchy.plugins.channels.slack._interactions import SlackInteractions
+from pynchy.plugins.channels.slack import SlackChannel
+
+SLACK_BOT_VALUE = "xoxb-fake"
+SLACK_APP_VALUE = "xapp-fake"
 
 
 def _make_channel(*, on_ask_user_answer: object | None = None) -> SlackChannel:
     channel = SlackChannel(
         connection_name="test-conn",
-        bot_token="xoxb-fake",
-        app_token="xapp-fake",
+        bot_token=SLACK_BOT_VALUE,
+        app_token=SLACK_APP_VALUE,
         chat_names=["general"],
         allow_create=False,
         on_message=MagicMock(),
@@ -20,9 +23,9 @@ def _make_channel(*, on_ask_user_answer: object | None = None) -> SlackChannel:
         on_reaction=None,
         on_ask_user_answer=on_ask_user_answer,
     )
-    channel._app = MagicMock()
-    channel._app.client.chat_update = AsyncMock(return_value={"ok": True})
-    channel._allowed_channel_ids.add("C12345")
+    channel.slack_app = MagicMock()
+    channel.slack_app.client.chat_update = AsyncMock(return_value={"ok": True})
+    channel.register_allowed_channel("general", "C12345")
     return channel
 
 
@@ -30,7 +33,7 @@ def test_ask_user_interaction_uses_public_accessors() -> None:
     """ask_user submit handling should still call the callback and update Slack."""
     callback = MagicMock()
     ch = _make_channel(on_ask_user_answer=callback)
-    interactions = SlackInteractions(ch)
+    interactions = ch.interactions
 
     body = {
         "actions": [
@@ -54,11 +57,9 @@ def test_ask_user_interaction_uses_public_accessors() -> None:
         },
     }
 
-    import asyncio
-
     asyncio.run(interactions._on_ask_user_interaction(body, body["actions"][0]))
 
     callback.assert_called_once()
     assert callback.call_args.args[0] == "req-abc-123"
     assert callback.call_args.args[1]["answer"] == "Use Svelte"
-    ch._app.client.chat_update.assert_awaited_once()
+    ch.slack_app.client.chat_update.assert_awaited_once()
