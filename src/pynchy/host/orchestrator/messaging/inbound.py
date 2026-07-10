@@ -16,6 +16,9 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 
+import pynchy.config.access as config_access
+import pynchy.host.orchestrator.todos as todos
+import pynchy.plugins.integrations.linear_boot as linear_boot
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -26,6 +29,8 @@ from pynchy.logger import logger
 from pynchy.state import get_messages_since, get_new_messages
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
     NewMessage,
+    OutboundEvent,
+    OutboundEventType,
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
@@ -68,10 +73,10 @@ def _allowed_group_messages(
     group: WorkspaceProfile,
     group_messages: list[NewMessage],
 ) -> list[NewMessage]:
-    from pynchy.config.access import filter_allowed_messages
-
     channel_plugin_name = _channel_plugin_name(deps, group_jid)
-    filtered_messages = filter_allowed_messages(group_messages, group, channel_plugin_name)
+    filtered_messages = config_access.filter_allowed_messages(
+        group_messages, group, channel_plugin_name
+    )
     if not filtered_messages:
         logger.info("route_trace", step="skip_all_filtered", group=group.name)
         return []
@@ -186,8 +191,6 @@ async def _forward_to_active_container(
         # Non-interrupting — forward to active container via IPC but
         # don't advance the cursor.  Will be reprocessed after the
         # agent finishes its current turn.
-        from pynchy.types import OutboundEvent, OutboundEventType
-
         msg = f"\u00bb [Forwarded] {last_content[:500]}"
         await deps.broadcast_to_channels(
             group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
@@ -239,8 +242,6 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         # read the IPC file (e.g. the agent calls finished_work() before
         # reaching wait_for_ipc_message).  We mark pending_messages so
         # _drain_group reprocesses them after the task exits.
-        from pynchy.types import OutboundEvent, OutboundEventType
-
         request.deps.queue.send_message(request.group_jid, request.formatted)
         msg = f"\u00bb [Forwarded] {request.last_content[:500]}"
         await request.deps.broadcast_to_channels(
@@ -259,12 +260,9 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         # notification so the agent treats it as informational rather
         # than a user request.  If the SDK adds external tool invocation
         # or system message injection, this workaround becomes unnecessary.
-        from pynchy.host.orchestrator.todos import add_todo
-        from pynchy.plugins.integrations.linear_boot import create_linear_workspace_todo
-
         item = request.last_content[5:]  # strip "todo " prefix
-        add_todo(request.group.folder, item)
-        await create_linear_workspace_todo(request.group, item)
+        todos.add_todo(request.group.folder, item)
+        await linear_boot.create_linear_workspace_todo(request.group, item)
         request.deps.queue.send_message(
             request.group_jid,
             "[System notice \u2014 no response needed] "
