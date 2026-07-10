@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Protocol, TypeGuard, runtime_checkable
 
+import pynchy.plugins as pynchy_plugins
 from pynchy.event_bus import (
     EventBus,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
@@ -42,9 +43,11 @@ def attach_observers(event_bus: EventBus) -> list[ObserverProvider]:
 
     Returns the list of attached observers (for later teardown via close()).
     """
-    from pynchy.plugins import collect_hook_results
-
-    candidates = collect_hook_results("pynchy_observer", _is_valid_observer, "observer")
+    candidates = pynchy_plugins.collect_hook_results(
+        "pynchy_observer",
+        _is_valid_observer,
+        "observer",
+    )
 
     observers: list[ObserverProvider] = []
     for obs in candidates:
