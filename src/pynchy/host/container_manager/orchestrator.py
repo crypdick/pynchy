@@ -106,7 +106,9 @@ def write_initial_input(input_data: ContainerInput, input_dir: Path) -> None:
     Uses atomic write (write to .tmp then rename) so the container's file
     watcher never sees a partially-written file.
     """
-    from pynchy.utils import write_json_atomic
+    from pynchy.utils import (  # noqa: PLC0415, RUF100 - keep container orchestration import surface narrow at module load.
+        write_json_atomic,
+    )
 
     write_json_atomic(input_dir / "initial.json", input_to_dict(input_data))
 
@@ -133,7 +135,10 @@ async def _spawn_container(
 
     # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
     # Must exist before the container starts so IPC/MCP handlers can look it up.
-    from pynchy.host.container_manager.security.gate import create_gate, resolve_security
+    from pynchy.host.container_manager.security.gate import (  # noqa: PLC0415, RUF100 - security gate setup is only needed during container spawn.
+        create_gate,
+        resolve_security,
+    )
 
     security = resolve_security(group.folder, is_admin=input_data.is_admin)
     invocation_ts = start_time
@@ -148,8 +153,13 @@ async def _spawn_container(
     phase_start = time.monotonic()
     repo_mounts: list[tuple[RepoContext, Path]] = []
     if input_data.repo_accesses:
-        from pynchy.host.git_ops.repo import get_repo_context, resolve_repos_for_group
-        from pynchy.host.git_ops.worktree import ensure_worktree
+        from pynchy.host.git_ops.repo import (  # noqa: PLC0415, RUF100 - git worktree setup is only needed for repo-enabled spawns.
+            get_repo_context,
+            resolve_repos_for_group,
+        )
+        from pynchy.host.git_ops.worktree import (  # noqa: PLC0415, RUF100 - git worktree setup is only needed for repo-enabled spawns.
+            ensure_worktree,
+        )
 
         repo_contexts = resolve_repos_for_group(group.folder)
         if not repo_contexts:
@@ -179,7 +189,9 @@ async def _spawn_container(
 
     # --- MCP gateway: ensure containers running and pass credentials ---
     phase_start = time.monotonic()
-    from pynchy.host.container_manager.mcp.manager import get_mcp_manager
+    from pynchy.host.container_manager.mcp.manager import (  # noqa: PLC0415, RUF100 - MCP manager is only needed during container spawn.
+        get_mcp_manager,
+    )
 
     mcp_mgr = get_mcp_manager()
     mcp_instance_count = 0
