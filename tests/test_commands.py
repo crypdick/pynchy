@@ -15,7 +15,7 @@ from pynchy.host.orchestrator.messaging.commands import (
 # ---------------------------------------------------------------------------
 # verb+noun / alias matching, exercised through the public is_context_reset.
 # Default reset config: verbs include reset/clear, nouns include context/session,
-# aliases are boom/c.
+# aliases include boom/c/new/clear/reset.
 # ---------------------------------------------------------------------------
 
 
@@ -28,6 +28,11 @@ class TestIsMagicCommand:
 
     def test_single_word_alias_short(self):
         assert is_context_reset("c")
+
+    def test_single_word_reset_aliases(self):
+        assert is_context_reset("new")
+        assert is_context_reset("clear")
+        assert is_context_reset("reset")
 
     def test_verb_noun_pair(self):
         assert is_context_reset("reset context")
@@ -43,9 +48,9 @@ class TestIsMagicCommand:
         assert is_context_reset("  boom  ")
         assert is_context_reset("  reset context  ")
 
-    def test_single_word_verb_no_match(self):
+    def test_other_single_word_verb_no_match(self):
         """A verb alone (without a noun) should NOT match."""
-        assert not is_context_reset("reset")
+        assert not is_context_reset("wipe")
 
     def test_single_word_noun_no_match(self):
         """A noun alone should NOT match."""
@@ -87,6 +92,9 @@ class TestIsContextReset:
     def test_aliases(self):
         assert is_context_reset("boom")
         assert is_context_reset("c")
+        assert is_context_reset("new")
+        assert is_context_reset("clear")
+        assert is_context_reset("reset")
 
     def test_case_insensitive(self):
         assert is_context_reset("BOOM")
@@ -96,6 +104,9 @@ class TestIsContextReset:
         """Commands prefixed with @trigger (e.g. from Slack) should still match."""
         assert is_context_reset("@pynchy c")
         assert is_context_reset("@pynchy boom")
+        assert is_context_reset("@pynchy new")
+        assert is_context_reset("@pynchy clear")
+        assert is_context_reset("@pynchy reset")
         assert is_context_reset("@pynchy clear context")
         assert is_context_reset("@pynchy context reset")
 
@@ -105,7 +116,7 @@ class TestIsContextReset:
         assert is_context_reset("@ghost clear context")
 
     def test_not_triggered_by_partial(self):
-        assert not is_context_reset("reset")
+        assert not is_context_reset("restart")
         assert not is_context_reset("context")
 
     def test_not_triggered_by_sentences(self):

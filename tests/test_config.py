@@ -127,7 +127,6 @@ class TestIsContextReset:
         assert not is_context_reset("remove session")
 
     def test_does_not_match_single_word_from_pair(self):
-        assert not is_context_reset("reset")
         assert not is_context_reset("context")
         assert not is_context_reset("session")
         assert not is_context_reset("restart")

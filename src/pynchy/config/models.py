@@ -542,7 +542,7 @@ ConnectionConfig = Annotated[
 class _ResetWords(_StrictModel):
     verbs: list[str] = ["reset", "restart", "clear", "new", "wipe"]
     nouns: list[str] = ["context", "session", "chat", "conversation"]
-    aliases: list[str] = ["boom", "c"]
+    aliases: list[str] = ["boom", "c", "new", "clear", "reset"]
 
 
 class _EndSessionWords(_StrictModel):
