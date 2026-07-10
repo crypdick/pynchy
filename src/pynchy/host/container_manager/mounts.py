@@ -278,12 +278,16 @@ def _add_validated_additional_mounts(
 
 def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:
     """Build CLI args for `container run`."""
-    from pynchy.host.container_manager.gateway import get_gateway
-    from pynchy.host.container_manager.labels import (
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep gateway lookup lazy and patchable for container arg tests.
+        get_gateway,
+    )
+    from pynchy.host.container_manager.labels import (  # noqa: PLC0415, RUF100 - labels are only needed when building container argv.
         AGENT_CONTAINER_LABEL,
         AGENT_CONTAINER_LABEL_VALUE,
     )
-    from pynchy.plugins.runtimes.detection import get_runtime
+    from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime detection is only needed when building container argv.
+        get_runtime,
+    )
 
     # No --rm: persistent sessions need explicit cleanup via docker rm -f
     # (handled in _session.py on stop/create).
