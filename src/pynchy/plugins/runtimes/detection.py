@@ -11,6 +11,8 @@ import sys
 from functools import cache
 from typing import Protocol, TypeGuard, runtime_checkable
 
+import pynchy.config as pynchy_config
+import pynchy.plugins as pynchy_plugins
 from pynchy.logger import logger
 
 _NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE = (
@@ -44,9 +46,9 @@ def _is_valid_plugin_runtime(candidate: object) -> TypeGuard[RuntimeProvider]:
 
 
 def _iter_plugin_runtimes() -> list[RuntimeProvider]:
-    from pynchy.plugins import collect_hook_results
-
-    return collect_hook_results("pynchy_container_runtime", _is_valid_plugin_runtime, "runtime")
+    return pynchy_plugins.collect_hook_results(
+        "pynchy_container_runtime", _is_valid_plugin_runtime, "runtime"
+    )
 
 
 def _runtime_candidates() -> dict[str, RuntimeProvider]:
@@ -112,9 +114,7 @@ def detect_runtime() -> RuntimeProvider:
     2) platform-aware auto-detect (darwin prefers apple plugin, then docker)
     3) first available plugin runtime, else docker
     """
-    from pynchy.config import get_settings
-
-    override = (get_settings().container.runtime or "").lower()
+    override = (pynchy_config.get_settings().container.runtime or "").lower()
     candidates = _runtime_candidates()
     if not candidates:
         raise RuntimeError(_NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE)
