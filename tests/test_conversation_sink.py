@@ -21,7 +21,10 @@ class FakeStore:
         if self.calls is not None:
             self.calls.append(f"phoenix:{event.event_id}")
         self.writes.append(event)
-        return PhoenixEventRef(event.event_id, f"phoenix:event:{event.event_id}")
+        return PhoenixEventRef(
+            event.event_id,
+            f"phoenix:trace:trace_{event.event_id}:span:span_{event.event_id}:event:{event.event_id}",
+        )
 
 
 def _event() -> ConversationEvent:
@@ -48,9 +51,12 @@ async def test_sink_writes_phoenix_before_projection() -> None:
     store = FakeStore(calls=calls)
     sink = ConversationSink(body_store=store, store_pointer=store_pointer)
     ref = await sink.append(_event())
-    assert ref.trace_ref == "phoenix:event:evt_1"
+    assert ref.trace_ref == "phoenix:trace:trace_evt_1:span:span_evt_1:event:evt_1"
     assert [event.event_id for event in store.writes] == ["evt_1"]
-    assert calls == ["phoenix:evt_1", "sqlite:evt_1:phoenix:event:evt_1"]
+    assert calls == [
+        "phoenix:evt_1",
+        "sqlite:evt_1:phoenix:trace:trace_evt_1:span:span_evt_1:event:evt_1",
+    ]
 
 
 async def test_sink_does_not_project_when_phoenix_fails() -> None:

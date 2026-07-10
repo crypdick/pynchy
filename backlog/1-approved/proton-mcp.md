@@ -202,7 +202,7 @@ PROTON_2FA_SECRET=...   # optional, base32 TOTP
 - `pm-cli` at `~/go/bin/pm-cli` (installed via
   `go install github.com/bscott/pm-cli/cmd/pm-cli@latest`)
 - Bridge credentials stored in libsecret under service name `pm-cli`
-- libsecret unlocks automatically on login (verify on pynchy-server —
+- libsecret unlocks automatically on login (verify on mac-mini —
   headless boot needs the keyring unlocked or pm-cli won't see creds)
 
 **Pynchy work:**
@@ -219,7 +219,7 @@ PROTON_2FA_SECRET=...   # optional, base32 TOTP
 | pm-cli header injection (audited bug) | `_sanitize_header` on every header param; fails closed |
 | Prompt injection via inbound mail content | Inherent to any mail integration; out of scope for this design |
 | Proton Bridge process unavailable | pm-cli surfaces connection error; handler returns error to agent |
-| libsecret locked on headless boot | Document keyring auto-unlock requirement for pynchy-server deployment |
+| libsecret locked on headless boot | Document keyring auto-unlock requirement for mac-mini deployment |
 | pm-cli binary path varies per machine | Env var override; default `~/go/bin/pm-cli` |
 | Calendar path gaps still unresolved | Tracked as original plan's implementation gaps |
 | Upstream pm-cli releases incompatible changes | Pin version in install docs; sanitizer is version-independent |

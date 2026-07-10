@@ -89,9 +89,12 @@ class _InMemoryConversationBodyStore:
 
     async def write_event(self, event: ConversationEvent) -> PhoenixEventRef:
         self.bodies[event.event_id] = event.content
-        return PhoenixEventRef(event_id=event.event_id, trace_ref=f"fake:{event.event_id}")
+        return PhoenixEventRef(
+            event_id=event.event_id,
+            trace_ref=f"phoenix:trace:trace_{event.event_id}:span:span_{event.event_id}:event:{event.event_id}",
+        )
 
-    async def read_event_content(self, event_id: str) -> str:
+    async def read_event_content(self, event_id: str, *, phoenix_ref: str | None = None) -> str:
         return self.bodies[event_id]
 
 

@@ -95,7 +95,7 @@ def test_should_review_skips_short_casual_turn_without_learning_signal() -> None
     "content",
     [
         "remember that this repo uses uvx ruff for linting",
-        "learn this: deploys happen from pynchy-server",
+        "learn this: deploys happen from mac-mini",
         "save this in memory for next time",
     ],
 )

@@ -108,7 +108,10 @@ async def hydrate_pointer_to_message(
 ) -> NewMessage:
     reader = body_reader or default_body_reader()
     try:
-        content = await reader.read_event_content(row["event_id"])
+        content = await reader.read_event_content(
+            row["event_id"],
+            phoenix_ref=row.get("phoenix_ref"),
+        )
     except Exception as exc:
         raise ConversationProjectionHydrationError(
             f"Failed to hydrate projected conversation event {row['event_id']} from Phoenix"

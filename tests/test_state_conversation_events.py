@@ -48,7 +48,7 @@ class FakeBodyReader:
         self._bodies = bodies
         self.calls: list[str] = []
 
-    async def read_event_content(self, event_id: str) -> str:
+    async def read_event_content(self, event_id: str, *, phoenix_ref: str | None = None) -> str:
         self.calls.append(event_id)
         if event_id not in self._bodies:
             raise RuntimeError(f"missing content for {event_id}")
@@ -59,7 +59,7 @@ class RecordingBodyReader:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    async def read_event_content(self, event_id: str) -> str:
+    async def read_event_content(self, event_id: str, *, phoenix_ref: str | None = None) -> str:
         self.calls.append(event_id)
         return f"phoenix body {event_id}"
 

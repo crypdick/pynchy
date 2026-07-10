@@ -70,7 +70,7 @@ async def _setup_db(monkeypatch):
 
 
 class _ProjectedBodyReader:
-    async def read_event_content(self, event_id: str) -> str:
+    async def read_event_content(self, event_id: str, *, phoenix_ref: str | None = None) -> str:
         return _PROJECTED_CONTENT[event_id]
 
 
