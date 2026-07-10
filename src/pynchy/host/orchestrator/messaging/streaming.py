@@ -17,6 +17,7 @@ from pynchy.logger import logger
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
     Channel,
     OutboundEvent,
+    OutboundEventType,
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
@@ -193,8 +194,6 @@ class TraceBatcher:
 
     async def flush(self, chat_jid: str) -> None:
         """Flush pending traces for *chat_jid* immediately."""
-        from pynchy.types import OutboundEvent, OutboundEventType
-
         self._cancel_timer(chat_jid)
         events = self._buffers.pop(chat_jid, [])
         if events:

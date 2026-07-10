@@ -16,7 +16,11 @@ from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
-from pynchy.host.orchestrator.messaging.formatter import format_tool_preview, parse_host_tag
+from pynchy.host.orchestrator.messaging.formatter import (
+    format_internal_tags,
+    format_tool_preview,
+    parse_host_tag,
+)
 from pynchy.host.orchestrator.messaging.sender import finalize_stream_or_broadcast
 from pynchy.host.orchestrator.messaging.streaming import (
     OutputDeps,
@@ -34,6 +38,7 @@ from pynchy.state import store_message_direct
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves router annotations at runtime.
     ContainerOutput,
     OutboundEvent,
+    OutboundEventType,
     WorkspaceProfile,
 )
 from pynchy.utils import generate_message_id
@@ -58,8 +63,6 @@ def _make_event(event_type: str, content: str, **metadata: object) -> OutboundEv
     The event_type string is resolved to an OutboundEventType enum value.
     Metadata kwargs are passed through for formatter-specific rendering hints.
     """
-    from pynchy.types import OutboundEvent, OutboundEventType
-
     type_map = {
         "thinking": OutboundEventType.THINKING,
         "tool_trace": OutboundEventType.TOOL_TRACE,
@@ -286,8 +289,6 @@ async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutpu
 
 async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
     """Handle a text delta event — accumulates into streaming state."""
-    from pynchy.types import OutboundEvent, OutboundEventType
-
     delta = result.text or ""
     deps.emit(
         AgentTraceEvent(
@@ -341,8 +342,6 @@ async def _handle_final_result(request: _FinalResultRequest) -> bool:
 
     Returns True if a user-visible result was sent.
     """
-    from pynchy.host.orchestrator.messaging.formatter import format_internal_tags
-
     if not request.result.result:
         return False
 
