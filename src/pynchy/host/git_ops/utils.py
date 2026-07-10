@@ -69,7 +69,7 @@ def _host_process_env(material: OneCliMaterial) -> dict[str, str]:
 
 
 def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
-    from pynchy.host.container_manager.onecli import (
+    from pynchy.host.container_manager.onecli import (  # noqa: PLC0415, RUF100 - importing container_manager.onecli at module load creates a git_ops/container_manager cycle.
         prepare_onecli_material as _prepare_onecli_material,
     )
 
@@ -91,7 +91,9 @@ def _git_env_with_onecli(slug: str, *, group_folder: str | None) -> dict[str, st
         key in env for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
     )
     if not has_proxy:
-        from pynchy.host.container_manager.onecli import OneCliError
+        from pynchy.host.container_manager.onecli import (  # noqa: PLC0415, RUF100 - importing container_manager.onecli at module load creates a git_ops/container_manager cycle.
+            OneCliError,
+        )
 
         reason = "OneCLI git material did not include proxy env"
         if s.onecli.fail_closed:
@@ -116,12 +118,14 @@ def git_env_with_token(slug: str, *, group_folder: str | None = None) -> dict[st
     token — safer than embedding tokens in URLs since the token never appears
     in .git/config or ``git remote -v`` output.
     """
-    from pynchy.host.git_ops.repo import get_repo_token
+    from pynchy.host.git_ops import (  # noqa: PLC0415, RUF100 - keep repo dependency lazy to avoid tightening git_ops package initialization.
+        repo as git_repo,
+    )
 
     if onecli_env := _git_env_with_onecli(slug, group_folder=group_folder):
         return onecli_env
 
-    token = get_repo_token(slug)
+    token = git_repo.get_repo_token(slug)
     if not token:
         return None
 
