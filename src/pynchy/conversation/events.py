@@ -35,7 +35,7 @@ def content_preview(content: str, limit: int = 500) -> str:
     return normalized[:limit] + "..."
 
 
-def _freeze_metadata_value(value: Any) -> Any:
+def _freeze_metadata_value(value: object) -> object:
     if isinstance(value, Mapping):
         return MappingProxyType(
             {key: _freeze_metadata_value(nested) for key, nested in value.items()}
@@ -45,7 +45,7 @@ def _freeze_metadata_value(value: Any) -> Any:
     return value
 
 
-def _json_ready_metadata_value(value: Any) -> Any:
+def _json_ready_metadata_value(value: object) -> object:
     if isinstance(value, Mapping):
         return {
             key: _json_ready_metadata_value(nested) for key, nested in value.items()
