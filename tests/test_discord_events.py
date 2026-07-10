@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, patch
 
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pynchy.types import NewMessage
 
 BOT_ID = "999"
@@ -80,8 +83,9 @@ def _attachment(
     size: int = 12,
     description: str | None = None,
     spoiler: bool = False,
+    data: bytes | None = None,
 ) -> SimpleNamespace:
-    return SimpleNamespace(
+    attachment = SimpleNamespace(
         id=attachment_id,
         filename=filename,
         url=url,
@@ -91,6 +95,13 @@ def _attachment(
         description=description,
         spoiler=spoiler,
     )
+    if data is not None:
+
+        def read() -> bytes:
+            return data
+
+        attachment.read = read
+    return attachment
 
 
 async def _deliver(
@@ -253,6 +264,59 @@ async def test_audio_only_attachment_gets_placeholder_content():
         "[Audio attachment received; transcription is not available yet: voice.ogg]"
     )
     assert msg.metadata["attachments"][0]["content_type"] == "audio/ogg"
+
+
+async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
+    def transcribe(path: Path) -> SimpleNamespace:
+        assert path.read_bytes() == b"voice bytes"
+        return SimpleNamespace(
+            success=True,
+            transcript="stretch first, then breathe",
+            provider="local",
+            model="base",
+            error=None,
+        )
+
+    with (
+        patch(
+            "pynchy.plugins.channels.discord._events._discord_audio_cache_dir",
+            return_value=tmp_path,
+            create=True,
+        ),
+        patch(
+            "pynchy.plugins.channels.discord._events.transcribe_audio_file",
+            new=AsyncMock(side_effect=transcribe),
+            create=True,
+        ),
+    ):
+        _jid, msg, _metadata = await _deliver(
+            _message(
+                author=_user("5"),
+                guild_id="g1",
+                channel_id="c1",
+                attachments=(
+                    _attachment(
+                        attachment_id="a1",
+                        filename="voice.ogg",
+                        content_type="audio/ogg",
+                        data=b"voice bytes",
+                    ),
+                ),
+                mentions=(BOT_ID,),
+            ),
+            group_policy="open",
+        )
+
+    assert msg.content == (
+        '[The user sent a voice message~ Here\'s what they said: "stretch first, then breathe"]'
+    )
+    attachment = msg.metadata["attachments"][0]
+    assert attachment["cached_path"] == str(tmp_path / "m1-a1.ogg")
+    assert attachment["transcription"] == {
+        "success": True,
+        "provider": "local",
+        "model": "base",
+    }
 
 
 async def test_forwarded_snapshot_text_falls_back_when_message_content_missing():

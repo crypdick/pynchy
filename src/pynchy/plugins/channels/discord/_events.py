@@ -13,10 +13,19 @@ on), so an extra queue here would be redundant.
 
 from __future__ import annotations
 
+import inspect
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from pynchy.config import get_settings
+from pynchy.host.audio import (
+    MAX_AUDIO_BYTES,
+    SUPPORTED_AUDIO_SUFFIXES,
+    AudioTranscriptionResult,
+    transcribe_audio_file,
+)
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 
@@ -105,7 +114,11 @@ def _audio_attachment_label(attachment: object) -> str | None:
     attachment_like = cast("Any", attachment)
     content_type = getattr(attachment_like, "content_type", None)
     filename = getattr(attachment_like, "filename", "")
-    if not isinstance(content_type, str) or not content_type.startswith("audio/"):
+    suffix = Path(filename).suffix.lower() if isinstance(filename, str) else ""
+    is_audio = (
+        isinstance(content_type, str) and content_type.startswith("audio/")
+    ) or suffix in SUPPORTED_AUDIO_SUFFIXES
+    if not is_audio:
         return None
     return filename if isinstance(filename, str) and filename else "audio attachment"
 
@@ -201,6 +214,114 @@ def build_message_metadata(message: object, ctx: InboundContext | None = None) -
     return metadata
 
 
+def _discord_audio_cache_dir() -> Path:
+    return get_settings().data_dir / "media" / "discord"
+
+
+def _safe_cache_token(value: object) -> str:
+    token = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(value))
+    return token or "unknown"
+
+
+def _audio_cache_path(message: object, attachment: object) -> Path:
+    message_like = cast("Any", message)
+    attachment_like = cast("Any", attachment)
+    filename = getattr(attachment_like, "filename", "")
+    suffix = Path(filename).suffix.lower() if isinstance(filename, str) else ""
+    message_id = _safe_cache_token(getattr(message_like, "id", "message"))
+    attachment_id = _safe_cache_token(getattr(attachment_like, "id", "attachment"))
+    return _discord_audio_cache_dir() / f"{message_id}-{attachment_id}{suffix}"
+
+
+async def _read_attachment_bytes(attachment: object) -> bytes | None:
+    reader = getattr(cast("Any", attachment), "read", None)
+    if not callable(reader):
+        return None
+    try:
+        value = reader()
+        if inspect.isawaitable(value):
+            value = await value
+        if isinstance(value, bytes):
+            return value
+    except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - bad Discord attachment reads should not drop the message.
+        logger.warning("Discord attachment read failed", err=str(exc))
+    return None
+
+
+def _transcription_metadata(result: object) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"success": bool(getattr(result, "success", False))}
+    provider = getattr(result, "provider", None)
+    if provider:
+        metadata["provider"] = provider
+    model = getattr(result, "model", None)
+    if model:
+        metadata["model"] = model
+    error = getattr(result, "error", None)
+    if error:
+        metadata["error"] = error
+    return metadata
+
+
+def _transcription_note(result: object) -> str:
+    transcript = str(getattr(result, "transcript", "") or "").strip()
+    if getattr(result, "success", False) and transcript:
+        return f'[The user sent a voice message~ Here\'s what they said: "{transcript}"]'
+
+    error = str(getattr(result, "error", "") or "unknown error")
+    if "No STT provider available" in error:
+        return (
+            "[The user sent a voice message but I can't listen to it right now - "
+            "no STT provider is configured.]"
+        )
+    return f"[The user sent a voice message but I had trouble transcribing it~ ({error})]"
+
+
+async def _transcribe_audio_attachments(
+    message: object,
+    metadata: dict[str, Any],
+    content: str,
+) -> str:
+    attachments = list(getattr(cast("Any", message), "attachments", []))
+    metadata_attachments = metadata.get("attachments", [])
+    if not isinstance(metadata_attachments, list):
+        return content
+
+    notes: list[str] = []
+    for attachment, attachment_metadata in zip(attachments, metadata_attachments, strict=False):
+        if not isinstance(attachment_metadata, dict):
+            continue
+        if _audio_attachment_label(attachment) is None:
+            continue
+        size = getattr(cast("Any", attachment), "size", 0)
+        if isinstance(size, int) and size > MAX_AUDIO_BYTES:
+            result = AudioTranscriptionResult(
+                success=False,
+                error=f"Audio file is too large: {size} bytes (max {MAX_AUDIO_BYTES})",
+            )
+            attachment_metadata["transcription"] = _transcription_metadata(result)
+            notes.append(_transcription_note(result))
+            continue
+        data = await _read_attachment_bytes(attachment)
+        if data is None:
+            continue
+        path = _audio_cache_path(message, attachment)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        attachment_metadata["cached_path"] = str(path)
+        result = await transcribe_audio_file(path)
+        attachment_metadata["transcription"] = _transcription_metadata(result)
+        notes.append(_transcription_note(result))
+
+    if not notes:
+        return content
+    prefix = "\n\n".join(notes)
+    if content and content == _attachment_fallback_content(message):
+        return prefix
+    if content:
+        return f"{prefix}\n\n{content}"
+    return prefix
+
+
 class DiscordEvents:
     """Registers inbound handlers on the channel's client and fires callbacks."""
 
@@ -253,15 +374,21 @@ class DiscordEvents:
         chat_name = getattr(message_like.channel, "name", None) or sender_name
 
         ch.on_chat_metadata(jid, timestamp, chat_name)
+        metadata = build_message_metadata(message, ctx)
+        content = await _transcribe_audio_attachments(
+            message_like,
+            metadata,
+            normalized_message_content(message_like),
+        )
         msg = NewMessage(
             id=f"discord-{message_like.id}",
             chat_jid=jid,
             sender=ctx.author_id,
             sender_name=sender_name,
-            content=normalized_message_content(message_like),
+            content=content,
             timestamp=timestamp,
             is_from_me=False,
-            metadata=build_message_metadata(message, ctx),
+            metadata=metadata,
         )
         logger.info("Discord inbound message", jid=jid, sender=ctx.author_id)
         ch.on_message(jid, msg)
