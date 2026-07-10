@@ -36,10 +36,12 @@ from pynchy.host.container_manager.ipc.write import (
 )
 from pynchy.host.container_manager.process import (
     OnOutput,
+    _graceful_stop,
     docker_rm_force,
     reap_apple_runtime_orphans,
 )
 from pynchy.logger import logger
+from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import (
     GroupFolder,  # noqa: TC001, RUF100 - beartype resolves session lookup signatures at runtime.
 )
@@ -72,8 +74,6 @@ async def _runtime_container_running(container_name: str) -> bool:
     """Return whether the runtime still reports the named container running."""
     if sys.platform != "darwin":
         return False
-
-    from pynchy.plugins.runtimes.detection import get_runtime
 
     def _check() -> bool:
         runtime = get_runtime()
@@ -223,8 +223,6 @@ class ContainerSession:
 
         # Stop the container
         if self.proc and self.proc.returncode is None:
-            from pynchy.host.container_manager.process import _graceful_stop
-
             await _graceful_stop(self.proc, self.container_name)
 
         # Force remove (handles cases where graceful stop didn't clean up)
