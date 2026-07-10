@@ -16,15 +16,17 @@ from __future__ import annotations
 import inspect
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves _discord_audio_cache_dir return annotation at runtime.
+)
 from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config import get_settings
-from pynchy.host.audio import (
-    MAX_AUDIO_BYTES,
-    SUPPORTED_AUDIO_SUFFIXES,
-    AudioTranscriptionResult,
-    transcribe_audio_file,
+from pynchy.host.audio import is_supported_audio_filename
+from pynchy.host.inbound_audio import (
+    InboundAudioAttachment,
+    InboundAudioProcessingRequest,
+    process_inbound_audio_attachments,
 )
 from pynchy.logger import logger
 from pynchy.types import NewMessage
@@ -114,10 +116,9 @@ def _audio_attachment_label(attachment: object) -> str | None:
     attachment_like = cast("Any", attachment)
     content_type = getattr(attachment_like, "content_type", None)
     filename = getattr(attachment_like, "filename", "")
-    suffix = Path(filename).suffix.lower() if isinstance(filename, str) else ""
     is_audio = (
         isinstance(content_type, str) and content_type.startswith("audio/")
-    ) or suffix in SUPPORTED_AUDIO_SUFFIXES
+    ) or is_supported_audio_filename(filename)
     if not is_audio:
         return None
     return filename if isinstance(filename, str) and filename else "audio attachment"
@@ -218,21 +219,6 @@ def _discord_audio_cache_dir() -> Path:
     return get_settings().data_dir / "media" / "discord"
 
 
-def _safe_cache_token(value: object) -> str:
-    token = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(value))
-    return token or "unknown"
-
-
-def _audio_cache_path(message: object, attachment: object) -> Path:
-    message_like = cast("Any", message)
-    attachment_like = cast("Any", attachment)
-    filename = getattr(attachment_like, "filename", "")
-    suffix = Path(filename).suffix.lower() if isinstance(filename, str) else ""
-    message_id = _safe_cache_token(getattr(message_like, "id", "message"))
-    attachment_id = _safe_cache_token(getattr(attachment_like, "id", "attachment"))
-    return _discord_audio_cache_dir() / f"{message_id}-{attachment_id}{suffix}"
-
-
 async def _read_attachment_bytes(attachment: object) -> bytes | None:
     reader = getattr(cast("Any", attachment), "read", None)
     if not callable(reader):
@@ -248,34 +234,6 @@ async def _read_attachment_bytes(attachment: object) -> bytes | None:
     return None
 
 
-def _transcription_metadata(result: object) -> dict[str, Any]:
-    metadata: dict[str, Any] = {"success": bool(getattr(result, "success", False))}
-    provider = getattr(result, "provider", None)
-    if provider:
-        metadata["provider"] = provider
-    model = getattr(result, "model", None)
-    if model:
-        metadata["model"] = model
-    error = getattr(result, "error", None)
-    if error:
-        metadata["error"] = error
-    return metadata
-
-
-def _transcription_note(result: object) -> str:
-    transcript = str(getattr(result, "transcript", "") or "").strip()
-    if getattr(result, "success", False) and transcript:
-        return f'[The user sent a voice message~ Here\'s what they said: "{transcript}"]'
-
-    error = str(getattr(result, "error", "") or "unknown error")
-    if "No STT provider available" in error:
-        return (
-            "[The user sent a voice message but I can't listen to it right now - "
-            "no STT provider is configured.]"
-        )
-    return f"[The user sent a voice message but I had trouble transcribing it~ ({error})]"
-
-
 async def _transcribe_audio_attachments(
     message: object,
     metadata: dict[str, Any],
@@ -286,40 +244,48 @@ async def _transcribe_audio_attachments(
     if not isinstance(metadata_attachments, list):
         return content
 
-    notes: list[str] = []
-    for attachment, attachment_metadata in zip(attachments, metadata_attachments, strict=False):
+    inbound_attachments: list[InboundAudioAttachment] = []
+    for attachment in attachments:
+        if _audio_attachment_label(attachment) is None:
+            inbound_attachments.append(
+                InboundAudioAttachment(
+                    id=str(getattr(cast("Any", attachment), "id", "")),
+                    filename=str(getattr(cast("Any", attachment), "filename", "")),
+                    content_type=getattr(cast("Any", attachment), "content_type", None),
+                    size=getattr(cast("Any", attachment), "size", None),
+                    data=None,
+                )
+            )
+            continue
+        inbound_attachments.append(
+            InboundAudioAttachment(
+                id=str(getattr(cast("Any", attachment), "id", "")),
+                filename=str(getattr(cast("Any", attachment), "filename", "")),
+                content_type=getattr(cast("Any", attachment), "content_type", None),
+                size=getattr(cast("Any", attachment), "size", None),
+                data=await _read_attachment_bytes(attachment),
+            )
+        )
+
+    result = await process_inbound_audio_attachments(
+        InboundAudioProcessingRequest(
+            attachments=tuple(inbound_attachments),
+            content=content,
+            fallback_content=_attachment_fallback_content(message),
+            cache_dir=_discord_audio_cache_dir(),
+            message_id=str(getattr(cast("Any", message), "id", "message")),
+        )
+    )
+    for patch in result.metadata_patches:
+        if patch.index >= len(metadata_attachments):
+            continue
+        attachment_metadata = metadata_attachments[patch.index]
         if not isinstance(attachment_metadata, dict):
             continue
-        if _audio_attachment_label(attachment) is None:
-            continue
-        size = getattr(cast("Any", attachment), "size", 0)
-        if isinstance(size, int) and size > MAX_AUDIO_BYTES:
-            result = AudioTranscriptionResult(
-                success=False,
-                error=f"Audio file is too large: {size} bytes (max {MAX_AUDIO_BYTES})",
-            )
-            attachment_metadata["transcription"] = _transcription_metadata(result)
-            notes.append(_transcription_note(result))
-            continue
-        data = await _read_attachment_bytes(attachment)
-        if data is None:
-            continue
-        path = _audio_cache_path(message, attachment)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-        attachment_metadata["cached_path"] = str(path)
-        result = await transcribe_audio_file(path)
-        attachment_metadata["transcription"] = _transcription_metadata(result)
-        notes.append(_transcription_note(result))
-
-    if not notes:
-        return content
-    prefix = "\n\n".join(notes)
-    if content and content == _attachment_fallback_content(message):
-        return prefix
-    if content:
-        return f"{prefix}\n\n{content}"
-    return prefix
+        if patch.cached_path is not None:
+            attachment_metadata["cached_path"] = patch.cached_path
+        attachment_metadata["transcription"] = patch.transcription
+    return result.content
 
 
 class DiscordEvents:

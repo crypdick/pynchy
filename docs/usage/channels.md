@@ -138,8 +138,24 @@ Send a message in the configured channel or DM to confirm inbound delivery.
 - Automatic 2000-character message splitting (preserves code fences)
 - Safe mention defaults (never pings `@everyone` unless asked)
 - History catch-up after reconnect
+- Inbound voice/audio attachment transcription when host speech-to-text is available
 
-DM pairing, interactive question widgets, and voice are not yet supported.
+DM pairing, interactive question widgets, and outbound voice are not yet supported.
+
+## Inbound Speech-to-Text
+
+Pynchy has shared host-side speech-to-text processing for channel adapters that
+can provide audio bytes. Supported inbound audio attachments are cached under
+the host data directory, transcribed, and rewritten into the message text before
+the agent sees the turn. The original attachment metadata also records the
+cached path and transcription status.
+
+The host provider is optional infrastructure. Pynchy first uses the
+`faster-whisper` Python package when installed. If that is unavailable, it uses
+`PYNCHY_LOCAL_STT_COMMAND` when set, or a `whisper` executable on `PATH`. Set
+`PYNCHY_LOCAL_STT_MODEL` and `PYNCHY_LOCAL_STT_LANGUAGE` to tune local provider
+defaults. Discord is the first built-in channel wired into this shared service;
+other channels need media download support before they can opt in.
 
 ## Built-in: TUI
 

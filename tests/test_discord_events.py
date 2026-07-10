@@ -284,7 +284,7 @@ async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
             create=True,
         ),
         patch(
-            "pynchy.plugins.channels.discord._events.transcribe_audio_file",
+            "pynchy.host.inbound_audio.transcribe_audio_file",
             new=AsyncMock(side_effect=transcribe),
             create=True,
         ),
