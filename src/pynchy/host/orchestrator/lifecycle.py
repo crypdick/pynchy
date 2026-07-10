@@ -14,33 +14,50 @@ import os
 import signal
 import socket
 import threading
+from collections.abc import (
+    Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
+)
 from typing import TYPE_CHECKING, Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
 from pynchy.config import get_settings
-from pynchy.host.orchestrator import startup_handler
+from pynchy.host.container_manager import gateway as gateway_manager
+from pynchy.host.container_manager import ipc as ipc_manager
+from pynchy.host.git_ops import worktree as worktree_ops
+from pynchy.host.orchestrator import adapters as orchestrator_adapters
+from pynchy.host.orchestrator import (
+    dep_factory,
+    http_server,
+    service_installer,
+    startup_handler,
+    status,
+    task_scheduler,
+    workspace_config,
+)
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
     PynchyApp,
 )
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.logger import logger
+from pynchy.plugins import get_plugin_manager
+from pynchy.plugins import memory as memory_plugins
+from pynchy.plugins import observers as observer_plugins
+from pynchy.plugins import tunnels as tunnel_plugins
 from pynchy.plugins.channel_runtime import (
     ChannelPluginContext,
     load_channels,
     resolve_default_channel,
 )
+from pynchy.plugins.integrations import linear_boot
+from pynchy.plugins.runtimes import system_checks
 from pynchy.state import init_database, store_chat_metadata
 from pynchy.types import OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
     from pynchy.types import NewMessage
-
-from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
-    Callable,
-)
 
 # ---------------------------------------------------------------------------
 # Shutdown
@@ -65,9 +82,7 @@ def _start_shutdown_watchdog() -> object:
 
 async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
     try:
-        from pynchy.host.orchestrator.adapters import find_admin_jid
-
-        admin_jid = find_admin_jid(app.workspaces) or None
+        admin_jid = orchestrator_adapters.find_admin_jid(app.workspaces) or None
         if admin_jid and app.channels:
             await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
     except Exception:  # noqa: BLE001, RUF100 - shutdown notification is best-effort and must not block teardown.
@@ -89,9 +104,7 @@ async def _cleanup_http_runner(app: PynchyApp) -> None:
 
 
 async def _close_runtime_resources(app: PynchyApp) -> None:
-    from pynchy.host.container_manager.gateway import stop_gateway
-
-    await stop_gateway()
+    await gateway_manager.stop_gateway()
     await app.close_observers()
     await app.close_memory_provider()
     batcher = output_handler.get_trace_batcher()
@@ -135,30 +148,20 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
-    from pynchy.host.orchestrator.service_installer import install_service
-    from pynchy.host.orchestrator.workspace_config import configure_plugin_workspaces
-    from pynchy.plugins import get_plugin_manager
-    from pynchy.plugins.runtimes.system_checks import ensure_container_system_running
-
-    install_service()
+    service_installer.install_service()
 
     app.plugin_manager = get_plugin_manager()
-    configure_plugin_workspaces(app.plugin_manager)
-    ensure_container_system_running()
+    workspace_config.configure_plugin_workspaces(app.plugin_manager)
+    system_checks.ensure_container_system_running()
 
-    from pynchy.host.container_manager.gateway import start_gateway
-
-    await start_gateway(plugin_manager=app.plugin_manager)
+    await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
     await init_database()
     logger.info("Database initialized")
 
-    from pynchy.plugins.memory import get_memory_provider
-    from pynchy.plugins.observers import attach_observers
+    app.attach_observers(observer_plugins.attach_observers(app.event_bus))
 
-    app.attach_observers(attach_observers(app.event_bus))
-
-    await app.set_memory_provider(get_memory_provider())
+    await app.set_memory_provider(memory_plugins.get_memory_provider())
     await app.load_state()
 
 
@@ -223,31 +226,23 @@ async def _setup_channels(app: PynchyApp) -> None:
 
 async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
     """Worktree + workspace reconciliation.  Returns repo_groups."""
-    from pynchy.host.git_ops.worktree import reconcile_worktrees_at_startup
-    from pynchy.host.orchestrator.workspace_config import (
-        get_repo_access_groups,
-        reconcile_workspaces,
-    )
-
     s = get_settings()
 
-    repo_groups = get_repo_access_groups(s.workspaces)
+    repo_groups = workspace_config.get_repo_access_groups(s.workspaces)
 
     await asyncio.to_thread(
-        reconcile_worktrees_at_startup,
+        worktree_ops.reconcile_worktrees_at_startup,
         repo_groups=repo_groups,
     )
 
-    await reconcile_workspaces(
+    await workspace_config.reconcile_workspaces(
         workspaces=app.workspaces,
         channels=app.channels,
         register_fn=app.register_workspace,
         unregister_fn=app.unregister_workspace,
     )
 
-    from pynchy.plugins.integrations.linear_boot import reconcile_linear_workspace_boards
-
-    await reconcile_linear_workspace_boards(app.workspaces.values())
+    await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
 
     return repo_groups
 
@@ -259,34 +254,31 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
 
 async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) -> None:
     """Scheduler, IPC, git sync, HTTP server."""
-    from pynchy.host.container_manager.ipc import start_ipc_watcher
-    from pynchy.host.orchestrator.dep_factory import (
-        make_http_deps,
-        make_ipc_deps,
-        make_status_deps,
-    )
-    from pynchy.host.orchestrator.http_server import start_http_server
-    from pynchy.host.orchestrator.status import record_start_time
-    from pynchy.host.orchestrator.task_scheduler import SchedulerDependencies, start_scheduler_loop
-    from pynchy.plugins.tunnels import check_tunnels
-
     s = get_settings()
 
-    scheduler_deps = cast("SchedulerDependencies", app)
+    scheduler_deps = cast("task_scheduler.SchedulerDependencies", app)
     app.add_subsystem_task(
-        create_background_task(start_scheduler_loop(scheduler_deps), name="scheduler")
+        create_background_task(
+            task_scheduler.start_scheduler_loop(scheduler_deps), name="scheduler"
+        )
     )
     app.add_subsystem_task(
-        create_background_task(start_ipc_watcher(make_ipc_deps(app)), name="ipc-watcher")
+        create_background_task(
+            ipc_manager.start_ipc_watcher(dep_factory.make_ipc_deps(app)),
+            name="ipc-watcher",
+        )
     )
 
     app.queue.set_process_messages_fn(app.process_group_messages)
 
     plugin_manager = _require_plugin_manager(app, "_start_subsystems")
-    check_tunnels(plugin_manager)
-    record_start_time()
+    tunnel_plugins.check_tunnels(plugin_manager)
+    status.record_start_time()
     app.set_http_runner(
-        await start_http_server(make_http_deps(app), status_deps=make_status_deps(app))
+        await http_server.start_http_server(
+            dep_factory.make_http_deps(app),
+            status_deps=dep_factory.make_status_deps(app),
+        )
     )
 
     hostname = socket.gethostname()
