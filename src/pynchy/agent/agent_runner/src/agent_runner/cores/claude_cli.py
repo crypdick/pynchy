@@ -104,9 +104,9 @@ class ClaudeCLIAgentCore:
         #   - PreCompact -> archives the transcript before auto-compaction, the
         #     same behavior the SDK core gets from its PreCompact hook
         #     (see transcript_archive.py).
-        settings: dict[str, Any] = {
-            "attribution": {"commit": "", "pr": ""},
-            "hooks": {
+        settings: dict[str, Any] = {"attribution": {"commit": "", "pr": ""}}
+        if bool(self.config.extra.get("pynchy_hooks_enabled", True)):
+            settings["hooks"] = {
                 "PreToolUse": [
                     {
                         "matcher": "*",
@@ -131,8 +131,7 @@ class ClaudeCLIAgentCore:
                         ],
                     }
                 ],
-            },
-        }
+            }
         self._settings_json = json.dumps(settings)
 
         _log(f"claude binary: {self._claude_path}; MCP servers: {list(self.config.mcp_servers)}")

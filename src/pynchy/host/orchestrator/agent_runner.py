@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
@@ -26,12 +27,14 @@ from pynchy.host.container_manager import (
     destroy_session,
     get_session,
 )
+from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
     oneshot_container_name,
     stable_container_name,
 )
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
+from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.logger import logger
 from pynchy.state import clear_session
 from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
@@ -215,6 +218,15 @@ def _session_model_mismatch(
         return False
     resolved_model = (agent_core_config or {}).get("model")
     return _codex_session_model(session_id) != resolved_model
+
+
+def _host_execution_cwd(group_folder: str) -> Path | None:
+    resolved = workspace_config.load_resolved_config(group_folder)
+    if resolved is None or resolved.execution_mode != "host":
+        return None
+    if not resolved.cwd:
+        return None
+    return Path(resolved.cwd).expanduser()
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +449,29 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         await clear_session(GroupFolder(group.folder))
         deps.sessions.pop(group.folder, None)
         ctx.session_id = None
+
+    host_cwd = _host_execution_cwd(group.folder)
+    if host_cwd is not None:
+        logger.info(
+            "run_agent host execution",
+            group=group.name,
+            cwd=str(host_cwd),
+            snapshot_ms=round(ctx.snapshot_ms),
+        )
+        input_data = build_container_input(
+            messages,
+            ctx,
+            chat_jid,
+            group,
+            is_scheduled_task=is_scheduled_task,
+        )
+        return await run_host_input(
+            input_data,
+            cwd=host_cwd,
+            on_output=ctx.wrapped_on_output,
+            timeout_seconds=ctx.config_timeout,
+            env=build_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
+        )
 
     session = get_session(GroupFolder(group.folder))
 

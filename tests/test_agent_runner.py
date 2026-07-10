@@ -20,6 +20,7 @@ sys.path.insert(
 )
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.host_direct import build_host_core_config
 from agent_runner.ipc import drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
     apply_followup_metadata,
@@ -589,4 +590,37 @@ class TestBuildCoreConfig:
             "pynchy_group_folder": "test-group",
             "stable": "yes",
             "source": "warm",
+        }
+
+
+class TestBuildHostCoreConfig:
+    """Test direct host AgentCoreConfig construction."""
+
+    def test_host_core_uses_real_cwd_and_no_pynchy_mcp(self):
+        ci = ContainerInput(
+            messages=[],
+            session_id="sess-1",
+            group_folder="admin-host",
+            chat_jid="slack:C123",
+            is_admin=True,
+            system_prompt_append="Prompt notes",
+            is_scheduled_task=False,
+            agent_core_module="agent_runner.cores.codex",
+            agent_core_class="CodexCLIAgentCore",
+            agent_core_config={"approval_policy": "never"},
+        )
+
+        config = build_host_core_config(ci, cwd="/workspace/project")
+
+        assert config.cwd == "/workspace/project"
+        assert config.session_id == "sess-1"
+        assert config.group_folder == "admin-host"
+        assert config.chat_jid == "slack:C123"
+        assert config.is_admin is True
+        assert config.system_prompt_append == "Prompt notes"
+        assert config.mcp_servers == {}
+        assert config.plugin_hooks == []
+        assert config.extra == {
+            "approval_policy": "never",
+            "pynchy_hooks_enabled": False,
         }

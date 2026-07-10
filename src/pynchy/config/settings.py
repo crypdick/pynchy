@@ -60,13 +60,15 @@ from pynchy.config.models import (
     McpToolConfig,
     OneCliConfig,
     PluginConfig,
-    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     ReposConfig,
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
     ToolConfig,
     WorkspaceConfig,
+)
+from pynchy.config.profiles import (
+    ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
 from pynchy.config.scheduler_models import (
     CommandWordsConfig,
@@ -312,6 +314,22 @@ class Settings(BaseSettings):
                 quiet_on_success=job.quiet_on_success or False,
             )
         self.cron_jobs = derived
+        return self
+
+    @model_validator(mode="after")
+    def _validate_host_execution_workspaces(self) -> Settings:
+        for workspace_name in self.workspaces:
+            resolved = self.resolved_workspace_config(workspace_name)
+            if resolved is None or resolved.execution_mode != "host":
+                continue
+            if not resolved.is_admin:
+                raise ValueError(
+                    f"workspaces.{workspace_name}: execution_mode = 'host' requires is_admin = true"
+                )
+            if not resolved.cwd:
+                raise ValueError(
+                    f"workspaces.{workspace_name}: execution_mode = 'host' requires cwd"
+                )
         return self
 
     @model_validator(mode="after")

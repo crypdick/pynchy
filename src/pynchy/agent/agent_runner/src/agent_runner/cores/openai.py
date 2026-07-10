@@ -416,8 +416,11 @@ class OpenAIAgentCore:
 
         # Build security hooks list via the shared single-source roster so this
         # core enforces exactly the same gate as the Claude/claude-cli cores.
-        self._before_tool_hooks = hooks.before_tool_use_roster(
-            hooks.load_hooks(self.config.plugin_hooks)
+        hooks_enabled = bool(self.config.extra.get("pynchy_hooks_enabled", True))
+        self._before_tool_hooks = (
+            hooks.before_tool_use_roster(hooks.load_hooks(self.config.plugin_hooks))
+            if hooks_enabled
+            else []
         )
 
         _log(

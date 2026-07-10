@@ -132,6 +132,53 @@ def test_profile_capability_rules_resolve_into_workspace_policy() -> None:
     assert resolved.capabilities["mcp.email.preview"].decision == "allow"
 
 
+def test_profile_execution_mode_and_cwd_resolve_for_workspace() -> None:
+    settings = _settings(
+        profiles={
+            "base": ProfileConfig(cwd="/opt/pynchy-base"),
+            "host": ProfileConfig(
+                includes=["base"],
+                is_admin=True,
+                execution_mode="host",
+                cwd="/opt/pynchy-project",
+            ),
+        },
+        workspaces={"admin": WorkspaceConfig(profiles=["host"])},
+    )
+
+    resolved = settings.resolved_workspace_config("admin")
+
+    assert resolved is not None
+    assert resolved.execution_mode == "host"
+    assert resolved.cwd == "/opt/pynchy-project"
+
+
+def test_host_execution_mode_requires_admin_workspace() -> None:
+    with pytest.raises(ValidationError, match="execution_mode = 'host' requires is_admin"):
+        _settings(
+            profiles={
+                "host": ProfileConfig(
+                    execution_mode="host",
+                    cwd="/opt/pynchy-project",
+                )
+            },
+            workspaces={"admin": WorkspaceConfig(profiles=["host"])},
+        )
+
+
+def test_host_execution_mode_requires_cwd() -> None:
+    with pytest.raises(ValidationError, match="execution_mode = 'host' requires cwd"):
+        _settings(
+            profiles={
+                "host": ProfileConfig(
+                    is_admin=True,
+                    execution_mode="host",
+                )
+            },
+            workspaces={"admin": WorkspaceConfig(profiles=["host"])},
+        )
+
+
 def test_job_requires_exactly_one_schedule_shape() -> None:
     with pytest.raises(ValidationError, match="exactly one of schedule or at"):
         JobConfig(

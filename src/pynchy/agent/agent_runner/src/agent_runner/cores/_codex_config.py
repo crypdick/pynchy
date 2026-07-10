@@ -107,6 +107,7 @@ def write_codex_config(
     *,
     gateway_base_url: str,
     model: str | None = None,
+    hooks_enabled: bool = True,
 ) -> None:
     """Write the Pynchy-managed Codex CLI config for this per-group home."""
     codex_home.mkdir(parents=True, exist_ok=True)
@@ -127,22 +128,27 @@ def write_codex_config(
             'wire_api = "responses"',
             'env_key = "OPENAI_API_KEY"',
             "",
-            "[features]",
-            "hooks = true",
-            "",
             "[sandbox_workspace_write]",
             "network_access = true",
-            "",
-            "[[hooks.PreToolUse]]",
-            'matcher = "*"',
-            "",
-            "[[hooks.PreToolUse.hooks]]",
-            'type = "command"',
-            f"command = {_toml_value(f'{sys.executable} -m agent_runner.security.hook_entry')}",
-            "timeout = 30",
-            'statusMessage = "Checking Pynchy security policy"',
         ]
     )
+    if hooks_enabled:
+        lines.extend(
+            [
+                "",
+                "[features]",
+                "hooks = true",
+                "",
+                "[[hooks.PreToolUse]]",
+                'matcher = "*"',
+                "",
+                "[[hooks.PreToolUse.hooks]]",
+                'type = "command"',
+                f"command = {_toml_value(f'{sys.executable} -m agent_runner.security.hook_entry')}",
+                "timeout = 30",
+                'statusMessage = "Checking Pynchy security policy"',
+            ]
+        )
 
     for name, spec in sorted(mcp_servers.items()):
         lines.extend(_mcp_server_lines(name, spec))

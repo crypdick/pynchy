@@ -132,6 +132,9 @@ def _build_claude_hooks(config: AgentCoreConfig) -> dict[str, list[HookMatcher]]
     PreCompact gets a built-in transcript-archival hook appended. PreToolUse
     gets built-in security hooks first, then plugin hooks (first deny wins).
     """
+    if not bool(config.extra.get("pynchy_hooks_enabled", True)):
+        return {}
+
     agnostic_hooks = load_hooks(config.plugin_hooks)
     claude_hooks: dict[str, list[HookMatcher]] = {}
 

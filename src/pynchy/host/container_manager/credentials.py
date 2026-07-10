@@ -212,6 +212,34 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
     return {}
 
 
+def build_agent_env_vars(
+    *,
+    is_admin: bool,
+    group_folder: str,
+    extra_env_vars: dict[str, str] | None = None,
+    include_gh_token: bool = True,
+) -> dict[str, str]:
+    """Build agent environment variables without writing an env-dir file."""
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
+        get_gateway,
+    )
+
+    s = get_settings()
+    env_vars: dict[str, str] = {}
+    gateway = get_gateway()
+    gateway_env_vars = _gateway_env_vars(gateway)
+    env_vars.update(gateway_env_vars)
+    if extra_env_vars:
+        env_vars.update(extra_env_vars)
+    if gateway_env_vars:
+        _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
+    if include_gh_token:
+        env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    env_vars.update(_git_identity_env_vars())
+    env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    return env_vars
+
+
 def write_env_file(
     *,
     is_admin: bool,
@@ -231,26 +259,16 @@ def write_env_file(
     ``extra_env_vars`` and set ``include_gh_token=False`` so raw GitHub tokens
     stay out of the container when OneCLI owns that credential boundary.
     """
-    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
-        get_gateway,
-    )
-
     s = get_settings()
     env_dir = s.data_dir / "env" / group_folder
     env_dir.mkdir(parents=True, exist_ok=True)
 
-    env_vars: dict[str, str] = {}
-    gateway = get_gateway()
-    gateway_env_vars = _gateway_env_vars(gateway)
-    env_vars.update(gateway_env_vars)
-    if extra_env_vars:
-        env_vars.update(extra_env_vars)
-    if gateway_env_vars:
-        _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
-    if include_gh_token:
-        env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
-    env_vars.update(_git_identity_env_vars())
-    env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))
+    env_vars = build_agent_env_vars(
+        is_admin=is_admin,
+        group_folder=group_folder,
+        extra_env_vars=extra_env_vars,
+        include_gh_token=include_gh_token,
+    )
 
     if not env_vars:
         logger.warning(
