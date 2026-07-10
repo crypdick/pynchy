@@ -1,3 +1,4 @@
+# allow: file-length - task adds a core model; splitting schema is out of scope.
 """Configuration sub-models — each maps to a ``[section]`` in config.toml.
 
 Extracted from :mod:`pynchy.config` to keep the root Settings class
@@ -193,6 +194,11 @@ class OneCliConfig(_StrictModel):
     project_id_env: str = "ONECLI_PROJECT_ID"
     fail_closed: bool = True
     agent_identifier_prefix: str = "pynchy"
+
+
+class ConversationStoreConfig(_StrictModel):
+    project_name: str = "pynchy"
+    phoenix_endpoint: str | None = None
 
 
 class ObsidianLearningConfig(_StrictModel):

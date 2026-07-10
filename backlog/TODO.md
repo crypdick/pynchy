@@ -20,6 +20,7 @@ Single source of truth for all pynchy work items.
 - **Deputy agent for worktree contributions** — Ephemeral agent that inspects commits from worktrees before they enter main. Reviews for malicious code, security issues, and project conventions. Spawned by `host_sync_worktree()` before the merge step.
 - **Automated repo token refresh via GitHub App** — Replace manually-created fine-grained PATs with a GitHub App that auto-generates short-lived, repo-scoped installation tokens. Eliminates manual rotation. Builds on repo-scoped tokens (Phase 1 complete).
 - [Reintroduce Teams with session isolation](0-proposed/reintroduce-teams-session-isolation.md) — Teams tools (`TeamCreate`/`SendMessage`) are unlisted to prevent transcript branching; re-enabling needs per-teammate session isolation first.
+- [Split config models schema](0-proposed/split-config-models-schema.md) — Break up `src/pynchy/config/models.py` so small core config additions no longer need a file-length exemption.
 
 ### 1 - Approved
 *Approved ideas. No plan yet.*

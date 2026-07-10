@@ -50,6 +50,7 @@ from pynchy.config.models import (
     ConnectionConfig,
     ConnectionsConfig,
     ContainerConfig,
+    ConversationStoreConfig,
     CronJobConfig,
     GatewayConfig,
     IntervalsConfig,
@@ -150,9 +151,7 @@ def _validate_owner_alias(
         return
     if platform == "whatsapp":
         return
-    message = (
-        f"{scope} uses allowed_users=['owner']; owner aliases are only supported for WhatsApp"
-    )
+    message = f"{scope} uses allowed_users=['owner']; owner aliases are only supported for WhatsApp"
     raise ValueError(message)
 
 
@@ -176,6 +175,7 @@ class Settings(BaseSettings):
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
     onecli: OneCliConfig = OneCliConfig()
+    conversation_store: ConversationStoreConfig = ConversationStoreConfig()
     learning: LearningConfig = LearningConfig()
     repos: ReposConfig = Field(default_factory=ReposConfig)
     profiles: dict[str, ProfileConfig] = {}
