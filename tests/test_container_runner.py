@@ -3010,7 +3010,7 @@ class TestGetSessionOutputHandler:
     @pytest.fixture(autouse=True)
     def _patch_session_cleanup(self):
         with (
-            patch("pynchy.host.container_manager.process._graceful_stop", new=AsyncMock()),
+            patch("pynchy.host.container_manager.session._graceful_stop", new=AsyncMock()),
             patch(
                 "pynchy.host.container_manager.session.docker_rm_force",
                 new=AsyncMock(),
