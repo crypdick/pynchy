@@ -501,10 +501,10 @@ class TestBlockActionHandlers:
 
 class TestOnAskUserAnswerCallback:
     def test_callback_stored_on_init(self) -> None:
-        """on_ask_user_answer should be stored as an instance attribute."""
+        """on_ask_user_answer should be exposed as a public property."""
         cb = MagicMock()
         ch = _make_channel(on_ask_user_answer=cb)
-        assert ch._on_ask_user_answer is cb
+        assert ch.on_ask_user_answer is cb
 
     def test_callback_defaults_to_none(self) -> None:
         """on_ask_user_answer should default to None."""
@@ -517,7 +517,7 @@ class TestOnAskUserAnswerCallback:
             on_message=MagicMock(),
             on_chat_metadata=MagicMock(),
         )
-        assert ch._on_ask_user_answer is None
+        assert ch.on_ask_user_answer is None
 
 
 # ---------------------------------------------------------------------------
