@@ -7,6 +7,7 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 
 from __future__ import annotations
 
+import json as json_mod
 from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
@@ -15,9 +16,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.config import get_settings
+from pynchy.config.models import McpTool
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
@@ -26,6 +29,7 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.logger import logger
 from pynchy.plugins import get_plugin_manager
+from pynchy.types import OutboundEvent, OutboundEventType
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
 PluginHandlers = dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]
@@ -117,11 +121,10 @@ async def _request_human_approval(
     context: _ApprovalRequestContext,
 ) -> None:
     # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
-    from pynchy.host.container_manager.security.approval import (
+    from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - security.approval imports IPC dispatch during approval replay.
         create_pending_approval,
         format_approval_notification,
     )
-    from pynchy.types import OutboundEvent, OutboundEventType
 
     short_id = create_pending_approval(
         request_id=context.request.request_id,
@@ -166,23 +169,18 @@ async def _maybe_require_cop_approval(
     if data.get("_cop_approved"):
         return True
 
-    from pynchy.host.container_manager.security.cop_gate import cop_gate
-
     settings = get_settings()
-    from pynchy.config.models import McpTool
 
     tool = settings.tools.get(request.tool_name)
     if not isinstance(tool, McpTool) or tool.mcp.runtime != "script":
         return True
-
-    import json as json_mod
 
     args_preview = json_mod.dumps(
         {k: v for k, v in data.items() if k not in ("type", "request_id", "source_group")},
         default=str,
     )[:1000]
     summary = f"script MCP tool: {request.tool_name}\nargs: {args_preview}"
-    return await cop_gate(
+    return await cop_gate_module.cop_gate(
         f"script_mcp:{request.tool_name}",
         summary,
         data,
