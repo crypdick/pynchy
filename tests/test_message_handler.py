@@ -20,6 +20,7 @@ from conftest import make_settings
 
 from pynchy.config import AgentConfig, IntervalsConfig
 from pynchy.config.models import LearningConfig
+from pynchy.conversation.events import ConversationEventKind
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -36,7 +37,6 @@ _P_SETTINGS = "pynchy.host.orchestrator.messaging.pipeline.get_settings"
 _P_MSGS_SINCE = "pynchy.host.orchestrator.messaging.pipeline.get_messages_since"
 _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_command"
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
-_P_STORE = "pynchy.host.orchestrator.messaging.pipeline.store_message_direct"
 _P_DIRTY = "pynchy.host.orchestrator.messaging.run_context.is_repo_dirty"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
 _P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
@@ -64,6 +64,8 @@ def _make_deps(
     deps = MagicMock(spec=MessageHandlerDeps)
     deps.workspaces = groups or {}
     deps.last_agent_timestamp = last_agent_ts if last_agent_ts is not None else {}
+    deps.conversation_sink = MagicMock()
+    deps.conversation_sink.append = AsyncMock()
     dispatched_through = {}
     deps.last_timestamp = last_timestamp
     deps.channels = []  # empty by default; tests that need channel routing set this explicitly
@@ -342,13 +344,23 @@ class TestExecuteDirectCommand:
 
         with (
             patch(_P_SETTINGS) as mock_settings,
-            patch(_P_STORE, new_callable=AsyncMock),
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
             mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(returncode=0, stdout="hi", stderr="")
             await execute_direct_command(deps, "g@g.us", group, msg, "echo hi")
 
+        saved_event = deps.conversation_sink.append.await_args.args[0]
+        assert saved_event.kind == ConversationEventKind.HOST_MESSAGE
+        assert saved_event.chat_jid == "g@g.us"
+        assert saved_event.sender == "command_output"
+        assert saved_event.sender_name == "command"
+        assert saved_event.content == "✅ Command output (exit 0):\n```\nhi\n```"
+        assert saved_event.message_type == "host"
+        assert saved_event.source_message_id == msg.id
+        assert saved_event.metadata["source"] == "direct_command"
+        assert saved_event.metadata["command"] == "echo hi"
+        assert saved_event.metadata["exit_code"] == 0
         deps.broadcast_to_channels.assert_awaited_once()
         event = deps.broadcast_to_channels.call_args[0][1]
         assert "✅" in event.content
@@ -362,13 +374,15 @@ class TestExecuteDirectCommand:
 
         with (
             patch(_P_SETTINGS) as mock_settings,
-            patch(_P_STORE, new_callable=AsyncMock),
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
             mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(returncode=1, stdout="", stderr="error msg")
             await execute_direct_command(deps, "g@g.us", group, msg, "false")
 
+        saved_event = deps.conversation_sink.append.await_args.args[0]
+        assert saved_event.content == "❌ Command output (exit 1):\n```\nerror msg\n```"
+        assert saved_event.metadata["exit_code"] == 1
         event = deps.broadcast_to_channels.call_args[0][1]
         assert "❌" in event.content
         assert "error msg" in event.content

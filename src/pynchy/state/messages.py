@@ -180,7 +180,7 @@ async def get_messages_since(
     projected = []
     reader = body_reader
     for row in projected_rows:
-        if row["message_type"] in {"assistant", "host"}:
+        if row["kind"] == "system_notice" or row["message_type"] in {"assistant", "host"}:
             continue
         if row["event_id"] in legacy_message_ids:
             continue
@@ -240,7 +240,12 @@ async def prune_messages_by_sender(sender: str, before_timestamp: str) -> int:
     return cursor.rowcount
 
 
-async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
+async def get_chat_history(
+    chat_jid: str,
+    limit: int = 50,
+    *,
+    body_reader: ConversationBodyReader | None = None,
+) -> list[NewMessage]:
     """Get recent messages for a chat, including bot responses. Newest last.
 
     Respects the cleared_at boundary — messages before it are hidden.
@@ -250,30 +255,36 @@ async def get_chat_history(chat_jid: str, limit: int = 50) -> list[NewMessage]:
     cleared_row = await cleared_cursor.fetchone()
     cleared_at = cleared_row["cleared_at"] if cleared_row and cleared_row["cleared_at"] else None
 
+    params: list[object] = [chat_jid]
+    sql = """
+        SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
+               message_type, metadata
+        FROM messages
+        WHERE chat_jid = ?
+    """
     if cleared_at:
-        cursor = await db.execute(
-            """
-            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-                   message_type, metadata
-            FROM messages
-            WHERE chat_jid = ? AND timestamp > ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (chat_jid, cleared_at, limit),
-        )
-    else:
-        cursor = await db.execute(
-            """
-            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me,
-                   message_type, metadata
-            FROM messages
-            WHERE chat_jid = ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (chat_jid, limit),
-        )
+        sql += " AND timestamp > ?"
+        params.append(cleared_at)
+    sql += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
+
+    cursor = await db.execute(sql, params)
     rows = await cursor.fetchall()
 
-    return [_row_to_message(row) for row in reversed(list(rows))]
+    legacy = [_row_to_message(row) for row in rows]
+    projected_rows = await get_conversation_event_pointers_since(chat_jid, cleared_at)
+    legacy_message_ids = {message.id for message in legacy}
+    projected = []
+    reader = body_reader
+    for row in projected_rows:
+        if row["event_id"] in legacy_message_ids:
+            continue
+        source_message_id = row.get("source_message_id")
+        if isinstance(source_message_id, str) and source_message_id in legacy_message_ids:
+            continue
+        if reader is None:
+            reader = default_body_reader()
+        projected.append(await hydrate_pointer_to_message(row, reader))
+
+    merged = sorted([*legacy, *projected], key=lambda msg: (msg.timestamp, msg.id), reverse=True)
+    return list(reversed(merged[:limit]))

@@ -17,7 +17,7 @@ Run with:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -82,6 +82,8 @@ def _make_deps(channels: list[RecordingChannel]) -> Any:
     deps = MagicMock()
     deps.channels = channels
     deps.event_bus = MagicMock()
+    deps.conversation_sink = MagicMock()
+    deps.conversation_sink.append = AsyncMock()
     return deps
 
 
@@ -303,6 +305,8 @@ class TestAgentOutputParity:
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = MagicMock()
+        deps.conversation_sink = MagicMock()
+        deps.conversation_sink.append = AsyncMock()
         return deps
 
     async def test_agent_text_result_parity(self):
@@ -325,10 +329,7 @@ class TestAgentOutputParity:
             new_session_id="s1",
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            sent = await handle_streamed_output(deps, CHAT_JID, group, result)
+        sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is True, "handle_streamed_output should return True for text result"
 
@@ -365,10 +366,7 @@ class TestAgentOutputParity:
             new_session_id="s1",
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            sent = await handle_streamed_output(deps, CHAT_JID, group, result)
+        sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is True
 
@@ -408,10 +406,7 @@ class TestAgentOutputParity:
             thinking="Let me consider this carefully...",
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            sent = await handle_streamed_output(deps, CHAT_JID, group, result)
+        sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is False  # Thinking traces don't count as user-visible results
 
@@ -463,11 +458,7 @@ class TestAgentOutputParity:
                 tool_input=tool_input,
             )
 
-            with patch(
-                "pynchy.host.orchestrator.messaging.router.store_message_direct",
-                new_callable=AsyncMock,
-            ):
-                await handle_streamed_output(deps, CHAT_JID, group, result)
+            await handle_streamed_output(deps, CHAT_JID, group, result)
 
             # All channels should get the tool preview
             for ch in channels:
@@ -507,10 +498,7 @@ class TestAgentOutputParity:
             tool_result_is_error=False,
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, CHAT_JID, group, result)
+        await handle_streamed_output(deps, CHAT_JID, group, result)
 
         # All channels should get the tool result indicator
         for ch in channels:
@@ -546,10 +534,7 @@ class TestAgentOutputParity:
             system_data={"reason": "manual"},
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, CHAT_JID, group, result)
+        await handle_streamed_output(deps, CHAT_JID, group, result)
 
         # Non-init system events should reach channels
         for ch in channels:
@@ -583,10 +568,7 @@ class TestAgentOutputParity:
             system_data={"session_id": "abc123"},
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, CHAT_JID, group, result)
+        await handle_streamed_output(deps, CHAT_JID, group, result)
 
         # Init should be suppressed from ALL channels
         for ch in channels:
@@ -768,14 +750,10 @@ class TestFullTraceSequenceParity:
         # Accumulate messages per-channel at each step
         message_counts = {ch.name: [] for ch in channels}
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            for trace in trace_sequence:
-                await handle_streamed_output(deps_mock, CHAT_JID, group, trace)
-                for ch in channels:
-                    message_counts[ch.name].append(len(ch.sent_messages))
+        for trace in trace_sequence:
+            await handle_streamed_output(deps_mock, CHAT_JID, group, trace)
+            for ch in channels:
+                message_counts[ch.name].append(len(ch.sent_messages))
 
         # Verify message count parity — each channel should have received
         # the same number of messages at each point
@@ -877,11 +855,7 @@ class TestEdgeCaseParity:
             new_session_id="s1",
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            await handle_streamed_output(deps, CHAT_JID, group, result)
+        await handle_streamed_output(deps, CHAT_JID, group, result)
 
         for ch in channels:
             texts = ch.get_texts()
@@ -918,11 +892,7 @@ class TestEdgeCaseParity:
             new_session_id="s1",
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            sent = await handle_streamed_output(deps, CHAT_JID, group, result)
+        sent = await handle_streamed_output(deps, CHAT_JID, group, result)
 
         assert sent is False  # Empty result = nothing to send
 
@@ -948,11 +918,7 @@ class TestEdgeCaseParity:
             },
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            await handle_streamed_output(deps, CHAT_JID, self._group(), result)
+        await handle_streamed_output(deps, CHAT_JID, self._group(), result)
 
         # Check that metadata message is consistent
         for ch in channels:
@@ -994,11 +960,7 @@ class TestEdgeCaseParity:
             tool_name="ExitPlanMode",
             tool_input={},
         )
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            await handle_streamed_output(deps, CHAT_JID, group, tool_use)
+        await handle_streamed_output(deps, CHAT_JID, group, tool_use)
 
         for ch in channels:
             ch.clear()
@@ -1011,11 +973,7 @@ class TestEdgeCaseParity:
             tool_result_content="## Implementation Plan\n1. Step one\n2. Step two",
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ):
-            await handle_streamed_output(deps, CHAT_JID, group, tool_result)
+        await handle_streamed_output(deps, CHAT_JID, group, tool_result)
 
         # All channels should show the plan content, not just "📋 tool result"
         for ch in channels:

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy.conversation.events import ConversationEventKind
 from pynchy.host.orchestrator.messaging import streaming
 from pynchy.host.orchestrator.messaging.router import (
     broadcast_agent_input,
@@ -40,6 +41,8 @@ def _clean_trace_batcher():
 def _make_deps() -> MagicMock:
     deps = MagicMock(spec=OutputDeps)
     deps.workspaces = {}
+    deps.conversation_sink = MagicMock()
+    deps.conversation_sink.append = AsyncMock()
     deps.broadcast_to_channels = AsyncMock()
     deps.emit = MagicMock()
     # Provide a mock channel so finalize_stream_or_broadcast (bus) can work.
@@ -121,11 +124,9 @@ class TestBroadcastTrace:
     @pytest.mark.asyncio
     async def test_broadcast_trace_does_not_persist_trace_body(self):
         deps = _make_deps()
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ) as mock_store:
-            await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "text")
-        mock_store.assert_not_awaited()
+        await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "text")
+
+        deps.conversation_sink.append.assert_not_awaited()
         deps.emit.assert_called_once()
 
 
@@ -202,10 +203,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="thinking", thinking="hmm...")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
 
@@ -215,10 +213,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="tool_use", tool_name="Bash", tool_input={"command": "ls"})
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
         # Check that the channel text includes the tool preview
@@ -236,10 +231,7 @@ class TestHandleStreamedOutput:
             tool_result_is_error=False,
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
 
@@ -249,10 +241,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="system", system_subtype="init", system_data={"foo": "bar"})
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
 
@@ -275,12 +264,17 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="Hello user!")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
+        saved_event = deps.conversation_sink.append.await_args.args[0]
+        assert saved_event.kind == ConversationEventKind.ASSISTANT_MESSAGE
+        assert saved_event.chat_jid == "g@g.us"
+        assert saved_event.sender == "bot"
+        assert saved_event.message_type == "assistant"
+        assert saved_event.content == "Hello user!"
+        assert saved_event.metadata["source"] == "agent_result"
+        assert saved_event.metadata["workspace_name"] == group.name
         # Result finalization goes through the bus (finalize_stream_or_broadcast)
         # which calls ch.send_event on the mock channel.
         deps._test_channel.send_event.assert_awaited()
@@ -291,10 +285,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<internal>hidden</internal>")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         # Internal-only text is formatted (not stripped), so it's still visible
         assert result is True
@@ -305,17 +296,14 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<host>System rebooting</host>")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ) as mock_store:
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        call_kwargs = mock_store.call_args_list[-1][1]
-        assert call_kwargs["sender"] == "host"
-        assert call_kwargs["message_type"] == "host"
-        assert call_kwargs["content"] == "System rebooting"
+        saved_event = deps.conversation_sink.append.await_args.args[0]
+        assert saved_event.kind == ConversationEventKind.HOST_MESSAGE
+        assert saved_event.sender == "host"
+        assert saved_event.message_type == "host"
+        assert saved_event.content == "System rebooting"
 
     @pytest.mark.asyncio
     async def test_result_metadata_cost_formatting(self):
@@ -327,10 +315,7 @@ class TestHandleStreamedOutput:
             result_metadata={"total_cost_usd": 0.05, "duration_ms": 12345, "num_turns": 3},
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "g@g.us", group, output)
+        await handle_streamed_output(deps, "g@g.us", group, output)
 
         # Channel should get a cost/duration summary
         channel_text = _get_broadcast_content(deps)
@@ -360,10 +345,7 @@ class TestHandleStreamedOutput:
         with pytest.warns(UserWarning, match="violates type hint"):
             output = _make_output(type="result", result={"key": "value"})
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
         event = _get_send_event(deps)
@@ -376,10 +358,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<internal>thinking</internal>Hello visible!")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
         event = _get_send_event(deps)
@@ -397,10 +376,7 @@ class TestHandleStreamedOutput:
             result_metadata={"total_cost_usd": 0.12},
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "g@g.us", group, output)
+        await handle_streamed_output(deps, "g@g.us", group, output)
 
         channel_text = _get_broadcast_content(deps)
         assert "0.12 USD" in channel_text
@@ -415,10 +391,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result=None, result_metadata={})
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "g@g.us", group, output)
+        await handle_streamed_output(deps, "g@g.us", group, output)
 
         # Store is called for metadata, but no channel broadcast for empty parts
         # The broadcast should NOT be called because parts list is empty
@@ -431,10 +404,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="tool_use", tool_name=None, tool_input=None)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
         channel_text = _get_broadcast_content(deps)
@@ -447,10 +417,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="system", system_subtype=None, system_data=None)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is False
         channel_text = _get_broadcast_content(deps)
@@ -484,10 +451,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="<host>Restarting</host>")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "g@g.us", group, output)
+        await handle_streamed_output(deps, "g@g.us", group, output)
 
         event = _get_send_event(deps)
         assert event.type == OutboundEventType.HOST
@@ -500,10 +464,7 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="Hello!")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "g@g.us", group, output)
+        await handle_streamed_output(deps, "g@g.us", group, output)
 
         event = _get_send_event(deps)
         assert event.type == OutboundEventType.RESULT
@@ -520,15 +481,11 @@ class TestHandleStreamedOutput:
             result_metadata={"total_cost_usd": 0.03, "duration_ms": 5000},
         )
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct",
-            new_callable=AsyncMock,
-        ) as mock_store:
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        # Only the final result is stored locally; metadata belongs in Phoenix.
-        assert mock_store.await_count == 1
+        # Only the final result is stored as conversation content; metadata is live trace data.
+        assert deps.conversation_sink.append.await_count == 1
         # Metadata stats go through deps.broadcast_to_channels (trace path)
         assert deps.broadcast_to_channels.await_count >= 1
         # Result text goes through the bus (finalize_stream_or_broadcast -> ch.send_event)
@@ -539,12 +496,9 @@ class TestHandleStreamedOutput:
         """broadcast_trace should emit an AgentTraceEvent with correct trace_type."""
         deps = _make_deps()
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ) as mock_store:
-            await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "Bash: ls")
+        await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "Bash: ls")
 
-        mock_store.assert_not_awaited()
+        deps.conversation_sink.append.assert_not_awaited()
         event = deps.emit.call_args[0][0]
         assert event.trace_type == "tool_use"
         assert event.chat_jid == "g@g.us"
@@ -573,10 +527,7 @@ class TestHandleStreamedOutput:
 
         # First: send the tool_use for ExitPlanMode
         tool_use_output = _make_output(type="tool_use", tool_name="ExitPlanMode", tool_input={})
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "plan@g.us", group, tool_use_output)
+        await handle_streamed_output(deps, "plan@g.us", group, tool_use_output)
 
         # Then: send the tool_result
         tool_result_output = _make_output(
@@ -585,10 +536,7 @@ class TestHandleStreamedOutput:
             tool_result_content=plan_content,
             tool_result_is_error=False,
         )
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "plan@g.us", group, tool_result_output)
+        result = await handle_streamed_output(deps, "plan@g.us", group, tool_result_output)
 
         assert result is False
         channel_text = _get_broadcast_content(deps)
@@ -603,10 +551,7 @@ class TestHandleStreamedOutput:
 
         # First: send a tool_use for Bash
         tool_use_output = _make_output(type="tool_use", tool_name="Bash", tool_input={})
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            await handle_streamed_output(deps, "g@g.us", group, tool_use_output)
+        await handle_streamed_output(deps, "g@g.us", group, tool_use_output)
 
         # Then: tool_result for Bash
         tool_result_output = _make_output(
@@ -615,10 +560,7 @@ class TestHandleStreamedOutput:
             tool_result_content="output",
             tool_result_is_error=False,
         )
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, tool_result_output)
+        result = await handle_streamed_output(deps, "g@g.us", group, tool_result_output)
 
         assert result is False
         channel_text = _get_broadcast_content(deps)
@@ -642,10 +584,7 @@ class TestHandleStreamedOutput:
 
         output = _make_output(type="result", result="Final answer")
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            result = await handle_streamed_output(deps, "g@g.us", group, output)
+        result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
         # The stashed IDs should match the stream state (pop also clears them)
@@ -657,27 +596,24 @@ class TestHandleStreamedOutput:
         deps = _make_deps()
         group = _make_group()
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.router.store_message_direct", new_callable=AsyncMock
-        ):
-            r1 = await handle_streamed_output(
-                deps, "g@g.us", group, _make_output(type="thinking", thinking="planning...")
-            )
-            r2 = await handle_streamed_output(
-                deps,
-                "g@g.us",
-                group,
-                _make_output(type="tool_use", tool_name="Bash", tool_input={"command": "date"}),
-            )
-            r3 = await handle_streamed_output(
-                deps,
-                "g@g.us",
-                group,
-                _make_output(type="tool_result", tool_result_content="output", tool_result_id="t1"),
-            )
-            r4 = await handle_streamed_output(
-                deps, "g@g.us", group, _make_output(type="result", result="Done!")
-            )
+        r1 = await handle_streamed_output(
+            deps, "g@g.us", group, _make_output(type="thinking", thinking="planning...")
+        )
+        r2 = await handle_streamed_output(
+            deps,
+            "g@g.us",
+            group,
+            _make_output(type="tool_use", tool_name="Bash", tool_input={"command": "date"}),
+        )
+        r3 = await handle_streamed_output(
+            deps,
+            "g@g.us",
+            group,
+            _make_output(type="tool_result", tool_result_content="output", tool_result_id="t1"),
+        )
+        r4 = await handle_streamed_output(
+            deps, "g@g.us", group, _make_output(type="result", result="Done!")
+        )
 
         assert r1 is False
         assert r2 is False

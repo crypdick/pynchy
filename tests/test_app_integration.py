@@ -15,7 +15,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import NullChannel, make_settings
 
+import pynchy.state.messages as state_messages
 from pynchy import state
+from pynchy.conversation.phoenix import PhoenixEventRef
+from pynchy.conversation.sink import ConversationSink
 from pynchy.host.container_manager import serialization
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
@@ -29,6 +32,8 @@ from pynchy.types import NewMessage, WorkspaceProfile
 if TYPE_CHECKING:
     from collections.abc import Awaitable
     from pathlib import Path
+
+    from pynchy.conversation.events import ConversationEvent
 
 _CR_ORCH = "pynchy.host.container_manager.orchestrator"
 
@@ -75,6 +80,18 @@ def _noop_docker_rm(name: str) -> Awaitable[None]:
     hangs in the test environment where there is no container runtime.
     """
     return _completed_awaitable()
+
+
+class _InMemoryConversationBodyStore:
+    def __init__(self) -> None:
+        self.bodies: dict[str, str] = {}
+
+    async def write_event(self, event: ConversationEvent) -> PhoenixEventRef:
+        self.bodies[event.event_id] = event.content
+        return PhoenixEventRef(event_id=event.event_id, trace_ref=f"fake:{event.event_id}")
+
+    async def read_event_content(self, event_id: str) -> str:
+        return self.bodies[event_id]
 
 
 @contextlib.contextmanager
@@ -318,10 +335,16 @@ def _assert_trace_order(texts: list[str]) -> None:
 
 
 @pytest.fixture
-async def app(tmp_path: Path):
+async def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Create a PynchyApp with a fresh in-memory DB and patched dirs."""
     await state.init_test_database()
     a = PynchyApp()
+    body_store = _InMemoryConversationBodyStore()
+    a._conversation_sink = ConversationSink(  # allow: private-test-access - offline sink.
+        body_store=body_store,
+        store_pointer=state.store_conversation_event_pointer,
+    )
+    monkeypatch.setattr(state_messages, "default_body_reader", lambda: body_store)
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
             jid="group@g.us",

@@ -26,6 +26,12 @@ from pynchy.config import get_settings
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
     Settings,
 )
+from pynchy.conversation.events import (
+    ConversationEvent,
+    ConversationEventKind,
+    new_event_id,
+    new_turn_id,
+)
 from pynchy.event_bus import AgentActivityEvent, Event, MessageEvent
 from pynchy.host.learning import capture as learning_capture
 from pynchy.host.orchestrator.messaging import approval_handler, commands
@@ -33,10 +39,11 @@ from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
 from pynchy.logger import logger
-from pynchy.state import get_messages_since, store_message_direct
-from pynchy.utils import generate_message_id, run_shell_command
+from pynchy.state import get_messages_since
+from pynchy.utils import run_shell_command
 
 if TYPE_CHECKING:
+    from pynchy.conversation.sink import ConversationSink
     from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
@@ -55,6 +62,9 @@ class MessageHandlerDeps(Protocol):
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
+
+    @property
+    def conversation_sink(self) -> ConversationSink: ...
 
     # The "seen" cursor for the polling loop (distinct from per-group agent cursors)
     last_timestamp: str
@@ -216,16 +226,28 @@ async def execute_direct_command(
     ts = datetime.now(UTC).isoformat()
     output_text = f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
 
-    await store_message_direct(
-        message_id=generate_message_id("cmd"),
-        chat_jid=chat_jid,
-        sender="command_output",
-        sender_name="command",
-        content=output_text,
-        timestamp=ts,
-        is_from_me=True,
-        message_type="tool_result",
-        metadata={"exit_code": result.returncode},
+    await deps.conversation_sink.append(
+        ConversationEvent(
+            event_id=new_event_id(),
+            # TODO(Task 8): replace this synthetic ID once command and agent
+            # execution share turn identity through the orchestrator.
+            turn_id=new_turn_id(),
+            chat_jid=chat_jid,
+            timestamp=ts,
+            kind=ConversationEventKind.HOST_MESSAGE,
+            sender="command_output",
+            sender_name="command",
+            content=output_text,
+            message_type="host",
+            source_message_id=_message.id,
+            metadata={
+                "source": "direct_command",
+                "command": command,
+                "exit_code": result.returncode,
+                "workspace_name": group.name,
+                "workspace_folder": group.folder,
+            },
+        )
     )
 
     event = types.OutboundEvent(

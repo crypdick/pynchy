@@ -12,6 +12,9 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig
+from pynchy.conversation.events import ConversationEvent, ConversationEventKind
+from pynchy.conversation.phoenix import PhoenixEventRef
+from pynchy.conversation.sink import ConversationSink
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.types import WorkspaceProfile
@@ -22,6 +25,19 @@ if TYPE_CHECKING:
 
 class StopAfterArgumentValidationError(Exception):
     """Sentinel raised once run_app reaches its first startup phase."""
+
+
+class _RecordingBodyStore:
+    def __init__(self) -> None:
+        self.events: list[ConversationEvent] = []
+
+    async def write_event(self, event: ConversationEvent) -> PhoenixEventRef:
+        self.events.append(event)
+        return PhoenixEventRef(event_id=event.event_id, trace_ref=f"fake:{event.event_id}")
+
+
+async def _ignore_pointer(_event: ConversationEvent, _ref: PhoenixEventRef) -> None:
+    await asyncio.sleep(0)
 
 
 def _completed_awaitable(value: Any = None) -> Awaitable[Any]:
@@ -56,6 +72,32 @@ async def test_pynchyapp_startup_annotations_resolve() -> None:
     await app.set_memory_provider(None)
 
     assert app.session_cleared == {"admin"}
+
+
+@pytest.mark.asyncio
+async def test_host_broadcaster_persists_through_conversation_sink() -> None:
+    app = PynchyApp()
+    body_store = _RecordingBodyStore()
+    sink = ConversationSink(body_store=body_store, store_pointer=_ignore_pointer)
+    app._conversation_sink = sink
+
+    await app.broadcast_host_message("group@g.us", "Status update")
+
+    host_event = body_store.events[-1]
+    assert host_event.kind == ConversationEventKind.HOST_MESSAGE
+    assert host_event.chat_jid == "group@g.us"
+    assert host_event.sender == "host"
+    assert host_event.message_type == "host"
+    assert host_event.content == "Status update"
+    assert host_event.metadata["source"] == "host_broadcaster"
+
+    await app.broadcast_system_notice("group@g.us", "Config changed")
+
+    notice_event = body_store.events[-1]
+    assert notice_event.kind == ConversationEventKind.SYSTEM_NOTICE
+    assert notice_event.sender == "system_notice"
+    assert notice_event.message_type == "user"
+    assert notice_event.content == "[System Notice] Config changed"
 
 
 @pytest.mark.asyncio

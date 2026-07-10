@@ -325,6 +325,31 @@ async def test_get_messages_since_excludes_projected_assistant_events() -> None:
     assert messages == []
 
 
+async def test_get_messages_since_excludes_projected_system_notices() -> None:
+    await init_test_database()
+    reader = FakeBodyReader({"evt_1": "system notice body"})
+    await store_conversation_event_pointer(
+        ConversationEvent(
+            event_id="evt_1",
+            turn_id="turn_1",
+            chat_jid="slack:C123",
+            timestamp="2026-07-10T00:00:00+00:00",
+            kind=ConversationEventKind.SYSTEM_NOTICE,
+            sender="system_notice",
+            sender_name="System",
+            content="[System Notice] body",
+            message_type="user",
+            metadata={"source": "test"},
+        ),
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+
+    messages = await get_messages_since("slack:C123", "", body_reader=reader)
+
+    assert messages == []
+    assert reader.calls == []
+
+
 async def test_store_projection_pointer_rejects_mismatched_phoenix_ref() -> None:
     await init_test_database()
     event = _event("evt_1", "2026-07-10T00:00:00+00:00")
