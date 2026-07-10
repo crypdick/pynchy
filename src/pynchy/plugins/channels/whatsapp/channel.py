@@ -27,11 +27,15 @@ from neonize.events import (
     MessageEv,
     PairStatusEv,
 )
-from neonize.utils.jid import Jid2String
+from neonize.utils.enum import ChatPresence, ChatPresenceMedia
+from neonize.utils.jid import Jid2String, build_jid
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
-from pynchy.host.orchestrator.messaging.pending_questions import find_pending_for_jid
+from pynchy.host.orchestrator.messaging.pending_questions import (
+    PENDING_QUESTION_TIMEOUT_SECONDS,
+    find_pending_for_jid,
+)
 from pynchy.logger import logger
 from pynchy.state import (
     get_chat_jids_by_name,
@@ -213,7 +217,6 @@ class WhatsAppChannel:
     async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         try:
             target = self._parse_jid(jid)
-            from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 
             presence = (
                 ChatPresence.CHAT_PRESENCE_COMPOSING
@@ -405,10 +408,6 @@ class WhatsAppChannel:
     def _is_stale_pending_question(pending: dict[str, Any]) -> bool:
         # Skip stale pending questions — let the sweep handle cleanup.
         # A stale file from a crash should not silently swallow real messages.
-        from pynchy.host.orchestrator.messaging.pending_questions import (
-            PENDING_QUESTION_TIMEOUT_SECONDS,
-        )
-
         timestamp = datetime.fromisoformat(pending.get("timestamp", ""))
         age = (datetime.now(UTC) - timestamp).total_seconds()
         return age > PENDING_QUESTION_TIMEOUT_SECONDS
@@ -467,8 +466,6 @@ class WhatsAppChannel:
 
     @staticmethod
     def _parse_jid(jid_str: str) -> object:
-        from neonize.utils.jid import build_jid
-
         if "@" not in jid_str:
             return build_jid(jid_str)
         user, server = jid_str.split("@", 1)
