@@ -45,12 +45,15 @@ def _public_module() -> _SlackPublicModule:
 
 def _channel_context(
     context: object | None,
-) -> tuple[
-    Callable[[str, NewMessage], None],
-    Callable[[str, str, str | None], None],
-    Callable[[str, str, str, str], None] | None,
-    Callable[[str, dict[str, Any]], None] | None,
-] | None:
+) -> (
+    tuple[
+        Callable[[str, NewMessage], None],
+        Callable[[str, str, str | None], None],
+        Callable[[str, str, str, str], None] | None,
+        Callable[[str, dict[str, Any]], None] | None,
+    ]
+    | None
+):
     """Return the callbacks SlackChannel needs, or ``None`` when unavailable."""
     if context is None:
         return None
@@ -125,15 +128,9 @@ class SlackChannelPlugin:
     """Built-in plugin that activates when Slack tokens are configured."""
 
     @hookimpl
-    def pynchy_create_channel(
-        self, context: object | None
-    ) -> list[SlackChannel] | None:
+    def pynchy_create_channel(self, context: object | None) -> list[SlackChannel] | None:
         settings = _public_module().get_settings()
-        configs = {
-            name: cast("SlackConnectionConfig", cfg)
-            for name, cfg in settings.connections.items()
-            if cfg.type == "slack"
-        }
+        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "slack"}
         if not configs:
             logger.debug("Slack channel skipped — no connections configured")
             return None

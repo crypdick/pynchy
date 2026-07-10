@@ -36,13 +36,16 @@ def _public_module() -> object:
 
 def _channel_context(
     context: object | None,
-) -> tuple[
-    Callable[[str, NewMessage], None],
-    Callable[[str, str, str | None], None],
-    Callable[[str, str, str, str], None] | None,
-    Callable[[str, dict[str, object]], None] | None,
-    Callable[[], dict[str, WorkspaceProfile]] | None,
-] | None:
+) -> (
+    tuple[
+        Callable[[str, NewMessage], None],
+        Callable[[str, str, str | None], None],
+        Callable[[str, str, str, str], None] | None,
+        Callable[[str, dict[str, object]], None] | None,
+        Callable[[], dict[str, WorkspaceProfile]] | None,
+    ]
+    | None
+):
     """Return the callbacks DiscordChannel needs, or ``None`` when unavailable."""
     if context is None:
         return None
@@ -108,11 +111,7 @@ class DiscordChannelPlugin:
         public = _public_module()
         get_settings = cast("Callable[[], Settings]", public.get_settings)
         settings = get_settings()
-        configs = {
-            name: cast("DiscordConnectionConfig", cfg)
-            for name, cfg in settings.connections.items()
-            if cfg.type == "discord"
-        }
+        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "discord"}
         if not configs:
             logger.debug("Discord channel skipped — no connections configured")
             return None

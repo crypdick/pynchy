@@ -14,9 +14,7 @@ if TYPE_CHECKING:
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _PYNCHY_LITELLM_PROVIDER = "pynchy_litellm"
 _UNSUPPORTED_TOML_VALUE_ERROR = "Unsupported TOML value: {value!r}"
-_CODEX_GATEWAY_REQUIREMENTS_ERROR = (
-    "Codex core requires {requirements} from the Pynchy LLM gateway"
-)
+_CODEX_GATEWAY_REQUIREMENTS_ERROR = "Codex core requires {requirements} from the Pynchy LLM gateway"
 # Pynchy's container and mount policy are the isolation boundary. Codex's
 # inner bubblewrap layer rejects tracked symlinked instruction dirs such as
 # .agents -> .claude inside a writable project mount.

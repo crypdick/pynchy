@@ -13,6 +13,8 @@ from .backend import SqliteMemoryBackend
 __all__ = ["SqliteMemoryPlugin"]
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+_DEFAULT_CATEGORY = "core"
+_DEFAULT_LIMIT = 5
 
 
 @cache
@@ -27,51 +29,63 @@ def _get_backend() -> SqliteMemoryBackend:
 
 async def _handle_save_memory(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
-    if not source_group:
+    if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
 
     key = data.get("key")
     content = data.get("content")
-    if not key or not content:
+    if not isinstance(key, str) or not key or not isinstance(content, str) or not content:
         return {"error": "Missing required fields: key, content"}
+    category = data.get("category", _DEFAULT_CATEGORY)
+    if not isinstance(category, str):
+        return {"error": "category must be a string"}
+    metadata = data.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        return {"error": "metadata must be an object"}
 
     backend = _get_backend()
     result = await backend.save(
         group_folder=source_group,
         key=key,
         content=content,
-        category=data.get("category", "core"),
-        metadata=data.get("metadata"),
+        category=category,
+        metadata=metadata,
     )
     return {"result": result}
 
 
 async def _handle_recall_memories(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
-    if not source_group:
+    if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
 
     query = data.get("query")
-    if not query:
+    if not isinstance(query, str) or not query:
         return {"error": "Missing required field: query"}
+    category = data.get("category")
+    if category is not None and not isinstance(category, str):
+        return {"error": "category must be a string"}
+    limit = data.get("limit", _DEFAULT_LIMIT)
+    if not isinstance(limit, int):
+        return {"error": "limit must be an integer"}
 
     backend = _get_backend()
     results = await backend.recall(
         group_folder=source_group,
         query=query,
-        category=data.get("category"),
-        limit=data.get("limit", 5),
+        category=category,
+        limit=limit,
     )
     return {"result": {"memories": results, "count": len(results)}}
 
 
 async def _handle_forget_memory(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
-    if not source_group:
+    if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
 
     key = data.get("key")
-    if not key:
+    if not isinstance(key, str) or not key:
         return {"error": "Missing required field: key"}
 
     backend = _get_backend()
@@ -81,13 +95,16 @@ async def _handle_forget_memory(data: dict[str, object]) -> dict[str, object]:
 
 async def _handle_list_memories(data: dict[str, object]) -> dict[str, object]:
     source_group = data.get("source_group")
-    if not source_group:
+    if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
+    category = data.get("category")
+    if category is not None and not isinstance(category, str):
+        return {"error": "category must be a string"}
 
     backend = _get_backend()
     results = await backend.list_keys(
         group_folder=source_group,
-        category=data.get("category"),
+        category=category,
     )
     return {"result": {"memories": results, "count": len(results)}}
 

@@ -37,9 +37,7 @@ _ERR_REQUIRED_STRING = "{field_name} must be a string"
 _ERR_ALLOWED_ROOT_TABLE = "allowed_roots[{index}] must be a table"
 _ERR_ALLOWLIST_TABLE = "Mount allowlist must decode to a TOML table"
 _ERR_MISSING_REAL_HOST_PATH = "Allowed mount validation result is missing real_host_path"
-_ERR_MISSING_EFFECTIVE_READONLY = (
-    "Allowed mount validation result is missing effective_readonly"
-)
+_ERR_MISSING_EFFECTIVE_READONLY = "Allowed mount validation result is missing effective_readonly"
 
 
 def _reset_cache() -> None:  # pyright: ignore[reportUnusedFunction]

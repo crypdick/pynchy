@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from temporalio import activity
 
@@ -45,7 +46,10 @@ def get_temporal_scheduler_status() -> dict[str, object]:
 
 
 def _update_temporal_scheduler_status(**changes: object) -> None:
-    _state.temporal_scheduler_status = replace(_state.temporal_scheduler_status, **changes)
+    _state.temporal_scheduler_status = replace(
+        _state.temporal_scheduler_status,
+        **cast("Any", changes),
+    )
 
 
 def _activity_workflow_id() -> str | None:

@@ -50,9 +50,7 @@ def _row_to_workspace_profile(row: Row) -> WorkspaceProfile:
                 contains_secrets=sec_data["contains_secrets"],
             )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
-            raise ValueError(
-                _CORRUPT_SECURITY_PROFILE_ERROR.format(folder=row["folder"])
-            ) from exc
+            raise ValueError(_CORRUPT_SECURITY_PROFILE_ERROR.format(folder=row["folder"])) from exc
 
     return WorkspaceProfile(
         jid=row["jid"],

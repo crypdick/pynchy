@@ -42,9 +42,7 @@ _LINEAR_ISSUE_CREATE_ISSUE_MISSING = "Linear issueCreate response did not includ
 _LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
 _LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
 _LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
-_LINEAR_WORKSPACE_REQUIRED = (
-    "Workspace-scoped Linear todo tools require an MCP workspace instance"
-)
+_LINEAR_WORKSPACE_REQUIRED = "Workspace-scoped Linear todo tools require an MCP workspace instance"
 _LINEAR_REQUIRED_ARGUMENT = "{key} is required"
 
 
@@ -300,8 +298,7 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
     async with aiohttp.ClientSession() as session:
         client = LinearClient(api_key=token, session=session)
         handlers: dict[
-            str,
-            Callable[[LinearClient, dict[str, Any], str | None], Awaitable[Any]],
+            str, Callable[[LinearClient, dict[str, Any], str | None], Awaitable[Any]]
         ] = {
             "linear_list_teams": _tool_list_teams,
             "linear_list_issues": _tool_list_issues,
@@ -318,7 +315,7 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
 
 
 async def _tool_list_teams(
-    client: object,
+    client: LinearClient,
     _arguments: dict[str, Any],
     _workspace: str | None,
 ) -> list[dict[str, Any]]:
@@ -326,7 +323,7 @@ async def _tool_list_teams(
 
 
 async def _tool_list_issues(
-    client: object,
+    client: LinearClient,
     arguments: dict[str, Any],
     _workspace: str | None,
 ) -> list[dict[str, Any]]:
@@ -335,14 +332,12 @@ async def _tool_list_issues(
         first = int(first)
     return cast(
         "list[dict[str, Any]]",
-        await cast("Any", client).list_issues(
-            team_id=arguments.get("team_id"), first=first
-        ),
+        await cast("Any", client).list_issues(team_id=arguments.get("team_id"), first=first),
     )
 
 
 async def _tool_create_issue(
-    client: object,
+    client: LinearClient,
     arguments: dict[str, Any],
     _workspace: str | None,
 ) -> dict[str, Any]:
@@ -365,7 +360,7 @@ async def _tool_create_issue(
 
 
 async def _tool_list_todos(
-    client: object,
+    client: LinearClient,
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> list[dict[str, Any]]:
@@ -378,7 +373,7 @@ async def _tool_list_todos(
 
 
 async def _tool_create_todo(
-    client: object,
+    client: LinearClient,
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> dict[str, Any]:
@@ -392,7 +387,7 @@ async def _tool_create_todo(
 
 
 async def _tool_move_todo(
-    client: object,
+    client: LinearClient,
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> dict[str, Any]:
@@ -445,7 +440,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", DEFAULT_PORT)))
     parser.add_argument("--workspace")
     args = parser.parse_args(argv)
-    web.run_app(build_app(workspace=args.workspace), host=LOCAL_MCP_BIND_HOST, port=args.port)
+    web.run_app(
+        cast("web.Application", build_app(workspace=args.workspace)),
+        host=LOCAL_MCP_BIND_HOST,
+        port=args.port,
+    )
 
 
 if __name__ == "__main__":

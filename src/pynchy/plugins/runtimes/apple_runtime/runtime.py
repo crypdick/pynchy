@@ -13,9 +13,7 @@ from pynchy.host.container_manager.labels import (
     AGENT_CONTAINER_LABEL_VALUE,
 )
 
-_APPLE_CONTAINER_START_FAILURE_MESSAGE = (
-    "Apple Container system is required but failed to start"
-)
+_APPLE_CONTAINER_START_FAILURE_MESSAGE = "Apple Container system is required but failed to start"
 
 
 @dataclass(frozen=True)

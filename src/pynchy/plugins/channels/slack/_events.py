@@ -17,6 +17,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from re import Pattern
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pynchy.config import get_settings
@@ -44,21 +45,19 @@ JsonDict = dict[str, object]
 @runtime_checkable
 class _SlackApp(Protocol):
     def event(
-        self, event_name: str
+        self, _event_name: str
     ) -> Callable[[Callable[..., object]], Callable[..., object]]: ...
 
     def action(
-        self, action_name: str
+        self, action_name: str | Pattern[str]
     ) -> Callable[[Callable[..., object]], Callable[..., object]]: ...
 
-    def use(self, middleware: object) -> object: ...
+    def use(self, _middleware: object) -> object: ...
 
 
 @runtime_checkable
 class _SlackAssistant(Protocol):
-    def thread_started(
-        self, handler: Callable[..., object]
-    ) -> Callable[..., object]: ...
+    def thread_started(self, handler: Callable[..., object]) -> Callable[..., object]: ...
 
     def user_message(self, handler: Callable[..., object]) -> Callable[..., object]: ...
 
@@ -70,7 +69,7 @@ class SlackEvents:
     _channel: SlackChannel
 
     def _require_app(self) -> _SlackApp:
-        return self._channel.require_slack_app()
+        return cast("_SlackApp", self._channel.require_slack_app())
 
     def register_handlers(self) -> None:
         self._register_handlers()

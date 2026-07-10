@@ -334,7 +334,7 @@ class TestInterceptSpecialCommand:
 
 
 class TestExecuteDirectCommand:
-    _P_SHELL = "pynchy.host.orchestrator.messaging.pipeline.run_shell_command"
+    _P_SHELL = "pynchy.host.orchestrator.messaging.direct_command.run_shell_command"
 
     @pytest.mark.asyncio
     async def test_successful_command_broadcasts_output(self, tmp_path):

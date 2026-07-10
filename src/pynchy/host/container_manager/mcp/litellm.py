@@ -89,7 +89,7 @@ async def _api_response_data(
     ) as resp:
         if resp.status in (200, 201):
             try:
-                return await resp.json()
+                return cast("object", await resp.json())
             except (aiohttp.ContentTypeError, ValueError):
                 return True  # 2xx but no JSON body
         if request.log_event:

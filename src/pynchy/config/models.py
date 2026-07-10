@@ -1,5 +1,6 @@
-# allow: file-length - task adds a core model; splitting schema is out of scope.
 """Configuration sub-models — each maps to a ``[section]`` in config.toml.
+
+allow: file-length - task adds a core model; splitting schema is out of scope.
 
 Extracted from :mod:`pynchy.config` to keep the root Settings class
 focused on composition and validation.  Follows the same pattern as
@@ -18,7 +19,6 @@ import posixpath
 from pathlib import Path
 from typing import Annotated, Literal, NewType
 
-from croniter import croniter
 from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 
 from pynchy.config.caldav import CalDAVConfig
@@ -56,8 +56,6 @@ DOCKER_MCP_PORT_MESSAGE = "Docker MCP tools require 'port'"
 URL_MCP_URL_MESSAGE = "URL MCP tools require 'url'"
 SCRIPT_MCP_COMMAND_MESSAGE = "Script MCP tools require 'command'"
 SCRIPT_MCP_PORT_MESSAGE = "Script MCP tools require 'port'"
-CRON_COMMAND_MESSAGE = "Cron job command cannot be empty"
-TIMEOUT_POSITIVE_MESSAGE = "timeout_seconds must be positive"
 
 
 def _validated_connection_ref(v: str) -> ConnectionRefStr:
@@ -543,82 +541,6 @@ ConnectionConfig = Annotated[
     SlackConnectionConfig | WhatsAppConnectionConfig | DiscordConnectionConfig,
     Field(discriminator="type"),
 ]
-
-
-class _ResetWords(_StrictModel):
-    verbs: list[str] = ["reset", "restart", "clear", "new", "wipe"]
-    nouns: list[str] = ["context", "session", "chat", "conversation"]
-    aliases: list[str] = ["boom", "c", "new", "clear", "reset"]
-
-
-class _EndSessionWords(_StrictModel):
-    verbs: list[str] = ["end", "stop", "close", "finish"]
-    nouns: list[str] = ["session"]
-    aliases: list[str] = ["done", "bye", "goodbye", "cya"]
-
-
-class _RedeployWords(_StrictModel):
-    aliases: list[str] = ["r"]
-    verbs: list[str] = ["redeploy", "deploy"]
-
-
-class CommandWordsConfig(_StrictModel):
-    reset: _ResetWords = _ResetWords()
-    end_session: _EndSessionWords = _EndSessionWords()
-    redeploy: _RedeployWords = _RedeployWords()
-
-
-class SchedulerConfig(_StrictModel):
-    # NOTE: Update docs/usage/scheduled-tasks.md § Temporal Scheduler if you change these fields.
-    poll_interval: float = 60.0  # seconds
-    timezone: str = ""  # empty → auto-detect
-    temporal_address: str = "localhost:7233"
-    temporal_namespace: str = "default"
-    temporal_task_queue: str = "pynchy-scheduler"
-
-
-class CronJobConfig(_StrictModel):
-    schedule: str  # cron expression
-    command: str
-    cwd: str | None = None  # optional working directory (relative to project root or absolute)
-    timeout_seconds: int = 600
-    enabled: bool = True
-    quiet_on_success: bool = False
-
-    # See WorkspaceConfig.validate_cron: cron stays a str-returning check because
-    # croniter re-validation is cheap and there is no parsed type to carry downstream.
-    @field_validator("schedule")
-    @classmethod
-    def validate_schedule(cls, v: str) -> str:
-        if not croniter.is_valid(v):
-            msg = f"Invalid cron expression: {v}"
-            raise ValueError(msg)
-        return v
-
-    @field_validator("command")
-    @classmethod
-    def validate_command(cls, v: str) -> str:
-        command = v.strip()
-        if not command:
-            raise ValueError(CRON_COMMAND_MESSAGE)
-        return command
-
-    @field_validator("timeout_seconds")
-    @classmethod
-    def validate_timeout_seconds(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError(TIMEOUT_POSITIVE_MESSAGE)
-        return v
-
-
-class IntervalsConfig(_StrictModel):
-    message_poll: float = 2.0  # seconds
-    ipc_poll: float = 1.0  # seconds
-
-
-class QueueConfig(_StrictModel):
-    max_retries: int = 5
-    base_retry_seconds: float = 5.0
 
 
 class PluginConfig(_StrictModel):

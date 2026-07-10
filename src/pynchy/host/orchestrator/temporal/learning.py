@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from temporalio import activity
@@ -23,7 +23,10 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
 
-_LEARNING_REVIEW_CHAT_JID_REQUIRED = "learning reviewer run requires a chat_jid"
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from pynchy.types import ContainerOutput, WorkspaceProfile
 
 
 def learning_review_workflow_id(packet: LearningPacket) -> str:
@@ -36,7 +39,10 @@ async def run_learning_review(packet_payload: dict[str, Any]) -> str:
     """Temporal activity that runs one hidden Obsidian learning review."""
     packet = packet_from_payload(packet_payload)
     try:
-        result = await _run_learning_review(packet, _require_scheduler_deps())
+        result = await _run_learning_review(
+            packet,
+            cast("SchedulerDependencies", _require_scheduler_deps()),
+        )
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(packet.job_id, "error", str(exc))
         raise
@@ -45,26 +51,62 @@ async def run_learning_review(packet_payload: dict[str, Any]) -> str:
 
 
 async def _run_learning_review(packet: LearningPacket, deps: SchedulerDependencies) -> str:
-    async def run_agent_via_queue(*args: object, **kwargs: object) -> str:
-        return await _run_agent_via_queue(deps, *args, **kwargs)
+    async def run_agent_via_queue(  # noqa: PLR0913, RUF100 - callback mirrors RunAgent calls.
+        group: WorkspaceProfile,
+        chat_jid: str,
+        messages: list[dict[str, object]],
+        on_output: Callable[[ContainerOutput], Awaitable[None]] | None = None,
+        extra_system_notices: list[str] | None = None,
+        *,
+        is_scheduled_task: bool = False,
+        repo_access_override: str | None = None,
+        input_source: str = "user",
+    ) -> str:
+        return await _run_agent_via_queue(
+            deps,
+            group,
+            chat_jid,
+            messages,
+            on_output=on_output,
+            extra_system_notices=extra_system_notices,
+            is_scheduled_task=is_scheduled_task,
+            repo_access_override=repo_access_override,
+            input_source=input_source,
+        )
 
     return await _run_learning_review_agent(packet, run_agent_via_queue)
 
 
-async def _run_agent_via_queue(
+async def _run_agent_via_queue(  # noqa: PLR0913, RUF100 - adapter mirrors SchedulerDependencies.
     deps: SchedulerDependencies,
-    *args: object,
-    **kwargs: object,
+    group: WorkspaceProfile,
+    chat_jid: str,
+    messages: list[dict[str, object]],
+    on_output: Callable[[ContainerOutput], Awaitable[None]] | None = None,
+    extra_system_notices: list[str] | None = None,
+    *,
+    is_scheduled_task: bool = False,
+    repo_access_override: str | None = None,
+    input_source: str = "user",
 ) -> str:
     loop = asyncio.get_running_loop()
     result_future: asyncio.Future[str] = loop.create_future()
-    group_jid = _learning_run_group_jid(args, kwargs)
+    group_jid = chat_jid
 
     async def run_queued_agent() -> None:
         if result_future.cancelled():
             return
         try:
-            result = await deps.run_agent(*args, **kwargs)
+            result = await deps.run_agent(
+                group,
+                chat_jid,
+                messages,
+                on_output=on_output,
+                extra_system_notices=extra_system_notices,
+                is_scheduled_task=is_scheduled_task,
+                repo_access_override=repo_access_override,
+                input_source=input_source,
+            )
         except asyncio.CancelledError:
             if not result_future.done():
                 result_future.cancel()
@@ -91,14 +133,3 @@ async def _run_agent_via_queue(
     except asyncio.CancelledError:
         result_future.cancel()
         raise
-
-
-def _learning_run_group_jid(args: tuple[object, ...], kwargs: dict[str, object]) -> str:
-    if len(args) >= 2 and isinstance(args[1], str):
-        return args[1]
-
-    chat_jid = kwargs.get("chat_jid")
-    if isinstance(chat_jid, str):
-        return chat_jid
-
-    raise TypeError(_LEARNING_REVIEW_CHAT_JID_REQUIRED)

@@ -14,7 +14,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -50,7 +50,7 @@ class _UrlopenResponse(Protocol):
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        traceback: object,
+        _traceback: object,
     ) -> object: ...
 
     def read(self) -> bytes: ...
@@ -177,7 +177,10 @@ def _urlopen_http_request(request: Request, *, timeout: int | float) -> _Urlopen
     scheme = urlsplit(request.full_url).scheme.lower()
     if scheme not in {"http", "https"}:
         raise OneCliError(_URL_SCHEME_ERROR)
-    return urlopen(request, timeout=timeout)  # noqa: S310, RUF100 - scheme is constrained above.
+    return cast(
+        "_UrlopenResponse",
+        urlopen(request, timeout=timeout),  # noqa: S310, RUF100 - scheme is constrained above.
+    )
 
 
 def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:

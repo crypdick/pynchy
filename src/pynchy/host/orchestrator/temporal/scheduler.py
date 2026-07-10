@@ -18,7 +18,7 @@ from datetime import (
 from types import (
     TracebackType,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from typing import Any
+from typing import Any, cast
 
 from temporalio import activity
 from temporalio.client import Client
@@ -28,7 +28,7 @@ from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
 from pynchy.config import get_settings
-from pynchy.config.models import (
+from pynchy.config.scheduler_models import (
     SchedulerConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
 from pynchy.host.learning.packet_codec import packet_to_payload
@@ -207,7 +207,10 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         return "skipped"
 
     try:
-        completed = await _run_scheduled_agent(task, _require_scheduler_deps())
+        completed = await _run_scheduled_agent(
+            task,
+            cast("SchedulerDependencies", _require_scheduler_deps()),
+        )
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
@@ -410,7 +413,7 @@ class TemporalSchedulerRuntime:
             start_kwargs["start_delay"] = start_delay
 
         try:
-            await self.client.start_workflow(workflow, **start_kwargs)
+            await self.client.start_workflow(cast("Any", workflow), **start_kwargs)
         except WorkflowAlreadyStartedError:
             _update_temporal_scheduler_status(
                 last_workflow_id=workflow_id,

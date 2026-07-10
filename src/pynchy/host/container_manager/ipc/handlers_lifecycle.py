@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by_folder
@@ -28,12 +28,13 @@ def _sync_merge_and_check_deploy(
     is None if no deploy is needed, or a bool indicating whether a
     container rebuild is required.
     """
-    pre_merge_sha = get_head_sha(cwd=repo_ctx.root)
-    result = host_sync_worktree(source_group, repo_ctx)
+    typed_repo_ctx = cast("repo.RepoContext", repo_ctx)
+    pre_merge_sha = get_head_sha(cwd=typed_repo_ctx.root)
+    result = host_sync_worktree(source_group, typed_repo_ctx)
 
     deploy_info: bool | None = None
     if result.get("success"):
-        post_merge_sha = get_head_sha(cwd=repo_ctx.root)
+        post_merge_sha = get_head_sha(cwd=typed_repo_ctx.root)
         if pre_merge_sha not in {"unknown", post_merge_sha} and needs_deploy(
             pre_merge_sha, post_merge_sha
         ):

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
+from pynchy.logger import logger
+
 from ._access import InboundContext
 
 if TYPE_CHECKING:
@@ -52,6 +54,41 @@ def supports_interactive_ask_user(questions: list[dict[str, Any]]) -> bool:
     question = questions[0]
     options = question.get("options", [])
     return not options or len(options) <= _MAX_BUTTONS_TOTAL
+
+
+async def send_ask_user_prompt(
+    channel: DiscordChannel,
+    jid: str,
+    request_id: str,
+    questions: list[dict[str, object]],
+) -> str | None:
+    """Post an ask_user prompt, using buttons when the prompt shape fits."""
+    if channel.client is None or not channel.owns_jid(jid):
+        return None
+    text = build_ask_user_text(questions)
+    view: DiscordAskUserView | None = None
+    if supports_interactive_ask_user(questions):
+        view = DiscordAskUserView(
+            channel=channel,
+            jid=jid,
+            request_id=request_id,
+            questions=questions,
+        )
+    try:
+        target = await channel.resolve_channel(jid)
+        message = await target.send(
+            text,
+            view=view,
+            allowed_mentions=discord.AllowedMentions.none(),
+            suppress_embeds=True,
+        )
+    except discord.DiscordException as exc:
+        logger.warning("Discord ask_user failed", err=str(exc))
+        return None
+    if view is not None:
+        view.bind_message_id(str(message.id))
+        channel.bind_ask_user_view(str(message.id), view)
+    return f"discord-{message.id}"
 
 
 def encode_button_custom_id(request_id: str, option_index: int) -> str:
@@ -281,13 +318,11 @@ class DiscordAskUserView(discord.ui.View):
             return
 
         self._completed = True
-        answer = {
+        answer: dict[str, object] = {
             "answer": answer_value,
             "answered_by": str(interaction_api.user.id),
             "channel_id": (
-                str(interaction_api.channel.id)
-                if interaction_api.channel is not None
-                else ""
+                str(interaction_api.channel.id) if interaction_api.channel is not None else ""
             ),
             "message_id": f"discord-{self._message_id}" if self._message_id else None,
         }

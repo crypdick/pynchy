@@ -29,7 +29,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field, model_validator
 from pydantic_settings import (
@@ -39,6 +39,9 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+if TYPE_CHECKING:
+    from pydantic.fields import FieldInfo
+
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
@@ -46,14 +49,11 @@ from pynchy.config.merge import ResolvedWorkspaceConfig, merge_workspace_profile
 from pynchy.config.models import (
     AgentConfig,
     CommandCenterConfig,
-    CommandWordsConfig,
     ConnectionConfig,
     ConnectionsConfig,
     ContainerConfig,
     ConversationStoreConfig,
-    CronJobConfig,
     GatewayConfig,
-    IntervalsConfig,
     LearningConfig,
     LoggingConfig,
     McpTool,
@@ -61,14 +61,19 @@ from pynchy.config.models import (
     OneCliConfig,
     PluginConfig,
     ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
-    QueueConfig,
     ReposConfig,
-    SchedulerConfig,
     SecretsConfig,
     SecurityConfig,
     ServerConfig,
     ToolConfig,
     WorkspaceConfig,
+)
+from pynchy.config.scheduler_models import (
+    CommandWordsConfig,
+    CronJobConfig,
+    IntervalsConfig,
+    QueueConfig,
+    SchedulerConfig,
 )
 
 _HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
@@ -90,7 +95,7 @@ class _FilteredDotenvSettingsSource(PydanticBaseSettingsSource):
         allowed = set(self.settings_cls.model_fields)
         return {key: value for key, value in data.items() if key in allowed}
 
-    def get_field_value(self, field: object, field_name: str) -> tuple[object, str, bool]:
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[object, str, bool]:
         return self._wrapped.get_field_value(field, field_name)
 
 

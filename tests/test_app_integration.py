@@ -61,9 +61,11 @@ def _make_message(
 
 
 def _completed_awaitable(value: Any = None) -> Awaitable[Any]:
-    future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
-    future.set_result(value)
-    return future
+    async def _completed() -> Any:
+        await asyncio.sleep(0)
+        return value
+
+    return _completed()
 
 
 def _failed_awaitable(exc: Exception) -> Awaitable[Any]:

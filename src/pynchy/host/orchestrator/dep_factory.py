@@ -47,8 +47,9 @@ from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
+    from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import WorkspaceProfile
+    from pynchy.types import ContainerOutput, WorkspaceProfile
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -84,12 +85,39 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
             return app.queue
 
         @staticmethod
-        async def run_agent(*args: object, **kwargs: object) -> str:
-            return await app.run_agent(*args, **kwargs)
+        async def run_agent(  # noqa: PLR0913, RUF100 - adapter mirrors SchedulerDependencies.
+            group: WorkspaceProfile,
+            chat_jid: str,
+            messages: list[dict[str, Any]],
+            on_output: OnOutput | None = None,
+            extra_system_notices: list[str] | None = None,
+            *,
+            is_scheduled_task: bool = False,
+            repo_access_override: str | None = None,
+            input_source: str = "user",
+            turn_id: str | None = None,
+        ) -> str:
+            return await app.run_agent(
+                group,
+                chat_jid,
+                messages,
+                on_output=on_output,
+                extra_system_notices=extra_system_notices,
+                is_scheduled_task=is_scheduled_task,
+                repo_access_override=repo_access_override,
+                input_source=input_source,
+                turn_id=turn_id,
+            )
 
         @staticmethod
-        async def handle_streamed_output(*args: object, **kwargs: object) -> bool:
-            return await app.handle_streamed_output(*args, **kwargs)
+        async def handle_streamed_output(
+            chat_jid: str,
+            group: WorkspaceProfile,
+            result: ContainerOutput,
+            *,
+            turn_id: str | None = None,
+        ) -> bool:
+            return await app.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
 
     return SchedulerDeps()
 

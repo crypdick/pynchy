@@ -37,13 +37,7 @@ class ConversationBodyReader(Protocol):
 
 
 class _PhoenixSpans(Protocol):
-    def get_spans(
-        self,
-        *,
-        project_identifier: str,
-        attributes: dict[str, str],
-        limit: int,
-    ) -> Sequence[Mapping[str, object]]: ...
+    def get_spans(self, **kwargs: object) -> Sequence[Mapping[str, object]]: ...
 
 
 class _PhoenixClient(Protocol):

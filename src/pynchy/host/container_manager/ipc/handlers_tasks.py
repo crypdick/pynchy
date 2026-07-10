@@ -9,7 +9,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (
@@ -220,7 +220,7 @@ def _group_folder(value: object) -> GroupFolder | None:
 
 def _schedule_type(value: object) -> Literal["cron", "interval", "once"] | None:
     if value in ("cron", "interval", "once"):
-        return cast("Literal['cron', 'interval', 'once']", value)
+        return value
     return None
 
 

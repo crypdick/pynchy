@@ -10,9 +10,7 @@ from pathlib import Path
 from pynchy.config.settings import Settings, get_settings
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
-_VAULT_ROOT_REQUIRED_ERROR = (
-    "learning.obsidian.vault_root is required when learning is enabled"
-)
+_VAULT_ROOT_REQUIRED_ERROR = "learning.obsidian.vault_root is required when learning is enabled"
 _PROFILE_ROOT_TEMPLATE_ERROR = "learning.obsidian.default_profile_root must be a valid template"
 _PATH_OUTSIDE_VAULT_ERROR = "learning paths must stay inside learning.obsidian.vault_root"
 

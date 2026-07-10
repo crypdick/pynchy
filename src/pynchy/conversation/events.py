@@ -47,9 +47,7 @@ def _freeze_metadata_value(value: object) -> object:
 
 def _json_ready_metadata_value(value: object) -> object:
     if isinstance(value, Mapping):
-        return {
-            key: _json_ready_metadata_value(nested) for key, nested in value.items()
-        }
+        return {key: _json_ready_metadata_value(nested) for key, nested in value.items()}
     if isinstance(value, tuple):
         return [_json_ready_metadata_value(item) for item in value]
     return value

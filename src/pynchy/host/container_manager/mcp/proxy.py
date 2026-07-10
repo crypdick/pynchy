@@ -71,7 +71,7 @@ class _ProxyRequest:
 @dataclass(frozen=True)
 class _BackendForwardContext:
     session: aiohttp.ClientSession
-    request: web.Request
+    request: object
     backend_url: str
     tail: str
     body: bytes
@@ -238,11 +238,12 @@ def _forwarded_headers(request: web.Request) -> dict[str, str]:
 async def _backend_response(
     context: _BackendForwardContext,
 ) -> web.Response:
+    request = cast("web.Request", context.request)
     async with context.session.request(
-        context.request.method,
+        request.method,
         context.backend_url + context.tail,
         data=context.body,
-        headers=_forwarded_headers(context.request),
+        headers=_forwarded_headers(request),
     ) as backend_resp:
         response_body = await backend_resp.read()
         response_headers = {
@@ -462,7 +463,10 @@ class McpProxy:
             approval_fn: Callback for human approval requests.
             port: Port to bind to. 0 = OS-assigned dynamic port.
         """
-        app = create_proxy_app(instance_urls, trust_map=trust_map, approval_fn=approval_fn)
+        app = cast(
+            "web.Application",
+            create_proxy_app(instance_urls, trust_map=trust_map, approval_fn=approval_fn),
+        )
         self._runner = web.AppRunner(app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, "localhost", port)

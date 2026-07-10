@@ -13,10 +13,17 @@ from collections.abc import (
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from pynchy.plugins.integrations.linear_board_payloads import (
+    LinearBoardPayloadError,
+    nodes,
+    norm_name,
+    normalize_status,
+    payload_entity,
+    projects_for_workspace,
+)
 from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
 from pynchy.plugins.integrations.linear_workspace_names import (
     project_description,
-    project_matches_workspace,
     todo_description,
     workspace_project_name,
 )
@@ -27,14 +34,9 @@ _TEAM_KEY_NOT_VISIBLE = "LINEAR_TEAM_KEY did not match a visible Linear team: {t
 _NO_VISIBLE_TEAMS = "Linear API key cannot see any teams"
 _LINEAR_PROJECT_MISSING = "Linear response did not include project"
 _LINEAR_TEAM_MISSING = "Linear response did not include team"
-_UNKNOWN_TODO_STATUS = "Unknown todo status '{status}'. Expected one of: {allowed}"
-_LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
-_LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
-_LINEAR_PAYLOAD_INCOMPLETE = "Linear did not complete {payload_key}"
-_LINEAR_ENTITY_MISSING = "Linear {payload_key} response did not include {entity_key}"
 
 
-class LinearBoardError(RuntimeError):
+class LinearBoardError(LinearBoardPayloadError):
     """Raised when Linear board reconciliation cannot continue."""
 
 
@@ -188,7 +190,7 @@ async def create_workspace_todo(
 ) -> dict[str, Any]:
     """Create a Linear issue in the workspace's board."""
     board = await ensure_workspace_board(client, workspace, team_key=team_key)
-    status_key = _normalize_status(status)
+    status_key = normalize_status(status)
     state = board.states[status_key]
     data = await client.query(
         """
@@ -221,7 +223,7 @@ async def create_workspace_todo(
         title=title,
         description=todo_description(workspace),
     )
-    return _payload_entity(data, "issueCreate", "issue")
+    return payload_entity(data, "issueCreate", "issue")
 
 
 async def move_workspace_todo(
@@ -234,7 +236,7 @@ async def move_workspace_todo(
 ) -> dict[str, Any]:
     """Move a Linear todo issue to one of Pynchy's standard statuses."""
     board = await ensure_workspace_board(client, workspace, team_key=team_key)
-    status_key = _normalize_status(status)
+    status_key = normalize_status(status)
     state = board.states[status_key]
     data = await client.query(
         """
@@ -248,7 +250,7 @@ async def move_workspace_todo(
         issue_id=issue_id,
         state_id=state["id"],
     )
-    return _payload_entity(data, "issueUpdate", "issue")
+    return payload_entity(data, "issueUpdate", "issue")
 
 
 async def list_workspace_todos(
@@ -279,7 +281,7 @@ async def list_workspace_todos(
     project = data.get("project")
     if not isinstance(project, dict):
         raise LinearBoardError(_LINEAR_PROJECT_MISSING)
-    issues = _nodes(project, "issues")
+    issues = nodes(project, "issues")
     if include_done:
         return issues
     return [issue for issue in issues if (issue.get("state") or {}).get("type") != "completed"]
@@ -308,8 +310,8 @@ async def _load_team_resources(
     if not isinstance(team, dict):
         raise LinearBoardError(_LINEAR_TEAM_MISSING)
     return {
-        "projects": _nodes(team, "projects"),
-        "states": _nodes(team, "states"),
+        "projects": nodes(team, "projects"),
+        "states": nodes(team, "states"),
     }
 
 
@@ -318,10 +320,10 @@ async def _ensure_states(
     team_id: str,
     existing_states: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    by_name = {_norm_name(state.get("name")): state for state in existing_states}
+    by_name = {norm_name(state.get("name")): state for state in existing_states}
     states: dict[str, dict[str, Any]] = {}
     for key, spec in LINEAR_TODO_STATUSES.items():
-        existing = by_name.get(_norm_name(spec.name))
+        existing = by_name.get(norm_name(spec.name))
         if existing is not None:
             states[key] = existing
             continue
@@ -352,7 +354,7 @@ async def _ensure_states(
             position=spec.position,
             color=spec.color,
         )
-        states[key] = _payload_entity(data, "workflowStateCreate", "workflowState")
+        states[key] = payload_entity(data, "workflowStateCreate", "workflowState")
     return states
 
 
@@ -372,8 +374,8 @@ async def _ensure_project(
     if workspace_projects:
         return workspace_projects[0]
 
-    by_name = {_norm_name(project.get("name")): project for project in existing_projects}
-    existing = by_name.get(_norm_name(project_name))
+    by_name = {norm_name(project.get("name")): project for project in existing_projects}
+    existing = by_name.get(norm_name(project_name))
     if existing is not None:
         return existing
 
@@ -398,7 +400,7 @@ async def _ensure_project(
         name=project_name,
         description=project_description(workspace),
     )
-    return _payload_entity(data, "projectCreate", "project")
+    return payload_entity(data, "projectCreate", "project")
 
 
 async def _rename_workspace_projects(
@@ -407,10 +409,10 @@ async def _rename_workspace_projects(
     workspace: WorkspaceLike,
     project_name: str,
 ) -> list[dict[str, Any]]:
-    workspace_projects = _projects_for_workspace(projects, workspace)
+    workspace_projects = projects_for_workspace(projects, workspace)
     renamed: list[dict[str, Any]] = []
     for project in workspace_projects:
-        if _norm_name(project.get("name")) == _norm_name(project_name):
+        if norm_name(project.get("name")) == norm_name(project_name):
             renamed.append(project)
             continue
         renamed_project = await _update_project(client, project, workspace)
@@ -444,49 +446,4 @@ async def _update_project(
         name=workspace_project_name(workspace),
         description=project_description(workspace),
     )
-    return _payload_entity(data, "projectUpdate", "project")
-
-
-def _projects_for_workspace(
-    projects: list[dict[str, Any]],
-    workspace: WorkspaceLike,
-) -> list[dict[str, Any]]:
-    return [
-        project
-        for project in projects
-        if project_matches_workspace(project.get("description"), workspace)
-    ]
-
-
-def _normalize_status(status: str) -> str:
-    key = status.strip().lower().replace("-", "_").replace(" ", "_")
-    if key not in LINEAR_TODO_STATUSES:
-        allowed = ", ".join(LINEAR_TODO_STATUSES)
-        raise LinearBoardError(_UNKNOWN_TODO_STATUS.format(status=status, allowed=allowed))
-    return key
-
-
-def _norm_name(value: object) -> str:
-    return str(value or "").strip().lower()
-
-
-def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    connection = data.get(key)
-    if not isinstance(connection, dict):
-        raise LinearBoardError(_LINEAR_CONNECTION_MISSING.format(key=key))
-    nodes = connection.get("nodes")
-    if not isinstance(nodes, list):
-        raise LinearBoardError(_LINEAR_NODES_MISSING.format(key=key))
-    return [node for node in nodes if isinstance(node, dict)]
-
-
-def _payload_entity(data: dict[str, Any], payload_key: str, entity_key: str) -> dict[str, Any]:
-    payload = data.get(payload_key)
-    if not isinstance(payload, dict) or not payload.get("success"):
-        raise LinearBoardError(_LINEAR_PAYLOAD_INCOMPLETE.format(payload_key=payload_key))
-    entity = payload.get(entity_key)
-    if not isinstance(entity, dict):
-        raise LinearBoardError(
-            _LINEAR_ENTITY_MISSING.format(payload_key=payload_key, entity_key=entity_key)
-        )
-    return entity
+    return payload_entity(data, "projectUpdate", "project")

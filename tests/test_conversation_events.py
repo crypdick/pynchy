@@ -131,7 +131,4 @@ def test_conversation_event_span_attributes_omit_empty_optional_values() -> None
 def test_conversation_event_metadata_json_is_sorted_compact_and_stringifies() -> None:
     event = _event(metadata={"z": 2, "when": date(2026, 7, 10), "a": 1})
 
-    assert (
-        event.span_attributes()["pynchy.metadata_json"]
-        == '{"a":1,"when":"2026-07-10","z":2}'
-    )
+    assert event.span_attributes()["pynchy.metadata_json"] == '{"a":1,"when":"2026-07-10","z":2}'

@@ -26,6 +26,26 @@ SLACK_APP_VALUE = "xapp-fake"
 SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
 
+
+class _FakeSlackClient:
+    def __init__(self) -> None:
+        self.chat_postMessage = AsyncMock()
+        self.chat_update = AsyncMock()
+        self.reactions_add = AsyncMock()
+        self.conversations_history = AsyncMock()
+        self.users_info = AsyncMock()
+        self.conversations_info = AsyncMock()
+
+
+class _FakeSlackApp:
+    def __init__(self) -> None:
+        self.client = _FakeSlackClient()
+
+
+def _fake_slack_app() -> _FakeSlackApp:
+    return _FakeSlackApp()
+
+
 # ------------------------------------------------------------------
 # JID helpers
 # ------------------------------------------------------------------
@@ -308,7 +328,7 @@ class TestSlackChannelInbound:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         # Stub user/channel name resolution
         ch._resolve_user_name = AsyncMock(return_value="Alice")
         ch._resolve_channel_name = AsyncMock(return_value="general")
@@ -341,7 +361,7 @@ class TestSlackChannelInbound:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._bot_user_id = "U_BOT"
         ch._resolve_user_name = AsyncMock(return_value="Alice")
         ch._resolve_channel_name = AsyncMock(return_value="general")
@@ -363,7 +383,7 @@ class TestSlackChannelInbound:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
         ch._resolve_channel_name = AsyncMock(return_value="general")
 
@@ -383,7 +403,7 @@ class TestSlackChannelInbound:
     async def test_on_slack_message_ignores_bot_messages(self) -> None:
         on_message = MagicMock()
         ch = _make_channel(on_message=on_message)
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
 
         event = {"channel": "C12345", "user": "U999", "text": "bot msg", "bot_id": "B123"}
         await ch._on_slack_message(event)
@@ -394,7 +414,7 @@ class TestSlackChannelInbound:
     async def test_on_slack_message_ignores_edits(self) -> None:
         on_message = MagicMock()
         ch = _make_channel(on_message=on_message)
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
 
         event = {
             "channel": "C12345",
@@ -462,7 +482,7 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_returns_messages_in_chronological_order(self) -> None:
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
 
         # Slack returns newest-first
@@ -488,7 +508,7 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_filters_bot_messages(self) -> None:
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
 
         ch._app.client.conversations_history = AsyncMock(
@@ -508,7 +528,7 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_filters_subtypes(self) -> None:
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
 
         ch._app.client.conversations_history = AsyncMock(
@@ -539,7 +559,7 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_normalizes_bot_mentions(self) -> None:
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._bot_user_id = "U_BOT"
         ch._resolve_user_name = AsyncMock(return_value="Alice")
 
@@ -559,7 +579,7 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_handles_api_error(self) -> None:
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._app.client.conversations_history = AsyncMock(side_effect=Exception("API error"))
 
         result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
@@ -569,7 +589,7 @@ class TestFetchMissedMessages:
     @pytest.mark.asyncio
     async def test_skips_bot_only_page_then_returns_next_user_message(self) -> None:
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
         ch._app.client.conversations_history = AsyncMock(
             side_effect=[
@@ -611,7 +631,7 @@ class TestFetchMissedMessages:
     async def test_uses_actual_message_timestamp(self) -> None:
         """Timestamp should be derived from Slack ts, not current time."""
         ch = _make_channel()
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
 
         ts = "1700000001.000000"
@@ -636,7 +656,7 @@ class TestDeterministicMessageIds:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch._app = MagicMock()
+        ch._app = _fake_slack_app()
         ch._resolve_user_name = AsyncMock(return_value="Alice")
         ch._resolve_channel_name = AsyncMock(return_value="general")
 
@@ -663,7 +683,7 @@ class TestDeterministicMessageIds:
 
         # First call via _on_slack_message
         ch1 = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch1._app = MagicMock()
+        ch1._app = _fake_slack_app()
         ch1._resolve_user_name = AsyncMock(return_value="Alice")
         ch1._resolve_channel_name = AsyncMock(return_value="general")
         await ch1._on_slack_message(
@@ -673,7 +693,7 @@ class TestDeterministicMessageIds:
 
         # Second call via history catch-up
         ch2 = _make_channel()
-        ch2._app = MagicMock()
+        ch2._app = _fake_slack_app()
         ch2._resolve_user_name = AsyncMock(return_value="Alice")
         ch2._app.client.conversations_history = AsyncMock(
             return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}

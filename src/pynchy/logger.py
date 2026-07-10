@@ -43,7 +43,7 @@ def _setup_logging() -> object:
     return structlog.get_logger()
 
 
-logger = cast("BindableLogger", _setup_logging())
+logger: BindableLogger = cast("BindableLogger", _setup_logging())
 
 
 def _uncaught_exception_handler(

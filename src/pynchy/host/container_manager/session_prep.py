@@ -189,6 +189,9 @@ def _sync_plugin_skill_path(
     skill_path_str: object,
     workspace_skills: list[str] | None,
 ) -> None:
+    if not isinstance(skill_path_str, str | Path):
+        logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
+        return
     try:
         skill_path = Path(skill_path_str)
     except (TypeError, ValueError):
@@ -224,9 +227,7 @@ def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
     ):
         shutil.rmtree(dst_dir)
     if dst_dir.exists():
-        raise ValueError(
-            _SKILL_NAME_COLLISION_ERROR.format(skill_name=skill_path.name)
-        )
+        raise ValueError(_SKILL_NAME_COLLISION_ERROR.format(skill_name=skill_path.name))
 
     shutil.copytree(skill_path, dst_dir)
     (dst_dir / _PLUGIN_SKILL_MARKER).write_text(f"{skill_path.resolve()}\n")

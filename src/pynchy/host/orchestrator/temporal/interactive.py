@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from temporalio import activity
 
 from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
@@ -35,4 +37,7 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
 
 
 async def _process_interactive_message_turn(deps: object, chat_jid: str) -> bool:
-    return await messaging_pipeline.process_group_messages(deps, chat_jid)
+    return await messaging_pipeline.process_group_messages(
+        cast("messaging_pipeline.MessageHandlerDeps", deps),
+        chat_jid,
+    )

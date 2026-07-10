@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import pynchy.config.prompts as prompt_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
@@ -113,7 +113,9 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
     )
 
     request.deps.session_cleared.discard(request.group.folder)
-    agent_core_module, agent_core_class = resolve_agent_core(request.deps.plugin_manager)
+    agent_core_module, agent_core_class = resolve_agent_core(
+        cast("Any", request.deps.plugin_manager)
+    )
     config_timeout = resolve_container_timeout(request.group)
 
     return PreContainerResult(

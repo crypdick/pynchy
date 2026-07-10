@@ -11,9 +11,6 @@ from typing import Protocol, cast, runtime_checkable
 
 import pluggy
 
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves plugin config annotations at runtime.
-    WhatsAppConnectionConfig,
-)
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
@@ -41,16 +38,10 @@ class WhatsAppPlugin:
     """Plugin implementing selected pynchy hooks."""
 
     @hookimpl
-    def pynchy_create_channel(
-        self, context: object | None
-    ) -> list[object] | None:
+    def pynchy_create_channel(self, context: object | None) -> list[object] | None:
         public = _public_module()
         s: Settings = public.get_settings()
-        configs = {
-            name: cast("WhatsAppConnectionConfig", cfg)
-            for name, cfg in s.connections.items()
-            if cfg.type == "whatsapp"
-        }
+        configs = {name: cfg for name, cfg in s.connections.items() if cfg.type == "whatsapp"}
         if not configs:
             logger.debug("WhatsApp channel skipped — no connections configured")
             return None

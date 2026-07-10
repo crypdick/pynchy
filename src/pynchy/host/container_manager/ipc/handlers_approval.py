@@ -21,7 +21,7 @@ import json
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc import registry
@@ -30,6 +30,9 @@ from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc
 from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
+
+if TYPE_CHECKING:
+    from pynchy.host.container_manager.ipc.deps import IpcDeps
 
 
 def _read_json_file(path: Path) -> dict[str, Any]:
@@ -217,7 +220,9 @@ async def _execute_ipc_approval(
 
     try:
         request_data["_cop_approved"] = True
-        await registry.dispatch(request_data, source_group, is_admin=True, deps=deps)
+        await registry.dispatch(
+            request_data, source_group, is_admin=True, deps=cast("IpcDeps", deps)
+        )
         # Note: the IPC handler writes its own response file on success.
         # We write one here only on failure to ensure the container unblocks.
         logger.info(

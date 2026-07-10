@@ -38,6 +38,7 @@ else:
     try:
         from playwright.async_api import Page
     except ImportError:
+
         @runtime_checkable
         class Page(Protocol):
             async def goto(self, url: str, *, wait_until: str) -> object: ...
@@ -120,8 +121,9 @@ def exchange_code_for_tokens(code: str, client_id: str, client_secret: str) -> d
         raise RuntimeError(_token_exchange_failure_message(tokens["error"]))
 
     # Add expiry_date (ms) as expected by the googleapis Node.js client
-    if "expires_in" in tokens:
-        tokens["expiry_date"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
+    expires_in = tokens.get("expires_in")
+    if isinstance(expires_in, int):
+        tokens["expiry_date"] = int(time.time() * 1000) + expires_in * 1000
 
     return tokens
 

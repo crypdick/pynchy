@@ -7,9 +7,10 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
+    from pynchy.config.scheduler_models import SchedulerConfig
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from temporalio import activity
@@ -152,7 +153,7 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: objec
         )
 
         runtime_cls = _TemporalSchedulerRuntime
-    return runtime_cls(deps, scheduler_config)
+    return runtime_cls(deps, cast("SchedulerConfig", scheduler_config))
 
 
 def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:

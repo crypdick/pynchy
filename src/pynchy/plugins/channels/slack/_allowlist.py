@@ -28,7 +28,7 @@ else:
 class _SlackClient(Protocol):
     async def conversations_join(self, *, channel: str) -> object: ...
 
-    async def conversations_create(self, *, name: str, is_private: bool) -> dict[str, object]: ...
+    async def conversations_create(self, **kwargs: object) -> dict[str, object]: ...
 
     async def conversations_list(self, **kwargs: object) -> dict[str, object]: ...
 
@@ -42,6 +42,7 @@ _SLACK_APP_NOT_INITIALIZED = "Slack app is not initialized"
 _SLACK_CHANNEL_EXISTS_NOT_FOUND = (
     "Slack channel '{slack_name}' exists but could not be found via API"
 )
+_SLACK_CREATE_RESPONSE_MISSING_CHANNEL = "Slack conversations_create response missing channel.id"
 
 
 class SlackAllowlist:
@@ -55,7 +56,7 @@ class SlackAllowlist:
         app = ch.slack_app
         if app is None:
             raise RuntimeError(_SLACK_APP_NOT_INITIALIZED)
-        return app
+        return cast("_SlackApp", app)
 
     def register_allowed_channel(self, name: str, channel_id: str) -> None:
         self._channel.register_allowed_channel(name, channel_id)
@@ -143,17 +144,18 @@ class SlackAllowlist:
         slack_name = normalize_chat_name(name)[:80]
         try:
             resp = await app.client.conversations_create(name=slack_name, is_private=False)
-            channel_id = resp["channel"]["id"]
+            channel_id = _created_channel_id(resp)
             logger.info("Created Slack channel", name=slack_name, channel_id=channel_id)
         except Exception as exc:  # noqa: BLE001, RUF100 - Slack channel creation/reuse is a best-effort integration boundary.
             if "name_taken" not in str(exc):
                 raise
             # Channel already exists — look it up by name and reuse it.
-            channel_id = await self._find_channel_by_name(slack_name)
-            if channel_id is None:
+            existing_channel_id = await self._find_channel_by_name(slack_name)
+            if existing_channel_id is None:
                 raise RuntimeError(
                     _SLACK_CHANNEL_EXISTS_NOT_FOUND.format(slack_name=slack_name)
                 ) from exc
+            channel_id = existing_channel_id
             # Ensure the bot is a member so it receives events.
             # conversations.join is a no-op if already a member.
             try:
@@ -185,3 +187,13 @@ class SlackAllowlist:
             if not cursor:
                 break
         return None
+
+
+def _created_channel_id(resp: dict[str, object]) -> str:
+    channel = resp.get("channel")
+    if not isinstance(channel, dict):
+        raise TypeError(_SLACK_CREATE_RESPONSE_MISSING_CHANNEL)
+    channel_id = channel.get("id")
+    if not isinstance(channel_id, str):
+        raise TypeError(_SLACK_CREATE_RESPONSE_MISSING_CHANNEL)
+    return channel_id

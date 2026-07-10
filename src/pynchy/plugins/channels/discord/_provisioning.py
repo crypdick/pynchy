@@ -26,8 +26,7 @@ CONFIGURED_DISCORD_GUILD_NOT_FOUND_FOR_WORKSPACE_PROVISIONING = (
     "Configured Discord guild not found for workspace provisioning"
 )
 MULTIPLE_DISCORD_GUILDS_CONFIGURED = (
-    "Multiple Discord guilds are configured; workspace channel provisioning "
-    "needs exactly one guild"
+    "Multiple Discord guilds are configured; workspace channel provisioning needs exactly one guild"
 )
 DISCORD_BOT_NOT_IN_ANY_GUILD = "Discord bot is not in any guild"
 MULTIPLE_DISCORD_GUILDS_AVAILABLE = (
@@ -52,15 +51,11 @@ async def create_discord_group(channel: object, name: str) -> str:
 
     target = resolve_discord_chat_target(channel.config, name)
     if target is None or target.kind != "channel":
-        raise ValueError(
-            DISCORD_CHAT_REF_NOT_CONFIGURED_GUILD_CHANNEL.format(name=name)
-        )
+        raise ValueError(DISCORD_CHAT_REF_NOT_CONFIGURED_GUILD_CHANNEL.format(name=name))
     return await _create_configured_channel(channel, target)
 
 
-async def _create_configured_channel(
-    channel: object, target: DiscordChatTarget
-) -> str:
+async def _create_configured_channel(channel: object, target: DiscordChatTarget) -> str:
     channel_like = cast("Any", channel)
     existing = await channel_like.find_configured_channel(target)
     if existing is not None:
@@ -69,9 +64,7 @@ async def _create_configured_channel(
     guild = await channel_like.find_configured_guild(target)
     if guild is None:
         raise RuntimeError(
-            DISCORD_GUILD_NOT_FOUND_FOR_CONFIGURED_CHAT.format(
-                guild_id=target.guild_id
-            )
+            DISCORD_GUILD_NOT_FOUND_FOR_CONFIGURED_CHAT.format(guild_id=target.guild_id)
         )
 
     channel_name = channel_like.configured_channel_name(target)
@@ -110,9 +103,7 @@ async def _find_workspace_provisioning_guild(channel: object) -> object:
         guild = await channel_like.find_configured_guild(target)
         if guild is not None:
             return guild
-        raise RuntimeError(
-            CONFIGURED_DISCORD_GUILD_NOT_FOUND_FOR_WORKSPACE_PROVISIONING
-        )
+        raise RuntimeError(CONFIGURED_DISCORD_GUILD_NOT_FOUND_FOR_WORKSPACE_PROVISIONING)
     if len(configured_guilds) > 1:
         raise RuntimeError(MULTIPLE_DISCORD_GUILDS_CONFIGURED)
 
@@ -124,9 +115,7 @@ async def _find_workspace_provisioning_guild(channel: object) -> object:
     raise RuntimeError(MULTIPLE_DISCORD_GUILDS_AVAILABLE)
 
 
-def _find_guild_channel_by_name(
-    guild: object, channel_name: str
-) -> object | None:
+def _find_guild_channel_by_name(guild: object, channel_name: str) -> object | None:
     guild_like = cast("Any", guild)
     return next(
         (

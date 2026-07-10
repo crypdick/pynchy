@@ -21,7 +21,7 @@ import warnings
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
 
 import pluggy
 
@@ -195,7 +195,7 @@ def get_plugin_manager() -> pluggy.PluginManager:
     # orphan loops we never close ourselves.
     tmp_loop = _set_import_event_loop()
     try:
-        _register_builtin_plugins(pm, settings)
+        _register_builtin_plugins(pm, cast("_PluginSettings", settings))
         discovered = pm.load_setuptools_entrypoints("pynchy")
     finally:
         _clear_import_event_loop(tmp_loop)

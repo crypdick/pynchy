@@ -111,9 +111,7 @@ class DockerContainerRuntime:
                 check=True,
             )
         except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-            raise RuntimeError(
-                _DOCKER_DESKTOP_REQUIRED_BUT_COULD_NOT_BE_STARTED
-            ) from exc
+            raise RuntimeError(_DOCKER_DESKTOP_REQUIRED_BUT_COULD_NOT_BE_STARTED) from exc
 
         for i in range(30):
             try:

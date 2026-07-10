@@ -208,13 +208,15 @@ class TestLinearMcpServer:
 
     async def test_mcp_create_issue_calls_client(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
-        fake_client = AsyncMock()
-        fake_client.create_issue.return_value = {
-            "id": "issue-1",
-            "identifier": "PYN-1",
-            "title": "Track task",
-            "url": "https://linear.app/acme/issue/PYN-1",
-        }
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.create_issue = AsyncMock(
+            return_value={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Track task",
+                "url": "https://linear.app/acme/issue/PYN-1",
+            }
+        )
         with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
             client = await start_mcp_client()
             try:
@@ -254,7 +256,7 @@ class TestLinearMcpServer:
     async def test_mcp_create_workspace_todo_uses_server_workspace(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
         monkeypatch.delenv("LINEAR_TEAM_KEY", raising=False)
-        fake_client = AsyncMock()
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         with (
             patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client),
             patch(
@@ -299,7 +301,7 @@ class TestLinearMcpServer:
     async def test_mcp_move_workspace_todo_uses_status_name(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
         monkeypatch.setenv("LINEAR_TEAM_KEY", "SYN")
-        fake_client = AsyncMock()
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         with (
             patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client),
             patch(

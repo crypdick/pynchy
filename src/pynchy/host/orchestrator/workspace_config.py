@@ -14,6 +14,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
@@ -313,7 +314,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
         for key, value in data.items():
             ws_table.add(key, value)
 
-        doc["workspaces"][folder] = ws_table
+        cast("Any", doc["workspaces"])[folder] = ws_table
 
     mutate_config_toml(toml_path, _mutate)
 
@@ -334,7 +335,7 @@ def add_job_to_toml(job_name: str, config: JobConfig) -> None:
         for key, value in data.items():
             job_table.add(key, value)
 
-        doc["jobs"][job_name] = job_table
+        cast("Any", doc["jobs"])[job_name] = job_table
 
     mutate_config_toml(toml_path, _mutate)
 

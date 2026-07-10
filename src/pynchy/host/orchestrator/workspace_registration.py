@@ -8,7 +8,7 @@ from collections.abc import (
 )
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
@@ -154,7 +154,7 @@ async def sync_workspace_profile(  # noqa: PLR0913, RUF100 - sync boundary mirro
         changed["security"] = security
     if not changed:
         return
-    updated = replace(profile, **changed)
+    updated = replace(profile, **cast("Any", changed))
     workspaces[jid] = updated
     await set_workspace_profile(updated)
     logger.info("Updated workspace profile", folder=folder, changed=list(changed.keys()))

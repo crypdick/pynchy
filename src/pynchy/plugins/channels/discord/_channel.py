@@ -18,7 +18,6 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
     Iterable,
 )
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -36,9 +35,17 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
 from pynchy.utils import create_background_task
 
 from ._access import DiscordAccess
-from ._ask_user import DiscordAskUserView, build_ask_user_text, supports_interactive_ask_user
+from ._ask_user import DiscordAskUserView, send_ask_user_prompt
 from ._chunk import DISCORD_LIMIT, chunk_discord_text
-from ._events import DiscordEvents, build_message_metadata, normalized_message_content
+from ._events import DiscordEvents
+from ._history import (
+    MESSAGE_ID_PREFIX as _MESSAGE_ID_PREFIX,
+)
+from ._history import (
+    history_after,
+    history_high_water_mark,
+    history_message,
+)
 from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
@@ -49,7 +56,6 @@ if TYPE_CHECKING:
 else:
     DiscordConnectionConfig = object
 
-_MESSAGE_ID_PREFIX = "discord-"
 _TYPING_REFRESH_SECONDS = 8.0
 _DISCORD_CLIENT_NOT_CONNECTED = "Discord client is not connected"
 _DISCORD_MESSAGE_TOO_LONG = "Discord message exceeds 2000 chars; falling back to chunked send"
@@ -206,7 +212,7 @@ class DiscordChannel:
             return None
         client = cast("Any", self.client)
         if user_key.isdecimal():
-            return client.get_user(int(user_key))
+            return cast("object | None", client.get_user(int(user_key)))
         return next(
             (
                 user
@@ -247,13 +253,13 @@ class DiscordChannel:
                 else None
             )
             if existing is not None:
-                return existing
+                return cast("object", existing)
         channel_name = self.configured_channel_name(target)
         for channel in getattr(guild, "text_channels", []):
             if channel_key.isdecimal() and str(channel.id) == channel_key:
-                return channel
+                return cast("object", channel)
             if same_name(getattr(channel, "name", None), channel_name):
-                return channel
+                return cast("object", channel)
         return None
 
     async def find_configured_guild(self, target: DiscordChatTarget) -> object | None:
@@ -261,7 +267,10 @@ class DiscordChannel:
         guild_key = target.guild_id or ""
         if guild_key.isdecimal():
             guild = client.get_guild(int(guild_key))
-            return guild if guild is not None else await client.fetch_guild(int(guild_key))
+            return cast(
+                "object",
+                guild if guild is not None else await client.fetch_guild(int(guild_key)),
+            )
 
         guild_name = self._configured_guild_name(target)
         return next(
@@ -308,6 +317,9 @@ class DiscordChannel:
 
     def forget_ask_user_view(self, message_id: str) -> None:
         self._ask_user_views.pop(message_id, None)
+
+    def bind_ask_user_view(self, message_id: str, view: DiscordAskUserView) -> None:
+        self._ask_user_views[message_id] = view
 
     async def _send_text(self, channel: object, text: str) -> None:
         channel_like = cast("Any", channel)
@@ -450,62 +462,7 @@ class DiscordChannel:
     async def send_ask_user(
         self, jid: str, request_id: str, questions: list[dict[str, object]]
     ) -> str | None:
-        """Post an ask_user prompt, using buttons when the prompt shape fits."""
-        if self.client is None or not self.owns_jid(jid):
-            return None
-        text = build_ask_user_text(questions)
-        view: DiscordAskUserView | None = None
-        if supports_interactive_ask_user(questions):
-            view = DiscordAskUserView(
-                channel=self,
-                jid=jid,
-                request_id=request_id,
-                questions=questions,
-            )
-        try:
-            channel = await self.resolve_channel(jid)
-            message = await channel.send(
-                text,
-                view=view,
-                allowed_mentions=discord.AllowedMentions.none(),
-                suppress_embeds=True,
-            )
-        except discord.DiscordException as exc:
-            logger.warning("Discord ask_user failed", err=str(exc))
-            return None
-        if view is not None:
-            view.bind_message_id(str(message.id))
-            self._ask_user_views[str(message.id)] = view
-        return f"{_MESSAGE_ID_PREFIX}{message.id}"
-
-    @staticmethod
-    def _history_after(since: str) -> discord.Object:
-        return discord.Object(id=discord.utils.time_snowflake(datetime.fromisoformat(since)))
-
-    @staticmethod
-    def _history_high_water_mark(message: object, current: str) -> str:
-        message_like = cast("Any", message)
-        timestamp = message_like.created_at.isoformat() if message_like.created_at else ""
-        if timestamp > current:
-            return timestamp
-        return current
-
-    def _history_message(self, channel_jid: str, message: object) -> NewMessage | None:
-        message_like = cast("Any", message)
-        author = message_like.author
-        if getattr(author, "bot", False) or str(author.id) == self.bot_user_id:
-            return None
-        timestamp = message_like.created_at.isoformat() if message_like.created_at else ""
-        return NewMessage(
-            id=f"{_MESSAGE_ID_PREFIX}{message_like.id}",
-            chat_jid=channel_jid,
-            sender=str(author.id),
-            sender_name=getattr(author, "display_name", None) or str(author),
-            content=normalized_message_content(message_like),
-            timestamp=timestamp or datetime.now(UTC).isoformat(),
-            is_from_me=False,
-            metadata=build_message_metadata(message_like),
-        )
+        return await send_ask_user_prompt(self, jid, request_id, questions)
 
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         if self.client is None or not self.owns_jid(channel_jid) or not since:
@@ -515,12 +472,16 @@ class DiscordChannel:
         except discord.DiscordException:
             return InboundFetchResult(messages=[])
 
-        after = self._history_after(since)
+        after = history_after(since)
         messages: list[NewMessage] = []
         high_water_mark = ""
         async for message in channel.history(after=after, limit=1000, oldest_first=True):
-            high_water_mark = self._history_high_water_mark(message, high_water_mark)
-            inbound = self._history_message(channel_jid, message)
+            high_water_mark = history_high_water_mark(message, high_water_mark)
+            inbound = history_message(
+                channel_jid=channel_jid,
+                message=message,
+                bot_user_id=self.bot_user_id,
+            )
             if inbound is not None:
                 messages.append(inbound)
         return InboundFetchResult(messages=messages, high_water_mark=high_water_mark)

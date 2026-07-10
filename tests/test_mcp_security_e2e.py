@@ -42,6 +42,7 @@ def _mock_cop():
 
 async def test_full_mcp_security_flow():
     """End-to-end: gate -> proxy -> fencing -> taint tracking -> cleanup."""
+
     # 1. Set up mock MCP backend
     async def backend_handler(request: web.Request) -> web.Response:
         await asyncio.sleep(0)
@@ -113,6 +114,7 @@ async def test_full_mcp_security_flow():
 
 async def test_no_fencing_without_public_source():
     """Non-public-source servers should pass through unfenced."""
+
     async def backend_handler(request: web.Request) -> web.Response:
         await asyncio.sleep(0)
         return web.json_response(

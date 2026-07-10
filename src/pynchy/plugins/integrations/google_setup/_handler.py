@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 class _BrowserPage(Protocol):
     async def goto(self, url: str, *, wait_until: str) -> object: ...
 
-    async def wait_for_timeout(self, milliseconds: int) -> object: ...
+    async def wait_for_timeout(self, _milliseconds: int) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -253,9 +253,11 @@ def _google_interactive_setup(
     scopes: str,
     data: dict[str, object],
 ) -> _GoogleInteractiveSetup:
+    raw_project_id = data.get("project_id")
+    project_id = raw_project_id if isinstance(raw_project_id, str) else None
     return _GoogleInteractiveSetup(
         profile_name=profile_name,
-        project_id=data.get("project_id") or read_project_id(kp) or DEFAULT_PROJECT_ID,
+        project_id=project_id or read_project_id(kp) or DEFAULT_PROJECT_ID,
         api_ids=api_ids,
         scopes=scopes,
         profile_dir=profile_dir("google"),
@@ -301,10 +303,12 @@ async def handle_setup_google(data: dict[str, object]) -> dict[str, object]:
     4. Tokens exist and valid? → skip OAuth if so
     """
     profile_name = data.get("chrome_profile")
-    if not profile_name:
+    if not isinstance(profile_name, str) or not profile_name:
         return {"error": "chrome_profile is required"}
 
-    access_error = _check_workspace_access(profile_name, data.get("source_group"))
+    raw_source_group = data.get("source_group")
+    source_group = raw_source_group if isinstance(raw_source_group, str) else None
+    access_error = _check_workspace_access(profile_name, source_group)
     if access_error:
         return access_error
 

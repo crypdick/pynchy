@@ -6,7 +6,7 @@ Built-in backends live under ``plugins/memory/``.
 
 from __future__ import annotations
 
-from typing import Protocol, TypeGuard, cast, runtime_checkable
+from typing import Protocol, TypeGuard, runtime_checkable
 
 import pynchy.plugins as pynchy_plugins
 from pynchy.logger import logger
@@ -72,5 +72,5 @@ def get_memory_provider() -> MemoryProvider | None:
     providers = pynchy_plugins.collect_hook_results("pynchy_memory", _is_valid_provider, "memory")
     if providers:
         logger.info("Memory provider discovered", name=providers[0].name)
-        return cast("MemoryProvider", providers[0])
+        return providers[0]
     return None

@@ -17,9 +17,7 @@ from pynchy.plugins.integrations.google_setup import (
     run_oauth_flow,
 )
 
-CALLBACK_EVENT_SLEEP_MESSAGE = (
-    "OAuth flow should wait on the callback event, not sleep-poll"
-)
+CALLBACK_EVENT_SLEEP_MESSAGE = "OAuth flow should wait on the callback event, not sleep-poll"
 LOGIN_FAILED_MESSAGE = "login failed"
 UNSAFE_URLOPEN_MESSAGE = "urlopen should not be called for unsafe URLs"
 

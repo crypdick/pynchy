@@ -83,9 +83,7 @@ def _is_calendar_visible(cal_name: str, server_cfg: CalDAVServerConfig) -> bool:
     return True
 
 
-def _filter_calendars(
-    calendars: Sequence[object], server_cfg: CalDAVServerConfig
-) -> list[object]:
+def _filter_calendars(calendars: Sequence[object], server_cfg: CalDAVServerConfig) -> list[object]:
     """Filter a list of CalDAV calendar objects by allow/ignore rules."""
     return [c for c in calendars if c.name and _is_calendar_visible(c.name, server_cfg)]
 
