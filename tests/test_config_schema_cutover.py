@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
 
+from pynchy.config import Settings
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.config.toml_io import parse_settings_toml
-
-if TYPE_CHECKING:
-    from pynchy.config import Settings
 
 
 def _settings_from_toml(source: str) -> Settings:
@@ -42,8 +39,6 @@ def test_dotenv_secret_names_do_not_become_schema_sections(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from pynchy.config import Settings
-
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / ".env").write_text(
