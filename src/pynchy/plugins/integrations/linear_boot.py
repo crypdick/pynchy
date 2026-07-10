@@ -6,11 +6,13 @@ import os
 from collections.abc import (
     Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
+from dataclasses import dataclass
 
 import aiohttp
 
 from pynchy.config import get_settings
 from pynchy.config.models import LinearTool
+from pynchy.host.orchestrator.workspace_config import static_workspace_folder
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear import LinearClient
 from pynchy.plugins.integrations.linear_boards import (
@@ -23,6 +25,15 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runti
 )
 
 LINEAR_BOOT_TIMEOUT_SECONDS = 30
+
+
+@dataclass(frozen=True)
+class _LinearWorkspaceContext:
+    """Canonical workspace identity used for durable Linear boards."""
+
+    folder: str
+    name: str
+    jid: str
 
 
 async def reconcile_linear_workspace_boards(
@@ -52,18 +63,32 @@ async def reconcile_linear_workspace_boards(
     return boards
 
 
-def _linear_workspaces(workspaces: Iterable[WorkspaceProfile]) -> list[WorkspaceProfile]:
-    settings = get_settings()
-    result: list[WorkspaceProfile] = []
+def _linear_workspaces(workspaces: Iterable[WorkspaceProfile]) -> list[_LinearWorkspaceContext]:
+    result: list[_LinearWorkspaceContext] = []
+    seen_folders: set[str] = set()
     for workspace in workspaces:
-        resolved = settings.resolved_workspace_config(workspace.folder)
-        if resolved is None:
+        context = _linear_workspace_context(workspace)
+        if context is None or context.folder in seen_folders:
             continue
-        if any(
-            isinstance(settings.tools.get(tool_name), LinearTool) for tool_name in resolved.tools
-        ):
-            result.append(workspace)
+        seen_folders.add(context.folder)
+        result.append(context)
     return result
+
+
+def _linear_workspace_context(workspace: WorkspaceProfile) -> _LinearWorkspaceContext | None:
+    settings = get_settings()
+    folder = static_workspace_folder(workspace.folder)
+    resolved = settings.resolved_workspace_config(folder)
+    if resolved is None:
+        return None
+    has_linear = any(
+        isinstance(settings.tools.get(tool_name), LinearTool) for tool_name in resolved.tools
+    )
+    if not has_linear:
+        return None
+
+    name = workspace.name if folder == workspace.folder else folder.replace("-", " ").title()
+    return _LinearWorkspaceContext(folder=folder, name=name, jid=workspace.jid)
 
 
 async def create_linear_workspace_todo(
@@ -71,6 +96,10 @@ async def create_linear_workspace_todo(
     title: str,
 ) -> dict[str, object] | None:
     """Create one Linear todo issue for a workspace if Linear is configured."""
+    context = _linear_workspace_context(workspace)
+    if context is None:
+        return None
+
     api_key = os.environ.get("LINEAR_API_KEY")
     if not api_key:
         return None
@@ -81,14 +110,14 @@ async def create_linear_workspace_todo(
         try:
             issue = await create_workspace_todo(
                 client,
-                workspace,
+                context,
                 title,
                 team_key=os.environ.get("LINEAR_TEAM_KEY"),
             )
         except Exception as exc:  # noqa: BLE001, RUF100 - local todo capture still succeeds even if Linear fails.
             logger.warning(
                 "Linear todo creation failed",
-                workspace=workspace.folder,
+                workspace=context.folder,
                 err=str(exc),
             )
             return None

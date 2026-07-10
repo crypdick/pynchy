@@ -164,13 +164,18 @@ enabled = false
 
 If a channel's dependencies aren't installed or its config section is missing, it's silently skipped at startup.
 
-## Default Channel
+## Command Center
 
-The default channel picks which platform creates the admin channel on first run:
+The command center picks which configured connection creates workspaces when
+Pynchy needs to provision a channel:
 
 ```toml
-[channels]
-default = "whatsapp"   # or "slack", "tui"
+[connections.synapse]
+type = "discord"
+bot_token_env = "DISCORD_BOT_TOKEN"
+
+[command_center]
+connection = "synapse"
 ```
 
 ---

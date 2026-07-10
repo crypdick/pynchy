@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from conftest import make_settings
 
 from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_boot import (
     create_linear_workspace_todo,
@@ -80,6 +81,14 @@ async def test_create_linear_workspace_todo_uses_env_defaults(monkeypatch):
     create_todo = AsyncMock(return_value={"identifier": "SYN-1"})
 
     with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=make_settings(
+                profiles={"linear": ProfileConfig(tools=["linear"])},
+                workspaces={"alpha": WorkspaceConfig(profiles=["linear"])},
+                tools={"linear": LinearTool(type="linear")},
+            ),
+        ),
         patch("pynchy.plugins.integrations.linear_boot.LinearClient", return_value=fake_client),
         patch("pynchy.plugins.integrations.linear_boot.create_workspace_todo", create_todo),
     ):
@@ -92,3 +101,55 @@ async def test_create_linear_workspace_todo_uses_env_defaults(monkeypatch):
     assert args[1].folder == "alpha"
     assert args[2] == "Review docs"
     assert kwargs["team_key"] is None
+
+
+async def test_create_linear_workspace_todo_requires_linear_tool_selection(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    create_todo = AsyncMock(return_value={"identifier": "SYN-1"})
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=make_settings(
+                profiles={"plain": ProfileConfig(tools=[])},
+                workspaces={"alpha": WorkspaceConfig(profiles=["plain"])},
+                tools={"linear": LinearTool(type="linear")},
+            ),
+        ),
+        patch("pynchy.plugins.integrations.linear_boot.create_workspace_todo", create_todo),
+    ):
+        result = await create_linear_workspace_todo(_workspace("alpha", "Alpha"), "Review docs")
+
+    assert result is None
+    create_todo.assert_not_called()
+
+
+async def test_create_linear_workspace_todo_uses_parent_board_for_dynamic_thread(monkeypatch):
+    monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+    fake_client = MagicMock()
+    create_todo = AsyncMock(return_value={"identifier": "SYN-1"})
+    thread_workspace = _workspace(
+        dynamic_thread_folder("admin", "discord:channel:thread"),
+        "Admin/thread-1",
+    )
+    thread_workspace.jid = "discord:channel:thread"
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=make_settings(
+                profiles={"linear": ProfileConfig(tools=["linear"])},
+                workspaces={"admin": WorkspaceConfig(profiles=["linear"])},
+                tools={"linear": LinearTool(type="linear")},
+            ),
+        ),
+        patch("pynchy.plugins.integrations.linear_boot.LinearClient", return_value=fake_client),
+        patch("pynchy.plugins.integrations.linear_boot.create_workspace_todo", create_todo),
+    ):
+        result = await create_linear_workspace_todo(thread_workspace, "Review docs")
+
+    assert result == {"identifier": "SYN-1"}
+    _, args, _kwargs = create_todo.mock_calls[0]
+    assert args[1].folder == "admin"
+    assert args[1].name == "Admin"
+    assert args[1].jid == "discord:channel:thread"
