@@ -19,6 +19,8 @@ from pathlib import (
 )
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+import pynchy.host.container_manager.session as session_module
+import pynchy.host.git_ops._worktree_merge as worktree_merge_module
 import pynchy.types as types
 from pynchy.config import get_settings
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
@@ -394,9 +396,7 @@ def _register_idle_zzz_callback(
     if not (outbound_ids and output_sent_to_user):
         return
 
-    from pynchy.host.container_manager.session import get_session
-
-    session = get_session(types.GroupFolder(group.folder))
+    session = session_module.get_session(types.GroupFolder(group.folder))
     if session is None:
         return
 
@@ -455,9 +455,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
     )
 
     # Success: merge worktree commits into main and push for groups with repo_access
-    from pynchy.host.git_ops._worktree_merge import background_merge_worktree
-
-    background_merge_worktree(request.group)
+    worktree_merge_module.background_merge_worktree(request.group)
 
     return True
 
