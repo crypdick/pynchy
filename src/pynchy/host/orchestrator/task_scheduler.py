@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,10 +12,13 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
+from temporalio import activity
+
 from pynchy.config import get_settings
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     OnOutput,
 )
+from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 from pynchy.logger import logger
 from pynchy.state import (
     get_task_run_logs,
@@ -22,7 +26,14 @@ from pynchy.state import (
     update_task,
     update_task_after_run,
 )
-from pynchy.types import ContainerOutput, OutboundEvent, ScheduledTask, TaskRunLog, WorkspaceProfile
+from pynchy.types import (
+    ContainerOutput,
+    OutboundEvent,
+    OutboundEventType,
+    ScheduledTask,
+    TaskRunLog,
+    WorkspaceProfile,
+)
 from pynchy.utils import IdleTimer, compute_next_run
 
 
@@ -131,7 +142,7 @@ def _build_temporal_runtime(
     """Build the Temporal runtime lazily to avoid a scheduler module import cycle."""
     runtime_cls = TemporalSchedulerRuntime
     if runtime_cls is None:
-        from pynchy.host.orchestrator.temporal.scheduler import (
+        from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - importing the Temporal scheduler at module load creates a cycle.
             TemporalSchedulerRuntime as _TemporalSchedulerRuntime,
         )
 
@@ -188,16 +199,12 @@ def resolve_cron_job_cwd(cwd: str | None) -> str:
 
 def error_signature(error: str) -> str:
     """Normalize volatile details so repeated failures can be grouped."""
-    import re
-
     first_line = next((line.strip() for line in error.splitlines() if line.strip()), "")
     return re.sub(r"\s+", " ", re.sub(r"\b\d+\b", "#", first_line)).strip()
 
 
 def _temporal_attempt_metadata() -> tuple[str | None, int | None]:
     try:
-        from temporalio import activity
-
         info = activity.info()
     except RuntimeError:
         return None, None
@@ -279,8 +286,6 @@ def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
 
 
 async def _broadcast_task_start(deps: SchedulerDependencies, task: ScheduledTask) -> None:
-    from pynchy.types import OutboundEvent, OutboundEventType
-
     await deps.broadcast_to_channels(
         task.chat_jid,
         OutboundEvent(type=OutboundEventType.SYSTEM, content="\u23f1 Scheduled task starting."),
@@ -307,8 +312,6 @@ def _scheduled_idle_timer(
 async def _merge_scheduled_task_worktree(task: ScheduledTask, *, error: str | None) -> None:
     if error:
         return
-
-    from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 
     await merge_worktree_with_policy(task.group_folder)
 
