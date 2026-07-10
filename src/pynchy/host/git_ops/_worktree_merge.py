@@ -7,6 +7,8 @@ reconciliation) to keep each module focused on a single concern.
 
 from __future__ import annotations
 
+import asyncio
+
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves merge helper signatures at runtime.
 )
@@ -95,9 +97,9 @@ async def merge_worktree_with_policy(group_folder: str) -> None:
     Blocks until the merge completes. For fire-and-forget semantics,
     use background_merge_worktree() instead.
     """
-    import asyncio
-
-    from pynchy.host.git_ops.repo import resolve_repos_for_group
+    from pynchy.host.git_ops.repo import (  # noqa: PLC0415, RUF100 - keep repo lookup lazy during git_ops package initialization.
+        resolve_repos_for_group,
+    )
 
     repo_contexts = resolve_repos_for_group(group_folder)
     if not repo_contexts:
@@ -114,7 +116,9 @@ def background_merge_worktree(group: WorkspaceProfile) -> None:
     in a background task.  This is the preferred entry point for
     post-session merges where the caller doesn't need to wait.
     """
-    from pynchy.utils import create_background_task
+    from pynchy.utils import (  # noqa: PLC0415, RUF100 - keep utility import lazy for git_ops package initialization.
+        create_background_task,
+    )
 
     create_background_task(
         merge_worktree_with_policy(group.folder),
