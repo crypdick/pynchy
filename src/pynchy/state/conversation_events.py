@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 from pynchy.config import get_settings
+from pynchy.conversation.endpoints import _normalized_endpoint, resolved_phoenix_endpoint
 from pynchy.conversation.events import (
     ConversationEvent,  # noqa: TC001 - beartype resolves annotations.
 )
@@ -75,13 +75,12 @@ def _decode_metadata(value: str | None) -> dict[str, Any]:
     return decoded if isinstance(decoded, dict) else {}
 
 
-def _default_body_reader() -> ConversationBodyReader:
+def default_body_reader() -> ConversationBodyReader:
     settings = get_settings().conversation_store
+    endpoint = _normalized_endpoint(settings.phoenix_endpoint) or resolved_phoenix_endpoint()
     return PhoenixConversationBodyReader(
         project_name=settings.project_name,
-        endpoint=settings.phoenix_endpoint
-        or os.environ.get("PHOENIX_COLLECTOR_ENDPOINT")
-        or os.environ.get("PHOENIX_COLLECTOR_HTTP_ENDPOINT"),
+        endpoint=endpoint,
     )
 
 
@@ -107,7 +106,7 @@ async def hydrate_pointer_to_message(
     row: dict[str, Any],
     body_reader: ConversationBodyReader | None = None,
 ) -> NewMessage:
-    reader = body_reader or _default_body_reader()
+    reader = body_reader or default_body_reader()
     try:
         content = await reader.read_event_content(row["event_id"])
     except Exception as exc:

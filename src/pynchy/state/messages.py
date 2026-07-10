@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from aiosqlite import Row
-
-    from pynchy.conversation.phoenix import ConversationBodyReader
 else:
     Row = Any
 
+from pynchy.conversation.phoenix import (
+    ConversationBodyReader,  # noqa: TC001 - beartype resolves annotations.
+)
 from pynchy.state.connection import _get_db
 from pynchy.state.conversation_events import (
+    default_body_reader,
     get_conversation_event_pointers_since,
     hydrate_pointer_to_message,
 )
@@ -169,13 +171,14 @@ async def get_messages_since(
     chat_jid: str,
     since_timestamp: str | None,
     *,
-    body_reader: object | None = None,
+    body_reader: ConversationBodyReader | None = None,
 ) -> list[NewMessage]:
     """Get messages for a specific chat since a timestamp, excluding bot and host messages."""
     legacy = await _get_legacy_messages_since(chat_jid, since_timestamp)
     projected_rows = await get_conversation_event_pointers_since(chat_jid, since_timestamp)
     legacy_message_ids = {message.id for message in legacy}
     projected = []
+    reader = body_reader
     for row in projected_rows:
         if row["message_type"] in {"assistant", "host"}:
             continue
@@ -184,12 +187,9 @@ async def get_messages_since(
         source_message_id = row.get("source_message_id")
         if isinstance(source_message_id, str) and source_message_id in legacy_message_ids:
             continue
-        projected.append(
-            await hydrate_pointer_to_message(
-                row,
-                cast("ConversationBodyReader | None", body_reader),
-            )
-        )
+        if reader is None:
+            reader = default_body_reader()
+        projected.append(await hydrate_pointer_to_message(row, reader))
     return sorted([*legacy, *projected], key=lambda msg: (msg.timestamp, msg.id))
 
 

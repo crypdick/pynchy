@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+import pynchy.state.conversation_events as conversation_events
+import pynchy.state.messages as state_messages
 from pynchy.conversation.events import ConversationEvent, ConversationEventKind
 from pynchy.conversation.phoenix import PhoenixEventRef
 from pynchy.state import (
@@ -49,6 +53,15 @@ class FakeBodyReader:
         if event_id not in self._bodies:
             raise RuntimeError(f"missing content for {event_id}")
         return self._bodies[event_id]
+
+
+class RecordingBodyReader:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def read_event_content(self, event_id: str) -> str:
+        self.calls.append(event_id)
+        return f"phoenix body {event_id}"
 
 
 async def test_store_and_load_projection_pointer() -> None:
@@ -220,6 +233,73 @@ async def test_get_messages_since_prefers_legacy_row_over_duplicate_projection()
     assert [message.id for message in messages] == ["source_1"]
     assert messages[0].content == "legacy full body"
     assert reader.calls == []
+
+
+async def test_get_messages_since_reuses_default_body_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await init_test_database()
+    await store_conversation_event_pointer(
+        _event("evt_1", "2026-07-10T00:00:00+00:00"),
+        PhoenixEventRef("evt_1", "phoenix:event:evt_1"),
+    )
+    await store_conversation_event_pointer(
+        _event("evt_2", "2026-07-10T00:00:01+00:00"),
+        PhoenixEventRef("evt_2", "phoenix:event:evt_2"),
+    )
+    readers: list[RecordingBodyReader] = []
+
+    def fake_default_body_reader() -> RecordingBodyReader:
+        reader = RecordingBodyReader()
+        readers.append(reader)
+        return reader
+
+    monkeypatch.setattr(state_messages, "default_body_reader", fake_default_body_reader)
+
+    messages = await get_messages_since("slack:C123", "")
+
+    assert [message.content for message in messages] == [
+        "phoenix body evt_1",
+        "phoenix body evt_2",
+    ]
+    assert len(readers) == 1
+    assert readers[0].calls == ["evt_1", "evt_2"]
+
+
+def test_default_body_reader_uses_shared_endpoint_normalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    constructor_calls: list[tuple[str, str | None]] = []
+
+    class FakePhoenixConversationBodyReader:
+        def __init__(self, *, project_name: str, endpoint: str | None = None) -> None:
+            constructor_calls.append((project_name, endpoint))
+
+    def fake_get_settings() -> SimpleNamespace:
+        return SimpleNamespace(
+            conversation_store=SimpleNamespace(
+                project_name="conversation-project",
+                phoenix_endpoint=" //// ",
+            )
+        )
+
+    monkeypatch.setattr(conversation_events, "get_settings", fake_get_settings)
+    monkeypatch.setattr(
+        conversation_events,
+        "PhoenixConversationBodyReader",
+        FakePhoenixConversationBodyReader,
+    )
+    monkeypatch.setenv("PHOENIX_COLLECTOR_ENDPOINT", " //// ")
+    monkeypatch.setenv(
+        "PHOENIX_COLLECTOR_HTTP_ENDPOINT",
+        "https://phoenix.example.test/v1/traces/",
+    )
+
+    conversation_events.default_body_reader()
+
+    assert constructor_calls == [
+        ("conversation-project", "https://phoenix.example.test"),
+    ]
 
 
 async def test_get_messages_since_excludes_projected_assistant_events() -> None:
