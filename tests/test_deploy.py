@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 import signal
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
@@ -138,8 +139,6 @@ class TestFinalizeDeploy:
         broadcast = AsyncMock()
 
         # Remove the deploy_dir to simulate fresh install
-        import shutil
-
         shutil.rmtree(deploy_dir)
 
         with patch("pynchy.host.orchestrator.deploy.os.kill"):
