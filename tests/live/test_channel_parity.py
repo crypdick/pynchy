@@ -17,7 +17,7 @@ Run with:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -79,8 +79,6 @@ def _text_event(text: str) -> OutboundEvent:
 
 def _make_deps(channels: list[RecordingChannel]) -> Any:
     """Create a mock ChannelDeps with the given channels."""
-    from unittest.mock import MagicMock
-
     deps = MagicMock()
     deps.channels = channels
     deps.event_bus = MagicMock()
@@ -295,8 +293,6 @@ class TestAgentOutputParity:
 
     def _make_output_deps(self, channels: list[RecordingChannel]) -> Any:
         """Create OutputDeps for handle_streamed_output."""
-        from unittest.mock import MagicMock
-
         deps = MagicMock()
         deps.channels = channels
 
