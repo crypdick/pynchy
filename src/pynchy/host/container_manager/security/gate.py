@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pynchy.config as pynchy_config
+import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
@@ -96,11 +98,8 @@ def destroy_gate(source_group: str, invocation_ts: float) -> None:
 
 def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceSecurity:
     """Resolve security from selected tools and workspace secret state."""
-    from pynchy.config import get_settings
-    from pynchy.host.orchestrator.workspace_config import static_workspace_folder
-
-    s = get_settings()
-    config_group = static_workspace_folder(source_group)
+    s = pynchy_config.get_settings()
+    config_group = workspace_config.static_workspace_folder(source_group)
     resolve_workspace = getattr(s, "resolved_workspace_config", None)
     resolved = resolve_workspace(config_group) if callable(resolve_workspace) else None
     contains_secrets = resolved.contains_secrets if resolved is not None else False

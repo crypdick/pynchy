@@ -27,6 +27,7 @@ from pynchy.host.container_manager.security.approval import (
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.cop import inspect_outbound
 from pynchy.logger import logger
+from pynchy.types import OutboundEvent, OutboundEventType
 
 
 async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation, payload, and dependency context explicit.
@@ -95,16 +96,12 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
             request_data=data,
             handler_type="ipc",
         )
-        from pynchy.types import OutboundEvent, OutboundEventType
-
         notification = format_approval_notification(operation, data, short_id)
         notification = f"[Cop flagged: {verdict.reason}]\n\n{notification}"
         await deps.broadcast_to_channels(
             chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
         )
     else:
-        from pynchy.types import OutboundEvent, OutboundEventType
-
         # Fire-and-forget: no approval possible, just warn
         msg = (
             f"[Cop blocked] {operation} from {source_group}: {verdict.reason}\n"

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 import aiohttp
 
+from pynchy.host.container_manager import gateway as gateway_manager
 from pynchy.logger import logger
 
 
@@ -188,9 +189,7 @@ async def _run_inspection(
     user_content: str,
     context: str,
 ) -> CopVerdict:
-    from pynchy.host.container_manager.gateway import get_gateway
-
-    gateway = get_gateway()
+    gateway = gateway_manager.get_gateway()
     if gateway is None:
         logger.warning("Cop: no gateway available, allowing operation", context=context)
         return CopVerdict(flagged=False, reason="No gateway available")
