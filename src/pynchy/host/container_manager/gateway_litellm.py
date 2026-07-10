@@ -178,7 +178,9 @@ class LiteLLMGateway:
         ``.env`` is expected as a sibling of the config file (= project
         root).  ``os.environ`` wins on conflicts.
         """
-        from dotenv import dotenv_values
+        from dotenv import (  # noqa: PLC0415, RUF100 - lazy import keeps optional dotenv dependency out of module startup.
+            dotenv_values,
+        )
 
         dotenv_path = config_path.parent / ".env"
         dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
@@ -223,7 +225,7 @@ class LiteLLMGateway:
     @staticmethod
     def _uses_phoenix_callback(config_path: Path) -> bool:
         """Return True when LiteLLM is configured to export traces to Phoenix."""
-        import yaml
+        import yaml  # noqa: PLC0415, RUF100 - lazy import keeps optional yaml dependency out of module startup.
 
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         if not isinstance(config, dict):
@@ -246,7 +248,7 @@ class LiteLLMGateway:
 
     async def _check_phoenix_ready(self, endpoint: str) -> None:
         """Fail startup when Phoenix is enabled but unreachable."""
-        import aiohttp
+        import aiohttp  # noqa: PLC0415, RUF100 - lazy import keeps optional aiohttp dependency out of module startup.
 
         health_url = self._phoenix_health_url(endpoint)
         try:
