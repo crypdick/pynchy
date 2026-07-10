@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -9,6 +10,8 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by_folder
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
+from pynchy.host.container_manager.security import cop_gate as cop_gate_module
+from pynchy.host.git_ops import _worktree_merge, repo
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.host.git_ops.sync import host_sync_worktree
 from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
@@ -81,10 +84,8 @@ async def _handle_reset_context(
         )
         return
 
-    from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
-
     try:
-        await merge_worktree_with_policy(group_folder)
+        await _worktree_merge.merge_worktree_with_policy(group_folder)
     except Exception:  # noqa: BLE001, RUF100 - worktree sync failure must not block the reset_context boundary.
         logger.exception("Worktree sync failed during context reset")
 
@@ -123,11 +124,9 @@ async def _handle_finished_work(
         logger.warning("finished_work missing chatJid", source_group=source_group)
         return
 
-    from pynchy.host.git_ops._worktree_merge import background_merge_worktree
-
     group = resolve_workspace_by_folder(source_group, deps)
     if group:
-        background_merge_worktree(group)
+        _worktree_merge.background_merge_worktree(group)
 
     await deps.broadcast_host_message(
         chat_jid,
@@ -142,17 +141,11 @@ async def _handle_sync_worktree_to_main(
     _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
-    import asyncio
-
-    from pynchy.host.git_ops.repo import resolve_repos_for_group
-
     request_id = data.get("request_id", "")
 
     if not data.get("_cop_approved"):
-        from pynchy.host.container_manager.security.cop_gate import cop_gate
-
         summary = f"sync_worktree_to_main from '{source_group}'"
-        allowed = await cop_gate(
+        allowed = await cop_gate_module.cop_gate(
             "sync_worktree_to_main",
             summary,
             data,
@@ -165,7 +158,7 @@ async def _handle_sync_worktree_to_main(
 
     result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
 
-    repo_contexts = resolve_repos_for_group(source_group)
+    repo_contexts = repo.resolve_repos_for_group(source_group)
     if not repo_contexts:
         write_ipc_response(
             result_dir / f"{request_id}.json",
