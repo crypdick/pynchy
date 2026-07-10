@@ -12,6 +12,7 @@ from pynchy.host.container_manager.ipc.deps import (
 )
 from pynchy.host.container_manager.ipc.protocol import InboundChatMessage, parse_ipc_file
 from pynchy.logger import logger
+from pynchy.types import OutboundEvent, OutboundEventType
 
 
 def _path_exists(path: Path) -> bool:
@@ -44,8 +45,6 @@ async def handle_message_file(
         workspaces = deps.workspaces()
         target_group = workspaces.get(message.chat_jid)
         if is_admin or (target_group and target_group.folder == source_group):
-            from pynchy.types import OutboundEvent, OutboundEventType
-
             prefix = message.sender or s.agent.name
             await deps.broadcast_to_channels(
                 message.chat_jid,

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC output paths at runtime.
 
+from pynchy.host.container_manager import session as session_manager
 from pynchy.host.container_manager.ipc.output_claims import claim_output_file
 from pynchy.host.container_manager.process import OnOutput, is_query_done_pulse
 from pynchy.host.container_manager.serialization import parse_container_output
@@ -38,16 +39,12 @@ def _read_text(path: Path) -> str:
 
 def _get_output_handler(group_folder: str) -> OnOutput | None:
     """Look up the session's output callback for a group."""
-    from pynchy.host.container_manager.session import get_session_output_handler
-
-    return get_session_output_handler(GroupFolder(group_folder))
+    return session_manager.get_session_output_handler(GroupFolder(group_folder))
 
 
 def _signal_query_done(group_folder: str) -> None:
     """Signal query completion for a group's session."""
-    from pynchy.host.container_manager.session import get_session
-
-    session = get_session(GroupFolder(group_folder))
+    session = session_manager.get_session(GroupFolder(group_folder))
     if session is None:
         return
     session.signal_query_done()
