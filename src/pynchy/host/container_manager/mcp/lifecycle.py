@@ -15,6 +15,7 @@ import signal
 import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
 from pathlib import Path
 
+import pynchy.config as pynchy_config
 from pynchy.config.mcp import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
@@ -250,9 +251,7 @@ def _resolved_volume_arg(vol: str) -> list[str]:
         # Docker named volume — pass through without resolution
         return ["-v", vol]
     if sep and not Path(host_path).is_absolute():
-        from pynchy.config import get_settings
-
-        host_path = str(get_settings().project_root / host_path)
+        host_path = str(pynchy_config.get_settings().project_root / host_path)
         _ensure_mount_parent(host_path)
         return ["-v", f"{host_path}:{container_path}"]
     if sep:
@@ -401,8 +400,6 @@ async def _ensure_mcp_image(config: McpServerConfig) -> None:
     builds it from the specified Dockerfile. Otherwise falls back to pulling
     from a registry via :func:`ensure_image`.
     """
-    from pynchy.config import get_settings
-
     image = config.image or ""
     if config.dockerfile:
         # Check if image already exists locally
@@ -410,8 +407,9 @@ async def _ensure_mcp_image(config: McpServerConfig) -> None:
         if result.returncode == 0:
             return
         # Build from local Dockerfile
-        project_root = str(get_settings().project_root)
-        dockerfile_path = str(get_settings().project_root / config.dockerfile)
+        project_root_path = pynchy_config.get_settings().project_root
+        project_root = str(project_root_path)
+        dockerfile_path = str(project_root_path / config.dockerfile)
         logger.info(
             "Building MCP image from local Dockerfile",
             image=image,

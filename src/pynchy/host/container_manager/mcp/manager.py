@@ -20,6 +20,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
+import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import Settings, get_settings
 from pynchy.config.mcp import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
@@ -273,9 +274,9 @@ class McpManager:
 
     def get_workspace_instance_ids(self, group_folder: str) -> list[str]:
         """Get the list of MCP instance IDs for a workspace."""
-        from pynchy.host.orchestrator.workspace_config import static_workspace_folder
-
-        return self._workspace_instances.get(static_workspace_folder(group_folder), [])
+        return self._workspace_instances.get(
+            workspace_config.static_workspace_folder(group_folder), []
+        )
 
     def get_direct_server_configs(
         self, group_folder: str, invocation_ts: float = 0.0
