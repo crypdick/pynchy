@@ -10,6 +10,7 @@ from conftest import init_test_database
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import IpcDeps
+from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
 from pynchy.state import (
     create_host_job,
     get_host_job_by_name,
@@ -106,8 +107,6 @@ class TestHostJobScheduling:
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_activity_executes_command(self, mock_shell, tmp_path):
         """Temporal host-job activity executes due job commands."""
-        from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
-
         mock_shell.return_value = ShellResult(returncode=0, stdout="Success", stderr="")
 
         past_time = "2020-01-01T00:00:00"
