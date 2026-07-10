@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
+from pynchy.config.models import CommandCenterConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.state import get_all_tasks
@@ -109,8 +110,6 @@ class TestCreatePeriodicAgent:
 
     @staticmethod
     def _settings(tmp_path):
-        from pynchy.config.models import CommandCenterConfig
-
         return make_settings(
             groups_dir=tmp_path,
             project_root=tmp_path,
