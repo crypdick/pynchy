@@ -10,12 +10,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-if TYPE_CHECKING:
-    import pluggy
+import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
 
+if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
-    from pynchy.plugins.memory import MemoryProvider
-    from pynchy.plugins.observers import ObserverProvider
 
 from pynchy.config import get_settings
 from pynchy.event_bus import Event, EventBus
@@ -38,6 +36,12 @@ from pynchy.host.orchestrator.messaging import (
 )
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.logger import logger
+from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+    MemoryProvider,
+)
+from pynchy.plugins.observers import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+    ObserverProvider,
+)
 from pynchy.state import (
     delete_workspace_profile,
     get_all_chats,
@@ -143,7 +147,7 @@ class PynchyApp:
             await self._memory.close()
 
     def routing_cursor(self, chat_jid: str) -> str:
-        """Return the cursor used to fetch messages for routing."""
+        """Return the cursor for fetching messages during routing."""
         return max(
             self.last_agent_timestamp.get(chat_jid, ""),
             self._dispatched_through.get(chat_jid, ""),
@@ -285,6 +289,7 @@ class PynchyApp:
 
     def _make_host_broadcaster(self) -> HostMessageBroadcaster:
         """Create a HostMessageBroadcaster wired to this app's store and event bus."""
+
         async def store_host_message(**kwargs: object) -> None:
             await store_message_direct(**kwargs, message_type="host")
 
