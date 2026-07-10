@@ -101,6 +101,30 @@ def _attachment_metadata(attachment: object) -> dict[str, Any]:
     }
 
 
+def _audio_attachment_label(attachment: object) -> str | None:
+    attachment_like = cast("Any", attachment)
+    content_type = getattr(attachment_like, "content_type", None)
+    filename = getattr(attachment_like, "filename", "")
+    if not isinstance(content_type, str) or not content_type.startswith("audio/"):
+        return None
+    return filename if isinstance(filename, str) and filename else "audio attachment"
+
+
+def _attachment_fallback_content(message: object) -> str:
+    audio_labels = [
+        label
+        for attachment in getattr(cast("Any", message), "attachments", [])
+        if (label := _audio_attachment_label(attachment)) is not None
+    ]
+    if not audio_labels:
+        return ""
+    return (
+        "[Audio attachment received; transcription is not available yet: "
+        + ", ".join(audio_labels)
+        + "]"
+    )
+
+
 def _forwarded_snapshot_metadata(snapshot: object) -> dict[str, Any]:
     snapshot_like = cast("Any", snapshot)
     created = getattr(snapshot_like, "created_at", None)
@@ -134,7 +158,7 @@ def normalized_message_content(message: object) -> str:
     ]
     if snapshot_texts:
         return "\n\n".join(snapshot_texts)
-    return content
+    return _attachment_fallback_content(message_like)
 
 
 def build_message_metadata(message: object, ctx: InboundContext | None = None) -> dict[str, Any]:
@@ -223,9 +247,7 @@ class DiscordEvents:
         ):
             return
 
-        sender_name = getattr(message_like.author, "display_name", None) or str(
-            message_like.author
-        )
+        sender_name = getattr(message_like.author, "display_name", None) or str(message_like.author)
         created = getattr(message_like, "created_at", None)
         timestamp = created.isoformat() if created else datetime.now(UTC).isoformat()
         chat_name = getattr(message_like.channel, "name", None) or sender_name

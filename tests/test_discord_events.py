@@ -231,6 +231,30 @@ async def test_attachments_are_preserved_in_message_metadata():
     ]
 
 
+async def test_audio_only_attachment_gets_placeholder_content():
+    _jid, msg, _metadata = await _deliver(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            attachments=(
+                _attachment(
+                    attachment_id="a1",
+                    filename="voice.ogg",
+                    content_type="audio/ogg",
+                ),
+            ),
+            mentions=(BOT_ID,),
+        ),
+        group_policy="open",
+    )
+
+    assert msg.content == (
+        "[Audio attachment received; transcription is not available yet: voice.ogg]"
+    )
+    assert msg.metadata["attachments"][0]["content_type"] == "audio/ogg"
+
+
 async def test_forwarded_snapshot_text_falls_back_when_message_content_missing():
     snapshot = SimpleNamespace(
         type="default",

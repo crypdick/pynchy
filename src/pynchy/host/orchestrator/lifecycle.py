@@ -17,7 +17,7 @@ import threading
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
 )
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
@@ -53,11 +53,8 @@ from pynchy.plugins.channel_runtime import (
 from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state import init_database, store_chat_metadata
-from pynchy.types import OutboundEvent, OutboundEventType
+from pynchy.types import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
-
-if TYPE_CHECKING:
-    from pynchy.types import NewMessage
 
 # ---------------------------------------------------------------------------
 # Shutdown

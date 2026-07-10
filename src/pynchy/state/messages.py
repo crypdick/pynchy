@@ -52,6 +52,7 @@ async def store_message(msg: NewMessage, message_type: str = "user") -> None:
         timestamp=msg.timestamp,
         is_from_me=msg.is_from_me or False,
         message_type=message_type,
+        metadata=msg.metadata,
     )
 
 

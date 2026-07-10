@@ -10,6 +10,7 @@ IPC protocol details (file-based input/output) live in ``ipc.py``.
 from __future__ import annotations
 
 import contextlib
+import json
 import sys
 
 from .core import AgentCore, AgentCoreConfig, AgentEvent
@@ -57,6 +58,14 @@ def build_sdk_messages(messages: list[dict[str, object]]) -> str:
         sender_name = escape_xml(msg.get("sender_name", "Unknown"))
         timestamp = msg.get("timestamp", "")
         content = escape_xml(msg.get("content", ""))
+        metadata = msg.get("metadata")
+        if metadata is not None:
+            metadata_json = escape_xml(json.dumps(metadata, ensure_ascii=False, sort_keys=True))
+            content = (
+                f"{content}\n<metadata>{metadata_json}</metadata>"
+                if content
+                else f"<metadata>{metadata_json}</metadata>"
+            )
         lines.append(f'<message sender="{sender_name}" time="{timestamp}">{content}</message>')
 
     return f"<messages>\n{chr(10).join(lines)}\n</messages>"

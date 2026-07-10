@@ -240,6 +240,24 @@ class TestBuildSdkMessages:
         result = build_sdk_messages(msgs)
         assert "A &amp; B" in result
 
+    def test_metadata_is_included(self):
+        msgs = [
+            {
+                "sender_name": "Alice",
+                "timestamp": "t",
+                "content": "",
+                "metadata": {
+                    "attachments": [{"filename": "voice.ogg", "content_type": "audio/ogg"}]
+                },
+            }
+        ]
+
+        result = build_sdk_messages(msgs)
+
+        assert "<metadata>" in result
+        assert "voice.ogg" in result
+        assert "audio/ogg" in result
+
 
 # ---------------------------------------------------------------------------
 # event_to_output

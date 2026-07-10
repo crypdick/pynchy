@@ -72,6 +72,7 @@ def _store(
     content: str,
     timestamp: str,
     is_from_me: bool = False,
+    metadata: dict[str, object] | None = None,
 ) -> NewMessage:
     return NewMessage(
         id=message_id,
@@ -81,6 +82,7 @@ def _store(
         content=content,
         timestamp=timestamp,
         is_from_me=is_from_me,
+        metadata=metadata,
     )
 
 
@@ -166,6 +168,26 @@ class TestStoreMessage:
         messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         assert len(messages) == 1
         assert not messages[0].content
+
+    async def test_stores_metadata(self):
+        await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
+        await store_message(
+            _store(
+                message_id="msg-meta",
+                chat_jid="group@g.us",
+                sender="111@s.whatsapp.net",
+                sender_name="Dave",
+                content="with attachment",
+                timestamp="2024-01-01T00:00:04.000Z",
+                metadata={"attachments": [{"filename": "voice.ogg", "content_type": "audio/ogg"}]},
+            )
+        )
+
+        messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
+        assert len(messages) == 1
+        assert messages[0].metadata == {
+            "attachments": [{"filename": "voice.ogg", "content_type": "audio/ogg"}]
+        }
 
     async def test_stores_is_from_me_flag(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
