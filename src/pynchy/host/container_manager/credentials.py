@@ -94,7 +94,9 @@ def has_api_credentials() -> bool:
     Pure check with no filesystem side effects — use this instead of
     calling :func:`write_env_file` with a dummy group folder.
     """
-    from pynchy.host.container_manager.gateway import get_gateway
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
+        get_gateway,
+    )
 
     gateway = get_gateway()
     return gateway is not None and (
@@ -157,7 +159,9 @@ def _gh_token_env_var(s: Settings, *, is_admin: bool, group_folder: str) -> dict
         return {}
 
     # Non-admin: inject repo-scoped token if this workspace has a configured repo.
-    from pynchy.host.orchestrator.workspace_config import load_resolved_config
+    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
+        load_resolved_config,
+    )
 
     resolved = load_resolved_config(group_folder)
     if resolved and resolved.repo:
@@ -227,7 +231,9 @@ def write_env_file(
     ``extra_env_vars`` and set ``include_gh_token=False`` so raw GitHub tokens
     stay out of the container when OneCLI owns that credential boundary.
     """
-    from pynchy.host.container_manager.gateway import get_gateway
+    from pynchy.host.container_manager.gateway import (  # noqa: PLC0415, RUF100 - keep lazy import to avoid startup cost and preserve patchability.
+        get_gateway,
+    )
 
     s = get_settings()
     env_dir = s.data_dir / "env" / group_folder
