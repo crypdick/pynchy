@@ -6,6 +6,8 @@ Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
@@ -20,11 +22,13 @@ from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     OnOutput,
 )
-from pynchy.host.orchestrator import session_handler
+from pynchy.host.orchestrator import agent_runner, session_handler
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging import (
+    ask_user_handler,
     channel_handler,
+    reaction_handler,
 )
 from pynchy.host.orchestrator.messaging import (
     pipeline as message_handler,
@@ -32,6 +36,7 @@ from pynchy.host.orchestrator.messaging import (
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
+from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.logger import logger
 from pynchy.state import (
     delete_workspace_profile,
@@ -39,7 +44,10 @@ from pynchy.state import (
     get_all_sessions,
     get_all_workspace_profiles,
     get_router_state,
+    save_router_state_batch,
     set_workspace_profile,
+    store_message,
+    store_message_direct,
 )
 from pynchy.types import (
     Channel,
@@ -180,8 +188,6 @@ class PynchyApp:
         Both rows are written in a single transaction so a crash can never
         leave them inconsistent.
         """
-        from pynchy.state import save_router_state_batch
-
         await save_router_state_batch(
             {
                 "last_timestamp": self.last_timestamp,
@@ -214,11 +220,7 @@ class PynchyApp:
 
     async def start_channel_reconciliation(self) -> None:
         """Start durable Temporal reconciliation for channel history."""
-        from pynchy.host.orchestrator.temporal.scheduler import (
-            start_channel_reconciliation_workflow,
-        )
-
-        await start_channel_reconciliation_workflow()
+        await temporal_scheduler.start_channel_reconciliation_workflow()
 
     async def broadcast_agent_input(
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
@@ -237,8 +239,6 @@ class PynchyApp:
         repo_access_override: str | None = None,
         input_source: str = "user",
     ) -> str:
-        from pynchy.host.orchestrator import agent_runner
-
         return await agent_runner.run_agent(
             self,
             group,
@@ -285,8 +285,6 @@ class PynchyApp:
 
     def _make_host_broadcaster(self) -> HostMessageBroadcaster:
         """Create a HostMessageBroadcaster wired to this app's store and event bus."""
-        from pynchy.state import store_message_direct
-
         async def store_host_message(**kwargs: object) -> None:
             await store_message_direct(**kwargs, message_type="host")
 
@@ -373,11 +371,7 @@ class PynchyApp:
 
     async def start_interactive_turn(self, chat_jid: str) -> None:
         """Start durable Temporal processing for pending messages in one chat."""
-        from pynchy.host.orchestrator.temporal.scheduler import (
-            start_interactive_message_workflow,
-        )
-
-        await start_interactive_message_workflow(chat_jid)
+        await temporal_scheduler.start_interactive_message_workflow(chat_jid)
 
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)
@@ -399,18 +393,14 @@ class PynchyApp:
 
     async def _on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         """Handle an inbound reaction from a channel."""
-        from pynchy.host.orchestrator.messaging.reaction_handler import handle_reaction
-
-        await handle_reaction(self, jid, message_ts, user_id, emoji)
+        await reaction_handler.handle_reaction(self, jid, message_ts, user_id, emoji)
 
     async def on_reaction(self, jid: str, message_ts: str, user_id: str, emoji: str) -> None:
         await self._on_reaction(jid, message_ts, user_id, emoji)
 
     async def _on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         """Handle an ask_user answer from a channel interaction callback."""
-        from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
-
-        await handle_ask_user_answer(request_id, answer, self)
+        await ask_user_handler.handle_ask_user_answer(request_id, answer, self)
 
     async def on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         await self._on_ask_user_answer(request_id, answer)
@@ -429,11 +419,6 @@ class PynchyApp:
         be used here.  The host message below ensures the user sees what
         was forwarded (token stream transparency).
         """
-        import uuid
-        from datetime import UTC, datetime
-
-        from pynchy.state import store_message
-
         msg = NewMessage(
             id=f"ask-user-answer-{uuid.uuid4().hex[:8]}",
             chat_jid=chat_jid,
@@ -460,17 +445,12 @@ class PynchyApp:
 
     async def _catch_up_channel_history(self) -> None:
         """Start Temporal-owned channel history reconciliation."""
-        from pynchy.host.orchestrator.temporal.scheduler import (
-            TemporalRuntimeUnavailableError,
-            temporal_scheduler_runtime_active,
-        )
-
-        if not temporal_scheduler_runtime_active():
+        if not temporal_scheduler.temporal_scheduler_runtime_active():
             logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
             return
         try:
             await self.start_channel_reconciliation()
-        except TemporalRuntimeUnavailableError:
+        except temporal_scheduler.TemporalRuntimeUnavailableError:
             logger.info("Channel reconciliation deferred until Temporal scheduler runtime starts")
         except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; history catch-up is best-effort startup work.
             logger.warning(
@@ -485,6 +465,8 @@ class PynchyApp:
 
     async def run(self) -> None:
         """Main entry point — see :func:`pynchy.host.orchestrator.lifecycle.run_app`."""
-        from pynchy.host.orchestrator.lifecycle import run_app
+        from pynchy.host.orchestrator.lifecycle import (  # noqa: PLC0415, RUF100 - lifecycle imports PynchyApp for runtime annotations.
+            run_app,
+        )
 
         await run_app(self)
