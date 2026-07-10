@@ -14,7 +14,8 @@ from typing import Any, Protocol, cast, runtime_checkable
 from croniter import croniter
 
 from pynchy.config import get_settings
-from pynchy.config.models import ChatRefStr
+from pynchy.config.jobs import JobConfig
+from pynchy.config.models import ChatRefStr, WorkspaceConfig
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves group setup models at runtime.
 )
@@ -26,6 +27,8 @@ from pynchy.host.container_manager.ipc.protocol import (
     RegisterGroupRequest,
 )
 from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.container_manager.security import cop_gate as cop_gate_module
+from pynchy.host.orchestrator import workspace_config
 from pynchy.logger import logger
 from pynchy.state import create_task
 from pynchy.types import ScheduledTask, WorkspaceProfile
@@ -70,10 +73,8 @@ async def _handle_register_group(
         return
 
     if not data.get("_cop_approved"):
-        from pynchy.host.container_manager.security.cop_gate import cop_gate
-
         summary = f"name={request.name}, folder={request.folder}, trigger={request.trigger}"
-        allowed = await cop_gate(
+        allowed = await cop_gate_module.cop_gate(
             "register_group",
             summary,
             data,
@@ -140,14 +141,12 @@ async def _periodic_agent_cop_allowed(
     deps: IpcDeps,
 ) -> bool:
     if not data.get("_cop_approved"):
-        from pynchy.host.container_manager.security.cop_gate import cop_gate
-
         prompt_preview = request.prompt[:500]
         summary = (
             f"name={request.name}, profile={request.profile}, "
             f"schedule={request.schedule}, prompt={prompt_preview}"
         )
-        allowed = await cop_gate(
+        allowed = await cop_gate_module.cop_gate(
             "create_periodic_agent",
             summary,
             data,
@@ -160,19 +159,15 @@ async def _periodic_agent_cop_allowed(
 
 
 async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcDeps) -> None:
-    from pynchy.config.jobs import JobConfig
-    from pynchy.config.models import WorkspaceConfig
-    from pynchy.host.orchestrator.workspace_config import add_job_to_toml, add_workspace_to_toml
-
     setup = _periodic_agent_setup(request)
     if setup is None:
         return
 
-    add_workspace_to_toml(
+    workspace_config.add_workspace_to_toml(
         request.name,
         WorkspaceConfig.model_validate({"profiles": [request.profile]}),
     )
-    add_job_to_toml(
+    workspace_config.add_job_to_toml(
         request.name,
         JobConfig(
             workspace=request.name,
