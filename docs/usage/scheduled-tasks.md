@@ -80,6 +80,8 @@ Temporal fires the workflows. Each workflow runs an activity in the Pynchy host 
 temporal_address = "localhost:7233"
 temporal_namespace = "default"
 temporal_task_queue = "pynchy-scheduler"
+git_sync_interval_seconds = 300
+channel_reconciliation_interval_seconds = 300
 ```
 
 Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local due-work execution. The local scheduler loop only reconciles desired state from config and SQLite into Temporal; it does not decide that a task is due or run shell commands itself.

@@ -38,8 +38,6 @@ SCHEDULE_PREFIXES = (
 )
 HOST_GIT_SYNC_SCHEDULE_ID = "pynchy-git-sync-host"
 CHANNEL_RECONCILIATION_SCHEDULE_ID = "pynchy-channel-reconciliation"
-HOST_GIT_SYNC_INTERVAL_SECONDS = 5
-CHANNEL_RECONCILIATION_INTERVAL_SECONDS = 10
 _UNSUPPORTED_RECURRING_SCHEDULE_TYPE = "Unsupported recurring schedule type: {schedule_type}"
 
 
@@ -157,15 +155,18 @@ def schedule_for_config_host_cron(job_name: str, schedule_value: str) -> Schedul
 
 def schedule_for_host_git_sync() -> Schedule:
     """Build the Temporal Schedule for host repository sync polling."""
+    scheduler_config = get_settings().scheduler
     return Schedule(
         action=ScheduleActionStartWorkflow(
             HostGitSyncWorkflow.run,
             id=f"{host_git_sync_schedule_id()}-workflow",
-            task_queue=get_settings().scheduler.temporal_task_queue,
+            task_queue=scheduler_config.temporal_task_queue,
         ),
         spec=ScheduleSpec(
             intervals=[
-                ScheduleIntervalSpec(every=timedelta(seconds=HOST_GIT_SYNC_INTERVAL_SECONDS))
+                ScheduleIntervalSpec(
+                    every=timedelta(seconds=scheduler_config.git_sync_interval_seconds)
+                )
             ]
         ),
         policy=_schedule_policy(),
@@ -174,17 +175,20 @@ def schedule_for_host_git_sync() -> Schedule:
 
 def schedule_for_external_git_sync(repo_slug: str) -> Schedule:
     """Build the Temporal Schedule for one external repository sync poller."""
+    scheduler_config = get_settings().scheduler
     schedule_id = external_git_sync_schedule_id(repo_slug)
     return Schedule(
         action=ScheduleActionStartWorkflow(
             ExternalGitSyncWorkflow.run,
             args=[repo_slug],
             id=f"{schedule_id}-workflow",
-            task_queue=get_settings().scheduler.temporal_task_queue,
+            task_queue=scheduler_config.temporal_task_queue,
         ),
         spec=ScheduleSpec(
             intervals=[
-                ScheduleIntervalSpec(every=timedelta(seconds=HOST_GIT_SYNC_INTERVAL_SECONDS))
+                ScheduleIntervalSpec(
+                    every=timedelta(seconds=scheduler_config.git_sync_interval_seconds)
+                )
             ]
         ),
         policy=_schedule_policy(),
@@ -193,16 +197,19 @@ def schedule_for_external_git_sync(repo_slug: str) -> Schedule:
 
 def schedule_for_channel_reconciliation() -> Schedule:
     """Build the Temporal Schedule for channel history reconciliation."""
+    scheduler_config = get_settings().scheduler
     return Schedule(
         action=ScheduleActionStartWorkflow(
             ChannelReconciliationWorkflow.run,
             id=f"{channel_reconciliation_schedule_id()}-workflow",
-            task_queue=get_settings().scheduler.temporal_task_queue,
+            task_queue=scheduler_config.temporal_task_queue,
         ),
         spec=ScheduleSpec(
             intervals=[
                 ScheduleIntervalSpec(
-                    every=timedelta(seconds=CHANNEL_RECONCILIATION_INTERVAL_SECONDS)
+                    every=timedelta(
+                        seconds=scheduler_config.channel_reconciliation_interval_seconds
+                    )
                 )
             ]
         ),

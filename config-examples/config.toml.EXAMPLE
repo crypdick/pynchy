@@ -119,6 +119,10 @@
 # temporal_namespace = "default"
 # temporal_task_queue = "pynchy-scheduler"
 
+# Built-in maintenance schedule cadence (seconds)
+# git_sync_interval_seconds = 300
+# channel_reconciliation_interval_seconds = 300
+
 [intervals]
 # Message polling interval (seconds)
 # message_poll = 2.0

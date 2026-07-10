@@ -45,6 +45,15 @@ class SchedulerConfig(_StrictModel):
     temporal_address: str = "localhost:7233"
     temporal_namespace: str = "default"
     temporal_task_queue: str = "pynchy-scheduler"
+    git_sync_interval_seconds: int = 300
+    channel_reconciliation_interval_seconds: int = 300
+
+    @field_validator("git_sync_interval_seconds", "channel_reconciliation_interval_seconds")
+    @classmethod
+    def validate_interval_seconds(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("scheduler intervals must be positive")
+        return v
 
 
 class CronJobConfig(_StrictModel):
