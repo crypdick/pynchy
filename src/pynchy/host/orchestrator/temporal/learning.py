@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    Awaitable,
+    Callable,
+)
+from typing import Any, cast
 from uuid import uuid4
 
 from temporalio import activity
@@ -22,11 +26,10 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    from pynchy.types import ContainerOutput, WorkspaceProfile
+from pynchy.types import (
+    ContainerOutput,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+    WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
+)
 
 
 def learning_review_workflow_id(packet: LearningPacket) -> str:
