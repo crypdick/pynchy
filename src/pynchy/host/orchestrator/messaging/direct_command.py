@@ -7,25 +7,14 @@ from typing import Protocol
 
 import pynchy.types as types
 from pynchy.config import get_settings
-from pynchy.conversation.events import (
-    ConversationEvent,
-    ConversationEventKind,
-    new_event_id,
-    new_turn_id,
-)
-from pynchy.conversation.sink import (
-    ConversationSink,  # noqa: TC001, RUF100 - beartype resolves protocol annotations at runtime.
-)
 from pynchy.event_bus import Event, MessageEvent
 from pynchy.host.orchestrator.messaging.approval_handler import ApprovalDeps
 from pynchy.logger import logger
+from pynchy.state import store_message_direct
 from pynchy.utils import run_shell_command
 
 
 class DirectCommandDeps(ApprovalDeps, Protocol):
-    @property
-    def conversation_sink(self) -> ConversationSink: ...
-
     async def broadcast_to_channels(
         self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
     ) -> None: ...
@@ -68,28 +57,23 @@ async def execute_direct_command(
     ts = datetime.now(UTC).isoformat()
     output_text = f"{status_emoji} Command output (exit {result.returncode}):\n```\n{output}\n```"
 
-    await deps.conversation_sink.append(
-        ConversationEvent(
-            event_id=new_event_id(),
-            # TODO(Task 8): replace this synthetic ID once command and agent
-            # execution share turn identity through the orchestrator.
-            turn_id=new_turn_id(),
-            chat_jid=chat_jid,
-            timestamp=ts,
-            kind=ConversationEventKind.HOST_MESSAGE,
-            sender="command_output",
-            sender_name="command",
-            content=output_text,
-            message_type="host",
-            source_message_id=message.id,
-            metadata={
-                "source": "direct_command",
-                "command": command,
-                "exit_code": result.returncode,
-                "workspace_name": group.name,
-                "workspace_folder": group.folder,
-            },
-        )
+    await store_message_direct(
+        message_id=f"command-output-{message.id}",
+        chat_jid=chat_jid,
+        sender="command_output",
+        sender_name="command",
+        content=output_text,
+        timestamp=ts,
+        is_from_me=True,
+        message_type="host",
+        metadata={
+            "source": "direct_command",
+            "command": command,
+            "exit_code": result.returncode,
+            "source_message_id": message.id,
+            "workspace_name": group.name,
+            "workspace_folder": group.folder,
+        },
     )
 
     event = types.OutboundEvent(

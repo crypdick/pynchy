@@ -1,26 +1,26 @@
-"""Conversation event projection storage."""
+"""Conversation event projection pointer storage.
+
+SQLite ``messages`` rows are the authoritative chat history. This module only
+stores and reads projection pointer rows for database inspection; it has no
+chat-history hydration path and imports no external trace-store clients.
+"""
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
-from pynchy.config import get_settings
-from pynchy.conversation.endpoints import _normalized_endpoint, resolved_phoenix_endpoint
 from pynchy.conversation.events import (
     ConversationEvent,  # noqa: TC001 - beartype resolves annotations.
 )
-from pynchy.conversation.phoenix import (
-    ConversationBodyReader,
-    PhoenixConversationBodyReader,
-    PhoenixEventRef,
-)
 from pynchy.state.connection import _get_db
-from pynchy.types import NewMessage
 
 
-class ConversationProjectionHydrationError(RuntimeError):
-    """Raised when a projected conversation row cannot be hydrated from Phoenix."""
+@dataclass(frozen=True, slots=True)
+class ConversationEventRef:
+    event_id: str
+    trace_ref: str
 
 
 def _metadata_json(event: ConversationEvent) -> str:
@@ -32,11 +32,11 @@ def _metadata_json(event: ConversationEvent) -> str:
 
 async def store_conversation_event_pointer(
     event: ConversationEvent,
-    ref: PhoenixEventRef,
+    ref: ConversationEventRef,
 ) -> None:
     if ref.event_id != event.event_id:
         raise ValueError(
-            f"Phoenix ref event_id {ref.event_id!r} does not match event {event.event_id!r}"
+            f"Conversation ref event_id {ref.event_id!r} does not match event {event.event_id!r}"
         )
 
     db = _get_db()
@@ -73,50 +73,6 @@ def _decode_metadata(value: str | None) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return decoded if isinstance(decoded, dict) else {}
-
-
-def default_body_reader() -> ConversationBodyReader:
-    settings = get_settings().conversation_store
-    endpoint = _normalized_endpoint(settings.phoenix_endpoint) or resolved_phoenix_endpoint()
-    return PhoenixConversationBodyReader(
-        project_name=settings.project_name,
-        endpoint=endpoint,
-    )
-
-
-def pointer_to_message(row: dict[str, Any], content: str) -> NewMessage:
-    metadata = dict(row.get("metadata") or {})
-    metadata["phoenix_ref"] = row["phoenix_ref"]
-    metadata["turn_id"] = row["turn_id"]
-    metadata["source_message_id"] = row["source_message_id"]
-    return NewMessage(
-        id=row["event_id"],
-        chat_jid=row["chat_jid"],
-        sender=row["sender"],
-        sender_name=row["sender_name"],
-        content=content,
-        timestamp=row["timestamp"],
-        is_from_me=row["message_type"] in {"assistant", "host"},
-        message_type=row["message_type"],
-        metadata=metadata,
-    )
-
-
-async def hydrate_pointer_to_message(
-    row: dict[str, Any],
-    body_reader: ConversationBodyReader | None = None,
-) -> NewMessage:
-    reader = body_reader or default_body_reader()
-    try:
-        content = await reader.read_event_content(
-            row["event_id"],
-            phoenix_ref=row.get("phoenix_ref"),
-        )
-    except Exception as exc:
-        raise ConversationProjectionHydrationError(
-            f"Failed to hydrate projected conversation event {row['event_id']} from Phoenix"
-        ) from exc
-    return pointer_to_message(row, content)
 
 
 async def get_conversation_event_pointers_since(

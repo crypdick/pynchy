@@ -15,9 +15,6 @@ from unittest.mock import patch
 import pytest
 from conftest import NullChannel, init_test_database, make_settings
 
-from pynchy.conversation.events import ConversationEvent, ConversationEventKind
-from pynchy.conversation.phoenix import PhoenixEventRef
-from pynchy.conversation.sink import ConversationSink
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
@@ -25,8 +22,7 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.dep_factory import make_http_deps
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
-from pynchy.state import messages as state_messages
-from pynchy.state.conversation_events import store_conversation_event_pointer
+from pynchy.state import store_message
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -62,36 +58,21 @@ async def _noop_docker_rm(name: str) -> None:
     """No-op replacement for docker_rm_force in tests."""
 
 
-class _BodyStore:
-    def __init__(self) -> None:
-        self.bodies: dict[str, str] = {}
-
-    async def write_event(self, event: ConversationEvent) -> PhoenixEventRef:
-        self.bodies[event.event_id] = event.content
-        return PhoenixEventRef(
-            event_id=event.event_id,
-            trace_ref=f"phoenix:trace:trace_{event.event_id}:span:span_{event.event_id}:event:{event.event_id}",
-        )
-
-    async def read_event_content(self, event_id: str, *, phoenix_ref: str | None = None) -> str:
-        return self.bodies[event_id]
-
-
 async def _seed_message(app: PynchyApp, msg: NewMessage) -> None:
-    await app.conversation_sink.append(
-        ConversationEvent(
-            event_id=f"evt_{msg.id}",
-            turn_id=f"turn_{msg.id}",
+    del app
+    await store_message(
+        NewMessage(
+            id=msg.id,
             chat_jid=msg.chat_jid,
-            timestamp=msg.timestamp,
-            kind=ConversationEventKind.USER_MESSAGE,
             sender=msg.sender,
             sender_name=msg.sender_name,
             content=msg.content,
-            message_type=msg.message_type or "user",
-            source_message_id=msg.id,
-            metadata={"source": "test"},
-        )
+            timestamp=msg.timestamp,
+            is_from_me=msg.is_from_me,
+            message_type=msg.message_type,
+            metadata={"source": "test", **(msg.metadata or {})},
+        ),
+        message_type=msg.message_type or "user",
     )
 
 
@@ -113,6 +94,7 @@ def _patch_test_settings(tmp_path: Path):
             "pynchy.host.container_manager.snapshots",
             "pynchy.host.orchestrator.messaging.pipeline",
             "pynchy.host.orchestrator.messaging.router",
+            "pynchy.host.orchestrator.messaging.direct_command",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         stack.enter_context(
@@ -220,15 +202,9 @@ class EventCapture:
 
 
 @pytest.fixture
-async def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def app(tmp_path: Path):
     await init_test_database()
     a = PynchyApp()
-    body_store = _BodyStore()
-    a._conversation_sink = ConversationSink(  # allow: private-test-access - offline sink.
-        body_store=body_store,
-        store_pointer=store_conversation_event_pointer,
-    )
-    monkeypatch.setattr(state_messages, "default_body_reader", lambda: body_store)
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
             jid="group@g.us",

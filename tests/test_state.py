@@ -7,9 +7,6 @@ from dataclasses import replace
 import aiosqlite
 import pytest
 
-import pynchy.state.messages as state_messages
-from pynchy.conversation.events import ConversationEvent, ConversationEventKind
-from pynchy.conversation.phoenix import PhoenixEventRef
 from pynchy.state import (
     clear_session,
     create_host_job,
@@ -42,13 +39,13 @@ from pynchy.state import (
     set_session,
     set_workspace_profile,
     store_chat_metadata,
+    store_message_direct,
     update_chat_name,
     update_host_job,
     update_task,
     update_task_after_run,
 )
 from pynchy.state.connection import atomic_write
-from pynchy.state.conversation_events import store_conversation_event_pointer
 from pynchy.state.schema import create_schema
 from pynchy.types import (
     NewMessage,
@@ -59,23 +56,10 @@ from pynchy.types import (
     WorkspaceSecurity,
 )
 
-_PROJECTED_CONTENT: dict[str, str] = {}
-
 
 @pytest.fixture(autouse=True)
-async def _setup_db(monkeypatch):
+async def _setup_db():
     await init_test_database()
-    _PROJECTED_CONTENT.clear()
-    monkeypatch.setattr(state_messages, "default_body_reader", _projected_body_reader)
-
-
-class _ProjectedBodyReader:
-    async def read_event_content(self, event_id: str, *, phoenix_ref: str | None = None) -> str:
-        return _PROJECTED_CONTENT[event_id]
-
-
-def _projected_body_reader() -> _ProjectedBodyReader:
-    return _ProjectedBodyReader()
 
 
 def _store(
@@ -101,18 +85,8 @@ def _store(
     )
 
 
-def _event_kind(*, message_type: str, is_from_me: bool) -> tuple[ConversationEventKind, str]:
-    if message_type == "host":
-        return ConversationEventKind.HOST_MESSAGE, "host"
-    if message_type == "system":
-        return ConversationEventKind.SYSTEM_NOTICE, "system"
-    if is_from_me:
-        return ConversationEventKind.ASSISTANT_MESSAGE, "assistant"
-    return ConversationEventKind.USER_MESSAGE, message_type
-
-
-async def _store_projected_message(msg: NewMessage, message_type: str = "user") -> None:
-    await _store_projected_message_direct(
+async def _store_message_row(msg: NewMessage, message_type: str = "user") -> None:
+    await _store_message_row_direct(
         message_id=msg.id,
         chat_jid=msg.chat_jid,
         sender=msg.sender,
@@ -125,7 +99,7 @@ async def _store_projected_message(msg: NewMessage, message_type: str = "user") 
     )
 
 
-async def _store_projected_message_direct(
+async def _store_message_row_direct(
     *,
     message_id: str,
     chat_jid: str,
@@ -137,28 +111,16 @@ async def _store_projected_message_direct(
     message_type: str = "user",
     metadata: dict[str, object] | None = None,
 ) -> None:
-    kind, projected_message_type = _event_kind(
-        message_type=message_type,
+    await store_message_direct(
+        message_id=message_id,
+        chat_jid=chat_jid,
+        sender=sender,
+        sender_name=sender_name,
+        content=content,
+        timestamp=timestamp,
         is_from_me=is_from_me,
-    )
-    _PROJECTED_CONTENT[message_id] = content
-    async with atomic_write() as db:
-        await db.execute("DELETE FROM conversation_events WHERE event_id = ?", (message_id,))
-    await store_conversation_event_pointer(
-        ConversationEvent(
-            event_id=message_id,
-            turn_id=f"turn-{message_id}",
-            chat_jid=chat_jid,
-            timestamp=timestamp,
-            kind=kind,
-            sender=sender,
-            sender_name=sender_name,
-            content=content,
-            message_type=projected_message_type,
-            source_message_id=message_id,
-            metadata=metadata or {},
-        ),
-        PhoenixEventRef(event_id=message_id, trace_ref=f"test:event:{message_id}"),
+        message_type=message_type,
+        metadata=metadata,
     )
 
 
@@ -210,7 +172,7 @@ def _assert_full_task(task: ScheduledTask) -> None:
 class TestStoreMessage:
     async def test_stores_a_message_and_retrieves_it(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-1",
                 chat_jid="group@g.us",
@@ -230,7 +192,7 @@ class TestStoreMessage:
 
     async def test_stores_empty_content(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-2",
                 chat_jid="group@g.us",
@@ -247,7 +209,7 @@ class TestStoreMessage:
 
     async def test_stores_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-meta",
                 chat_jid="group@g.us",
@@ -268,7 +230,7 @@ class TestStoreMessage:
 
     async def test_stores_is_from_me_flag(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-3",
                 chat_jid="group@g.us",
@@ -289,7 +251,7 @@ class TestStoreMessage:
 
     async def test_upserts_on_duplicate_id_chat_jid(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-dup",
                 chat_jid="group@g.us",
@@ -299,7 +261,7 @@ class TestStoreMessage:
                 timestamp="2024-01-01T00:00:01.000Z",
             )
         )
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-dup",
                 chat_jid="group@g.us",
@@ -327,7 +289,7 @@ class TestGetMessagesSince:
             ("m2", "second", "2024-01-01T00:00:02.000Z", "Bob"),
             ("m4", "third", "2024-01-01T00:00:04.000Z", "Carol"),
         ]:
-            await _store_projected_message(
+            await _store_message_row(
                 _store(
                     message_id=id_,
                     chat_jid="group@g.us",
@@ -338,7 +300,7 @@ class TestGetMessagesSince:
                 )
             )
         # Bot message — excluded by sender filter, not content prefix
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="m3",
             chat_jid="group@g.us",
             sender="bot",
@@ -383,7 +345,7 @@ class TestGetNewMessages:
             ("a2", "group2@g.us", "g2 msg1", "2024-01-01T00:00:02.000Z"),
             ("a4", "group1@g.us", "g1 msg2", "2024-01-01T00:00:04.000Z"),
         ]:
-            await _store_projected_message(
+            await _store_message_row(
                 _store(
                     message_id=id_,
                     chat_jid=chat,
@@ -394,7 +356,7 @@ class TestGetNewMessages:
                 )
             )
         # Bot message — excluded by sender filter
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="a3",
             chat_jid="group1@g.us",
             sender="bot",
@@ -534,7 +496,7 @@ class TestSenderFiltering:
     async def _seed_messages(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         # Real user messages (should pass filter)
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="m-user",
                 chat_jid="group@g.us",
@@ -544,7 +506,7 @@ class TestSenderFiltering:
                 timestamp="2024-01-01T00:00:01.000Z",
             )
         )
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="m-tui",
             chat_jid="group@g.us",
             sender="tui-user",
@@ -553,7 +515,7 @@ class TestSenderFiltering:
             timestamp="2024-01-01T00:00:02.000Z",
             is_from_me=False,
         )
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="m-deploy",
             chat_jid="group@g.us",
             sender="deploy",
@@ -563,7 +525,7 @@ class TestSenderFiltering:
             is_from_me=False,
         )
         # Slack user message — sender is a Slack user ID (no @ sign)
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="m-slack",
             chat_jid="group@g.us",
             sender="U07ABC123",
@@ -582,7 +544,7 @@ class TestSenderFiltering:
             ("host", "host"),
             ("bot", "bot"),
         ]:
-            await _store_projected_message_direct(
+            await _store_message_row_direct(
                 message_id=f"m-{id_suffix}",
                 chat_jid="group@g.us",
                 sender=sender,
@@ -707,7 +669,7 @@ class TestChatClearedAt:
     async def test_cleared_at_hides_old_messages(self):
         """Messages before cleared_at should not appear in get_chat_history."""
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="old-msg",
                 chat_jid="group@g.us",
@@ -717,7 +679,7 @@ class TestChatClearedAt:
                 timestamp="2024-01-01T00:00:01.000Z",
             )
         )
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="new-msg",
                 chat_jid="group@g.us",
@@ -737,7 +699,7 @@ class TestChatClearedAt:
     async def test_no_cleared_at_returns_all(self):
         """Without cleared_at, all messages are returned."""
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-1",
                 chat_jid="group@g.us",
@@ -747,7 +709,7 @@ class TestChatClearedAt:
                 timestamp="2024-01-01T00:00:01.000Z",
             )
         )
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="msg-2",
                 chat_jid="group@g.us",
@@ -785,7 +747,7 @@ class TestUpdateChatName:
 class TestStoreMessageDirect:
     async def test_stores_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="meta-msg",
             chat_jid="group@g.us",
             sender="123@s.whatsapp.net",
@@ -806,7 +768,7 @@ class TestStoreMessageDirect:
 
     async def test_stores_without_metadata(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message_direct(
+        await _store_message_row_direct(
             message_id="no-meta",
             chat_jid="group@g.us",
             sender="123@s.whatsapp.net",
@@ -818,8 +780,7 @@ class TestStoreMessageDirect:
 
         messages = await get_chat_history("group@g.us", limit=50)
         assert len(messages) == 1
-        assert messages[0].metadata
-        assert messages[0].metadata["source_message_id"] == "no-meta"
+        assert messages[0].metadata is None
 
 
 # --- Advanced task operations ---
@@ -1153,7 +1114,7 @@ class TestChatHistoryLimit:
     async def test_respects_limit(self):
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
         for i in range(10):
-            await _store_projected_message(
+            await _store_message_row(
                 _store(
                     message_id=f"msg-{i}",
                     chat_jid="group@g.us",
@@ -1173,7 +1134,7 @@ class TestChatHistoryLimit:
     async def test_returns_newest_last(self):
         """get_chat_history returns messages in chronological order (oldest first)."""
         await store_chat_metadata("group@g.us", "2024-01-01T00:00:00.000Z")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="old",
                 chat_jid="group@g.us",
@@ -1183,7 +1144,7 @@ class TestChatHistoryLimit:
                 timestamp="2024-01-01T00:00:01.000Z",
             )
         )
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="new",
                 chat_jid="group@g.us",
@@ -1415,7 +1376,7 @@ class TestMessagingStats:
 
     async def test_counts_inbound_and_outbound(self):
         await store_chat_metadata("g@g.us", "2026-01-01T00:00:00", "Test")
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="m1",
                 chat_jid="g@g.us",
@@ -1425,7 +1386,7 @@ class TestMessagingStats:
                 timestamp="2026-02-20T10:00:00",
             )
         )
-        await _store_projected_message(
+        await _store_message_row(
             _store(
                 message_id="m2",
                 chat_jid="g@g.us",

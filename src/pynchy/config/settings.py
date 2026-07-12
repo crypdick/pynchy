@@ -48,7 +48,6 @@ from pynchy.config.models import (
     ConnectionConfig,
     ConnectionsConfig,
     ContainerConfig,
-    ConversationStoreConfig,
     GatewayConfig,
     LearningConfig,
     LoggingConfig,
@@ -161,7 +160,6 @@ class Settings(BaseSettings):
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
     onecli: OneCliConfig = OneCliConfig()
-    conversation_store: ConversationStoreConfig = ConversationStoreConfig()
     learning: LearningConfig = LearningConfig()
     repos: ReposConfig = Field(default_factory=ReposConfig)
     profiles: dict[str, ProfileConfig] = {}

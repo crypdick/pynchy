@@ -38,7 +38,6 @@ from pynchy.logger import logger
 from pynchy.state import get_messages_since
 
 if TYPE_CHECKING:
-    from pynchy.conversation.sink import ConversationSink
     from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
@@ -57,9 +56,6 @@ class MessageHandlerDeps(Protocol):
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
-
-    @property
-    def conversation_sink(self) -> ConversationSink: ...
 
     # The "seen" cursor for the polling loop (distinct from per-group agent cursors)
     last_timestamp: str

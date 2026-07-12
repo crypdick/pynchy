@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.conversation.events import ConversationEventKind
-from pynchy.host.orchestrator.messaging import streaming
+from pynchy.host.orchestrator.messaging import router, streaming
 from pynchy.host.orchestrator.messaging.router import (
     broadcast_agent_input,
     broadcast_trace,
@@ -33,6 +33,13 @@ def _clean_trace_batcher():
     streaming._state.trace_batcher = None
 
 
+@pytest.fixture(autouse=True)
+def _mock_store_message_direct(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    store = AsyncMock()
+    monkeypatch.setattr(router, "store_message_direct", store)
+    return store
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -41,8 +48,6 @@ def _clean_trace_batcher():
 def _make_deps() -> MagicMock:
     deps = MagicMock(spec=OutputDeps)
     deps.workspaces = {}
-    deps.conversation_sink = MagicMock()
-    deps.conversation_sink.append = AsyncMock()
     deps.broadcast_to_channels = AsyncMock()
     deps.emit = MagicMock()
     # Provide a mock channel so finalize_stream_or_broadcast (bus) can work.
@@ -126,7 +131,7 @@ class TestBroadcastTrace:
         deps = _make_deps()
         await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "text")
 
-        deps.conversation_sink.append.assert_not_awaited()
+        cast("AsyncMock", router.store_message_direct).assert_not_awaited()
         deps.emit.assert_called_once()
 
 
@@ -267,15 +272,16 @@ class TestHandleStreamedOutput:
         result = await handle_streamed_output(deps, "g@g.us", group, output, turn_id="turn_1")
 
         assert result is True
-        saved_event = deps.conversation_sink.append.await_args.args[0]
-        assert saved_event.turn_id == "turn_1"
-        assert saved_event.kind == ConversationEventKind.ASSISTANT_MESSAGE
-        assert saved_event.chat_jid == "g@g.us"
-        assert saved_event.sender == "bot"
-        assert saved_event.message_type == "assistant"
-        assert saved_event.content == "Hello user!"
-        assert saved_event.metadata["source"] == "agent_result"
-        assert saved_event.metadata["workspace_name"] == group.name
+        store = cast("AsyncMock", router.store_message_direct)
+        store.assert_awaited_once()
+        saved = store.await_args.kwargs
+        assert saved["metadata"]["turn_id"] == "turn_1"
+        assert saved["chat_jid"] == "g@g.us"
+        assert saved["sender"] == "bot"
+        assert saved["message_type"] == "assistant"
+        assert saved["content"] == "Hello user!"
+        assert saved["metadata"]["source"] == "agent_result"
+        assert saved["metadata"]["workspace_name"] == group.name
         # Result finalization goes through the bus (finalize_stream_or_broadcast)
         # which calls ch.send_event on the mock channel.
         deps._test_channel.send_event.assert_awaited()
@@ -300,11 +306,10 @@ class TestHandleStreamedOutput:
         result = await handle_streamed_output(deps, "g@g.us", group, output)
 
         assert result is True
-        saved_event = deps.conversation_sink.append.await_args.args[0]
-        assert saved_event.kind == ConversationEventKind.HOST_MESSAGE
-        assert saved_event.sender == "host"
-        assert saved_event.message_type == "host"
-        assert saved_event.content == "System rebooting"
+        saved = cast("AsyncMock", router.store_message_direct).await_args.kwargs
+        assert saved["sender"] == "host"
+        assert saved["message_type"] == "host"
+        assert saved["content"] == "System rebooting"
 
     @pytest.mark.asyncio
     async def test_result_metadata_cost_formatting(self):
@@ -486,7 +491,7 @@ class TestHandleStreamedOutput:
 
         assert result is True
         # Only the final result is stored as conversation content; metadata is live trace data.
-        assert deps.conversation_sink.append.await_count == 1
+        assert cast("AsyncMock", router.store_message_direct).await_count == 1
         # Metadata stats go through deps.broadcast_to_channels (trace path)
         assert deps.broadcast_to_channels.await_count >= 1
         # Result text goes through the bus (finalize_stream_or_broadcast -> ch.send_event)
@@ -499,7 +504,6 @@ class TestHandleStreamedOutput:
 
         await broadcast_trace(deps, "g@g.us", "tool_use", {"tool_name": "Bash"}, "Bash: ls")
 
-        deps.conversation_sink.append.assert_not_awaited()
         event = deps.emit.call_args[0][0]
         assert event.trace_type == "tool_use"
         assert event.chat_jid == "g@g.us"

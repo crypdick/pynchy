@@ -23,7 +23,6 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves streaming 
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.conversation.sink import ConversationSink
     from pynchy.event_bus import Event
 
 # ---------------------------------------------------------------------------
@@ -40,9 +39,6 @@ class OutputDeps(Protocol):
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
-
-    @property
-    def conversation_sink(self) -> ConversationSink: ...
 
     async def broadcast_to_channels(
         self, chat_jid: str, event: OutboundEvent, *, suppress_errors: bool = True

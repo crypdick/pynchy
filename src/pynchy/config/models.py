@@ -194,11 +194,6 @@ class OneCliConfig(_StrictModel):
     agent_identifier_prefix: str = "pynchy"
 
 
-class ConversationStoreConfig(_StrictModel):
-    project_name: str = "pynchy"
-    phoenix_endpoint: str | None = None
-
-
 class ObsidianLearningConfig(_StrictModel):
     vault_root: str | None = None
     mount_path: str = "/workspace/vault"

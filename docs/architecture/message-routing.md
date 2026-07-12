@@ -8,8 +8,9 @@ Messages arrive from plugin-provided [channels](../usage/channels.md) (WhatsApp,
 
 SQLite chat history stores channel-visible messages and operational notices.
 LiteLLM exports LLM request/response traces to Phoenix, which is the source of
-truth for prompt/response bodies, tool-call traces, token usage, cost, and
-provider request metadata.
+truth for model trace bodies, tool-call traces, token usage, cost, and provider
+request metadata. Phoenix is not the application database for channel-visible
+chat history.
 
 The sender vocabulary in the database:
 
@@ -24,7 +25,7 @@ The sender vocabulary in the database:
 | `{channel_jid}` | Yes | Channel user messages — WhatsApp phone JID, `slack:<channel_id>`, etc. (`UserMessage`) |
 
 The goal: read SQLite to understand the chat workflow, and read Phoenix to
-reconstruct what the model saw and produced.
+reconstruct model/provider traces.
 
 ## Trigger Pattern
 

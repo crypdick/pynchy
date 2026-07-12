@@ -15,12 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config import get_settings
-from pynchy.conversation.events import (
-    ConversationEvent,
-    ConversationEventKind,
-    new_event_id,
-    new_turn_id,
-)
+from pynchy.conversation.events import new_turn_id
 from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.orchestrator.messaging.formatter import (
     format_internal_tags,
@@ -40,6 +35,7 @@ from pynchy.host.orchestrator.messaging.streaming import (
     stream_text_to_channels,
 )
 from pynchy.logger import logger
+from pynchy.state import store_message_direct
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves router annotations at runtime.
     ContainerOutput,
     OutboundEvent,
@@ -376,27 +372,21 @@ async def _handle_final_result(request: _FinalResultRequest) -> bool:
         logger.info("Agent output", group=request.group.name, text=raw[:200])
 
     msg_type = "host" if sender == "host" else "assistant"
-    await request.deps.conversation_sink.append(
-        ConversationEvent(
-            event_id=new_event_id(),
-            turn_id=request.turn_id,
-            chat_jid=request.chat_jid,
-            timestamp=request.ts,
-            kind=(
-                ConversationEventKind.HOST_MESSAGE
-                if is_host
-                else ConversationEventKind.ASSISTANT_MESSAGE
-            ),
-            sender=sender,
-            sender_name=sender_name,
-            content=db_content,
-            message_type=msg_type,
-            metadata={
-                "source": "agent_result",
-                "workspace_name": request.group.name,
-                "workspace_folder": request.group.folder,
-            },
-        )
+    await store_message_direct(
+        message_id=f"{request.turn_id}:{msg_type}:{request.ts}",
+        chat_jid=request.chat_jid,
+        sender=sender,
+        sender_name=sender_name,
+        content=db_content,
+        timestamp=request.ts,
+        is_from_me=True,
+        message_type=msg_type,
+        metadata={
+            "source": "agent_result",
+            "turn_id": request.turn_id,
+            "workspace_name": request.group.name,
+            "workspace_folder": request.group.folder,
+        },
     )
 
     # For channels that were streaming, finalize the existing message.

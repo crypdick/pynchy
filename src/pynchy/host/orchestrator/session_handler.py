@@ -9,12 +9,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.config.access import resolve_workspace_connection_name
-from pynchy.conversation.events import (
-    ConversationEvent,
-    ConversationEventKind,
-    new_event_id,
-    new_turn_id,
-)
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
@@ -27,7 +21,7 @@ from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.logger import logger
-from pynchy.state import clear_session, set_chat_cleared_at
+from pynchy.state import clear_session, set_chat_cleared_at, store_message
 from pynchy.types import (
     Channel,
     GroupFolder,
@@ -39,7 +33,6 @@ from pynchy.types import (
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
-    from pynchy.conversation.sink import ConversationSink
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
@@ -64,9 +57,6 @@ class SessionDeps(Protocol):
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
-
-    @property
-    def conversation_sink(self) -> ConversationSink: ...
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
@@ -188,25 +178,21 @@ async def ingest_user_message(
         source_channel: Optional name of the originating channel (e.g., "tui").
                        If provided, we skip broadcasting back to that channel.
     """
-    # 1. Store durable body in Phoenix and a pointer projection in SQLite.
-    await deps.conversation_sink.append(
-        ConversationEvent(
-            event_id=new_event_id(),
-            turn_id=new_turn_id(),
+    # 1. Store full chat body in SQLite. Phoenix remains an observability trace store.
+    metadata = {"source": source_channel or "channel", **(msg.metadata or {})}
+    await store_message(
+        NewMessage(
+            id=msg.id,
             chat_jid=msg.chat_jid,
-            timestamp=msg.timestamp,
-            kind=ConversationEventKind.USER_MESSAGE,
             sender=msg.sender,
             sender_name=msg.sender_name,
             content=msg.content,
-            message_type=msg.message_type or "user",
-            source_message_id=msg.id,
-            metadata={
-                "source": source_channel or "channel",
-                "is_from_me": msg.is_from_me or False,
-                **(msg.metadata or {}),
-            },
-        )
+            timestamp=msg.timestamp,
+            is_from_me=msg.is_from_me,
+            message_type=msg.message_type,
+            metadata=metadata,
+        ),
+        message_type=msg.message_type or "user",
     )
 
     # 2. Emit to event bus (for TUI/SSE, logging, etc.)

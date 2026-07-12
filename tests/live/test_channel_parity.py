@@ -82,8 +82,6 @@ def _make_deps(channels: list[RecordingChannel]) -> Any:
     deps = MagicMock()
     deps.channels = channels
     deps.event_bus = MagicMock()
-    deps.conversation_sink = MagicMock()
-    deps.conversation_sink.append = AsyncMock()
     return deps
 
 
@@ -305,8 +303,6 @@ class TestAgentOutputParity:
 
         deps.broadcast_to_channels = AsyncMock(side_effect=mock_broadcast)
         deps.emit = MagicMock()
-        deps.conversation_sink = MagicMock()
-        deps.conversation_sink.append = AsyncMock()
         return deps
 
     async def test_agent_text_result_parity(self):

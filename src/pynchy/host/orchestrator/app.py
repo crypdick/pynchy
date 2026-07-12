@@ -16,16 +16,6 @@ if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
 
 from pynchy.config import get_settings
-from pynchy.conversation.events import (
-    ConversationEvent,
-    ConversationEventKind,
-    new_event_id,
-    new_turn_id,
-)
-from pynchy.conversation.factory import build_conversation_sink
-from pynchy.conversation.sink import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
-    ConversationSink,
-)
 from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     OnOutput,
@@ -60,6 +50,8 @@ from pynchy.state import (
     get_router_state,
     save_router_state_batch,
     set_workspace_profile,
+    store_message,
+    store_message_direct,
 )
 from pynchy.types import (
     Channel,
@@ -91,7 +83,6 @@ class PynchyApp:
         self._http_runner: object | None = None
         self._observers: list[ObserverProvider] = []
         self._memory: MemoryProvider | None = None
-        self._conversation_sink: ConversationSink | None = None
         self._subsystem_tasks: list[object] = []
         self.plugin_manager: pluggy.PluginManager | None = None
 
@@ -111,13 +102,6 @@ class PynchyApp:
     def host_broadcaster(self) -> HostMessageBroadcaster:
         """Return the shared host/system notice broadcaster."""
         return self._host_broadcaster
-
-    @property
-    def conversation_sink(self) -> ConversationSink:
-        """Return the shared conversation sink, constructing Phoenix lazily."""
-        if self._conversation_sink is None:
-            self._conversation_sink = build_conversation_sink()
-        return self._conversation_sink
 
     def is_shutting_down(self) -> bool:
         """Return whether shutdown has started."""
@@ -309,49 +293,31 @@ class PynchyApp:
         """Create a HostMessageBroadcaster wired to this app's store and event bus."""
 
         async def store_host_message(**kwargs: object) -> None:
-            await self._append_broadcast_conversation_event(
-                kwargs,
-                kind=ConversationEventKind.HOST_MESSAGE,
-                message_type="host",
-            )
+            await self._store_broadcast_message(kwargs, message_type="host")
 
         async def store_system_notice(**kwargs: object) -> None:
-            await self._append_broadcast_conversation_event(
-                kwargs,
-                kind=ConversationEventKind.SYSTEM_NOTICE,
-                message_type="user",
-            )
+            await self._store_broadcast_message(kwargs, message_type="user")
 
         return HostMessageBroadcaster(
             self._broadcaster, store_host_message, store_system_notice, self.event_bus.emit
         )
 
-    async def _append_broadcast_conversation_event(
+    async def _store_broadcast_message(
         self,
         kwargs: dict[str, object],
         *,
-        kind: ConversationEventKind,
         message_type: str,
     ) -> None:
-        # TODO(Task 8): replace this synthetic turn ID with the orchestrator's
-        # real turn ID when host/system notices are emitted during an agent turn.
-        await self.conversation_sink.append(
-            ConversationEvent(
-                event_id=new_event_id(),
-                turn_id=new_turn_id(),
-                chat_jid=str(kwargs["chat_jid"]),
-                timestamp=str(kwargs["timestamp"]),
-                kind=kind,
-                sender=str(kwargs["sender"]),
-                sender_name=str(kwargs["sender_name"]) if kwargs.get("sender_name") else None,
-                content=str(kwargs["content"]),
-                message_type=message_type,
-                source_message_id=str(kwargs["message_id"]),
-                metadata={
-                    "source": "host_broadcaster",
-                    "is_from_me": kwargs.get("is_from_me", True),
-                },
-            )
+        await store_message_direct(
+            message_id=str(kwargs["message_id"]),
+            chat_jid=str(kwargs["chat_jid"]),
+            sender=str(kwargs["sender"]),
+            sender_name=str(kwargs["sender_name"]) if kwargs.get("sender_name") else "",
+            content=str(kwargs["content"]),
+            timestamp=str(kwargs["timestamp"]),
+            is_from_me=bool(kwargs.get("is_from_me", True)),
+            message_type=message_type,
+            metadata={"source": "host_broadcaster"},
         )
 
     async def handle_streamed_output(
@@ -479,9 +445,8 @@ class PynchyApp:
         (allowed_users, trigger patterns) that would reject system messages.
 
         The forwarded answer is treated as inbound conversation content so the
-        next agent turn can pick it up through the Phoenix-backed projection.
-        The host message below ensures the user sees what was forwarded
-        (token stream transparency).
+        next agent turn can pick it up from SQLite. The host message below
+        ensures the user sees what was forwarded (token stream transparency).
         """
         msg = NewMessage(
             id=f"ask-user-answer-{uuid.uuid4().hex[:8]}",
@@ -493,21 +458,7 @@ class PynchyApp:
             is_from_me=False,
             message_type="system",
         )
-        await self.conversation_sink.append(
-            ConversationEvent(
-                event_id=new_event_id(),
-                turn_id=new_turn_id(),
-                chat_jid=chat_jid,
-                timestamp=msg.timestamp,
-                kind=ConversationEventKind.USER_MESSAGE,
-                sender=msg.sender,
-                sender_name=msg.sender_name,
-                content=msg.content,
-                message_type=msg.message_type or "system",
-                source_message_id=msg.id,
-                metadata={"source": "ask_user_answer", "is_from_me": False},
-            )
-        )
+        await store_message(msg, message_type=msg.message_type or "system")
         await self.broadcast_host_message(chat_jid, "\U0001f60e Answer forwarded to agent")
         await self.start_interactive_turn(chat_jid)
 
