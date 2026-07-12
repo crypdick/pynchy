@@ -52,7 +52,7 @@ async def test_store_and_load_legacy_projection_pointer() -> None:
     assert len(rows) == 1
     assert rows[0]["event_id"] == "evt_1"
     assert rows[0]["content_preview"] == "body evt_1"
-    assert rows[0]["phoenix_ref"] == "legacy:event:evt_1"
+    assert rows[0]["trace_ref"] == "legacy:event:evt_1"
     assert rows[0]["metadata"] == {"source": "test"}
 
 

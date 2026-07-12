@@ -44,7 +44,7 @@ async def store_conversation_event_pointer(
         """
         INSERT OR IGNORE INTO conversation_events (
             event_id, turn_id, chat_jid, timestamp, kind, sender, sender_name,
-            message_type, source_message_id, content_preview, phoenix_ref, metadata
+            message_type, source_message_id, content_preview, trace_ref, metadata
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (

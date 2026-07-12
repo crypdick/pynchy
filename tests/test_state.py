@@ -1361,6 +1361,49 @@ class TestEnsureColumns:
         assert "is_admin" in cols
         await db.close()
 
+    async def test_renames_conversation_event_phoenix_ref(self):
+        """create_schema migrates old projection refs to provider-neutral names."""
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE conversation_events (
+                event_id TEXT PRIMARY KEY,
+                turn_id TEXT NOT NULL,
+                chat_jid TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                sender TEXT NOT NULL,
+                sender_name TEXT,
+                message_type TEXT NOT NULL,
+                source_message_id TEXT,
+                content_preview TEXT NOT NULL,
+                phoenix_ref TEXT NOT NULL,
+                metadata TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO conversation_events (
+                event_id, turn_id, chat_jid, timestamp, kind, sender,
+                message_type, content_preview, phoenix_ref
+            ) VALUES (
+                'evt_1', 'turn_1', 'slack:C123', '2026-07-10T00:00:00+00:00',
+                'user_message', 'alice', 'user', 'hello', 'legacy:event:evt_1'
+            );
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute("PRAGMA table_info(conversation_events)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert "trace_ref" in cols
+        assert "phoenix_ref" not in cols
+
+        cursor = await db.execute(
+            "SELECT trace_ref FROM conversation_events WHERE event_id = 'evt_1'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == "legacy:event:evt_1"
+        await db.close()
+
 
 # --- get_messaging_stats ---
 

@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS conversation_events (
     message_type TEXT NOT NULL,
     source_message_id TEXT,
     content_preview TEXT NOT NULL,
-    phoenix_ref TEXT NOT NULL,
+    trace_ref TEXT NOT NULL,
     metadata TEXT DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -218,6 +218,18 @@ async def _ensure_columns(database: aiosqlite.Connection) -> None:
                 await database.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
                 logger.info("Added missing column", table=table, column=col_name)
     await database.commit()
+
+
+async def _rename_conversation_event_trace_ref(database: aiosqlite.Connection) -> None:
+    """Rename the provider-specific projection ref column after the Phoenix rollback."""
+    cursor = await database.execute("PRAGMA table_info(conversation_events)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    if "phoenix_ref" not in cols or "trace_ref" in cols:
+        return
+
+    await database.execute("ALTER TABLE conversation_events RENAME COLUMN phoenix_ref TO trace_ref")
+    await database.commit()
+    logger.info("Renamed conversation_events.phoenix_ref column to trace_ref")
 
 
 async def _migrate_renamed_columns(database: aiosqlite.Connection) -> None:
@@ -345,6 +357,7 @@ async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
 async def create_schema(database: aiosqlite.Connection) -> None:
     """Apply schema DDL and run all migrations."""
     await database.executescript(_SCHEMA)
+    await _rename_conversation_event_trace_ref(database)
     await _ensure_columns(database)
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
