@@ -1799,6 +1799,10 @@ class TestContainerInputAgentCoreConfig:
                 return_value="success",
             ) as run_host_input,
             patch(
+                "pynchy.host.orchestrator.host_execution.build_agent_env_vars",
+                return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"},
+            ),
+            patch(
                 "pynchy.host.orchestrator.agent_runner._cold_start",
                 new_callable=AsyncMock,
                 return_value="container-called",
@@ -1813,6 +1817,93 @@ class TestContainerInputAgentCoreConfig:
         assert input_data.group_folder == "host-group"
         assert input_data.session_id == "session-0"
         assert run_host_input.await_args.kwargs["cwd"] == tmp_path
+        assert run_host_input.await_args.kwargs["env"]["OPENAI_BASE_URL"] == (
+            "http://localhost:4000"
+        )
+
+    @pytest.mark.asyncio
+    async def test_host_execution_clears_codex_session_missing_from_host_runtime(
+        self, tmp_path: Path
+    ):
+        class _Deps:
+            def __init__(self) -> None:
+                self.sessions: dict[str, str] = {"host-group": "codex:gpt-5.5:missing-thread"}
+                self.session_cleared: set[str] = set()
+                self.workspaces: dict[str, WorkspaceProfile] = {}
+                self.queue = MagicMock()
+                self.plugin_manager = None
+
+            async def get_available_groups(self) -> list[dict[str, object]]:
+                return []
+
+            async def broadcast_agent_input(
+                self,
+                chat_jid: str,
+                messages: list[dict[str, object]],
+                *,
+                source: str = "user",
+            ) -> None:
+                return None
+
+        group = WorkspaceProfile(
+            jid="host@g.us",
+            name="Host Group",
+            folder="host-group",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        deps = _Deps()
+        ctx = self._ctx("codex:gpt-5.5:missing-thread")
+        ctx.is_admin = True
+        settings = make_settings(
+            profiles={
+                "host-admin": ProfileConfig(
+                    is_admin=True,
+                    execution_mode="host",
+                    cwd=str(tmp_path),
+                )
+            },
+            workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
+            agent=AgentConfig(model="gpt-5.5"),
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._codex_thread_exists_in_host_runtime",
+                return_value=False,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.run_host_input",
+                new_callable=AsyncMock,
+                return_value="success",
+            ) as run_host_input,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.destroy_session",
+                new_callable=AsyncMock,
+            ) as destroy_session,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.clear_session",
+                new_callable=AsyncMock,
+            ) as clear_session,
+        ):
+            result = await run_agent(deps, group, "chat", [{"content": "hi"}])
+
+        assert result == "success"
+        input_data = run_host_input.await_args.args[0]
+        assert input_data.session_id is None
+        assert deps.sessions == {}
+        destroy_session.assert_awaited_once_with(group.folder)
+        clear_session.assert_awaited_once()
 
 
 class TestAgentRunnerPreContainerHelpers:

@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
@@ -27,13 +26,17 @@ from pynchy.host.container_manager import (
     destroy_session,
     get_session,
 )
-from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
     oneshot_container_name,
     stable_container_name,
 )
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
+from pynchy.host.orchestrator.host_execution import (
+    codex_thread_exists_in_host_runtime as _codex_thread_exists_in_host_runtime,
+)
+from pynchy.host.orchestrator.host_execution import host_agent_env_vars as _host_agent_env_vars
+from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.logger import logger
 from pynchy.state import clear_session
@@ -218,15 +221,6 @@ def _session_model_mismatch(
         return False
     resolved_model = (agent_core_config or {}).get("model")
     return _codex_session_model(session_id) != resolved_model
-
-
-def _host_execution_cwd(group_folder: str) -> Path | None:
-    resolved = workspace_config.load_resolved_config(group_folder)
-    if resolved is None or resolved.execution_mode != "host":
-        return None
-    if not resolved.cwd:
-        return None
-    return Path(resolved.cwd).expanduser()
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +446,16 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
 
     host_cwd = _host_execution_cwd(group.folder)
     if host_cwd is not None:
+        if not _codex_thread_exists_in_host_runtime(ctx.session_id):
+            logger.info(
+                "Stored Codex session is not available to host runtime; starting fresh",
+                group=group.name,
+                session_id=ctx.session_id,
+            )
+            await destroy_session(group.folder)
+            await clear_session(GroupFolder(group.folder))
+            deps.sessions.pop(group.folder, None)
+            ctx.session_id = None
         logger.info(
             "run_agent host execution",
             group=group.name,
@@ -470,7 +474,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             cwd=host_cwd,
             on_output=ctx.wrapped_on_output,
             timeout_seconds=ctx.config_timeout,
-            env=build_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
+            env=_host_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
         )
 
     session = get_session(GroupFolder(group.folder))
