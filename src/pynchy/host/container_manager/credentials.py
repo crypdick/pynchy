@@ -212,6 +212,13 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
     return {}
 
 
+def _agent_context_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
+    return {
+        "PYNCHY_GROUP_FOLDER": group_folder,
+        "PYNCHY_IS_ADMIN": "1" if is_admin else "0",
+    }
+
+
 def build_agent_env_vars(
     *,
     is_admin: bool,
@@ -277,6 +284,8 @@ def write_env_file(
             "[secrets].openai_api_key / [secrets].anthropic_api_key in config.toml"
         )
         return None
+
+    env_vars.update(_agent_context_env_vars(is_admin=is_admin, group_folder=group_folder))
 
     logger.debug(
         "Container env prepared",

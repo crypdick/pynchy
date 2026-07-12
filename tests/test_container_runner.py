@@ -1125,6 +1125,22 @@ class TestWriteEnvFile:
             assert f"OPENAI_BASE_URL='{gw.base_url}'" in content
             assert f"OPENAI_API_KEY='{gw.key}'" in content
 
+    def test_env_file_includes_process_wide_agent_context(self, tmp_path: Path):
+        """Hook processes use the process env, not the built-in MCP server env."""
+        gw = _MockGateway(providers={"openai"})
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}._read_gh_token", return_value=None),
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = write_env_file(is_admin=False, group_folder="learning-review-pynchy-dev")
+
+        assert env_dir is not None
+        content = (env_dir / "env").read_text()
+        assert "PYNCHY_GROUP_FOLDER='learning-review-pynchy-dev'" in content
+        assert "PYNCHY_IS_ADMIN='0'" in content
+
     def test_gateway_host_bypasses_container_proxy_vars(self, tmp_path: Path):
         """Local gateway traffic must not route through OneCLI's env proxy."""
         gw = _MockGateway(providers={"openai"}, base_url="http://192.168.64.1:4000")
