@@ -10,7 +10,7 @@ import asyncio
 import contextlib
 import json
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import NullChannel, make_settings
@@ -454,13 +454,17 @@ class TestProcessGroupMessages:
         assert result is True
         _assert_trace_order(_sent_texts(channel))
 
-    async def test_processes_messages_without_trigger(self, app: PynchyApp, tmp_path: Path):
+    async def test_processes_messages_without_trigger(self, app: PynchyApp):
         """Workspace config no longer gates non-admin groups on mention triggers."""
         msg = _make_message(content="just a regular message without trigger")
         await _seed_message(app, msg)
+        run_agent = AsyncMock(return_value="error")
+        app.run_agent = run_agent  # type: ignore[method-assign] - isolates message routing from containers.
 
         result = await app._process_group_messages("group@g.us")
+
         assert result is False
+        run_agent.assert_awaited_once()
 
     async def test_rolls_back_cursor_on_error(self, app: PynchyApp, tmp_path: Path):
         """On agent error (before any output), cursor should roll back for retry."""
