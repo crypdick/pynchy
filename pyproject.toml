@@ -83,6 +83,27 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pynchy"]
 
+[tool.new-feature]
+target_branch = "main"
+agent = ["codex"]
+push = false
+setup = [
+    "uv sync",
+    "uv run python scripts/new_feature_sandbox.py setup",
+]
+pre_merge = [
+    "uv run python scripts/new_feature_sandbox.py stop",
+    "uvx pre-commit run --all-files",
+]
+post_merge = ["uv run pytest"]
+teardown = ["uv run python scripts/new_feature_sandbox.py stop"]
+
+[tool.new-feature.env]
+SERVER__PORT = { allocate = "port", min = 18484, max = 18583 }
+GATEWAY__PORT = { allocate = "port", min = 14010, max = 14109 }
+NEW_FEATURE_TEMPORAL_PORT = { allocate = "port", min = 17233, max = 17332 }
+PYNCHY_RUNTIME_NAMESPACE = { allocate = "name", prefix = "pynchy", max_length = 40 }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]

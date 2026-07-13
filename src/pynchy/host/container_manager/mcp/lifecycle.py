@@ -32,13 +32,11 @@ from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
 from pynchy.host.container_manager.onecli import OneCliMaterial, prepare_onecli_material
+from pynchy.host.container_manager.runtime_names import runtime_network_name
 from pynchy.logger import logger
 from pynchy.types import (
     VolumeMount,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
-
-_NETWORK_NAME = "pynchy-litellm-net"
-
 
 # ---------------------------------------------------------------------------
 # Docker lifecycle
@@ -58,7 +56,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     )
 
     await _ensure_mcp_image(instance.server_config)
-    await ensure_network(_NETWORK_NAME)
+    await ensure_network(runtime_network_name("litellm-net"))
 
     # Remove stale container
     await remove_container(instance.container_name)
@@ -280,7 +278,7 @@ async def _start_docker_container(
     await run_docker(
         "run", "-d",
         "--name", instance.container_name,
-        "--network", _NETWORK_NAME,
+        "--network", runtime_network_name("litellm-net"),
         "--restart", "unless-stopped",
         *_docker_publish_args(instance),
         *build_env_args(

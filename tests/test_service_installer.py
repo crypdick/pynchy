@@ -83,6 +83,16 @@ class TestInstallService:
                 install_service()
                 mock_launchd.assert_called_once()
 
+    def test_ephemeral_runtime_skips_installation(self, monkeypatch):
+        monkeypatch.setenv("PYNCHY_DISABLE_SERVICE_INSTALL", "1")
+        with (
+            patch("pynchy.host.orchestrator.service_installer._install_launchd_service") as launchd,
+            patch("pynchy.host.orchestrator.service_installer._install_systemd_service") as systemd,
+        ):
+            install_service()
+        launchd.assert_not_called()
+        systemd.assert_not_called()
+
     def test_dispatches_to_systemd_on_linux(self):
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "linux"

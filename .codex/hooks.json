@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "new-feature codex-hook",
+            "timeout": 10,
+            "statusMessage": "Checking new-feature repository guard"
+          }
+        ]
+      }
+    ]
+  }
+}

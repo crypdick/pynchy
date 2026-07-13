@@ -22,6 +22,13 @@ uvx pre-commit run --all-files  # Run all pre-commit hooks
 ./src/pynchy/agent/build.sh     # Rebuild agent container
 ```
 
+## Isolated feature runtimes
+
+Use `new-feature` from the control checkout when a feature needs an isolated Pynchy runtime.
+See [the feature-runtime workflow](../../../docs/contributing/new-feature.md) for create, merge,
+restart, and teardown commands. Do not use raw `git worktree` commands for managed features.
+Install or verify its host dependencies with `./scripts/install_new_feature_dependencies.py`.
+
 ## Documentation Lookup
 
 When you need documentation for a library or framework, use the context7 MCP server to get up-to-date docs. Don't rely on training data for API details that may have changed.

@@ -16,6 +16,7 @@ import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signa
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
+from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.host.container_manager.serialization import input_to_dict
 from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
@@ -60,12 +61,12 @@ def stable_container_name(group_folder: str) -> str:
     Using a stable name means we can docker rm -f the stale container
     before spawning a fresh one for the same group.
     """
-    return f"pynchy-{_sanitize_folder(group_folder)}"
+    return runtime_container_name(_sanitize_folder(group_folder))
 
 
 def oneshot_container_name(group_folder: str) -> str:
     """Timestamped container name for one-shot runs (scheduled tasks)."""
-    return f"pynchy-{_sanitize_folder(group_folder)}-{int(time.time() * 1000)}"
+    return runtime_container_name(f"{_sanitize_folder(group_folder)}-{int(time.time() * 1000)}")
 
 
 # ---------------------------------------------------------------------------

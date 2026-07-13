@@ -21,12 +21,12 @@ from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution signatures at runtime.
 )
 from pynchy.config.models import McpTool
+from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.logger import logger
 from pynchy.types import (
     ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP resolution models at runtime.
 )
 
-_MCP_CONTAINER_PREFIX = "pynchy-mcp"
 _SERVER_NAME_MUST_BE_NON_EMPTY = "server_name must be a non-empty string"
 
 
@@ -285,7 +285,7 @@ def resolve_all_instances(
             iid = get_instance_id(server_name, kwargs)
 
             if iid not in state.instances:
-                container_name = f"{_MCP_CONTAINER_PREFIX}-{iid}"
+                container_name = runtime_container_name(f"mcp-{iid}")
                 offset = port_counters.get(server_name, 0)
                 port_counters[server_name] = offset + 1
                 base_port = server_config.port

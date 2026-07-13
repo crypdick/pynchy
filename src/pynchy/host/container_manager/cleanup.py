@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol, cast
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.runtime_names import runtime_namespace
 from pynchy.host.container_manager.session import active_session_container_names
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
@@ -75,7 +76,7 @@ def _list_runtime_containers(runtime: object) -> list[RuntimeContainerRecord]:
     list_containers = getattr(runtime, "list_containers", None)
     if not callable(list_containers):
         return []
-    return cast("list[RuntimeContainerRecord]", list_containers("pynchy-"))
+    return cast("list[RuntimeContainerRecord]", list_containers(f"{runtime_namespace()}-"))
 
 
 def _remove_runtime_container(runtime: object, name: str) -> bool:

@@ -16,6 +16,7 @@ _XATTR = "/usr/bin/xattr"
 _SYSTEMCTL = "/usr/bin/systemctl"
 _SUDO = "/usr/bin/sudo"
 _LOGINCTL = "/usr/bin/loginctl"
+_DISABLE_INSTALL_ENV = "PYNCHY_DISABLE_SERVICE_INSTALL"
 
 
 def is_launchd_managed() -> bool:
@@ -175,6 +176,9 @@ def install_service() -> None:
 
     On Linux: installs systemd user service with auto-restart.
     """
+    if os.environ.get(_DISABLE_INSTALL_ENV) == "1":
+        logger.info("Skipping service installation for ephemeral runtime")
+        return
     if sys.platform == "darwin":
         _install_launchd_service()
     elif sys.platform == "linux":

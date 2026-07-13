@@ -45,15 +45,16 @@ from pynchy.host.container_manager.litellm_config import (
     PLACEHOLDER_RE,
     LiteLLMConfigPreparer,
 )
+from pynchy.host.container_manager.runtime_names import (
+    runtime_container_name,
+    runtime_network_name,
+)
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-_LITELLM_CONTAINER = "pynchy-litellm"
-_POSTGRES_CONTAINER = "pynchy-litellm-db"
-_NETWORK_NAME = "pynchy-litellm-net"
 _LITELLM_INTERNAL_PORT = 4000
 _POSTGRES_PORT = 5432
 _POSTGRES_DB = "litellm"
@@ -133,6 +134,9 @@ class LiteLLMGateway:
         self._postgres_image = postgres_image
         self._data_dir = data_dir / "litellm"
         self._pg_data_dir = self._data_dir / "postgres"
+        self._litellm_container = runtime_container_name("litellm")
+        self._postgres_container = runtime_container_name("litellm-db")
+        self._network_name = runtime_network_name("litellm-net")
 
         self._pg_password = _load_or_create_persistent_key(
             self._data_dir / "pg_password.key",
@@ -150,7 +154,7 @@ class LiteLLMGateway:
     def _database_url(self) -> str:
         return (
             f"postgresql://{_POSTGRES_USER}:{self._pg_password}"
-            f"@{_POSTGRES_CONTAINER}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
+            f"@{self._postgres_container}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
         )
 
     def has_provider(self, _name: str) -> bool:
@@ -299,7 +303,7 @@ class LiteLLMGateway:
         self._pg_data_dir.mkdir(parents=True, exist_ok=True)
         await ensure_image(self._postgres_image)
 
-        await remove_container(_POSTGRES_CONTAINER)
+        await remove_container(self._postgres_container)
 
         logger.info(
             "Starting PostgreSQL sidecar",
@@ -309,8 +313,8 @@ class LiteLLMGateway:
 
         await run_docker(
             "run", "-d",
-            "--name", _POSTGRES_CONTAINER,
-            "--network", _NETWORK_NAME,
+            "--name", self._postgres_container,
+            "--network", self._network_name,
             "-v", f"{self._pg_data_dir}:/var/lib/postgresql/data",
             "-e", f"POSTGRES_USER={_POSTGRES_USER}",
             "-e", f"POSTGRES_PASSWORD={self._pg_password}",
@@ -329,7 +333,7 @@ class LiteLLMGateway:
         while loop.time() < deadline:
             result = await run_docker(
                 "exec",
-                _POSTGRES_CONTAINER,
+                self._postgres_container,
                 "pg_isready",
                 "-U",
                 _POSTGRES_USER,
@@ -344,7 +348,7 @@ class LiteLLMGateway:
                 "inspect",
                 "-f",
                 "{{.State.Running}}",
-                _POSTGRES_CONTAINER,
+                self._postgres_container,
                 check=False,
             )
             if inspect.stdout.strip() != "true":
@@ -352,7 +356,7 @@ class LiteLLMGateway:
                     "logs",
                     "--tail",
                     "30",
-                    _POSTGRES_CONTAINER,
+                    self._postgres_container,
                     check=False,
                 )
                 logger.error("PostgreSQL container exited", logs=logs.stdout[-2000:])
@@ -379,13 +383,13 @@ class LiteLLMGateway:
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
-        await ensure_network(_NETWORK_NAME)
+        await ensure_network(self._network_name)
         await self._start_postgres()
 
         await ensure_image(self._image)
 
         # Remove any stale LiteLLM container before starting
-        await remove_container(_LITELLM_CONTAINER)
+        await remove_container(self._litellm_container)
 
         # Resolve env vars once — shared by config filtering and env-var forwarding.
         env = self._resolve_env(self._config_path)
@@ -437,8 +441,8 @@ class LiteLLMGateway:
         await run_docker(
             "run", "-d",
             "--init",
-            "--name", _LITELLM_CONTAINER,
-            "--network", _NETWORK_NAME,
+            "--name", self._litellm_container,
+            "--network", self._network_name,
             "-p", f"{self.port}:{_LITELLM_INTERNAL_PORT}",
             "-v", f"{filtered_config}:/app/config.yaml:ro",
             "-v", f"{self._data_dir}:/app/data",
@@ -450,7 +454,7 @@ class LiteLLMGateway:
         )  # fmt: skip
 
         await wait_healthy(
-            _LITELLM_CONTAINER,
+            self._litellm_container,
             f"http://localhost:{self.port}/health/readiness",
             health_timeout_seconds=_HEALTH_TIMEOUT,
             poll_interval=_HEALTH_POLL_INTERVAL,
@@ -461,14 +465,14 @@ class LiteLLMGateway:
             "LiteLLM gateway ready",
             port=self.port,
             container_url=self.base_url,
-            container=_LITELLM_CONTAINER,
+            container=self._litellm_container,
         )
 
     async def stop(self) -> None:
         logger.info("Stopping LiteLLM gateway containers")
         await asyncio.gather(
-            stop_container(_LITELLM_CONTAINER),
-            stop_container(_POSTGRES_CONTAINER),
+            stop_container(self._litellm_container),
+            stop_container(self._postgres_container),
         )
-        await run_docker("network", "rm", _NETWORK_NAME, check=False)
+        await run_docker("network", "rm", self._network_name, check=False)
         logger.info("LiteLLM gateway stopped")
