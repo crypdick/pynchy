@@ -223,6 +223,11 @@ def _remove_runtime_resources(namespace: object) -> None:
         capture_output=True,
         check=False,
     )
+    subprocess.run(  # noqa: S603, RUF100 - validated sandbox resource names only.
+        [docker, "volume", "rm", f"{namespace}-litellm-db-data"],
+        capture_output=True,
+        check=False,
+    )
 
 
 def stop() -> None:

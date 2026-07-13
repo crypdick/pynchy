@@ -47,7 +47,9 @@ from pynchy.host.container_manager.litellm_config import (
 )
 from pynchy.host.container_manager.runtime_names import (
     runtime_container_name,
+    runtime_namespace,
     runtime_network_name,
+    runtime_volume_name,
 )
 from pynchy.logger import logger
 
@@ -137,6 +139,9 @@ class LiteLLMGateway:
         self._litellm_container = runtime_container_name("litellm")
         self._postgres_container = runtime_container_name("litellm-db")
         self._network_name = runtime_network_name("litellm-net")
+        self._postgres_volume = (
+            None if runtime_namespace() == "pynchy" else runtime_volume_name("litellm-db-data")
+        )
 
         self._pg_password = _load_or_create_persistent_key(
             self._data_dir / "pg_password.key",
@@ -156,6 +161,10 @@ class LiteLLMGateway:
             f"postgresql://{_POSTGRES_USER}:{self._pg_password}"
             f"@{self._postgres_container}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
         )
+
+    @property
+    def _postgres_mount_source(self) -> str:
+        return self._postgres_volume or str(self._pg_data_dir)
 
     def has_provider(self, _name: str) -> bool:
         # LiteLLM handles provider resolution — always expose both URLs.
@@ -300,7 +309,8 @@ class LiteLLMGateway:
 
     async def _start_postgres(self) -> None:
         """Start the PostgreSQL sidecar and wait for it to accept connections."""
-        self._pg_data_dir.mkdir(parents=True, exist_ok=True)
+        if self._postgres_volume is None:
+            self._pg_data_dir.mkdir(parents=True, exist_ok=True)
         await ensure_image(self._postgres_image)
 
         await remove_container(self._postgres_container)
@@ -308,14 +318,14 @@ class LiteLLMGateway:
         logger.info(
             "Starting PostgreSQL sidecar",
             image=self._postgres_image,
-            data_dir=str(self._pg_data_dir),
+            storage=self._postgres_mount_source,
         )
 
         await run_docker(
             "run", "-d",
             "--name", self._postgres_container,
             "--network", self._network_name,
-            "-v", f"{self._pg_data_dir}:/var/lib/postgresql/data",
+            "-v", f"{self._postgres_mount_source}:/var/lib/postgresql/data",
             "-e", f"POSTGRES_USER={_POSTGRES_USER}",
             "-e", f"POSTGRES_PASSWORD={self._pg_password}",
             "-e", f"POSTGRES_DB={_POSTGRES_DB}",

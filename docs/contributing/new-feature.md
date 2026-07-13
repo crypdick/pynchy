@@ -17,6 +17,10 @@ Codex CLIs into `~/.local/bin`. It downloads a pinned Temporal release and verif
 digest before installation. It does not install or start Docker because that requires
 platform-specific system administration. Run with `--check` to diagnose without installing.
 
+Export the provider variables referenced by `litellm_config.yaml` before creating a feature.
+Setup fails when no usable model route remains after filtering, rather than starting a gateway
+that cannot serve requests.
+
 Keep a working local `litellm_config.yaml` in the control checkout. Sandbox setup copies that
 routing configuration and only the environment variables it references. It does not copy
 channel credentials or the control checkout's `config.toml`.
@@ -31,8 +35,9 @@ new-feature create "describe the feature"
 
 Setup creates `.worktrees/<slug>`, installs dependencies, initializes `messages.db` and
 `memories.db`, starts a dedicated Temporal server, and launches Pynchy with namespaced
-LiteLLM and PostgreSQL containers. Generated configuration, credentials, logs, process state,
-and databases remain ignored inside the feature worktree.
+LiteLLM and PostgreSQL containers. PostgreSQL uses a namespaced Docker volume so container
+ownership cannot prevent worktree removal. Generated configuration, credentials, logs,
+process state, and databases remain ignored inside the feature worktree.
 
 When an agent already runs in the control checkout, prevent a nested agent:
 

@@ -53,3 +53,23 @@ def test_prepare_creates_isolated_configuration_and_databases(tmp_path, monkeypa
         assert database.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories'"
         ).fetchone() == (1,)
+
+
+def test_remove_runtime_resources_removes_namespaced_volume(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        return sandbox.subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(sandbox.shutil, "which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr(sandbox.subprocess, "run", run)
+
+    sandbox._remove_runtime_resources("pynchy_feature_test")
+
+    assert [
+        "/usr/bin/docker",
+        "volume",
+        "rm",
+        "pynchy_feature_test-litellm-db-data",
+    ] in calls

@@ -30,3 +30,8 @@ def runtime_container_name(suffix: str) -> str:
 def runtime_network_name(suffix: str) -> str:
     """Return a Docker network name scoped to the current Pynchy instance."""
     return f"{runtime_namespace()}-{suffix}"
+
+
+def runtime_volume_name(suffix: str) -> str:
+    """Return a Docker volume name scoped to the current Pynchy instance."""
+    return f"{runtime_namespace()}-{suffix}"
