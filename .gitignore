@@ -69,3 +69,4 @@ src/pynchy/agent/requirements-plugins.txt
 # Misc
 japanese-emoticons.md
 config-from-pynchy-server.toml
+.new-feature/
