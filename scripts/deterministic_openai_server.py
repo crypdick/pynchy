@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""Serve a small deterministic OpenAI-compatible API for runtime harnesses."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+_DEFAULT_RESPONSE_TEXT = "Pynchy deterministic response."
+_RESPONSE_TEXT_ENV = "PYNCHY_DETERMINISTIC_RESPONSE"
+_MODEL_NAME = "pynchy-deterministic"
+_CREATED_AT = 1_700_000_000
+_RESPONSE_ID = "resp_deterministic"
+_MESSAGE_ID = "msg_deterministic"
+
+
+class DeterministicOpenAIServer(ThreadingHTTPServer):
+    """HTTP server carrying the fixed response text for each request."""
+
+    def __init__(self, server_address: tuple[str, int], response_text: str) -> None:
+        super().__init__(server_address, DeterministicOpenAIHandler)
+        self.response_text = response_text
+
+
+class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
+    """Handle the OpenAI endpoints Pynchy reaches through LiteLLM."""
+
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self) -> None:
+        if self.path == "/healthz":
+            self._send_json(HTTPStatus.OK, {"status": "ok"})
+            return
+        if self.path in {"/v1/models", "/models"}:
+            self._send_json(
+                HTTPStatus.OK,
+                {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": _MODEL_NAME,
+                            "object": "model",
+                            "created": _CREATED_AT,
+                            "owned_by": "pynchy-runtime",
+                        }
+                    ],
+                },
+            )
+            return
+        self._send_error_json(HTTPStatus.NOT_FOUND, "Unknown deterministic OpenAI endpoint")
+
+    def do_POST(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+
+        if self.path in {"/v1/chat/completions", "/chat/completions"}:
+            self._handle_chat_completion(payload)
+            return
+        if self.path in {"/v1/responses", "/responses"}:
+            self._handle_response(payload)
+            return
+        self._send_error_json(HTTPStatus.NOT_FOUND, "Unknown deterministic OpenAI endpoint")
+
+    def log_message(self, _message_format: str, *_args: object) -> None:
+        """Keep deterministic sidecar logs focused on startup failures."""
+
+    def _read_json_body(self) -> dict[str, Any] | None:
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            content_length = int(raw_length)
+        except ValueError:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Invalid Content-Length")
+            return None
+
+        try:
+            payload = json.loads(self.rfile.read(content_length))
+        except json.JSONDecodeError:
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Request body must be JSON")
+            return None
+        if not isinstance(payload, dict):
+            self._send_error_json(HTTPStatus.BAD_REQUEST, "Request body must be a JSON object")
+            return None
+        return payload
+
+    def _handle_chat_completion(self, payload: dict[str, Any]) -> None:
+        if payload.get("stream") is True:
+            self._stream_chat_completion(payload)
+            return
+        self._send_json(HTTPStatus.OK, self._chat_completion(payload))
+
+    def _handle_response(self, payload: dict[str, Any]) -> None:
+        if payload.get("stream") is True:
+            self._stream_response(payload)
+            return
+        self._send_json(HTTPStatus.OK, self._response(payload, status="completed"))
+
+    def _chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        model = _requested_model(payload)
+        return {
+            "id": "chatcmpl_deterministic",
+            "object": "chat.completion",
+            "created": _CREATED_AT,
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": self._response_text},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": _usage(),
+        }
+
+    def _stream_chat_completion(self, payload: dict[str, Any]) -> None:
+        model = _requested_model(payload)
+        self._start_event_stream()
+        self._send_event(
+            {
+                "id": "chatcmpl_deterministic",
+                "object": "chat.completion.chunk",
+                "created": _CREATED_AT,
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": self._response_text},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+        self._send_event(
+            {
+                "id": "chatcmpl_deterministic",
+                "object": "chat.completion.chunk",
+                "created": _CREATED_AT,
+                "model": model,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+        )
+        self._finish_event_stream()
+
+    def _response(self, payload: dict[str, Any], *, status: str) -> dict[str, Any]:
+        model = _requested_model(payload)
+        completed = status == "completed"
+        return {
+            "id": _RESPONSE_ID,
+            "object": "response",
+            "created_at": _CREATED_AT,
+            "completed_at": _CREATED_AT if completed else None,
+            "status": status,
+            "error": None,
+            "incomplete_details": None,
+            "instructions": None,
+            "max_output_tokens": None,
+            "model": model,
+            "output": [_output_message(self._response_text)] if completed else [],
+            "parallel_tool_calls": True,
+            "previous_response_id": payload.get("previous_response_id"),
+            "reasoning": {"effort": None, "summary": None},
+            "store": True,
+            "temperature": 1,
+            "text": {"format": {"type": "text"}},
+            "tool_choice": "auto",
+            "tools": [],
+            "top_p": 1,
+            "truncation": "disabled",
+            "usage": _usage() if completed else None,
+            "user": None,
+            "metadata": {},
+        }
+
+    def _stream_response(self, payload: dict[str, Any]) -> None:
+        self._start_event_stream()
+        sequence = 1
+        self._send_response_event(
+            "response.created",
+            {"response": self._response(payload, status="in_progress")},
+            sequence,
+        )
+        sequence += 1
+        item = _output_message("")
+        item["status"] = "in_progress"
+        self._send_response_event(
+            "response.output_item.added",
+            {"output_index": 0, "item": item},
+            sequence,
+        )
+        sequence += 1
+        part = {"type": "output_text", "text": "", "annotations": []}
+        self._send_response_event(
+            "response.content_part.added",
+            {
+                "item_id": _MESSAGE_ID,
+                "output_index": 0,
+                "content_index": 0,
+                "part": part,
+            },
+            sequence,
+        )
+        sequence += 1
+        self._send_response_event(
+            "response.output_text.delta",
+            {
+                "item_id": _MESSAGE_ID,
+                "output_index": 0,
+                "content_index": 0,
+                "delta": self._response_text,
+            },
+            sequence,
+        )
+        sequence += 1
+        completed_part = {"type": "output_text", "text": self._response_text, "annotations": []}
+        self._send_response_event(
+            "response.output_text.done",
+            {
+                "item_id": _MESSAGE_ID,
+                "output_index": 0,
+                "content_index": 0,
+                "text": self._response_text,
+            },
+            sequence,
+        )
+        sequence += 1
+        self._send_response_event(
+            "response.content_part.done",
+            {
+                "item_id": _MESSAGE_ID,
+                "output_index": 0,
+                "content_index": 0,
+                "part": completed_part,
+            },
+            sequence,
+        )
+        sequence += 1
+        completed_item = _output_message(self._response_text)
+        self._send_response_event(
+            "response.output_item.done",
+            {"output_index": 0, "item": completed_item},
+            sequence,
+        )
+        sequence += 1
+        self._send_response_event(
+            "response.completed",
+            {"response": self._response(payload, status="completed")},
+            sequence,
+        )
+        self._finish_event_stream()
+
+    @property
+    def _response_text(self) -> str:
+        server = self.server
+        if not isinstance(server, DeterministicOpenAIServer):
+            raise TypeError("Deterministic OpenAI handler requires its dedicated server")
+        return server.response_text
+
+    def _send_json(self, status: HTTPStatus, body: dict[str, Any]) -> None:
+        payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_error_json(self, status: HTTPStatus, message: str) -> None:
+        self._send_json(status, {"error": {"message": message, "type": "invalid_request_error"}})
+
+    def _start_event_stream(self) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def _send_event(self, body: dict[str, Any]) -> None:
+        self.wfile.write(f"data: {json.dumps(body, separators=(',', ':'))}\n\n".encode())
+        self.wfile.flush()
+
+    def _send_response_event(
+        self,
+        event_type: str,
+        fields: dict[str, Any],
+        sequence_number: int,
+    ) -> None:
+        self._send_event({"type": event_type, "sequence_number": sequence_number, **fields})
+
+    def _finish_event_stream(self) -> None:
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+        self.close_connection = True
+
+
+def _requested_model(payload: dict[str, Any]) -> str:
+    model = payload.get("model")
+    return model if isinstance(model, str) and model else _MODEL_NAME
+
+
+def _output_message(text: str) -> dict[str, Any]:
+    return {
+        "id": _MESSAGE_ID,
+        "type": "message",
+        "status": "completed",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": text, "annotations": []}],
+    }
+
+
+def _usage() -> dict[str, Any]:
+    return {
+        "input_tokens": 1,
+        "input_tokens_details": {"cached_tokens": 0},
+        "output_tokens": 1,
+        "output_tokens_details": {"reasoning_tokens": 0},
+        "total_tokens": 2,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", default="0.0.0.0")  # noqa: S104 - Docker sidecar must accept its private network.
+    parser.add_argument("--port", type=int, default=8080)
+    args = parser.parse_args()
+    response_text = os.environ.get(_RESPONSE_TEXT_ENV, _DEFAULT_RESPONSE_TEXT)
+    server = DeterministicOpenAIServer((args.host, args.port), response_text)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

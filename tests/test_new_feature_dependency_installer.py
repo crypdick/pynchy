@@ -59,6 +59,47 @@ def test_install_temporal_writes_verified_executable(
     assert destination.stat().st_mode & 0o111 == 0o111
 
 
+def test_runtime_dependencies_install_temporal_in_the_selected_bin_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bin_dir = tmp_path / "runtime-bin"
+    installed: list[Path] = []
+    temporal = bin_dir / "temporal"
+
+    monkeypatch.setattr(
+        installer.shutil,
+        "which",
+        lambda name: "/usr/bin/docker" if name == "docker" else None,
+    )
+    monkeypatch.setattr(installer, "_docker_ready", lambda _docker: True)
+
+    def install(destination: Path) -> Path:
+        installed.append(destination)
+        destination.mkdir()
+        temporal.touch()
+        return temporal
+
+    monkeypatch.setattr(installer, "_install_temporal", install)
+
+    installer._ensure_runtime_dependencies(bin_dir=bin_dir, check_only=False)
+
+    assert installed == [bin_dir]
+
+
+def test_runtime_dependencies_reject_missing_pinned_temporal_in_check_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        installer.shutil,
+        "which",
+        lambda name: "/usr/bin/docker" if name == "docker" else None,
+    )
+    monkeypatch.setattr(installer, "_docker_ready", lambda _docker: True)
+
+    with pytest.raises(installer.DependencyError, match=r"Pinned Temporal CLI v1\.8\.0 is missing"):
+        installer._ensure_runtime_dependencies(bin_dir=tmp_path / "runtime-bin", check_only=True)
+
+
 @pytest.mark.parametrize(
     ("system", "machine", "expected"),
     [

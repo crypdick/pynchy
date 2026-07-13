@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run python
-"""Install user-local CLI dependencies for Pynchy new-feature sandboxes."""
+"""Install user-local CLI dependencies for isolated Pynchy runtimes."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import hashlib
 import io
 import os
 import platform
+import re
 import shutil
 import subprocess  # noqa: S404, RUF100 - fixed package-manager commands install pinned tools.
 import sys
@@ -20,6 +21,7 @@ _TEMPORAL_VERSION = "1.8.0"
 _NEW_FEATURE_VERSION = "0.6.2"
 _CODEX_VERSION = "0.144.1"
 _TEMPORAL_BASE_URL = "https://github.com/temporalio/cli/releases/download"
+_TEMPORAL_VERSION_PATTERN = re.compile(r"\btemporal version v?([^\s]+)")
 _TEMPORAL_DIGESTS = {
     (
         "darwin",
@@ -176,11 +178,41 @@ def _docker_ready(docker: str) -> bool:
     return result.returncode == 0
 
 
-def _ensure_dependencies(*, bin_dir: Path, check_only: bool) -> None:
-    uv = shutil.which("uv")
-    if uv is None:
-        raise DependencyError("uv is required to run this installer; install it from astral.sh/uv")
+def _temporal_version(temporal: Path) -> str | None:
+    """Return the installed Temporal CLI version without trusting PATH order."""
+    try:
+        result = subprocess.run(  # noqa: S603, RUF100 - Temporal path is inside the selected runtime bin directory.
+            [str(temporal), "--version"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    match = _TEMPORAL_VERSION_PATTERN.search(f"{result.stdout}\n{result.stderr}")
+    return match.group(1) if match else None
 
+
+def _ensure_pinned_temporal(bin_dir: Path, *, check_only: bool) -> Path:
+    """Install or verify the exact Temporal version used by the runtime profile."""
+    temporal = bin_dir / "temporal"
+    if temporal.is_file() and _temporal_version(temporal) == _TEMPORAL_VERSION:
+        return temporal
+    if check_only:
+        if temporal.exists():
+            actual = _temporal_version(temporal) or "unreadable"
+            raise DependencyError(
+                f"Temporal CLI at {temporal} must be v{_TEMPORAL_VERSION}; found {actual}"
+            )
+        raise DependencyError(f"Pinned Temporal CLI v{_TEMPORAL_VERSION} is missing from {bin_dir}")
+    return _install_temporal(bin_dir)
+
+
+def _ensure_runtime_dependencies(*, bin_dir: Path, check_only: bool) -> None:
+    """Install or verify the Docker and Temporal dependencies shared by CI and development."""
     docker = shutil.which("docker")
     if docker is None:
         raise DependencyError("Docker is required; install Docker Desktop or Docker Engine")
@@ -188,12 +220,17 @@ def _ensure_dependencies(*, bin_dir: Path, check_only: bool) -> None:
         raise DependencyError("Docker is installed but its daemon is not running")
     _line("Docker: ready")
 
-    temporal = _resolved_command("temporal", bin_dir)
-    if temporal is None:
-        if check_only:
-            raise DependencyError("Temporal CLI is missing")
-        temporal = str(_install_temporal(bin_dir))
+    temporal = _ensure_pinned_temporal(bin_dir, check_only=check_only)
     _line(f"Temporal CLI: {temporal}")
+
+
+def _ensure_dependencies(*, bin_dir: Path, check_only: bool) -> None:
+    """Install the full new-feature developer toolchain."""
+    uv = shutil.which("uv")
+    if uv is None:
+        raise DependencyError("uv is required to run this installer; install it from astral.sh/uv")
+
+    _ensure_runtime_dependencies(bin_dir=bin_dir, check_only=check_only)
 
     new_feature = _resolved_command("new-feature", bin_dir)
     if new_feature is None:
@@ -224,6 +261,17 @@ def _ensure_dependencies(*, bin_dir: Path, check_only: bool) -> None:
         _line(f"Add {bin_dir} to PATH before running new-feature")
 
 
+def _ensure_selected_dependencies(*, bin_dir: Path, check_only: bool, runtime_only: bool) -> None:
+    """Install or verify the CLI dependency profile selected at the command line."""
+    resolved_bin_dir = bin_dir.expanduser().resolve()
+    if runtime_only:
+        _ensure_runtime_dependencies(bin_dir=resolved_bin_dir, check_only=check_only)
+        if str(resolved_bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
+            _line(f"Add {resolved_bin_dir} to PATH before running the deterministic runtime")
+        return
+    _ensure_dependencies(bin_dir=resolved_bin_dir, check_only=check_only)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -235,11 +283,20 @@ def main() -> None:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="verify dependencies without installing missing CLI tools",
+        help="verify the selected dependency profile without installing missing CLI tools",
+    )
+    parser.add_argument(
+        "--runtime-only",
+        action="store_true",
+        help="verify Docker and install or verify only the pinned Temporal CLI",
     )
     args = parser.parse_args()
     try:
-        _ensure_dependencies(bin_dir=args.bin_dir.expanduser().resolve(), check_only=args.check)
+        _ensure_selected_dependencies(
+            bin_dir=args.bin_dir,
+            check_only=args.check,
+            runtime_only=args.runtime_only,
+        )
     except DependencyError as exc:
         sys.stderr.write(f"error: {exc}\n")
         raise SystemExit(1) from exc
