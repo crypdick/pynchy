@@ -44,6 +44,13 @@ def _json_request(
         return HTTPStatus(response.status), json.loads(response.read())
 
 
+def _json_get(base_url: str, path: str) -> dict[str, object]:
+    with urlopen(f"{base_url}{path}", timeout=2) as response:  # noqa: S310 - local test server URL.
+        value = json.loads(response.read())
+    assert isinstance(value, dict)
+    return value
+
+
 def test_server_advertises_model_and_returns_fixed_chat_completion() -> None:
     with _server() as base_url:
         with urlopen(f"{base_url}/v1/models", timeout=2) as response:  # noqa: S310 - local test server URL.
@@ -97,8 +104,52 @@ def test_server_streams_openai_response_events_with_fixed_text() -> None:
         "response.completed",
     ]
     assert events[3]["delta"] == "streamed answer"
+    assert events[0]["response"]["id"] == events[-1]["response"]["id"]
     assert events[-1]["response"]["status"] == "completed"
     assert "data: [DONE]" in raw_events
+
+
+def test_server_records_a_deterministic_response_chain() -> None:
+    """The harness can distinguish a warm chained turn from a static fake response."""
+    with _server() as base_url:
+        cold_payload = {"model": "pynchy-deterministic", "input": "cold marker"}
+        cold_status, cold_response = _json_request(base_url, "/v1/responses", cold_payload)
+        duplicate_status, duplicate_response = _json_request(
+            base_url, "/v1/responses", cold_payload
+        )
+        warm_status, warm_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {
+                "model": "pynchy-deterministic",
+                "input": "warm marker",
+                "previous_response_id": cold_response["id"],
+            },
+        )
+        audit = _json_get(base_url, "/__pynchy_runtime__/response-requests")
+
+    assert cold_status == duplicate_status == warm_status == HTTPStatus.OK
+    assert cold_response["id"] == duplicate_response["id"]
+    assert warm_response["id"] != cold_response["id"]
+    assert audit == {
+        "requests": [
+            {
+                "response_id": cold_response["id"],
+                "previous_response_id": None,
+                "input": "cold marker",
+            },
+            {
+                "response_id": duplicate_response["id"],
+                "previous_response_id": None,
+                "input": "cold marker",
+            },
+            {
+                "response_id": warm_response["id"],
+                "previous_response_id": cold_response["id"],
+                "input": "warm marker",
+            },
+        ]
+    }
 
 
 def test_server_rejects_invalid_json_and_unknown_endpoints() -> None:

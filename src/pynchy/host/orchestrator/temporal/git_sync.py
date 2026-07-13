@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from dataclasses import asdict
 from typing import cast
 
@@ -39,6 +40,7 @@ HOST_GIT_SYNC_ID = "git-sync-host"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
 _HOST_STATE_KEY = "temporal_git_sync_host_state"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
+_RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 
 
 def _workspace_map(deps: object) -> dict[str, WorkspaceProfile]:
@@ -140,6 +142,13 @@ async def _config_drift_started_deploy(state: _HostSyncState, deps: _TemporalGit
 @activity.defn(name="run_host_git_sync")
 async def run_host_git_sync() -> str:
     """Run one host-repo git sync poll through Temporal."""
+    if os.environ.get(_RUNTIME_HARNESS_ENV) == "1":
+        # The hermetic runtime owns its process lifecycle directly. Its
+        # generated config is expected to change across feature work, so the
+        # production deploy handoff would SIGTERM an unsupervised test process.
+        _record_activity_result(HOST_GIT_SYNC_ID, "skipped")
+        return "skipped"
+
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="host_git_sync")
     settings = get_settings()
     state = await _load_host_state()

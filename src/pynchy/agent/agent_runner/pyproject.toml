@@ -132,7 +132,10 @@ select = [
     "YTT",
 ]
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "PLR0912", "PLR0913", "PLR0915", "RUF012", "S101", "SLF"]
+"tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "INP", "PLR0912", "PLR0913", "PLR0915", "RUF012", "S101", "SLF"]
+# The outer project directory stays non-package so pytest does not import the
+# standalone runner through the surrounding host Pynchy package.
+"src/agent_runner/__init__.py" = ["INP"]
 "src/agent_runner/agent_tools/_server.py" = ["F401"]
 
 [tool.ruff.lint.mccabe]
@@ -143,6 +146,9 @@ max-complexity = 15
 quote-style = "double"
 
 [tool.pytest.ini_options]
+# Keep this nested project and its tests out of Python packages. Otherwise
+# pytest imports them through the surrounding host ``pynchy.agent`` package and
+# couples the standalone runner suite to host-only dependencies.
 testpaths = ["tests"]
 asyncio_mode = "strict"
 

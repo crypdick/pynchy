@@ -93,9 +93,13 @@ setup = [
 ]
 pre_merge = [
     "uv run python scripts/new_feature_sandbox.py stop",
+    "uv run python scripts/new_feature_sandbox.py run -- uv run pytest -o addopts='' -n 0 -m runtime",
     "uvx pre-commit run --all-files",
 ]
-post_merge = ["uv run pytest"]
+post_merge = [
+    "uv run pytest",
+    "uv run --directory src/pynchy/agent/agent_runner --locked pytest",
+]
 teardown = ["uv run python scripts/new_feature_sandbox.py stop"]
 
 [tool.new-feature.env]

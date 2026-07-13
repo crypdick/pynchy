@@ -1195,6 +1195,24 @@ class TestWriteEnvFile:
             content = (env_dir / "env").read_text()
             assert "GH_TOKEN='gho_abc123'" in content
 
+    def test_runtime_harness_does_not_discover_host_gh_token(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The hermetic runtime must not pass an ambient gh credential to its agent."""
+        gw = _MockGateway(providers={"openai"})
+        monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+        with (
+            _patch_settings(tmp_path),
+            patch(f"{_GATEWAY}.get_gateway", return_value=gw),
+            patch(f"{_CR_CREDS}._read_gh_token") as read_gh_token,
+            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
+        ):
+            env_dir = write_env_file(is_admin=True, group_folder="test")
+
+        assert env_dir is not None
+        assert "GH_TOKEN" not in (env_dir / "env").read_text()
+        read_gh_token.assert_not_called()
+
     def test_non_admin_excludes_gh_token(self, tmp_path: Path):
         """Non-admin containers never receive GH_TOKEN, even when available."""
         gw = _MockGateway(providers={"anthropic"})

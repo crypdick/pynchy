@@ -1,0 +1,9 @@
+# The deterministic image derives from runner source inputs, never local caches.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+agent_runner/tests/

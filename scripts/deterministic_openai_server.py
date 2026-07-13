@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -14,16 +16,34 @@ _DEFAULT_RESPONSE_TEXT = "Pynchy deterministic response."
 _RESPONSE_TEXT_ENV = "PYNCHY_DETERMINISTIC_RESPONSE"
 _MODEL_NAME = "pynchy-deterministic"
 _CREATED_AT = 1_700_000_000
-_RESPONSE_ID = "resp_deterministic"
 _MESSAGE_ID = "msg_deterministic"
+_RESPONSE_REQUESTS_PATH = "/__pynchy_runtime__/response-requests"
+_RESPONSE_ID_DIGEST_LENGTH = 32
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
-    """HTTP server carrying the fixed response text for each request."""
+    """HTTP server carrying fixed answers and a private request audit for runtime tests."""
 
     def __init__(self, server_address: tuple[str, int], response_text: str) -> None:
         super().__init__(server_address, DeterministicOpenAIHandler)
         self.response_text = response_text
+        self._response_requests: list[dict[str, Any]] = []
+        self._response_requests_lock = threading.Lock()
+
+    def record_response_request(self, payload: dict[str, Any], response_id: str) -> None:
+        """Keep the response-chain observation private to the harness network."""
+        request = {
+            "response_id": response_id,
+            "previous_response_id": payload.get("previous_response_id"),
+            "input": payload.get("input"),
+        }
+        with self._response_requests_lock:
+            self._response_requests.append(request)
+
+    def response_requests(self) -> list[dict[str, Any]]:
+        """Return a shallow snapshot suitable for the sidecar's debug endpoint."""
+        with self._response_requests_lock:
+            return list(self._response_requests)
 
 
 class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
@@ -50,6 +70,9 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
                     ],
                 },
             )
+            return
+        if self.path == _RESPONSE_REQUESTS_PATH:
+            self._send_json(HTTPStatus.OK, {"requests": self._server.response_requests()})
             return
         self._send_error_json(HTTPStatus.NOT_FOUND, "Unknown deterministic OpenAI endpoint")
 
@@ -94,10 +117,15 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, self._chat_completion(payload))
 
     def _handle_response(self, payload: dict[str, Any]) -> None:
+        response_id = _response_id(payload)
+        self._server.record_response_request(payload, response_id)
         if payload.get("stream") is True:
-            self._stream_response(payload)
+            self._stream_response(payload, response_id)
             return
-        self._send_json(HTTPStatus.OK, self._response(payload, status="completed"))
+        self._send_json(
+            HTTPStatus.OK,
+            self._response(payload, response_id=response_id, status="completed"),
+        )
 
     def _chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
         model = _requested_model(payload)
@@ -145,11 +173,13 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
         )
         self._finish_event_stream()
 
-    def _response(self, payload: dict[str, Any], *, status: str) -> dict[str, Any]:
+    def _response(
+        self, payload: dict[str, Any], *, response_id: str, status: str
+    ) -> dict[str, Any]:
         model = _requested_model(payload)
         completed = status == "completed"
         return {
-            "id": _RESPONSE_ID,
+            "id": response_id,
             "object": "response",
             "created_at": _CREATED_AT,
             "completed_at": _CREATED_AT if completed else None,
@@ -175,12 +205,18 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
             "metadata": {},
         }
 
-    def _stream_response(self, payload: dict[str, Any]) -> None:
+    def _stream_response(self, payload: dict[str, Any], response_id: str) -> None:
         self._start_event_stream()
         sequence = 1
         self._send_response_event(
             "response.created",
-            {"response": self._response(payload, status="in_progress")},
+            {
+                "response": self._response(
+                    payload,
+                    response_id=response_id,
+                    status="in_progress",
+                )
+            },
             sequence,
         )
         sequence += 1
@@ -247,17 +283,27 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
         sequence += 1
         self._send_response_event(
             "response.completed",
-            {"response": self._response(payload, status="completed")},
+            {
+                "response": self._response(
+                    payload,
+                    response_id=response_id,
+                    status="completed",
+                )
+            },
             sequence,
         )
         self._finish_event_stream()
 
     @property
-    def _response_text(self) -> str:
+    def _server(self) -> DeterministicOpenAIServer:
         server = self.server
         if not isinstance(server, DeterministicOpenAIServer):
             raise TypeError("Deterministic OpenAI handler requires its dedicated server")
-        return server.response_text
+        return server
+
+    @property
+    def _response_text(self) -> str:
+        return self._server.response_text
 
     def _send_json(self, status: HTTPStatus, body: dict[str, Any]) -> None:
         payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
@@ -298,6 +344,13 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
 def _requested_model(payload: dict[str, Any]) -> str:
     model = payload.get("model")
     return model if isinstance(model, str) and model else _MODEL_NAME
+
+
+def _response_id(payload: dict[str, Any]) -> str:
+    """Make response IDs stable across sidecar restarts without conflating turns."""
+    canonical_payload = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+    return f"resp_{digest[:_RESPONSE_ID_DIGEST_LENGTH]}"
 
 
 def _output_message(text: str) -> dict[str, Any]:

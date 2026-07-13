@@ -6,6 +6,7 @@ API credentials.  Real keys never leave the host process.
 
 from __future__ import annotations
 
+import os
 import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves credential helpers at runtime.
 from urllib.parse import urlparse
@@ -86,6 +87,7 @@ def shell_quote(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 _BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
+_RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 
 
 def has_api_credentials() -> bool:
@@ -240,7 +242,10 @@ def build_agent_env_vars(
         env_vars.update(extra_env_vars)
     if gateway_env_vars:
         _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
-    if include_gh_token:
+    # The deterministic runtime must not discover credentials from the host,
+    # including credentials held by gh outside its sandboxed HOME directory.
+    # NOTE: Keep docs/contributing/new-feature.md in sync.  # temporal-ok: current doc path.
+    if include_gh_token and os.environ.get(_RUNTIME_HARNESS_ENV) != "1":
         env_vars.update(_gh_token_env_var(s, is_admin=is_admin, group_folder=group_folder))
     env_vars.update(_git_identity_env_vars())
     env_vars.update(_chrome_profiles_env_var(s, is_admin=is_admin, group_folder=group_folder))

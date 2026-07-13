@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess  # noqa: S404, RUF100 - test invokes the repository-local harness CLI.
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -121,3 +122,32 @@ def test_runtime_forwards_streamed_responses_events() -> None:
     assert '"type":"response.output_text.delta"' in payload
     assert state["response_text"] in payload
     assert "data: [DONE]" in payload
+
+
+@pytest.mark.timeout(60)
+def test_runtime_exec_requires_live_marker_backed_processes() -> None:
+    """The manual harness command works only while its owned runtime is actually live."""
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(  # noqa: S603, RUF100 - fixed repository-local harness command.
+        [  # noqa: S607, RUF100 - uv is the repository's required Python runner.
+            "uv",
+            "run",
+            "python",
+            "scripts/runtime_harness.py",
+            "exec",
+            "--",
+            "uv",
+            "run",
+            "python",
+            "-c",
+            "import os; assert os.environ['PYNCHY_RUNTIME_STATE']; print('live')",
+        ],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "live"

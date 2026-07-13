@@ -36,8 +36,16 @@ OpenAI-compatible sidecar that returns a fixed response. The profile makes no pr
 does not download or run a local model.
 
 The generated `.env` contains only runtime-owned values, including an ephemeral gateway key.
-The gateway and sidecar share a namespaced Docker network, and Pynchy runs with runtime-owned
-HOME/XDG directories so host CLI credentials are not discovered.
+The gateway and sidecar share a namespaced Docker network. Runtime-owned HOME/XDG directories
+and the credential policy keep ambient provider, channel, and GitHub credentials out of the test
+agent.
+
+The profile builds a locked, minimal agent-runner image from pinned base images and the nested
+`agent_runner/uv.lock`. This image runs the real OpenAI agent core and persistent file-IPC loop
+without the mutable CLI and plugin installation in the production agent image. The first setup
+downloads the pinned image and locked Python artifacts when the local cache lacks them.
+Its tag combines the runtime namespace and source digest; harness teardown removes that exact
+test image after its owned containers have stopped.
 
 ## Run runtime integration tests locally
 
@@ -51,6 +59,16 @@ uv run python scripts/runtime_harness.py run -- \
 Do not use `run` in a worktree whose runtime is already running; stop that runtime first so this
 command owns setup and teardown. The command stops its owned processes and containers when it
 finishes. On failure, inspect `logs/pynchy-runtime/` and `data/`.
+
+To verify the runtime that `new-feature` already started, use `exec` instead. It keeps the sandbox
+running for diagnosis. `exec` rejects diagnostic state left by a failed `run`, because that command
+has already stopped its live resources; inspect its logs and data, then run `stop` before a fresh
+setup:
+
+```bash
+uv run python scripts/new_feature_sandbox.py exec -- \
+  uv run pytest -o addopts='' -n 0 -m runtime
+```
 
 ## Create a feature
 
@@ -92,10 +110,12 @@ new-feature merge <slug>
 new-feature teardown <slug>
 ```
 
-Merge stops the sandbox before running all pre-commit hooks. It then performs a no-commit
-merge into `main` and runs pytest against the integrated tree. A failed check aborts the merge;
-restart the sandbox from the worktree when more runtime debugging is necessary. Merge does not
-push `main`, so deployment remains an explicit operator action.
+Merge stops the development sandbox, starts a fresh deterministic runtime from the current
+worktree, and runs the runtime suite. Its harness always stops live runtime resources before
+pre-commit hooks run. It then performs a no-commit merge into `main` and runs both Pynchy and
+agent-runner tests against the integrated tree. A failed check aborts the merge; runtime logs and
+data remain available for diagnosis. Merge does not push `main`, so deployment remains an explicit
+operator action.
 
 Teardown stops any remaining processes, removes only the feature's namespaced LiteLLM and
 PostgreSQL resources, and then removes the worktree, branch, manifest entry, and local databases.
