@@ -562,6 +562,14 @@ def _stop_pid(pid: object) -> None:
         return
     deadline = time.monotonic() + _STOP_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
+        # The harness owns these process-group leaders. Reap a terminated
+        # direct child so a zombie does not keep the shutdown loop alive.
+        try:
+            reaped_pid, _ = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            reaped_pid = 0
+        if reaped_pid == pid:
+            return
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
@@ -569,6 +577,8 @@ def _stop_pid(pid: object) -> None:
         time.sleep(0.25)
     with contextlib.suppress(ProcessLookupError):
         os.killpg(pid, signal.SIGKILL)
+    with contextlib.suppress(ChildProcessError):
+        os.waitpid(pid, 0)
 
 
 def _remove_runtime_resources(namespace: object) -> None:

@@ -300,6 +300,22 @@ def test_remove_runtime_resources_escapes_dotted_namespace(monkeypatch: pytest.M
     assert calls[0][-1] == r"name=^/pynchy\-runtime\.test-"
 
 
+def test_stop_pid_reaps_a_terminated_harness_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    process_group_signals: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        harness.os,
+        "killpg",
+        lambda pid, signal: process_group_signals.append((pid, signal)),
+    )
+    monkeypatch.setattr(harness.os, "waitpid", lambda pid, _flags: (pid, 0))
+    monkeypatch.setattr(harness.os, "kill", lambda *_args: pytest.fail("signal probe is unused"))
+
+    harness._stop_pid(1234)
+
+    assert process_group_signals == [(1234, harness.signal.SIGTERM)]
+
+
 def test_run_exposes_runtime_state_to_command_and_cleans_up_on_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
