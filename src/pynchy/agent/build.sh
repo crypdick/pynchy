@@ -4,6 +4,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 cd "$SCRIPT_DIR"
 
 # Detect container runtime (mirrors logic in src/pynchy/runtime.py)
@@ -48,7 +49,9 @@ echo "Runtime: ${RUNTIME}"
 echo "Image: ${IMAGE_NAME}:${TAG}"
 
 # Generate container plugin requirements from currently installed plugins.
-python3 ./scripts/generate_plugin_requirements.py --output ./requirements-plugins.txt
+uv run python ./scripts/generate_plugin_requirements.py \
+    --output ./requirements-plugins.txt \
+    --config "${PROJECT_ROOT}/config.toml"
 
 export DOCKER_BUILDKIT=1
 $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .

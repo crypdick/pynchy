@@ -22,6 +22,7 @@ from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
 )
 from pynchy.logger import logger
+from pynchy.plugins.runtimes import system_checks
 from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
     ContainerInput,
@@ -133,6 +134,10 @@ async def _spawn_container(
     Raises OSError if the subprocess fails to start.
     """
     start_time = time.monotonic()
+
+    # The harness deliberately defers this expensive check at host startup,
+    # but an agent container must never be spawned without its image.
+    await asyncio.to_thread(system_checks.ensure_agent_image_available)
 
     # Create session-scoped SecurityGate keyed by (group_folder, invocation_ts).
     # Must exist before the container starts so IPC/MCP handlers can look it up.

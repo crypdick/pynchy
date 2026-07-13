@@ -127,7 +127,7 @@ def _patch_test_settings(tmp_path: Path):
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
-        yield
+        yield stack.enter_context(patch(f"{_CR_ORCH}.system_checks.ensure_agent_image_available"))
 
 
 class FakeChannel(NullChannel):
@@ -408,7 +408,7 @@ class TestProcessGroupMessages:
 
         with (
             patch(f"{_CR_ORCH}.asyncio.create_subprocess_exec", fake_create),
-            _patch_test_settings(tmp_path),
+            _patch_test_settings(tmp_path) as image_check,
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
             result = await app._process_group_messages("group@g.us")
@@ -416,6 +416,7 @@ class TestProcessGroupMessages:
         await driver
         assert result is True
         assert app.sessions.get("test-group") == "sess-1"
+        image_check.assert_called_once_with()
         # Output should have been sent via the channel
         assert len(channel.sent_messages) == 1
         assert "The answer is 4" in channel.sent_messages[0][1]

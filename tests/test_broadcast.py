@@ -103,6 +103,7 @@ def _patch_test_settings(tmp_path: Path):
         stack.enter_context(
             patch("pynchy.host.container_manager.session.docker_rm_force", _noop_docker_rm)
         )
+        stack.enter_context(patch(f"{_CR_ORCH}.system_checks.ensure_agent_image_available"))
         yield
 
 

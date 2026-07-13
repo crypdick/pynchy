@@ -5,6 +5,7 @@ Tests container system bootstrap logic.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
@@ -12,7 +13,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.plugins.runtimes.system_checks import ensure_container_system_running
+from pynchy.plugins.runtimes.system_checks import (
+    ensure_agent_image_available,
+    ensure_container_system_running,
+)
 
 # ---------------------------------------------------------------------------
 # ensure_container_system_running
@@ -62,8 +66,9 @@ class TestEnsureContainerSystemRunning:
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
 
     def test_image_missing_builds(self, mock_runtime, tmp_path):
-        """Image not found — should trigger build."""
+        """On-demand image validation builds an image that is not present."""
         inspect_fail = MagicMock(returncode=1)
+        requirements_ok = MagicMock(returncode=0)
         build_ok = MagicMock(returncode=0)
 
         # Create a fake Dockerfile
@@ -75,16 +80,39 @@ class TestEnsureContainerSystemRunning:
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
             patch(
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
-                side_effect=[inspect_fail, build_ok],
-            ),
+                side_effect=[inspect_fail, requirements_ok, build_ok],
+            ) as run,
             patch(
                 "pynchy.plugins.runtimes.system_checks.get_settings",
                 return_value=self._settings(tmp_path),
             ),
         ):
+            ensure_agent_image_available()
+
+        mock_runtime.ensure_running.assert_called_once()
+        mock_runtime.cleanup_builder.assert_called_once()
+        assert run.call_args_list[1].args[0] == [
+            sys.executable,
+            str(container_dir / "scripts" / "generate_plugin_requirements.py"),
+            "--output",
+            str(container_dir / "requirements-plugins.txt"),
+            "--config",
+            str(tmp_path / "config.toml"),
+        ]
+
+    def test_runtime_harness_defers_agent_image_validation(self, mock_runtime, monkeypatch):
+        """Harness startup does not build an image until it actually needs an agent."""
+        monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+
+        with (
+            patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
+            patch("pynchy.plugins.runtimes.system_checks.subprocess.run") as run,
+        ):
             ensure_container_system_running()
 
-        mock_runtime.cleanup_builder.assert_called_once()
+        mock_runtime.ensure_running.assert_called_once()
+        mock_runtime.prune_images.assert_called_once_with(all_images=False)
+        run.assert_not_called()
 
     def test_image_missing_no_dockerfile_raises(self, mock_runtime, tmp_path):
         """Image not found and no Dockerfile — should raise RuntimeError."""
@@ -110,6 +138,7 @@ class TestEnsureContainerSystemRunning:
     def test_build_failure_raises(self, mock_runtime, tmp_path):
         """Image build fails — should raise RuntimeError."""
         inspect_fail = MagicMock(returncode=1)
+        requirements_ok = MagicMock(returncode=0)
         build_fail = MagicMock(returncode=1)
 
         container_dir = tmp_path / "src" / "pynchy" / "agent"
@@ -120,7 +149,7 @@ class TestEnsureContainerSystemRunning:
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
             patch(
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
-                side_effect=[inspect_fail, build_fail],
+                side_effect=[inspect_fail, requirements_ok, build_fail],
             ),
             patch(
                 "pynchy.plugins.runtimes.system_checks.get_settings",
@@ -129,6 +158,32 @@ class TestEnsureContainerSystemRunning:
             pytest.raises(RuntimeError, match="Failed to build"),
         ):
             ensure_container_system_running()
+
+    def test_plugin_requirements_generation_failure_raises(self, mock_runtime, tmp_path):
+        """A missing plugin requirements file never falls through to Docker build."""
+        inspect_fail = MagicMock(returncode=1)
+        requirements_fail = MagicMock(returncode=1)
+
+        container_dir = tmp_path / "src" / "pynchy" / "agent"
+        container_dir.mkdir(parents=True)
+        (container_dir / "Dockerfile").touch()
+
+        with (
+            patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
+            patch(
+                "pynchy.plugins.runtimes.system_checks.subprocess.run",
+                side_effect=[inspect_fail, requirements_fail],
+            ) as run,
+            patch(
+                "pynchy.plugins.runtimes.system_checks.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
+            pytest.raises(RuntimeError, match="generate container plugin requirements"),
+        ):
+            ensure_agent_image_available()
+
+        assert run.call_count == 2
+        mock_runtime.cleanup_builder.assert_not_called()
 
     def test_orphaned_agent_containers_reaped(self, mock_runtime):
         """Orphaned stopped agent containers should be removed."""
