@@ -726,6 +726,24 @@ class TestCollectGateway:
         )
 
     @pytest.mark.asyncio
+    async def test_litellm_container_status_uses_runtime_namespace(self, monkeypatch):
+        monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "pynchy-feature-test")
+        deps = MockStatusDeps(gateway={"mode": "litellm"})
+
+        with (
+            _inert_status(),
+            patch(f"{_S}.run_docker", new_callable=AsyncMock) as run_docker,
+        ):
+            run_docker.return_value = Mock(returncode=0, stdout="running\n")
+            await collect_status(deps, time.monotonic())
+
+        inspected = [call.args[3] for call in run_docker.await_args_list]
+        assert inspected == [
+            "pynchy-feature-test-litellm",
+            "pynchy-feature-test-litellm-db",
+        ]
+
+    @pytest.mark.asyncio
     async def test_litellm_readiness_accepts_current_healthy_shape(self):
         deps = MockStatusDeps(gateway={"mode": "litellm", "port": 4000, "key": "sk-test"})
 

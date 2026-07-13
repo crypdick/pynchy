@@ -20,6 +20,7 @@ from temporalio.client import Client
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
 from pynchy.host.container_manager.onecli import collect_onecli_status
+from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.host.git_ops.repo import RepoContext, get_repo_context
 from pynchy.host.git_ops.utils import (
     count_unpushed_commits,
@@ -377,8 +378,8 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
         return result
 
     litellm_state, pg_state = await asyncio.gather(
-        _container_state("pynchy-litellm"),
-        _container_state("pynchy-litellm-db"),
+        _container_state(runtime_container_name("litellm")),
+        _container_state(runtime_container_name("litellm-db")),
     )
     result["litellm_container"] = litellm_state
     result["postgres_container"] = pg_state
