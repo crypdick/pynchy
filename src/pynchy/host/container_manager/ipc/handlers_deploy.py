@@ -47,7 +47,6 @@ async def _handle_deploy(
         "Deploy complete. Verifying service health.",
     )
     head_sha = data.get("headSha", "")
-    session_id = data.get("sessionId", "")
     chat_jid = data.get("chatJid", "")
 
     if not chat_jid:
@@ -62,19 +61,12 @@ async def _handle_deploy(
             chat_jid=chat_jid,
         )
 
-    # Merge the admin agent's explicit session with all other active sessions
-    active_sessions = deps.get_active_sessions()
-    if session_id and chat_jid:
-        active_sessions[chat_jid] = session_id
-
     await start_deploy_workflow(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=head_sha,
             previous_sha=head_sha,
-            session_id=session_id,
             resume_prompt=resume_prompt,
-            active_sessions=active_sessions,
             rebuild=bool(rebuild_container),
             reason="ipc",
         )

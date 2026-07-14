@@ -19,6 +19,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator.deploy import finalize_deploy
+from pynchy.types import InFlightTurn, InFlightWorkKind
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,6 +35,11 @@ def _patch_settings(*, data_dir: Path):
         # Patch on pynchy.state (the re-export) so the local import inside
         # finalize_deploy picks up the mock.
         patch("pynchy.state.set_router_state", new_callable=AsyncMock),
+        patch(
+            "pynchy.state.get_in_flight_turns",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
     ):
         yield
 
@@ -57,7 +63,6 @@ class TestFinalizeDeploy:
                 chat_jid="group@g.us",
                 commit_sha="commit-sha-001",
                 previous_sha="previous-sha-001",
-                session_id="session-42",
                 resume_prompt="Deploy complete.",
             )
 
@@ -65,10 +70,9 @@ class TestFinalizeDeploy:
         assert continuation["chat_jid"] == "group@g.us"
         assert continuation["commit_sha"] == "commit-sha-001"
         assert continuation["previous_commit_sha"] == "previous-sha-001"
-        assert continuation["session_id"] == "session-42"
         assert continuation["resume_prompt"] == "Deploy complete."
-        # active_sessions should include the single session_id/chat_jid
-        assert continuation["active_sessions"] == {"group@g.us": "session-42"}
+        assert continuation["interrupted_turns"] == []
+        assert "active_sessions" not in continuation
 
     async def test_broadcasts_notification_with_short_sha(self, deploy_dir: Path):
         broadcast = AsyncMock()
@@ -180,50 +184,46 @@ class TestFinalizeDeploy:
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
         assert "Deploy complete" in continuation["resume_prompt"]
 
-    async def test_active_sessions_written_to_continuation(self, deploy_dir: Path):
-        """active_sessions dict should be written to the continuation file."""
+    async def test_in_flight_turn_snapshot_written_to_continuation(self, deploy_dir: Path):
+        """The deploy file includes diagnostic metadata for actual running work."""
         broadcast = AsyncMock()
-        sessions = {
-            "admin-1@g.us": "sess-admin-1",
-            "team@g.us": "sess-team",
-            "project@g.us": "sess-project",
-        }
+        turn = InFlightTurn(
+            turn_id="turn-1",
+            chat_jid="team@g.us",
+            group_folder="team",
+            work_kind=InFlightWorkKind.INTERACTIVE,
+            input_messages=[{"content": "keep going"}],
+            input_start_cursor="old",
+            input_end_cursor="new",
+            started_at="2026-07-14T10:00:00+00:00",
+        )
 
-        with patch("pynchy.host.orchestrator.deploy.os.kill"):
+        with (
+            patch("pynchy.host.orchestrator.deploy.os.kill"),
+            patch(
+                "pynchy.state.get_in_flight_turns",
+                new_callable=AsyncMock,
+                return_value=[turn],
+            ),
+        ):
             await finalize_deploy(
                 broadcast_host_message=broadcast,
                 chat_jid="admin-1@g.us",
                 commit_sha="abc123",
                 previous_sha="000",
-                active_sessions=sessions,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
-        assert continuation["active_sessions"] == sessions
+        assert continuation["interrupted_turns"] == [
+            {
+                "turn_id": "turn-1",
+                "chat_jid": "team@g.us",
+                "work_kind": "interactive",
+            }
+        ]
 
-    async def test_active_sessions_merges_with_session_id(self, deploy_dir: Path):
-        """session_id/chat_jid should be merged into active_sessions."""
-        broadcast = AsyncMock()
-        sessions = {"team@g.us": "sess-team"}
-
-        with patch("pynchy.host.orchestrator.deploy.os.kill"):
-            await finalize_deploy(
-                broadcast_host_message=broadcast,
-                chat_jid="admin-1@g.us",
-                commit_sha="abc",
-                previous_sha="000",
-                session_id="sess-admin-1",
-                active_sessions=sessions,
-            )
-
-        continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
-        assert continuation["active_sessions"] == {
-            "team@g.us": "sess-team",
-            "admin-1@g.us": "sess-admin-1",
-        }
-
-    async def test_active_sessions_empty_when_no_sessions(self, deploy_dir: Path):
-        """active_sessions should be empty dict when no sessions exist."""
+    async def test_idle_saved_sessions_are_not_snapshotted(self, deploy_dir: Path):
+        """A resumable agent thread alone must not be mistaken for running work."""
         broadcast = AsyncMock()
 
         with patch("pynchy.host.orchestrator.deploy.os.kill"):
@@ -235,4 +235,5 @@ class TestFinalizeDeploy:
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
-        assert continuation["active_sessions"] == {}
+        assert continuation["interrupted_turns"] == []
+        assert "active_sessions" not in continuation

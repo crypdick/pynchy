@@ -54,6 +54,20 @@ from pynchy.state.host_jobs import (
     update_host_job,
     update_host_job_after_run,
 )
+from pynchy.state.in_flight_turns import (
+    begin_in_flight_turn,
+    claim_in_flight_turn,
+    clear_in_flight_turn,
+    complete_in_flight_turn,
+    get_in_flight_turn,
+    get_in_flight_turn_for_chat,
+    get_in_flight_turn_for_task,
+    get_in_flight_turns,
+    mark_in_flight_output_sent,
+    prepare_in_flight_turn_recovery,
+    release_in_flight_turn_claim,
+    update_in_flight_session,
+)
 from pynchy.state.messages import (
     get_chat_history,
     get_messages_since,
@@ -151,6 +165,19 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_host_job_by_name",
     "update_host_job",
     "update_host_job_after_run",
+    # in_flight_turns
+    "begin_in_flight_turn",
+    "claim_in_flight_turn",
+    "clear_in_flight_turn",
+    "complete_in_flight_turn",
+    "get_in_flight_turn",
+    "get_in_flight_turn_for_chat",
+    "get_in_flight_turn_for_task",
+    "get_in_flight_turns",
+    "mark_in_flight_output_sent",
+    "prepare_in_flight_turn_recovery",
+    "release_in_flight_turn_claim",
+    "update_in_flight_session",
     # sessions
     "clear_session",
     "get_all_sessions",

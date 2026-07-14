@@ -18,7 +18,12 @@ from pynchy.host.container_manager import (
 from pynchy.host.container_manager.orchestrator import resolve_container_timeout
 from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
-from pynchy.state import get_all_host_jobs, get_all_tasks, set_session
+from pynchy.state import (
+    get_all_host_jobs,
+    get_all_tasks,
+    set_session,
+    update_in_flight_session,
+)
 from pynchy.types import ContainerOutput, GroupFolder, SessionId, WorkspaceProfile
 
 
@@ -189,6 +194,7 @@ def session_tracking_output_handler(
         ) and group_folder not in deps.session_cleared:
             deps.sessions[group_folder] = session_id
             await set_session(GroupFolder(group_folder), SessionId(session_id))
+            await update_in_flight_session(group_folder, session_id)
         if on_output:
             await on_output(output)
 

@@ -51,6 +51,11 @@ V1 learning deliberately mounts the configured vault root as a broad namespace. 
 - Session data lives at `data/sessions/{group}/.claude/` on the host, mounted into containers at `/home/agent/.claude`
 - The PreCompact hook archives conversation transcripts before compaction (see [Usage — Memory § Conversation Archives](../usage/memory.md#conversation-archives))
 
+A persisted session means Pynchy can rehydrate that conversation; it does not mean an agent
+currently runs. The [interrupted turn recovery](message-routing.md#interrupted-turn-recovery)
+ledger tracks running work separately so restarts resume unfinished turns without waking idle
+conversations.
+
 ---
 
 **Want to customize this?** Write your own memory backend plugin — see the [Plugin Authoring Guide](../plugins/index.md). Have an idea but don't want to build it? [Open a feature request](https://github.com/crypdick/pynchy/issues).

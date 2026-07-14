@@ -24,7 +24,7 @@ from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.state import get_chat_history, set_router_state, store_message
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.types import InFlightTurn, InFlightWorkKind, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -799,10 +799,10 @@ class TestTraceLocalPersistence:
 
 
 class TestDeployContinuationResume:
-    """Verify multi-group resume after deploy restart."""
+    """Verify durable multi-group work resumption after a restart."""
 
-    async def test_resumes_all_groups_from_active_sessions(self, app: PynchyApp, tmp_path: Path):
-        """check_deploy_continuation should inject resume messages for every active session."""
+    async def test_resumes_all_durable_in_flight_turns(self, app: PynchyApp, tmp_path: Path):
+        """Startup dispatches each recorded running turn, including scheduled work."""
         await state.init_test_database()
 
         # Register two groups
@@ -824,29 +824,49 @@ class TestDeployContinuationResume:
             ),
         }
 
-        # Write a continuation file with active_sessions for both groups
+        for turn in (
+            InFlightTurn(
+                turn_id="turn-admin",
+                chat_jid="admin-1@g.us",
+                group_folder="admin-1",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"content": "finish admin work"}],
+                input_start_cursor="old-admin",
+                input_end_cursor="new-admin",
+                started_at="2026-07-14T10:00:00+00:00",
+            ),
+            InFlightTurn(
+                turn_id="turn-team",
+                chat_jid="team@g.us",
+                group_folder="team",
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[{"content": "finish team job"}],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-14T10:00:01+00:00",
+                task_id="task-team",
+            ),
+        ):
+            await state.begin_in_flight_turn(turn)
+
         data_dir = tmp_path / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         continuation = {
             "chat_jid": "admin-1@g.us",
-            "session_id": "sess-admin-1",
             "resume_prompt": "Deploy complete.",
             "commit_sha": "abc12345",
             "previous_commit_sha": "000",
-            "active_sessions": {
-                "admin-1@g.us": "sess-admin-1",
-                "team@g.us": "sess-team",
-            },
+            "interrupted_turns": ["turn-admin", "turn-team"],
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
         started: list[str] = []
 
-        def _start_turn(jid: str) -> Awaitable[None]:
-            started.append(jid)
+        def _start_turn(turn_id: str) -> Awaitable[None]:
+            started.append(turn_id)
             return _completed_awaitable()
 
-        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
+        app.start_interrupted_turn = _start_turn  # type: ignore[method-assign]
 
         with (
             patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings,
@@ -861,9 +881,7 @@ class TestDeployContinuationResume:
 
             await check_deploy_continuation(app)
 
-        # Both groups should have durable turn starts for resume
-        assert "admin-1@g.us" in started
-        assert "team@g.us" in started
+        assert set(started) == {"turn-admin", "turn-team"}
 
         # Both groups should have a deploy resume message in history
         admin_history = await get_chat_history("admin-1@g.us", limit=10)
@@ -874,29 +892,28 @@ class TestDeployContinuationResume:
         # Continuation file should be deleted
         assert not (data_dir / "deploy_continuation.json").exists()
 
-    async def test_skips_when_no_active_sessions(self, app: PynchyApp, tmp_path: Path):
-        """Continuation with empty active_sessions and no session_id should skip resume."""
+    async def test_skips_when_no_durable_in_flight_turns(self, app: PynchyApp, tmp_path: Path):
+        """Idle session metadata in a legacy deploy file does not trigger work."""
         await state.init_test_database()
 
         data_dir = tmp_path / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         continuation = {
             "chat_jid": "admin-1@g.us",
-            "session_id": "",
             "resume_prompt": "Deploy complete.",
             "commit_sha": "abc12345",
             "previous_commit_sha": "000",
-            "active_sessions": {},
+            "active_sessions": {"admin-1@g.us": "idle-session"},
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
         started: list[str] = []
 
-        def _start_turn(jid: str) -> Awaitable[None]:
-            started.append(jid)
+        def _start_turn(turn_id: str) -> Awaitable[None]:
+            started.append(turn_id)
             return _completed_awaitable()
 
-        app.start_interactive_turn = _start_turn  # type: ignore[method-assign]
+        app.start_interrupted_turn = _start_turn  # type: ignore[method-assign]
 
         with patch("pynchy.host.orchestrator.startup_handler.get_settings") as mock_settings:
             s = MagicMock()

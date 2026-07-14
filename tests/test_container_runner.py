@@ -2015,15 +2015,22 @@ class TestAgentRunnerPreContainerHelpers:
             system_data={"session_id": "codex:thread-1"},
         )
 
-        with patch(
-            "pynchy.host.orchestrator._agent_runner_preflight.set_session",
-            new_callable=AsyncMock,
-        ) as persist:
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+                new_callable=AsyncMock,
+            ) as persist,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
+                new_callable=AsyncMock,
+            ) as update_checkpoint,
+        ):
             handler = session_tracking_output_handler(deps, "test-group", on_output)
             await handler(output)
 
         assert deps.sessions == {"test-group": "codex:thread-1"}
         persist.assert_awaited_once()
+        update_checkpoint.assert_awaited_once_with("test-group", "codex:thread-1")
         on_output.assert_awaited_once_with(output)
 
     def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):

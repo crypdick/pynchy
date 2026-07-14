@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -170,6 +170,34 @@ class NewMessage:
     is_from_me: bool | None = None
     message_type: str = "user"  # 'user', 'assistant', 'system', 'host', 'tool_result'
     metadata: dict[str, Any] | None = None
+
+
+class InFlightWorkKind(StrEnum):
+    """Agent work that can be resumed semantically after process loss."""
+
+    INTERACTIVE = "interactive"
+    RESET_HANDOFF = "reset_handoff"
+    SCHEDULED = "scheduled"
+
+
+@dataclass(frozen=True)
+class InFlightTurn:
+    """Durable checkpoint for one agent invocation that has not finalized."""
+
+    turn_id: str
+    chat_jid: str
+    group_folder: str
+    work_kind: InFlightWorkKind
+    input_messages: list[dict[str, Any]]
+    input_start_cursor: str
+    input_end_cursor: str
+    started_at: str
+    task_id: str | None = None
+    session_id: str | None = None
+    output_sent: bool = False
+    interrupted_at: str | None = None
+    deploy_id: str | None = None
+    claimed_at: str | None = None
 
 
 @dataclass

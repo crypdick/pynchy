@@ -95,9 +95,22 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_started = asyncio.Event()
     shutdown_can_finish = asyncio.Event()
     shutdown_finished = asyncio.Event()
+    recovery_order: list[str] = []
 
     def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[dict[str, list[str]] | None]:
         return _completed_awaitable({})
+
+    def fake_prepare_recovery() -> Awaitable[object]:
+        recovery_order.append("prepare")
+        return _completed_awaitable(object())
+
+    def fake_start_subsystems(*_args: Any) -> Awaitable[None]:
+        recovery_order.append("start_worker")
+        return _completed_awaitable()
+
+    def fake_dispatch_recovery(*_args: Any) -> Awaitable[set[str]]:
+        recovery_order.append("dispatch")
+        return _completed_awaitable(set())
 
     async def fake_start_message_loop(
         _deps: Any,
@@ -131,10 +144,19 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
     monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
     monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
-    monkeypatch.setattr(lifecycle, "_start_subsystems", noop_phase)
+    monkeypatch.setattr(lifecycle, "_start_subsystems", fake_start_subsystems)
     monkeypatch.setattr(lifecycle.startup_handler, "send_boot_notification", noop_phase)
     monkeypatch.setattr(lifecycle.startup_handler, "recover_pending_messages", noop_phase)
-    monkeypatch.setattr(lifecycle.startup_handler, "check_deploy_continuation", noop_phase)
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "prepare_interrupted_turn_recovery",
+        fake_prepare_recovery,
+    )
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "dispatch_interrupted_turn_recovery",
+        fake_dispatch_recovery,
+    )
     monkeypatch.setattr(lifecycle.startup_handler, "setup_admin_group", noop_phase)
     monkeypatch.setattr(lifecycle, "start_message_loop", fake_start_message_loop)
     monkeypatch.setattr(lifecycle, "shutdown_app", fake_shutdown_app)
@@ -149,6 +171,7 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_can_finish.set()
     await run_task
     assert shutdown_finished.is_set()
+    assert recovery_order == ["prepare", "start_worker", "dispatch"]
 
 
 @pytest.mark.asyncio

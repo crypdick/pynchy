@@ -854,7 +854,7 @@ class TestDeployAuth:
             mock_start.assert_awaited_once()
             request = mock_start.await_args.args[0]
             assert request.chat_jid == "admin-1@g.us"
-            assert request.session_id == "sess-1"
+            assert not hasattr(request, "session_id")
 
 
 # --- reset_context execution ---

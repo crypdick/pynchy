@@ -166,6 +166,7 @@ class TestTemporalSchedulerRuntime:
     ) -> None:
         assert {
             temporal_workflows.InteractiveMessageWorkflow,
+            temporal_workflows.InterruptedTurnWorkflow,
             temporal_workflows.LearningReviewWorkflow,
             temporal_workflows.DeployWorkflow,
             temporal_workflows.HostGitSyncWorkflow,
@@ -174,6 +175,7 @@ class TestTemporalSchedulerRuntime:
         }.issubset(set(captured["workflows"]))
         assert {
             temporal_scheduler.run_interactive_message_turn,
+            temporal_scheduler.run_interrupted_agent_turn,
             temporal_scheduler.run_learning_review,
             temporal_scheduler.run_deploy,
             temporal_scheduler.run_host_git_sync,
@@ -189,8 +191,6 @@ class TestTemporalSchedulerRuntime:
             "chat_jid": "slack:C123",
             "commit_sha": "new-sha",
             "previous_sha": "old-sha",
-            "session_id": "session-1",
-            "active_sessions": {"slack:C123": "session-1"},
             "resume_prompt": "Deploy complete. Verifying service health.",
             "sigterm_delay": 0.25,
         }
@@ -251,6 +251,11 @@ class TestTemporalSchedulerRuntime:
         workflow_id = temporal_scheduler.interactive_message_workflow_id("slack:C123/with spaces")
 
         assert workflow_id == "pynchy-interactive-turn-slack-C123-with-spaces"
+
+    def test_interrupted_turn_workflow_id_is_stable_and_temporal_safe(self):
+        workflow_id = temporal_scheduler.interrupted_turn_workflow_id("turn:123/with spaces")
+
+        assert workflow_id == "pynchy-interrupted-turn-turn-123-with-spaces"
 
     def test_deploy_workflow_id_is_stable_and_temporal_safe(self):
         workflow_id = temporal_scheduler.deploy_workflow_id("abc1234/with spaces")
@@ -382,12 +387,29 @@ class TestTemporalSchedulerRuntime:
         assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE"
 
     @pytest.mark.asyncio
+    async def test_start_interrupted_turn_starts_dedicated_temporal_workflow(self):
+        client = FakeScheduleClient()
+        scheduler = SchedulerConfig(temporal_task_queue="pynchy-test")
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=scheduler
+        )
+        runtime.client = client
+
+        await runtime.start_interrupted_turn("turn-123")
+
+        workflow, args, kwargs = client.started_workflows[0]
+        assert workflow == temporal_workflows.InterruptedTurnWorkflow.run
+        assert args == ("turn-123",)
+        assert kwargs["id"] == "pynchy-interrupted-turn-turn-123"
+        assert kwargs["task_queue"] == "pynchy-test"
+        assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE"
+
+    @pytest.mark.asyncio
     async def test_start_deploy_starts_temporal_workflow(self):
         request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="abc123",
             previous_sha="def456",
-            active_sessions={"slack:C123": "session-1"},
             rebuild=True,
             reason="origin",
         )
@@ -919,8 +941,6 @@ class TestTemporalSchedulerRuntime:
             chat_jid="slack:C123",
             commit_sha="new-sha",
             previous_sha="old-sha",
-            session_id="session-1",
-            active_sessions={"slack:C123": "session-1"},
             rebuild=True,
             reason="test",
         )

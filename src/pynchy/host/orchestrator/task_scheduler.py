@@ -16,27 +16,35 @@ if TYPE_CHECKING:
 from temporalio import activity
 
 from pynchy.config import get_settings
-from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     OnOutput,
 )
-from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
+from pynchy.host.orchestrator.scheduled_turn import (
+    ScheduledTurnDeps,
+    TaskAgentRequest,
+    run_task_agent,
+)
 from pynchy.logger import logger
 from pynchy.state import (
+    claim_in_flight_turn,
+    clear_in_flight_turn,
+    get_in_flight_turn_for_task,
     get_task_run_logs,
     log_task_run,
+    release_in_flight_turn_claim,
     update_task,
     update_task_after_run,
 )
 from pynchy.types import (
     ContainerOutput,
+    InFlightTurn,
     OutboundEvent,
     OutboundEventType,
     ScheduledTask,
     TaskRunLog,
     WorkspaceProfile,
 )
-from pynchy.utils import IdleTimer, compute_next_run
+from pynchy.utils import compute_next_run
 
 
 @runtime_checkable
@@ -90,16 +98,6 @@ class _SchedulerState:
 
 
 _state = _SchedulerState()
-
-
-@runtime_checkable
-class _IdleQueue(Protocol):
-    def close_stdin(self, chat_jid: str) -> None: ...
-
-
-class _IdleDeps(SchedulerDependencies, Protocol):
-    @property
-    def queue(self) -> _IdleQueue: ...
 
 
 def _recent_failure_run(logs: list[TaskRunLog]) -> list[TaskRunLog]:
@@ -280,102 +278,11 @@ async def _advance_next_run_guard(task: ScheduledTask, timezone: str) -> None:
     await update_task(task.id, {"next_run": _next_run_guard(task, timezone)})
 
 
-def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
-    return {
-        "message_type": "user",
-        "sender": "scheduled_task",
-        "sender_name": "Scheduled Task",
-        "content": task.prompt,
-        "timestamp": datetime.now(UTC).isoformat(),
-        "metadata": {"source": "scheduled_task"},
-    }
-
-
 async def _broadcast_task_start(deps: SchedulerDependencies, task: ScheduledTask) -> None:
     await deps.broadcast_to_channels(
         task.chat_jid,
         OutboundEvent(type=OutboundEventType.SYSTEM, content="\u23f1 Scheduled task starting."),
     )
-
-
-def _scheduled_idle_timer(
-    deps: _IdleDeps,
-    task: ScheduledTask,
-    *,
-    idle_enabled: bool,
-    idle_timeout: float,
-) -> IdleTimer | None:
-    if not idle_enabled:
-        return None
-
-    def _idle_timeout_callback() -> None:
-        logger.debug("Scheduled task idle timeout, closing stdin", task_id=task.id)
-        deps.queue.close_stdin(task.chat_jid)
-
-    return IdleTimer(idle_timeout, _idle_timeout_callback)
-
-
-async def _merge_scheduled_task_worktree(task: ScheduledTask, *, error: str | None) -> None:
-    if error:
-        return
-
-    await merge_worktree_with_policy(task.group_folder)
-
-
-async def _run_task_agent(
-    task: ScheduledTask,
-    deps: _IdleDeps,
-    group: WorkspaceProfile,
-    *,
-    idle_enabled: bool,
-    idle_timeout: float,
-) -> tuple[str | None, str | None]:
-    result: str | None = None
-    error: str | None = None
-    turn_id = new_turn_id()
-    idle_timer = _scheduled_idle_timer(
-        deps,
-        task,
-        idle_enabled=idle_enabled,
-        idle_timeout=idle_timeout,
-    )
-
-    async def _on_output(streamed: ContainerOutput) -> None:
-        nonlocal result, error
-        await deps.handle_streamed_output(task.chat_jid, group, streamed, turn_id=turn_id)
-        if idle_timer:
-            idle_timer.reset()
-        if streamed.result:
-            result = streamed.result
-        if streamed.status == "error":
-            error = streamed.error or "Unknown error"
-
-    if idle_timer:
-        idle_timer.reset()
-
-    try:
-        agent_result = await deps.run_agent(
-            group,
-            task.chat_jid,
-            [_scheduled_task_message(task)],
-            _on_output,
-            is_scheduled_task=True,
-            repo_access_override=None,
-            input_source="scheduled_task",
-            turn_id=turn_id,
-        )
-        if agent_result == "error":
-            error = error or "Agent returned error"
-        await _merge_scheduled_task_worktree(task, error=error)
-    except Exception as exc:  # noqa: BLE001, RUF100 - task execution is a boundary; record the failure and continue.
-        error = str(exc)
-        logger.error("Task failed", task_id=task.id, error=error)
-        return result, error
-    else:
-        return result, error
-    finally:
-        if idle_timer:
-            idle_timer.cancel()
 
 
 async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | None:
@@ -384,9 +291,89 @@ async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | Non
     return _stagnation_circuit_decision(failure_run) or _no_progress_circuit_decision(failure_run)
 
 
+async def _finish_scheduled_agent_run(
+    task: ScheduledTask,
+    *,
+    start_time: datetime,
+    result: str | None,
+    error: str | None,
+) -> bool:
+    logger.info(
+        "Task completed",
+        task_id=task.id,
+        duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
+    )
+    duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+    workflow_id, attempt = _temporal_attempt_metadata()
+    await log_task_run(
+        TaskRunLog(
+            task_id=task.id,
+            run_at=datetime.now(UTC).isoformat(),
+            duration_ms=duration_ms,
+            status="error" if error else "success",
+            result=result,
+            error=error,
+            temporal_workflow_id=workflow_id,
+            temporal_attempt=attempt,
+            error_signature=error_signature(error) if error else None,
+        )
+    )
+    next_run = _next_run_guard(task, get_settings().timezone)
+    result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
+    await update_task_after_run(task.id, next_run, result_summary)
+    return error is None
+
+
+async def resume_interrupted_scheduled_turn(
+    task: ScheduledTask,
+    deps: SchedulerDependencies,
+    turn: InFlightTurn,
+) -> bool:
+    """Resume a claimed scheduled agent turn and finish its scheduler bookkeeping."""
+    group = _scheduled_group(deps, task.group_folder)
+    if group is None:
+        await release_in_flight_turn_claim(turn.turn_id)
+        return False
+    try:
+        start_time = datetime.fromisoformat(turn.started_at)
+    except ValueError:
+        start_time = datetime.now(UTC)
+    result, error = await run_task_agent(
+        TaskAgentRequest(
+            task=task,
+            deps=cast("ScheduledTurnDeps", deps),
+            group=group,
+            idle_enabled=True,
+            idle_timeout=get_settings().idle_timeout,
+            resume_turn=turn,
+        )
+    )
+    if error:
+        return False
+    completed = await _finish_scheduled_agent_run(
+        task,
+        start_time=start_time,
+        result=result,
+        error=error,
+    )
+    if completed:
+        await clear_in_flight_turn(turn.turn_id)
+    return completed
+
+
 async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
     """Execute a single scheduled agent task via the unified run_agent path."""
     start_time = datetime.now(UTC)
+    interrupted_turn = await get_in_flight_turn_for_task(task.id)
+    if interrupted_turn is not None:
+        if not await claim_in_flight_turn(interrupted_turn.turn_id):
+            logger.info(
+                "Interrupted scheduled turn already claimed",
+                task_id=task.id,
+                turn_id=interrupted_turn.turn_id,
+            )
+            return True
+        return await resume_interrupted_scheduled_turn(task, deps, interrupted_turn)
     s = get_settings()
     group_dir = s.groups_dir / task.group_folder
     group_dir.mkdir(parents=True, exist_ok=True)
@@ -422,41 +409,18 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
     await _advance_next_run_guard(task, s.timezone)
 
     await _broadcast_task_start(deps, task)
-    result, error = await _run_task_agent(
-        task,
-        deps,
-        group,
-        idle_enabled=True,
-        idle_timeout=s.idle_timeout,
-    )
-    logger.info(
-        "Task completed",
-        task_id=task.id,
-        duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
-    )
-
-    duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-    workflow_id, attempt = _temporal_attempt_metadata()
-
-    await log_task_run(
-        TaskRunLog(
-            task_id=task.id,
-            run_at=datetime.now(UTC).isoformat(),
-            duration_ms=duration_ms,
-            status="error" if error else "success",
-            result=result,
-            error=error,
-            temporal_workflow_id=workflow_id,
-            temporal_attempt=attempt,
-            error_signature=error_signature(error) if error else None,
+    result, error = await run_task_agent(
+        TaskAgentRequest(
+            task=task,
+            deps=cast("ScheduledTurnDeps", deps),
+            group=group,
+            idle_enabled=True,
+            idle_timeout=s.idle_timeout,
         )
     )
-
-    # Recalculate next_run from actual completion time.  The pre-execution
-    # value (set above) was a guard against re-queuing; this post-execution
-    # value is the definitive schedule for the next run.
-    next_run = _next_run_guard(task, s.timezone)
-
-    result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
-    await update_task_after_run(task.id, next_run, result_summary)
-    return error is None
+    return await _finish_scheduled_agent_run(
+        task,
+        start_time=start_time,
+        result=result,
+        error=error,
+    )

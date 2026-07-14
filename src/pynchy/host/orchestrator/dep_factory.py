@@ -126,11 +126,10 @@ async def _start_temporal_deploy(
     *,
     host_broadcaster: HostMessageBroadcaster,
     workspaces: dict[str, WorkspaceProfile],
-    session_manager: SessionManager,
     previous_sha: str,
     rebuild: bool = True,
 ) -> None:
-    """Start a Temporal deploy workflow with all active sessions."""
+    """Start a Temporal deploy workflow; in-flight turns are checkpointed in SQLite."""
     chat_jid = find_admin_jid(workspaces)
     if chat_jid:
         msg = (
@@ -140,13 +139,11 @@ async def _start_temporal_deploy(
         )
         await host_broadcaster.broadcast_host_message(chat_jid, msg)
 
-    active_sessions = session_manager.get_active_sessions(workspaces)
     await start_deploy_workflow(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=get_head_sha(),
             previous_sha=previous_sha,
-            active_sessions=active_sessions,
             rebuild=rebuild,
             reason="dependency_adapter",
         )
@@ -219,7 +216,6 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,
                 workspaces=app.workspaces,
-                session_manager=session_manager,
                 previous_sha=previous_sha,
                 rebuild=rebuild,
             )
@@ -291,7 +287,6 @@ def make_git_sync_deps(app: PynchyApp) -> GitSyncDeps:
             await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,
                 workspaces=app.workspaces,
-                session_manager=session_manager,
                 previous_sha=previous_sha,
                 rebuild=rebuild,
             )

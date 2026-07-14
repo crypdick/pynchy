@@ -62,10 +62,8 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
     chat_jid: str,
     commit_sha: str,
     previous_sha: str,
-    session_id: str = "",
     resume_prompt: str = "Deploy complete. Verifying service health.",
     sigterm_delay: float = 0,
-    active_sessions: dict[str, str] | None = None,
 ) -> None:
     """Write continuation, notify all UIs, and SIGTERM self.
 
@@ -75,35 +73,36 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
         chat_jid: JID of the chat to notify.
         commit_sha: The HEAD after deploy.
         previous_sha: The HEAD before deploy (for rollback).
-        session_id: Optional session ID to preserve across restart.
         resume_prompt: Message injected into the agent on restart.
         sigterm_delay: Seconds to wait before SIGTERM. Use >0 when an HTTP
             response needs to flush before the process dies.
-        active_sessions: Optional mapping of chat_jid → session_id for all
-            active groups. Merged with the single session_id/chat_jid pair.
     """
     # 0. Persist deploy metadata in router_state for /status endpoint
     await pynchy_state.set_router_state("last_deploy_at", datetime.now(UTC).isoformat())
     await pynchy_state.set_router_state("last_deploy_sha", commit_sha)
 
-    # 1. Build merged active_sessions dict
-    merged_sessions: dict[str, str] = dict(active_sessions) if active_sessions else {}
-    if session_id and chat_jid:
-        merged_sessions[chat_jid] = session_id
-
-    # 2. Write continuation file
+    # The database rows are the source of truth. This snapshot is diagnostic;
+    # startup scans the table again so a turn that begins before SIGTERM but
+    # after this write is still recovered.
+    in_flight_turns = await pynchy_state.get_in_flight_turns()
     continuation: dict[str, object] = {
         "chat_jid": chat_jid,
-        "session_id": session_id,
         "resume_prompt": resume_prompt,
         "commit_sha": commit_sha,
         "previous_commit_sha": previous_sha,
-        "active_sessions": merged_sessions,
+        "interrupted_turns": [
+            {
+                "turn_id": turn.turn_id,
+                "chat_jid": turn.chat_jid,
+                "work_kind": turn.work_kind.value,
+            }
+            for turn in in_flight_turns
+        ],
     }
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     write_json_atomic(continuation_path, continuation, indent=2)
 
-    # 3. Notify all UIs
+    # 2. Notify all UIs
     short_sha = commit_sha[:8] if commit_sha else "unknown"
     if chat_jid:
         await broadcast_host_message(
@@ -117,7 +116,7 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
         previous_sha=previous_sha,
     )
 
-    # 4. SIGTERM self
+    # 3. SIGTERM self
     if sigterm_delay > 0:
         loop = asyncio.get_running_loop()
         loop.call_later(sigterm_delay, os.kill, os.getpid(), signal.SIGTERM)

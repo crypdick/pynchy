@@ -13,7 +13,6 @@ from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 from pynchy.host.git_ops.utils import get_head_sha
-from pynchy.host.orchestrator.adapters import SessionManager
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.sender import broadcast
@@ -171,21 +170,16 @@ async def _send_command_confirmation(
     await deps.broadcast_host_message(chat_jid, emoji)
 
 
-async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
+async def trigger_manual_redeploy(_deps: SessionDeps, chat_jid: str) -> None:
     """Handle a manual redeploy command through Temporal."""
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
-
-    # Build active_sessions so all groups resume after restart
-    sm = SessionManager(deps.sessions, deps.session_cleared)
-    active_sessions = sm.get_active_sessions(deps.workspaces)
 
     await start_deploy_workflow(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=sha,
             previous_sha=sha,
-            active_sessions=active_sessions,
             rebuild=False,
             reason="manual_redeploy",
         )

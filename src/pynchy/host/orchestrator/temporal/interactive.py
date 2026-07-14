@@ -7,6 +7,7 @@ from typing import cast
 from temporalio import activity
 
 from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
+from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,
@@ -25,7 +26,8 @@ def interactive_message_workflow_id(chat_jid: str) -> str:
 async def run_interactive_message_turn(chat_jid: str) -> str:
     """Temporal activity that runs one interactive message turn."""
     try:
-        handled = await _process_interactive_message_turn(_require_scheduler_deps(), chat_jid)
+        async with activity_heartbeats(chat_jid):
+            handled = await _process_interactive_message_turn(_require_scheduler_deps(), chat_jid)
         if not handled:
             _record_activity_result(chat_jid, "retry_requested")
             raise RuntimeError(_INTERACTIVE_TURN_RETRY_REQUESTED)

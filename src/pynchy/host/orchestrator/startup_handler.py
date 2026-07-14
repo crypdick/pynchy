@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -16,8 +17,12 @@ from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters
 from pynchy.logger import logger
-from pynchy.state import get_active_task_for_group, get_messages_since
-from pynchy.types import WorkspaceProfile, WorkspaceSecurity
+from pynchy.state import (
+    get_active_task_for_group,
+    get_messages_since,
+    prepare_in_flight_turn_recovery,
+)
+from pynchy.types import InFlightTurn, WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
@@ -40,9 +45,9 @@ class StartupDeps(Protocol):
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
-    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
-
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
+
+    async def start_interrupted_turn(self, turn_id: str) -> None: ...
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
@@ -86,9 +91,16 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     logger.info("Boot notification sent")
 
 
-async def recover_pending_messages(deps: StartupDeps) -> None:
+async def recover_pending_messages(
+    deps: StartupDeps,
+    *,
+    exclude_chat_jids: set[str] | None = None,
+) -> None:
     """Startup recovery: check for unprocessed messages in registered groups."""
+    excluded = exclude_chat_jids or set()
     for chat_jid, group in deps.workspaces.items():
+        if chat_jid in excluded:
+            continue
         # Scheduled workspaces run through the task scheduler, not recovery.
         # Without this guard, any stale is_from_me=0 message triggers an
         # agent run via the message handler path.  If that run commits and
@@ -157,64 +169,107 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
     sys.exit(1)
 
 
-async def check_deploy_continuation(deps: StartupDeps) -> None:
-    """Check for a deploy continuation file and resume active sessions.
+def _read_deploy_continuation(continuation_path: Path) -> dict[str, object]:
+    parsed = json.loads(continuation_path.read_text(encoding="utf-8"))
+    if isinstance(parsed, dict):
+        return parsed
+    logger.error(
+        "Deploy continuation must contain a JSON object",
+        path=str(continuation_path),
+    )
+    return {}
 
-    Reads the ``active_sessions`` dict from the continuation file and sends
-    a system notice (visible to both user and LLM) for every group that had
-    an active session before the deploy.
-    """
+
+@dataclass(frozen=True)
+class InterruptedTurnRecovery:
+    """Startup recovery data prepared before the Temporal worker can claim work."""
+
+    turns: tuple[InFlightTurn, ...]
+    commit_sha: str
+    resume_prompt: str
+    had_deploy_continuation: bool
+
+
+async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
+    """Clear stale claims before Temporal can redeliver interrupted activities."""
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
-    if not continuation_path.exists():
-        return
+    continuation: dict[str, object] = {}
+    if continuation_path.exists():
+        try:
+            continuation = _read_deploy_continuation(continuation_path)
+            continuation_path.unlink()
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error(
+                "Failed to read deploy continuation",
+                path=str(continuation_path),
+                err=str(exc),
+            )
 
-    try:
-        continuation = json.loads(continuation_path.read_text(encoding="utf-8"))
-        continuation_path.unlink()
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.error(
-            "Failed to read deploy continuation",
-            path=str(continuation_path),
-            err=str(exc),
-        )
-        return
-
-    resume_prompt = continuation.get("resume_prompt", "Deploy complete.")
+    default_prompt = "Deploy complete." if continuation else "Continuing after host restart."
+    resume_prompt = continuation.get("resume_prompt", default_prompt)
     commit_sha = continuation.get("commit_sha", "unknown")
-    _prune_migration_backups(get_settings().data_dir)
-
-    active_sessions: dict[str, str] = continuation.get("active_sessions", {})
-
-    if not active_sessions:
-        logger.info(
-            "Deploy continuation has no active sessions, skipping agent resume",
-            commit_sha=commit_sha,
-        )
-        return
-
-    logger.info(
-        "Deploy continuation found, resuming sessions",
-        commit_sha=commit_sha,
-        group_count=len(active_sessions),
+    if continuation:
+        _prune_migration_backups(get_settings().data_dir)
+    deploy_id = commit_sha if isinstance(commit_sha, str) and commit_sha != "unknown" else None
+    interrupted_turns = await prepare_in_flight_turn_recovery(deploy_id)
+    commit_text = commit_sha if isinstance(commit_sha, str) else "unknown"
+    prompt_text = resume_prompt if isinstance(resume_prompt, str) else default_prompt
+    return InterruptedTurnRecovery(
+        turns=tuple(interrupted_turns),
+        commit_sha=commit_text,
+        resume_prompt=prompt_text,
+        had_deploy_continuation=bool(continuation),
     )
 
-    sha_short = commit_sha[:8]
-    commit_msg = get_head_commit_message(50)
-    label = f"{sha_short} {commit_msg}".strip() if commit_msg else sha_short
 
-    for jid in active_sessions:
-        # Active session existed before deploy → send as system notice
-        # (visible to both user and LLM). broadcast_system_notice stores
-        # the message, broadcasts to channels, and enqueues a message check.
-        #
-        # Note: periodic workspaces are NOT skipped here. The active_sessions
-        # dict already filters to workspaces that were running at deploy time.
-        # Idle periodic workspaces have no session (cleared on completion),
-        # so they won't appear here. Only interrupted tasks need resuming.
-        notice = f"Deploy complete -- {label}. {resume_prompt}"
-        await deps.broadcast_system_notice(jid, notice)
-        await deps.start_interactive_turn(jid)
-        logger.info("Deploy resume notice sent", chat_jid=jid)
+async def dispatch_interrupted_turn_recovery(
+    deps: StartupDeps,
+    recovery: InterruptedTurnRecovery,
+) -> set[str]:
+    """Dispatch prepared rows after the Temporal worker is ready to receive them."""
+    interrupted_turns = recovery.turns
+
+    if not interrupted_turns:
+        logger.info(
+            "Startup recovery has no interrupted agent turns",
+            commit_sha=recovery.commit_sha,
+        )
+        return set()
+
+    logger.info(
+        "Startup recovery found interrupted agent turns",
+        commit_sha=recovery.commit_sha,
+        turn_count=len(interrupted_turns),
+    )
+
+    sha_short = recovery.commit_sha[:8]
+    commit_msg = get_head_commit_message(50) if recovery.had_deploy_continuation else ""
+    label = f"{sha_short} {commit_msg}".strip() if commit_msg else sha_short
+    resumed_chats: set[str] = set()
+
+    for turn in interrupted_turns:
+        restart_label = (
+            f"Deploy complete -- {label}."
+            if recovery.had_deploy_continuation
+            else "Pynchy restarted."
+        )
+        notice = f"{restart_label} Resuming interrupted work. {recovery.resume_prompt}"
+        await deps.broadcast_host_message(turn.chat_jid, notice)
+        await deps.start_interrupted_turn(turn.turn_id)
+        resumed_chats.add(turn.chat_jid)
+        logger.info(
+            "Interrupted turn recovery dispatched",
+            chat_jid=turn.chat_jid,
+            turn_id=turn.turn_id,
+            work_kind=turn.work_kind.value,
+        )
+    return resumed_chats
+
+
+async def check_deploy_continuation(deps: StartupDeps) -> set[str]:
+    """Prepare and dispatch recovery when startup ordering is managed by the caller."""
+    recovery = await prepare_interrupted_turn_recovery()
+    return await dispatch_interrupted_turn_recovery(deps, recovery)
 
 
 def _prune_migration_backups(data_dir: Path) -> None:

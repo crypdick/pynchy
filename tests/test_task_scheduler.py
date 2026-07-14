@@ -25,6 +25,11 @@ from pynchy.config import CronJobConfig, SchedulerConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.task_scheduler import start_scheduler_loop
+from pynchy.state import (
+    get_in_flight_turn_for_task,
+    init_test_database,
+    prepare_in_flight_turn_recovery,
+)
 from pynchy.types import (
     ContainerOutput,
     ScheduledTask,
@@ -517,6 +522,10 @@ class TestRunScheduledAgent:
     messages, passes the right flags, handles return values, and logs runs.
     """
 
+    @pytest.fixture(autouse=True)
+    async def _isolated_turn_ledger(self):
+        await init_test_database()
+
     @pytest.mark.asyncio
     async def test_pauses_task_before_execution_after_repeated_same_failure(
         self, mock_deps, sample_task, sample_group, tmp_path
@@ -617,6 +626,51 @@ class TestRunScheduledAgent:
         assert len(run["messages"]) == 1
         assert run["messages"][0]["content"] == "Test task"
         assert run["messages"][0]["sender"] == "scheduled_task"
+
+    @pytest.mark.asyncio
+    async def test_restart_resumes_interrupted_scheduled_job(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """A killed periodic job continues with its original durable turn ID."""
+        mock_deps.groups["test-jid"] = sample_group
+
+        async def interrupted_run(_group, _jid, _messages, on_output, **_kwargs):
+            await on_output(ContainerOutput(status="success", result="partial task output"))
+            raise asyncio.CancelledError
+
+        mock_deps._run_agent_side_effect = interrupted_run
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                new_callable=AsyncMock,
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.scheduled_turn.merge_worktree_with_policy",
+                new_callable=AsyncMock,
+            ),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await _run_due_task_via_scheduler(mock_deps, sample_task)
+
+            checkpoint = await get_in_flight_turn_for_task(sample_task.id)
+            assert checkpoint is not None
+            assert checkpoint.output_sent is True
+            original_turn_id = checkpoint.turn_id
+            await prepare_in_flight_turn_recovery("deploy-sha")
+
+            mock_deps._run_agent_side_effect = None
+            assert await _run_due_task_via_scheduler(mock_deps, sample_task) is None
+
+        assert len(mock_deps.agent_runs) == 2
+        resumed_run = mock_deps.agent_runs[-1]
+        assert resumed_run["turn_id"] == original_turn_id
+        assert resumed_run["input_source"] == "scheduled_task"
+        assert "continue the unfinished job" in resumed_run["messages"][0]["content"]
+        assert await get_in_flight_turn_for_task(sample_task.id) is None
 
     @pytest.mark.asyncio
     async def test_scheduled_agent_resolves_workspace_repo_config(
