@@ -144,6 +144,7 @@ class CodexCLIAgentCore:
         self._proc: asyncio.subprocess.Process | None = None
         self._last_agent_message: str | None = None
         self._last_turn_metadata: dict[str, object] = {}
+        self._terminal_error_emitted = False
 
     async def start(self) -> None:
         """Resolve the CLI binary, write config, and prepare the environment."""
@@ -209,6 +210,7 @@ class CodexCLIAgentCore:
 
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Spawn one Codex turn and stream mapped events."""
+        self._terminal_error_emitted = False
         _log(f"spawn codex (session: {self._session_id or 'new'})")
         proc = await self._spawn_process()
         await self._write_prompt(proc, prompt)
@@ -297,7 +299,11 @@ class CodexCLIAgentCore:
             self._record_turn_metadata(obj)
             return []
 
-        if event_type in {"turn.failed", "error"}:
+        # Codex emits both terminal event shapes for one failed turn. Once the
+        # first has become a Pynchy result, let its paired event fall through
+        # as an ignored non-item event.
+        if event_type in {"turn.failed", "error"} and not self._terminal_error_emitted:
+            self._terminal_error_emitted = True
             return [self._map_error_result(obj, str(event_type))]
 
         if event_type not in {"item.started", "item.completed"}:

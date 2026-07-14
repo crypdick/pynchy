@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import tomllib
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -305,6 +306,65 @@ def test_turn_failed_maps_to_error_result():
     assert event.data["result"] == "auth failed"
     assert event.data["result_metadata"]["is_error"] is True
     assert event.data["result_metadata"]["subtype"] == "not_logged_in"
+
+
+def test_paired_turn_failed_and_error_emit_one_terminal_result():
+    core = _core()
+
+    failed = core._map_event(
+        {"type": "turn.failed", "error": {"message": "request failed", "code": "timeout"}}
+    )
+    duplicate = core._map_event(
+        {"type": "error", "error": {"message": "request failed", "code": "timeout"}}
+    )
+
+    assert len(failed) == 1
+    assert failed[0].data["result"] == "request failed"
+    assert duplicate == []
+
+
+def test_query_resets_terminal_error_guard_between_turns(monkeypatch):
+    core = _core()
+    event_batches = iter(
+        [
+            [
+                {"type": "turn.failed", "error": {"message": "first failed"}},
+                {"type": "error", "error": {"message": "first failed"}},
+            ],
+            [
+                {"type": "error", "error": {"message": "second failed"}},
+                {"type": "turn.failed", "error": {"message": "second failed"}},
+            ],
+        ]
+    )
+
+    async def _stream_events(_proc):
+        await asyncio.sleep(0)
+        for obj in next(event_batches):
+            for event in core._map_event(obj):
+                yield event
+
+    spawn_process = AsyncMock(side_effect=[object(), object()])
+    write_prompt = AsyncMock()
+    finish_process = AsyncMock(return_value=("", 1))
+
+    monkeypatch.setattr(core, "_spawn_process", spawn_process)
+    monkeypatch.setattr(core, "_write_prompt", write_prompt)
+    monkeypatch.setattr(core, "_stream_events", _stream_events)
+    monkeypatch.setattr(core, "_finish_process", finish_process)
+
+    async def _run_queries():
+        first = [event async for event in core.query("first")]
+        second = [event async for event in core.query("second")]
+        return first, second
+
+    first, second = asyncio.run(_run_queries())
+
+    assert [event.data["result"] for event in first] == ["first failed"]
+    assert [event.data["result"] for event in second] == ["second failed"]
+    assert spawn_process.await_count == 2
+    assert write_prompt.await_count == 2
+    assert finish_process.await_count == 2
 
 
 class _FakeProc:
