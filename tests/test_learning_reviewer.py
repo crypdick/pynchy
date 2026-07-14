@@ -45,6 +45,7 @@ def _paths(tmp_path: Path) -> LearningPaths:
         profile_slug="deep-work",
         vault_root=vault_root,
         vault_mount_path="/workspace/vault",
+        global_skills_root=vault_root / "systems/pynchy/skills",
         profile_root=profile_root,
         memory_root=profile_root / "memory",
         skills_root=profile_root / "skills",

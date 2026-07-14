@@ -81,7 +81,18 @@ def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
     if paths is None:
         return []
 
-    skills_root = paths.skills_root
+    skill_max_bytes = get_settings().learning.skill_max_bytes
+    skill_dirs: list[Path] = []
+    # Global Obsidian-backed skills are shared by every profile. Profile-scoped
+    # skills are scanned after global ones so they can override an imported
+    # shared skill with the same directory name during session sync.
+    for skills_root in (paths.global_skills_root, paths.skills_root):
+        skill_dirs.extend(_iter_skill_dirs_from_root(skills_root, skill_max_bytes))
+
+    return skill_dirs
+
+
+def _iter_skill_dirs_from_root(skills_root: Path, skill_max_bytes: int) -> list[Path]:
     if not skills_root.exists():
         return []
     if not skills_root.is_dir():
@@ -93,7 +104,6 @@ def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
         return []
 
     resolved_root = skills_root.resolve()
-    skill_max_bytes = get_settings().learning.skill_max_bytes
     skill_dirs: list[Path] = []
 
     candidates = _sorted_skill_candidates(skills_root)
@@ -151,11 +161,10 @@ def _directory_size_bytes(root: Path) -> int | None:
             return None
 
         if stat.S_ISDIR(stat_result.st_mode):
-            logger.warning(
-                "Skipping learned skill nested directory",
-                path=str(path),
-            )
-            return None
+            # Only direct files are materialized for agent skills. References
+            # and templates remain available in the vault without invalidating
+            # an otherwise usable skill.
+            continue
         if stat.S_ISLNK(stat_result.st_mode):
             logger.warning(
                 "Skipping learned skill file symlink",

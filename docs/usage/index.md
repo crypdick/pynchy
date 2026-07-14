@@ -63,6 +63,7 @@ No config files to learn. Just tell Pynchy what you want:
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
 | [Computer use](computer-use.md) | Drive the macOS host desktop through Cua Driver for real-browser/native-app workflows |
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
+| [Proton Mail](proton-mail.md) | Read Proton Mail through a host-side MCP server |
 | [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
 | [Slack MCP](slack-mcp.md) | Slack read access via browser tokens (no admin required) |
 | [Tool Trust](security.md) | Configure tool trust declarations — control when agents need human approval |

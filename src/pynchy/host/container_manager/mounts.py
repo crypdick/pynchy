@@ -183,9 +183,9 @@ def _validate_learning_vault(vault_root: Path) -> None:
 
 
 def _should_scan_learned_skills(workspace_skills: list[str] | None) -> bool:
-    if not workspace_skills:
-        return False
-    return "*" in workspace_skills or "learned" in workspace_skills
+    # A named global skill must be discovered before selection. The session
+    # synchronizer still applies the name/tier filter to every candidate.
+    return bool(workspace_skills)
 
 
 def _add_workspace_mounts(

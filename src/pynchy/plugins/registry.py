@@ -102,6 +102,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "linear",
     ),
     (
+        "pynchy.plugins.integrations.proton_mail",
+        "ProtonMailMcpPlugin",
+        "proton-mail",
+    ),
+    (
         "pynchy.plugins.integrations.notebook_server",
         "NotebookServerPlugin",
         "notebook",

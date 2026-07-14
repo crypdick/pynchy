@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
+import discord
+
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel
 
@@ -52,6 +54,7 @@ def _message(
     attachments: tuple[SimpleNamespace, ...] = (),
     reference: SimpleNamespace | None = None,
     message_snapshots: tuple[SimpleNamespace, ...] = (),
+    message_type: object | None = None,
 ) -> SimpleNamespace:
     guild = None if guild_id is None else SimpleNamespace(id=guild_id, name=guild_name)
     parent = None
@@ -70,6 +73,7 @@ def _message(
         reference=reference,
         message_snapshots=list(message_snapshots),
         mentions=[_user(m) for m in mentions],
+        type=message_type,
     )
 
 
@@ -185,6 +189,37 @@ async def test_thread_message_uses_thread_jid_and_parent_metadata():
     assert msg.metadata["discord_parent_chat_jid"] == "discord:channel:c1"
     assert msg.metadata["discord_channel_name"] == "run-123"
     assert msg.metadata["discord_parent_channel_name"] == "admin"
+
+
+async def test_thread_created_system_message_is_not_delivered_to_parent_channel_agent():
+    delivered: list[tuple[str, NewMessage]] = []
+    metadata: list[tuple[str, str, str | None]] = []
+    channel = DiscordChannel(
+        "discord",
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            group_policy="allowlist",
+            chat={"g1": {"channels": {"c1": {"require_mention": False}}}},
+        ),
+        "token",
+        lambda jid, new_message: delivered.append((jid, new_message)),
+        lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
+    )
+    channel.bot_user_id = BOT_ID
+
+    await channel.events.handle_message(
+        _message(
+            author=_user("5"),
+            guild_id="g1",
+            channel_id="c1",
+            channel_name="admin",
+            content="started a thread",
+            message_type=discord.MessageType.thread_created,
+        )
+    )
+
+    assert delivered == []
+    assert metadata == []
 
 
 async def test_reply_context_is_preserved_in_message_metadata():

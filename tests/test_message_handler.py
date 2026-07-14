@@ -180,7 +180,9 @@ class TestInterceptSpecialCommand:
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
-        deps.handle_context_reset.assert_awaited_once_with("g@g.us", group, msg.timestamp)
+        deps.handle_context_reset.assert_awaited_once_with(
+            "g@g.us", group, msg.timestamp, source_message=msg
+        )
 
     @pytest.mark.asyncio
     async def test_end_session_intercepted(self):
@@ -201,7 +203,9 @@ class TestInterceptSpecialCommand:
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
-        deps.handle_end_session.assert_awaited_once()
+        deps.handle_end_session.assert_awaited_once_with(
+            "g@g.us", group, msg.timestamp, source_message=msg
+        )
 
     @pytest.mark.asyncio
     async def test_redeploy_intercepted(self):

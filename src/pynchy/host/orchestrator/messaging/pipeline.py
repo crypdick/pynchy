@@ -71,9 +71,23 @@ class MessageHandlerDeps(Protocol):
 
     def pop_dispatched(self, chat_jid: str, default: str) -> str: ...
 
-    async def handle_context_reset(self, chat_jid: str, group: Group, timestamp: str) -> None: ...
+    async def handle_context_reset(
+        self,
+        chat_jid: str,
+        group: Group,
+        timestamp: str,
+        *,
+        source_message: types.NewMessage | None = None,
+    ) -> None: ...
 
-    async def handle_end_session(self, chat_jid: str, group: Group, timestamp: str) -> None: ...
+    async def handle_end_session(
+        self,
+        chat_jid: str,
+        group: Group,
+        timestamp: str,
+        *,
+        source_message: types.NewMessage | None = None,
+    ) -> None: ...
 
     async def trigger_manual_redeploy(self, chat_jid: str) -> None: ...
 
@@ -153,13 +167,23 @@ async def intercept_special_command(
 
     if commands.is_context_reset(content):
         logger.info("intercept_trace", step="context_reset_start", group=group.name)
-        await deps.handle_context_reset(chat_jid, group, message.timestamp)
+        await deps.handle_context_reset(
+            chat_jid,
+            group,
+            message.timestamp,
+            source_message=message,
+        )
         logger.info("Context reset", group=group.name)
         return True
 
     if commands.is_end_session(content):
         logger.info("intercept_trace", step="end_session_start", group=group.name)
-        await deps.handle_end_session(chat_jid, group, message.timestamp)
+        await deps.handle_end_session(
+            chat_jid,
+            group,
+            message.timestamp,
+            source_message=message,
+        )
         logger.info("End session", group=group.name)
         return True
 

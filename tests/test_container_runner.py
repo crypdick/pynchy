@@ -778,6 +778,36 @@ class TestMountBuilding:
         skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
         assert skill_dst.exists()
 
+    def test_learning_mount_syncs_global_obsidian_skill_when_named(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["remember-routing"])
+        workspaces = {"test-group": workspace}
+
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
+        assert skill_dst.exists()
+
     def test_codex_home_receives_selected_plugin_skills(self, tmp_path: Path):
         plugin_skill = tmp_path / "vault-skills" / "calendar-caldav"
         plugin_skill.mkdir(parents=True)
@@ -2396,7 +2426,7 @@ class TestSyncSkills:
 
         assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
 
-    def test_learned_skill_name_alone_does_not_select_learned_namespace(
+    def test_learned_skill_name_selects_learned_namespace(
         self,
         tmp_path: Path,
     ):
@@ -2415,7 +2445,7 @@ class TestSyncSkills:
                 learned_skill_paths=[learned_skill],
             )
 
-        assert not (session_dir / "skills" / "remember-routing").exists()
+        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
 
     def test_learned_skill_collision_is_skipped_and_logged(
         self,

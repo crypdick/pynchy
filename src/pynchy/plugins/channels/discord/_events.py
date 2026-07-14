@@ -97,6 +97,12 @@ def jid_for(ctx: InboundContext) -> str:
     return channel_jid(ctx.channel_id)
 
 
+def is_thread_created_system_message(message: object) -> bool:
+    """Return True for Discord's parent-channel thread starter notice."""
+    message_type = getattr(cast("Any", message), "type", None)
+    return getattr(message_type, "name", None) == "thread_created"
+
+
 def _attachment_metadata(attachment: object) -> dict[str, Any]:
     """Normalize a Discord attachment into plain metadata."""
     attachment_like = cast("Any", attachment)
@@ -323,6 +329,8 @@ class DiscordEvents:
     async def handle_message(self, message: object) -> None:
         ch = self._channel
         message_like = cast("Any", message)
+        if is_thread_created_system_message(message_like):
+            return
         if str(message_like.author.id) == ch.bot_user_id:
             return  # our own message
         ctx = build_inbound_context(message_like, ch.bot_user_id)
