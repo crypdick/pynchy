@@ -41,6 +41,94 @@ def test_verify_digest_rejects_tampering() -> None:
         installer._verify_digest(b"tampered", expected)
 
 
+def test_resolved_command_prefers_the_selected_bin_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    selected = tmp_path / "bin" / "new-feature"
+    selected.parent.mkdir()
+    selected.touch()
+    monkeypatch.setattr(installer.shutil, "which", lambda _name: "/usr/bin/new-feature")
+
+    assert installer._resolved_command("new-feature", selected.parent) == str(selected)
+
+
+def test_pinned_new_feature_requires_the_selected_bin_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(installer.shutil, "which", lambda _name: "/usr/bin/new-feature")
+
+    with pytest.raises(installer.DependencyError, match=r"Pinned new-feature v1\.1\.6 is missing"):
+        installer._ensure_pinned_new_feature("/usr/bin/uv", tmp_path, check_only=True)
+
+
+def test_new_feature_version_parses_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        lambda *_args, **_kwargs: installer.subprocess.CompletedProcess(
+            ["new-feature", "--version"],
+            0,
+            stdout="new-feature 1.1.6\n",
+            stderr="",
+        ),
+    )
+
+    assert installer._new_feature_version("/tools/new-feature") == "1.1.6"
+
+
+def test_pinned_new_feature_reinstalls_a_stale_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    command = "/tools/new-feature"
+    versions = iter(("0.6.2", "1.1.6"))
+    installed: list[tuple[str, Path]] = []
+    monkeypatch.setattr(installer, "_selected_command", lambda _name, _bin_dir: command)
+    monkeypatch.setattr(installer, "_new_feature_version", lambda _command: next(versions))
+    monkeypatch.setattr(
+        installer,
+        "_install_new_feature",
+        lambda uv, bin_dir: installed.append((uv, bin_dir)),
+    )
+
+    assert (
+        installer._ensure_pinned_new_feature("/usr/bin/uv", tmp_path, check_only=False) == command
+    )
+    assert installed == [("/usr/bin/uv", tmp_path)]
+
+
+def test_pinned_new_feature_rejects_a_stale_version_in_check_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        installer,
+        "_selected_command",
+        lambda _name, _bin_dir: "/tools/new-feature",
+    )
+    monkeypatch.setattr(installer, "_new_feature_version", lambda _command: "0.6.2")
+
+    with pytest.raises(installer.DependencyError, match=r"must be v1\.1\.6; found 0\.6\.2"):
+        installer._ensure_pinned_new_feature("/usr/bin/uv", tmp_path, check_only=True)
+
+
+def test_install_new_feature_forces_the_pinned_release(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    commands: list[list[str]] = []
+    environments: list[dict[str, str] | None] = []
+
+    def run_checked(command: list[str], *, env: dict[str, str] | None = None) -> None:
+        commands.append(command)
+        environments.append(env)
+
+    monkeypatch.setattr(installer, "_run_checked", run_checked)
+
+    installer._install_new_feature("/usr/bin/uv", tmp_path)
+
+    assert commands == [["/usr/bin/uv", "tool", "install", "--force", "new-feature==1.1.6"]]
+    assert environments[0] is not None
+    assert environments[0]["UV_TOOL_BIN_DIR"] == str(tmp_path)
+
+
 def test_install_temporal_writes_verified_executable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
