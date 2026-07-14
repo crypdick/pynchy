@@ -424,6 +424,10 @@ class PynchyApp:
         """Start durable Temporal processing for pending messages in one chat."""
         await temporal_scheduler.start_interactive_message_workflow(chat_jid)
 
+    async def start_interrupted_turn(self, turn_id: str) -> None:
+        """Start durable semantic recovery for one interrupted agent turn."""
+        await temporal_scheduler.start_interrupted_turn_workflow(turn_id)
+
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)
     async def _ingest_user_message(

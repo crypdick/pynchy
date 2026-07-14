@@ -340,12 +340,16 @@ async def run_app(app: PynchyApp) -> None:
         await startup_handler.setup_admin_group(app, default_channel)
 
     repo_groups = await _reconcile_state(app)
+    interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
     await _start_subsystems(app, repo_groups)
 
     await startup_handler.send_boot_notification(app)
     await app.catch_up_channels()
-    await startup_handler.recover_pending_messages(app)
-    await startup_handler.check_deploy_continuation(app)
+    recovering_chats = await startup_handler.dispatch_interrupted_turn_recovery(
+        app,
+        interrupted_recovery,
+    )
+    await startup_handler.recover_pending_messages(app, exclude_chat_jids=recovering_chats)
 
     if app.message_loop_running:
         logger.debug("Message loop already running, skipping duplicate start")

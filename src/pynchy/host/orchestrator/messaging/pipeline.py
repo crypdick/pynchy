@@ -10,13 +10,8 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from pathlib import (
-    Path,  # noqa: TC003, RUF100 - beartype resolves pipeline path annotations at runtime.
-)
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.session as session_module
@@ -30,12 +25,21 @@ from pynchy.conversation.events import new_turn_id
 from pynchy.event_bus import AgentActivityEvent, Event
 from pynchy.host.learning import capture as learning_capture
 from pynchy.host.orchestrator.messaging import approval_handler, commands
-from pynchy.host.orchestrator.messaging.cursor import advance_cursor
+from pynchy.host.orchestrator.messaging.cursor import advance_cursor, complete_turn_with_cursor
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
+from pynchy.host.orchestrator.messaging.in_flight import (
+    MessageTurnStart,
+    begin_message_turn,
+    note_output_sent,
+)
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
+from pynchy.host.orchestrator.messaging.turn_recovery import (
+    handle_reset_handoff,
+    resume_interrupted_message_if_present,
+)
 from pynchy.logger import logger
-from pynchy.state import get_messages_since
+from pynchy.state import clear_in_flight_turn, get_messages_since, release_in_flight_turn_claim
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
@@ -153,6 +157,7 @@ class _FinalizeCursorRetryRequest:
     output_sent_to_user: bool
     learning_summary: learning_capture.LearningRunSummary
     s: Settings
+    turn_id: str
 
 
 async def intercept_special_command(
@@ -215,74 +220,6 @@ async def intercept_special_command(
 
     await advance_cursor(deps, chat_jid, message.timestamp)
     return True
-
-
-async def _handle_reset_handoff(
-    deps: MessageHandlerDeps,
-    chat_jid: str,
-    group: types.WorkspaceProfile,
-    reset_file: Path,
-) -> bool | None:
-    """Consume a reset_prompt.json file and run the handoff agent.
-
-    Returns True/False if the reset was handled (success/failure),
-    or None if there was no reset to process.
-    """
-    if not await asyncio.to_thread(reset_file.exists):
-        return None
-
-    s = get_settings()
-    try:
-        reset_text = await asyncio.to_thread(reset_file.read_text, encoding="utf-8")
-        reset_data = json.loads(reset_text)
-        await asyncio.to_thread(reset_file.unlink)
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning(
-            "Failed to read reset prompt file",
-            group=group.name,
-            path=str(reset_file),
-            err=str(exc),
-        )
-        await asyncio.to_thread(reset_file.unlink, missing_ok=True)
-        # Return None (not True) so the caller falls through to normal
-        # message processing instead of silently skipping this cycle.
-        return None
-
-    reset_message = reset_data.get("message", "")
-    if not reset_message:
-        return True
-
-    logger.info("Processing reset handoff", group=group.name)
-    turn_id = new_turn_id()
-
-    async def handoff_on_output(result: types.ContainerOutput) -> None:
-        await deps.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
-
-    reset_messages = [
-        {
-            "message_type": "user",
-            "sender": "system",
-            "sender_name": "System",
-            "content": reset_message,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "metadata": {"source": "reset_handoff"},
-        }
-    ]
-
-    result = await deps.run_agent(
-        group,
-        chat_jid,
-        reset_messages,
-        handoff_on_output,
-        input_source="reset_handoff",
-        turn_id=turn_id,
-    )
-
-    if reset_data.get("needsDirtyRepoCheck"):
-        dirty_check_file = s.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
-        dirty_check_file.write_text(json.dumps({"timestamp": datetime.now(UTC).isoformat()}))
-
-    return result != "error"
 
 
 def _mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> None:
@@ -406,13 +343,19 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
     # The cursor advances in every case EXCEPT a clean failure with no
     # user-visible output — that's the only path we want re-tried verbatim.
     if failed and not request.output_sent_to_user:
+        await clear_in_flight_turn(request.turn_id)
         await request.deps.broadcast_host_message(
             request.chat_jid, "⚠️ Agent error occurred. Will retry on next message."
         )
         logger.warning("Agent error, cursor unchanged for retry", group=request.group.name)
         return False
 
-    await advance_cursor(request.deps, request.chat_jid, final_cursor)
+    await complete_turn_with_cursor(
+        request.deps,
+        request.chat_jid,
+        final_cursor,
+        request.turn_id,
+    )
 
     if failed:
         # Partial output already sent — cursor advanced to prevent a duplicate
@@ -449,9 +392,18 @@ async def process_group_messages(
     if not group:
         return True
 
+    resumed = await resume_interrupted_message_if_present(
+        deps,
+        chat_jid,
+        group,
+        lambda jid: process_group_messages(deps, jid),
+    )
+    if resumed is not None:
+        return resumed
+
     # Check for agent-initiated context reset prompt
     reset_file = s.data_dir / "ipc" / group.folder / "reset_prompt.json"
-    reset_result = await _handle_reset_handoff(deps, chat_jid, group, reset_file)
+    reset_result = await handle_reset_handoff(deps, chat_jid, group, reset_file, s)
     if reset_result is False:
         # Handoff failed — return False so GroupQueue will retry.
         return False
@@ -486,6 +438,17 @@ async def process_group_messages(
     output_sent_to_user = False
     learning_summary = learning_capture.LearningRunSummary()
     turn_id = _turn_id_for_batch(missed_messages)
+    await begin_message_turn(
+        MessageTurnStart(
+            turn_id=turn_id,
+            chat_jid=chat_jid,
+            group=group,
+            work_kind=types.InFlightWorkKind.INTERACTIVE,
+            input_messages=messages,
+            input_start_cursor=since_timestamp,
+            input_end_cursor=missed_messages[-1].timestamp,
+        )
+    )
 
     async def on_output(result: types.ContainerOutput) -> None:
         nonlocal had_error, output_sent_to_user
@@ -493,18 +456,25 @@ async def process_group_messages(
         learning_capture.observe_learning_output(learning_summary, result)
         sent = await deps.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
         if sent:
+            await note_output_sent(turn_id, already_recorded=output_sent_to_user)
             output_sent_to_user = True
         if result.status == "error":
             had_error = True
 
-    agent_result = await deps.run_agent(
-        group,
-        chat_jid,
-        messages,
-        on_output,
-        reset_system_notices or None,
-        turn_id=turn_id,
-    )
+    try:
+        agent_result = await deps.run_agent(
+            group,
+            chat_jid,
+            messages,
+            on_output,
+            reset_system_notices or None,
+            turn_id=turn_id,
+        )
+    except asyncio.CancelledError:
+        raise
+    except BaseException:
+        await release_in_flight_turn_claim(turn_id)
+        raise
 
     process_ms = (time.monotonic() - process_start) * 1000
     await deps.set_typing_on_channels(chat_jid, is_typing=False)
@@ -524,16 +494,21 @@ async def process_group_messages(
         output_sent=output_sent_to_user,
     )
 
-    return await _finalize_cursor_and_retry(
-        _FinalizeCursorRetryRequest(
-            deps=deps,
-            chat_jid=chat_jid,
-            group=group,
-            missed_messages=missed_messages,
-            agent_result=agent_result,
-            had_error=had_error,
-            output_sent_to_user=output_sent_to_user,
-            learning_summary=learning_summary,
-            s=s,
+    try:
+        return await _finalize_cursor_and_retry(
+            _FinalizeCursorRetryRequest(
+                deps=deps,
+                chat_jid=chat_jid,
+                group=group,
+                missed_messages=missed_messages,
+                agent_result=agent_result,
+                had_error=had_error,
+                output_sent_to_user=output_sent_to_user,
+                learning_summary=learning_summary,
+                s=s,
+                turn_id=turn_id,
+            )
         )
-    )
+    except BaseException:
+        await release_in_flight_turn_claim(turn_id)
+        raise

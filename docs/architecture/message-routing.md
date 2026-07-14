@@ -18,7 +18,6 @@ The sender vocabulary in the database:
 |----------------|-----------------|-------------|
 | `host` | No | Pynchy process notifications (boot, deploy, errors) — user-only |
 | `bot` | Yes | Claude's responses (`AssistantMessage`) |
-| `deploy` | Yes | Deploy continuation markers |
 | `tui-user` | Yes | Messages from the TUI client (`UserMessage`) |
 | `command_output` | Yes | Tool/command results stored in DB |
 | `system_notice` | No | Ephemeral system notices (not stored in DB) |
@@ -38,3 +37,25 @@ Messages must start with the trigger prefix (default `@Pynchy`, case insensitive
 - Messages that arrive while a task runs follow escalation rules — see [Messaging During Active Tasks](../usage/index.md#messaging-during-active-tasks)
 
 For how messages are typed and stored, see [Message types](message-types.md).
+
+## Interrupted Turn Recovery
+
+Pynchy checkpoints an agent turn in SQLite before it invokes the agent runtime. The checkpoint
+records the original input boundary, work type, conversation session, and whether any output
+reached the user. A completed interactive turn advances its durable message cursor and removes
+the checkpoint in the same database transaction.
+
+Startup clears claims left by the stopped process before starting the Temporal worker. It then
+dispatches each surviving checkpoint through a stable recovery workflow. The recovery activity
+rehydrates the existing agent session and sends a continuation instruction that tells the agent
+to inspect its transcript and workspace, avoid repeating completed side effects, and finish the
+original request. Scheduled agent turns use the same checkpoint and claim mechanism.
+
+A saved conversation session does not indicate running work. Idle conversations have no
+in-flight checkpoint, so a deploy or later restart does not wake them. SQLite remains the source
+of truth even when an unexpected process loss prevents Pynchy from writing a deploy continuation
+file; that file only carries deploy diagnostics and rollback metadata.
+
+Recovery resumes the durable agent turn, not the stopped Python instruction pointer. Temporal
+heartbeats detect a lost host activity, while the checkpoint gives the replacement activity the
+semantic information required to continue safely.

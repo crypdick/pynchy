@@ -528,8 +528,8 @@ async def _run_scheduled_task(
     Pre-container setup and session teardown are handled by run_agent before
     this is called.  Uses _spawn_and_await for the spawn/session/wait sequence.
 
-    On CancelledError (deploy SIGTERM), the session is preserved so
-    deploy_continuation can resume the task on restart.
+    On CancelledError (deploy SIGTERM), the session is preserved so the
+    durable in-flight turn can resume the task on restart.
     """
     input_data = build_container_input(
         messages,
@@ -555,9 +555,8 @@ async def _run_scheduled_task(
             )
         )
     except asyncio.CancelledError:
-        # Deploy SIGTERM — preserve session for resume on restart.
-        # finalize_deploy captures active_sessions BEFORE sending SIGTERM,
-        # so the session_id is already in deploy_continuation.json.
+        # Deploy SIGTERM — preserve the session referenced by the durable
+        # in-flight turn so startup recovery can continue the same thread.
         interrupted = True
         raise
     except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"

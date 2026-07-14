@@ -8,13 +8,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pynchy.config.models import WorkspaceConfig
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
     validate_plugin_credentials,
 )
-from pynchy.types import WorkspaceProfile
+from pynchy.state import begin_in_flight_turn, init_test_database
+from pynchy.types import InFlightTurn, InFlightWorkKind, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # validate_plugin_credentials
@@ -189,8 +189,8 @@ class FakeDeps:
         self.last_agent_timestamp: dict[str, str] = {}
         self.channels: list = []
         self.broadcast_host_message = AsyncMock()
-        self.broadcast_system_notice = AsyncMock()
         self.start_interactive_turn = AsyncMock()
+        self.start_interrupted_turn = AsyncMock()
         self.register_workspace = AsyncMock()
 
     @property
@@ -199,18 +199,41 @@ class FakeDeps:
 
 
 class TestCheckDeployContinuation:
-    """Tests for check_deploy_continuation — inject resume messages on deploy."""
+    """Tests for durable interrupted-turn dispatch on startup."""
+
+    @staticmethod
+    def _turn(
+        turn_id: str,
+        chat_jid: str,
+        folder: str,
+        work_kind: InFlightWorkKind,
+        *,
+        task_id: str | None = None,
+    ) -> InFlightTurn:
+        return InFlightTurn(
+            turn_id=turn_id,
+            chat_jid=chat_jid,
+            group_folder=folder,
+            work_kind=work_kind,
+            input_messages=[{"content": "finish this"}],
+            input_start_cursor="before",
+            input_end_cursor="after",
+            started_at="2026-07-14T10:00:00+00:00",
+            task_id=task_id,
+            claimed_at="2026-07-14T10:00:01+00:00",
+        )
 
     @pytest.mark.asyncio
     async def test_prunes_migration_backups_after_successful_deploy(self, tmp_path, monkeypatch):
         """Deploy continuation consumption should bound migration backup growth."""
+        await init_test_database()
         cont_path = tmp_path / "deploy_continuation.json"
         cont_path.write_text(
             json.dumps(
                 {
                     "commit_sha": "abc123",
                     "resume_prompt": "Deploy complete.",
-                    "active_sessions": {},
+                    "interrupted_turns": [],
                 }
             )
         )
@@ -237,11 +260,9 @@ class TestCheckDeployContinuation:
         assert new.exists()
 
     @pytest.mark.asyncio
-    async def test_resumes_both_periodic_and_interactive(self, tmp_path, monkeypatch):
-        """Both periodic and interactive workspaces with active sessions should
-        receive deploy resume messages.  The active_sessions dict already
-        filters to workspaces that were running at deploy time — idle periodic
-        workspaces have no session (cleared on completion)."""
+    async def test_dispatches_each_durable_interrupted_turn(self, tmp_path, monkeypatch):
+        """Interactive and scheduled rows get dedicated recovery workflows."""
+        await init_test_database()
         periodic_jid = "slack:PERIODIC"
         interactive_jid = "slack:INTERACTIVE"
 
@@ -251,6 +272,24 @@ class TestCheckDeployContinuation:
         }
         deps = FakeDeps(ws)
 
+        await begin_in_flight_turn(
+            self._turn(
+                "turn-scheduled",
+                periodic_jid,
+                "code-improver",
+                InFlightWorkKind.SCHEDULED,
+                task_id="task-1",
+            )
+        )
+        await begin_in_flight_turn(
+            self._turn(
+                "turn-interactive",
+                interactive_jid,
+                "my-group",
+                InFlightWorkKind.INTERACTIVE,
+            )
+        )
+
         # Write continuation file
         cont_path = tmp_path / "deploy_continuation.json"
         cont_path.write_text(
@@ -258,51 +297,38 @@ class TestCheckDeployContinuation:
                 {
                     "commit_sha": "abc123",
                     "resume_prompt": "Deploy complete.",
-                    "active_sessions": {
-                        periodic_jid: "session-1",
-                        interactive_jid: "session-2",
-                    },
+                    "interrupted_turns": ["diagnostic-only"],
                 }
             )
         )
 
-        # Patch settings to point data_dir at tmp_path
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        # Patch load_workspace_config: periodic for code-improver, non-periodic for others
-        def mock_load(folder):
-            if folder == "code-improver":
-                return WorkspaceConfig(schedule="0 */1 * * *", prompt="Run task.")
-            return WorkspaceConfig()
-
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.workspace_config.load_workspace_config",
-            mock_load,
-        )
-        # Stub get_head_commit_message so it doesn't touch the real repo
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_head_commit_message",
             lambda *a: "test commit",
         )
 
-        await check_deploy_continuation(deps)
+        resumed_chats = await check_deploy_continuation(deps)
 
-        # BOTH workspaces should get resume notices
-        assert deps.broadcast_system_notice.await_count == 2
-        notified_jids = {call[0][0] for call in deps.broadcast_system_notice.call_args_list}
+        assert deps.broadcast_host_message.await_count == 2
+        notified_jids = {call.args[0] for call in deps.broadcast_host_message.await_args_list}
         assert notified_jids == {periodic_jid, interactive_jid}
-        assert {call.args[0] for call in deps.start_interactive_turn.await_args_list} == {
-            periodic_jid,
-            interactive_jid,
+        assert {call.args[0] for call in deps.start_interrupted_turn.await_args_list} == {
+            "turn-scheduled",
+            "turn-interactive",
         }
+        assert resumed_chats == {periodic_jid, interactive_jid}
+        deps.start_interactive_turn.assert_not_awaited()
         assert deps.queue.enqueued == []
 
     @pytest.mark.asyncio
-    async def test_resumes_interactive_workspace(self, tmp_path, monkeypatch):
-        """Non-periodic workspaces should receive deploy resume messages."""
+    async def test_saved_sessions_do_not_wake_idle_conversations(self, tmp_path, monkeypatch):
+        """Legacy session metadata is not evidence that agent work was running."""
+        await init_test_database()
         jid = "slack:INTERACTIVE"
         ws = {jid: _make_workspace(jid, "my-group")}
         deps = FakeDeps(ws)
@@ -323,20 +349,37 @@ class TestCheckDeployContinuation:
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.workspace_config.load_workspace_config",
-            lambda folder: WorkspaceConfig(),
-        )
-        monkeypatch.setattr(
-            "pynchy.host.orchestrator.startup_handler.get_head_commit_message",
-            lambda *a: "test commit",
-        )
+        resumed_chats = await check_deploy_continuation(deps)
 
-        await check_deploy_continuation(deps)
-
-        deps.broadcast_system_notice.assert_awaited_once()
-        call_jid, call_text = deps.broadcast_system_notice.call_args[0]
-        assert call_jid == jid
-        assert "Deploy complete" in call_text
-        deps.start_interactive_turn.assert_awaited_once_with(jid)
+        assert resumed_chats == set()
+        deps.broadcast_host_message.assert_not_awaited()
+        deps.start_interrupted_turn.assert_not_awaited()
+        deps.start_interactive_turn.assert_not_awaited()
         assert deps.queue.enqueued == []
+
+    @pytest.mark.asyncio
+    async def test_recovers_after_crash_without_continuation_file(self, tmp_path, monkeypatch):
+        """The DB ledger is authoritative even when no deploy file was written."""
+        await init_test_database()
+        jid = "slack:INTERRUPTED"
+        deps = FakeDeps({jid: _make_workspace(jid, "my-group")})
+        await begin_in_flight_turn(
+            self._turn(
+                "turn-crash",
+                jid,
+                "my-group",
+                InFlightWorkKind.INTERACTIVE,
+            )
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_settings",
+            type("S", (), {"data_dir": tmp_path}),
+        )
+
+        resumed_chats = await check_deploy_continuation(deps)
+
+        assert resumed_chats == {jid}
+        deps.start_interrupted_turn.assert_awaited_once_with("turn-crash")
+        notice = deps.broadcast_host_message.await_args.args[1]
+        assert "Pynchy restarted" in notice
+        assert "Deploy complete" not in notice

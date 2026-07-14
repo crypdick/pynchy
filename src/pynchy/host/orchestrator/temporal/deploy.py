@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from temporalio import activity
@@ -24,9 +24,7 @@ class DeployRequest:
     chat_jid: str
     commit_sha: str
     previous_sha: str
-    session_id: str = ""
     resume_prompt: str = "Deploy complete. Verifying service health."
-    active_sessions: dict[str, str] = field(default_factory=dict)
     rebuild: bool = True
     reason: str = "manual"
 
@@ -37,9 +35,7 @@ def deploy_request_to_payload(request: DeployRequest) -> dict[str, Any]:
         "chat_jid": request.chat_jid,
         "commit_sha": request.commit_sha,
         "previous_sha": request.previous_sha,
-        "session_id": request.session_id,
         "resume_prompt": request.resume_prompt,
-        "active_sessions": dict(request.active_sessions),
         "rebuild": request.rebuild,
         "reason": request.reason,
     }
@@ -47,16 +43,13 @@ def deploy_request_to_payload(request: DeployRequest) -> dict[str, Any]:
 
 def deploy_request_from_payload(payload: dict[str, Any]) -> DeployRequest:
     """Parse a DeployRequest from Temporal's plain payload shape."""
-    active_sessions = payload.get("active_sessions")
     return DeployRequest(
         chat_jid=str(payload.get("chat_jid", "")),
         commit_sha=str(payload.get("commit_sha", "")),
         previous_sha=str(payload.get("previous_sha", "")),
-        session_id=str(payload.get("session_id", "")),
         resume_prompt=str(
             payload.get("resume_prompt", "Deploy complete. Verifying service health.")
         ),
-        active_sessions=active_sessions if isinstance(active_sessions, dict) else {},
         rebuild=bool(payload.get("rebuild", True)),
         reason=str(payload.get("reason", "manual")),
     )
@@ -95,9 +88,7 @@ async def run_deploy(payload: dict[str, Any]) -> str:
         chat_jid=request.chat_jid,
         commit_sha=request.commit_sha,
         previous_sha=request.previous_sha,
-        session_id=request.session_id,
         resume_prompt=request.resume_prompt,
-        active_sessions=request.active_sessions,
         sigterm_delay=0.25,
     )
     _record_activity_result(status_id, "restart_requested")

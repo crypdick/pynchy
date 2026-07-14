@@ -11,6 +11,8 @@ from typing import Any, cast
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
+ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
+
 
 @workflow.defn
 class InteractiveMessageWorkflow:
@@ -29,6 +31,7 @@ class InteractiveMessageWorkflow:
                 "run_interactive_message_turn",
                 chat_jid,
                 start_to_close_timeout=timedelta(hours=12),
+                heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
                 retry_policy=RetryPolicy(
                     maximum_attempts=maximum_attempts,
                     initial_interval=timedelta(seconds=initial_retry_seconds),
@@ -51,6 +54,28 @@ class DeployWorkflow:
                 deploy_payload,
                 start_to_close_timeout=timedelta(minutes=30),
                 retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
+class InterruptedTurnWorkflow:
+    """Resume one durable agent-turn checkpoint after its worker was interrupted."""
+
+    @workflow.run
+    async def run(self, turn_id: str) -> str:
+        return cast(
+            "str",
+            await workflow.execute_activity(
+                "run_interrupted_agent_turn",
+                turn_id,
+                start_to_close_timeout=timedelta(hours=12),
+                heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=3,
+                    initial_interval=timedelta(seconds=5),
+                    backoff_coefficient=2.0,
+                ),
             ),
         )
 
@@ -116,6 +141,7 @@ class ScheduledAgentTaskWorkflow:
                 "run_scheduled_agent_task",
                 task_id,
                 start_to_close_timeout=timedelta(hours=12),
+                heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
                 retry_policy=RetryPolicy(
                     maximum_attempts=3,
                     initial_interval=timedelta(seconds=5),

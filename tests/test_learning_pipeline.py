@@ -13,6 +13,7 @@ from conftest import make_settings
 
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
+from pynchy.state import init_test_database
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -30,6 +31,11 @@ _P_TEMPORAL_LEARNING_START = (
     "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow"
 )
 _P_BG_MERGE = "pynchy.host.git_ops._worktree_merge.background_merge_worktree"
+
+
+@pytest.fixture(autouse=True)
+async def _isolated_turn_ledger() -> None:
+    await init_test_database()
 
 
 def _make_deps(

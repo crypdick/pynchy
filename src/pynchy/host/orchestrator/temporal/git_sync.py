@@ -74,18 +74,6 @@ class _TemporalGitSyncDeps:
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return _workspace_map(self._deps)
 
-    def _active_sessions(self) -> dict[str, str]:
-        if hasattr(self._deps, "get_active_sessions"):
-            active_sessions = self._deps.get_active_sessions()
-            if isinstance(active_sessions, dict):
-                return {str(jid): str(session) for jid, session in active_sessions.items()}
-            return {}
-        manager = SessionManager(
-            getattr(self._deps, "sessions", {}),
-            getattr(self._deps, "session_cleared", set()),
-        )
-        return manager.get_active_sessions(self.workspaces())
-
     async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
         from pynchy.host.orchestrator.temporal.scheduler import (  # noqa: PLC0415, RUF100 - avoids scheduler <-> git_sync import cycle.
             start_deploy_workflow,
@@ -96,7 +84,6 @@ class _TemporalGitSyncDeps:
             chat_jid=find_admin_jid(workspaces),
             commit_sha=get_local_head_sha(get_settings().project_root),
             previous_sha=previous_sha,
-            active_sessions=self._active_sessions(),
             rebuild=rebuild,
             reason=self._reason,
         )

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from pynchy.state import complete_in_flight_turn
+
 
 @runtime_checkable
 class CursorDeps(Protocol):
@@ -26,5 +28,24 @@ async def advance_cursor(
     try:
         await deps.save_state()
     except Exception:  # noqa: BLE001, RUF100 - cursor save is a state boundary; roll back the optimistic advance.
+        deps.last_agent_timestamp[chat_jid] = previous_cursor
+        raise
+
+
+async def complete_turn_with_cursor(
+    deps: CursorDeps,
+    chat_jid: str,
+    new_cursor: str,
+    turn_id: str,
+) -> None:
+    """Atomically persist a completed cursor and remove its in-flight checkpoint."""
+    previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
+    deps.last_agent_timestamp[chat_jid] = new_cursor
+    try:
+        await complete_in_flight_turn(
+            turn_id,
+            last_agent_timestamps=deps.last_agent_timestamp,
+        )
+    except Exception:  # noqa: BLE001, RUF100 - cursor persistence rolls back in-memory state.
         deps.last_agent_timestamp[chat_jid] = previous_cursor
         raise

@@ -298,7 +298,7 @@ class TestScheduledTaskUsesSession:
     @pytest.mark.asyncio
     async def test_cancelled_error_preserves_deps_sessions(self):
         """On CancelledError, deps.sessions should NOT be popped so the
-        session_id is captured in deploy_continuation.json."""
+        durable in-flight turn can resume the same agent thread."""
         self.deps.sessions["test-group"] = "some-session-id"
         self.fake_session.wait_for_query_done.side_effect = asyncio.CancelledError()
 

@@ -75,6 +75,11 @@ Pynchy reconciles scheduled work into Temporal. Recurring agent tasks, database 
 
 Temporal fires the workflows. Each workflow runs an activity in the Pynchy host process, so agent containers, IPC streaming, shell execution, task logs, and worktree merge behavior stay on the existing host runner path.
 
+Long-running agent activities heartbeat while they run. If the host restarts, Pynchy uses the
+[durable interrupted-turn checkpoint](../architecture/message-routing.md#interrupted-turn-recovery)
+to continue an unfinished scheduled agent in its existing conversation instead of starting the
+task prompt again.
+
 ```toml
 [scheduler]
 temporal_address = "localhost:7233"

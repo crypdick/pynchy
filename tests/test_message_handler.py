@@ -4,7 +4,7 @@ Covers:
 - intercept_special_command: reset, end session, redeploy, !commands
 - process_group_messages: reset handoff, trigger filtering, cursor management,
   dirty repo check, error rollback, worktree merge
-- _check_dirty_repo, advance_cursor, _handle_reset_handoff (extracted helpers)
+- _check_dirty_repo, advance_cursor, and reset handoff behavior
 - start_message_loop: "btw" non-interrupting messages during active tasks
 """
 
@@ -28,7 +28,12 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     intercept_special_command,
     process_group_messages,
 )
-from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
+from pynchy.state import (
+    get_in_flight_turn_for_chat,
+    init_test_database,
+    prepare_in_flight_turn_recovery,
+)
+from pynchy.types import ContainerOutput, InFlightWorkKind, NewMessage, WorkspaceProfile
 from pynchy.utils import ShellResult
 
 # Commonly patched module paths — avoids repeating long strings and keeps
@@ -239,9 +244,6 @@ class TestInterceptSpecialCommand:
     async def test_manual_redeploy_reacts_to_the_source_message(self):
         msg = _make_message("redeploy", chat_jid="g@g.us")
         deps = MagicMock(spec=session_handler.SessionDeps)
-        deps.sessions = {}
-        deps.session_cleared = set()
-        deps.workspaces = {}
 
         with (
             patch(
@@ -253,17 +255,15 @@ class TestInterceptSpecialCommand:
                 return_value="a" * 40,
             ),
             patch(
-                "pynchy.host.orchestrator.session_handler.SessionManager",
-            ) as session_manager,
-            patch(
                 "pynchy.host.orchestrator.session_handler.start_deploy_workflow",
                 new_callable=AsyncMock,
-            ),
+            ) as start_deploy,
         ):
-            session_manager.return_value.get_active_sessions.return_value = {}
             await session_handler.trigger_manual_redeploy(deps, "g@g.us", source_message=msg)
 
         confirmation.assert_awaited_once_with(deps, "g@g.us", msg, "🔄")
+        request = start_deploy.await_args.args[0]
+        assert not hasattr(request, "active_sessions")
 
     @pytest.mark.asyncio
     async def test_bang_command_intercepted(self):
@@ -464,6 +464,10 @@ def _settings_mock(tmp_path, **overrides):
 
 
 class TestProcessGroupMessages:
+    @pytest.fixture(autouse=True)
+    async def _isolated_turn_ledger(self):
+        await init_test_database()
+
     @pytest.mark.asyncio
     async def test_returns_true_for_unknown_group(self):
         """Unknown group JID should return True (skip)."""
@@ -578,13 +582,12 @@ class TestProcessGroupMessages:
 
     @pytest.mark.asyncio
     async def test_cursor_rollback_on_save_state_failure(self, tmp_path):
-        """save_state failure at completion → cursor rolls back to pre-run value."""
+        """Atomic turn completion failure rolls back the optimistic cursor."""
         group = _make_group(is_admin=True)
         deps = _make_deps(
             groups={"g@g.us": group},
             last_agent_ts={"g@g.us": "old-ts"},
         )
-        deps.save_state = AsyncMock(side_effect=RuntimeError("DB failure"))
         msg = _make_message("hello", timestamp="new-ts")
 
         with (
@@ -592,6 +595,11 @@ class TestProcessGroupMessages:
             _patch_msgs_since([msg]),
             _patch_intercept(),
             _patch_fmt_sdk(),
+            patch(
+                "pynchy.host.orchestrator.messaging.cursor.complete_in_flight_turn",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB failure"),
+            ),
         ):
             ms.return_value = _settings_mock(tmp_path)
             with pytest.raises(RuntimeError, match="DB failure"):
@@ -600,6 +608,76 @@ class TestProcessGroupMessages:
         # Cursor rolls back so the DB (which still has "old-ts") stays consistent
         # with in-memory state. Messages will be re-processed on the next trigger.
         assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
+
+    @pytest.mark.asyncio
+    async def test_restart_semantically_resumes_partial_turn_without_replaying_input(
+        self, tmp_path
+    ):
+        """A killed turn continues in its existing thread and clears its checkpoint."""
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        msg = _make_message("do the whole job", timestamp="new-ts")
+
+        async def interrupted_run(_group, _jid, _messages, on_output=None, *_args, **_kwargs):
+            assert on_output is not None
+            await on_output(ContainerOutput(status="success", result="partial result"))
+            raise asyncio.CancelledError
+
+        deps.run_agent = AsyncMock(side_effect=interrupted_run)
+        deps.handle_streamed_output = AsyncMock(return_value=True)
+        recovered_messages: list[dict] = []
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            patch(
+                _P_MSGS_SINCE,
+                new_callable=AsyncMock,
+                side_effect=[[msg], []],
+            ),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            with pytest.raises(asyncio.CancelledError):
+                await process_group_messages(deps, jid)
+
+            checkpoint = await get_in_flight_turn_for_chat(
+                jid,
+                {InFlightWorkKind.INTERACTIVE},
+            )
+            assert checkpoint is not None
+            assert checkpoint.output_sent is True
+            original_turn_id = checkpoint.turn_id
+            await prepare_in_flight_turn_recovery("deploy-sha")
+
+            def resumed_run(
+                _group,
+                _jid,
+                messages,
+                _on_output=None,
+                *_args,
+                **_kwargs,
+            ):
+                recovered_messages.extend(messages)
+                return "success"
+
+            deps.run_agent = AsyncMock(side_effect=resumed_run)
+            assert await process_group_messages(deps, jid) is True
+
+        assert len(recovered_messages) == 1
+        recovery_prompt = recovered_messages[0]
+        assert recovery_prompt["metadata"]["interrupted_turn_id"] == original_turn_id
+        assert "continue the unfinished job" in recovery_prompt["content"]
+        assert "Do not repeat it" in recovery_prompt["content"]
+        assert (
+            await get_in_flight_turn_for_chat(
+                jid,
+                {InFlightWorkKind.INTERACTIVE},
+            )
+            is None
+        )
+        assert deps.last_agent_timestamp[jid] == "new-ts"
 
     @pytest.mark.asyncio
     async def test_agent_error_rolls_back_cursor(self, tmp_path):

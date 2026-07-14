@@ -52,6 +52,7 @@ from pynchy.host.orchestrator.temporal.git_sync import (
     run_external_git_sync,
     run_host_git_sync,
 )
+from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.host_jobs import (
     run_config_host_cron_job,
     run_database_host_job,
@@ -60,6 +61,7 @@ from pynchy.host.orchestrator.temporal.interactive import (
     interactive_message_workflow_id,
     run_interactive_message_turn,
 )
+from pynchy.host.orchestrator.temporal.interrupted import run_interrupted_agent_turn
 from pynchy.host.orchestrator.temporal.learning import (
     learning_review_workflow_id,
     run_learning_review,
@@ -84,6 +86,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     agent_task_schedule_id,
     agent_task_workflow_id,
     channel_reconciliation_schedule_id,
+    safe_workflow_fragment,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
     ChannelReconciliationWorkflow,
@@ -93,6 +96,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     ExternalGitSyncWorkflow,
     HostGitSyncWorkflow,
     InteractiveMessageWorkflow,
+    InterruptedTurnWorkflow,
     LearningReviewWorkflow,
     ScheduledAgentTaskWorkflow,
 )
@@ -123,12 +127,14 @@ __all__ = [
     "deploy_workflow_id",
     "get_temporal_scheduler_status",
     "interactive_message_workflow_id",
+    "interrupted_turn_workflow_id",
     "learning_review_workflow_id",
     "reset_temporal_scheduler_status",
     "scheduler_workflow_runner",
     "start_channel_reconciliation_workflow",
     "start_deploy_workflow",
     "start_interactive_message_workflow",
+    "start_interrupted_turn_workflow",
     "start_learning_review_workflow",
     "temporal_scheduler_runtime_active",
 ]
@@ -141,6 +147,11 @@ class TemporalRuntimeUnavailableError(RuntimeError):
 def temporal_scheduler_runtime_active() -> bool:
     """Return whether this process currently has an active Temporal runtime."""
     return _state.active_runtime is not None
+
+
+def interrupted_turn_workflow_id(turn_id: str) -> str:
+    """Return the stable Temporal workflow ID for one interrupted agent turn."""
+    return f"pynchy-interrupted-turn-{safe_workflow_fragment(turn_id)}"
 
 
 def reset_temporal_scheduler_status() -> None:
@@ -175,6 +186,12 @@ async def start_interactive_message_workflow(chat_jid: str) -> None:
     await runtime.start_interactive_message_turn(chat_jid)
 
 
+async def start_interrupted_turn_workflow(turn_id: str) -> None:
+    """Start durable semantic recovery for one interrupted agent turn."""
+    runtime = await _require_active_runtime()
+    await runtime.start_interrupted_turn(turn_id)
+
+
 async def start_deploy_workflow(request: DeployRequest) -> None:
     """Start a Temporal workflow to perform a deploy handoff."""
     runtime = await _require_active_runtime()
@@ -207,10 +224,11 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         return "skipped"
 
     try:
-        completed = await _run_scheduled_agent(
-            task,
-            cast("SchedulerDependencies", _require_scheduler_deps()),
-        )
+        async with activity_heartbeats(task_id):
+            completed = await _run_scheduled_agent(
+                task,
+                cast("SchedulerDependencies", _require_scheduler_deps()),
+            )
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
@@ -248,6 +266,7 @@ class TemporalSchedulerRuntime:
                     ExternalGitSyncWorkflow,
                     ChannelReconciliationWorkflow,
                     InteractiveMessageWorkflow,
+                    InterruptedTurnWorkflow,
                     ScheduledAgentTaskWorkflow,
                     DatabaseHostJobWorkflow,
                     ConfigHostCronWorkflow,
@@ -259,6 +278,7 @@ class TemporalSchedulerRuntime:
                     run_external_git_sync,
                     run_channel_reconciliation,
                     run_interactive_message_turn,
+                    run_interrupted_agent_turn,
                     run_scheduled_agent_task,
                     run_database_host_job,
                     run_config_host_cron_job,
@@ -333,6 +353,18 @@ class TemporalSchedulerRuntime:
             float(settings.queue.base_retry_seconds),
             workflow_id=interactive_message_workflow_id(chat_jid),
             status_id=chat_jid,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+        )
+
+    async def start_interrupted_turn(self, turn_id: str) -> None:
+        """Start idempotent recovery for a durable interrupted-turn checkpoint."""
+        if self.client is None:
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
+        await self._start_workflow(
+            InterruptedTurnWorkflow.run,
+            turn_id,
+            workflow_id=interrupted_turn_workflow_id(turn_id),
+            status_id=turn_id,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
 

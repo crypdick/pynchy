@@ -173,7 +173,6 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             chat_jid=chat_jid,
             commit_sha=new_sha,
             previous_sha=old_sha,
-            active_sessions=deps.get_active_sessions(),
             rebuild=rebuild,
             reason="http",
         )
