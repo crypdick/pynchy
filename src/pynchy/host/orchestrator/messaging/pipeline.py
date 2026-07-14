@@ -89,7 +89,12 @@ class MessageHandlerDeps(Protocol):
         source_message: types.NewMessage | None = None,
     ) -> None: ...
 
-    async def trigger_manual_redeploy(self, chat_jid: str) -> None: ...
+    async def trigger_manual_redeploy(
+        self,
+        chat_jid: str,
+        *,
+        source_message: types.NewMessage | None = None,
+    ) -> None: ...
 
     async def broadcast_to_channels(
         self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
@@ -191,7 +196,7 @@ async def intercept_special_command(
 
     if commands.is_redeploy(content):
         await advance_cursor(deps, chat_jid, message.timestamp)
-        await deps.trigger_manual_redeploy(chat_jid)
+        await deps.trigger_manual_redeploy(chat_jid, source_message=message)
         return True
 
     # --- Commands with uniform post-handler cursor advancement ---
