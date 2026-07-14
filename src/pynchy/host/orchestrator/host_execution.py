@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -29,23 +28,19 @@ def codex_thread_exists_in_host_runtime(session_id: str | None) -> bool:
     if thread_id is None:
         return True
 
-    index_path = _codex_home() / "session_index.jsonl"
+    # Codex does not add every `exec` thread to session_index.jsonl, so that
+    # file cannot prove whether a thread is resumable. The rollout is the
+    # durable conversation state consumed by `codex exec resume`.
+    sessions_path = _codex_home() / "sessions"
+    expected_suffix = f"-{thread_id}.jsonl"
     try:
-        lines = index_path.read_text().splitlines()
-    except FileNotFoundError:
-        return False
+        return any(
+            path.name.startswith("rollout-") and path.name.endswith(expected_suffix)
+            for path in sessions_path.rglob("*.jsonl")
+        )
     except OSError:
-        logger.warning("Could not read Codex session index", path=str(index_path))
+        logger.warning("Could not inspect Codex rollout sessions", path=str(sessions_path))
         return False
-
-    for line in lines:
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(item, dict) and item.get("id") == thread_id:
-            return True
-    return False
 
 
 def host_execution_cwd(group_folder: str) -> Path | None:
