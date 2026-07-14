@@ -1623,6 +1623,7 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings(
             agent=AgentConfig(
                 model="chatgpt/gpt-5.3-codex",
+                model_reasoning_effort="ultra",
             )
         )
 
@@ -1631,6 +1632,7 @@ class TestContainerInputAgentCoreConfig:
 
         assert result.agent_core_config is not None
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
+        assert result.agent_core_config["model_reasoning_effort"] == "ultra"
         assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
     def test_default_agent_model_flows_to_core_config(self):

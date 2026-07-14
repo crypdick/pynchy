@@ -97,6 +97,7 @@ ValidatedChatRef = Annotated[ChatRefStr, AfterValidator(_validated_chat_ref)]
 ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
 ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
 ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
+CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
 
 CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - agent containers must reach the host gateway through the configured container_host.
 
@@ -117,6 +118,8 @@ class AgentConfig(_StrictModel):
     trigger_aliases: list[str] = ["ghost"]
     default_core: str = "openai"  # built-in: "openai", "claude", "claude-cli", or "codex"
     model: str | None = None
+    # NOTE: Update docs/usage/agent-cores.md § OpenAI Codex CLI if this list changes.
+    model_reasoning_effort: CodexModelReasoningEffort | None = None
 
 
 class ContainerConfig(_StrictModel):

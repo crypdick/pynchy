@@ -102,6 +102,18 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     assert hooks[0]["hooks"][0]["command"].endswith("-m agent_runner.security.hook_entry")
 
 
+def test_start_writes_configured_model_reasoning_effort(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
+    core = _core(extra={"model": "gpt-5.6-terra", "model_reasoning_effort": "ultra"})
+
+    asyncio.run(core.start())
+
+    config = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert config["model"] == "gpt-5.6-terra"
+    assert config["model_reasoning_effort"] == "ultra"
+
+
 def test_start_can_disable_pynchy_hooks_for_host_direct_mode(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     _set_gateway_env(monkeypatch)
