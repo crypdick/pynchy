@@ -50,6 +50,7 @@ from pynchy.host.container_manager.mcp.resolution import (
     merged_mcp_servers,
     resolve_all_instances,
 )
+from pynchy.host.container_manager.mcp.startup import McpStartupFailure, McpWorkspaceStartup
 from pynchy.logger import logger
 from pynchy.types import (
     ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
@@ -59,6 +60,9 @@ from pynchy.utils import create_background_task
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
+
+
+_MCP_FAILURE_RETRY_SECONDS = 300.0
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +99,8 @@ class McpManager:
         self._instances: dict[str, McpInstance] = {}
         self._workspace_instances: dict[str, list[str]] = {}
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
+        self._instance_start_locks: dict[str, asyncio.Lock] = {}
+        self._unavailable_until: dict[str, float] = {}
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
         self._idle_task: asyncio.Task[None] | None = None
         self._warm_task: asyncio.Task[None] | None = None
@@ -120,6 +126,7 @@ class McpManager:
         state = resolve_all_instances(self._settings, all_servers)
         self._instances = state.instances
         self._workspace_instances = state.workspace_instances
+        self._unavailable_until.clear()
 
         if not self._instances:
             logger.info("No workspaces reference MCP servers — skipping MCP sync")
@@ -174,28 +181,69 @@ class McpManager:
             workspaces=list(self._workspace_instances.keys()),
         )
 
-    async def ensure_workspace_running(self, group_folder: str) -> None:
+    async def ensure_workspace_running(self, group_folder: str) -> McpWorkspaceStartup:
         """Ensure all MCP instances for a workspace are running.
 
-        Calls :meth:`ensure_running` for each instance assigned to the
-        workspace.  Failures are logged and skipped so one broken MCP
-        server doesn't block the entire agent launch.
+        Starts assigned servers concurrently so independent failures do not
+        add their readiness timeouts together. Failed instances are skipped
+        until their retry cooldown elapses, while healthy siblings remain
+        available to the agent.
         """
-        for iid in self.get_workspace_instance_ids(group_folder):
-            try:
-                await self.ensure_running(iid)
-            except (TimeoutError, RuntimeError):
-                logger.warning(
-                    "Failed to start MCP instance",
-                    instance_id=iid,
-                    group=group_folder,
-                )
+        instance_ids = self.get_workspace_instance_ids(group_folder)
+        outcomes = await asyncio.gather(
+            *(self._ensure_workspace_instance(iid, group_folder) for iid in instance_ids)
+        )
+        ready_instance_ids = tuple(iid for iid, ready, _failure in outcomes if ready)
+        failures = tuple(failure for _iid, _ready, failure in outcomes if failure is not None)
+        return McpWorkspaceStartup(ready_instance_ids=ready_instance_ids, failures=failures)
 
     async def ensure_running(self, instance_id: str) -> None:
         """Start an MCP instance (Docker container or host subprocess) if not running.
 
         Called by the orchestrator before spawning an agent container.
         """
+        lock = self._instance_start_locks.setdefault(instance_id, asyncio.Lock())
+        async with lock:
+            await self._ensure_running_unlocked(instance_id)
+
+    async def _ensure_workspace_instance(
+        self, instance_id: str, group_folder: str
+    ) -> tuple[str, bool, McpStartupFailure | None]:
+        """Return the readiness outcome for one instance under its start lock."""
+        lock = self._instance_start_locks.setdefault(instance_id, asyncio.Lock())
+        async with lock:
+            retry_at = self._unavailable_until.get(instance_id, 0.0)
+            if retry_at > time.monotonic():
+                return instance_id, False, None
+
+            try:
+                await self._ensure_running_unlocked(instance_id)
+            except (TimeoutError, RuntimeError) as exc:
+                instance = self._instances.get(instance_id)
+                self._unavailable_until[instance_id] = time.monotonic() + _MCP_FAILURE_RETRY_SECONDS
+                reason = "start timed out" if isinstance(exc, TimeoutError) else "failed to start"
+                logger.warning(
+                    "Failed to start MCP instance",
+                    instance_id=instance_id,
+                    group=group_folder,
+                    error=str(exc),
+                    retry_after_seconds=_MCP_FAILURE_RETRY_SECONDS,
+                )
+                return (
+                    instance_id,
+                    False,
+                    McpStartupFailure(
+                        instance_id=instance_id,
+                        server_name=instance.server_name if instance else instance_id,
+                        reason=reason,
+                    ),
+                )
+
+            self._unavailable_until.pop(instance_id, None)
+            return instance_id, True, None
+
+    async def _ensure_running_unlocked(self, instance_id: str) -> None:
+        """Perform an instance readiness check while the caller holds its lock."""
         instance = self._instances.get(instance_id)
         if instance is None:
             logger.warning("Unknown MCP instance", instance_id=instance_id)
@@ -279,14 +327,19 @@ class McpManager:
         )
 
     def get_direct_server_configs(
-        self, group_folder: str, invocation_ts: float = 0.0
+        self,
+        group_folder: str,
+        invocation_ts: float = 0.0,
+        *,
+        instance_ids: list[str] | tuple[str, ...] | None = None,
     ) -> list[dict[str, str]]:
         """Get MCP connection configs for a workspace (routes through proxy).
 
         Returns a list of dicts suitable for the agent runner's MCP config.
         All traffic is routed through the MCP proxy for SecurityGate enforcement.
         """
-        instance_ids = self.get_workspace_instance_ids(group_folder)
+        if instance_ids is None:
+            instance_ids = self.get_workspace_instance_ids(group_folder)
         if not instance_ids or not self._proxy.port:
             return []
 

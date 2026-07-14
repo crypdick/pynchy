@@ -60,6 +60,15 @@ class TestExpandArgPlaceholders:
 
 
 class TestMcpOneCliConfig:
+    def test_mcp_server_uses_short_startup_timeout_by_default(self):
+        cfg = McpServerConfig(type="docker", image="img", port=8000)
+
+        assert cfg.startup_timeout_seconds == pytest.approx(5.0)
+
+    def test_mcp_server_rejects_non_positive_startup_timeout(self):
+        with pytest.raises(ValueError, match="startup_timeout_seconds"):
+            McpServerConfig(type="docker", image="img", port=8000, startup_timeout_seconds=0)
+
     def test_mcp_server_accepts_onecli_opt_in(self):
         cfg = McpServerConfig(type="docker", image="img", port=8000, onecli=True)
 
@@ -186,7 +195,10 @@ class TestDockerLifecycleHelpers:
             "research",
         )
         assert wait_healthy_mock.await_args.args == ("pynchy-mcp-browser", "http://localhost:9100")
-        assert wait_healthy_mock.await_args.kwargs == {"any_non_5xx": True}
+        assert wait_healthy_mock.await_args.kwargs == {
+            "any_non_5xx": True,
+            "health_timeout_seconds": 5.0,
+        }
 
     @pytest.mark.asyncio
     async def test_ensure_docker_running_omits_primary_publish_and_falls_back_to_container_url(
@@ -216,7 +228,10 @@ class TestDockerLifecycleHelpers:
             "pynchy-mcp-browser",
             "http://pynchy-mcp-browser:8000",
         )
-        assert wait_healthy_mock.await_args.kwargs == {"any_non_5xx": True}
+        assert wait_healthy_mock.await_args.kwargs == {
+            "any_non_5xx": True,
+            "health_timeout_seconds": 5.0,
+        }
 
 
 # ---------------------------------------------------------------------------

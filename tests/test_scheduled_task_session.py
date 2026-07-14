@@ -54,6 +54,9 @@ class _FakeDeps:
     ) -> None:
         self._broadcast_calls.append((chat_jid, messages, source))
 
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        return None
+
 
 def _make_pre_container_result():
     """Build a fake PreContainerResult with all required fields."""
@@ -138,7 +141,7 @@ class TestScheduledTaskUsesSession:
         """One-shot tasks use the same idle termination policy as other containers."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session) as mock_cs,
             patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -155,7 +158,7 @@ class TestScheduledTaskUsesSession:
         real-time streaming through the IPC watcher."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -169,7 +172,7 @@ class TestScheduledTaskUsesSession:
         """Should wait for session query completion, not process exit."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -191,7 +194,7 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -211,7 +214,7 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -227,7 +230,7 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -251,7 +254,7 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
@@ -286,7 +289,7 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
             pytest.raises(asyncio.CancelledError),
@@ -304,7 +307,7 @@ class TestScheduledTaskUsesSession:
 
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
             pytest.raises(asyncio.CancelledError),
@@ -319,7 +322,7 @@ class TestScheduledTaskUsesSession:
         stale session_ids from accumulating in the DB."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
-            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [])),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
             patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
             patch(_P_DESTROY, new_callable=AsyncMock),
             patch(_P_CLEAR_SESSION, new_callable=AsyncMock) as mock_clear,

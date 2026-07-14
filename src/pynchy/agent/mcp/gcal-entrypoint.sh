@@ -10,13 +10,17 @@
 #   gcp-oauth.keys.json  — OAuth client credentials (from setup)
 #   credentials.json     — access/refresh tokens (from setup)
 
-if [ -f /home/chrome/credentials.json ]; then
-  mkdir -p /home/chrome/.gcal
-  cp /home/chrome/credentials.json /home/chrome/.gcal/tokens.json
+if [ ! -f /home/chrome/gcp-oauth.keys.json ] || [ ! -f /home/chrome/credentials.json ]; then
+  echo "Google Calendar MCP requires Google setup for this Chrome profile" >&2
+  exit 1
 fi
+
+mkdir -p /home/chrome/.gcal
+cp /home/chrome/credentials.json /home/chrome/.gcal/tokens.json
 
 export GOOGLE_OAUTH_CREDENTIALS=/home/chrome/gcp-oauth.keys.json
 export GOOGLE_CALENDAR_MCP_TOKEN_PATH=/home/chrome/.gcal/tokens.json
 
-# PORT is set by Docker env from plugin-assigned port
-exec google-calendar-mcp --transport http --port "${PORT:-3200}"
+# PORT is set by Docker env from plugin-assigned port. Docker publishes this
+# port to the host health probe, so the server must not bind loopback only.
+exec google-calendar-mcp --transport http --host 0.0.0.0 --port "${PORT:-3200}"

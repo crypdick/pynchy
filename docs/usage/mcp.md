@@ -28,6 +28,7 @@ dangerous_writes = false
 runtime = "docker"
 image = "mcr.microsoft.com/playwright/mcp:latest"
 port = 8931
+args = ["--port", "{port}", "--host", "0.0.0.0"]
 ```
 
 Then grant workspace access:

@@ -1014,6 +1014,10 @@ class TestCheckDirtyRepo:
     is always consumed, and a check failure must not crash the run.
     """
 
+    @pytest.fixture(autouse=True)
+    async def _isolated_turn_ledger(self):
+        await init_test_database()
+
     @pytest.mark.asyncio
     async def test_no_marker_no_notice(self, tmp_path):
         """No marker file → no dirty notice passed to the agent."""
@@ -1150,6 +1154,10 @@ async def _run_with_observer(tmp_path, deps):
 
 
 class TestMarkDispatched:
+    @pytest.fixture(autouse=True)
+    async def _isolated_turn_ledger(self):
+        await init_test_database()
+
     @pytest.mark.asyncio
     async def test_records_dispatched_timestamp(self, tmp_path):
         """The furthest message timestamp is recorded in-memory before the run."""
@@ -1205,6 +1213,10 @@ class TestHandleResetHandoff:
     prompt falls through, a malformed prompt is discarded, and a handoff error
     signals GroupQueue to retry (process returns False).
     """
+
+    @pytest.fixture(autouse=True)
+    async def _isolated_turn_ledger(self):
+        await init_test_database()
 
     @pytest.mark.asyncio
     async def test_no_reset_file_processes_normally(self, tmp_path):

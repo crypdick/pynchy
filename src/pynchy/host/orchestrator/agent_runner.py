@@ -38,6 +38,8 @@ from pynchy.host.orchestrator.host_execution import (
 from pynchy.host.orchestrator.host_execution import host_agent_env_vars as _host_agent_env_vars
 from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
 from pynchy.host.orchestrator.host_runner import run_host_input
+from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
+from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
 from pynchy.state import clear_session
 from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
@@ -83,6 +85,8 @@ class AgentRunnerDeps(Protocol):
         self, chat_jid: str, messages: list[dict[str, Any]], *, source: str = "user"
     ) -> None: ...
 
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
 
 @dataclass(frozen=True)
 class _SpawnAndAwaitRequest:
@@ -104,44 +108,6 @@ class _WarmQueryRequest:
     session: ContainerSession
     messages: list[dict[str, Any]]
     ctx: PreContainerResult
-
-
-# ---------------------------------------------------------------------------
-# IPC message formatting
-# ---------------------------------------------------------------------------
-
-
-def _escape_xml(s: str) -> str:
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-
-def _format_messages_for_ipc(
-    messages: list[dict[str, Any]], system_notices: list[str] | None = None
-) -> str:
-    """Format messages as XML for IPC delivery to a warm container.
-
-    Replicates the container's build_sdk_messages() format so the agent
-    sees the same structure whether messages arrive via stdin (cold) or
-    IPC (warm).  System notices are prepended as a <system_notices> block.
-    """
-    parts: list[str] = []
-
-    if system_notices:
-        notice_lines = "\n".join(f"- {n}" for n in system_notices)
-        parts.append(f"<system_notices>\n{notice_lines}\n</system_notices>")
-
-    if messages:
-        msg_lines: list[str] = []
-        for msg in messages:
-            sender_name = _escape_xml(msg.get("sender_name", "Unknown"))
-            timestamp = msg.get("timestamp", "")
-            content = _escape_xml(msg.get("content", ""))
-            msg_lines.append(
-                f'<message sender="{sender_name}" time="{timestamp}">{content}</message>'
-            )
-        parts.append(f"<messages>\n{chr(10).join(msg_lines)}\n</messages>")
-
-    return "\n".join(parts)
 
 
 def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:
@@ -266,7 +232,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
     spawn → register → create_session → set_handler → await_query sequence.
     """
     try:
-        proc, container_name, _mounts = await _spawn_container(
+        proc, container_name, _mounts, mcp_startup_failures = await _spawn_container(
             request.group,
             request.input_data,
             request.container_name,
@@ -275,6 +241,13 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
     except OSError as exc:
         logger.error("Failed to spawn container", error=str(exc), container=request.container_name)
         return "error"
+
+    if mcp_startup_failures and not request.input_data.is_scheduled_task:
+        await notify_mcp_startup_failures(
+            request.deps.broadcast_host_message,
+            request.chat_jid,
+            mcp_startup_failures,
+        )
 
     session = await create_session(
         request.group.folder,
@@ -304,7 +277,13 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
     # Ensure MCP servers are running (they may have stopped since last query)
     mcp_mgr = mcp_manager.get_mcp_manager()
     if mcp_mgr is not None:
-        await mcp_mgr.ensure_workspace_running(request.group.folder)
+        mcp_startup = await mcp_mgr.ensure_workspace_running(request.group.folder)
+        if mcp_startup.failures:
+            await notify_mcp_startup_failures(
+                request.deps.broadcast_host_message,
+                request.chat_jid,
+                mcp_startup.failures,
+            )
 
     # Register the session's process so send_message() works for follow-ups
     request.deps.queue.register_process(
@@ -316,7 +295,7 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
 
     # Set output handler and format messages
     request.session.set_output_handler(request.ctx.wrapped_on_output)
-    formatted = _format_messages_for_ipc(request.messages, request.ctx.system_notices or None)
+    formatted = format_messages_for_ipc(request.messages, request.ctx.system_notices or None)
 
     # Send via IPC
     turn_id = request.ctx.turn_id or new_turn_id()

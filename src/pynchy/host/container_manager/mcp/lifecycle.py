@@ -109,18 +109,14 @@ async def ensure_script_running(instance: McpInstance) -> None:
             health_url,
             any_non_5xx=True,
             process=instance.process,
+            health_timeout_seconds=instance.server_config.startup_timeout_seconds,
         )
     except (TimeoutError, RuntimeError):
-        stderr_tail = ""
-        if instance.process.stderr:
-            with contextlib.suppress(OSError, ValueError):
-                stderr_tail = instance.process.stderr.read(2000).decode(errors="replace")
         logger.error(
             "MCP script failed health check",
             instance_id=instance.instance_id,
-            stderr=stderr_tail,
         )
-        terminate_process(instance)
+        await asyncio.to_thread(terminate_process, instance)
         raise
 
     logger.info("MCP script ready", instance_id=instance.instance_id)
@@ -301,6 +297,7 @@ async def _wait_for_docker_health(instance: McpInstance) -> None:
             instance.container_name,
             _docker_health_url(instance),
             any_non_5xx=True,
+            health_timeout_seconds=instance.server_config.startup_timeout_seconds,
         )
     except (TimeoutError, RuntimeError):
         logger.error(
@@ -310,7 +307,7 @@ async def _wait_for_docker_health(instance: McpInstance) -> None:
         )
         # Clean up the failed container (matches script path which
         # calls terminate_process before re-raising).
-        await stop_container(instance.container_name)
+        await stop_container(instance.container_name, stop_timeout_seconds=1)
         raise
 
 
