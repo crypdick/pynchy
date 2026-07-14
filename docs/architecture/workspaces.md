@@ -2,11 +2,11 @@
 
 How managed workspace definitions work under the hood. Use this page to build plugins that ship preconfigured agents — periodic code reviewers, monitoring bots, or anything that should "just work" after installation.
 
-Workspaces are configured chat roots. A workspace binds one Discord/Slack channel to a profile. Dynamic conversations under that root, such as Discord threads, get their own isolated runtime folders and inherit the workspace profile.
+Workspaces are configured chat roots. A workspace binds one Discord/Slack channel to profiles. Dynamic conversations under that root, such as Discord threads, get their own isolated runtime folders and inherit the workspace configuration.
 
 ## What Workspace Specs Do
 
-A workspace spec declares which profiles a workspace selects. Profiles carry admin status, repo mounts, model routing, selected tools, skills, and whether the workspace filesystem contains secrets.
+A workspace spec declares which profiles a workspace selects. Profiles carry reusable defaults for admin status, repo mounts, model routing, selected tools, skills, and whether the workspace filesystem contains secrets. A workspace can override its model directly.
 
 At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. Config-backed jobs under `[jobs.*]` create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [prompts](../usage/prompts.md) rather than seeded files.
 
@@ -39,15 +39,15 @@ For config-backed jobs, the reconciler compares the database row against `config
 - **`prompt`** — updates the prompt sent to the agent on each scheduled run
 - **delivery chat** — follows the target workspace's current registered JID
 - **`repo`** — updates the repo worktree mounts from the selected profiles
-- **`model`** — updates the model override from the selected profiles
 
-To change a schedule, prompt, repo mount, or model override, edit `config.toml` and restart the service. No manual database edits required.
+Each scheduled run resolves the target workspace's current effective model. To change a schedule, prompt, repo mount, or model override, edit `config.toml` and restart the service. No manual database edits required.
 
 ## Workspace Config Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `profiles` | `list[str]` | Profile names from `[profiles.*]`, applied in order |
+| `model` | `str` | Optional model override; takes precedence over profile and global agent models |
 
 ## Profile Config Fields
 
@@ -58,7 +58,7 @@ To change a schedule, prompt, repo mount, or model override, edit `config.toml` 
 | `skills` | `list[str]` | Skill names to include |
 | `tools` | `list[str]` | Tool names from `[tools.*]` to select |
 | `repo` | `list[str]` or `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts project worktrees |
-| `model` | `str` | Optional model override |
+| `model` | `str` | Optional reusable default model; a workspace can override it |
 | `execution_mode` | `"container"` or `"host"` | Where the selected agent core runs; defaults to container execution |
 | `cwd` | `str` | Working directory for host execution |
 | `is_admin` | `bool` | Whether workspaces using this profile get admin privileges |

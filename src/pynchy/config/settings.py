@@ -25,7 +25,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotat
     Iterable,
     Sequence,
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,7 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from pynchy.config import settings_validation
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
@@ -243,28 +244,21 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_profile_refs(self) -> Settings:
         """Validate that workspace profile references exist."""
-        if "host" in self.workspaces:
-            message = "'host' is reserved and cannot be a workspace name"
-            raise ValueError(message)
-        for profile_name in self.profiles:
-            self._expanded_profile_names(profile_name)
-        for profile_name, profile in self.profiles.items():
-            for tool_name in profile.tools:
-                if tool_name not in self.tools:
-                    message = f"profiles.{profile_name}.tools references unknown tool: {tool_name}"
-                    raise ValueError(message)
-        for folder, ws in self.workspaces.items():
-            for profile_name in ws.profiles:
-                if profile_name not in self.profiles:
-                    message = (
-                        f"workspaces.{folder}.profiles references unknown profile: "
-                        f"'{profile_name}'. Available: {list(self.profiles.keys())}"
-                    )
-                    raise ValueError(message)
-        for job_name, job in self.jobs.items():
-            if job.workspace != "host" and job.workspace not in self.workspaces:
-                message = f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
-                raise ValueError(message)
+        settings_validation.validate_profile_references(
+            profiles=self.profiles,
+            workspaces=self.workspaces,
+            jobs=self.jobs,
+            tools=self.tools,
+            expand_profile_names=self._expanded_profile_names,
+        )
+        return self
+
+    @model_validator(mode="after")
+    def _reject_claude_sdk_model_overrides(self) -> Settings:
+        """Reject model settings that the built-in Claude SDK core cannot honor."""
+        settings_validation.reject_claude_sdk_model_overrides(
+            agent=self.agent, profiles=self.profiles, workspaces=self.workspaces
+        )
         return self
 
     @model_validator(mode="after")
@@ -332,7 +326,20 @@ class Settings(BaseSettings):
         if workspace is None:
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
-        return merge_workspace_profiles([self.profiles[name] for name in profile_names])
+        resolved = merge_workspace_profiles([self.profiles[name] for name in profile_names])
+        if workspace.model is not None:
+            return replace(resolved, model=workspace.model)
+        return resolved
+
+    def configured_agent_models(self) -> tuple[str, ...]:
+        """Return the distinct model routes configured globally or per workspace."""
+        models = [self.agent.model]
+        models.extend(
+            resolved.model
+            for workspace_name in self.workspaces
+            if (resolved := self.resolved_workspace_config(workspace_name)) is not None
+        )
+        return tuple(dict.fromkeys(model for model in models if model))
 
     def mcp_tools_for_names(self, names: Iterable[str]) -> dict[str, McpToolConfig]:
         """Return strict MCP provider configs for selected MCP-backed tools."""

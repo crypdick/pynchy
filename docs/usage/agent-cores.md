@@ -38,16 +38,17 @@ profiles = ["local-admin"]
 
 Host execution requires an admin workspace and an explicit `cwd`.
 
-## Profile Model Overrides
+## Workspace Model Overrides
 
-Use `model` inside a profile when a workspace or scheduled job should use a cheaper route than the global interactive agent:
+Set `model` in a profile to provide a reusable default. Set it directly in a workspace when that workspace needs a different route:
 
 ```toml
 [profiles.daily-triage]
-model = "chatgpt/gpt-5.3-codex-spark"
+model = "chatgpt/gpt-5.3-codex"
 
 [workspaces.daily-triage]
 profiles = ["daily-triage"]
+model = "chatgpt/gpt-5.3-codex-spark"
 
 [jobs.daily-triage]
 enabled = true
@@ -56,18 +57,18 @@ workspace = "daily-triage"
 prompt = "Produce the daily Pynchy triage memo and send it to this channel."
 ```
 
-The override is resolved through composable profiles. Workspace profile order determines precedence, then Pynchy falls back to `[agent].model`.
+Pynchy resolves models in this order: the workspace model, the last model specified by the expanded selected profiles, then `[agent].model`. Dynamic threads and scheduled jobs inherit their target workspace's resolved model.
 
-For Codex workspaces using LiteLLM's ChatGPT subscription provider, use a `chatgpt/...` route such as `chatgpt/gpt-5.3-codex-spark` and make sure that `model_name` is declared in `litellm_config.yaml`.
+For Codex workspaces using LiteLLM's ChatGPT subscription provider, use a `chatgpt/...` route such as `chatgpt/gpt-5.3-codex-spark` and make sure that `model_name` is declared in `litellm_config.yaml`. Pynchy checks every explicitly configured effective route for Codex, OpenAI, and Claude CLI at startup.
 
 ## Built-in: Claude SDK
 
 Uses the Claude Agent SDK (Claude Code) to power agents.
 
-- **Model selection:** via the LiteLLM gateway (see below)
+- **Model selection:** fixed to `opus`; Pynchy rejects `model` settings for this core
 - **Session management:** maintains conversation sessions across messages, auto-compacts when context grows too long
 - **Tools:** Bash, file operations, MCP servers, and all Claude Code capabilities
-- **Activation:** set `default_core = "claude"` in config and make sure an Anthropic API key is available
+- **Activation:** set `[agent] default_core = "claude"` and make sure an Anthropic API key is available
 
 ## Built-in: OpenAI Agents SDK
 

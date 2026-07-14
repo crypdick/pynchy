@@ -128,11 +128,11 @@ def resolve_container_host(container_host: str) -> str:
 def _required_litellm_models(
     *,
     agent_core: str,
-    model: str | None,
+    models: tuple[str, ...],
 ) -> tuple[str, ...]:
     """Return LiteLLM model aliases that the active core can request directly."""
-    if agent_core in {"codex", "openai"}:
-        return (model,) if model else ()
+    if agent_core in {"claude-cli", "codex", "openai"}:
+        return models
     return ()
 
 
@@ -217,7 +217,7 @@ async def start_gateway(
             master_key=s.gateway.master_key.get_secret_value(),
             required_models=_required_litellm_models(
                 agent_core=s.agent.default_core,
-                model=s.agent.model,
+                models=s.configured_agent_models(),
             ),
         )
     else:

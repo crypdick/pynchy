@@ -23,8 +23,8 @@ _CHANNEL_PLUGIN_NAME_ERROR = "channel_plugin_name must be a string or None"
 def resolve_workspace_connection_name(workspace_name: str) -> str | None:
     """Return the owning connection name for a workspace, if configured.
 
-    Current WorkspaceConfig carries profile selections only, so this layer has
-    no connection reference to resolve.
+    WorkspaceConfig carries profile selections and an optional model override,
+    neither of which identifies a connection.
     """
     del workspace_name
     return None

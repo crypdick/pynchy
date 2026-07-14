@@ -205,7 +205,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles compose with `includes = [...]`; workspaces select profiles by name.
 # List fields (prompts, skills, tools, repo) are unioned in composition order.
-# Scalar fields such as model use later-profile-wins semantics.
+# Scalar fields such as model use later-profile-wins semantics. A workspace-level
+# model overrides its resolved profile model and the global [agent] model.
 
 # [profiles.pynchy-admin]
 # prompts = ["pynchy-admin-ops"]
@@ -235,6 +236,7 @@
 
 # [workspaces.code-improver]
 # profiles = ["pynchy-worker"]
+# model = "chatgpt/gpt-5.3-codex-spark"
 
 # CLEAN ROOM POLICY: Admin workspaces cannot select tools with public_source = true.
 # Tools default to public_source = true unless configured otherwise.
@@ -441,12 +443,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Profiles (reusable workspace config bundles)
 # ─────────────────────────────────────────────────────────────────────────────
-# Profiles bundle prompts, skills, tools, repos, and model choices.
-# Workspaces select profiles with `profiles = ["<name>"]`.
-# Effective config follows profile composition order.
+# Profiles bundle prompts, skills, tools, repos, and reusable model choices.
+# Workspaces select profiles with `profiles = ["<name>"]` and may set `model`
+# for a workspace-local override. Effective config follows profile composition order.
 #
 # List fields (prompts, skills, tools, repo) are unioned across profiles.
-# Scalar fields such as model use later-profile-wins semantics.
+# Scalar fields such as model use later-profile-wins semantics before a workspace
+# model override takes precedence.
 #
 # Prompts use convention-based resolution: name "base" -> prompts/base.md.
 

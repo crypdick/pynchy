@@ -109,7 +109,7 @@ class TestProfileConfigValidation:
 
 
 class TestWorkspaceConfigFields:
-    """Workspace config selects profiles by name."""
+    """Workspace config selects profiles and may override their model."""
 
     def test_profiles_defaults_to_empty_list(self):
         cfg = WorkspaceConfig()
@@ -126,6 +126,15 @@ class TestWorkspaceConfigFields:
     def test_profiles_absent_from_fields_set_by_default(self):
         cfg = WorkspaceConfig()
         assert "profiles" not in cfg.model_fields_set
+
+    def test_model_defaults_to_none(self):
+        cfg = WorkspaceConfig()
+        assert cfg.model is None
+
+    def test_model_accepts_string(self):
+        cfg = WorkspaceConfig(model="chatgpt/gpt-5.3-codex-spark")
+        assert cfg.model == "chatgpt/gpt-5.3-codex-spark"
+        assert "model" in cfg.model_fields_set
 
     def test_rejects_empty_profile_name(self):
         with pytest.raises(ValidationError):
