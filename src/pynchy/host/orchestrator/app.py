@@ -207,14 +207,28 @@ class PynchyApp:
         await self._save_state()
 
     async def handle_context_reset(
-        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
+        self,
+        chat_jid: str,
+        group: WorkspaceProfile,
+        timestamp: str,
+        *,
+        source_message: NewMessage | None = None,
     ) -> None:
-        await session_handler.handle_context_reset(self, chat_jid, group, timestamp)
+        await session_handler.handle_context_reset(
+            self, chat_jid, group, timestamp, source_message=source_message
+        )
 
     async def handle_end_session(
-        self, chat_jid: str, group: WorkspaceProfile, timestamp: str
+        self,
+        chat_jid: str,
+        group: WorkspaceProfile,
+        timestamp: str,
+        *,
+        source_message: NewMessage | None = None,
     ) -> None:
-        await session_handler.handle_end_session(self, chat_jid, group, timestamp)
+        await session_handler.handle_end_session(
+            self, chat_jid, group, timestamp, source_message=source_message
+        )
 
     async def trigger_manual_redeploy(self, chat_jid: str) -> None:
         await session_handler.trigger_manual_redeploy(self, chat_jid)

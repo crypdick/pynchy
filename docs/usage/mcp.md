@@ -83,6 +83,7 @@ tools = ["example_personal"]
 | Google Drive | [Google Drive setup](gdrive.md) |
 | Linear | [Linear task tracking](linear.md) |
 | Notebooks | [Notebook execution](notebooks.md) |
+| Proton Mail | [Proton Mail](proton-mail.md) |
 | Slack MCP | [Slack MCP setup](slack-mcp.md) |
 
 For architecture internals (instance deduplication, LiteLLM integration, access control), see [MCP management architecture](../architecture/mcp-management.md).

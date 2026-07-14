@@ -120,6 +120,27 @@ def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
         assert _iter_learned_skill_dirs("shopping") == [valid.resolve()]
 
 
+def test_iter_includes_global_obsidian_skills_for_every_profile(tmp_path: Path):
+    vault = tmp_path / "vault"
+    global_skill = vault / "systems/pynchy/skills/global-skill"
+    profile_skill = vault / "systems/pynchy/profiles/shopping/skills/profile-skill"
+    global_skill.mkdir(parents=True)
+    profile_skill.mkdir(parents=True)
+    (global_skill / "SKILL.md").write_text("---\nname: global-skill\ntier: learned\n---\n")
+    (profile_skill / "SKILL.md").write_text("---\nname: profile-skill\ntier: learned\n---\n")
+    settings = _settings(
+        tmp_path=tmp_path,
+        learning=_enabled_learning(vault),
+        workspaces={"shopping": WorkspaceConfig(profiles=["shopping"])},
+    )
+
+    with _patch_learning_settings(settings):
+        assert _iter_learned_skill_dirs("shopping") == [
+            global_skill.resolve(),
+            profile_skill.resolve(),
+        ]
+
+
 def test_iter_skips_symlink_that_escapes_skills_root(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
@@ -184,10 +205,7 @@ def test_iter_skips_skill_md_symlink_escape(
     assert "symlink" in caplog.text
 
 
-def test_iter_skips_skill_with_nested_directory(
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-):
+def test_iter_accepts_skill_with_nested_support_directory(tmp_path: Path):
     vault = tmp_path / "vault"
     skills_root = vault / "systems/pynchy/profiles/default/skills"
     skill = skills_root / "nested"
@@ -198,12 +216,8 @@ def test_iter_skips_skill_with_nested_directory(
     (nested_dir / "notes.md").write_text("unsupported v1 nested content")
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
 
-    caplog.set_level(logging.WARNING)
     with _patch_learning_settings(settings):
-        assert _iter_learned_skill_dirs("unprofiled") == []
-
-    assert "Skipping learned skill" in caplog.text
-    assert "nested directory" in caplog.text
+        assert _iter_learned_skill_dirs("unprofiled") == [skill.resolve()]
 
 
 def test_iter_skips_skill_over_byte_budget(

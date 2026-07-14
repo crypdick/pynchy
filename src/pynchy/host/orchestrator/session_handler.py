@@ -110,17 +110,27 @@ async def _teardown_group(
 
 
 async def handle_context_reset(
-    deps: SessionDeps, chat_jid: str, group: WorkspaceProfile, timestamp: str
+    deps: SessionDeps,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    timestamp: str,
+    *,
+    source_message: NewMessage | None = None,
 ) -> None:
     """Clear session state, merge worktree, destroy session, and confirm context reset."""
     await _teardown_group(deps, group, chat_jid, timestamp, clear_context=True)
     logger.info("teardown_trace", step="send_clear_confirmation_start", group=group.name)
-    await send_clear_confirmation(deps, chat_jid)
+    await send_clear_confirmation(deps, chat_jid, source_message=source_message)
     logger.info("teardown_trace", step="send_clear_confirmation_done", group=group.name)
 
 
 async def handle_end_session(
-    deps: SessionDeps, chat_jid: str, group: WorkspaceProfile, timestamp: str
+    deps: SessionDeps,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    timestamp: str,
+    *,
+    source_message: NewMessage | None = None,
 ) -> None:
     """Sync worktree and spin down the container without clearing context.
 
@@ -128,17 +138,37 @@ async def handle_end_session(
     message will start a fresh container that picks up where it left off.
     """
     await _teardown_group(deps, group, chat_jid, timestamp)
-    await deps.broadcast_host_message(chat_jid, "👋")
+    await _send_command_confirmation(deps, chat_jid, source_message, "👋")
 
 
-async def send_clear_confirmation(deps: SessionDeps, chat_jid: str) -> None:
+async def send_clear_confirmation(
+    deps: SessionDeps,
+    chat_jid: str,
+    *,
+    source_message: NewMessage | None = None,
+) -> None:
     """Set cleared_at, store and broadcast a system confirmation."""
     # Mark clear boundary — messages before this are hidden
     cleared_ts = datetime.now(UTC).isoformat()
     await set_chat_cleared_at(chat_jid, cleared_ts)
     deps.emit(ChatClearedEvent(chat_jid=chat_jid))
 
-    await deps.broadcast_host_message(chat_jid, "🗑️")
+    await _send_command_confirmation(deps, chat_jid, source_message, "🗑️")
+
+
+async def _send_command_confirmation(
+    deps: SessionDeps,
+    chat_jid: str,
+    source_message: NewMessage | None,
+    emoji: str,
+) -> None:
+    """React to a channel command or retain a visible confirmation for local UIs."""
+    if source_message is not None and any(ch.owns_jid(chat_jid) for ch in deps.channels):
+        await send_reaction_to_channels(
+            deps, chat_jid, source_message.id, source_message.sender, emoji
+        )
+        return
+    await deps.broadcast_host_message(chat_jid, emoji)
 
 
 async def trigger_manual_redeploy(deps: SessionDeps, chat_jid: str) -> None:
