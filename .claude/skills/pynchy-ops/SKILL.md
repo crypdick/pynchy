@@ -12,7 +12,7 @@ The live Pynchy host and checkout path are deployment-specific. Public repo inst
 Pynchy self-manages. Two mechanisms trigger automatic restarts:
 
 1. **Git changes on `main`** — the polling mechanism detects new commits, pulls, and restarts (with container rebuild if source files changed).
-2. **Config file changes** — editing `config.toml`, `litellm_config.yaml`, or other settings files triggers an automatic restart. Edit the file and wait ~30–90s.
+2. **Config file changes** — editing `config.toml`, `litellm_config.yaml`, or other settings files triggers an automatic deploy on the next host git-sync poll. The default interval is 300 seconds; check `[scheduler].git_sync_interval_seconds` before deciding it was missed.
 
 **Do not manually restart containers or the service.** This includes `docker restart`, `systemctl restart`, and direct container management (`docker kill/stop/rm`). Manual restarts bypass lifecycle management and can leave things in a bad state.
 
@@ -213,7 +213,7 @@ Pass as: `Authorization: Bearer <key>`
 
 If `master_key` is not in `config.toml`, it may be injected via `.env` or container env. Prefer a scripted lookup that **does not print the key**, e.g. using it inline for a request (see `references/litellm-diagnostics.md` for examples).
 
-Config: `$PYNCHY_REMOTE_ROOT/litellm_config.yaml`. Editing it triggers an automatic restart (~30–90s). Do not manually restart containers.
+Config: `$PYNCHY_REMOTE_ROOT/litellm_config.yaml`. Editing it triggers an automatic deploy on the next host git-sync poll (300 seconds by default). Do not manually restart containers.
 
 Dashboard: `http://$PYNCHY_HOST:4000/ui/`
 
