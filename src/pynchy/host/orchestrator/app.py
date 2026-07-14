@@ -230,8 +230,13 @@ class PynchyApp:
             self, chat_jid, group, timestamp, source_message=source_message
         )
 
-    async def trigger_manual_redeploy(self, chat_jid: str) -> None:
-        await session_handler.trigger_manual_redeploy(self, chat_jid)
+    async def trigger_manual_redeploy(
+        self,
+        chat_jid: str,
+        *,
+        source_message: NewMessage | None = None,
+    ) -> None:
+        await session_handler.trigger_manual_redeploy(self, chat_jid, source_message=source_message)
 
     async def catch_up_channels(self) -> None:
         await self._catch_up_channel_history()

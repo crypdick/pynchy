@@ -170,10 +170,16 @@ async def _send_command_confirmation(
     await deps.broadcast_host_message(chat_jid, emoji)
 
 
-async def trigger_manual_redeploy(_deps: SessionDeps, chat_jid: str) -> None:
+async def trigger_manual_redeploy(
+    deps: SessionDeps,
+    chat_jid: str,
+    *,
+    source_message: NewMessage | None = None,
+) -> None:
     """Handle a manual redeploy command through Temporal."""
     sha = get_head_sha()
     logger.info("Manual redeploy triggered via magic word", chat_jid=chat_jid)
+    await _send_command_confirmation(deps, chat_jid, source_message, "🔄")
 
     await start_deploy_workflow(
         DeployRequest(

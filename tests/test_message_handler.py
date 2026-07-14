@@ -20,6 +20,7 @@ from conftest import make_settings
 
 from pynchy.config import AgentConfig, IntervalsConfig
 from pynchy.config.models import LearningConfig
+from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     MessageHandlerDeps,
@@ -235,9 +236,34 @@ class TestInterceptSpecialCommand:
             result = await intercept_special_command(deps, "g@g.us", group, msg)
 
         assert result is True
-        deps.trigger_manual_redeploy.assert_awaited_once_with("g@g.us")
+        deps.trigger_manual_redeploy.assert_awaited_once_with("g@g.us", source_message=msg)
         assert deps.last_agent_timestamp["g@g.us"] == msg.timestamp
         deps.save_state.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_manual_redeploy_reacts_to_the_source_message(self):
+        msg = _make_message("redeploy", chat_jid="g@g.us")
+        deps = MagicMock(spec=session_handler.SessionDeps)
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.session_handler._send_command_confirmation",
+                new_callable=AsyncMock,
+            ) as confirmation,
+            patch(
+                "pynchy.host.orchestrator.session_handler.get_head_sha",
+                return_value="a" * 40,
+            ),
+            patch(
+                "pynchy.host.orchestrator.session_handler.start_deploy_workflow",
+                new_callable=AsyncMock,
+            ) as start_deploy,
+        ):
+            await session_handler.trigger_manual_redeploy(deps, "g@g.us", source_message=msg)
+
+        confirmation.assert_awaited_once_with(deps, "g@g.us", msg, "🔄")
+        request = start_deploy.await_args.args[0]
+        assert not hasattr(request, "active_sessions")
 
     @pytest.mark.asyncio
     async def test_bang_command_intercepted(self):
