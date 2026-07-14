@@ -16,6 +16,10 @@
 [agent]
 # Agent core: "openai" (default), "claude", "claude-cli", or "codex"
 # default_core = "openai"
+# Model names must match a route in litellm_config.yaml.
+# model = "gpt-5.6-terra"
+# Codex CLI only. The selected model and account must support the effort.
+# model_reasoning_effort = "ultra"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials

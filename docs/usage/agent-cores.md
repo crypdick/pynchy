@@ -8,7 +8,7 @@ Set the core in `config.toml`:
 
 ```toml
 [agent]
-core = "openai"    # or "claude", "claude-cli", "codex"
+default_core = "openai"    # or "claude", "claude-cli", "codex"
 model = "gpt-5.5"
 ```
 
@@ -67,7 +67,7 @@ Uses the Claude Agent SDK (Claude Code) to power agents.
 - **Model selection:** via the LiteLLM gateway (see below)
 - **Session management:** maintains conversation sessions across messages, auto-compacts when context grows too long
 - **Tools:** Bash, file operations, MCP servers, and all Claude Code capabilities
-- **Activation:** set `core = "claude"` in config and make sure an Anthropic API key is available
+- **Activation:** set `default_core = "claude"` in config and make sure an Anthropic API key is available
 
 ## Built-in: OpenAI Agents SDK
 
@@ -84,7 +84,7 @@ Use this when you want Codex's CLI runtime, session behavior, and JSONL event
 stream while keeping model routing and provider credentials in the Pynchy
 LiteLLM gateway.
 
-- **Activation:** configure a Codex-capable model in `litellm_config.yaml`, then set `core = "codex"` and `model` to that LiteLLM `model_name`
+- **Activation:** configure a Codex-capable model in `litellm_config.yaml`, then set `default_core = "codex"` and `model` to that LiteLLM `model_name`
 - **Auth state:** Codex reads the same gateway env vars as the OpenAI core (`OPENAI_BASE_URL` / `OPENAI_API_KEY`). Pynchy writes a per-group Codex config that points Codex at that gateway with the Responses wire API.
 - **Session management:** Codex thread IDs are stored as Pynchy session IDs and resumed with `codex exec resume`
 - **Tools:** Codex Bash/tool events are mapped into the same Pynchy event stream, and Pynchy writes a per-group Codex config with the standard `BEFORE_TOOL_USE` hook
@@ -92,6 +92,23 @@ LiteLLM gateway.
 The per-group Codex home still stores generated config and Codex session state,
 but it does not need host `~/.codex/auth.json`. Real provider credentials stay
 behind the gateway.
+
+### Reasoning effort
+
+For the Codex CLI core, set `model_reasoning_effort` under `[agent]` to select
+the effort for every Pynchy-managed Codex session. Pynchy writes this setting
+to each session's generated Codex configuration, so host-level Codex settings
+do not affect those sessions.
+
+```toml
+[agent]
+default_core = "codex"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "ultra"
+```
+
+GPT-5.6 Terra supports `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`
+in Codex. Other models and accounts can expose a different subset.
 
 ## Tool Security
 
@@ -126,7 +143,7 @@ route such as:
 
 ```toml
 [agent]
-core = "codex"
+default_core = "codex"
 model = "chatgpt/gpt-5.3-codex"
 ```
 

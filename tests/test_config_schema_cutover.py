@@ -123,6 +123,11 @@ def test_new_schema_parses_minimal_config() -> None:
     assert settings.command_center.connection == "synapse"
 
 
+def test_agent_rejects_unknown_codex_reasoning_effort() -> None:
+    with pytest.raises(ValidationError, match="model_reasoning_effort"):
+        _settings_from_dict({"agent": {"model_reasoning_effort": "excessive"}})
+
+
 def test_repos_root_defaults_to_parent_of_project_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

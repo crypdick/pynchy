@@ -21,6 +21,7 @@ from agent_runner.core import AgentCoreConfig, AgentEvent
 
 from ._codex_config import (
     DEFAULT_CODEX_SANDBOX_MODE,
+    CodexModelSettings,
     gateway_base_url_from_env,
     write_codex_config,
 )
@@ -86,6 +87,11 @@ def _pynchy_session_id(thread_id: str, model: str | None = None) -> str:
 def _configured_model(extra: dict[str, object]) -> str | None:
     model = extra.get("model")
     return str(model) if model else None
+
+
+def _configured_model_reasoning_effort(extra: dict[str, object]) -> str | None:
+    effort = extra.get("model_reasoning_effort")
+    return effort if isinstance(effort, str) else None
 
 
 def _item_text(item: dict[str, object]) -> str:
@@ -155,7 +161,10 @@ class CodexCLIAgentCore:
             codex_home,
             self.config.mcp_servers,
             gateway_base_url=gateway_base_url,
-            model=_configured_model(self.config.extra),
+            model_settings=CodexModelSettings(
+                model=_configured_model(self.config.extra),
+                model_reasoning_effort=_configured_model_reasoning_effort(self.config.extra),
+            ),
             hooks_enabled=bool(self.config.extra.get("pynchy_hooks_enabled", True)),
         )
 

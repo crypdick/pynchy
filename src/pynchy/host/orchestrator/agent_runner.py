@@ -199,6 +199,8 @@ def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[st
     result: dict[str, Any] = {}
     if resolved_model:
         result["model"] = resolved_model
+    if s.agent.model_reasoning_effort:
+        result["model_reasoning_effort"] = s.agent.model_reasoning_effort
     return result or None
 
 
