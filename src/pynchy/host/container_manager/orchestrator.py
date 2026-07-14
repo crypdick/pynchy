@@ -15,6 +15,9 @@ from pathlib import (
 import pluggy  # noqa: TC002, RUF100 - beartype resolves agent core lookup signatures at runtime.
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.mcp.startup import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
+    McpStartupFailure,
+)
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.host.container_manager.serialization import input_to_dict
@@ -125,11 +128,11 @@ async def _spawn_container(
     input_data: ContainerInput,
     container_name: str,
     plugin_manager: pluggy.PluginManager | None = None,
-) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount]]:
+) -> tuple[asyncio.subprocess.Process, str, list[VolumeMount], tuple[McpStartupFailure, ...]]:
     """Resolve environment, build mounts, and spawn a container subprocess.
 
     Shared by the cold-start and scheduled-task paths in ``agent_runner``.
-    Returns (proc, container_name, mounts).
+    Returns (proc, container_name, mounts, mcp_startup_failures).
 
     Raises OSError if the subprocess fails to start.
     """
@@ -201,14 +204,18 @@ async def _spawn_container(
 
     mcp_mgr = get_mcp_manager()
     mcp_instance_count = 0
+    mcp_startup_failures: tuple[McpStartupFailure, ...] = ()
     if mcp_mgr is not None:
         mcp_instance_count = len(mcp_mgr.get_workspace_instance_ids(group.folder))
-        await mcp_mgr.ensure_workspace_running(group.folder)
+        mcp_startup = await mcp_mgr.ensure_workspace_running(group.folder)
+        mcp_startup_failures = mcp_startup.failures
 
         # Route MCP traffic through the security proxy so SecurityGate can
         # enforce policy and apply fencing on responses from untrusted sources.
         direct_configs = mcp_mgr.get_direct_server_configs(
-            group.folder, invocation_ts=input_data.invocation_ts
+            group.folder,
+            invocation_ts=input_data.invocation_ts,
+            instance_ids=mcp_startup.ready_instance_ids,
         )
         if direct_configs:
             input_data.mcp_direct_servers = direct_configs
@@ -244,4 +251,4 @@ async def _spawn_container(
         stderr=asyncio.subprocess.PIPE,
     )
 
-    return proc, container_name, mounts
+    return proc, container_name, mounts, mcp_startup_failures

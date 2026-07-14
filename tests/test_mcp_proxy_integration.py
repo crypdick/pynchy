@@ -304,6 +304,25 @@ class TestGetDirectServerConfigsProxy:
         assert len(configs) == 1
         assert configs[0]["name"] == "exists"
 
+    def test_limits_configs_to_instances_that_started_successfully(self):
+        """A failed optional MCP must not be advertised to the new agent."""
+        mgr = McpManager.__new__(McpManager)
+        mgr._proxy = McpProxy()
+        mgr._proxy._port = 8080
+        mgr._workspace_instances = {"test-ws": ["ready", "failed"]}
+        mgr._instances = {
+            "ready": MagicMock(server_config=MagicMock(transport="sse")),
+            "failed": MagicMock(server_config=MagicMock(transport="sse")),
+        }
+
+        with patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings:
+            mock_settings.return_value.gateway.container_host = "host.docker.internal"
+            configs = mgr.get_direct_server_configs(
+                "test-ws", invocation_ts=1.0, instance_ids=("ready",)
+            )
+
+        assert [config["name"] for config in configs] == ["ready"]
+
     def test_accepts_invocation_ts_parameter(self):
         """get_direct_server_configs should accept invocation_ts parameter."""
         mgr = McpManager.__new__(McpManager)
@@ -367,3 +386,4 @@ class TestOrchestratorPassesInvocationTs:
             "invocation_ts=input_data.invocation_ts" in source
             or "invocation_ts=" in source.split("get_direct_server_configs")[1]
         )
+        assert "instance_ids=mcp_startup.ready_instance_ids" in source

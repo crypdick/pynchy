@@ -85,6 +85,9 @@ class McpServerConfig(BaseModel):
     args: list[str] = []
     port: int | None = None
     idle_timeout: int = 600  # seconds; 0 = never stop
+    # Bound on-demand readiness waits. A failed optional tool must not hold up
+    # the agent launch behind the global container health-check timeout.
+    startup_timeout_seconds: float = 5.0
     env: dict[str, str] = {}  # static env vars passed to container via -e
     # Env vars forwarded from host into container. Accepts:
     #   list[str] — identity mapping (host var name = container var name)
@@ -110,6 +113,15 @@ class McpServerConfig(BaseModel):
         if isinstance(v, list):
             return {name: name for name in v}
         return v
+
+    @field_validator("startup_timeout_seconds")
+    @classmethod
+    def _validate_startup_timeout(cls, value: float) -> float:
+        """Reject non-positive readiness deadlines at config load time."""
+        if value <= 0:
+            msg = "MCP startup_timeout_seconds must be greater than zero"
+            raise ValueError(msg)
+        return value
 
     # URL fields
     url: str | None = None
