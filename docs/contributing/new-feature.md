@@ -13,10 +13,11 @@ Install `uv`, then run the repository bootstrapper:
 ./scripts/install_new_feature_dependencies.py
 ```
 
-The bootstrapper verifies Docker and installs `new-feature` and Codex CLIs into `~/.local/bin`.
-It installs the pinned Temporal release in the selected bin directory and verifies its SHA-256
-archive digest before installation. It does not install or start Docker because that requires
-platform-specific system administration. Run with `--check` to diagnose without installing.
+The bootstrapper verifies Docker and installs Pynchy's pinned `new-feature` (v1.1.6) and Codex
+CLIs into `~/.local/bin`. It installs the pinned Temporal release in the selected bin directory
+and verifies its SHA-256 archive digest before installation. It does not install or start Docker
+because that requires platform-specific system administration. Run with `--check` to diagnose
+without installing.
 
 CI and standalone deterministic runtime tests only need Docker and Temporal:
 
@@ -71,6 +72,11 @@ uv run python scripts/new_feature_sandbox.py exec -- \
 ```
 
 ## Create a feature
+
+Pynchy's shared configuration launches the built-in Codex agent when `--agent` is omitted.
+Individual agent preferences can override that in the ignored `.new-feature.local.toml` sidecar.
+The shared `push = false` policy is deliberate: pushing `main` deploys Pynchy, so deployment stays
+an explicit operator action.
 
 Run lifecycle commands from the control checkout:
 

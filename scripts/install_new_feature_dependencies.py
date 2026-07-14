@@ -18,10 +18,11 @@ import urllib.request
 from pathlib import Path
 
 _TEMPORAL_VERSION = "1.8.0"
-_NEW_FEATURE_VERSION = "0.6.2"
+_NEW_FEATURE_VERSION = "1.1.6"
 _CODEX_VERSION = "0.144.1"
 _TEMPORAL_BASE_URL = "https://github.com/temporalio/cli/releases/download"
 _TEMPORAL_VERSION_PATTERN = re.compile(r"\btemporal version v?([^\s]+)")
+_NEW_FEATURE_VERSION_PATTERN = re.compile(r"\bnew-feature\s+v?([^\s]+)")
 _TEMPORAL_DIGESTS = {
     (
         "darwin",
@@ -133,8 +134,13 @@ def _install_temporal(bin_dir: Path) -> Path:
     return destination
 
 
+def _selected_command(name: str, bin_dir: Path) -> str | None:
+    selected = bin_dir / name
+    return str(selected) if selected.is_file() else None
+
+
 def _resolved_command(name: str, bin_dir: Path) -> str | None:
-    return shutil.which(name) or (str(bin_dir / name) if (bin_dir / name).is_file() else None)
+    return _selected_command(name, bin_dir) or shutil.which(name)
 
 
 def _run_checked(command: list[str], *, env: dict[str, str] | None = None) -> None:
@@ -150,7 +156,9 @@ def _run_checked(command: list[str], *, env: dict[str, str] | None = None) -> No
 def _install_new_feature(uv: str, bin_dir: Path) -> None:
     env = dict(os.environ)
     env["UV_TOOL_BIN_DIR"] = str(bin_dir)
-    _run_checked([uv, "tool", "install", f"new-feature=={_NEW_FEATURE_VERSION}"], env=env)
+    _run_checked(
+        [uv, "tool", "install", "--force", f"new-feature=={_NEW_FEATURE_VERSION}"], env=env
+    )
 
 
 def _install_codex(npm: str, bin_dir: Path) -> None:
@@ -196,6 +204,24 @@ def _temporal_version(temporal: Path) -> str | None:
     return match.group(1) if match else None
 
 
+def _new_feature_version(new_feature: str) -> str | None:
+    """Return the installed new-feature version for the selected command."""
+    try:
+        result = subprocess.run(  # noqa: S603, RUF100 - selected tool command is locally resolved.
+            [new_feature, "--version"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    match = _NEW_FEATURE_VERSION_PATTERN.search(f"{result.stdout}\n{result.stderr}")
+    return match.group(1) if match else None
+
+
 def _ensure_pinned_temporal(bin_dir: Path, *, check_only: bool) -> Path:
     """Install or verify the exact Temporal version used by the runtime profile."""
     temporal = bin_dir / "temporal"
@@ -209,6 +235,36 @@ def _ensure_pinned_temporal(bin_dir: Path, *, check_only: bool) -> Path:
             )
         raise DependencyError(f"Pinned Temporal CLI v{_TEMPORAL_VERSION} is missing from {bin_dir}")
     return _install_temporal(bin_dir)
+
+
+def _ensure_pinned_new_feature(uv: str, bin_dir: Path, *, check_only: bool) -> str:
+    """Install or verify the exact new-feature version required by this configuration."""
+    new_feature = _selected_command("new-feature", bin_dir)
+    actual = _new_feature_version(new_feature) if new_feature is not None else None
+    if new_feature is not None and actual == _NEW_FEATURE_VERSION:
+        return new_feature
+    if check_only:
+        if new_feature is None:
+            raise DependencyError(
+                f"Pinned new-feature v{_NEW_FEATURE_VERSION} is missing from {bin_dir}"
+            )
+        message = (
+            f"new-feature at {new_feature} must be v{_NEW_FEATURE_VERSION}; "
+            f"found {actual or 'unreadable'}"
+        )
+        raise DependencyError(message)
+
+    _install_new_feature(uv, bin_dir)
+    new_feature = _selected_command("new-feature", bin_dir)
+    if new_feature is None:
+        raise DependencyError("new-feature installation completed without an executable")
+    actual = _new_feature_version(new_feature)
+    if actual != _NEW_FEATURE_VERSION:
+        raise DependencyError(
+            "new-feature installation must provide "
+            f"v{_NEW_FEATURE_VERSION}; found {actual or 'unreadable'}"
+        )
+    return new_feature
 
 
 def _ensure_runtime_dependencies(*, bin_dir: Path, check_only: bool) -> None:
@@ -232,14 +288,7 @@ def _ensure_dependencies(*, bin_dir: Path, check_only: bool) -> None:
 
     _ensure_runtime_dependencies(bin_dir=bin_dir, check_only=check_only)
 
-    new_feature = _resolved_command("new-feature", bin_dir)
-    if new_feature is None:
-        if check_only:
-            raise DependencyError("new-feature is missing")
-        _install_new_feature(uv, bin_dir)
-        new_feature = _resolved_command("new-feature", bin_dir)
-    if new_feature is None:
-        raise DependencyError("new-feature installation completed without an executable")
+    new_feature = _ensure_pinned_new_feature(uv, bin_dir, check_only=check_only)
     _line(f"new-feature: {new_feature}")
 
     codex = _resolved_command("codex", bin_dir)

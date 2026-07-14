@@ -85,7 +85,7 @@ packages = ["src/pynchy"]
 
 [tool.new-feature]
 target_branch = "main"
-agent = ["codex"]
+default_agent = "codex"
 push = false
 setup = [
     "uv sync --locked",
