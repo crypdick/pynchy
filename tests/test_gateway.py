@@ -10,7 +10,7 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 import pynchy.host.container_manager.gateway as _gw_mod
-from pynchy.config.models import AgentConfig, GatewayConfig
+from pynchy.config.models import AgentConfig, GatewayConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
@@ -566,6 +566,43 @@ class TestGatewayModeSelection:
             gw = await start_gateway()
             assert isinstance(gw, LiteLLMGateway)
             assert gw._required_models == ("gpt-5.5",)
+
+    @pytest.mark.asyncio
+    async def test_litellm_mode_requires_effective_workspace_models(self, tmp_path: Path):
+        cfg = tmp_path / "litellm_config.yaml"
+        cfg.write_text("model_list: []\n")
+
+        mock_settings = make_settings(
+            agent=AgentConfig(default_core="claude-cli", model="global-model"),
+            profiles={"base": ProfileConfig(model="profile-model")},
+            workspaces={
+                "profile": WorkspaceConfig(profiles=["base"]),
+                "direct": WorkspaceConfig(
+                    profiles=["base"],
+                    model="workspace-model",
+                ),
+                "duplicate": WorkspaceConfig(model="workspace-model"),
+            },
+            gateway=GatewayConfig(
+                litellm_config=str(cfg),
+                port=4000,
+                container_host="host.docker.internal",
+                litellm_image="ghcr.io/berriai/litellm:main-latest",
+                postgres_image="postgres:17-alpine",
+                master_key=SecretStr("test-key"),
+            ),
+            data_dir=tmp_path,
+            mcp_servers={},
+        )
+
+        with (
+            patch(f"{_GATEWAY_MOD}.get_settings", return_value=mock_settings),
+            patch.object(LiteLLMGateway, "start", new_callable=AsyncMock),
+        ):
+            gateway = await start_gateway()
+
+        assert isinstance(gateway, LiteLLMGateway)
+        assert gateway._required_models == ("global-model", "profile-model", "workspace-model")
 
     @pytest.mark.asyncio
     async def test_default_container_host_resolves_for_apple_runtime(self, tmp_path: Path):

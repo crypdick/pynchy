@@ -221,6 +221,7 @@ class ClaudeAgentCore:
             _log(f"Loading plugins: {[p['path'] for p in plugins]}")
 
         options = ClaudeAgentOptions(
+            # FIXME: Let Pynchy configure this model through its resolved agent settings.
             model="opus",
             cwd=self.config.cwd,
             resume=self.config.session_id,

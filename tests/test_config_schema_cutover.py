@@ -208,7 +208,7 @@ def test_unknown_top_level_schema_keys_are_rejected(unknown_key: str) -> None:
         "fallback_model",
     ],
 )
-def test_workspace_can_only_select_profiles(old_key: str) -> None:
+def test_workspace_rejects_unsupported_fields(old_key: str) -> None:
     with pytest.raises(ValidationError):
         _settings_from_dict(
             {
@@ -216,6 +216,25 @@ def test_workspace_can_only_select_profiles(old_key: str) -> None:
                 "workspaces": {"engineering": {"profiles": ["base"], old_key: "legacy"}},
             }
         )
+
+
+def test_workspace_model_overrides_selected_profile_model() -> None:
+    settings = _settings_from_dict(
+        {
+            "profiles": {"base": {"model": "profile-model"}},
+            "workspaces": {
+                "engineering": {
+                    "profiles": ["base"],
+                    "model": "workspace-model",
+                }
+            },
+        }
+    )
+
+    resolved = settings.resolved_workspace_config("engineering")
+
+    assert resolved is not None
+    assert resolved.model == "workspace-model"
 
 
 def test_profiles_compose_in_order_with_union_fields_and_last_scalar_wins() -> None:

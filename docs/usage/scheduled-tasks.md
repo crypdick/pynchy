@@ -12,15 +12,15 @@ Agent tasks always run in a dedicated isolated thread for the target workspace. 
 
 ### Daily Triage Memo
 
-A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper profile model override:
+A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper workspace model override:
 
 ```toml
 [profiles.pynchy-admin]
 is_admin = true
-model = "chatgpt/gpt-5.3-codex-spark"
 
 [workspaces.admin]
 profiles = ["pynchy-admin"]
+model = "chatgpt/gpt-5.3-codex-spark"
 
 [jobs.daily-triage]
 enabled = true

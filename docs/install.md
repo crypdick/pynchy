@@ -79,8 +79,8 @@ Common configurations:
 - **OpenAI API key:** Set `[secrets].openai_api_key`, or reference `OPENAI_API_KEY` from `litellm_config.yaml`
 - **Anthropic API key:** Set `[secrets].anthropic_api_key`, or add an Anthropic API-key deployment to `litellm_config.yaml`
 - **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`. For a single-host macOS service, use the `launchd/com.pynchy.temporal.plist` template and back up `data/temporal.db` with `scripts/backup_runtime_dbs.sh`; see [Scheduled Tasks](usage/scheduled-tasks.md#single-host-macos-service).
-- **Claude SDK core:** Set `[agent] default_core = "claude"` and provide a valid Anthropic API key; Claude Code OAuth tokens are not supported as provider credentials.
-- **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] default_core = "codex"` and profile `model` to that LiteLLM `model_name`. Codex model traffic routes through the same gateway as the OpenAI core.
+- **Claude SDK core:** Set `[agent] default_core = "claude"` and provide a valid Anthropic API key; model selection currently stays fixed to `opus`, and Claude Code OAuth tokens are not supported as provider credentials.
+- **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] default_core = "codex"` and configure its LiteLLM `model_name` globally, in a profile, or in a workspace. Codex model traffic routes through the same gateway as the OpenAI core.
 
 #### LiteLLM Gateway (recommended)
 
@@ -131,6 +131,10 @@ For ChatGPT Subscription routing, the model names must match LiteLLM's
 default_core = "codex"
 
 [profiles.admin]
+is_admin = true
+
+[workspaces.admin]
+profiles = ["admin"]
 model = "chatgpt/gpt-5.3-codex"
 ```
 

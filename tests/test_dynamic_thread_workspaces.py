@@ -92,7 +92,12 @@ async def test_unknown_discord_thread_registers_inherited_workspace(db, monkeypa
 def test_dynamic_thread_folder_resolves_parent_workspace_config(monkeypatch):
     settings = make_settings(
         profiles={"admin": ProfileConfig(repo="crypdick/pynchy")},
-        workspaces={"admin": WorkspaceConfig(profiles=["admin"])},
+        workspaces={
+            "admin": WorkspaceConfig(
+                profiles=["admin"],
+                model="chatgpt/gpt-5.3-codex-spark",
+            )
+        },
     )
     monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings)
 
@@ -100,3 +105,4 @@ def test_dynamic_thread_folder_resolves_parent_workspace_config(monkeypatch):
 
     assert resolved is not None
     assert resolved.repo == ["crypdick/pynchy"]
+    assert resolved.model == "chatgpt/gpt-5.3-codex-spark"

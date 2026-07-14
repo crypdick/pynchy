@@ -414,6 +414,7 @@ class RepoConfig(_StrictModel):
 
 class WorkspaceConfig(_StrictModel):
     profiles: list[ValidatedProfileName] = Field(default_factory=list)
+    model: str | None = None
 
 
 class ReposConfig(_StrictModel):

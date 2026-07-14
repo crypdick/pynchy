@@ -1682,13 +1682,17 @@ class TestContainerInputAgentCoreConfig:
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex-spark"
         assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
-    def test_workspace_model_override_replaces_global_model(self):
+    def test_direct_workspace_model_overrides_profile_and_global_model(self):
         profiles, workspace = _profile_workspace(
             "codex-workspace",
             model="chatgpt/gpt-5.3-codex-spark",
         )
+        workspace = WorkspaceConfig(
+            profiles=workspace.profiles,
+            model="chatgpt/gpt-5.3-codex",
+        )
         settings = make_settings(
-            agent=AgentConfig(model="chatgpt/gpt-5.3-codex"),
+            agent=AgentConfig(model="chatgpt/gpt-5.3-codex-mini"),
             profiles=profiles,
             workspaces={TEST_GROUP.folder: workspace},
         )
@@ -1700,10 +1704,17 @@ class TestContainerInputAgentCoreConfig:
                 return_value=settings,
             ),
         ):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input(
+                [],
+                self._ctx(),
+                "chat",
+                TEST_GROUP,
+                is_scheduled_task=True,
+            )
 
         assert result.agent_core_config is not None
-        assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex-spark"
+        assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
+        assert result.is_scheduled_task is True
         assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
 
     @pytest.mark.asyncio

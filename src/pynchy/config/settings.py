@@ -25,7 +25,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotat
     Iterable,
     Sequence,
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -268,6 +268,36 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _reject_claude_sdk_model_overrides(self) -> Settings:
+        """Reject model settings that the built-in Claude SDK core cannot honor."""
+        if self.agent.default_core != "claude":
+            return self
+
+        override_paths: list[str] = []
+        if self.agent.model is not None:
+            override_paths.append("agent.model")
+        override_paths.extend(
+            f"profiles.{profile_name}.model"
+            for profile_name, profile in self.profiles.items()
+            if profile.model is not None
+        )
+        override_paths.extend(
+            f"workspaces.{workspace_name}.model"
+            for workspace_name, workspace in self.workspaces.items()
+            if workspace.model is not None
+        )
+        if not override_paths:
+            return self
+
+        configured_paths = ", ".join(dict.fromkeys(override_paths))
+        message = (
+            "The Claude SDK core currently hard-codes its model to 'opus'; model overrides "
+            "are not supported. Remove the configured model setting(s): "
+            f"{configured_paths}. Use [agent].default_core = 'claude-cli' to select a model."
+        )
+        raise ValueError(message)
+
+    @model_validator(mode="after")
     def _derive_host_cron_jobs(self) -> Settings:
         """Adapt [jobs.*] host entries to the existing Temporal host-cron path."""
         derived = dict(self.cron_jobs)
@@ -332,7 +362,20 @@ class Settings(BaseSettings):
         if workspace is None:
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
-        return merge_workspace_profiles([self.profiles[name] for name in profile_names])
+        resolved = merge_workspace_profiles([self.profiles[name] for name in profile_names])
+        if workspace.model is not None:
+            return replace(resolved, model=workspace.model)
+        return resolved
+
+    def configured_agent_models(self) -> tuple[str, ...]:
+        """Return the distinct model routes configured globally or per workspace."""
+        models = [self.agent.model]
+        models.extend(
+            resolved.model
+            for workspace_name in self.workspaces
+            if (resolved := self.resolved_workspace_config(workspace_name)) is not None
+        )
+        return tuple(dict.fromkeys(model for model in models if model))
 
     def mcp_tools_for_names(self, names: Iterable[str]) -> dict[str, McpToolConfig]:
         """Return strict MCP provider configs for selected MCP-backed tools."""

@@ -70,6 +70,58 @@ def test_workspace_profile_reference_must_exist() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("config", "configured_path"),
+    [
+        (
+            {"agent": {"default_core": "claude", "model": "custom-model"}},
+            "agent.model",
+        ),
+        (
+            {
+                "agent": {"default_core": "claude"},
+                "profiles": {"unused": {"model": "custom-model"}},
+            },
+            "profiles.unused.model",
+        ),
+        (
+            {
+                "agent": {"default_core": "claude"},
+                "workspaces": {"admin": {"model": "custom-model"}},
+            },
+            "workspaces.admin.model",
+        ),
+    ],
+)
+def test_claude_sdk_rejects_model_overrides(config, configured_path: str) -> None:
+    with pytest.raises(
+        ValidationError, match="currently hard-codes its model to 'opus'"
+    ) as exc_info:
+        validate_settings_mapping(config)
+
+    assert configured_path in str(exc_info.value)
+
+
+def test_claude_cli_accepts_workspace_model_override() -> None:
+    settings = validate_settings_mapping(
+        {
+            "agent": {"default_core": "claude-cli", "model": "global-model"},
+            "profiles": {"base": {"model": "profile-model"}},
+            "workspaces": {
+                "admin": {
+                    "profiles": ["base"],
+                    "model": "workspace-model",
+                }
+            },
+        }
+    )
+
+    resolved = settings.resolved_workspace_config("admin")
+
+    assert resolved is not None
+    assert resolved.model == "workspace-model"
+
+
 def test_agent_job_targets_configured_workspace() -> None:
     settings = _settings(
         jobs={
