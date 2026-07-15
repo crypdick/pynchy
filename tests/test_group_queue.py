@@ -768,6 +768,51 @@ class TestStopActiveProcess:
         completions[0].set()
         await asyncio.sleep(0.05)
 
+
+class TestDeferredToolBoundaryInterrupt:
+    def test_host_runner_rejects_ipc_messages_for_boundary_delivery(self, queue: GroupQueue):
+        """Host execution has no IPC watcher and must leave input pending."""
+        state = queue._get_group("group1@g.us")
+        state.active = True
+        state.group_folder = "pynchy-dev"
+        state.is_host_process = True
+
+        assert queue.send_message("group1@g.us", "follow-up") is False
+
+    async def test_stops_only_when_a_deferred_interrupt_is_requested(self, queue: GroupQueue):
+        state = queue._get_group("group1@g.us")
+        state.active = True
+
+        assert await queue.interrupt_after_tool_result("group1@g.us") is False
+
+        queue.defer_interrupt_until_tool_result("group1@g.us")
+        with patch.object(queue, "stop_active_process", new_callable=AsyncMock) as stop:
+            assert await queue.interrupt_after_tool_result("group1@g.us") is True
+
+        stop.assert_awaited_once_with("group1@g.us")
+        assert state.defer_interrupt_until_tool_result is False
+
+    async def test_stops_host_runner_without_container_cleanup(self, queue: GroupQueue):
+        state = queue._get_group("group1@g.us")
+        state.active = True
+        proc = AsyncMock(spec=asyncio.subprocess.Process)
+        proc.returncode = None
+        queue.register_process(
+            "group1@g.us",
+            proc,
+            "host-agent-runner",
+            "pynchy-dev",
+            is_host_process=True,
+        )
+
+        with patch(
+            "pynchy.host.orchestrator.concurrency.stop_host_process",
+            new_callable=AsyncMock,
+        ) as stop:
+            await queue.stop_active_process("group1@g.us")
+
+        stop.assert_awaited_once_with(proc)
+
     async def test_skips_graceful_stop_when_already_exited(self, queue: GroupQueue, tmp_path):
         """stop_active_process skips _graceful_stop if process already exited."""
         completions: list[asyncio.Event] = []

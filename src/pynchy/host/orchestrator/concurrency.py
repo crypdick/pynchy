@@ -25,6 +25,7 @@ from pynchy.host.container_manager.ipc.write import (
     write_ipc_message,
 )
 from pynchy.host.container_manager.security.middleware import PolicyDeniedError
+from pynchy.host.orchestrator.host_runner import stop_host_process
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
@@ -47,6 +48,8 @@ class GroupState:
     group_folder: str | None = None
     invocation_ts: float = 0.0  # Monotonic timestamp for SecurityGate keying
     retry_count: int = 0
+    defer_interrupt_until_tool_result: bool = False
+    is_host_process: bool = False
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
@@ -58,6 +61,8 @@ class GroupState:
         self.container_name = None
         self.group_folder = None
         self.invocation_ts = 0.0
+        self.defer_interrupt_until_tool_result = False
+        self.is_host_process = False
 
 
 class GroupQueue:
@@ -176,13 +181,15 @@ class GroupQueue:
         )
         return True
 
-    def register_process(
+    def register_process(  # noqa: PLR0913, RUF100 - process registration records all queue cleanup state.
         self,
         group_jid: str,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None = None,
         invocation_ts: float = 0.0,
+        *,
+        is_host_process: bool = False,
     ) -> None:
         """Associate a running container process with a group.
 
@@ -195,6 +202,22 @@ class GroupQueue:
         if group_folder:
             state.group_folder = group_folder
         state.invocation_ts = invocation_ts
+        state.is_host_process = is_host_process
+
+    def defer_interrupt_until_tool_result(self, group_jid: str) -> None:
+        """Queue an active turn for interruption after its current tool completes."""
+        state = self._get_group(group_jid)
+        if state.active:
+            state.defer_interrupt_until_tool_result = True
+
+    async def interrupt_after_tool_result(self, group_jid: str) -> bool:
+        """Interrupt a queued active turn only after a completed tool event."""
+        state = self._get_group(group_jid)
+        if not state.defer_interrupt_until_tool_result:
+            return False
+        state.defer_interrupt_until_tool_result = False
+        await self.stop_active_process(group_jid)
+        return True
 
     def is_active_task(self, group_jid: str) -> bool:
         """Check if the active container for this group is a scheduled task."""
@@ -225,6 +248,10 @@ class GroupQueue:
         """Send a follow-up message to the active container via IPC file."""
         state = self._get_group(group_jid)
         if not state.active or not state.group_folder:
+            return False
+        if state.is_host_process:
+            # Host runners have no IPC watcher. Returning False leaves the
+            # message pending for the next safe tool-result boundary instead.
             return False
 
         try:
@@ -262,6 +289,12 @@ class GroupQueue:
         """
         state = self._get_group(group_jid)
 
+        proc = state.process
+        if state.is_host_process:
+            if state.active and proc is not None:
+                await stop_host_process(proc)
+            return
+
         # Destroy persistent session (handles its own graceful stop + docker rm)
         if state.group_folder:
             await container_session.destroy_session(state.group_folder)
@@ -273,7 +306,6 @@ class GroupQueue:
         self.close_stdin(group_jid)
 
         # Force-stop the container process (for one-shot containers without sessions)
-        proc = state.process
         container_name = state.container_name
         if proc and container_name and proc.returncode is None:
             await container_process._graceful_stop(  # noqa: SLF001, RUF100 - queue owns force-stopping active container processes.

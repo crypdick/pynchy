@@ -58,6 +58,11 @@ tail -n 200 "$PYNCHY_REMOTE_ROOT/logs/pynchy.log" | grep groupCount
 
 ## Deploy & Observe
 
+Before deploying source changes, commit one logical change on a feature branch
+and merge it into `main`. Do not leave the production checkout dirty or deploy
+an uncommitted implementation. Deployment-specific ignored configuration may
+change separately when needed, but source changes always go through a commit.
+
 ```bash
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
 PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"

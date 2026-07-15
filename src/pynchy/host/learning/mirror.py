@@ -50,6 +50,27 @@ def prepare_vault_mount_root(paths: LearningPaths) -> Path:
     return mirror_root
 
 
+def prepare_full_vault_host_root(paths: LearningPaths) -> Path:
+    """Prepare a full vault mirror for an admin agent running directly on the host.
+
+    Apple containers receive only their profile subtree. An admin host run may
+    need shared operational notes outside that subtree, but must not depend on
+    direct access to the TCC-protected Documents path.
+    """
+    if not should_use_vault_mount_mirror():
+        return paths.vault_root
+
+    mirror_root = get_settings().data_dir / "learning" / "host-vault-mirrors" / paths.profile_slug
+    shutil.copytree(paths.vault_root, mirror_root, dirs_exist_ok=True, symlinks=True)
+    logger.warning(
+        "Using full mirrored Obsidian vault for admin host execution",
+        vault_root=str(paths.vault_root),
+        mirror_root=str(mirror_root),
+        profile=paths.profile_slug,
+    )
+    return mirror_root
+
+
 def sync_vault_mount_mirror(paths: LearningPaths) -> None:
     """Copy successful reviewer changes from the local mirror back to the vault."""
     if not should_use_vault_mount_mirror():

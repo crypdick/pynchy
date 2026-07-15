@@ -460,6 +460,8 @@ async def process_group_messages(
             output_sent_to_user = True
         if result.status == "error":
             had_error = True
+        if result.type == "tool_result":
+            await deps.queue.interrupt_after_tool_result(chat_jid)
 
     try:
         agent_result = await deps.run_agent(

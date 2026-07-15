@@ -33,7 +33,6 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound ro
     OutboundEventType,
     WorkspaceProfile,
 )
-from pynchy.utils import create_background_task
 
 
 async def _route_incoming_group(
@@ -175,6 +174,10 @@ async def _route_pending_messages(
         )
         return
 
+    # A host runner has no IPC watcher, so send_message deliberately returns
+    # False while one is active. Defer the pending input until Codex finishes
+    # its current tool; on an idle group this is a harmless no-op.
+    deps.queue.defer_interrupt_until_tool_result(group_jid)
     await _start_new_interactive_turn(deps, group_jid, group, group_messages[0])
 
 
@@ -237,12 +240,11 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
     interrupt the running task.
     """
     if request.is_btw:
-        # Non-interrupting — best-effort forward to the running container
-        # via IPC.  The cursor is NOT advanced: the container may never
-        # read the IPC file (e.g. the agent calls finished_work() before
-        # reaching wait_for_ipc_message).  We mark pending_messages so
-        # _drain_group reprocesses them after the task exits.
+        # Preserve the fast IPC handoff for persistent containers, but also
+        # defer a boundary interruption for host execution and long-running
+        # queries. The cursor remains unchanged so drain replays the message.
         request.deps.queue.send_message(request.group_jid, request.formatted)
+        request.deps.queue.defer_interrupt_until_tool_result(request.group_jid)
         msg = f"\u00bb [Forwarded] {request.last_content[:500]}"
         await request.deps.broadcast_to_channels(
             request.group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
@@ -272,13 +274,12 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         # reprocesses.
         request.deps.queue.enqueue_message_check(request.group_jid)
     else:
-        # Interrupting — kill the task, process messages after it dies.
+        # Queue regular messages until the active agent has completed its
+        # current tool. Killing immediately can lose a half-finished tool and
+        # makes host-mode agents unresponsive because they have no IPC loop.
         request.deps.queue.clear_pending_tasks(request.group_jid)
+        request.deps.queue.defer_interrupt_until_tool_result(request.group_jid)
         request.deps.queue.enqueue_message_check(request.group_jid)
-        create_background_task(
-            request.deps.queue.stop_active_process(request.group_jid),
-            name=f"interrupt-stop-{request.group_jid[:20]}",
-        )
 
 
 async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:

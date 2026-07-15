@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
 import pynchy.host.container_manager.process as container_process
@@ -456,6 +456,14 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             on_output=ctx.wrapped_on_output,
             timeout_seconds=ctx.config_timeout,
             env=_host_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
+            on_process_started=lambda proc: deps.queue.register_process(
+                chat_jid,
+                cast("asyncio.subprocess.Process", proc),
+                "host-agent-runner",
+                group.folder,
+                input_data.invocation_ts,
+                is_host_process=True,
+            ),
         )
 
     session = get_session(GroupFolder(group.folder))

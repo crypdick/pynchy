@@ -1897,6 +1897,17 @@ class TestContainerInputAgentCoreConfig:
         assert run_host_input.await_args.kwargs["env"]["OPENAI_BASE_URL"] == (
             "http://localhost:4000"
         )
+        on_process_started = run_host_input.await_args.kwargs["on_process_started"]
+        host_process = MagicMock(spec=asyncio.subprocess.Process)
+        on_process_started(host_process)
+        deps.queue.register_process.assert_called_once_with(
+            "chat",
+            host_process,
+            "host-agent-runner",
+            "host-group",
+            input_data.invocation_ts,
+            is_host_process=True,
+        )
 
     @pytest.mark.asyncio
     async def test_host_execution_clears_codex_session_missing_from_host_runtime(
