@@ -12,6 +12,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
+CONTINUE_AFTER_SAFE_INTERRUPT = "continue_after_safe_interrupt"
 
 
 @workflow.defn
@@ -25,20 +26,23 @@ class InteractiveMessageWorkflow:
         maximum_attempts: int,
         initial_retry_seconds: float,
     ) -> str:
-        return cast(
-            "str",
-            await workflow.execute_activity(
-                "run_interactive_message_turn",
-                chat_jid,
-                start_to_close_timeout=timedelta(hours=12),
-                heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
-                retry_policy=RetryPolicy(
-                    maximum_attempts=maximum_attempts,
-                    initial_interval=timedelta(seconds=initial_retry_seconds),
-                    backoff_coefficient=2.0,
+        while True:
+            result = cast(
+                "str",
+                await workflow.execute_activity(
+                    "run_interactive_message_turn",
+                    chat_jid,
+                    start_to_close_timeout=timedelta(hours=12),
+                    heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+                    retry_policy=RetryPolicy(
+                        maximum_attempts=maximum_attempts,
+                        initial_interval=timedelta(seconds=initial_retry_seconds),
+                        backoff_coefficient=2.0,
+                    ),
                 ),
-            ),
-        )
+            )
+            if result != CONTINUE_AFTER_SAFE_INTERRUPT:
+                return result
 
 
 @workflow.defn

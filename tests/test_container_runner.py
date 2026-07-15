@@ -1871,7 +1871,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=ctx,
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner.run_host_input",
+                "pynchy.host.orchestrator.host_execution.run_host_input",
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,
@@ -1971,7 +1971,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner.run_host_input",
+                "pynchy.host.orchestrator.host_execution.run_host_input",
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_input,

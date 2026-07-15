@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse, urlunparse
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
@@ -11,9 +14,48 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.learning.mirror import prepare_full_vault_host_root
 from pynchy.host.learning.paths import resolve_learning_paths
+from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.logger import logger
+from pynchy.types import ContainerInput, ContainerOutput
+
+if TYPE_CHECKING:
+    import asyncio
 
 _CODEX_SESSION_PREFIX = "codex:"
+HostOutput = Callable[[ContainerOutput], Awaitable[None]]
+
+
+class HostProcessQueue(Protocol):
+    """Queue operations that bridge a direct Temporal host process."""
+
+    def register_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
+        self,
+        group_jid: str,
+        proc: asyncio.subprocess.Process | None,
+        container_name: str,
+        group_folder: str | None = None,
+        invocation_ts: float = 0.0,
+        *,
+        is_host_process: bool = False,
+    ) -> None: ...
+
+    def boundary_interrupt_requested(self, group_jid: str) -> bool: ...
+
+    def release_external_process(self, group_jid: str) -> bool: ...
+
+
+@dataclass(frozen=True)
+class HostAgentTurnRequest:
+    """Inputs required to run and track one direct host agent turn."""
+
+    input_data: ContainerInput
+    cwd: Path
+    on_output: HostOutput
+    timeout_seconds: int | float
+    env: dict[str, str]
+    queue: HostProcessQueue
+    chat_jid: str
+    group_folder: str
 
 
 def codex_thread_id(session_id: str | None) -> str | None:
@@ -66,6 +108,35 @@ def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
     ):
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
     return env
+
+
+async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
+    """Run a host turn while exposing its process to inbound message routing."""
+    try:
+        result = await run_host_input(
+            request.input_data,
+            cwd=request.cwd,
+            on_output=request.on_output,
+            timeout_seconds=request.timeout_seconds,
+            env=request.env,
+            on_process_started=lambda proc: request.queue.register_process(
+                request.chat_jid,
+                cast("asyncio.subprocess.Process", proc),
+                "host-agent-runner",
+                request.group_folder,
+                request.input_data.invocation_ts,
+                is_host_process=True,
+            ),
+            is_interrupted=lambda: request.queue.boundary_interrupt_requested(request.chat_jid),
+        )
+    except BaseException:
+        request.queue.release_external_process(request.chat_jid)
+        raise
+
+    has_pending_messages = request.queue.release_external_process(request.chat_jid) is True
+    if result == "success" and has_pending_messages:
+        return "success_with_pending_input"
+    return result
 
 
 def _codex_home() -> Path:

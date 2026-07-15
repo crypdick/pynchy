@@ -13,6 +13,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _require_scheduler_deps,
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
+from pynchy.host.orchestrator.temporal.workflows import CONTINUE_AFTER_SAFE_INTERRUPT
 
 _INTERACTIVE_TURN_RETRY_REQUESTED = "Interactive message turn requested retry"
 
@@ -22,23 +23,37 @@ def interactive_message_workflow_id(chat_jid: str) -> str:
     return f"pynchy-interactive-turn-{safe_workflow_fragment(chat_jid)}"
 
 
-@activity.defn(name="run_interactive_message_turn")
-async def run_interactive_message_turn(chat_jid: str) -> str:
-    """Temporal activity that runs one interactive message turn."""
-    try:
-        async with activity_heartbeats(chat_jid):
-            handled = await _process_interactive_message_turn(_require_scheduler_deps(), chat_jid)
-        if not handled:
-            _record_activity_result(chat_jid, "retry_requested")
-            raise RuntimeError(_INTERACTIVE_TURN_RETRY_REQUESTED)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
-        _record_activity_result(chat_jid, "error", str(exc))
-        raise
+async def _run_message_turn_activity(chat_jid: str) -> messaging_pipeline.ProcessGroupResult:
+    """Run one message turn while sending the Temporal heartbeat."""
+    async with activity_heartbeats(chat_jid):
+        return await _process_interactive_message_turn(_require_scheduler_deps(), chat_jid)
+
+
+def _activity_result(chat_jid: str, handled: messaging_pipeline.ProcessGroupResult) -> str:
+    """Translate one message-turn result into the workflow's next action."""
+    if handled is messaging_pipeline.CONTINUE_AFTER_SAFE_INTERRUPT:
+        _record_activity_result(chat_jid, CONTINUE_AFTER_SAFE_INTERRUPT)
+        return CONTINUE_AFTER_SAFE_INTERRUPT
+    if not handled:
+        _record_activity_result(chat_jid, "retry_requested")
+        raise RuntimeError(_INTERACTIVE_TURN_RETRY_REQUESTED)
     _record_activity_result(chat_jid, "completed")
     return "completed"
 
 
-async def _process_interactive_message_turn(deps: object, chat_jid: str) -> bool:
+@activity.defn(name="run_interactive_message_turn")
+async def run_interactive_message_turn(chat_jid: str) -> str:
+    """Temporal activity that runs one interactive message turn."""
+    try:
+        return _activity_result(chat_jid, await _run_message_turn_activity(chat_jid))
+    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
+        _record_activity_result(chat_jid, "error", str(exc))
+        raise
+
+
+async def _process_interactive_message_turn(
+    deps: object, chat_jid: str
+) -> messaging_pipeline.ProcessGroupResult:
     return await messaging_pipeline.process_group_messages(
         cast("messaging_pipeline.MessageHandlerDeps", deps),
         chat_jid,

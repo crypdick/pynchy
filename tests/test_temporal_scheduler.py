@@ -933,6 +933,24 @@ class TestTemporalSchedulerRuntime:
             await temporal_scheduler.run_interactive_message_turn("slack:C123")
 
     @pytest.mark.asyncio
+    async def test_run_interactive_message_activity_continues_after_safe_interrupt(
+        self, monkeypatch
+    ):
+        def fake_process_message_turn(_runner_deps, _chat_jid):
+            return asyncio.sleep(
+                0, result=temporal_interactive.messaging_pipeline.CONTINUE_AFTER_SAFE_INTERRUPT
+            )
+
+        monkeypatch.setattr(
+            temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
+        )
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        result = await temporal_scheduler.run_interactive_message_turn("slack:C123")
+
+        assert result == temporal_interactive.CONTINUE_AFTER_SAFE_INTERRUPT
+
+    @pytest.mark.asyncio
     async def test_run_deploy_activity_builds_then_finalizes(self, monkeypatch):
         deps = NullSchedulerDeps()
         deps.broadcast_host_message = AsyncMock()

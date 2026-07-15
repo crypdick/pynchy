@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.session as session_module
@@ -46,6 +46,14 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 type Group = types.WorkspaceProfile
+
+
+class _ContinueAfterSafeInterrupt:
+    """Signal that a pending message needs a fresh Temporal activity."""
+
+
+CONTINUE_AFTER_SAFE_INTERRUPT = _ContinueAfterSafeInterrupt()
+type ProcessGroupResult = bool | _ContinueAfterSafeInterrupt
 
 
 @runtime_checkable
@@ -382,10 +390,34 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
     return True
 
 
+async def _continue_after_host_turn(
+    request: _FinalizeCursorRetryRequest,
+) -> _ContinueAfterSafeInterrupt | None:
+    """Commit a completed host boundary before Temporal starts its next activity."""
+    if request.agent_result == "interrupted":
+        # The host process was stopped only after Codex reported a completed
+        # tool. Keep later input pending and commit only the interrupted turn's
+        # cursor so the next Temporal activity receives that follow-up.
+        request.deps.pop_dispatched(request.chat_jid, request.missed_messages[-1].timestamp)
+        await complete_turn_with_cursor(
+            request.deps,
+            request.chat_jid,
+            request.missed_messages[-1].timestamp,
+            request.turn_id,
+        )
+        return CONTINUE_AFTER_SAFE_INTERRUPT
+
+    if request.agent_result == "success_with_pending_input":
+        await _finalize_cursor_and_retry(replace(request, agent_result="success"))
+        return CONTINUE_AFTER_SAFE_INTERRUPT
+
+    return None
+
+
 async def process_group_messages(
     deps: MessageHandlerDeps,
     chat_jid: str,
-) -> bool:
+) -> ProcessGroupResult:
     """Process all pending messages for a group. Called by GroupQueue."""
     s = get_settings()
     group = deps.workspaces.get(chat_jid)
@@ -396,7 +428,7 @@ async def process_group_messages(
         deps,
         chat_jid,
         group,
-        lambda jid: process_group_messages(deps, jid),
+        lambda jid: _process_group_messages_as_bool(deps, jid),
     )
     if resumed is not None:
         return resumed
@@ -478,7 +510,6 @@ async def process_group_messages(
         await release_in_flight_turn_claim(turn_id)
         raise
 
-    process_ms = (time.monotonic() - process_start) * 1000
     await deps.set_typing_on_channels(chat_jid, is_typing=False)
     deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
     _register_idle_zzz_callback(
@@ -491,26 +522,32 @@ async def process_group_messages(
     logger.info(
         "Message processing complete",
         group=group.name,
-        process_ms=round(process_ms),
+        process_ms=round((time.monotonic() - process_start) * 1000),
         had_error=had_error,
         output_sent=output_sent_to_user,
     )
 
     try:
-        return await _finalize_cursor_and_retry(
-            _FinalizeCursorRetryRequest(
-                deps=deps,
-                chat_jid=chat_jid,
-                group=group,
-                missed_messages=missed_messages,
-                agent_result=agent_result,
-                had_error=had_error,
-                output_sent_to_user=output_sent_to_user,
-                learning_summary=learning_summary,
-                s=s,
-                turn_id=turn_id,
-            )
+        finalization = _FinalizeCursorRetryRequest(
+            deps=deps,
+            chat_jid=chat_jid,
+            group=group,
+            missed_messages=missed_messages,
+            agent_result=agent_result,
+            had_error=had_error,
+            output_sent_to_user=output_sent_to_user,
+            learning_summary=learning_summary,
+            s=s,
+            turn_id=turn_id,
         )
+        if continuation := await _continue_after_host_turn(finalization):
+            return continuation
+        return await _finalize_cursor_and_retry(finalization)
     except BaseException:
         await release_in_flight_turn_claim(turn_id)
         raise
+
+
+async def _process_group_messages_as_bool(deps: MessageHandlerDeps, chat_jid: str) -> bool:
+    """Adapt a normal message turn for interrupted-turn recovery callbacks."""
+    return bool(await process_group_messages(deps, chat_jid))

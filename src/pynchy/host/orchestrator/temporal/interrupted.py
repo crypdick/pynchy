@@ -53,8 +53,15 @@ async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> bool:
         message_deps,
         group,
         turn,
-        lambda jid: messaging_pipeline.process_group_messages(message_deps, jid),
+        lambda jid: _process_group_messages_as_bool(message_deps, jid),
     )
+
+
+async def _process_group_messages_as_bool(
+    deps: messaging_pipeline.MessageHandlerDeps, chat_jid: str
+) -> bool:
+    """Keep interrupted-turn recovery on its established boolean contract."""
+    return bool(await messaging_pipeline.process_group_messages(deps, chat_jid))
 
 
 @activity.defn(name="run_interrupted_agent_turn")

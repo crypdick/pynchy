@@ -156,3 +156,39 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
     assert payload["cwd"] == str(tmp_path)
     assert payload["input"]["group_folder"] == "admin-host"
     assert payload["input"]["agent_core_module"] == "agent_runner.cores.codex"
+
+
+@pytest.mark.asyncio
+async def test_run_host_input_reports_a_planned_boundary_interrupt_without_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A safe host interruption should drain pending input rather than retry as an error."""
+    fake_proc = _FakeProcess([], returncode=-2)
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    outputs: list[ContainerOutput] = []
+    input_data = ContainerInput(
+        messages=[{"sender_name": "Ada", "timestamp": "t", "content": "hi"}],
+        session_id="session-0",
+        group_folder="admin-host",
+        chat_jid="slack:C123",
+        is_admin=True,
+        agent_core_module="agent_runner.cores.codex",
+        agent_core_class="CodexCLIAgentCore",
+    )
+
+    status = await run_host_input(
+        input_data,
+        cwd=tmp_path,
+        on_output=outputs.append,
+        timeout_seconds=5,
+        is_interrupted=lambda: True,
+    )
+
+    assert status == "interrupted"
+    assert outputs == []

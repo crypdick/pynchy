@@ -50,6 +50,8 @@ class GroupState:
     retry_count: int = 0
     defer_interrupt_until_tool_result: bool = False
     is_host_process: bool = False
+    is_external_run: bool = False
+    boundary_interrupt_requested: bool = False
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
@@ -63,6 +65,8 @@ class GroupState:
         self.invocation_ts = 0.0
         self.defer_interrupt_until_tool_result = False
         self.is_host_process = False
+        self.is_external_run = False
+        self.boundary_interrupt_requested = False
 
 
 class GroupQueue:
@@ -203,12 +207,27 @@ class GroupQueue:
             state.group_folder = group_folder
         state.invocation_ts = invocation_ts
         state.is_host_process = is_host_process
+        # Interactive Temporal activities call the message pipeline directly,
+        # rather than through this queue. Adopt their process so inbound
+        # routing can still defer host-mode messages at a tool boundary.
+        if not state.active:
+            state.active = True
+            state.is_external_run = True
+
+    def release_external_process(self, group_jid: str) -> bool:
+        """Release a direct Temporal process and report queued user input."""
+        state = self._get_group(group_jid)
+        has_pending_messages = state.pending_messages
+        if state.is_external_run:
+            state.release()
+        return has_pending_messages
 
     def defer_interrupt_until_tool_result(self, group_jid: str) -> None:
         """Queue an active turn for interruption after its current tool completes."""
         state = self._get_group(group_jid)
         if state.active:
             state.defer_interrupt_until_tool_result = True
+            state.pending_messages = True
 
     async def interrupt_after_tool_result(self, group_jid: str) -> bool:
         """Interrupt a queued active turn only after a completed tool event."""
@@ -216,8 +235,13 @@ class GroupQueue:
         if not state.defer_interrupt_until_tool_result:
             return False
         state.defer_interrupt_until_tool_result = False
+        state.boundary_interrupt_requested = True
         await self.stop_active_process(group_jid)
         return True
+
+    def boundary_interrupt_requested(self, group_jid: str) -> bool:
+        """Whether the active host process was stopped at a tool boundary."""
+        return self._get_group(group_jid).boundary_interrupt_requested
 
     def is_active_task(self, group_jid: str) -> bool:
         """Check if the active container for this group is a scheduled task."""

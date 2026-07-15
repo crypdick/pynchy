@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
 import pynchy.host.container_manager.process as container_process
@@ -32,12 +32,12 @@ from pynchy.host.container_manager.orchestrator import (
     stable_container_name,
 )
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
+from pynchy.host.orchestrator.host_execution import HostAgentTurnRequest, run_host_agent_turn
 from pynchy.host.orchestrator.host_execution import (
     codex_thread_exists_in_host_runtime as _codex_thread_exists_in_host_runtime,
 )
 from pynchy.host.orchestrator.host_execution import host_agent_env_vars as _host_agent_env_vars
 from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
-from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
@@ -450,20 +450,17 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             group,
             is_scheduled_task=is_scheduled_task,
         )
-        return await run_host_input(
-            input_data,
-            cwd=host_cwd,
-            on_output=ctx.wrapped_on_output,
-            timeout_seconds=ctx.config_timeout,
-            env=_host_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
-            on_process_started=lambda proc: deps.queue.register_process(
-                chat_jid,
-                cast("asyncio.subprocess.Process", proc),
-                "host-agent-runner",
-                group.folder,
-                input_data.invocation_ts,
-                is_host_process=True,
-            ),
+        return await run_host_agent_turn(
+            HostAgentTurnRequest(
+                input_data=input_data,
+                cwd=host_cwd,
+                on_output=ctx.wrapped_on_output,
+                timeout_seconds=ctx.config_timeout,
+                env=_host_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
+                queue=deps.queue,
+                chat_jid=chat_jid,
+                group_folder=group.folder,
+            )
         )
 
     session = get_session(GroupFolder(group.folder))
