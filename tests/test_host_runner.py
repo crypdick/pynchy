@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import signal
 from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from pynchy.host.orchestrator.host_runner import run_host_input
+from pynchy.host.orchestrator.host_runner import run_host_input, stop_host_process
 from pynchy.types import ContainerInput, ContainerOutput
 
 if TYPE_CHECKING:
@@ -52,11 +54,12 @@ class _FakeStderr:
 
 
 class _FakeProcess:
-    def __init__(self, stdout_lines: list[bytes], returncode: int = 0) -> None:
+    def __init__(self, stdout_lines: list[bytes], returncode: int | None = 0) -> None:
         self.stdin = _FakeStdin()
         self.stdout = _FakeStdout(stdout_lines)
         self.stderr = _FakeStderr()
         self.returncode = returncode
+        self.pid = 123
         self.killed = False
 
     async def wait(self) -> int:
@@ -65,6 +68,22 @@ class _FakeProcess:
     def kill(self) -> None:
         self.killed = True
         self.returncode = -9
+
+
+@pytest.mark.asyncio
+async def test_stop_host_process_signals_the_runner_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host turns must stop both the runner and its Codex child, not just the runner."""
+    fake_proc = _FakeProcess([], returncode=None)
+    signals: list[tuple[int, signal.Signals]] = []
+
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    await stop_host_process(fake_proc)
+
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+    assert fake_proc.killed is False
 
 
 @pytest.mark.asyncio
@@ -130,6 +149,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
     assert created["cmd"][4] == "python"
     assert created["kwargs"]["cwd"] == str(tmp_path)
     assert created["kwargs"]["env"]["OPENAI_API_KEY"] == fake_openai_key
+    assert created["kwargs"]["start_new_session"] is True
     assert fake_proc.stdin.closed is True
 
     payload = json.loads(fake_proc.stdin.buffer.decode())

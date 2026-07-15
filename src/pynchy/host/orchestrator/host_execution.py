@@ -9,6 +9,8 @@ from urllib.parse import urlparse, urlunparse
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import build_agent_env_vars
+from pynchy.host.learning.mirror import prepare_full_vault_host_root
+from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.logger import logger
 
 _CODEX_SESSION_PREFIX = "codex:"
@@ -57,6 +59,8 @@ def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
     for key in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"):
         if key in env:
             env[key] = _host_reachable_gateway_url(env[key])
+    if is_admin and (learning_paths := resolve_learning_paths(group_folder)) is not None:
+        env["OBSIDIAN_VAULT_PATH"] = str(prepare_full_vault_host_root(learning_paths))
     return env
 
 

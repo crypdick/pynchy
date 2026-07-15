@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -45,6 +47,9 @@ class _HostRunnerProcess(Protocol):
 
     @property
     def returncode(self) -> int | None: ...
+
+    @property
+    def pid(self) -> int: ...
 
     async def wait(self) -> int: ...
     def kill(self) -> None: ...
@@ -99,13 +104,30 @@ async def _stream_outputs(proc: _HostRunnerProcess, on_output: OnOutput) -> bool
     return saw_error
 
 
-async def run_host_input(
+async def stop_host_process(proc: _HostRunnerProcess) -> None:
+    """Stop the host runner and its Codex child process group at a safe boundary."""
+    if proc.returncode is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGINT)
+    except (ProcessLookupError, PermissionError):
+        proc.kill()
+        return
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    except TimeoutError:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+
+
+async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps execution inputs explicit.
     input_data: ContainerInput,
     *,
     cwd: Path,
     on_output: OnOutput,
     timeout_seconds: int | float,
     env: dict[str, str] | None = None,
+    on_process_started: Callable[[_HostRunnerProcess], None] | None = None,
 ) -> str:
     """Run one agent turn directly on the host via a child process."""
     proc = await asyncio.create_subprocess_exec(
@@ -116,7 +138,10 @@ async def run_host_input(
         cwd=str(cwd),
         env=_host_runner_env(env),
         limit=_STREAM_LINE_LIMIT,
+        start_new_session=True,
     )
+    if on_process_started is not None:
+        on_process_started(proc)
     await _write_payload(proc, _host_runner_payload(input_data, cwd))
     stderr_task = asyncio.create_task(_read_stderr(proc), name="host-runner-stderr")
 

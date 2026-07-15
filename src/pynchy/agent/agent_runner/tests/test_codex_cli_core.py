@@ -102,6 +102,28 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     assert hooks[0]["hooks"][0]["command"].endswith("-m agent_runner.security.hook_entry")
 
 
+def test_start_preserves_native_codex_plugin_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+    _set_gateway_env(monkeypatch)
+    (tmp_path / "config.toml").write_text(
+        "[marketplaces.obsidian-knowledge]\n"
+        'source = "/opt/plugins/obsidian-knowledge"\n\n'
+        '[plugins."obsidian-knowledge@obsidian-knowledge"]\n'
+        "enabled = true\n\n"
+        "[unrelated]\n"
+        "enabled = true\n"
+    )
+
+    asyncio.run(_core().start())
+
+    config = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert config["marketplaces"]["obsidian-knowledge"]["source"] == (
+        "/opt/plugins/obsidian-knowledge"
+    )
+    assert config["plugins"]["obsidian-knowledge@obsidian-knowledge"]["enabled"] is True
+    assert "unrelated" not in config
+
+
 def test_start_writes_configured_model_reasoning_effort(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     _set_gateway_env(monkeypatch)

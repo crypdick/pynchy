@@ -52,7 +52,6 @@ _PR_SETTINGS = f"{_PR}.get_settings"
 _PR_NEW_MSGS = f"{_PR}.get_new_messages"
 _PR_MSGS_SINCE = f"{_PR}.get_messages_since"
 _PR_INTERCEPT = f"{_PR}.intercept_special_command"
-_PR_BG_TASK = f"{_PR}.create_background_task"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -154,16 +153,6 @@ def _patch_msgs_since(messages: list):
 
 def _patch_fmt_sdk():
     return patch(_P_FMT_SDK, return_value=[{"content": "hello"}])
-
-
-def _patch_bg_task():
-    """Patch create_background_task, closing coroutine args to avoid unawaited warnings."""
-
-    def _cleanup(coro, *, name=None):
-        if hasattr(coro, "close"):
-            coro.close()
-
-    return patch(_PR_BG_TASK, side_effect=_cleanup)
 
 
 # ---------------------------------------------------------------------------
@@ -564,6 +553,40 @@ class TestProcessGroupMessages:
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_tool_result_delivers_a_deferred_interrupt(self, tmp_path):
+        """A completed tool is the safe boundary for queued user input."""
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        msg = _make_message()
+        deps.queue.interrupt_after_tool_result = AsyncMock(return_value=True)
+
+        async def run_agent(*args, **kwargs):
+            on_output = args[3]
+            await on_output(
+                ContainerOutput(
+                    status="success",
+                    type="tool_result",
+                    tool_result_id="tool-1",
+                    tool_result_content="done",
+                )
+            )
+            return "success"
+
+        deps.run_agent.side_effect = run_agent
+
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_fmt_sdk(),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, jid)
+
+        assert result is True
+        deps.queue.interrupt_after_tool_result.assert_awaited_once_with(jid)
+
+    @pytest.mark.asyncio
     async def test_non_admin_without_trigger_still_runs(self, tmp_path):
         """Workspace config no longer gates non-admin runs on mention triggers."""
         group = _make_group(is_admin=False)
@@ -579,6 +602,30 @@ class TestProcessGroupMessages:
 
         assert result is True
         deps.run_agent.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_active_host_runner_defers_input_until_a_tool_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Host turns queue input because they cannot consume container IPC files."""
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        deps.queue.is_active_task.return_value = False
+        deps.queue.send_message.return_value = False
+        msg = _make_message(chat_jid=jid, timestamp="new-ts")
+        monkeypatch.setattr("pynchy.config.access.get_settings", make_settings)
+
+        with (
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(_PR_NEW_MSGS, new_callable=AsyncMock, return_value=([msg], "poll-ts")),
+            patch(_PR_MSGS_SINCE, new_callable=AsyncMock, return_value=[msg]),
+            patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
+        ):
+            await _run_loop_once(deps)
+
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.start_interactive_turn.assert_awaited_once_with(jid)
 
     @pytest.mark.asyncio
     async def test_cursor_rollback_on_save_state_failure(self, tmp_path):
@@ -1487,9 +1534,8 @@ class TestBtwNonInterruptingMessages:
         deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_non_btw_message_interrupts_active_task(self):
-        """A regular message (no 'btw' prefix) while a task runs should
-        kill the task and clear pending tasks."""
+    async def test_non_btw_message_defers_interrupt_until_tool_result(self):
+        """A regular message queues a boundary interruption and clears pending tasks."""
         jid = "group@g.us"
         group = _make_group(is_admin=True)
         deps = _make_deps(
@@ -1513,19 +1559,16 @@ class TestBtwNonInterruptingMessages:
                 return_value=[msg],
             ),
             patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
-            _patch_bg_task(),
         ):
             await _run_loop_once(deps)
 
-        # Task IS interrupted
         deps.queue.clear_pending_tasks.assert_called_once_with(jid)
-        deps.queue.stop_active_process.assert_called_once_with(jid)
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_btw_without_space_interrupts_task(self):
-        """'btwsomething' (no space after btw) should interrupt the task,
-        since only 'btw ' (with trailing space) is the non-interrupting
-        prefix."""
+    async def test_btw_without_space_defers_interrupt_until_tool_result(self):
+        """'btwsomething' queues the same boundary interruption as normal input."""
         jid = "group@g.us"
         group = _make_group(is_admin=True)
         deps = _make_deps(
@@ -1549,13 +1592,12 @@ class TestBtwNonInterruptingMessages:
                 return_value=[msg],
             ),
             patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
-            _patch_bg_task(),
         ):
             await _run_loop_once(deps)
 
-        # Should interrupt — "btw" without a space is a normal message
         deps.queue.clear_pending_tasks.assert_called_once_with(jid)
-        deps.queue.stop_active_process.assert_called_once_with(jid)
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_btw_only_checked_on_last_message(self):
@@ -1724,14 +1766,13 @@ class TestBtwNonInterruptingMessages:
                 return_value=[notice],
             ),
             patch(_PR_INTERCEPT, new_callable=AsyncMock, return_value=False),
-            _patch_bg_task(),
         ):
             await _run_loop_once(deps)
 
-        # Notice should reach the active container (interrupt path since
-        # it's not a "btw" message)
+        # The notice queues delivery at the active turn's next tool boundary.
         deps.queue.clear_pending_tasks.assert_called_once_with(jid)
-        deps.queue.stop_active_process.assert_called_once_with(jid)
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_system_notice_with_user_message_wakes_agent(self):
