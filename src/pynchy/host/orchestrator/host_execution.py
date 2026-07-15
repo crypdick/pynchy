@@ -59,8 +59,12 @@ def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
     for key in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"):
         if key in env:
             env[key] = _host_reachable_gateway_url(env[key])
-    if is_admin and (learning_paths := resolve_learning_paths(group_folder)) is not None:
-        env["OBSIDIAN_VAULT_PATH"] = str(prepare_full_vault_host_root(learning_paths))
+    if (
+        is_admin
+        and (learning_paths := resolve_learning_paths(group_folder)) is not None
+        and (host_vault_root := prepare_full_vault_host_root(learning_paths))
+    ):
+        env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
     return env
 
 

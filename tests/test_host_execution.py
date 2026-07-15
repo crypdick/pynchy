@@ -50,3 +50,15 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
 
     assert env["OPENAI_BASE_URL"] == "http://localhost:4000"
     assert env["OBSIDIAN_VAULT_PATH"] == str(tmp_path)
+
+
+def test_admin_host_execution_skips_missing_full_learning_vault_mirror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host_execution, "build_agent_env_vars", lambda **_kwargs: {})
+    monkeypatch.setattr(host_execution, "resolve_learning_paths", lambda _folder: object())
+    monkeypatch.setattr(host_execution, "prepare_full_vault_host_root", lambda _paths: None)
+
+    env = host_execution.host_agent_env_vars(is_admin=True, group_folder="pynchy-dev")
+
+    assert "OBSIDIAN_VAULT_PATH" not in env

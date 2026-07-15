@@ -50,21 +50,27 @@ def prepare_vault_mount_root(paths: LearningPaths) -> Path:
     return mirror_root
 
 
-def prepare_full_vault_host_root(paths: LearningPaths) -> Path:
-    """Prepare a full vault mirror for an admin agent running directly on the host.
+def prepare_full_vault_host_root(paths: LearningPaths) -> Path | None:
+    """Return a prepared full vault mirror for an admin host execution.
 
     Apple containers receive only their profile subtree. An admin host run may
-    need shared operational notes outside that subtree, but must not depend on
-    direct access to the TCC-protected Documents path.
+    need shared operational notes outside that subtree, but the launchd
+    process must not scan a TCC-protected Documents path. An operator prepares
+    this data-owned mirror from an authorized shell.
     """
     if not should_use_vault_mount_mirror():
         return paths.vault_root
 
     mirror_root = get_settings().data_dir / "learning" / "host-vault-mirrors" / paths.profile_slug
-    shutil.copytree(paths.vault_root, mirror_root, dirs_exist_ok=True, symlinks=True)
+    if not mirror_root.is_dir():
+        logger.warning(
+            "Prepared full Obsidian vault mirror is unavailable for admin host execution",
+            mirror_root=str(mirror_root),
+            profile=paths.profile_slug,
+        )
+        return None
     logger.warning(
-        "Using full mirrored Obsidian vault for admin host execution",
-        vault_root=str(paths.vault_root),
+        "Using prepared full Obsidian vault mirror for admin host execution",
         mirror_root=str(mirror_root),
         profile=paths.profile_slug,
     )

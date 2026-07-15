@@ -63,6 +63,19 @@ and merge it into `main`. Do not leave the production checkout dirty or deploy
 an uncommitted implementation. Deployment-specific ignored configuration may
 change separately when needed, but source changes always go through a commit.
 
+For an admin host agent that needs the full Obsidian vault on macOS, prepare
+the data-owned mirror from an authorized interactive or SSH shell; the launchd
+service itself must not scan a TCC-protected Documents path:
+
+```bash
+VAULT_ROOT="${OBSIDIAN_VAULT_ROOT:?set the source vault path}"
+PROFILE="${PYNCHY_LEARNING_PROFILE:?set the workspace profile}"
+mkdir -p "$PYNCHY_REMOTE_ROOT/data/learning/host-vault-mirrors/$PROFILE"
+rsync -a "$VAULT_ROOT/" "$PYNCHY_REMOTE_ROOT/data/learning/host-vault-mirrors/$PROFILE/"
+```
+
+Pynchy consumes this prepared mirror for host execution and leaves it unchanged.
+
 ```bash
 # Trigger a deploy (from HOST — use mcp__pynchy__deploy_changes from containers)
 PYNCHY_HOST="${PYNCHY_HOST:?set the live host}"
