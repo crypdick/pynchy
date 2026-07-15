@@ -68,6 +68,17 @@ class TestGroupQueue:
         assert state.active is False
         assert state.is_external_run is False
 
+    def test_external_process_release_clears_a_stale_queue_entry(self, queue: GroupQueue) -> None:
+        """A late continuation must not leave an idle group marked as pending."""
+        state = queue._get_group("group1@g.us")
+        state.pending_messages = True
+
+        has_pending_messages = queue.release_external_process("group1@g.us")
+
+        assert has_pending_messages is False
+        assert state.active is False
+        assert state.pending_messages is False
+
     async def test_only_runs_one_container_per_group(self, queue: GroupQueue):
         concurrent_count = 0
         max_concurrent = 0
