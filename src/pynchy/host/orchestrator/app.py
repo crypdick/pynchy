@@ -415,7 +415,7 @@ class PynchyApp:
 
     async def _process_group_messages(self, chat_jid: str) -> bool:
         """Delegates group processing to the message handler module."""
-        return await message_handler.process_group_messages(self, chat_jid)
+        return bool(await message_handler.process_group_messages(self, chat_jid))
 
     async def process_group_messages(self, chat_jid: str) -> bool:
         return await self._process_group_messages(chat_jid)

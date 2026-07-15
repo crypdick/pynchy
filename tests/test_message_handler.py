@@ -23,6 +23,7 @@ from pynchy.config.models import LearningConfig
 from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
+    CONTINUE_AFTER_SAFE_INTERRUPT,
     MessageHandlerDeps,
     execute_direct_command,
     intercept_special_command,
@@ -585,6 +586,36 @@ class TestProcessGroupMessages:
 
         assert result is True
         deps.queue.interrupt_after_tool_result.assert_awaited_once_with(jid)
+
+    @pytest.mark.asyncio
+    async def test_boundary_interrupt_preserves_the_follow_up_for_the_next_turn(self, tmp_path):
+        """A safe host interruption commits only the current input cursor."""
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        msg = _make_message(chat_jid=jid, timestamp="current-ts")
+        completed: list[tuple[str, str]] = []
+
+        async def complete_cursor(_deps, chat_jid, timestamp, _turn_id):
+            await asyncio.sleep(0)
+            completed.append((chat_jid, timestamp))
+
+        deps.run_agent = AsyncMock(return_value="interrupted")
+        with (
+            patch(_P_SETTINGS) as ms,
+            _patch_msgs_since([msg]),
+            _patch_fmt_sdk(),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.complete_turn_with_cursor",
+                new=complete_cursor,
+            ),
+        ):
+            ms.return_value = _settings_mock(tmp_path)
+            result = await process_group_messages(deps, jid)
+
+        assert result is CONTINUE_AFTER_SAFE_INTERRUPT
+        assert completed == [(jid, "current-ts")]
+        assert deps.pop_dispatched.call_args.args == (jid, "current-ts")
 
     @pytest.mark.asyncio
     async def test_non_admin_without_trigger_still_runs(self, tmp_path):

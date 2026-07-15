@@ -50,6 +50,24 @@ def queue():
 
 
 class TestGroupQueue:
+    def test_external_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
+        """Temporal-run host processes must be active even outside queue dispatch."""
+        queue.register_process(
+            "group1@g.us", None, "host-agent-runner", "group-one", is_host_process=True
+        )
+
+        queue.defer_interrupt_until_tool_result("group1@g.us")
+        state = queue._get_group("group1@g.us")
+
+        assert state.active is True
+        assert state.is_external_run is True
+        assert state.pending_messages is True
+
+        queue.release_external_process("group1@g.us")
+
+        assert state.active is False
+        assert state.is_external_run is False
+
     async def test_only_runs_one_container_per_group(self, queue: GroupQueue):
         concurrent_count = 0
         max_concurrent = 0

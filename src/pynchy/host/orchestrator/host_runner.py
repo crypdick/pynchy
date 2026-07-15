@@ -17,6 +17,7 @@ from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
+IsInterrupted = Callable[[], bool]
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _HOST_RUNNER_PROJECT = Path("src/pynchy/agent/agent_runner")
@@ -128,6 +129,7 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
     timeout_seconds: int | float,
     env: dict[str, str] | None = None,
     on_process_started: Callable[[_HostRunnerProcess], None] | None = None,
+    is_interrupted: IsInterrupted | None = None,
 ) -> str:
     """Run one agent turn directly on the host via a child process."""
     proc = await asyncio.create_subprocess_exec(
@@ -158,6 +160,8 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
     if stderr_text:
         logger.debug("Host agent runner stderr", group=input_data.group_folder, stderr=stderr_text)
     if return_code != 0:
+        if is_interrupted is not None and is_interrupted():
+            return "interrupted"
         await on_output(
             ContainerOutput(
                 status="error",
