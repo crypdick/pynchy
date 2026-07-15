@@ -217,9 +217,9 @@ class GroupQueue:
     def release_external_process(self, group_jid: str) -> bool:
         """Release a direct Temporal process and report queued user input."""
         state = self._get_group(group_jid)
-        has_pending_messages = state.pending_messages
-        if state.is_external_run:
-            state.release()
+        has_pending_messages = state.is_external_run and state.pending_messages
+        state.release()
+        state.pending_messages = False
         return has_pending_messages
 
     def defer_interrupt_until_tool_result(self, group_jid: str) -> None:
