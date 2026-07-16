@@ -122,10 +122,10 @@ markers = [
     "parity: channel parity tests — verify output consistency across TUI, WhatsApp, and Slack",
 ]
 filterwarnings = [
-    # aiohttp.web_request.BaseRequest subclasses typing.MutableMapping[str, Any]
+    # aiohttp request/application types subclass typing.MutableMapping[...] generics
     # (not beartype.typing's PEP 585 form) in aiohttp's own source; see
     # src/pynchy/__init__.py for the full explanation. Not fixable on our side.
-    "ignore:.*typing\\.MutableMapping\\[str, typing\\.Any\\].*:beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
+    "ignore:.*typing\\.MutableMapping\\[.*:beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
 ]
 
 # Mirrored in: src/pynchy/agent/agent_runner/pyproject.toml
