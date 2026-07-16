@@ -228,6 +228,43 @@ def test_server_completes_a_shell_output_probe_only_after_receiving_stdout() -> 
     assert completed_response["output"][0]["content"][0]["text"] == "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
 
 
+def test_server_completes_a_shell_failure_probe_only_after_receiving_stderr_and_exit_code() -> None:
+    with _server() as base_url:
+        initial_status, initial_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {"model": "pynchy-deterministic", "input": "PYNCHY_RUNTIME_SHELL_FAILURE_PROBE"},
+        )
+        completed_status, completed_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {
+                "model": "pynchy-deterministic",
+                "input": [
+                    {
+                        "call_id": "call_runtime_shell_failure_probe",
+                        "output": [
+                            {
+                                "stdout": "",
+                                "stderr": "PYNCHY_RUNTIME_SHELL_FAILURE_STDERR",
+                                "outcome": {"type": "exit", "exit_code": 7},
+                            }
+                        ],
+                    }
+                ],
+                "previous_response_id": initial_response["id"],
+            },
+        )
+
+    assert initial_status == completed_status == HTTPStatus.OK
+    assert initial_response["output"][0]["action"]["commands"] == [
+        "printf PYNCHY_RUNTIME_SHELL_FAILURE_STDERR >&2; exit 7"
+    ]
+    assert completed_response["output"][0]["content"][0]["text"] == (
+        "PYNCHY_RUNTIME_SHELL_FAILURE_REPORTED"
+    )
+
+
 def test_server_records_a_deterministic_response_chain() -> None:
     """The harness can distinguish a warm chained turn from a static fake response."""
     with _server() as base_url:

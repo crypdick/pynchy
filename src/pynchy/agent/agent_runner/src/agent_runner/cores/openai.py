@@ -32,9 +32,10 @@ from agent_runner import hooks
 from agent_runner.core import AgentCoreConfig, AgentEvent
 
 from ._openai_tool_parsing import extract_tool_call, extract_tool_result
+from .openai_shell import make_shell_executor
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator, Callable
 
     from agent_runner.hooks import BeforeToolUseHook
 
@@ -70,106 +71,6 @@ def _metadata_as_strings(metadata: object) -> dict[str, str] | None:
     if not isinstance(metadata, dict):
         return None
     return {str(key): str(value) for key, value in metadata.items()}
-
-
-async def _run_before_tool_use_hooks(
-    before_tool_hooks: list[BeforeToolUseHook] | None,
-    command: str,
-) -> str | None:
-    """Run shell hooks and return an error string if one blocks execution."""
-    if not before_tool_hooks:
-        return None
-
-    for hook_fn in before_tool_hooks:
-        decision = await hook_fn("Bash", {"command": command})
-        if not decision.allowed:
-            _log(f"Command blocked by hook: {decision.reason}")
-            return f"Command blocked by security policy: {decision.reason}"
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Shell executor — runs commands directly in the container
-# ---------------------------------------------------------------------------
-
-
-def _make_shell_executor(
-    cwd: str,
-    before_tool_hooks: list[BeforeToolUseHook] | None = None,
-) -> Callable[[Any], Awaitable[str]]:
-    """Create a shell executor bound to a specific working directory.
-
-    Args:
-        cwd: Working directory for shell commands.
-        before_tool_hooks: Optional list of async hook functions with signature
-            ``async (tool_name: str, tool_input: dict) -> HookDecision``.
-            Each hook is called before the subprocess runs; if any returns
-            ``allowed=False`` the command is blocked without execution.
-    """
-
-    async def executor(request: object) -> str:
-        """Execute a shell command inside the container."""
-
-        def get_field(obj: object, name: str) -> object | None:
-            if obj is None:
-                return None
-            if isinstance(obj, dict):
-                return obj.get(name)
-            return getattr(obj, name, None)
-
-        data = get_field(request, "data")
-        action = get_field(data, "action") or get_field(request, "action")
-
-        commands = get_field(action, "commands")
-        if commands is None:
-            command = get_field(action, "command")
-            commands = [command] if command else None
-
-        if not commands:
-            return "Shell tool request missing commands."
-
-        if isinstance(commands, list | tuple):
-            command = " && ".join(str(cmd) for cmd in commands)
-        else:
-            command = str(commands)
-
-        timeout_ms = get_field(action, "timeout_ms") or get_field(data, "timeout_ms") or 120_000
-        max_output_length = get_field(action, "max_output_length") or get_field(
-            data, "max_output_length"
-        )
-        timeout_s = timeout_ms / 1000
-
-        _log(f"Shell ({cwd}): {command[:200]}")
-
-        # Run BEFORE_TOOL_USE hooks before subprocess execution.
-        # Same hook signature as the Claude core: (tool_name, tool_input) -> HookDecision.
-        blocked = await _run_before_tool_use_hooks(before_tool_hooks, command)
-        if blocked is not None:
-            return blocked
-
-        try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                cwd=cwd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-        except TimeoutError:
-            proc.kill()
-            return f"Command timed out after {timeout_s}s"
-        except Exception as exc:  # allow: exception-handling; return  # noqa: BLE001, RUF100
-            return f"Shell error: {exc}"
-        else:
-            output = stdout.decode(errors="replace")
-            if stderr:
-                output += "\n" + stderr.decode(errors="replace")
-            if isinstance(max_output_length, int) and max_output_length > 0:
-                output = output[:max_output_length]
-            return output
-
-    return executor
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +285,7 @@ class OpenAIAgentCore:
             model=model,
             tools=[
                 ShellTool(
-                    executor=_make_shell_executor(
+                    executor=make_shell_executor(
                         self.config.cwd,
                         before_tool_hooks=self._before_tool_hooks,
                     )
