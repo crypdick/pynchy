@@ -25,6 +25,9 @@ _PATCH_PROBE_CALL_ID = "call_runtime_patch_probe"
 _SHELL_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_PROBE"
 _SHELL_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_OK"
 _SHELL_PROBE_CALL_ID = "call_runtime_shell_probe"
+_SHELL_OUTPUT_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_OUTPUT_PROBE"
+_SHELL_OUTPUT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
+_SHELL_OUTPUT_PROBE_CALL_ID = "call_runtime_shell_output_probe"
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
@@ -269,16 +272,7 @@ def _response_stream_events(
     response_text = _response_text(payload, default_text)
     completed = _response_payload(payload, response_id, response_text, "completed")
     started = _response_payload(payload, response_id, response_text, "in_progress")
-    if _is_patch_probe_request(payload):
-        item = _patch_probe_call()
-        return (
-            ("response.created", {"response": started}),
-            ("response.output_item.added", {"output_index": 0, "item": item}),
-            ("response.output_item.done", {"output_index": 0, "item": item}),
-            ("response.completed", {"response": completed}),
-        )
-    if _is_shell_probe_request(payload):
-        item = _shell_probe_call()
+    if item := _probe_tool_call(payload):
         return (
             ("response.created", {"response": started}),
             ("response.output_item.added", {"output_index": 0, "item": item}),
@@ -348,14 +342,14 @@ def _response_payload(
 
 
 def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[str, Any]]:
-    if _is_patch_probe_request(payload):
-        return [_patch_probe_call()]
-    if _is_shell_probe_request(payload):
-        return [_shell_probe_call()]
-    return [_output_message(response_text)]
+    return [_probe_tool_call(payload) or _output_message(response_text)]
 
 
 def _response_text(payload: dict[str, Any], default_text: str) -> str:
+    if _contains(payload.get("input"), _SHELL_OUTPUT_PROBE_CALL_ID) and _contains(
+        payload.get("input"), _SHELL_OUTPUT_PROBE_RESPONSE
+    ):
+        return _SHELL_OUTPUT_PROBE_RESPONSE
     if _contains(payload.get("input"), _SHELL_PROBE_CALL_ID):
         return _SHELL_PROBE_RESPONSE
     return (
@@ -375,6 +369,22 @@ def _is_shell_probe_request(payload: dict[str, Any]) -> bool:
     return _contains(payload.get("input"), _SHELL_PROBE_MARKER) and not _contains(
         payload.get("input"), _SHELL_PROBE_CALL_ID
     )
+
+
+def _is_shell_output_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _SHELL_OUTPUT_PROBE_MARKER) and not _contains(
+        payload.get("input"), _SHELL_OUTPUT_PROBE_CALL_ID
+    )
+
+
+def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
+    if _is_patch_probe_request(payload):
+        return _patch_probe_call()
+    if _is_shell_probe_request(payload):
+        return _shell_probe_call()
+    if _is_shell_output_probe_request(payload):
+        return _shell_output_probe_call()
+    return None
 
 
 def _patch_probe_call() -> dict[str, Any]:
@@ -403,6 +413,16 @@ def _shell_probe_call() -> dict[str, Any]:
             ],
             "timeout_ms": 5_000,
         },
+    }
+
+
+def _shell_output_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_output_probe",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_OUTPUT_PROBE_CALL_ID,
+        "action": {"commands": ["printf PYNCHY_RUNTIME_SHELL_OUTPUT_OK"], "timeout_ms": 5_000},
     }
 
 
