@@ -22,3 +22,15 @@ def test_shell_executor_preserves_stderr_and_exit_code(tmp_path) -> None:
     assert not output.stdout
     assert output.stderr == "diagnostic"
     assert output.exit_code == 7
+
+
+def test_shell_executor_returns_one_output_per_command(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+
+    result = asyncio.run(
+        executor({"action": {"commands": ["printf first", "printf second"], "timeout_ms": 5_000}})
+    )
+
+    assert isinstance(result, ShellResult)
+    assert [output.stdout for output in result.output] == ["first", "second"]
+    assert [output.exit_code for output in result.output] == [0, 0]
