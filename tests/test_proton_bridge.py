@@ -1,0 +1,177 @@
+"""Tests for direct Proton Bridge IMAP transport semantics."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from unittest.mock import Mock, patch
+
+import pytest
+from pydantic import SecretStr
+
+from pynchy.plugins.integrations.proton_bridge import (
+    CommandPasswordProvider,
+    ProtonBridgeConfiguration,
+    ProtonBridgeImapClient,
+    ProtonMailError,
+)
+
+
+@dataclass
+class StaticPasswordProvider:
+    """Deterministic credential provider for direct-IMAP tests."""
+
+    def get_password(self) -> SecretStr:
+        return SecretStr("test-bridge-password")
+
+
+@dataclass
+class FakeImapConnection:
+    """Small programmable IMAP transport that records all protocol operations."""
+
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
+    search_results: list[bytes] = field(default_factory=list)
+    fetched_messages: dict[str, tuple[bytes, bytes]] = field(default_factory=dict)
+
+    def list_mailboxes(self) -> tuple[str, list[bytes]]:
+        self.calls.append(("LIST", ()))
+        return "OK", [b'(\\HasNoChildren) "/" "INBOX"']
+
+    def logout(self) -> tuple[str, list[bytes]]:
+        self.calls.append(("LOGOUT", ()))
+        return "BYE", []
+
+    def select(self, mailbox: str, readonly: bool = False) -> tuple[str, list[bytes]]:
+        self.calls.append(("SELECT", (mailbox, readonly)))
+        return "OK", [b"1"]
+
+    def uid(self, command: str, *args: object) -> tuple[str, list[object]]:
+        self.calls.append((command, args))
+        if command == "SEARCH":
+            return "OK", [self.search_results.pop(0)]
+        if command == "FETCH":
+            uid = str(args[0])
+            metadata, message = self.fetched_messages[uid]
+            return "OK", [(metadata, message), b")"]
+        raise AssertionError(f"Unexpected IMAP command: {command}")
+
+
+def _client(connection: FakeImapConnection) -> ProtonBridgeImapClient:
+    configuration = ProtonBridgeConfiguration(
+        username="hi@example.com",
+        password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+    )
+    return ProtonBridgeImapClient(
+        configuration,
+        StaticPasswordProvider(),
+        connection_factory=lambda _configuration, _password: connection,
+    )
+
+
+class TestProtonBridgeImapClient:
+    def test_lists_unread_messages_with_peek_and_readonly_mailbox(self):
+        connection = FakeImapConnection(
+            search_results=[b"10"],
+            fetched_messages={
+                "10": (
+                    b"10 (UID 10 FLAGS () BODY[HEADER] {82}",
+                    (
+                        b"Message-ID: <unseen@example.com>\r\n"
+                        b"From: Unseen <unseen@example.com>\r\n\r\n"
+                    ),
+                ),
+            },
+        )
+
+        result = _client(connection).list_mail(mailbox="INBOX", limit=2, offset=0, unread=True)
+
+        assert [message.message_id for message in result.messages] == ["<unseen@example.com>"]
+        assert ("SELECT", ('"INBOX"', True)) in connection.calls
+        assert ("SEARCH", (None, "UNSEEN")) in connection.calls
+        fetch_calls = [args for command, args in connection.calls if command == "FETCH"]
+        assert all("BODY.PEEK[HEADER]" in str(args) for args in fetch_calls)
+        assert not any(command == "STORE" for command, _args in connection.calls)
+
+    def test_reads_by_message_id_without_mutating_seen_state(self):
+        connection = FakeImapConnection(
+            search_results=[b"20"],
+            fetched_messages={
+                "20": (
+                    b"20 (UID 20 FLAGS () BODY[] {100}",
+                    (
+                        b"Message-ID: <event@example.com>\r\nSubject: Event\r\n"
+                        b"X-Trace: one\r\n\r\nHello world"
+                    ),
+                )
+            },
+        )
+
+        result = _client(connection).read_mail(
+            mailbox="INBOX",
+            message_id="<event@example.com>",
+            include_headers=True,
+        )
+
+        assert result.body == "Hello world"
+        assert [(header.name, header.value) for header in result.headers or []] == [
+            ("Message-ID", "<event@example.com>"),
+            ("Subject", "Event"),
+            ("X-Trace", "one"),
+        ]
+        assert (
+            "SEARCH",
+            (None, "HEADER", "Message-ID", '"<event@example.com>"'),
+        ) in connection.calls
+        assert ("FETCH", ("20", "(UID FLAGS BODY.PEEK[])")) in connection.calls
+        assert not any(command == "STORE" for command, _args in connection.calls)
+
+    def test_rejects_ambiguous_message_id(self):
+        connection = FakeImapConnection(search_results=[b"20 21"])
+
+        with pytest.raises(ProtonMailError, match="ambiguous"):
+            _client(connection).read_mail(
+                mailbox="INBOX",
+                message_id="<event@example.com>",
+                include_headers=False,
+            )
+
+    def test_rejects_newlines_in_message_id_before_the_search_command(self):
+        connection = FakeImapConnection()
+
+        with pytest.raises(ProtonMailError, match="single line"):
+            _client(connection).read_mail(
+                mailbox="INBOX",
+                message_id="<event@example.com>\r\nALL",
+                include_headers=False,
+            )
+
+
+class TestCommandPasswordProvider:
+    def test_uses_argv_not_a_shell_and_strips_its_output(self):
+        completed_process = Mock(returncode=0, stdout="bridge-password\n")
+
+        with patch(
+            "pynchy.plugins.integrations.proton_bridge.subprocess.run",
+            return_value=completed_process,
+        ) as run:
+            password = CommandPasswordProvider("security find-generic-password -w").get_password()
+
+        assert password.get_secret_value() == "bridge-password"
+        run.assert_called_once_with(
+            ["security", "find-generic-password", "-w"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=15,
+        )
+
+    def test_rejects_a_failed_password_command_without_exposing_stderr(self):
+        completed_process = Mock(returncode=1, stdout="", stderr="sensitive failure")
+
+        with (
+            patch(
+                "pynchy.plugins.integrations.proton_bridge.subprocess.run",
+                return_value=completed_process,
+            ),
+            pytest.raises(ProtonMailError, match="Could not retrieve"),
+        ):
+            CommandPasswordProvider("security find-generic-password -w").get_password()
