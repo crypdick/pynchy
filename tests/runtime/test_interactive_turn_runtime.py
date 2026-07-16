@@ -260,6 +260,40 @@ def test_interactive_container_turn_reports_shell_timeout() -> None:
 
 
 @pytest.mark.timeout(180)
+def test_interactive_container_turn_runs_chained_shell_diagnostics() -> None:
+    """A dependent second diagnostic waits for the first tool result round."""
+    state = runtime_state()
+    jid = _tui_jid(state)
+    response_text = "PYNCHY_RUNTIME_SHELL_CHAIN_OK"
+    before = _response_count(messages(state, jid), response_text)
+    marker = uuid4().hex
+
+    send_message(
+        state,
+        jid,
+        f"PYNCHY_RUNTIME_SHELL_CHAIN_PROBE {marker}: run the dependent diagnostics.",
+    )
+    history = wait_for_response_count(state, jid, response_text, before + 1)
+    initial_request = wait_for_response_request(state, marker)
+    first_result_request = next(
+        item
+        for item in response_requests(state)
+        if item.get("previous_response_id") == initial_request["response_id"]
+    )
+    second_result_request = next(
+        item
+        for item in response_requests(state)
+        if item.get("previous_response_id") == first_result_request["response_id"]
+    )
+
+    assert "call_runtime_shell_chain_first" in str(first_result_request["input"])
+    assert "PYNCHY_RUNTIME_SHELL_CHAIN_FIRST" in str(first_result_request["input"])
+    assert "call_runtime_shell_chain_second" in str(second_result_request["input"])
+    assert "PYNCHY_RUNTIME_SHELL_CHAIN_SECOND" in str(second_result_request["input"])
+    assert any(item.get("content") == response_text for item in history)
+
+
+@pytest.mark.timeout(180)
 def test_interactive_container_turn_reports_shell_failure_details() -> None:
     """A failing diagnostic preserves stderr and its exit code for the agent."""
     state = runtime_state()
