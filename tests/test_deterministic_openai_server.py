@@ -300,6 +300,30 @@ def test_server_completes_a_multi_command_probe_only_after_ordered_outputs() -> 
     )
 
 
+def test_server_returns_a_patch_update_probe() -> None:
+    with _server() as base_url:
+        status, response = _json_request(
+            base_url,
+            "/v1/responses",
+            {"model": "pynchy-deterministic", "input": "PYNCHY_RUNTIME_PATCH_UPDATE_PROBE"},
+        )
+
+    assert status == HTTPStatus.OK
+    assert response["output"] == [
+        {
+            "id": "item_runtime_patch_update_probe",
+            "type": "apply_patch_call",
+            "status": "completed",
+            "call_id": "call_runtime_patch_update_probe",
+            "operation": {
+                "type": "update_file",
+                "path": "/workspace/group/runtime-patch-update.txt",
+                "diff": "@@\n-seed\n+PYNCHY_RUNTIME_PATCH_UPDATE_OK",
+            },
+        }
+    ]
+
+
 def test_server_records_a_deterministic_response_chain() -> None:
     """The harness can distinguish a warm chained turn from a static fake response."""
     with _server() as base_url:

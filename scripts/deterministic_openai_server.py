@@ -39,6 +39,9 @@ _SHELL_MULTI_PROBE_OUTPUT = (
     "PYNCHY_RUNTIME_SHELL_MULTI_FIRST",
     "PYNCHY_RUNTIME_SHELL_MULTI_SECOND",
 )
+_PATCH_UPDATE_PROBE_MARKER = "PYNCHY_RUNTIME_PATCH_UPDATE_PROBE"
+_PATCH_UPDATE_PROBE_RESPONSE = "PYNCHY_RUNTIME_PATCH_UPDATE_OK"
+_PATCH_UPDATE_PROBE_CALL_ID = "call_runtime_patch_update_probe"
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
@@ -357,6 +360,8 @@ def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[s
 
 
 def _response_text(payload: dict[str, Any], default_text: str) -> str:
+    if _contains(payload.get("input"), _PATCH_UPDATE_PROBE_CALL_ID):
+        return _PATCH_UPDATE_PROBE_RESPONSE
     if _contains(payload.get("input"), _SHELL_MULTI_PROBE_CALL_ID) and _has_shell_stdout_sequence(
         payload.get("input"), _SHELL_MULTI_PROBE_OUTPUT
     ):
@@ -410,17 +415,23 @@ def _is_shell_multi_probe_request(payload: dict[str, Any]) -> bool:
     )
 
 
+def _is_patch_update_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _PATCH_UPDATE_PROBE_MARKER) and not _contains(
+        payload.get("input"), _PATCH_UPDATE_PROBE_CALL_ID
+    )
+
+
 def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
-    if _is_patch_probe_request(payload):
-        return _patch_probe_call()
-    if _is_shell_probe_request(payload):
-        return _shell_probe_call()
-    if _is_shell_output_probe_request(payload):
-        return _shell_output_probe_call()
-    if _is_shell_failure_probe_request(payload):
-        return _shell_failure_probe_call()
-    if _is_shell_multi_probe_request(payload):
-        return _shell_multi_probe_call()
+    for matches, tool_call in (
+        (_is_patch_probe_request, _patch_probe_call),
+        (_is_shell_probe_request, _shell_probe_call),
+        (_is_shell_output_probe_request, _shell_output_probe_call),
+        (_is_shell_failure_probe_request, _shell_failure_probe_call),
+        (_is_shell_multi_probe_request, _shell_multi_probe_call),
+        (_is_patch_update_probe_request, _patch_update_probe_call),
+    ):
+        if matches(payload):
+            return tool_call()
     return None
 
 
@@ -434,6 +445,20 @@ def _patch_probe_call() -> dict[str, Any]:
             "type": "create_file",
             "path": "/workspace/group/runtime-patch-proof.txt",
             "diff": "+PYNCHY_RUNTIME_PATCH_OK",
+        },
+    }
+
+
+def _patch_update_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_patch_update_probe",
+        "type": "apply_patch_call",
+        "status": "completed",
+        "call_id": _PATCH_UPDATE_PROBE_CALL_ID,
+        "operation": {
+            "type": "update_file",
+            "path": "/workspace/group/runtime-patch-update.txt",
+            "diff": "@@\n-seed\n+PYNCHY_RUNTIME_PATCH_UPDATE_OK",
         },
     }
 

@@ -262,6 +262,40 @@ def test_interactive_container_turn_returns_ordered_multi_command_output() -> No
     assert any(item.get("content") == response_text for item in history)
 
 
+@pytest.mark.timeout(180)
+def test_interactive_container_turn_updates_an_existing_workspace_note() -> None:
+    """An apply-patch update changes an existing file in the mounted workspace."""
+    state = runtime_state()
+    jid = _tui_jid(state)
+    response_text = "PYNCHY_RUNTIME_PATCH_UPDATE_OK"
+    target_path = (
+        Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-patch-update.txt"
+    )
+    target_path.write_text("seed", encoding="utf-8")
+    before = _response_count(messages(state, jid), response_text)
+    marker = uuid4().hex
+
+    try:
+        send_message(
+            state,
+            jid,
+            f"PYNCHY_RUNTIME_PATCH_UPDATE_PROBE {marker}: update the workspace note.",
+        )
+        history = wait_for_response_count(state, jid, response_text, before + 1)
+        request = wait_for_response_request(state, marker)
+        tool_result = next(
+            item
+            for item in response_requests(state)
+            if item.get("previous_response_id") == request["response_id"]
+        )
+
+        assert target_path.read_text(encoding="utf-8") == response_text
+        assert "call_runtime_patch_update_probe" in str(tool_result["input"])
+        assert any(item.get("content") == response_text for item in history)
+    finally:
+        target_path.unlink(missing_ok=True)
+
+
 def _tui_jid(state: dict[str, Any]) -> str:
     matching = [group.get("jid") for group in groups(state) if group.get("folder") == "pynchy"]
     assert matching == ["tui://pynchy"]
