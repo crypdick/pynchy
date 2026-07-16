@@ -19,6 +19,9 @@ _CREATED_AT = 1_700_000_000
 _MESSAGE_ID = "msg_deterministic"
 _RESPONSE_REQUESTS_PATH = "/__pynchy_runtime__/response-requests"
 _RESPONSE_ID_DIGEST_LENGTH = 32
+_PATCH_PROBE_MARKER = "PYNCHY_RUNTIME_PATCH_PROBE"
+_PATCH_PROBE_RESPONSE = "PYNCHY_RUNTIME_PATCH_OK"
+_PATCH_PROBE_CALL_ID = "call_runtime_patch_probe"
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
@@ -176,122 +179,16 @@ class DeterministicOpenAIHandler(BaseHTTPRequestHandler):
     def _response(
         self, payload: dict[str, Any], *, response_id: str, status: str
     ) -> dict[str, Any]:
-        model = _requested_model(payload)
-        completed = status == "completed"
-        return {
-            "id": response_id,
-            "object": "response",
-            "created_at": _CREATED_AT,
-            "completed_at": _CREATED_AT if completed else None,
-            "status": status,
-            "error": None,
-            "incomplete_details": None,
-            "instructions": None,
-            "max_output_tokens": None,
-            "model": model,
-            "output": [_output_message(self._response_text)] if completed else [],
-            "parallel_tool_calls": True,
-            "previous_response_id": payload.get("previous_response_id"),
-            "reasoning": {"effort": None, "summary": None},
-            "store": True,
-            "temperature": 1,
-            "text": {"format": {"type": "text"}},
-            "tool_choice": "auto",
-            "tools": [],
-            "top_p": 1,
-            "truncation": "disabled",
-            "usage": _usage() if completed else None,
-            "user": None,
-            "metadata": {},
-        }
+        return _response_payload(
+            payload, response_id, _response_text(payload, self._response_text), status
+        )
 
     def _stream_response(self, payload: dict[str, Any], response_id: str) -> None:
         self._start_event_stream()
-        sequence = 1
-        self._send_response_event(
-            "response.created",
-            {
-                "response": self._response(
-                    payload,
-                    response_id=response_id,
-                    status="in_progress",
-                )
-            },
-            sequence,
-        )
-        sequence += 1
-        item = _output_message("")
-        item["status"] = "in_progress"
-        self._send_response_event(
-            "response.output_item.added",
-            {"output_index": 0, "item": item},
-            sequence,
-        )
-        sequence += 1
-        part = {"type": "output_text", "text": "", "annotations": []}
-        self._send_response_event(
-            "response.content_part.added",
-            {
-                "item_id": _MESSAGE_ID,
-                "output_index": 0,
-                "content_index": 0,
-                "part": part,
-            },
-            sequence,
-        )
-        sequence += 1
-        self._send_response_event(
-            "response.output_text.delta",
-            {
-                "item_id": _MESSAGE_ID,
-                "output_index": 0,
-                "content_index": 0,
-                "delta": self._response_text,
-            },
-            sequence,
-        )
-        sequence += 1
-        completed_part = {"type": "output_text", "text": self._response_text, "annotations": []}
-        self._send_response_event(
-            "response.output_text.done",
-            {
-                "item_id": _MESSAGE_ID,
-                "output_index": 0,
-                "content_index": 0,
-                "text": self._response_text,
-            },
-            sequence,
-        )
-        sequence += 1
-        self._send_response_event(
-            "response.content_part.done",
-            {
-                "item_id": _MESSAGE_ID,
-                "output_index": 0,
-                "content_index": 0,
-                "part": completed_part,
-            },
-            sequence,
-        )
-        sequence += 1
-        completed_item = _output_message(self._response_text)
-        self._send_response_event(
-            "response.output_item.done",
-            {"output_index": 0, "item": completed_item},
-            sequence,
-        )
-        sequence += 1
-        self._send_response_event(
-            "response.completed",
-            {
-                "response": self._response(
-                    payload,
-                    response_id=response_id,
-                    status="completed",
-                )
-            },
-            sequence,
-        )
+        for sequence, (event_type, fields) in enumerate(
+            _response_stream_events(payload, response_id, self._response_text), start=1
+        ):
+            self._send_response_event(event_type, fields, sequence)
         self._finish_event_stream()
 
     @property
@@ -361,6 +258,128 @@ def _output_message(text: str) -> dict[str, Any]:
         "role": "assistant",
         "content": [{"type": "output_text", "text": text, "annotations": []}],
     }
+
+
+def _response_stream_events(
+    payload: dict[str, Any], response_id: str, default_text: str
+) -> tuple[tuple[str, dict[str, Any]], ...]:
+    response_text = _response_text(payload, default_text)
+    completed = _response_payload(payload, response_id, response_text, "completed")
+    started = _response_payload(payload, response_id, response_text, "in_progress")
+    if _is_patch_probe_request(payload):
+        item = _patch_probe_call()
+        return (
+            ("response.created", {"response": started}),
+            ("response.output_item.added", {"output_index": 0, "item": item}),
+            ("response.output_item.done", {"output_index": 0, "item": item}),
+            ("response.completed", {"response": completed}),
+        )
+
+    item = _output_message("")
+    item["status"] = "in_progress"
+    completed_item = _output_message(response_text)
+    part = {"type": "output_text", "text": "", "annotations": []}
+    completed_part = {"type": "output_text", "text": response_text, "annotations": []}
+    return (
+        ("response.created", {"response": started}),
+        ("response.output_item.added", {"output_index": 0, "item": item}),
+        (
+            "response.content_part.added",
+            {"item_id": _MESSAGE_ID, "output_index": 0, "content_index": 0, "part": part},
+        ),
+        (
+            "response.output_text.delta",
+            {"item_id": _MESSAGE_ID, "output_index": 0, "content_index": 0, "delta": response_text},
+        ),
+        (
+            "response.output_text.done",
+            {"item_id": _MESSAGE_ID, "output_index": 0, "content_index": 0, "text": response_text},
+        ),
+        (
+            "response.content_part.done",
+            {"item_id": _MESSAGE_ID, "output_index": 0, "content_index": 0, "part": completed_part},
+        ),
+        ("response.output_item.done", {"output_index": 0, "item": completed_item}),
+        ("response.completed", {"response": completed}),
+    )
+
+
+def _response_payload(
+    payload: dict[str, Any], response_id: str, response_text: str, status: str
+) -> dict[str, Any]:
+    completed = status == "completed"
+    return {
+        "id": response_id,
+        "object": "response",
+        "created_at": _CREATED_AT,
+        "completed_at": _CREATED_AT if completed else None,
+        "status": status,
+        "error": None,
+        "incomplete_details": None,
+        "instructions": None,
+        "max_output_tokens": None,
+        "model": _requested_model(payload),
+        "output": _response_output(payload, response_text) if completed else [],
+        "parallel_tool_calls": True,
+        "previous_response_id": payload.get("previous_response_id"),
+        "reasoning": {"effort": None, "summary": None},
+        "store": True,
+        "temperature": 1,
+        "text": {"format": {"type": "text"}},
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": 1,
+        "truncation": "disabled",
+        "usage": _usage() if completed else None,
+        "user": None,
+        "metadata": {},
+    }
+
+
+def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[str, Any]]:
+    return (
+        [_patch_probe_call()]
+        if _is_patch_probe_request(payload)
+        else [_output_message(response_text)]
+    )
+
+
+def _response_text(payload: dict[str, Any], default_text: str) -> str:
+    return (
+        _PATCH_PROBE_RESPONSE
+        if _contains(payload.get("input"), _PATCH_PROBE_CALL_ID)
+        else default_text
+    )
+
+
+def _is_patch_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _PATCH_PROBE_MARKER) and not _contains(
+        payload.get("input"), _PATCH_PROBE_CALL_ID
+    )
+
+
+def _patch_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_patch_probe",
+        "type": "apply_patch_call",
+        "status": "completed",
+        "call_id": _PATCH_PROBE_CALL_ID,
+        "operation": {
+            "type": "create_file",
+            "path": "/workspace/group/runtime-patch-proof.txt",
+            "diff": "+PYNCHY_RUNTIME_PATCH_OK",
+        },
+    }
+
+
+def _contains(value: object, marker: str) -> bool:
+    if isinstance(value, str):
+        return marker in value
+    if isinstance(value, list):
+        return any(_contains(item, marker) for item in value)
+    if isinstance(value, dict):
+        return any(_contains(item, marker) for item in value.values())
+    return False
 
 
 def _usage() -> dict[str, Any]:
