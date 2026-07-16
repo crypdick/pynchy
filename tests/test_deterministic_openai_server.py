@@ -228,6 +228,37 @@ def test_server_completes_a_shell_output_probe_only_after_receiving_stdout() -> 
     assert completed_response["output"][0]["content"][0]["text"] == "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
 
 
+def test_server_completes_a_bounded_shell_probe_only_after_receiving_truncated_stdout() -> None:
+    with _server() as base_url:
+        initial_status, initial_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {"model": "pynchy-deterministic", "input": "PYNCHY_RUNTIME_SHELL_LIMIT_PROBE"},
+        )
+        completed_status, completed_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {
+                "model": "pynchy-deterministic",
+                "input": [
+                    {
+                        "call_id": "call_runtime_shell_limit_probe",
+                        "output": [{"stdout": "PYNCHY_R"}],
+                    }
+                ],
+                "previous_response_id": initial_response["id"],
+            },
+        )
+
+    assert initial_status == completed_status == HTTPStatus.OK
+    assert initial_response["output"][0]["action"] == {
+        "commands": ["printf PYNCHY_RUNTIME_SHELL_LIMIT_OUTPUT"],
+        "max_output_length": 8,
+        "timeout_ms": 5_000,
+    }
+    assert completed_response["output"][0]["content"][0]["text"] == "PYNCHY_RUNTIME_SHELL_LIMIT_OK"
+
+
 def test_server_completes_a_shell_failure_probe_only_after_receiving_stderr_and_exit_code() -> None:
     with _server() as base_url:
         initial_status, initial_response = _json_request(

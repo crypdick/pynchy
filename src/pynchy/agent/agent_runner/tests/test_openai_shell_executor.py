@@ -34,3 +34,14 @@ def test_shell_executor_returns_one_output_per_command(tmp_path) -> None:
     assert isinstance(result, ShellResult)
     assert [output.stdout for output in result.output] == ["first", "second"]
     assert [output.exit_code for output in result.output] == [0, 0]
+
+
+def test_shell_executor_carries_requested_output_limit(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+
+    result = asyncio.run(
+        executor({"action": {"commands": ["printf diagnostic"], "max_output_length": 8}})
+    )
+
+    assert isinstance(result, ShellResult)
+    assert result.max_output_length == 8
