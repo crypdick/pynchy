@@ -28,6 +28,10 @@ _SHELL_PROBE_CALL_ID = "call_runtime_shell_probe"
 _SHELL_OUTPUT_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_OUTPUT_PROBE"
 _SHELL_OUTPUT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
 _SHELL_OUTPUT_PROBE_CALL_ID = "call_runtime_shell_output_probe"
+_SHELL_FAILURE_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_FAILURE_PROBE"
+_SHELL_FAILURE_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_FAILURE_REPORTED"
+_SHELL_FAILURE_PROBE_CALL_ID = "call_runtime_shell_failure_probe"
+_SHELL_FAILURE_PROBE_STDERR = "PYNCHY_RUNTIME_SHELL_FAILURE_STDERR"
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
@@ -346,6 +350,12 @@ def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[s
 
 
 def _response_text(payload: dict[str, Any], default_text: str) -> str:
+    if (
+        _contains(payload.get("input"), _SHELL_FAILURE_PROBE_CALL_ID)
+        and _contains(payload.get("input"), _SHELL_FAILURE_PROBE_STDERR)
+        and _contains_shell_exit_code(payload.get("input"), 7)
+    ):
+        return _SHELL_FAILURE_PROBE_RESPONSE
     if _contains(payload.get("input"), _SHELL_OUTPUT_PROBE_CALL_ID) and _contains(
         payload.get("input"), _SHELL_OUTPUT_PROBE_RESPONSE
     ):
@@ -377,6 +387,12 @@ def _is_shell_output_probe_request(payload: dict[str, Any]) -> bool:
     )
 
 
+def _is_shell_failure_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _SHELL_FAILURE_PROBE_MARKER) and not _contains(
+        payload.get("input"), _SHELL_FAILURE_PROBE_CALL_ID
+    )
+
+
 def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
     if _is_patch_probe_request(payload):
         return _patch_probe_call()
@@ -384,6 +400,8 @@ def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
         return _shell_probe_call()
     if _is_shell_output_probe_request(payload):
         return _shell_output_probe_call()
+    if _is_shell_failure_probe_request(payload):
+        return _shell_failure_probe_call()
     return None
 
 
@@ -426,6 +444,19 @@ def _shell_output_probe_call() -> dict[str, Any]:
     }
 
 
+def _shell_failure_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_failure_probe",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_FAILURE_PROBE_CALL_ID,
+        "action": {
+            "commands": [f"printf {_SHELL_FAILURE_PROBE_STDERR} >&2; exit 7"],
+            "timeout_ms": 5_000,
+        },
+    }
+
+
 def _contains(value: object, marker: str) -> bool:
     if isinstance(value, str):
         return marker in value
@@ -434,6 +465,16 @@ def _contains(value: object, marker: str) -> bool:
     if isinstance(value, dict):
         return any(_contains(item, marker) for item in value.values())
     return False
+
+
+def _contains_shell_exit_code(value: object, expected: int) -> bool:
+    if isinstance(value, list):
+        return any(_contains_shell_exit_code(item, expected) for item in value)
+    if not isinstance(value, dict):
+        return False
+    return (value.get("type") == "exit" and value.get("exit_code") == expected) or any(
+        _contains_shell_exit_code(item, expected) for item in value.values()
+    )
 
 
 def _usage() -> dict[str, Any]:
