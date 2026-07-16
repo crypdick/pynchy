@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - tests inspect the harness-owned Docker container only.
 import time
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -117,6 +118,31 @@ def test_runtime_restart_preserves_history_and_accepts_a_fresh_turn() -> None:
         for item in after_restart_history
     )
     assert status(restarted_state)["temporal"]["last_result"] == "completed"
+
+
+@pytest.mark.timeout(180)
+def test_interactive_container_turn_executes_a_scripted_patch_task() -> None:
+    """A deterministic user request exercises model tool selection and workspace writes."""
+    state = runtime_state()
+    jid = _tui_jid(state)
+    response_text = "PYNCHY_RUNTIME_PATCH_OK"
+    proof_path = (
+        Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-patch-proof.txt"
+    )
+    proof_path.unlink(missing_ok=True)
+    before = _response_count(messages(state, jid), response_text)
+    marker = uuid4().hex
+
+    try:
+        send_message(state, jid, f"PYNCHY_RUNTIME_PATCH_PROBE {marker}: create the proof file.")
+        history = wait_for_response_count(state, jid, response_text, before + 1)
+        request = wait_for_response_request(state, marker)
+
+        assert proof_path.read_text(encoding="utf-8") == "PYNCHY_RUNTIME_PATCH_OK"
+        assert request["previous_response_id"] is not None
+        assert any(item.get("content") == response_text for item in history)
+    finally:
+        proof_path.unlink(missing_ok=True)
 
 
 def _tui_jid(state: dict[str, Any]) -> str:

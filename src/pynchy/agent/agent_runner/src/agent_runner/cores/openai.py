@@ -17,6 +17,7 @@ from agents import (
     Runner,
     ShellTool,
     WebSearchTool,
+    apply_diff,
     set_tracing_disabled,
 )
 from agents.editor import ApplyPatchEditor, ApplyPatchOperation, ApplyPatchResult
@@ -181,9 +182,11 @@ def _create_patch_file(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _update_patch_file(path: Path, content: str) -> bool:
+def _update_patch_file(path: Path, diff: str) -> bool:
     if not path.exists():
         return False
+    # Responses API apply_patch calls carry V4A diffs, not replacement content.
+    content = apply_diff(path.read_text(encoding="utf-8"), diff)
     path.write_text(content, encoding="utf-8")
     return True
 
@@ -197,10 +200,11 @@ class ContainerPatchEditor(ApplyPatchEditor):
 
     async def create_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
         try:
+            content = apply_diff("", op.diff or "", mode="create")
             await asyncio.to_thread(
                 _create_patch_file,
                 Path(op.path),
-                op.new_content or "",
+                content,
             )
             return ApplyPatchResult(status="completed")
         except Exception as exc:  # allow: exception-handling; failed result  # noqa: BLE001, RUF100
@@ -211,7 +215,7 @@ class ContainerPatchEditor(ApplyPatchEditor):
             updated = await asyncio.to_thread(
                 _update_patch_file,
                 Path(op.path),
-                op.new_content or "",
+                op.diff or "",
             )
             if not updated:
                 return ApplyPatchResult(status="failed", output=f"File not found: {op.path}")
