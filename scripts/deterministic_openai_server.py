@@ -42,6 +42,9 @@ _SHELL_MULTI_PROBE_OUTPUT = (
 _PATCH_UPDATE_PROBE_MARKER = "PYNCHY_RUNTIME_PATCH_UPDATE_PROBE"
 _PATCH_UPDATE_PROBE_RESPONSE = "PYNCHY_RUNTIME_PATCH_UPDATE_OK"
 _PATCH_UPDATE_PROBE_CALL_ID = "call_runtime_patch_update_probe"
+_PATCH_DELETE_PROBE_MARKER = "PYNCHY_RUNTIME_PATCH_DELETE_PROBE"
+_PATCH_DELETE_PROBE_RESPONSE = "PYNCHY_RUNTIME_PATCH_DELETE_OK"
+_PATCH_DELETE_PROBE_CALL_ID = "call_runtime_patch_delete_probe"
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
@@ -360,29 +363,32 @@ def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[s
 
 
 def _response_text(payload: dict[str, Any], default_text: str) -> str:
-    if _contains(payload.get("input"), _PATCH_UPDATE_PROBE_CALL_ID):
-        return _PATCH_UPDATE_PROBE_RESPONSE
-    if _contains(payload.get("input"), _SHELL_MULTI_PROBE_CALL_ID) and _has_shell_stdout_sequence(
-        payload.get("input"), _SHELL_MULTI_PROBE_OUTPUT
+    input_value = payload.get("input")
+    for response, complete in (
+        (_PATCH_DELETE_PROBE_RESPONSE, _contains(input_value, _PATCH_DELETE_PROBE_CALL_ID)),
+        (_PATCH_UPDATE_PROBE_RESPONSE, _contains(input_value, _PATCH_UPDATE_PROBE_CALL_ID)),
+        (
+            _SHELL_MULTI_PROBE_RESPONSE,
+            _contains(input_value, _SHELL_MULTI_PROBE_CALL_ID)
+            and _has_shell_stdout_sequence(input_value, _SHELL_MULTI_PROBE_OUTPUT),
+        ),
+        (
+            _SHELL_FAILURE_PROBE_RESPONSE,
+            _contains(input_value, _SHELL_FAILURE_PROBE_CALL_ID)
+            and _contains(input_value, _SHELL_FAILURE_PROBE_STDERR)
+            and _contains_shell_exit_code(input_value, 7),
+        ),
+        (
+            _SHELL_OUTPUT_PROBE_RESPONSE,
+            _contains(input_value, _SHELL_OUTPUT_PROBE_CALL_ID)
+            and _contains(input_value, _SHELL_OUTPUT_PROBE_RESPONSE),
+        ),
+        (_SHELL_PROBE_RESPONSE, _contains(input_value, _SHELL_PROBE_CALL_ID)),
+        (_PATCH_PROBE_RESPONSE, _contains(input_value, _PATCH_PROBE_CALL_ID)),
     ):
-        return _SHELL_MULTI_PROBE_RESPONSE
-    if (
-        _contains(payload.get("input"), _SHELL_FAILURE_PROBE_CALL_ID)
-        and _contains(payload.get("input"), _SHELL_FAILURE_PROBE_STDERR)
-        and _contains_shell_exit_code(payload.get("input"), 7)
-    ):
-        return _SHELL_FAILURE_PROBE_RESPONSE
-    if _contains(payload.get("input"), _SHELL_OUTPUT_PROBE_CALL_ID) and _contains(
-        payload.get("input"), _SHELL_OUTPUT_PROBE_RESPONSE
-    ):
-        return _SHELL_OUTPUT_PROBE_RESPONSE
-    if _contains(payload.get("input"), _SHELL_PROBE_CALL_ID):
-        return _SHELL_PROBE_RESPONSE
-    return (
-        _PATCH_PROBE_RESPONSE
-        if _contains(payload.get("input"), _PATCH_PROBE_CALL_ID)
-        else default_text
-    )
+        if complete:
+            return response
+    return default_text
 
 
 def _is_patch_probe_request(payload: dict[str, Any]) -> bool:
@@ -421,6 +427,12 @@ def _is_patch_update_probe_request(payload: dict[str, Any]) -> bool:
     )
 
 
+def _is_patch_delete_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _PATCH_DELETE_PROBE_MARKER) and not _contains(
+        payload.get("input"), _PATCH_DELETE_PROBE_CALL_ID
+    )
+
+
 def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
     for matches, tool_call in (
         (_is_patch_probe_request, _patch_probe_call),
@@ -429,6 +441,7 @@ def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
         (_is_shell_failure_probe_request, _shell_failure_probe_call),
         (_is_shell_multi_probe_request, _shell_multi_probe_call),
         (_is_patch_update_probe_request, _patch_update_probe_call),
+        (_is_patch_delete_probe_request, _patch_delete_probe_call),
     ):
         if matches(payload):
             return tool_call()
@@ -459,6 +472,19 @@ def _patch_update_probe_call() -> dict[str, Any]:
             "type": "update_file",
             "path": "/workspace/group/runtime-patch-update.txt",
             "diff": "@@\n-seed\n+PYNCHY_RUNTIME_PATCH_UPDATE_OK",
+        },
+    }
+
+
+def _patch_delete_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_patch_delete_probe",
+        "type": "apply_patch_call",
+        "status": "completed",
+        "call_id": _PATCH_DELETE_PROBE_CALL_ID,
+        "operation": {
+            "type": "delete_file",
+            "path": "/workspace/group/runtime-patch-delete.txt",
         },
     }
 
