@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
 from pathlib import Path, PurePosixPath
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pluggy
@@ -121,6 +122,32 @@ class _MockGateway(BuiltinGateway):
 
     def has_provider(self, name: str) -> bool:
         return name in self._providers
+
+
+class _AgentRunnerDeps:
+    """Contract-complete runner dependencies for focused orchestration tests."""
+
+    def __init__(self, sessions: dict[str, str] | None = None) -> None:
+        self.sessions = sessions or {}
+        self.session_cleared: set[str] = set()
+        self.workspaces: dict[str, WorkspaceProfile] = {}
+        self.queue = MagicMock()
+        self.plugin_manager = None
+
+    async def get_available_groups(self) -> list[dict[str, Any]]:
+        return []
+
+    async def broadcast_agent_input(
+        self,
+        chat_jid: str,
+        messages: list[dict[str, Any]],
+        *,
+        source: str = "user",
+    ) -> None:
+        return None
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        return None
 
 
 _SETTINGS_MODULES = [
@@ -1760,27 +1787,7 @@ class TestContainerInputAgentCoreConfig:
     async def test_run_agent_resets_only_incompatible_codex_sessions(
         self, session_id: str, should_reset: bool
     ):
-        class _Deps:
-            def __init__(self) -> None:
-                self.sessions = {TEST_GROUP.folder: session_id}
-                self.session_cleared: set[str] = set()
-                self.workspaces: dict[str, WorkspaceProfile] = {}
-                self.queue = MagicMock()
-                self.plugin_manager = None
-
-            async def get_available_groups(self) -> list[dict[str, object]]:
-                return []
-
-            async def broadcast_agent_input(
-                self,
-                chat_jid: str,
-                messages: list[dict[str, object]],
-                *,
-                source: str = "user",
-            ) -> None:
-                return None
-
-        deps = _Deps()
+        deps = _AgentRunnerDeps({TEST_GROUP.folder: session_id})
         ctx = self._ctx(session_id)
         settings = make_settings(agent=AgentConfig(model="gpt-5.5"))
 
@@ -1818,26 +1825,6 @@ class TestContainerInputAgentCoreConfig:
 
     @pytest.mark.asyncio
     async def test_run_agent_dispatches_host_execution_mode_to_host_runner(self, tmp_path: Path):
-        class _Deps:
-            def __init__(self) -> None:
-                self.sessions: dict[str, str] = {"host-group": "session-0"}
-                self.session_cleared: set[str] = set()
-                self.workspaces: dict[str, WorkspaceProfile] = {}
-                self.queue = MagicMock()
-                self.plugin_manager = None
-
-            async def get_available_groups(self) -> list[dict[str, object]]:
-                return []
-
-            async def broadcast_agent_input(
-                self,
-                chat_jid: str,
-                messages: list[dict[str, object]],
-                *,
-                source: str = "user",
-            ) -> None:
-                return None
-
         group = WorkspaceProfile(
             jid="host@g.us",
             name="Host Group",
@@ -1845,7 +1832,7 @@ class TestContainerInputAgentCoreConfig:
             trigger="@pynchy",
             is_admin=True,
         )
-        deps = _Deps()
+        deps = _AgentRunnerDeps({"host-group": "session-0"})
         ctx = self._ctx("session-0")
         ctx.is_admin = True
         settings = make_settings(
@@ -1913,26 +1900,6 @@ class TestContainerInputAgentCoreConfig:
     async def test_host_execution_clears_codex_session_missing_from_host_runtime(
         self, tmp_path: Path
     ):
-        class _Deps:
-            def __init__(self) -> None:
-                self.sessions: dict[str, str] = {"host-group": "codex:gpt-5.5:missing-thread"}
-                self.session_cleared: set[str] = set()
-                self.workspaces: dict[str, WorkspaceProfile] = {}
-                self.queue = MagicMock()
-                self.plugin_manager = None
-
-            async def get_available_groups(self) -> list[dict[str, object]]:
-                return []
-
-            async def broadcast_agent_input(
-                self,
-                chat_jid: str,
-                messages: list[dict[str, object]],
-                *,
-                source: str = "user",
-            ) -> None:
-                return None
-
         group = WorkspaceProfile(
             jid="host@g.us",
             name="Host Group",
@@ -1940,7 +1907,7 @@ class TestContainerInputAgentCoreConfig:
             trigger="@pynchy",
             is_admin=True,
         )
-        deps = _Deps()
+        deps = _AgentRunnerDeps({"host-group": "codex:gpt-5.5:missing-thread"})
         ctx = self._ctx("codex:gpt-5.5:missing-thread")
         ctx.is_admin = True
         settings = make_settings(
@@ -1997,27 +1964,7 @@ class TestContainerInputAgentCoreConfig:
 class TestAgentRunnerPreContainerHelpers:
     @pytest.mark.asyncio
     async def test_session_tracking_output_handler_records_session(self):
-        class _Deps:
-            def __init__(self) -> None:
-                self.sessions: dict[str, str] = {}
-                self.session_cleared: set[str] = set()
-                self.workspaces: dict[str, WorkspaceProfile] = {}
-                self.queue = MagicMock()
-                self.plugin_manager = None
-
-            async def get_available_groups(self) -> list[dict[str, object]]:
-                return []
-
-            async def broadcast_agent_input(
-                self,
-                chat_jid: str,
-                messages: list[dict[str, object]],
-                *,
-                source: str = "user",
-            ) -> None:
-                return None
-
-        deps = _Deps()
+        deps = _AgentRunnerDeps()
         on_output = AsyncMock()
         output = ContainerOutput(
             status="success",

@@ -71,6 +71,15 @@ def _client(connection: FakeImapConnection) -> ProtonBridgeImapClient:
 
 
 class TestProtonBridgeImapClient:
+    def test_rejects_password_provider_outside_the_runtime_contract(self):
+        configuration = ProtonBridgeConfiguration(
+            username="hi@example.com",
+            password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
+        )
+
+        with pytest.warns(UserWarning, match="violates type hint.*PasswordProvider"):
+            ProtonBridgeImapClient(configuration, object())
+
     def test_lists_international_mailboxes_with_a_display_name_and_raw_identifier(self):
         connection = FakeImapConnection(
             mailbox_responses=[b'(\\HasNoChildren) "/" "&Jjo-"'],
