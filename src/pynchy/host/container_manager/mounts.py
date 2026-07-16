@@ -226,7 +226,10 @@ def _add_claude_session_mount(
 
 def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str) -> None:
     group_ipc_dir = data_dir / "ipc" / group_folder
-    for sub in ("messages", "requests", "input", "output", "merge_results"):
+    # The host writes responses to security and service requests. Create the
+    # directory as the host so its ownership remains valid even for a
+    # root-running deterministic runtime container.
+    for sub in ("messages", "requests", "responses", "input", "output", "merge_results"):
         (group_ipc_dir / sub).mkdir(parents=True, exist_ok=True)
     mounts.append(VolumeMount(str(group_ipc_dir), "/workspace/ipc", readonly=False))
 

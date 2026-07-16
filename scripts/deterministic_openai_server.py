@@ -22,6 +22,9 @@ _RESPONSE_ID_DIGEST_LENGTH = 32
 _PATCH_PROBE_MARKER = "PYNCHY_RUNTIME_PATCH_PROBE"
 _PATCH_PROBE_RESPONSE = "PYNCHY_RUNTIME_PATCH_OK"
 _PATCH_PROBE_CALL_ID = "call_runtime_patch_probe"
+_SHELL_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_PROBE"
+_SHELL_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_OK"
+_SHELL_PROBE_CALL_ID = "call_runtime_shell_probe"
 
 
 class DeterministicOpenAIServer(ThreadingHTTPServer):
@@ -274,6 +277,14 @@ def _response_stream_events(
             ("response.output_item.done", {"output_index": 0, "item": item}),
             ("response.completed", {"response": completed}),
         )
+    if _is_shell_probe_request(payload):
+        item = _shell_probe_call()
+        return (
+            ("response.created", {"response": started}),
+            ("response.output_item.added", {"output_index": 0, "item": item}),
+            ("response.output_item.done", {"output_index": 0, "item": item}),
+            ("response.completed", {"response": completed}),
+        )
 
     item = _output_message("")
     item["status"] = "in_progress"
@@ -337,14 +348,16 @@ def _response_payload(
 
 
 def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[str, Any]]:
-    return (
-        [_patch_probe_call()]
-        if _is_patch_probe_request(payload)
-        else [_output_message(response_text)]
-    )
+    if _is_patch_probe_request(payload):
+        return [_patch_probe_call()]
+    if _is_shell_probe_request(payload):
+        return [_shell_probe_call()]
+    return [_output_message(response_text)]
 
 
 def _response_text(payload: dict[str, Any], default_text: str) -> str:
+    if _contains(payload.get("input"), _SHELL_PROBE_CALL_ID):
+        return _SHELL_PROBE_RESPONSE
     return (
         _PATCH_PROBE_RESPONSE
         if _contains(payload.get("input"), _PATCH_PROBE_CALL_ID)
@@ -358,6 +371,12 @@ def _is_patch_probe_request(payload: dict[str, Any]) -> bool:
     )
 
 
+def _is_shell_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _SHELL_PROBE_MARKER) and not _contains(
+        payload.get("input"), _SHELL_PROBE_CALL_ID
+    )
+
+
 def _patch_probe_call() -> dict[str, Any]:
     return {
         "id": "item_runtime_patch_probe",
@@ -368,6 +387,21 @@ def _patch_probe_call() -> dict[str, Any]:
             "type": "create_file",
             "path": "/workspace/group/runtime-patch-proof.txt",
             "diff": "+PYNCHY_RUNTIME_PATCH_OK",
+        },
+    }
+
+
+def _shell_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_probe",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_PROBE_CALL_ID,
+        "action": {
+            "commands": [
+                "printf PYNCHY_RUNTIME_SHELL_OK > /workspace/group/runtime-shell-proof.txt"
+            ],
+            "timeout_ms": 5_000,
         },
     }
 
