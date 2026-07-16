@@ -18,7 +18,7 @@ from email.message import (
     EmailMessage,  # noqa: TC003, RUF100 - beartype resolves this hint at runtime.
 )
 from email.parser import BytesParser
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 
@@ -115,6 +115,7 @@ class ProtonBridgeConfiguration(_StrictModel):
             ) from exc
 
 
+@runtime_checkable
 class ProtonMailClient(Protocol):
     """Read-only operations required by the Proton Mail MCP server."""
 
@@ -138,6 +139,7 @@ class ProtonMailClient(Protocol):
     ) -> ProtonMessage: ...
 
 
+@runtime_checkable
 class _ImapConnection(Protocol):
     """The small subset of ``imaplib.IMAP4`` used by the Bridge client."""
 
@@ -154,6 +156,7 @@ class _ImapConnection(Protocol):
     def uid(self, command: str, *args: object) -> tuple[str, list[object]]: ...
 
 
+@runtime_checkable
 class PasswordProvider(Protocol):
     """Read the Bridge app password without putting it in source or MCP config."""
 
