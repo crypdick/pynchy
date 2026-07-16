@@ -28,7 +28,7 @@ from pynchy.host.orchestrator.messaging.outcomes import (
     CONTINUE_AFTER_SAFE_INTERRUPT,
     ProcessGroupResult,
 )
-from pynchy.host.orchestrator.queue_state import ExternalProcessLease, GroupState, QueuedTask
+from pynchy.host.orchestrator.queue_state import GroupState, HostProcessLease, QueuedTask
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
 
@@ -42,7 +42,7 @@ class GroupQueue:
 
     def __init__(self) -> None:
         self._groups: dict[str, GroupState] = {}
-        self._next_external_process_generation = 0
+        self._next_host_process_generation = 0
         self._active_count = 0
         self._waiting_groups: deque[str] = deque()
         self._process_messages_fn: Callable[[str], Awaitable[ProcessGroupResult]] | None = None
@@ -174,24 +174,24 @@ class GroupQueue:
             is_host_process=is_host_process,
         )
 
-    def acquire_external_process(self, group_jid: str) -> ExternalProcessLease:
+    def acquire_host_process(self, group_jid: str) -> HostProcessLease:
         """Reserve queue state for one direct host process before it is spawned."""
-        self._next_external_process_generation += 1
-        return self._get_group(group_jid).acquire_external_process(
+        self._next_host_process_generation += 1
+        return self._get_group(group_jid).acquire_host_process(
             group_jid,
-            self._next_external_process_generation,
+            self._next_host_process_generation,
         )
 
-    def register_external_process(  # noqa: PLR0913, RUF100 - records every host process attribute.
+    def register_host_process(  # noqa: PLR0913, RUF100 - records every host process attribute.
         self,
-        lease: ExternalProcessLease,
+        lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None = None,
         invocation_ts: float = 0.0,
     ) -> bool:
         """Attach a spawned host process to its pre-acquired queue lease."""
-        return self._get_group(lease.group_jid).register_external_process(
+        return self._get_group(lease.group_jid).register_host_process(
             lease,
             proc,
             container_name,
@@ -199,9 +199,9 @@ class GroupQueue:
             invocation_ts,
         )
 
-    def release_external_process(self, lease: ExternalProcessLease) -> bool:
+    def release_host_process(self, lease: HostProcessLease) -> bool:
         """Release only the direct host process that owns *lease*."""
-        return self._get_group(lease.group_jid).release_external_process(lease)
+        return self._get_group(lease.group_jid).release_host_process(lease)
 
     def defer_interrupt_until_tool_result(self, group_jid: str) -> None:
         """Queue an active turn for interruption after its current tool completes."""

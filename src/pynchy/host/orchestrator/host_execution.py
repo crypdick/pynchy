@@ -21,7 +21,7 @@ from pynchy.types import ContainerInput, ContainerOutput
 if TYPE_CHECKING:
     import asyncio
 
-    from pynchy.host.orchestrator.queue_state import ExternalProcessLease
+    from pynchy.host.orchestrator.queue_state import HostProcessLease
 
 _CODEX_SESSION_PREFIX = "codex:"
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
@@ -30,11 +30,11 @@ HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 class HostProcessQueue(Protocol):
     """Queue operations that bridge a direct Temporal host process."""
 
-    def acquire_external_process(self, group_jid: str) -> ExternalProcessLease: ...
+    def acquire_host_process(self, group_jid: str) -> HostProcessLease: ...
 
-    def register_external_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
+    def register_host_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
         self,
-        lease: ExternalProcessLease,
+        lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None = None,
@@ -43,7 +43,7 @@ class HostProcessQueue(Protocol):
 
     def boundary_interrupt_requested(self, group_jid: str) -> bool: ...
 
-    def release_external_process(self, lease: ExternalProcessLease) -> bool: ...
+    def release_host_process(self, lease: HostProcessLease) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -114,10 +114,10 @@ def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
 
 async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
     """Run a host turn while exposing its process to inbound message routing."""
-    lease = request.queue.acquire_external_process(request.chat_jid)
+    lease = request.queue.acquire_host_process(request.chat_jid)
 
     def register_spawned_process(proc: asyncio.subprocess.Process) -> None:
-        if not request.queue.register_external_process(
+        if not request.queue.register_host_process(
             lease,
             proc,
             "host-agent-runner",
@@ -139,10 +139,10 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
             is_interrupted=lambda: request.queue.boundary_interrupt_requested(request.chat_jid),
         )
     except BaseException:
-        request.queue.release_external_process(lease)
+        request.queue.release_host_process(lease)
         raise
 
-    has_pending_messages = request.queue.release_external_process(lease) is True
+    has_pending_messages = request.queue.release_host_process(lease) is True
     if result == "success" and has_pending_messages:
         return "success_with_pending_input"
     return result
