@@ -265,6 +265,41 @@ def test_server_completes_a_shell_failure_probe_only_after_receiving_stderr_and_
     )
 
 
+def test_server_completes_a_multi_command_probe_only_after_ordered_outputs() -> None:
+    with _server() as base_url:
+        initial_status, initial_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {"model": "pynchy-deterministic", "input": "PYNCHY_RUNTIME_SHELL_MULTI_PROBE"},
+        )
+        completed_status, completed_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {
+                "model": "pynchy-deterministic",
+                "input": [
+                    {
+                        "call_id": "call_runtime_shell_multi_probe",
+                        "output": [
+                            {"stdout": "PYNCHY_RUNTIME_SHELL_MULTI_FIRST"},
+                            {"stdout": "PYNCHY_RUNTIME_SHELL_MULTI_SECOND"},
+                        ],
+                    }
+                ],
+                "previous_response_id": initial_response["id"],
+            },
+        )
+
+    assert initial_status == completed_status == HTTPStatus.OK
+    assert initial_response["output"][0]["action"]["commands"] == [
+        "printf PYNCHY_RUNTIME_SHELL_MULTI_FIRST",
+        "printf PYNCHY_RUNTIME_SHELL_MULTI_SECOND",
+    ]
+    assert completed_response["output"][0]["content"][0]["text"] == (
+        "PYNCHY_RUNTIME_SHELL_MULTI_OK"
+    )
+
+
 def test_server_records_a_deterministic_response_chain() -> None:
     """The harness can distinguish a warm chained turn from a static fake response."""
     with _server() as base_url:
