@@ -47,7 +47,7 @@ class StartupDeps(Protocol):
 
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
-    async def start_interrupted_turn(self, turn_id: str) -> None: ...
+    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None: ...
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
 
@@ -255,7 +255,7 @@ async def dispatch_interrupted_turn_recovery(
         )
         notice = f"{restart_label} Resuming interrupted work. {recovery.resume_prompt}"
         await deps.broadcast_host_message(turn.chat_jid, notice)
-        await deps.start_interrupted_turn(turn.turn_id)
+        await deps.start_interrupted_turn(turn.turn_id, turn.chat_jid)
         resumed_chats.add(turn.chat_jid)
         logger.info(
             "Interrupted turn recovery dispatched",

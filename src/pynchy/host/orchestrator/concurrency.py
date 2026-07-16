@@ -13,10 +13,8 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
     Awaitable,
     Callable,
 )
-from dataclasses import dataclass, field
 
 import pynchy.host.container_manager.process as container_process
-import pynchy.host.container_manager.security.gate as security_gate
 import pynchy.host.container_manager.session as container_session
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.write import (
@@ -26,47 +24,13 @@ from pynchy.host.container_manager.ipc.write import (
 )
 from pynchy.host.container_manager.security.middleware import PolicyDeniedError
 from pynchy.host.orchestrator.host_runner import stop_host_process
+from pynchy.host.orchestrator.messaging.outcomes import (
+    CONTINUE_AFTER_SAFE_INTERRUPT,
+    ProcessGroupResult,
+)
+from pynchy.host.orchestrator.queue_state import ExternalProcessLease, GroupState, QueuedTask
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
-
-
-@dataclass
-class QueuedTask:
-    id: str
-    group_jid: str
-    fn: Callable[[], Awaitable[None]]
-
-
-@dataclass
-class GroupState:
-    active: bool = False
-    active_is_task: bool = False  # True when active container is a scheduled task
-    pending_messages: bool = False
-    pending_tasks: deque[QueuedTask] = field(default_factory=deque)
-    process: asyncio.subprocess.Process | None = None
-    container_name: str | None = None
-    group_folder: str | None = None
-    invocation_ts: float = 0.0  # Monotonic timestamp for SecurityGate keying
-    retry_count: int = 0
-    defer_interrupt_until_tool_result: bool = False
-    is_host_process: bool = False
-    is_external_run: bool = False
-    boundary_interrupt_requested: bool = False
-
-    def release(self) -> None:
-        """Reset transient per-run state when a container slot is freed."""
-        if self.group_folder and self.invocation_ts:
-            security_gate.destroy_gate(self.group_folder, self.invocation_ts)
-        self.active = False
-        self.active_is_task = False
-        self.process = None
-        self.container_name = None
-        self.group_folder = None
-        self.invocation_ts = 0.0
-        self.defer_interrupt_until_tool_result = False
-        self.is_host_process = False
-        self.is_external_run = False
-        self.boundary_interrupt_requested = False
 
 
 class GroupQueue:
@@ -78,9 +42,10 @@ class GroupQueue:
 
     def __init__(self) -> None:
         self._groups: dict[str, GroupState] = {}
+        self._next_external_process_generation = 0
         self._active_count = 0
         self._waiting_groups: deque[str] = deque()
-        self._process_messages_fn: Callable[[str], Awaitable[bool]] | None = None
+        self._process_messages_fn: Callable[[str], Awaitable[ProcessGroupResult]] | None = None
         self._shutting_down = False
 
     def _get_group(self, group_jid: str) -> GroupState:
@@ -89,7 +54,7 @@ class GroupQueue:
             self._groups[group_jid] = GroupState()
         return self._groups[group_jid]
 
-    def set_process_messages_fn(self, fn: Callable[[str], Awaitable[bool]]) -> None:
+    def set_process_messages_fn(self, fn: Callable[[str], Awaitable[ProcessGroupResult]]) -> None:
         """Register the callback that processes pending messages for a group."""
         self._process_messages_fn = fn
 
@@ -201,26 +166,42 @@ class GroupQueue:
         on interrupts, send IPC messages, and track liveness.
         """
         state = self._get_group(group_jid)
-        state.process = proc
-        state.container_name = container_name
-        if group_folder:
-            state.group_folder = group_folder
-        state.invocation_ts = invocation_ts
-        state.is_host_process = is_host_process
-        # Interactive Temporal activities call the message pipeline directly,
-        # rather than through this queue. Adopt their process so inbound
-        # routing can still defer host-mode messages at a tool boundary.
-        if not state.active:
-            state.active = True
-            state.is_external_run = True
+        state.register_process(
+            proc,
+            container_name,
+            group_folder,
+            invocation_ts,
+            is_host_process=is_host_process,
+        )
 
-    def release_external_process(self, group_jid: str) -> bool:
-        """Release a direct Temporal process and report queued user input."""
-        state = self._get_group(group_jid)
-        has_pending_messages = state.is_external_run and state.pending_messages
-        state.release()
-        state.pending_messages = False
-        return has_pending_messages
+    def acquire_external_process(self, group_jid: str) -> ExternalProcessLease:
+        """Reserve queue state for one direct host process before it is spawned."""
+        self._next_external_process_generation += 1
+        return self._get_group(group_jid).acquire_external_process(
+            group_jid,
+            self._next_external_process_generation,
+        )
+
+    def register_external_process(  # noqa: PLR0913, RUF100 - records every host process attribute.
+        self,
+        lease: ExternalProcessLease,
+        proc: asyncio.subprocess.Process | None,
+        container_name: str,
+        group_folder: str | None = None,
+        invocation_ts: float = 0.0,
+    ) -> bool:
+        """Attach a spawned host process to its pre-acquired queue lease."""
+        return self._get_group(lease.group_jid).register_external_process(
+            lease,
+            proc,
+            container_name,
+            group_folder,
+            invocation_ts,
+        )
+
+    def release_external_process(self, lease: ExternalProcessLease) -> bool:
+        """Release only the direct host process that owns *lease*."""
+        return self._get_group(lease.group_jid).release_external_process(lease)
 
     def defer_interrupt_until_tool_result(self, group_jid: str) -> None:
         """Queue an active turn for interruption after its current tool completes."""
@@ -346,8 +327,11 @@ class GroupQueue:
         if not self._process_messages_fn:
             return
 
-        success = await self._process_messages_fn(group_jid)
-        if success:
+        result = await self._process_messages_fn(group_jid)
+        if result is CONTINUE_AFTER_SAFE_INTERRUPT:
+            state.retry_count = 0
+            state.pending_messages = True
+        elif result:
             state.retry_count = 0
         else:
             self._schedule_retry(group_jid, state)

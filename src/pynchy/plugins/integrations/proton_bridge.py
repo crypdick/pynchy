@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import imaplib
 import os
 import re
@@ -40,9 +42,10 @@ class _StrictModel(BaseModel):
 
 
 class ProtonMailbox(_StrictModel):
-    """A mailbox exposed by the authenticated Proton Bridge account."""
+    """A mailbox's display name and exact IMAP identifier."""
 
     name: str
+    mailbox: str
 
 
 class ProtonMailboxList(_StrictModel):
@@ -238,11 +241,7 @@ class ProtonBridgeImapClient:
             status, data = connection.list_mailboxes()
             _require_ok(status, "list mailboxes")
             return ProtonMailboxList(
-                mailboxes=[
-                    ProtonMailbox(name=_parse_mailbox_name(response))
-                    for response in data
-                    if response is not None
-                ]
+                mailboxes=[_parse_mailbox(response) for response in data if response is not None]
             )
 
     def list_mail(
@@ -376,16 +375,52 @@ def _fetch_message(connection: _ImapConnection, uid: str, message_part: str) -> 
     raise ProtonMailError("Proton Bridge returned an unexpected message response")
 
 
-def _parse_mailbox_name(response: bytes) -> str:
+def _parse_mailbox(response: bytes) -> ProtonMailbox:
+    """Parse a LIST response without changing the identifier needed by SELECT."""
     match = _MAILBOX_NAME_PATTERN.search(response)
     if match is None:
         raise ProtonMailError("Proton Bridge returned an invalid mailbox response")
-    name = match.group(0)
-    if name == b"NIL":
+    mailbox = match.group(0)
+    if mailbox == b"NIL":
         raise ProtonMailError("Proton Bridge returned a mailbox without a name")
-    if name.startswith(b'"') and name.endswith(b'"'):
-        name = name[1:-1].replace(b"\\\\", b"\\").replace(b'\\"', b'"')
-    return name.decode("utf-8", errors="replace")
+    if mailbox.startswith(b'"') and mailbox.endswith(b'"'):
+        mailbox = mailbox[1:-1].replace(b"\\\\", b"\\").replace(b'\\"', b'"')
+    try:
+        identifier = mailbox.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise ProtonMailError("Proton Bridge returned an invalid mailbox identifier") from exc
+    return ProtonMailbox(name=_decode_modified_utf7(identifier), mailbox=identifier)
+
+
+def _decode_modified_utf7(value: str) -> str:
+    """Decode IMAP's modified UTF-7 mailbox encoding for display only."""
+    decoded: list[str] = []
+    position = 0
+    while position < len(value):
+        ampersand = value.find("&", position)
+        if ampersand == -1:
+            decoded.append(value[position:])
+            break
+        decoded.append(value[position:ampersand])
+        terminator = value.find("-", ampersand)
+        if terminator == -1:
+            raise ProtonMailError("Proton Bridge returned an invalid international mailbox name")
+        encoded = value[ampersand + 1 : terminator]
+        if not encoded:
+            decoded.append("&")
+        else:
+            try:
+                padding = "=" * (-len(encoded) % 4)
+                utf16_bytes = base64.b64decode(
+                    (encoded.replace(",", "/") + padding).encode("ascii"), validate=True
+                )
+                decoded.append(utf16_bytes.decode("utf-16-be"))
+            except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+                raise ProtonMailError(
+                    "Proton Bridge returned an invalid international mailbox name"
+                ) from exc
+        position = terminator + 1
+    return "".join(decoded)
 
 
 def _flags(metadata: bytes) -> bytes:

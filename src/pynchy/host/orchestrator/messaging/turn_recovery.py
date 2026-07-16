@@ -17,6 +17,9 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     note_output_sent,
     resume_interrupted_message_turn,
 )
+from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    ProcessGroupResult,
+)
 from pynchy.logger import logger
 from pynchy.state import (
     claim_in_flight_turn,
@@ -119,8 +122,8 @@ async def resume_interrupted_message_if_present(
     deps: InFlightMessageDeps,
     chat_jid: str,
     group: WorkspaceProfile,
-    process_pending: Callable[[str], Awaitable[bool]],
-) -> bool | None:
+    process_pending: Callable[[str], Awaitable[ProcessGroupResult]],
+) -> ProcessGroupResult | None:
     """Claim and resume the oldest interrupted message turn for one chat."""
     turn = await get_in_flight_turn_for_chat(
         chat_jid,

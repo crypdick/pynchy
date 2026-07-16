@@ -860,10 +860,10 @@ class TestDeployContinuationResume:
         }
         (data_dir / "deploy_continuation.json").write_text(json.dumps(continuation))
 
-        started: list[str] = []
+        started: list[tuple[str, str]] = []
 
-        def _start_turn(turn_id: str) -> Awaitable[None]:
-            started.append(turn_id)
+        def _start_turn(turn_id: str, chat_jid: str) -> Awaitable[None]:
+            started.append((turn_id, chat_jid))
             return _completed_awaitable()
 
         app.start_interrupted_turn = _start_turn  # type: ignore[method-assign]
@@ -881,7 +881,10 @@ class TestDeployContinuationResume:
 
             await check_deploy_continuation(app)
 
-        assert set(started) == {"turn-admin", "turn-team"}
+        assert set(started) == {
+            ("turn-admin", "admin-1@g.us"),
+            ("turn-team", "team@g.us"),
+        }
 
         # Both groups should have a deploy resume message in history
         admin_history = await get_chat_history("admin-1@g.us", limit=10)
@@ -909,7 +912,7 @@ class TestDeployContinuationResume:
 
         started: list[str] = []
 
-        def _start_turn(turn_id: str) -> Awaitable[None]:
+        def _start_turn(turn_id: str, chat_jid: str) -> Awaitable[None]:
             started.append(turn_id)
             return _completed_awaitable()
 

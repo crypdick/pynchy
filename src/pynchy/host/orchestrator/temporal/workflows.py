@@ -27,22 +27,35 @@ class InteractiveMessageWorkflow:
         initial_retry_seconds: float,
     ) -> str:
         while True:
-            result = cast(
-                "str",
-                await workflow.execute_activity(
-                    "run_interactive_message_turn",
-                    chat_jid,
-                    start_to_close_timeout=timedelta(hours=12),
-                    heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
-                    retry_policy=RetryPolicy(
-                        maximum_attempts=maximum_attempts,
-                        initial_interval=timedelta(seconds=initial_retry_seconds),
-                        backoff_coefficient=2.0,
-                    ),
-                ),
+            result = await _run_interactive_message_turn(
+                chat_jid,
+                maximum_attempts,
+                initial_retry_seconds,
             )
             if result != CONTINUE_AFTER_SAFE_INTERRUPT:
                 return result
+
+
+async def _run_interactive_message_turn(
+    chat_jid: str,
+    maximum_attempts: int,
+    initial_retry_seconds: float,
+) -> str:
+    """Execute one fresh activity for an interactive message turn."""
+    return cast(
+        "str",
+        await workflow.execute_activity(
+            "run_interactive_message_turn",
+            chat_jid,
+            start_to_close_timeout=timedelta(hours=12),
+            heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+            retry_policy=RetryPolicy(
+                maximum_attempts=maximum_attempts,
+                initial_interval=timedelta(seconds=initial_retry_seconds),
+                backoff_coefficient=2.0,
+            ),
+        ),
+    )
 
 
 @workflow.defn
@@ -67,8 +80,14 @@ class InterruptedTurnWorkflow:
     """Resume one durable agent-turn checkpoint after its worker was interrupted."""
 
     @workflow.run
-    async def run(self, turn_id: str) -> str:
-        return cast(
+    async def run(
+        self,
+        turn_id: str,
+        chat_jid: str,
+        maximum_attempts: int,
+        initial_retry_seconds: float,
+    ) -> str:
+        result = cast(
             "str",
             await workflow.execute_activity(
                 "run_interrupted_agent_turn",
@@ -82,6 +101,13 @@ class InterruptedTurnWorkflow:
                 ),
             ),
         )
+        while result == CONTINUE_AFTER_SAFE_INTERRUPT:
+            result = await _run_interactive_message_turn(
+                chat_jid,
+                maximum_attempts,
+                initial_retry_seconds,
+            )
+        return result
 
 
 @workflow.defn

@@ -12,6 +12,9 @@ import pynchy.host.git_ops._worktree_merge as worktree_merge_module
 from pynchy.event_bus import AgentActivityEvent, Event
 from pynchy.host.container_manager import OnOutput  # noqa: TC001 - beartype resolves Protocols.
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    ProcessGroupResult,
+)
 from pynchy.logger import logger
 from pynchy.state import (
     begin_in_flight_turn,
@@ -176,8 +179,8 @@ async def resume_interrupted_message_turn(
     deps: InFlightMessageDeps,
     group: WorkspaceProfile,
     turn: InFlightTurn,
-    process_pending: Callable[[str], Awaitable[bool]],
-) -> bool:
+    process_pending: Callable[[str], Awaitable[ProcessGroupResult]],
+) -> ProcessGroupResult:
     """Resume one claimed interactive/reset turn and then drain newer user input."""
     logger.info(
         "Resuming interrupted agent turn",

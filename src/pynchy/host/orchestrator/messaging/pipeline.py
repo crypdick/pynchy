@@ -32,6 +32,11 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     begin_message_turn,
     note_output_sent,
 )
+from pynchy.host.orchestrator.messaging.outcomes import (
+    CONTINUE_AFTER_SAFE_INTERRUPT,
+    ContinueAfterSafeInterrupt,
+    ProcessGroupResult,
+)
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
 from pynchy.host.orchestrator.messaging.turn_recovery import (
@@ -46,14 +51,6 @@ if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
 type Group = types.WorkspaceProfile
-
-
-class _ContinueAfterSafeInterrupt:
-    """Signal that a pending message needs a fresh Temporal activity."""
-
-
-CONTINUE_AFTER_SAFE_INTERRUPT = _ContinueAfterSafeInterrupt()
-type ProcessGroupResult = bool | _ContinueAfterSafeInterrupt
 
 
 @runtime_checkable
@@ -392,7 +389,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
 
 async def _continue_after_host_turn(
     request: _FinalizeCursorRetryRequest,
-) -> _ContinueAfterSafeInterrupt | None:
+) -> ContinueAfterSafeInterrupt | None:
     """Commit a completed host boundary before Temporal starts its next activity."""
     if request.agent_result == "interrupted":
         # The host process was stopped only after Codex reported a completed
@@ -428,7 +425,7 @@ async def process_group_messages(
         deps,
         chat_jid,
         group,
-        lambda jid: _process_group_messages_as_bool(deps, jid),
+        lambda jid: process_group_messages(deps, jid),
     )
     if resumed is not None:
         return resumed
@@ -540,14 +537,9 @@ async def process_group_messages(
             s=s,
             turn_id=turn_id,
         )
-        if continuation := await _continue_after_host_turn(finalization):
+        if (continuation := await _continue_after_host_turn(finalization)) is not None:
             return continuation
         return await _finalize_cursor_and_retry(finalization)
     except BaseException:
         await release_in_flight_turn_claim(turn_id)
         raise
-
-
-async def _process_group_messages_as_bool(deps: MessageHandlerDeps, chat_jid: str) -> bool:
-    """Adapt a normal message turn for interrupted-turn recovery callbacks."""
-    return bool(await process_group_messages(deps, chat_jid))

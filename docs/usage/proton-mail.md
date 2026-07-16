@@ -56,7 +56,9 @@ or embedding it in the Pynchy configuration.
 
 ## Available tools
 
-- `proton_list_mailboxes` lists mailboxes.
+- `proton_list_mailboxes` lists mailboxes as `{name, mailbox}`. `name` is for
+  display; pass the returned `mailbox` identifier to the other tools, including
+  for internationalized mailbox names.
 - `proton_list_mail` lists message metadata. It returns a `message_id`, not an
   IMAP UID, because Proton Bridge UIDs are not stable across connections.
 - `proton_read_mail` fetches by `message_id` and uses a readonly mailbox plus

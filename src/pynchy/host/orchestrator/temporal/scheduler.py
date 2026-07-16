@@ -1,11 +1,8 @@
-"""Temporal runtime for scheduled Pynchy work.
-
-Temporal owns durable execution; activities delegate to the existing host
-runner so container IPC and streaming behavior stay in one place.
-"""
-
 from __future__ import annotations
 
+# allow: file-length -- Temporal worker runtime and registration must stay co-located.
+# Temporal owns durable execution; activities use the existing host runner so
+# container IPC and streaming behavior stay in one place.
 import asyncio
 import contextlib
 from collections.abc import (
@@ -186,10 +183,10 @@ async def start_interactive_message_workflow(chat_jid: str) -> None:
     await runtime.start_interactive_message_turn(chat_jid)
 
 
-async def start_interrupted_turn_workflow(turn_id: str) -> None:
+async def start_interrupted_turn_workflow(turn_id: str, chat_jid: str) -> None:
     """Start durable semantic recovery for one interrupted agent turn."""
     runtime = await _require_active_runtime()
-    await runtime.start_interrupted_turn(turn_id)
+    await runtime.start_interrupted_turn(turn_id, chat_jid)
 
 
 async def start_deploy_workflow(request: DeployRequest) -> None:
@@ -356,13 +353,17 @@ class TemporalSchedulerRuntime:
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
 
-    async def start_interrupted_turn(self, turn_id: str) -> None:
+    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None:
         """Start idempotent recovery for a durable interrupted-turn checkpoint."""
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
+        settings = get_settings()
         await self._start_workflow(
             InterruptedTurnWorkflow.run,
             turn_id,
+            chat_jid,
+            settings.queue.max_retries + 1,
+            float(settings.queue.base_retry_seconds),
             workflow_id=interrupted_turn_workflow_id(turn_id),
             status_id=turn_id,
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
