@@ -637,6 +637,17 @@ class TestContainerArgs:
 
 
 class TestMountBuilding:
+    def test_ipc_mount_prepares_host_owned_response_directory(self, tmp_path: Path):
+        """The host owns request-response IPC directories before containers start."""
+        with _patch_settings(tmp_path):
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        ipc_dir = tmp_path / "data" / "ipc" / "test-group"
+        assert (ipc_dir / "requests").is_dir()
+        assert (ipc_dir / "responses").is_dir()
+
     def test_learning_disabled_does_not_add_vault_mount(self, tmp_path: Path):
         with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)

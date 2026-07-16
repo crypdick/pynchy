@@ -13,6 +13,7 @@ import pytest
 from ._helpers import (
     groups,
     messages,
+    response_requests,
     runtime_state,
     send_message,
     status,
@@ -140,6 +141,37 @@ def test_interactive_container_turn_executes_a_scripted_patch_task() -> None:
 
         assert proof_path.read_text(encoding="utf-8") == "PYNCHY_RUNTIME_PATCH_OK"
         assert request["previous_response_id"] is not None
+        assert any(item.get("content") == response_text for item in history)
+    finally:
+        proof_path.unlink(missing_ok=True)
+
+
+@pytest.mark.timeout(180)
+def test_interactive_container_turn_executes_a_scripted_shell_task() -> None:
+    """A deterministic shell request writes only the group's mounted workspace."""
+    state = runtime_state()
+    jid = _tui_jid(state)
+    response_text = "PYNCHY_RUNTIME_SHELL_OK"
+    proof_path = (
+        Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-shell-proof.txt"
+    )
+    proof_path.unlink(missing_ok=True)
+    before = _response_count(messages(state, jid), response_text)
+    marker = uuid4().hex
+
+    try:
+        send_message(state, jid, f"PYNCHY_RUNTIME_SHELL_PROBE {marker}: write the proof file.")
+        history = wait_for_response_count(state, jid, response_text, before + 1)
+        request = wait_for_response_request(state, marker)
+        tool_result = next(
+            item
+            for item in response_requests(state)
+            if item.get("previous_response_id") == request["response_id"]
+        )
+
+        assert proof_path.read_text(encoding="utf-8") == response_text
+        assert request["previous_response_id"] is not None
+        assert "call_runtime_shell_probe" in str(tool_result["input"])
         assert any(item.get("content") == response_text for item in history)
     finally:
         proof_path.unlink(missing_ok=True)

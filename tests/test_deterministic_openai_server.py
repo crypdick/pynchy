@@ -146,6 +146,49 @@ def test_server_streams_a_scripted_patch_probe_before_its_completion() -> None:
     assert events[-1]["response"]["output"] == [events[1]["item"]]
 
 
+def test_server_streams_a_scripted_shell_probe_before_its_completion() -> None:
+    with _server() as base_url:
+        payload = {
+            "model": "pynchy-deterministic",
+            "input": "PYNCHY_RUNTIME_SHELL_PROBE",
+            "stream": True,
+        }
+        request = Request(  # noqa: S310 - local test server request.
+            f"{base_url}/v1/responses",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=2) as response:  # noqa: S310 - local test server URL.
+            raw_events = response.read().decode("utf-8").splitlines()
+
+    events = [
+        json.loads(line.removeprefix("data: "))
+        for line in raw_events
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
+
+    assert [event["type"] for event in events] == [
+        "response.created",
+        "response.output_item.added",
+        "response.output_item.done",
+        "response.completed",
+    ]
+    assert events[1]["item"] == {
+        "id": "item_runtime_shell_probe",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": "call_runtime_shell_probe",
+        "action": {
+            "commands": [
+                "printf PYNCHY_RUNTIME_SHELL_OK > /workspace/group/runtime-shell-proof.txt"
+            ],
+            "timeout_ms": 5_000,
+        },
+    }
+    assert events[-1]["response"]["output"] == [events[1]["item"]]
+
+
 def test_server_records_a_deterministic_response_chain() -> None:
     """The harness can distinguish a warm chained turn from a static fake response."""
     with _server() as base_url:
