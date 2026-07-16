@@ -1900,9 +1900,9 @@ class TestContainerInputAgentCoreConfig:
         on_process_started = run_host_input.await_args.kwargs["on_process_started"]
         host_process = MagicMock(spec=asyncio.subprocess.Process)
         on_process_started(host_process)
-        deps.queue.acquire_external_process.assert_called_once_with("chat")
-        deps.queue.register_external_process.assert_called_once_with(
-            deps.queue.acquire_external_process.return_value,
+        deps.queue.acquire_host_process.assert_called_once_with("chat")
+        deps.queue.register_host_process.assert_called_once_with(
+            deps.queue.acquire_host_process.return_value,
             host_process,
             "host-agent-runner",
             "host-group",

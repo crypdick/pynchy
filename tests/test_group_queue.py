@@ -50,10 +50,10 @@ def queue():
 
 
 class TestGroupQueue:
-    def test_external_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
+    def test_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
         """Temporal-run host processes must be active even outside queue dispatch."""
-        lease = queue.acquire_external_process("group1@g.us")
-        assert queue.register_external_process(lease, None, "host-agent-runner", "group-one")
+        lease = queue.acquire_host_process("group1@g.us")
+        assert queue.register_host_process(lease, None, "host-agent-runner", "group-one")
 
         queue.defer_interrupt_until_tool_result("group1@g.us")
         state = queue._get_group("group1@g.us")
@@ -62,7 +62,7 @@ class TestGroupQueue:
         assert state.is_external_run is True
         assert state.pending_messages is True
 
-        queue.release_external_process(lease)
+        queue.release_host_process(lease)
 
         assert state.active is False
         assert state.is_external_run is False
@@ -71,16 +71,32 @@ class TestGroupQueue:
         self, queue: GroupQueue
     ) -> None:
         """Late cleanup must not clear the state adopted by a newer host process."""
-        first_lease = queue.acquire_external_process("group1@g.us")
-        queue.release_external_process(first_lease)
+        first_lease = queue.acquire_host_process("group1@g.us")
+        queue.release_host_process(first_lease)
 
-        second_lease = queue.acquire_external_process("group1@g.us")
-        assert queue.register_external_process(second_lease, None, "host-agent-runner", "group-one")
+        second_lease = queue.acquire_host_process("group1@g.us")
+        assert queue.register_host_process(second_lease, None, "host-agent-runner", "group-one")
         state = queue._get_group("group1@g.us")
 
-        assert queue.release_external_process(first_lease) is False
+        assert queue.release_host_process(first_lease) is False
         assert state.active is True
-        assert state.external_process_lease == second_lease
+        assert state.host_process_lease == second_lease
+
+    def test_host_process_cannot_overwrite_an_active_group(self, queue: GroupQueue) -> None:
+        """A direct host turn must not replace an active task's process metadata."""
+        state = queue._get_group("group1@g.us")
+        proc = AsyncMock(spec=asyncio.subprocess.Process)
+        state.active = True
+        state.active_is_task = True
+        state.process = proc
+        state.container_name = "scheduled-task"
+
+        with pytest.raises(RuntimeError, match="Cannot start a host process"):
+            queue.acquire_host_process("group1@g.us")
+
+        assert state.process is proc
+        assert state.container_name == "scheduled-task"
+        assert state.host_process_lease is None
 
     async def test_only_runs_one_container_per_group(self, queue: GroupQueue):
         concurrent_count = 0

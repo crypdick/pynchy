@@ -24,12 +24,11 @@ class QueuedTask:
 
 
 @dataclass(frozen=True)
-class ExternalProcessLease:
-    """Identifies one host process and whether it owns the group's active slot."""
+class HostProcessLease:
+    """Identifies one direct host process that owns a group's active slot."""
 
     group_jid: str
     generation: int
-    owns_group_slot: bool
 
 
 @dataclass
@@ -48,7 +47,7 @@ class GroupState:
     defer_interrupt_until_tool_result: bool = False
     is_host_process: bool = False
     is_external_run: bool = False
-    external_process_lease: ExternalProcessLease | None = None
+    host_process_lease: HostProcessLease | None = None
     boundary_interrupt_requested: bool = False
 
     def register_process(
@@ -68,31 +67,28 @@ class GroupState:
         self.invocation_ts = invocation_ts
         self.is_host_process = is_host_process
 
-    def acquire_external_process(self, group_jid: str, generation: int) -> ExternalProcessLease:
-        """Reserve this state for a direct host process before it is spawned."""
-        if self.external_process_lease is not None:
+    def acquire_host_process(self, group_jid: str, generation: int) -> HostProcessLease:
+        """Reserve an idle group for one direct host process before it is spawned."""
+        if self.host_process_lease is not None:
             raise RuntimeError(f"A host process is already registered for {group_jid}")
-        lease = ExternalProcessLease(
-            group_jid=group_jid,
-            generation=generation,
-            owns_group_slot=not self.active,
-        )
-        self.external_process_lease = lease
-        if lease.owns_group_slot:
-            self.active = True
-            self.is_external_run = True
+        if self.active:
+            raise RuntimeError(f"Cannot start a host process while {group_jid} is active")
+        lease = HostProcessLease(group_jid=group_jid, generation=generation)
+        self.host_process_lease = lease
+        self.active = True
+        self.is_external_run = True
         return lease
 
-    def register_external_process(
+    def register_host_process(
         self,
-        lease: ExternalProcessLease,
+        lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None,
         invocation_ts: float,
     ) -> bool:
         """Attach a spawned host process only when it still owns this state."""
-        if self.external_process_lease != lease:
+        if self.host_process_lease != lease:
             logger.warning(
                 "Ignoring stale host process registration",
                 group_jid=lease.group_jid,
@@ -108,9 +104,9 @@ class GroupState:
         )
         return True
 
-    def release_external_process(self, lease: ExternalProcessLease) -> bool:
+    def release_host_process(self, lease: HostProcessLease) -> bool:
         """Release this state only when it still belongs to *lease*."""
-        if self.external_process_lease != lease:
+        if self.host_process_lease != lease:
             logger.warning(
                 "Ignoring stale host process release",
                 group_jid=lease.group_jid,
@@ -118,9 +114,7 @@ class GroupState:
             )
             return False
         has_pending_messages = self.pending_messages
-        self.external_process_lease = None
-        if not lease.owns_group_slot:
-            return has_pending_messages
+        self.host_process_lease = None
         self.release()
         self.pending_messages = False
         return has_pending_messages
@@ -138,5 +132,5 @@ class GroupState:
         self.defer_interrupt_until_tool_result = False
         self.is_host_process = False
         self.is_external_run = False
-        self.external_process_lease = None
+        self.host_process_lease = None
         self.boundary_interrupt_requested = False
