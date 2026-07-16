@@ -6,7 +6,7 @@ It has no commands for sending messages, creating or joining rooms, reacting, ed
 
 The first login reads the Matrix password only from standard input. The session and store-encryption key are created with mode `0600`; the SQLite store directory is mode `0700`.
 
-Verify the `Pynchy Matrix reader` device from Element before trusting it with encrypted conversations. A fresh device cannot decrypt historical messages; it receives room keys for new messages after verification.
+Verify the `Pynchy Matrix reader` device from Element before trusting it with encrypted conversations. A fresh device cannot decrypt historical messages; by Matrix default it can receive room keys for future messages even while unverified, subject to the room's encryption policy.
 
 Typical agent-facing use:
 
