@@ -177,6 +177,34 @@ def test_interactive_container_turn_executes_a_scripted_shell_task() -> None:
         proof_path.unlink(missing_ok=True)
 
 
+@pytest.mark.timeout(180)
+def test_interactive_container_turn_returns_scripted_shell_stdout() -> None:
+    """A read-only shell task returns its stdout to the next agent turn."""
+    state = runtime_state()
+    jid = _tui_jid(state)
+    response_text = "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
+    before = _response_count(messages(state, jid), response_text)
+    marker = uuid4().hex
+
+    send_message(
+        state,
+        jid,
+        f"PYNCHY_RUNTIME_SHELL_OUTPUT_PROBE {marker}: show the runtime health marker.",
+    )
+    history = wait_for_response_count(state, jid, response_text, before + 1)
+    request = wait_for_response_request(state, marker)
+    tool_result = next(
+        item
+        for item in response_requests(state)
+        if item.get("previous_response_id") == request["response_id"]
+    )
+
+    assert request["previous_response_id"] is not None
+    assert "call_runtime_shell_output_probe" in str(tool_result["input"])
+    assert response_text in str(tool_result["input"])
+    assert any(item.get("content") == response_text for item in history)
+
+
 def _tui_jid(state: dict[str, Any]) -> str:
     matching = [group.get("jid") for group in groups(state) if group.get("folder") == "pynchy"]
     assert matching == ["tui://pynchy"]
