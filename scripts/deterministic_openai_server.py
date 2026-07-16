@@ -28,6 +28,11 @@ _SHELL_PROBE_CALL_ID = "call_runtime_shell_probe"
 _SHELL_OUTPUT_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_OUTPUT_PROBE"
 _SHELL_OUTPUT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
 _SHELL_OUTPUT_PROBE_CALL_ID = "call_runtime_shell_output_probe"
+_SHELL_LIMIT_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_LIMIT_PROBE"
+_SHELL_LIMIT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_LIMIT_OK"
+_SHELL_LIMIT_PROBE_CALL_ID = "call_runtime_shell_limit_probe"
+_SHELL_LIMIT_PROBE_OUTPUT = "PYNCHY_RUNTIME_SHELL_LIMIT_OUTPUT"
+_SHELL_LIMIT_PROBE_TRUNCATED_OUTPUT = _SHELL_LIMIT_PROBE_OUTPUT[:8]
 _SHELL_FAILURE_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_FAILURE_PROBE"
 _SHELL_FAILURE_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_FAILURE_REPORTED"
 _SHELL_FAILURE_PROBE_CALL_ID = "call_runtime_shell_failure_probe"
@@ -383,6 +388,11 @@ def _response_text(payload: dict[str, Any], default_text: str) -> str:
             _contains(input_value, _SHELL_OUTPUT_PROBE_CALL_ID)
             and _contains(input_value, _SHELL_OUTPUT_PROBE_RESPONSE),
         ),
+        (
+            _SHELL_LIMIT_PROBE_RESPONSE,
+            _contains(input_value, _SHELL_LIMIT_PROBE_CALL_ID)
+            and _contains(input_value, _SHELL_LIMIT_PROBE_TRUNCATED_OUTPUT),
+        ),
         (_SHELL_PROBE_RESPONSE, _contains(input_value, _SHELL_PROBE_CALL_ID)),
         (_PATCH_PROBE_RESPONSE, _contains(input_value, _PATCH_PROBE_CALL_ID)),
     ):
@@ -406,6 +416,12 @@ def _is_shell_probe_request(payload: dict[str, Any]) -> bool:
 def _is_shell_output_probe_request(payload: dict[str, Any]) -> bool:
     return _contains(payload.get("input"), _SHELL_OUTPUT_PROBE_MARKER) and not _contains(
         payload.get("input"), _SHELL_OUTPUT_PROBE_CALL_ID
+    )
+
+
+def _is_shell_limit_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _SHELL_LIMIT_PROBE_MARKER) and not _contains(
+        payload.get("input"), _SHELL_LIMIT_PROBE_CALL_ID
     )
 
 
@@ -438,6 +454,7 @@ def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
         (_is_patch_probe_request, _patch_probe_call),
         (_is_shell_probe_request, _shell_probe_call),
         (_is_shell_output_probe_request, _shell_output_probe_call),
+        (_is_shell_limit_probe_request, _shell_limit_probe_call),
         (_is_shell_failure_probe_request, _shell_failure_probe_call),
         (_is_shell_multi_probe_request, _shell_multi_probe_call),
         (_is_patch_update_probe_request, _patch_update_probe_call),
@@ -511,6 +528,20 @@ def _shell_output_probe_call() -> dict[str, Any]:
         "status": "completed",
         "call_id": _SHELL_OUTPUT_PROBE_CALL_ID,
         "action": {"commands": ["printf PYNCHY_RUNTIME_SHELL_OUTPUT_OK"], "timeout_ms": 5_000},
+    }
+
+
+def _shell_limit_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_limit_probe",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_LIMIT_PROBE_CALL_ID,
+        "action": {
+            "commands": [f"printf {_SHELL_LIMIT_PROBE_OUTPUT}"],
+            "max_output_length": 8,
+            "timeout_ms": 5_000,
+        },
     }
 
 

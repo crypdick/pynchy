@@ -206,6 +206,33 @@ def test_interactive_container_turn_returns_scripted_shell_stdout() -> None:
 
 
 @pytest.mark.timeout(180)
+def test_interactive_container_turn_limits_shell_output() -> None:
+    """A bounded diagnostic returns only its requested stdout prefix to the agent."""
+    state = runtime_state()
+    jid = _tui_jid(state)
+    response_text = "PYNCHY_RUNTIME_SHELL_LIMIT_OK"
+    before = _response_count(messages(state, jid), response_text)
+    marker = uuid4().hex
+
+    send_message(
+        state,
+        jid,
+        f"PYNCHY_RUNTIME_SHELL_LIMIT_PROBE {marker}: show the bounded health marker.",
+    )
+    history = wait_for_response_count(state, jid, response_text, before + 1)
+    request = wait_for_response_request(state, marker)
+    tool_result = next(
+        item
+        for item in response_requests(state)
+        if item.get("previous_response_id") == request["response_id"]
+    )
+
+    assert "call_runtime_shell_limit_probe" in str(tool_result["input"])
+    assert "PYNCHY_R" in str(tool_result["input"])
+    assert any(item.get("content") == response_text for item in history)
+
+
+@pytest.mark.timeout(180)
 def test_interactive_container_turn_reports_shell_failure_details() -> None:
     """A failing diagnostic preserves stderr and its exit code for the agent."""
     state = runtime_state()
