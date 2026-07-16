@@ -33,6 +33,9 @@ _SHELL_LIMIT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_LIMIT_OK"
 _SHELL_LIMIT_PROBE_CALL_ID = "call_runtime_shell_limit_probe"
 _SHELL_LIMIT_PROBE_OUTPUT = "PYNCHY_RUNTIME_SHELL_LIMIT_OUTPUT"
 _SHELL_LIMIT_PROBE_TRUNCATED_OUTPUT = _SHELL_LIMIT_PROBE_OUTPUT[:8]
+_SHELL_TIMEOUT_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_TIMEOUT_PROBE"
+_SHELL_TIMEOUT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_TIMEOUT_REPORTED"
+_SHELL_TIMEOUT_PROBE_CALL_ID = "call_runtime_shell_timeout_probe"
 _SHELL_FAILURE_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_FAILURE_PROBE"
 _SHELL_FAILURE_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_FAILURE_REPORTED"
 _SHELL_FAILURE_PROBE_CALL_ID = "call_runtime_shell_failure_probe"
@@ -393,6 +396,11 @@ def _response_text(payload: dict[str, Any], default_text: str) -> str:
             _contains(input_value, _SHELL_LIMIT_PROBE_CALL_ID)
             and _contains(input_value, _SHELL_LIMIT_PROBE_TRUNCATED_OUTPUT),
         ),
+        (
+            _SHELL_TIMEOUT_PROBE_RESPONSE,
+            _contains(input_value, _SHELL_TIMEOUT_PROBE_CALL_ID)
+            and _contains_shell_timeout(input_value),
+        ),
         (_SHELL_PROBE_RESPONSE, _contains(input_value, _SHELL_PROBE_CALL_ID)),
         (_PATCH_PROBE_RESPONSE, _contains(input_value, _PATCH_PROBE_CALL_ID)),
     ):
@@ -422,6 +430,12 @@ def _is_shell_output_probe_request(payload: dict[str, Any]) -> bool:
 def _is_shell_limit_probe_request(payload: dict[str, Any]) -> bool:
     return _contains(payload.get("input"), _SHELL_LIMIT_PROBE_MARKER) and not _contains(
         payload.get("input"), _SHELL_LIMIT_PROBE_CALL_ID
+    )
+
+
+def _is_shell_timeout_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _SHELL_TIMEOUT_PROBE_MARKER) and not _contains(
+        payload.get("input"), _SHELL_TIMEOUT_PROBE_CALL_ID
     )
 
 
@@ -455,6 +469,7 @@ def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
         (_is_shell_probe_request, _shell_probe_call),
         (_is_shell_output_probe_request, _shell_output_probe_call),
         (_is_shell_limit_probe_request, _shell_limit_probe_call),
+        (_is_shell_timeout_probe_request, _shell_timeout_probe_call),
         (_is_shell_failure_probe_request, _shell_failure_probe_call),
         (_is_shell_multi_probe_request, _shell_multi_probe_call),
         (_is_patch_update_probe_request, _patch_update_probe_call),
@@ -545,6 +560,16 @@ def _shell_limit_probe_call() -> dict[str, Any]:
     }
 
 
+def _shell_timeout_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_timeout_probe",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_TIMEOUT_PROBE_CALL_ID,
+        "action": {"commands": ["sleep 1"], "timeout_ms": 10},
+    }
+
+
 def _shell_failure_probe_call() -> dict[str, Any]:
     return {
         "id": "item_runtime_shell_failure_probe",
@@ -585,6 +610,16 @@ def _contains_shell_exit_code(value: object, expected: int) -> bool:
         return False
     return (value.get("type") == "exit" and value.get("exit_code") == expected) or any(
         _contains_shell_exit_code(item, expected) for item in value.values()
+    )
+
+
+def _contains_shell_timeout(value: object) -> bool:
+    if isinstance(value, list):
+        return any(_contains_shell_timeout(item) for item in value)
+    if not isinstance(value, dict):
+        return False
+    return value.get("type") == "timeout" or any(
+        _contains_shell_timeout(item) for item in value.values()
     )
 
 

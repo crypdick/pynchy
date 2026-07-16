@@ -45,3 +45,12 @@ def test_shell_executor_carries_requested_output_limit(tmp_path) -> None:
 
     assert isinstance(result, ShellResult)
     assert result.max_output_length == 8
+
+
+def test_shell_executor_reports_timed_out_command(tmp_path) -> None:
+    executor = make_shell_executor(str(tmp_path))
+
+    result = asyncio.run(executor({"action": {"commands": ["sleep 1"], "timeout_ms": 5}}))
+
+    assert isinstance(result, ShellResult)
+    assert result.output[0].outcome.type == "timeout"
