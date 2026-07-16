@@ -1,9 +1,9 @@
-"""Tests for the built-in read-only Proton Mail MCP integration."""
+"""Tests for the built-in, direct-IMAP Proton Mail MCP integration."""
 
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, call, patch
+from dataclasses import dataclass, field
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -13,10 +13,54 @@ from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 from pynchy.host.container_manager.mcp.resolution import merged_mcp_servers
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations import proton_mail
+from pynchy.plugins.integrations.proton_bridge import (
+    ProtonMailbox,
+    ProtonMailboxList,
+    ProtonMailError,
+    ProtonMailList,
+    ProtonMessage,
+    ProtonMessageEnvelope,
+)
 
 
-async def _start_mcp_client() -> TestClient:
-    client = TestClient(TestServer(proton_mail.build_app()))
+@dataclass
+class StubProtonMailClient:
+    """In-memory direct-IMAP substitute used at the MCP boundary."""
+
+    calls: list[tuple[str, object]] = field(default_factory=list)
+
+    def list_mailboxes(self) -> ProtonMailboxList:
+        self.calls.append(("list_mailboxes", None))
+        return ProtonMailboxList(mailboxes=[ProtonMailbox(name="INBOX")])
+
+    def list_mail(
+        self,
+        *,
+        mailbox: str,
+        limit: int,
+        offset: int,
+        unread: bool,
+    ) -> ProtonMailList:
+        self.calls.append(("list_mail", (mailbox, limit, offset, unread)))
+        return ProtonMailList(
+            messages=[
+                ProtonMessageEnvelope(
+                    message_id="<event@example.com>",
+                    sender="Events <events@example.com>",
+                    subject="Event details",
+                    date="Tue, 15 Jul 2026 12:00:00 +0000",
+                    seen=False,
+                )
+            ]
+        )
+
+    def read_mail(self, *, mailbox: str, message_id: str, include_headers: bool) -> ProtonMessage:
+        self.calls.append(("read_mail", (mailbox, message_id, include_headers)))
+        return ProtonMessage(message_id=message_id, body="Event details")
+
+
+async def _start_mcp_client(stub: StubProtonMailClient) -> TestClient:
+    client = TestClient(TestServer(proton_mail.build_app(lambda: stub)))
     await client.start_server()
     return client
 
@@ -86,71 +130,48 @@ class TestProtonMailMcpPlugin:
 
 
 class TestProtonMailOperations:
-    async def test_list_mail_uses_requested_filters(self):
-        result = {"messages": [{"uid": 12, "seen": False}]}
-        run_command = AsyncMock(return_value=json.dumps(result))
+    async def test_list_mail_forwards_typed_filters_to_the_direct_client(self):
+        stub = StubProtonMailClient()
 
-        with patch(
-            "pynchy.plugins.integrations.proton_mail._run_proton_command",
-            new=run_command,
-        ):
-            assert (
-                await proton_mail._list_mail(
-                    {"mailbox": "Archive", "limit": 2, "offset": 3, "unread": True}
-                )
-                == result
+        result = await proton_mail._call_tool(
+            {
+                "name": "proton_list_mail",
+                "arguments": {"mailbox": "Archive", "limit": 2, "offset": 3, "unread": True},
+            },
+            lambda: stub,
+        )
+
+        assert json.loads(result["content"][0]["text"])["messages"][0]["message_id"] == (
+            "<event@example.com>"
+        )
+        assert stub.calls == [("list_mail", ("Archive", 2, 3, True))]
+
+    async def test_read_mail_uses_message_id_not_a_persistent_imap_uid(self):
+        stub = StubProtonMailClient()
+
+        result = await proton_mail._call_tool(
+            {
+                "name": "proton_read_mail",
+                "arguments": {"message_id": "<event@example.com>", "headers": True},
+            },
+            lambda: stub,
+        )
+
+        assert json.loads(result["content"][0]["text"])["body"] == "Event details"
+        assert stub.calls == [("read_mail", ("INBOX", "<event@example.com>", True))]
+
+    async def test_read_mail_rejects_the_removed_uid_argument(self):
+        with pytest.raises(ProtonMailError, match="Invalid Proton Mail tool arguments"):
+            await proton_mail._call_tool(
+                {"name": "proton_read_mail", "arguments": {"uid": "34"}},
+                StubProtonMailClient,
             )
-
-        run_command.assert_awaited_once_with(
-            "mail",
-            "list",
-            "--mailbox",
-            "Archive",
-            "--limit",
-            "2",
-            "--offset",
-            "3",
-            "--unread",
-            "--json",
-        )
-
-    async def test_read_mail_restores_an_unread_message(self):
-        listing = {"messages": [{"uid": 34, "seen": False}]}
-        message = {"uid": 34, "body": "Event details"}
-        run_command = AsyncMock(
-            side_effect=[json.dumps(listing), json.dumps(message), "flag restored"]
-        )
-
-        with patch(
-            "pynchy.plugins.integrations.proton_mail._run_proton_command",
-            new=run_command,
-        ):
-            assert await proton_mail._read_mail({"uid": "34", "headers": True}) == message
-
-        assert run_command.await_args_list == [
-            call("mail", "list", "--mailbox", "INBOX", "--limit", "500", "--json"),
-            call("mail", "read", "--mailbox", "INBOX", "uid:34", "--json", "--headers"),
-            call("mail", "flag", "--mailbox", "INBOX", "uid:34", "--unread"),
-        ]
-
-    async def test_read_mail_rejects_a_uid_missing_from_the_state_scan(self):
-        run_command = AsyncMock(return_value=json.dumps({"messages": []}))
-
-        with (
-            patch(
-                "pynchy.plugins.integrations.proton_mail._run_proton_command",
-                new=run_command,
-            ),
-            pytest.raises(proton_mail.ProtonMailError, match="not found"),
-        ):
-            await proton_mail._read_mail({"uid": "34"})
-
-        assert run_command.await_count == 1
 
 
 class TestProtonMailMcpServer:
     async def test_mcp_lists_only_read_only_tools(self):
-        client = await _start_mcp_client()
+        stub = StubProtonMailClient()
+        client = await _start_mcp_client(stub)
         try:
             response = await client.post(
                 "/mcp",
@@ -167,3 +188,27 @@ class TestProtonMailMcpServer:
             "proton_list_mail",
             "proton_read_mail",
         }
+
+    async def test_mcp_reads_a_message_through_the_injected_direct_client(self):
+        stub = StubProtonMailClient()
+        client = await _start_mcp_client(stub)
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "proton_read_mail",
+                        "arguments": {"message_id": "<event@example.com>"},
+                    },
+                },
+            )
+
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        text = payload["result"]["content"][0]["text"]
+        assert json.loads(text)["message_id"] == "<event@example.com>"
