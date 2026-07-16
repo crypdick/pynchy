@@ -156,13 +156,6 @@ class _ImapConnection(Protocol):
     def uid(self, command: str, *args: object) -> tuple[str, list[object]]: ...
 
 
-@runtime_checkable
-class PasswordProvider(Protocol):
-    """Read the Bridge app password without putting it in source or MCP config."""
-
-    def get_password(self) -> SecretStr: ...
-
-
 @dataclass(frozen=True)
 class CommandPasswordProvider:
     """Obtain the Bridge app password from an administrator-configured command."""
@@ -197,6 +190,7 @@ class CommandPasswordProvider:
 
 
 ImapConnectionFactory = Callable[[ProtonBridgeConfiguration, SecretStr], _ImapConnection]
+type _PasswordReader = Callable[[], SecretStr]
 
 
 @dataclass
@@ -232,11 +226,13 @@ class ProtonBridgeImapClient:
     def __init__(
         self,
         configuration: ProtonBridgeConfiguration,
-        password_provider: PasswordProvider,
+        password_reader: _PasswordReader,
         connection_factory: ImapConnectionFactory | None = None,
     ) -> None:
+        if not callable(password_reader):
+            raise ProtonMailError("Proton Bridge password reader must be callable")
         self._configuration = configuration
-        self._password_provider = password_provider
+        self._password_reader = password_reader
         self._connection_factory = connection_factory or _open_bridge_connection
 
     def list_mailboxes(self) -> ProtonMailboxList:
@@ -286,7 +282,7 @@ class ProtonBridgeImapClient:
         try:
             connection = self._connection_factory(
                 self._configuration,
-                self._password_provider.get_password(),
+                self._password_reader(),
             )
             yield connection
         except ProtonMailError:
@@ -304,7 +300,7 @@ def create_proton_mail_client() -> ProtonMailClient:
     configuration = ProtonBridgeConfiguration.from_environment()
     return ProtonBridgeImapClient(
         configuration=configuration,
-        password_provider=CommandPasswordProvider(configuration.password_command),
+        password_reader=CommandPasswordProvider(configuration.password_command).get_password,
     )
 
 

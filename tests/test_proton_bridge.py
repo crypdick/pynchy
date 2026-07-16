@@ -16,12 +16,9 @@ from pynchy.plugins.integrations.proton_bridge import (
 )
 
 
-@dataclass
-class StaticPasswordProvider:
-    """Deterministic credential provider for direct-IMAP tests."""
-
-    def get_password(self) -> SecretStr:
-        return SecretStr("test-bridge-password")
+def _password_reader() -> SecretStr:
+    """Deterministic credential reader for direct-IMAP tests."""
+    return SecretStr("test-bridge-password")
 
 
 @dataclass
@@ -65,19 +62,22 @@ def _client(connection: FakeImapConnection) -> ProtonBridgeImapClient:
     )
     return ProtonBridgeImapClient(
         configuration,
-        StaticPasswordProvider(),
+        _password_reader,
         connection_factory=lambda _configuration, _password: connection,
     )
 
 
 class TestProtonBridgeImapClient:
-    def test_rejects_password_provider_outside_the_runtime_contract(self):
+    def test_rejects_a_non_callable_password_reader(self):
         configuration = ProtonBridgeConfiguration(
             username="hi@example.com",
             password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
         )
 
-        with pytest.warns(UserWarning, match="violates type hint.*PasswordProvider"):
+        with (
+            pytest.warns(UserWarning, match="violates type hint.*Callable"),
+            pytest.raises(ProtonMailError, match="password reader must be callable"),
+        ):
             ProtonBridgeImapClient(configuration, object())
 
     def test_lists_international_mailboxes_with_a_display_name_and_raw_identifier(self):
