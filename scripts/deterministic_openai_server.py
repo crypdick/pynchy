@@ -36,6 +36,12 @@ _SHELL_LIMIT_PROBE_TRUNCATED_OUTPUT = _SHELL_LIMIT_PROBE_OUTPUT[:8]
 _SHELL_TIMEOUT_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_TIMEOUT_PROBE"
 _SHELL_TIMEOUT_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_TIMEOUT_REPORTED"
 _SHELL_TIMEOUT_PROBE_CALL_ID = "call_runtime_shell_timeout_probe"
+_SHELL_CHAIN_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_CHAIN_PROBE"
+_SHELL_CHAIN_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_CHAIN_OK"
+_SHELL_CHAIN_FIRST_CALL_ID = "call_runtime_shell_chain_first"
+_SHELL_CHAIN_SECOND_CALL_ID = "call_runtime_shell_chain_second"
+_SHELL_CHAIN_FIRST_OUTPUT = "PYNCHY_RUNTIME_SHELL_CHAIN_FIRST"
+_SHELL_CHAIN_SECOND_OUTPUT = "PYNCHY_RUNTIME_SHELL_CHAIN_SECOND"
 _SHELL_FAILURE_PROBE_MARKER = "PYNCHY_RUNTIME_SHELL_FAILURE_PROBE"
 _SHELL_FAILURE_PROBE_RESPONSE = "PYNCHY_RUNTIME_SHELL_FAILURE_REPORTED"
 _SHELL_FAILURE_PROBE_CALL_ID = "call_runtime_shell_failure_probe"
@@ -373,6 +379,11 @@ def _response_output(payload: dict[str, Any], response_text: str) -> list[dict[s
 def _response_text(payload: dict[str, Any], default_text: str) -> str:
     input_value = payload.get("input")
     for response, complete in (
+        (
+            _SHELL_CHAIN_PROBE_RESPONSE,
+            _contains(input_value, _SHELL_CHAIN_SECOND_CALL_ID)
+            and _contains(input_value, _SHELL_CHAIN_SECOND_OUTPUT),
+        ),
         (_PATCH_DELETE_PROBE_RESPONSE, _contains(input_value, _PATCH_DELETE_PROBE_CALL_ID)),
         (_PATCH_UPDATE_PROBE_RESPONSE, _contains(input_value, _PATCH_UPDATE_PROBE_CALL_ID)),
         (
@@ -439,6 +450,21 @@ def _is_shell_timeout_probe_request(payload: dict[str, Any]) -> bool:
     )
 
 
+def _is_shell_chain_first_probe_request(payload: dict[str, Any]) -> bool:
+    return _contains(payload.get("input"), _SHELL_CHAIN_PROBE_MARKER) and not _contains(
+        payload.get("input"), _SHELL_CHAIN_FIRST_CALL_ID
+    )
+
+
+def _is_shell_chain_second_probe_request(payload: dict[str, Any]) -> bool:
+    input_value = payload.get("input")
+    return (
+        _contains(input_value, _SHELL_CHAIN_FIRST_CALL_ID)
+        and _contains(input_value, _SHELL_CHAIN_FIRST_OUTPUT)
+        and not _contains(input_value, _SHELL_CHAIN_SECOND_CALL_ID)
+    )
+
+
 def _is_shell_failure_probe_request(payload: dict[str, Any]) -> bool:
     return _contains(payload.get("input"), _SHELL_FAILURE_PROBE_MARKER) and not _contains(
         payload.get("input"), _SHELL_FAILURE_PROBE_CALL_ID
@@ -470,6 +496,8 @@ def _probe_tool_call(payload: dict[str, Any]) -> dict[str, Any] | None:
         (_is_shell_output_probe_request, _shell_output_probe_call),
         (_is_shell_limit_probe_request, _shell_limit_probe_call),
         (_is_shell_timeout_probe_request, _shell_timeout_probe_call),
+        (_is_shell_chain_first_probe_request, _shell_chain_first_probe_call),
+        (_is_shell_chain_second_probe_request, _shell_chain_second_probe_call),
         (_is_shell_failure_probe_request, _shell_failure_probe_call),
         (_is_shell_multi_probe_request, _shell_multi_probe_call),
         (_is_patch_update_probe_request, _patch_update_probe_call),
@@ -567,6 +595,26 @@ def _shell_timeout_probe_call() -> dict[str, Any]:
         "status": "completed",
         "call_id": _SHELL_TIMEOUT_PROBE_CALL_ID,
         "action": {"commands": ["sleep 1"], "timeout_ms": 10},
+    }
+
+
+def _shell_chain_first_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_chain_first",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_CHAIN_FIRST_CALL_ID,
+        "action": {"commands": [f"printf {_SHELL_CHAIN_FIRST_OUTPUT}"], "timeout_ms": 5_000},
+    }
+
+
+def _shell_chain_second_probe_call() -> dict[str, Any]:
+    return {
+        "id": "item_runtime_shell_chain_second",
+        "type": "shell_call",
+        "status": "completed",
+        "call_id": _SHELL_CHAIN_SECOND_CALL_ID,
+        "action": {"commands": [f"printf {_SHELL_CHAIN_SECOND_OUTPUT}"], "timeout_ms": 5_000},
     }
 
 

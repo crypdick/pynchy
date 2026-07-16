@@ -291,6 +291,48 @@ def test_server_completes_a_shell_timeout_probe_only_after_receiving_timeout_out
     )
 
 
+def test_server_runs_a_chained_shell_probe_before_its_final_response() -> None:
+    with _server() as base_url:
+        first_status, first_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {"model": "pynchy-deterministic", "input": "PYNCHY_RUNTIME_SHELL_CHAIN_PROBE"},
+        )
+        second_status, second_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {
+                "model": "pynchy-deterministic",
+                "input": [
+                    {
+                        "call_id": "call_runtime_shell_chain_first",
+                        "output": [{"stdout": "PYNCHY_RUNTIME_SHELL_CHAIN_FIRST"}],
+                    }
+                ],
+                "previous_response_id": first_response["id"],
+            },
+        )
+        completed_status, completed_response = _json_request(
+            base_url,
+            "/v1/responses",
+            {
+                "model": "pynchy-deterministic",
+                "input": [
+                    {
+                        "call_id": "call_runtime_shell_chain_second",
+                        "output": [{"stdout": "PYNCHY_RUNTIME_SHELL_CHAIN_SECOND"}],
+                    }
+                ],
+                "previous_response_id": second_response["id"],
+            },
+        )
+
+    assert first_status == second_status == completed_status == HTTPStatus.OK
+    assert first_response["output"][0]["call_id"] == "call_runtime_shell_chain_first"
+    assert second_response["output"][0]["call_id"] == "call_runtime_shell_chain_second"
+    assert completed_response["output"][0]["content"][0]["text"] == "PYNCHY_RUNTIME_SHELL_CHAIN_OK"
+
+
 def test_server_completes_a_shell_failure_probe_only_after_receiving_stderr_and_exit_code() -> None:
     with _server() as base_url:
         initial_status, initial_response = _json_request(
