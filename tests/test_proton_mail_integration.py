@@ -31,7 +31,7 @@ class StubProtonMailClient:
 
     def list_mailboxes(self) -> ProtonMailboxList:
         self.calls.append(("list_mailboxes", None))
-        return ProtonMailboxList(mailboxes=[ProtonMailbox(name="INBOX")])
+        return ProtonMailboxList(mailboxes=[ProtonMailbox(name="INBOX", mailbox="INBOX")])
 
     def list_mail(
         self,

@@ -19,6 +19,7 @@ import pynchy.host.orchestrator.temporal.channel_reconciliation as temporal_chan
 import pynchy.host.orchestrator.temporal.deploy as temporal_deploy
 import pynchy.host.orchestrator.temporal.host_jobs as temporal_host_jobs
 import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
+import pynchy.host.orchestrator.temporal.interrupted as temporal_interrupted
 import pynchy.host.orchestrator.temporal.learning as temporal_learning
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
@@ -395,11 +396,12 @@ class TestTemporalSchedulerRuntime:
         )
         runtime.client = client
 
-        await runtime.start_interrupted_turn("turn-123")
+        await runtime.start_interrupted_turn("turn-123", "slack:C123")
 
         workflow, args, kwargs = client.started_workflows[0]
         assert workflow == temporal_workflows.InterruptedTurnWorkflow.run
-        assert args == ("turn-123",)
+        assert args[:2] == ("turn-123", "slack:C123")
+        assert len(args) == 4
         assert kwargs["id"] == "pynchy-interrupted-turn-turn-123"
         assert kwargs["task_queue"] == "pynchy-test"
         assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE"
@@ -949,6 +951,30 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_scheduler.run_interactive_message_turn("slack:C123")
 
         assert result == temporal_interactive.CONTINUE_AFTER_SAFE_INTERRUPT
+
+    @pytest.mark.asyncio
+    async def test_interrupted_turn_activity_preserves_safe_interrupt_continuation(
+        self, monkeypatch
+    ):
+        get_turn = AsyncMock(return_value=object())
+        claim_turn = AsyncMock(return_value=True)
+        scheduler_deps = object()
+
+        def get_scheduler_deps() -> object:
+            return scheduler_deps
+
+        monkeypatch.setattr(temporal_interrupted, "get_in_flight_turn", get_turn)
+        monkeypatch.setattr(temporal_interrupted, "claim_in_flight_turn", claim_turn)
+        monkeypatch.setattr(
+            temporal_interrupted,
+            "_dispatch_interrupted_turn",
+            AsyncMock(return_value=temporal_interrupted.CONTINUE_AFTER_SAFE_INTERRUPT),
+        )
+        monkeypatch.setattr(temporal_interrupted, "_require_scheduler_deps", get_scheduler_deps)
+
+        result = await temporal_interrupted.run_interrupted_agent_turn("turn-123")
+
+        assert result == temporal_workflows.CONTINUE_AFTER_SAFE_INTERRUPT
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_builds_then_finalizes(self, monkeypatch):

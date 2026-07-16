@@ -34,6 +34,9 @@ from pynchy.host.orchestrator.messaging import (
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
+from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    ProcessGroupResult,
+)
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.logger import logger
 from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
@@ -413,20 +416,20 @@ class PynchyApp:
     # Message processing delegation
     # ------------------------------------------------------------------
 
-    async def _process_group_messages(self, chat_jid: str) -> bool:
+    async def _process_group_messages(self, chat_jid: str) -> ProcessGroupResult:
         """Delegates group processing to the message handler module."""
-        return bool(await message_handler.process_group_messages(self, chat_jid))
+        return await message_handler.process_group_messages(self, chat_jid)
 
-    async def process_group_messages(self, chat_jid: str) -> bool:
+    async def process_group_messages(self, chat_jid: str) -> ProcessGroupResult:
         return await self._process_group_messages(chat_jid)
 
     async def start_interactive_turn(self, chat_jid: str) -> None:
         """Start durable Temporal processing for pending messages in one chat."""
         await temporal_scheduler.start_interactive_message_workflow(chat_jid)
 
-    async def start_interrupted_turn(self, turn_id: str) -> None:
+    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None:
         """Start durable semantic recovery for one interrupted agent turn."""
-        await temporal_scheduler.start_interrupted_turn_workflow(turn_id)
+        await temporal_scheduler.start_interrupted_turn_workflow(turn_id, chat_jid)
 
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)

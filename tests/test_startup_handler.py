@@ -317,9 +317,9 @@ class TestCheckDeployContinuation:
         assert deps.broadcast_host_message.await_count == 2
         notified_jids = {call.args[0] for call in deps.broadcast_host_message.await_args_list}
         assert notified_jids == {periodic_jid, interactive_jid}
-        assert {call.args[0] for call in deps.start_interrupted_turn.await_args_list} == {
-            "turn-scheduled",
-            "turn-interactive",
+        assert {call.args for call in deps.start_interrupted_turn.await_args_list} == {
+            ("turn-scheduled", periodic_jid),
+            ("turn-interactive", interactive_jid),
         }
         assert resumed_chats == {periodic_jid, interactive_jid}
         deps.start_interactive_turn.assert_not_awaited()
@@ -379,7 +379,7 @@ class TestCheckDeployContinuation:
         resumed_chats = await check_deploy_continuation(deps)
 
         assert resumed_chats == {jid}
-        deps.start_interrupted_turn.assert_awaited_once_with("turn-crash")
+        deps.start_interrupted_turn.assert_awaited_once_with("turn-crash", jid)
         notice = deps.broadcast_host_message.await_args.args[1]
         assert "Pynchy restarted" in notice
         assert "Deploy complete" not in notice

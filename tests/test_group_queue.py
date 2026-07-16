@@ -52,9 +52,8 @@ def queue():
 class TestGroupQueue:
     def test_external_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
         """Temporal-run host processes must be active even outside queue dispatch."""
-        queue.register_process(
-            "group1@g.us", None, "host-agent-runner", "group-one", is_host_process=True
-        )
+        lease = queue.acquire_external_process("group1@g.us")
+        assert queue.register_external_process(lease, None, "host-agent-runner", "group-one")
 
         queue.defer_interrupt_until_tool_result("group1@g.us")
         state = queue._get_group("group1@g.us")
@@ -63,21 +62,25 @@ class TestGroupQueue:
         assert state.is_external_run is True
         assert state.pending_messages is True
 
-        queue.release_external_process("group1@g.us")
+        queue.release_external_process(lease)
 
         assert state.active is False
         assert state.is_external_run is False
 
-    def test_external_process_release_clears_a_stale_queue_entry(self, queue: GroupQueue) -> None:
-        """A late continuation must not leave an idle group marked as pending."""
+    def test_stale_external_process_release_preserves_a_newer_lease(
+        self, queue: GroupQueue
+    ) -> None:
+        """Late cleanup must not clear the state adopted by a newer host process."""
+        first_lease = queue.acquire_external_process("group1@g.us")
+        queue.release_external_process(first_lease)
+
+        second_lease = queue.acquire_external_process("group1@g.us")
+        assert queue.register_external_process(second_lease, None, "host-agent-runner", "group-one")
         state = queue._get_group("group1@g.us")
-        state.pending_messages = True
 
-        has_pending_messages = queue.release_external_process("group1@g.us")
-
-        assert has_pending_messages is False
-        assert state.active is False
-        assert state.pending_messages is False
+        assert queue.release_external_process(first_lease) is False
+        assert state.active is True
+        assert state.external_process_lease == second_lease
 
     async def test_only_runs_one_container_per_group(self, queue: GroupQueue):
         concurrent_count = 0

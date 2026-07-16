@@ -29,12 +29,15 @@ class FakeImapConnection:
     """Small programmable IMAP transport that records all protocol operations."""
 
     calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
+    mailbox_responses: list[bytes] = field(
+        default_factory=lambda: [b'(\\HasNoChildren) "/" "INBOX"']
+    )
     search_results: list[bytes] = field(default_factory=list)
     fetched_messages: dict[str, tuple[bytes, bytes]] = field(default_factory=dict)
 
     def list_mailboxes(self) -> tuple[str, list[bytes]]:
         self.calls.append(("LIST", ()))
-        return "OK", [b'(\\HasNoChildren) "/" "INBOX"']
+        return "OK", self.mailbox_responses
 
     def logout(self) -> tuple[str, list[bytes]]:
         self.calls.append(("LOGOUT", ()))
@@ -68,6 +71,23 @@ def _client(connection: FakeImapConnection) -> ProtonBridgeImapClient:
 
 
 class TestProtonBridgeImapClient:
+    def test_lists_international_mailboxes_with_a_display_name_and_raw_identifier(self):
+        connection = FakeImapConnection(
+            mailbox_responses=[b'(\\HasNoChildren) "/" "&Jjo-"'],
+        )
+
+        result = _client(connection).list_mailboxes()
+
+        assert result.mailboxes[0].name == "☺"
+        assert result.mailboxes[0].mailbox == "&Jjo-"
+
+    def test_uses_the_returned_raw_mailbox_identifier_for_select(self):
+        connection = FakeImapConnection(search_results=[b""])
+
+        _client(connection).list_mail(mailbox="&Jjo-", limit=2, offset=0, unread=False)
+
+        assert ("SELECT", ('"&Jjo-"', True)) in connection.calls
+
     def test_lists_unread_messages_with_peek_and_readonly_mailbox(self):
         connection = FakeImapConnection(
             search_results=[b"10"],

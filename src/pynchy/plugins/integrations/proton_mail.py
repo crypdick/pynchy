@@ -205,7 +205,7 @@ def _tool_specs() -> list[dict[str, object]]:
                 "properties": {
                     "mailbox": {
                         "type": "string",
-                        "description": "Mailbox name.",
+                        "description": "Mailbox identifier returned by proton_list_mailboxes.",
                         "default": "INBOX",
                     },
                     "limit": {
@@ -244,7 +244,7 @@ def _tool_specs() -> list[dict[str, object]]:
                     },
                     "mailbox": {
                         "type": "string",
-                        "description": "Mailbox containing the message.",
+                        "description": "Mailbox identifier returned by proton_list_mailboxes.",
                         "default": "INBOX",
                     },
                     "headers": {

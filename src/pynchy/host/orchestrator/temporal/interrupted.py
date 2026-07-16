@@ -8,6 +8,10 @@ from temporalio import activity
 
 from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
 from pynchy.host.orchestrator.messaging.in_flight import resume_interrupted_message_turn
+from pynchy.host.orchestrator.messaging.outcomes import (
+    CONTINUE_AFTER_SAFE_INTERRUPT,
+    ProcessGroupResult,
+)
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     resume_interrupted_scheduled_turn,
@@ -16,6 +20,9 @@ from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,
+)
+from pynchy.host.orchestrator.temporal.workflows import (
+    CONTINUE_AFTER_SAFE_INTERRUPT as CONTINUE_AFTER_SAFE_INTERRUPT_RESULT,
 )
 from pynchy.state import (
     claim_in_flight_turn,
@@ -26,7 +33,7 @@ from pynchy.state import (
 from pynchy.types import InFlightWorkKind
 
 
-async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> bool:
+async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> ProcessGroupResult:
     turn = await get_in_flight_turn(turn_id)
     if turn is None:
         return True
@@ -53,15 +60,8 @@ async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> bool:
         message_deps,
         group,
         turn,
-        lambda jid: _process_group_messages_as_bool(message_deps, jid),
+        lambda jid: messaging_pipeline.process_group_messages(message_deps, jid),
     )
-
-
-async def _process_group_messages_as_bool(
-    deps: messaging_pipeline.MessageHandlerDeps, chat_jid: str
-) -> bool:
-    """Keep interrupted-turn recovery on its established boolean contract."""
-    return bool(await messaging_pipeline.process_group_messages(deps, chat_jid))
 
 
 @activity.defn(name="run_interrupted_agent_turn")
@@ -82,6 +82,9 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
         _record_activity_result(turn_id, "error", str(exc))
         raise
 
+    if handled is CONTINUE_AFTER_SAFE_INTERRUPT:
+        _record_activity_result(turn_id, CONTINUE_AFTER_SAFE_INTERRUPT_RESULT)
+        return CONTINUE_AFTER_SAFE_INTERRUPT_RESULT
     if not handled:
         err = "Interrupted agent turn requested retry"
         _record_activity_result(turn_id, "retry_requested", err)

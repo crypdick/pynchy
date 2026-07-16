@@ -21,6 +21,8 @@ from pynchy.types import ContainerInput, ContainerOutput
 if TYPE_CHECKING:
     import asyncio
 
+    from pynchy.host.orchestrator.queue_state import ExternalProcessLease
+
 _CODEX_SESSION_PREFIX = "codex:"
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 
@@ -28,20 +30,20 @@ HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 class HostProcessQueue(Protocol):
     """Queue operations that bridge a direct Temporal host process."""
 
-    def register_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
+    def acquire_external_process(self, group_jid: str) -> ExternalProcessLease: ...
+
+    def register_external_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
         self,
-        group_jid: str,
+        lease: ExternalProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
         group_folder: str | None = None,
         invocation_ts: float = 0.0,
-        *,
-        is_host_process: bool = False,
-    ) -> None: ...
+    ) -> bool: ...
 
     def boundary_interrupt_requested(self, group_jid: str) -> bool: ...
 
-    def release_external_process(self, group_jid: str) -> bool: ...
+    def release_external_process(self, lease: ExternalProcessLease) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,18 @@ def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
 
 async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
     """Run a host turn while exposing its process to inbound message routing."""
+    lease = request.queue.acquire_external_process(request.chat_jid)
+
+    def register_spawned_process(proc: asyncio.subprocess.Process) -> None:
+        if not request.queue.register_external_process(
+            lease,
+            proc,
+            "host-agent-runner",
+            request.group_folder,
+            request.input_data.invocation_ts,
+        ):
+            raise RuntimeError("Host process lease expired before process registration")
+
     try:
         result = await run_host_input(
             request.input_data,
@@ -119,21 +133,16 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
             on_output=request.on_output,
             timeout_seconds=request.timeout_seconds,
             env=request.env,
-            on_process_started=lambda proc: request.queue.register_process(
-                request.chat_jid,
-                cast("asyncio.subprocess.Process", proc),
-                "host-agent-runner",
-                request.group_folder,
-                request.input_data.invocation_ts,
-                is_host_process=True,
+            on_process_started=lambda proc: register_spawned_process(
+                cast("asyncio.subprocess.Process", proc)
             ),
             is_interrupted=lambda: request.queue.boundary_interrupt_requested(request.chat_jid),
         )
     except BaseException:
-        request.queue.release_external_process(request.chat_jid)
+        request.queue.release_external_process(lease)
         raise
 
-    has_pending_messages = request.queue.release_external_process(request.chat_jid) is True
+    has_pending_messages = request.queue.release_external_process(lease) is True
     if result == "success" and has_pending_messages:
         return "success_with_pending_input"
     return result
