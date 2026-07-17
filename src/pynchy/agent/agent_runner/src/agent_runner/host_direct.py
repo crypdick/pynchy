@@ -48,7 +48,7 @@ def _host_pynchy_mcp_server(container_input: ContainerInput) -> dict[str, object
         "PYNCHY_SESSION_ID": container_input.session_id or "",
         "PYNCHY_IS_SCHEDULED_TASK": "1" if container_input.is_scheduled_task else "0",
     }
-    for name in ("PYNCHY_IPC_DIR", "PYNCHY_SKILLS_ROOT", "PYNCHY_PROFILE_SKILLS_ROOT"):
+    for name in ("PYNCHY_IPC_DIR", "PYNCHY_SKILLS_ROOT"):
         if value := os.environ.get(name):
             env[name] = value
     return {

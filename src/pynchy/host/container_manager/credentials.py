@@ -225,7 +225,6 @@ def _agent_context_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, s
 
     if learning_paths := resolve_learning_paths(group_folder):
         env_vars["PYNCHY_SKILLS_ROOT"] = f"{learning_paths.vault_mount_path}/systems/pynchy/skills"
-        env_vars["PYNCHY_PROFILE_SKILLS_ROOT"] = learning_paths.mounted_skills_root
     return env_vars
 
 

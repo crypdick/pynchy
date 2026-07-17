@@ -1,4 +1,4 @@
-"""Tests for profile-scoped learned skill discovery."""
+"""Tests for globally shared learned skill discovery."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def test_iter_returns_empty_when_skills_root_iterdir_fails(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skills_root.mkdir(parents=True)
     settings = _settings(tmp_path=tmp_path, learning=_enabled_learning(vault))
     original_iterdir = Path.iterdir
@@ -103,7 +103,7 @@ def test_iter_returns_empty_when_skills_root_iterdir_fails(
 
 def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/shopping/skills"
+    skills_root = vault / "systems/pynchy/skills"
     valid = skills_root / "valid-skill"
     invalid = skills_root / "missing-metadata"
     valid.mkdir(parents=True)
@@ -120,14 +120,14 @@ def test_iter_returns_only_skill_dirs_with_skill_md(tmp_path: Path):
         assert _iter_learned_skill_dirs("shopping") == [valid.resolve()]
 
 
-def test_iter_includes_global_obsidian_skills_for_every_profile(tmp_path: Path):
+def test_iter_ignores_legacy_profile_skill_directories(tmp_path: Path):
     vault = tmp_path / "vault"
     global_skill = vault / "systems/pynchy/skills/global-skill"
-    profile_skill = vault / "systems/pynchy/profiles/shopping/skills/profile-skill"
+    legacy_profile_skill = vault / "systems/pynchy/profiles/shopping/skills/profile-skill"
     global_skill.mkdir(parents=True)
-    profile_skill.mkdir(parents=True)
+    legacy_profile_skill.mkdir(parents=True)
     (global_skill / "SKILL.md").write_text("---\nname: global-skill\ntier: learned\n---\n")
-    (profile_skill / "SKILL.md").write_text("---\nname: profile-skill\ntier: learned\n---\n")
+    (legacy_profile_skill / "SKILL.md").write_text("---\nname: profile-skill\ntier: learned\n---\n")
     settings = _settings(
         tmp_path=tmp_path,
         learning=_enabled_learning(vault),
@@ -135,10 +135,7 @@ def test_iter_includes_global_obsidian_skills_for_every_profile(tmp_path: Path):
     )
 
     with _patch_learning_settings(settings):
-        assert _iter_learned_skill_dirs("shopping") == [
-            global_skill.resolve(),
-            profile_skill.resolve(),
-        ]
+        assert _iter_learned_skill_dirs("shopping") == [global_skill.resolve()]
 
 
 def test_iter_skips_symlink_that_escapes_skills_root(
@@ -146,7 +143,7 @@ def test_iter_skips_symlink_that_escapes_skills_root(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skills_root.mkdir(parents=True)
     escaped = tmp_path / "escaped-skill"
     escaped.mkdir()
@@ -167,7 +164,7 @@ def test_iter_skips_skill_with_file_symlink_escape(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skill = skills_root / "leaky"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("---\nname: leaky\ntier: learned\n---\n")
@@ -189,7 +186,7 @@ def test_iter_skips_skill_md_symlink_escape(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skill = skills_root / "leaky"
     skill.mkdir(parents=True)
     escaped_skill_md = tmp_path / "SKILL.md"
@@ -207,7 +204,7 @@ def test_iter_skips_skill_md_symlink_escape(
 
 def test_iter_accepts_skill_with_nested_support_directory(tmp_path: Path):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skill = skills_root / "nested"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("---\nname: nested\ntier: learned\n---\n")
@@ -225,7 +222,7 @@ def test_iter_skips_skill_over_byte_budget(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     oversized = skills_root / "too-large"
     oversized.mkdir(parents=True)
     (oversized / "SKILL.md").write_text("---\nname: too-large\ntier: learned\n---\n")
@@ -248,7 +245,7 @@ def test_iter_skips_skill_when_file_stat_fails(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skill = skills_root / "unreadable-stat"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("---\nname: unreadable-stat\ntier: learned\n---\n")
@@ -275,7 +272,7 @@ def test_iter_skips_skill_when_file_lstat_fails(
     caplog: pytest.LogCaptureFixture,
 ):
     vault = tmp_path / "vault"
-    skills_root = vault / "systems/pynchy/profiles/default/skills"
+    skills_root = vault / "systems/pynchy/skills"
     skill = skills_root / "unreadable-lstat"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text("---\nname: unreadable-lstat\ntier: learned\n---\n")
@@ -299,7 +296,7 @@ def test_iter_skips_skill_when_file_lstat_fails(
 
 def test_iter_accepts_current_loader_metadata_without_description(tmp_path: Path):
     vault = tmp_path / "vault"
-    skill = vault / "systems/pynchy/profiles/default/skills/no-description"
+    skill = vault / "systems/pynchy/skills/no-description"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text(
         "---\nname: no-description\ntier: learned\n---\n# No Description\n"

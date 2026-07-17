@@ -47,7 +47,6 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
     )
     learning_paths = SimpleNamespace(
         vault_root=tmp_path,
-        skills_root=tmp_path / "systems" / "pynchy" / "profiles" / "pynchy-dev" / "skills",
     )
     settings = make_settings(data_dir=tmp_path / "data")
     monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
@@ -60,7 +59,7 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
     assert env["OBSIDIAN_VAULT_PATH"] == str(tmp_path)
     assert env["PYNCHY_IPC_DIR"] == str(tmp_path / "data" / "ipc" / "pynchy-dev")
     assert env["PYNCHY_SKILLS_ROOT"] == str(tmp_path / "systems" / "pynchy" / "skills")
-    assert env["PYNCHY_PROFILE_SKILLS_ROOT"] == str(learning_paths.skills_root)
+    assert "PYNCHY_PROFILE_SKILLS_ROOT" not in env
 
 
 def test_admin_host_execution_skips_missing_full_learning_vault_mirror(

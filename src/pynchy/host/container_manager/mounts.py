@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,38 +12,10 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import write_env_file
 from pynchy.host.container_manager.onecli import prepare_onecli_material
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
-from pynchy.host.container_manager.session_prep import sync_skills, write_settings_json
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.mirror import prepare_vault_mount_root
-from pynchy.host.learning.paths import LearningConfigError, resolve_learning_paths
-from pynchy.host.learning.skills import iter_learned_skill_dirs
-from pynchy.host.orchestrator.workspace_config import load_resolved_config
+from pynchy.host.learning.skill_activation import prepare_agent_homes
 from pynchy.types import VolumeMount, WorkspaceProfile
-
-_LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR = (
-    "learning.obsidian.vault_root must be an existing directory"
-)
-_LEARNING_REVIEW_FOLDER_PREFIX = "learning-review-"
-
-
-@dataclass(frozen=True)
-class _LearningMountContext:
-    workspace_skills: list[str] | None
-    denied_skill_names: list[str] | None
-    learned_skill_paths: list[Path] | None
-
-
-def _prepare_codex_home(group_folder: str) -> Path:
-    """Create per-group Codex CLI state.
-
-    Codex still needs a writable home for generated config, sessions, and
-    history, but model authentication comes from the Pynchy gateway env vars.
-    Do not copy host ``~/.codex/auth.json`` into sandboxes.
-    """
-    s = get_settings()
-    codex_home = s.data_dir / "sessions" / group_folder / ".codex"
-    codex_home.mkdir(parents=True, exist_ok=True)
-    return codex_home
 
 
 def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point with explicit mount inputs.
@@ -76,25 +47,18 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     group_dir.mkdir(parents=True, exist_ok=True)
     effective_repo_mounts = _effective_repo_mounts(repo_ctx, worktree_path, repo_mounts)
 
-    learning = _add_learning_mounts(mounts, group.folder)
+    agent_homes = prepare_agent_homes(group.folder, plugin_manager)
+    if agent_homes.learning_paths is not None:
+        mounts.append(
+            VolumeMount(
+                str(prepare_vault_mount_root(agent_homes.learning_paths)),
+                agent_homes.learning_paths.vault_mount_path,
+                readonly=False,
+            )
+        )
     _add_workspace_mounts(mounts, group_dir, effective_repo_mounts)
-    _add_claude_session_mount(
-        mounts,
-        data_dir=s.data_dir,
-        group_folder=group.folder,
-        plugin_manager=plugin_manager,
-        learning=learning,
-    )
-
-    codex_home = _prepare_codex_home(group.folder)
-    sync_skills(
-        codex_home,
-        plugin_manager,
-        workspace_skills=learning.workspace_skills,
-        denied_skill_names=learning.denied_skill_names,
-        learned_skill_paths=learning.learned_skill_paths,
-    )
-    mounts.append(VolumeMount(str(codex_home), "/home/agent/.codex", readonly=False))
+    mounts.append(VolumeMount(str(agent_homes.claude_home), "/home/agent/.claude", readonly=False))
+    mounts.append(VolumeMount(str(agent_homes.codex_home), "/home/agent/.codex", readonly=False))
 
     _add_ipc_mount(mounts, s.data_dir, group.folder)
 
@@ -146,58 +110,6 @@ def _effective_repo_mounts(
     return []
 
 
-def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _LearningMountContext:
-    resolved = load_resolved_config(group_folder)
-    workspace_skills = resolved.skills if resolved else None
-    denied_skill_names = resolved.denied_skills if resolved else None
-    learning_paths = resolve_learning_paths(
-        group_folder,
-        profile_override=_learning_profile_override_for_group(group_folder),
-    )
-    learned_skill_paths: list[Path] | None = None
-    if learning_paths is None:
-        return _LearningMountContext(
-            workspace_skills=workspace_skills,
-            denied_skill_names=denied_skill_names,
-            learned_skill_paths=learned_skill_paths,
-        )
-
-    workspace_skills = _with_learned_skill_tier(workspace_skills)
-    _validate_learning_vault(learning_paths.vault_root)
-    learning_paths.memory_root.mkdir(parents=True, exist_ok=True)
-    learning_paths.skills_root.mkdir(parents=True, exist_ok=True)
-    mounts.append(
-        VolumeMount(
-            str(prepare_vault_mount_root(learning_paths)),
-            learning_paths.vault_mount_path,
-            readonly=False,
-        )
-    )
-    learned_skill_paths = iter_learned_skill_dirs(group_folder)
-    return _LearningMountContext(
-        workspace_skills=workspace_skills,
-        denied_skill_names=denied_skill_names,
-        learned_skill_paths=learned_skill_paths,
-    )
-
-
-def _validate_learning_vault(vault_root: Path) -> None:
-    if vault_root.exists() and vault_root.is_dir():
-        return
-    raise LearningConfigError(_LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR)
-
-
-def _with_learned_skill_tier(workspace_skills: list[str] | None) -> list[str]:
-    """Include reviewer-created skills whenever Obsidian learning is enabled."""
-    # NOTE: Keep docs/usage/memory.md and docs/architecture/memory-and-sessions.md
-    # aligned with this activation contract.
-    if workspace_skills is None:
-        return ["learned"]
-    if "*" in workspace_skills or "learned" in workspace_skills:
-        return workspace_skills
-    return [*workspace_skills, "learned"]
-
-
 def _add_workspace_mounts(
     mounts: list[VolumeMount],
     group_dir: Path,
@@ -212,27 +124,6 @@ def _add_workspace_mounts(
         git_dir = repo_ctx.root / ".git"
         mounts.append(VolumeMount(str(git_dir), str(git_dir), readonly=False))
     mounts.append(VolumeMount(str(group_dir), "/workspace/group", readonly=False))
-
-
-def _add_claude_session_mount(
-    mounts: list[VolumeMount],
-    *,
-    data_dir: Path,
-    group_folder: str,
-    plugin_manager: pluggy.PluginManager | None,
-    learning: _LearningMountContext,
-) -> None:
-    session_dir = data_dir / "sessions" / group_folder / ".claude"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    write_settings_json(session_dir)
-    sync_skills(
-        session_dir,
-        plugin_manager,
-        workspace_skills=learning.workspace_skills,
-        denied_skill_names=learning.denied_skill_names,
-        learned_skill_paths=learning.learned_skill_paths,
-    )
-    mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))
 
 
 def _add_ipc_mount(mounts: list[VolumeMount], data_dir: Path, group_folder: str) -> None:
@@ -293,13 +184,6 @@ def _add_validated_additional_mounts(
             for mount in validated
         ]
     )
-
-
-def _learning_profile_override_for_group(group_folder: str) -> str | None:
-    if not group_folder.startswith(_LEARNING_REVIEW_FOLDER_PREFIX):
-        return None
-    profile_slug = group_folder.removeprefix(_LEARNING_REVIEW_FOLDER_PREFIX)
-    return profile_slug or None
 
 
 def build_container_args(mounts: list[VolumeMount], container_name: str) -> list[str]:

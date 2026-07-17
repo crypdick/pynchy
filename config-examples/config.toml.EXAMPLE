@@ -170,7 +170,6 @@
 # mount_path = "/workspace/vault"
 # default_profile_root = "systems/pynchy/profiles/{profile}"
 # memory_dir_name = "memory"
-# skills_dir_name = "skills"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Command Center

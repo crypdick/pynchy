@@ -32,15 +32,10 @@ def prepare_vault_mount_root(paths: LearningPaths) -> Path:
         return paths.vault_root
 
     mirror_root = _mirror_root(paths)
-    mirror_profile_root = mirror_root / paths.profile_root.relative_to(paths.vault_root)
-    mirror_profile_root.mkdir(parents=True, exist_ok=True)
-    if paths.profile_root.exists():
-        shutil.copytree(
-            paths.profile_root,
-            mirror_profile_root,
-            dirs_exist_ok=True,
-            symlinks=True,
-        )
+    _copy_vault_subtree_to_mirror(mirror_root, paths.profile_root, paths.vault_root)
+    # Learned skills live in one registry so profiles can share them. The
+    # Apple mirror must include it or reviewers cannot publish their output.
+    _copy_vault_subtree_to_mirror(mirror_root, paths.global_skills_root, paths.vault_root)
     logger.warning(
         "Using mirrored Obsidian vault mount for Apple Container",
         vault_root=str(paths.vault_root),
@@ -82,16 +77,24 @@ def sync_vault_mount_mirror(paths: LearningPaths) -> None:
     if not should_use_vault_mount_mirror():
         return
 
-    mirror_profile_root = _mirror_root(paths) / paths.profile_root.relative_to(paths.vault_root)
-    if not mirror_profile_root.exists():
+    mirror_root = _mirror_root(paths)
+    _copy_mirror_subtree_to_vault(mirror_root, paths.profile_root, paths.vault_root)
+    _copy_mirror_subtree_to_vault(mirror_root, paths.global_skills_root, paths.vault_root)
+
+
+def _copy_vault_subtree_to_mirror(mirror_root: Path, source_root: Path, vault_root: Path) -> None:
+    mirror_subtree = mirror_root / source_root.relative_to(vault_root)
+    mirror_subtree.mkdir(parents=True, exist_ok=True)
+    if source_root.exists():
+        shutil.copytree(source_root, mirror_subtree, dirs_exist_ok=True, symlinks=True)
+
+
+def _copy_mirror_subtree_to_vault(mirror_root: Path, target_root: Path, vault_root: Path) -> None:
+    mirror_subtree = mirror_root / target_root.relative_to(vault_root)
+    if not mirror_subtree.exists():
         return
-    paths.profile_root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        mirror_profile_root,
-        paths.profile_root,
-        dirs_exist_ok=True,
-        symlinks=True,
-    )
+    target_root.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(mirror_subtree, target_root, dirs_exist_ok=True, symlinks=True)
 
 
 def _mirror_root(paths: LearningPaths) -> Path:

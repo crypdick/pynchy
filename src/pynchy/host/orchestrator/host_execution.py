@@ -13,10 +13,9 @@ from urllib.parse import urlparse, urlunparse
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import build_agent_env_vars
-from pynchy.host.container_manager.session_prep import sync_skills
 from pynchy.host.learning.mirror import prepare_full_vault_host_root
 from pynchy.host.learning.paths import resolve_learning_paths
-from pynchy.host.learning.skills import iter_learned_skill_dirs
+from pynchy.host.learning.skill_activation import prepare_agent_homes
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
@@ -112,19 +111,7 @@ def host_codex_home(group_folder: str) -> Path:
 
 def prepare_host_codex_home(group_folder: str, plugin_manager: pluggy.PluginManager | None) -> Path:
     """Synchronize selected skills into a direct-host workspace's Codex home."""
-    codex_home = host_codex_home(group_folder)
-    resolved = workspace_config.load_resolved_config(group_folder)
-    workspace_skills = resolved.skills if resolved else None
-    denied_skill_names = resolved.denied_skills if resolved else None
-    learned_skill_paths = iter_learned_skill_dirs(group_folder) if workspace_skills else None
-    sync_skills(
-        codex_home,
-        plugin_manager,
-        workspace_skills=workspace_skills,
-        denied_skill_names=denied_skill_names,
-        learned_skill_paths=learned_skill_paths,
-    )
-    return codex_home
+    return prepare_agent_homes(group_folder, plugin_manager).codex_home
 
 
 def migrate_host_codex_thread(
@@ -191,9 +178,6 @@ def host_agent_env_vars(
     ):
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
         env["PYNCHY_SKILLS_ROOT"] = str(host_vault_root / "systems" / "pynchy" / "skills")
-        env["PYNCHY_PROFILE_SKILLS_ROOT"] = str(
-            host_vault_root / learning_paths.skills_root.relative_to(learning_paths.vault_root)
-        )
     return env
 
 
