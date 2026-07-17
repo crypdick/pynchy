@@ -31,6 +31,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from jupyter_client import KernelManager
+from nbformat import from_dict
 from nbformat.v4 import new_code_cell, new_markdown_cell
 
 from ._execution import (
@@ -185,7 +186,7 @@ async def start_kernel(name: str | None = None) -> dict[str, Any]:
             if cell.cell_type == "code":
                 code_count += 1
                 outputs = await execute_code(session, cell.source)
-                cell.outputs = outputs
+                cell.outputs = [from_dict(output) for output in outputs]
                 errors.extend(
                     f"Cell {code_count}: {out.get('ename')}: {out.get('evalue')}"
                     for out in outputs
@@ -225,14 +226,15 @@ async def execute_cell(kernel_id: str, code: str) -> dict[str, Any]:
 
     outputs = await execute_code(session, code)
 
-    # Append cell + outputs to notebook
+    # Append the code cell before deriving its image filenames from its final position.
     cell = new_code_cell(source=code)
-    cell.outputs = outputs
     session.nb.cells.append(cell)
     cell_number = len(session.nb.cells)
 
     # Save images to disk (mutates outputs in-place with _image_path)
     save_cell_images(session.name, cell_number, outputs, NOTEBOOK_DIR)
+    # nbformat serializers require NotebookNode outputs, not plain dictionaries.
+    cell.outputs = [from_dict(output) for output in outputs]
 
     # Auto-save
     save_notebook(session.nb, notebook_path(session.name, NOTEBOOK_DIR))
