@@ -85,35 +85,68 @@ def validate_canary_target_profile(
         raise ValueError(f"canary.scenario_ids includes unknown scenarios: {unknown}")
 
     resolved_tools = {
-        tool_name
+        str(tool_name)
         for profile_name in expand_profile_names(canary.target_profile)
         for tool_name in settings.profiles[profile_name].tools
     }
+    _validate_canary_tools(canary.scenario_ids, resolved_tools)
+    _validate_canary_target_values(canary, settings.workspaces)
+
+
+def _validate_canary_tools(scenario_ids: list[str], resolved_tools: set[str]) -> None:
+    """Ensure each selected scenario has its declared integration enabled."""
     required_tools = {
         "calendar.round.trip": "caldav",
+        "calendar.google.round.trip": "gcal",
+        "drive.google.round.trip": "gdrive",
         "linear.workspace.round.trip": "linear",
-        "proton.mail.read": "proton-mail",
+        "proton.mail.round.trip": "proton-mail",
     }
     missing_tools = sorted(
         required_tool
         for scenario_id, required_tool in required_tools.items()
-        if scenario_id in canary.scenario_ids and required_tool not in resolved_tools
+        if scenario_id in scenario_ids and required_tool not in resolved_tools
     )
     if missing_tools:
         raise ValueError(
             "canary.target_profile does not enable required tools: " + ", ".join(missing_tools)
         )
-    if "calendar.round.trip" in canary.scenario_ids and not canary.calendar_name.strip():
-        raise ValueError("canary.calendar_name is required for calendar.round.trip")
-    if "linear.workspace.round.trip" in canary.scenario_ids:
-        if not canary.linear_team_key.strip():
-            raise ValueError("canary.linear_team_key is required for linear.workspace.round.trip")
-        if not canary.linear_workspace.strip():
-            raise ValueError("canary.linear_workspace is required for linear.workspace.round.trip")
-        if canary.linear_workspace not in settings.workspaces:
-            raise ValueError(
-                f"canary.linear_workspace references unknown workspace: {canary.linear_workspace}"
-            )
+
+
+def _validate_canary_target_values(
+    canary: CanaryConfig,
+    workspaces: dict[str, WorkspaceConfig],
+) -> None:
+    """Require dedicated non-secret targets for each selected canary scenario."""
+    requirements = {
+        "calendar.round.trip": (("calendar_name", "calendar_name"),),
+        "calendar.google.round.trip": (
+            ("google_calendar_server", "google_calendar_server"),
+            ("google_calendar_id", "google_calendar_id"),
+        ),
+        "drive.google.round.trip": (
+            ("google_drive_server", "google_drive_server"),
+            ("google_drive_probe_query", "google_drive_probe_query"),
+            ("google_drive_file_id", "google_drive_file_id"),
+        ),
+        "linear.workspace.round.trip": (
+            ("linear_team_key", "linear_team_key"),
+            ("linear_workspace", "linear_workspace"),
+        ),
+        "proton.mail.round.trip": (("proton_recipient", "proton_recipient"),),
+    }
+    for scenario_id in canary.scenario_ids:
+        for field_name, display_name in requirements.get(scenario_id, ()):
+            value = getattr(canary, field_name)
+            if not value.strip():
+                raise ValueError(f"canary.{display_name} is required for {scenario_id}")
+    if (
+        "linear.workspace.round.trip" in canary.scenario_ids
+        and canary.linear_workspace not in workspaces
+    ):
+        raise ValueError(
+            f"canary.linear_workspace references unknown workspace: {canary.linear_workspace}"
+        )
 
 
 def reject_claude_sdk_model_overrides(

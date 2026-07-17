@@ -67,6 +67,12 @@ class CanaryConfig(_StrictModel):
     linear_team_key: str = ""
     linear_workspace: str = ""
     proton_mailbox: str = "INBOX"
+    proton_recipient: str = ""
+    google_calendar_server: str = ""
+    google_calendar_id: str = ""
+    google_drive_server: str = ""
+    google_drive_probe_query: str = ""
+    google_drive_file_id: str = ""
 
     @field_validator("schedule")
     @classmethod
