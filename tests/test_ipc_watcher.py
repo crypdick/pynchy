@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
+from pynchy.config.models import NotificationsConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.watcher import (
     start_ipc_watcher,
@@ -263,12 +264,20 @@ class TestIpcTaskFileEdgeCases:
 class TestIpcDeployEdgeCases:
     """Tests for deploy command edge cases in the IPC handler."""
 
-    async def test_deploy_without_chat_jid_uses_admin_group(self, deps):
-        """Deploy request missing chatJid should fall back to admin group's JID."""
-        with patch(
-            "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
-            new_callable=AsyncMock,
-        ) as mock_start:
+    async def test_deploy_without_chat_jid_uses_configured_notification_workspace(self, deps):
+        """Deploy request missing chatJid uses the configured notification workspace."""
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_deploy.get_settings",
+                return_value=make_settings(
+                    notifications=NotificationsConfig(admin_workspace="admin-1")
+                ),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_deploy.start_deploy_workflow",
+                new_callable=AsyncMock,
+            ) as mock_start,
+        ):
             await dispatch(
                 {
                     "type": "deploy",

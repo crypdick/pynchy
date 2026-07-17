@@ -1,7 +1,7 @@
 """Tests for dependency adapters.
 
 Tests critical routing and broadcasting logic in adapters.py:
-- find_admin_jid() — finding the admin group for notifications
+- resolve_admin_notification_jid() — finding the configured notification target
 - HostMessageBroadcaster — dual store+broadcast with correct formatting
 - EventBusAdapter — event type conversion for SSE/TUI bridge
 """
@@ -27,7 +27,6 @@ from pynchy.host.orchestrator.adapters import (
     HostMessageBroadcaster,
     MessageBroadcaster,
     SessionManager,
-    find_admin_jid,
     resolve_admin_notification_jid,
 )
 from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
@@ -71,38 +70,8 @@ class FakeChannel(NullChannel):
 
 
 # ---------------------------------------------------------------------------
-# find_admin_jid
+# resolve_admin_notification_jid
 # ---------------------------------------------------------------------------
-
-
-class TestFindAdminJid:
-    """Test find_admin_jid() which finds the admin group for system notifications."""
-
-    def test_finds_admin_group_jid(self):
-        groups = {
-            "regular@g.us": _group(jid="regular@g.us", name="Regular"),
-            "admin-1@g.us": _group(jid="admin-1@g.us", name="Admin", is_admin=True),
-        }
-        assert find_admin_jid(groups) == "admin-1@g.us"
-
-    def test_returns_empty_string_when_no_admin_group(self):
-        groups = {
-            "a@g.us": _group(jid="a@g.us", name="A"),
-            "b@g.us": _group(jid="b@g.us", name="B"),
-        }
-        assert not find_admin_jid(groups)
-
-    def test_returns_empty_string_when_no_groups(self):
-        assert not find_admin_jid({})
-
-    def test_returns_first_admin_group_if_multiple(self):
-        """If somehow multiple admin groups exist, return the first one found."""
-        groups = {
-            "admin-1@g.us": _group(jid="admin-1@g.us", name="Admin1", is_admin=True),
-            "admin-2@g.us": _group(jid="admin-2@g.us", name="Admin2", is_admin=True),
-        }
-        result = find_admin_jid(groups)
-        assert result in ("admin-1@g.us", "admin-2@g.us")
 
 
 class TestResolveAdminNotificationJid:
@@ -117,6 +86,11 @@ class TestResolveAdminNotificationJid:
         }
 
         assert resolve_admin_notification_jid(groups, "discord-admin") == "discord:channel:admin"
+
+    def test_rejects_missing_configuration_without_fallback(self):
+        groups = {"slack:legacy": _group(jid="slack:legacy", is_admin=True)}
+
+        assert not resolve_admin_notification_jid(groups, None)
 
     def test_rejects_missing_configured_workspace_without_fallback(self):
         groups = {"slack:legacy": _group(jid="slack:legacy", is_admin=True)}
