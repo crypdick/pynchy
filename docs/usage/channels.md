@@ -203,7 +203,7 @@ admin_workspace = "discord-admin"
 ```
 
 The configured workspace must be an admin workspace. Without this setting,
-Pynchy uses the first registered admin workspace for backward compatibility.
+Pynchy suppresses host lifecycle notifications.
 
 ---
 

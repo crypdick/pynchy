@@ -143,7 +143,7 @@ class TestAutoRollback:
             "pynchy.host.orchestrator.startup_handler.get_settings",
             lambda: make_settings(
                 data_dir=tmp_path,
-                notifications=NotificationsConfig(admin_workspace=None),
+                notifications=NotificationsConfig(admin_workspace="admin"),
             ),
         )
         monkeypatch.setattr(

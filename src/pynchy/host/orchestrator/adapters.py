@@ -200,30 +200,17 @@ class _StoreBroadcastAndEmitRequest:
     store_fn: StoreMessageFn
 
 
-def find_admin_jid(groups: dict[str, WorkspaceProfile]) -> str:
-    """Find the JID of the admin group from a groups dict.
-
-    Returns the first admin group's JID, or empty string if none found.
-    This is the single code path for all admin-group lookups — used by
-    dep_factory, startup, shutdown, and IPC deploy handlers.
-    """
-    for jid, group in groups.items():
-        if group.is_admin:
-            return jid
-    return ""
-
-
 def resolve_admin_notification_jid(
     groups: dict[str, WorkspaceProfile], admin_workspace: str | None
 ) -> str:
     """Resolve the configured admin workspace for host lifecycle messages.
 
-    An explicit target must resolve to a registered admin workspace. Returning
-    an empty value instead of falling back avoids sending a deployment notice to
-    an unrelated admin chat when the configuration is stale.
+    The target must resolve to a registered admin workspace. Invalid or absent
+    configuration suppresses the notification rather than sending it elsewhere.
     """
     if admin_workspace is None:
-        return find_admin_jid(groups)
+        logger.error("Admin notification workspace is not configured")
+        return ""
 
     workspace = next(
         (profile for profile in groups.values() if profile.folder == admin_workspace), None
