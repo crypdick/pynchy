@@ -78,6 +78,7 @@ from pynchy.config.settings_sources import (
     hermetic_settings_sources,
     hermetic_settings_sources_enabled,
 )
+from pynchy.config.workspace_names import static_workspace_name
 
 
 def _assert_admin_clean_room(
@@ -321,8 +322,8 @@ class Settings(BaseSettings):
         return self
 
     def resolved_workspace_config(self, workspace_name: str) -> ResolvedWorkspaceConfig | None:
-        """Return the merged config for a configured workspace."""
-        workspace = self.workspaces.get(workspace_name)
+        """Return the merged config for a workspace or its dynamic-thread parent."""
+        workspace = self.workspaces.get(static_workspace_name(workspace_name))
         if workspace is None:
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
