@@ -205,6 +205,24 @@ def test_profile_execution_mode_and_cwd_resolve_for_workspace() -> None:
     assert resolved.cwd == "/opt/pynchy-project"
 
 
+def test_profile_skill_denials_resolve_for_workspace() -> None:
+    settings = _settings(
+        profiles={
+            "base": ProfileConfig(denied_skills=["legacy-skill"]),
+            "worker": ProfileConfig(
+                includes=["base"],
+                denied_skills=["expensive-skill", "legacy-skill"],
+            ),
+        },
+        workspaces={"admin": WorkspaceConfig(profiles=["worker"])},
+    )
+
+    resolved = settings.resolved_workspace_config("admin")
+
+    assert resolved is not None
+    assert resolved.denied_skills == ["legacy-skill", "expensive-skill"]
+
+
 def test_host_execution_mode_requires_admin_workspace() -> None:
     with pytest.raises(ValidationError, match="execution_mode = 'host' requires is_admin"):
         _settings(

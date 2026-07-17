@@ -692,6 +692,8 @@ class TestListToolsVisibility:
             "reset_context",
             "list_todos",
             "complete_todo",
+            "search_skills",
+            "request_skill_access",
         ]:
             assert expected in tool_names, f"Missing base tool: {expected}"
 

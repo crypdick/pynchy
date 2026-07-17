@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import sys
 
 from .core import AgentCore, AgentCoreConfig, AgentEvent
@@ -78,16 +79,20 @@ def build_sdk_messages(messages: list[dict[str, object]]) -> str:
 
 def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, object]:
     """Build the always-present Pynchy MCP server entry."""
+    env = {
+        "PYNCHY_CHAT_JID": container_input.chat_jid,
+        "PYNCHY_GROUP_FOLDER": container_input.group_folder,
+        "PYNCHY_IS_ADMIN": ("1" if container_input.is_admin else "0"),
+        "PYNCHY_SESSION_ID": (container_input.session_id or ""),
+        "PYNCHY_IS_SCHEDULED_TASK": ("1" if container_input.is_scheduled_task else "0"),
+    }
+    for name in ("PYNCHY_IPC_DIR", "PYNCHY_SKILLS_ROOT", "PYNCHY_PROFILE_SKILLS_ROOT"):
+        if value := os.environ.get(name):
+            env[name] = value
     return {
         "command": "python",
         "args": ["-m", "agent_runner.agent_tools"],
-        "env": {
-            "PYNCHY_CHAT_JID": container_input.chat_jid,
-            "PYNCHY_GROUP_FOLDER": container_input.group_folder,
-            "PYNCHY_IS_ADMIN": ("1" if container_input.is_admin else "0"),
-            "PYNCHY_SESSION_ID": (container_input.session_id or ""),
-            "PYNCHY_IS_SCHEDULED_TASK": ("1" if container_input.is_scheduled_task else "0"),
-        },
+        "env": env,
     }
 
 

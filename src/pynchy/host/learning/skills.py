@@ -92,6 +92,14 @@ def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
     return skill_dirs
 
 
+def find_learned_skill_dir(group_folder: str, skill_name: str) -> Path | None:
+    """Return the validated learned skill with an exact public name."""
+    return next(
+        (path for path in iter_learned_skill_dirs(group_folder) if path.name == skill_name),
+        None,
+    )
+
+
 def _iter_skill_dirs_from_root(skills_root: Path, skill_max_bytes: int) -> list[Path]:
     if not skills_root.exists():
         return []

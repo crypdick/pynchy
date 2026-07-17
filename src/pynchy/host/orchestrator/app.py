@@ -463,6 +463,10 @@ class PynchyApp:
     async def on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         await self._on_ask_user_answer(request_id, answer)
 
+    def has_active_host_process(self, group_folder: str) -> bool:
+        """Return whether a direct host agent is blocked on this group's IPC."""
+        return self.queue.has_active_host_process(group_folder)
+
     async def enqueue_message(self, chat_jid: str, text: str) -> None:
         """Inject a synthetic message for cold-start answer delivery.
 

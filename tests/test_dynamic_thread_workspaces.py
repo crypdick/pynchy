@@ -106,3 +106,33 @@ def test_dynamic_thread_folder_resolves_parent_workspace_config(monkeypatch):
     assert resolved is not None
     assert resolved.repo == ["crypdick/pynchy"]
     assert resolved.model == "chatgpt/gpt-5.3-codex-spark"
+
+
+def test_dynamic_thread_always_uses_parent_profile(monkeypatch):
+    child_folder = dynamic_thread_folder("admin", "discord:channel:thread")
+    settings = make_settings(
+        profiles={
+            "admin": ProfileConfig(repo="crypdick/pynchy", skills=["ops"]),
+            "child-override": ProfileConfig(repo="example/incorrect", skills=["core"]),
+        },
+        workspaces={
+            "admin": WorkspaceConfig(
+                profiles=["admin"],
+                model="chatgpt/gpt-5.3-codex-spark",
+            ),
+            child_folder: WorkspaceConfig(
+                profiles=["child-override"],
+                model="chatgpt/gpt-5.3-codex-mini",
+            ),
+        },
+    )
+    monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings)
+
+    resolved = settings.resolved_workspace_config(child_folder)
+    loaded = load_resolved_config(child_folder)
+
+    assert resolved is not None
+    assert resolved.repo == ["crypdick/pynchy"]
+    assert resolved.skills == ["ops"]
+    assert resolved.model == "chatgpt/gpt-5.3-codex-spark"
+    assert loaded == resolved
