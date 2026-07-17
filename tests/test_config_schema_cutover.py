@@ -108,6 +108,9 @@ def test_new_schema_parses_minimal_config() -> None:
 
         [command_center]
         connection = "synapse"
+
+        [notifications]
+        admin_workspace = "discord-admin"
         """
     )
 
@@ -121,6 +124,7 @@ def test_new_schema_parses_minimal_config() -> None:
     assert settings.tools["docs"].type == "mcp"
     assert settings.connections["synapse"].type == "discord"
     assert settings.command_center.connection == "synapse"
+    assert settings.notifications.admin_workspace == "discord-admin"
 
 
 def test_agent_rejects_unknown_codex_reasoning_effort() -> None:

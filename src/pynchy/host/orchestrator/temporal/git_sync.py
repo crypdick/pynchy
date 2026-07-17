@@ -24,7 +24,7 @@ from pynchy.host.git_ops.sync_poll import (
     host_update_main,
 )
 from pynchy.host.git_ops.utils import git_env_with_token
-from pynchy.host.orchestrator.adapters import SessionManager, find_admin_jid
+from pynchy.host.orchestrator.adapters import SessionManager, resolve_admin_notification_jid
 from pynchy.host.orchestrator.temporal.deploy import (
     DeployFailureDeps,
     DeployRequest,
@@ -85,7 +85,9 @@ class _TemporalGitSyncDeps:
 
         workspaces = self.workspaces()
         request = DeployRequest(
-            chat_jid=find_admin_jid(workspaces),
+            chat_jid=resolve_admin_notification_jid(
+                workspaces, get_settings().notifications.admin_workspace
+            ),
             commit_sha=get_local_head_sha(get_settings().project_root),
             previous_sha=previous_sha,
             rebuild=rebuild,

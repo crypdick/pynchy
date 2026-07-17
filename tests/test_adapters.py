@@ -28,6 +28,7 @@ from pynchy.host.orchestrator.adapters import (
     MessageBroadcaster,
     SessionManager,
     find_admin_jid,
+    resolve_admin_notification_jid,
 )
 from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
 
@@ -102,6 +103,34 @@ class TestFindAdminJid:
         }
         result = find_admin_jid(groups)
         assert result in ("admin-1@g.us", "admin-2@g.us")
+
+
+class TestResolveAdminNotificationJid:
+    def test_prefers_configured_admin_workspace(self):
+        groups = {
+            "slack:legacy": _group(
+                jid="slack:legacy", name="Legacy", folder="legacy", is_admin=True
+            ),
+            "discord:channel:admin": _group(
+                jid="discord:channel:admin", name="Admin", folder="discord-admin", is_admin=True
+            ),
+        }
+
+        assert resolve_admin_notification_jid(groups, "discord-admin") == "discord:channel:admin"
+
+    def test_rejects_missing_configured_workspace_without_fallback(self):
+        groups = {"slack:legacy": _group(jid="slack:legacy", is_admin=True)}
+
+        assert not resolve_admin_notification_jid(groups, "discord-admin")
+
+    def test_rejects_non_admin_configured_workspace(self):
+        groups = {
+            "discord:channel:general": _group(
+                jid="discord:channel:general", folder="general", is_admin=False
+            )
+        }
+
+        assert not resolve_admin_notification_jid(groups, "general")
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves deploy handler signatures at runtime.
 )
@@ -52,12 +53,14 @@ async def _handle_deploy(
     if not chat_jid:
         groups = deps.workspaces()
 
-        chat_jid = adapters.find_admin_jid(groups)
+        chat_jid = adapters.resolve_admin_notification_jid(
+            groups, get_settings().notifications.admin_workspace
+        )
         if not chat_jid:
-            logger.error("Deploy request missing chatJid and no admin group registered")
+            logger.error("Deploy request missing chatJid and no notification target resolved")
             return
         logger.warning(
-            "Deploy request missing chatJid, resolved from admin group",
+            "Deploy request missing chatJid, resolved notification target",
             chat_jid=chat_jid,
         )
 

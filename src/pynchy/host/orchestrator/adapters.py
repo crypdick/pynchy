@@ -19,6 +19,7 @@ from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves adapte
     MessageEvent,
 )
 from pynchy.host.orchestrator.messaging.sender import broadcast
+from pynchy.logger import logger
 from pynchy.state import clear_session, get_all_tasks, get_chat_history
 from pynchy.types import (
     Channel,
@@ -210,6 +211,36 @@ def find_admin_jid(groups: dict[str, WorkspaceProfile]) -> str:
         if group.is_admin:
             return jid
     return ""
+
+
+def resolve_admin_notification_jid(
+    groups: dict[str, WorkspaceProfile], admin_workspace: str | None
+) -> str:
+    """Resolve the configured admin workspace for host lifecycle messages.
+
+    An explicit target must resolve to a registered admin workspace. Returning
+    an empty value instead of falling back avoids sending a deployment notice to
+    an unrelated admin chat when the configuration is stale.
+    """
+    if admin_workspace is None:
+        return find_admin_jid(groups)
+
+    workspace = next(
+        (profile for profile in groups.values() if profile.folder == admin_workspace), None
+    )
+    if workspace is None:
+        logger.error(
+            "Configured admin notification workspace is not registered",
+            folder=admin_workspace,
+        )
+        return ""
+    if not workspace.is_admin:
+        logger.error(
+            "Configured admin notification workspace is not an admin",
+            folder=admin_workspace,
+        )
+        return ""
+    return workspace.jid
 
 
 class SessionManager:
