@@ -92,6 +92,12 @@ def _multi_select_question() -> list[dict]:
     return [question]
 
 
+def _skill_access_question() -> list[dict]:
+    question = _single_question(count=4)[0]
+    question["skill_access"] = {"skill_name": "obsidian-knowledge"}
+    return [question]
+
+
 def _free_text_question() -> list[dict]:
     return [
         {
@@ -170,6 +176,20 @@ async def test_send_ask_user_uses_select_for_multi_select_question():
     submit = next(item for item in view.children if getattr(item, "label", None) == "Submit")
     assert select.max_values == 3
     assert submit is not None
+
+
+@pytest.mark.asyncio
+async def test_skill_access_prompt_has_only_policy_buttons():
+    ch = _make_channel()
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_ask_user("discord:direct:42", REQUEST_ID, _skill_access_question())
+
+    view = fake.sends[0][1]["view"]
+    labels = [item.label for item in view.children if getattr(item, "label", None)]
+    assert labels == ["Option 1", "Option 2", "Option 3", "Option 4"]
 
 
 @pytest.mark.asyncio
