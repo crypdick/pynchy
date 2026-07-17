@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from types import SimpleNamespace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -44,6 +44,14 @@ OTHER_GROUP = WorkspaceProfile(
     trigger="@pynchy",
     added_at="2024-01-01",
 )
+
+
+@dataclass
+class _WatcherState:
+    """The watcher state shape passed through its public start/stop lifecycle."""
+
+    running: bool
+    runtime_sweep_task: asyncio.Task[None] | None
 
 
 def _test_settings(*, data_dir=None):
@@ -131,7 +139,7 @@ class TestStartupSweepErrorFiles:
             ),
             patch(
                 "pynchy.host.container_manager.ipc.watcher._state",
-                SimpleNamespace(running=False, runtime_sweep_task=None),
+                _WatcherState(running=False, runtime_sweep_task=None),
             ),
             patch(
                 "pynchy.host.container_manager.ipc.watcher._process_queue",

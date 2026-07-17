@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config.models import DiscordConnectionConfig
-from pynchy.plugins.channels.discord import DiscordChannel
+from pynchy.plugins.channels.discord import (
+    DiscordAuthor,
+    DiscordChannel,
+    DiscordChannelDetails,
+    DiscordInboundMessage,
+)
 
 if TYPE_CHECKING:
     from pynchy.types import NewMessage
@@ -23,20 +27,21 @@ def _user(
     display_name: str | None = None,
     global_name: str | None = None,
     name: str | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+) -> DiscordAuthor:
+    return DiscordAuthor(
         id=uid,
-        bot=bot,
-        roles=[SimpleNamespace(id=r) for r in roles],
+        is_bot=bot,
+        role_ids=frozenset(roles),
         display_name=display_name,
         global_name=global_name,
         name=name,
+        rendered_name=name or display_name or uid,
     )
 
 
 def _message(
     *,
-    author: SimpleNamespace,
+    author: DiscordAuthor,
     guild_id: str | None,
     channel_id: str,
     guild_name: str | None = None,
@@ -44,24 +49,25 @@ def _message(
     parent_id: str | None = None,
     parent_name: str | None = None,
     mentions: tuple[str, ...] = (),
-) -> SimpleNamespace:
-    guild = None if guild_id is None else SimpleNamespace(id=guild_id, name=guild_name)
-    parent = None
-    if parent_id is not None:
-        parent = SimpleNamespace(id=parent_id, name=parent_name)
-    channel = SimpleNamespace(id=channel_id, name=channel_name, parent=parent)
-    if parent_id is not None:
-        channel.parent_id = parent_id
-    return SimpleNamespace(
+) -> DiscordInboundMessage:
+    return DiscordInboundMessage(
         id=f"m-{author.id}-{channel_id}",
         author=author,
-        guild=guild,
-        channel=channel,
+        guild_id=guild_id,
+        guild_name=guild_name,
+        channel=DiscordChannelDetails(
+            id=channel_id,
+            name=channel_name,
+            parent_id=parent_id,
+            parent_name=parent_name,
+        ),
         content="hello",
-        attachments=[],
-        reference=None,
-        message_snapshots=[],
-        mentions=[_user(m) for m in mentions],
+        attachments=(),
+        reply=None,
+        forwarded_messages=(),
+        mentioned_user_ids=frozenset(mentions),
+        system_type=None,
+        created_at=None,
     )
 
 
@@ -70,7 +76,7 @@ def _dm(
     *,
     author_names: tuple[str, ...] = (),
     is_bot: bool = False,
-) -> SimpleNamespace:
+) -> DiscordInboundMessage:
     return _message(
         author=_user(
             author_id,
@@ -96,7 +102,7 @@ def _guild(
     author_role_ids: tuple[str, ...] = (),
     mentions_bot: bool = False,
     is_bot: bool = False,
-) -> SimpleNamespace:
+) -> DiscordInboundMessage:
     return _message(
         author=_user(
             author_id,
@@ -116,7 +122,7 @@ def _guild(
 
 
 async def _delivered_messages(
-    msg: SimpleNamespace,
+    msg: DiscordInboundMessage,
     *,
     workspaces: dict[str, object] | None = None,
     **cfg_kwargs: Any,
@@ -132,13 +138,13 @@ async def _delivered_messages(
     )
     channel.bot_user_id = BOT_ID
 
-    await channel.events.handle_message(msg)
+    await channel.events.handle_inbound_message(msg)
 
     return delivered
 
 
 async def _is_delivered(
-    msg: SimpleNamespace,
+    msg: DiscordInboundMessage,
     *,
     workspaces: dict[str, object] | None = None,
     **cfg_kwargs: Any,

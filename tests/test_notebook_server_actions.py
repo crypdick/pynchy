@@ -9,7 +9,8 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from nbformat.v4 import new_notebook
+
+from pynchy.plugins.integrations.notebook_server import KernelSession
 
 
 class _FakeMcp:
@@ -109,12 +110,11 @@ async def test_save_as_persists_stream_output_in_its_notebook(
 ) -> None:
     kernel_id = "kernel-output"
     kernel_manager = _FakeKernelManager(kernel_name="python3")
-    notebook_server["_sessions"][kernel_id] = types.SimpleNamespace(
-        kernel_id=kernel_id,
-        km=kernel_manager,
-        client=kernel_manager.client(),
-        name="coverage",
-        nb=new_notebook(),
+    notebook_server["_sessions"][kernel_id] = KernelSession(
+        kernel_id,
+        kernel_manager,
+        kernel_manager.client(),
+        "coverage",
     )
     notebook_server["execute_code"] = AsyncMock(
         return_value=[{"output_type": "stream", "name": "stdout", "text": "coverage"}]
@@ -148,12 +148,11 @@ async def test_notebook_actions_persist_and_clean_up_one_kernel(
     kernel_id = "kernel-coverage"
     kernel_manager = _FakeKernelManager(kernel_name="python3")
     kernel_client = kernel_manager.client()
-    notebook_server["_sessions"][kernel_id] = types.SimpleNamespace(
-        kernel_id=kernel_id,
-        km=kernel_manager,
-        client=kernel_client,
-        name="coverage",
-        nb=new_notebook(),
+    notebook_server["_sessions"][kernel_id] = KernelSession(
+        kernel_id,
+        kernel_manager,
+        kernel_client,
+        "coverage",
     )
 
     executed = await notebook_server["execute_cell"](kernel_id, "print('coverage')")

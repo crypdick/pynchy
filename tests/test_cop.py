@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
+from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,8 +17,16 @@ from pynchy.host.container_manager.security.cop import (
 API_DOWN_MESSAGE = "API down"
 
 
-def _fake_gateway(port: int = 4010, key: str = "test-key"):
-    return SimpleNamespace(port=port, key=key)
+@dataclass(frozen=True)
+class _Gateway:
+    """The gateway attributes used by the Cop HTTP adapter."""
+
+    port: int = 4010
+    key: str = "test-key"
+
+
+def _fake_gateway(port: int = 4010, key: str = "test-key") -> _Gateway:
+    return _Gateway(port=port, key=key)
 
 
 def _mock_aiohttp_session(response_text: str, *, status: int = 200):

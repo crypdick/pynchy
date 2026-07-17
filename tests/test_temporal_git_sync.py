@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from dataclasses import dataclass
 from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_settings
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
+from pynchy.config.models import NotificationsConfig
 from pynchy.host.orchestrator.temporal import git_sync
 from pynchy.types import WorkspaceProfile
+
+
+@dataclass
+class _RuntimeDeps:
+    """The scheduler-dependency subset used by the git-sync Temporal adapter."""
+
+    workspaces: dict[str, WorkspaceProfile]
+    broadcast_host_message: object
 
 
 async def test_host_git_sync_skips_the_hermetic_runtime(
@@ -49,7 +59,7 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
         trigger="always",
         is_admin=True,
     )
-    runtime_deps = SimpleNamespace(
+    runtime_deps = _RuntimeDeps(
         workspaces={workspace.jid: workspace},
         broadcast_host_message=AsyncMock(),
     )
@@ -59,9 +69,9 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     monkeypatch.setattr(
         git_sync,
         "get_settings",
-        lambda: SimpleNamespace(
+        lambda: make_settings(
             project_root=tmp_path,
-            notifications=SimpleNamespace(admin_workspace=None),
+            notifications=NotificationsConfig(admin_workspace=None),
         ),
     )
     monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-sha")

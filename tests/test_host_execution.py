@@ -1,11 +1,11 @@
 """Tests for direct host-execution session discovery."""
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from conftest import make_settings
 
+from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.host_execution import codex_thread_exists_in_host_runtime
 
@@ -45,8 +45,16 @@ def test_admin_host_execution_uses_full_learning_vault_mirror(
         "build_agent_env_vars",
         lambda **_kwargs: {"OPENAI_BASE_URL": "http://gateway:4000"},
     )
-    learning_paths = SimpleNamespace(
+    learning_paths = LearningPaths(
+        profile="default",
+        profile_slug="default",
         vault_root=tmp_path,
+        vault_mount_path="/workspace/vault",
+        global_skills_root=tmp_path / "systems" / "pynchy" / "skills",
+        profile_root=tmp_path / "profiles" / "default",
+        memory_root=tmp_path / "profiles" / "default" / "memory",
+        mounted_profile_root="/workspace/vault/profiles/default",
+        mounted_memory_root="/workspace/vault/profiles/default/memory",
     )
     settings = make_settings(data_dir=tmp_path / "data")
     monkeypatch.setattr(host_execution, "get_settings", lambda: settings)

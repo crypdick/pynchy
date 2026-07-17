@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
@@ -97,7 +97,7 @@ async def test_each_computer_action_reaches_its_cua_driver_operation(
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
@@ -124,7 +124,7 @@ async def test_computer_use_rejects_non_macos(tmp_path: Path) -> None:
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
     ):
         result = await handler({"source_group": "admin", "action": "list_apps"})
@@ -144,7 +144,7 @@ async def test_computer_use_reports_missing_cua_driver(tmp_path: Path) -> None:
         patch("pynchy.plugins.integrations.computer_use.shutil.which", return_value=None),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
     ):
         result = await handler({"source_group": "admin", "action": "list_apps"})
@@ -178,7 +178,7 @@ async def test_capture_runs_get_window_state_with_screenshot_artifact(tmp_path: 
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
@@ -245,7 +245,7 @@ async def test_click_maps_element_index_and_capture_after(tmp_path: Path) -> Non
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
@@ -309,7 +309,7 @@ async def test_key_splits_shortcut_into_hotkey_payload(tmp_path: Path) -> None:
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
@@ -343,7 +343,7 @@ async def test_command_failure_is_returned(tmp_path: Path) -> None:
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=SimpleNamespace(data_dir=tmp_path),
+            return_value=make_settings(data_dir=tmp_path),
         ),
         patch(
             "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",

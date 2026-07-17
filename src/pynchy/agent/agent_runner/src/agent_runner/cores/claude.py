@@ -9,17 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from claude_agent_sdk import (
-    AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
     HookContext,
     HookMatcher,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    ThinkingBlock,
-    ToolResultBlock,
-    ToolUseBlock,
 )
 from claude_agent_sdk.types import McpServerConfig, SdkPluginConfig, SystemPromptPreset
 
@@ -33,6 +26,16 @@ from agent_runner.hooks import (
 )
 from agent_runner.transcript_archive import archive_transcript
 
+from .claude_messages import (
+    ClaudeAssistantEvent,
+    ClaudeResultEvent,
+    ClaudeSystemEvent,
+    ClaudeTextBlock,
+    ClaudeThinkingBlock,
+    ClaudeToolResultBlock,
+    ClaudeToolUseBlock,
+    parse_claude_sdk_event,
+)
 from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
@@ -247,9 +250,9 @@ class ClaudeAgentCore:
         self._client = ClaudeSDKClient(options)
         await self._client_stack.enter_async_context(self._client)
 
-    def _system_event(self, message: SystemMessage) -> AgentEvent:
+    def _system_event(self, message: ClaudeSystemEvent) -> AgentEvent:
         """Map a system message and update the session when initialized."""
-        if message.subtype == "init" and hasattr(message, "data"):
+        if message.subtype == "init":
             sid = message.data.get("session_id")
             if sid:
                 self._session_id = sid
@@ -258,12 +261,12 @@ class ClaudeAgentCore:
             type="system",
             data={
                 "system_subtype": message.subtype,
-                "system_data": message.data if hasattr(message, "data") else {},
+                "system_data": message.data,
             },
         )
 
     @staticmethod
-    def _tool_result_content(block: ToolResultBlock) -> str:
+    def _tool_result_content(block: ClaudeToolResultBlock) -> str:
         """Flatten a Claude tool-result block into stored text content."""
         if isinstance(block.content, str):
             return block.content
@@ -271,20 +274,20 @@ class ClaudeAgentCore:
             return json.dumps(block.content)
         return ""
 
-    def _assistant_events(self, message: AssistantMessage) -> list[AgentEvent]:
+    def _assistant_events(self, message: ClaudeAssistantEvent) -> list[AgentEvent]:
         """Map assistant content blocks to AgentEvents."""
         events: list[AgentEvent] = []
         for block in message.content:
-            if isinstance(block, ThinkingBlock):
+            if isinstance(block, ClaudeThinkingBlock):
                 events.append(AgentEvent(type="thinking", data={"thinking": block.thinking}))
-            elif isinstance(block, ToolUseBlock):
+            elif isinstance(block, ClaudeToolUseBlock):
                 events.append(
                     AgentEvent(
                         type="tool_use",
                         data={"tool_name": block.name, "tool_input": block.input},
                     )
                 )
-            elif isinstance(block, ToolResultBlock):
+            elif isinstance(block, ClaudeToolResultBlock):
                 events.append(
                     AgentEvent(
                         type="tool_result",
@@ -295,11 +298,11 @@ class ClaudeAgentCore:
                         },
                     )
                 )
-            elif isinstance(block, TextBlock):
+            elif isinstance(block, ClaudeTextBlock):
                 events.append(AgentEvent(type="text", data={"text": block.text}))
         return events
 
-    def _result_event(self, message: ResultMessage) -> AgentEvent:
+    def _result_event(self, message: ClaudeResultEvent) -> AgentEvent:
         """Map the terminal Claude SDK result message and update the session."""
         self._session_id = message.session_id or self._session_id
         result_meta = {
@@ -315,7 +318,7 @@ class ClaudeAgentCore:
         return AgentEvent(
             type="result",
             data={
-                "result": getattr(message, "result", None),
+                "result": message.result,
                 "result_metadata": result_meta,
             },
         )
@@ -332,17 +335,20 @@ class ClaudeAgentCore:
         message_count = 0
         result_count = 0
 
-        async for message in self._client.receive_response():
+        async for raw_message in self._client.receive_response():
             message_count += 1
+            message = parse_claude_sdk_event(raw_message)
+            if message is None:
+                continue
 
-            if isinstance(message, SystemMessage):
+            if isinstance(message, ClaudeSystemEvent):
                 yield self._system_event(message)
-            elif isinstance(message, AssistantMessage):
+            elif isinstance(message, ClaudeAssistantEvent):
                 for event in self._assistant_events(message):
                     yield event
-            elif isinstance(message, ResultMessage):
+            elif isinstance(message, ClaudeResultEvent):
                 result_count += 1
-                text_result = getattr(message, "result", None)
+                text_result = message.result
                 _log(
                     f"Result #{result_count}: "
                     f"subtype={message.subtype}"

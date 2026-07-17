@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -57,6 +57,48 @@ class _FakeAskUserChannel:
 
     async def fetch_message(self, message_id: int) -> _FakeMessage:
         return self.messages[message_id]
+
+
+@dataclass
+class _InteractionUser:
+    id: str
+    bot: bool
+    roles: list[object]
+
+
+@dataclass
+class _InteractionChannel:
+    id: str
+
+
+@dataclass
+class _InteractionResponse:
+    edit_message: AsyncMock
+    send_message: AsyncMock
+    send_modal: AsyncMock
+
+
+@dataclass
+class _Interaction:
+    """The Discord interaction surface used by the ask_user adapter."""
+
+    user: _InteractionUser
+    guild: object | None
+    channel: _InteractionChannel
+    response: _InteractionResponse
+
+
+def _interaction() -> _Interaction:
+    return _Interaction(
+        user=_InteractionUser(id="42", bot=False, roles=[]),
+        guild=None,
+        channel=_InteractionChannel(id="dm-1"),
+        response=_InteractionResponse(
+            edit_message=AsyncMock(),
+            send_message=AsyncMock(),
+            send_modal=AsyncMock(),
+        ),
+    )
 
 
 def _make_channel(*, on_ask_user_answer: object | None = None) -> DiscordChannel:
@@ -205,15 +247,7 @@ async def test_multi_select_submit_delivers_list_answer():
     select = next(item for item in view.children if item.__class__.__name__.endswith("Select"))
     submit = next(item for item in view.children if getattr(item, "label", None) == "Submit")
     select._values = ["Option 1", "Option 3"]
-    interaction = SimpleNamespace(
-        user=SimpleNamespace(id="42", bot=False, roles=[]),
-        guild=None,
-        channel=SimpleNamespace(id="dm-1"),
-        response=SimpleNamespace(
-            edit_message=AsyncMock(),
-            send_message=AsyncMock(),
-        ),
-    )
+    interaction = _interaction()
 
     await submit.callback(interaction)
 
@@ -245,29 +279,13 @@ async def test_free_text_modal_submit_delivers_answer():
 
     view = fake.sends[0][1]["view"]
     button = next(item for item in view.children if getattr(item, "label", None) == "Answer")
-    launch_interaction = SimpleNamespace(
-        user=SimpleNamespace(id="42", bot=False, roles=[]),
-        guild=None,
-        channel=SimpleNamespace(id="dm-1"),
-        response=SimpleNamespace(
-            send_modal=AsyncMock(),
-            send_message=AsyncMock(),
-        ),
-    )
+    launch_interaction = _interaction()
 
     await button.callback(launch_interaction)
 
     modal = launch_interaction.response.send_modal.call_args.args[0]
     modal.answer_input._value = "Project Synapse"
-    submit_interaction = SimpleNamespace(
-        user=SimpleNamespace(id="42", bot=False, roles=[]),
-        guild=None,
-        channel=SimpleNamespace(id="dm-1"),
-        response=SimpleNamespace(
-            edit_message=AsyncMock(),
-            send_message=AsyncMock(),
-        ),
-    )
+    submit_interaction = _interaction()
 
     await modal.on_submit(submit_interaction)
 
@@ -286,15 +304,7 @@ async def test_button_callback_delivers_answer_and_removes_interactivity():
 
     view = fake.sends[0][1]["view"]
     button = next(item for item in view.children if getattr(item, "label", None) == "Option 1")
-    interaction = SimpleNamespace(
-        user=SimpleNamespace(id="42", bot=False, roles=[]),
-        guild=None,
-        channel=SimpleNamespace(id="dm-1"),
-        response=SimpleNamespace(
-            edit_message=AsyncMock(),
-            send_message=AsyncMock(),
-        ),
-    )
+    interaction = _interaction()
 
     await button.callback(interaction)
 

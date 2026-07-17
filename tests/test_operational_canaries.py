@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_settings
 
 from pynchy.canaries import CanaryRunContext, registered_canary_scenarios
+from pynchy.config import CanaryConfig
 from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
 from pynchy.host.container_manager.mcp.canary_client import McpCanaryToolError
 from pynchy.operational_canaries import (
@@ -45,7 +46,7 @@ async def test_calendar_canary_uses_configured_calendar_and_removes_event(monkey
     delete_event = AsyncMock(return_value={"result": {"uid": "event-1", "status": "deleted"}})
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(canary=SimpleNamespace(calendar_name="canary")),
+        lambda: make_settings(canary=CanaryConfig(calendar_name="canary")),
     )
     scenario = CalendarRoundTripCanary(
         list_calendars=list_calendars,
@@ -113,8 +114,8 @@ async def test_linear_canary_exercises_issue_and_todo_lifecycle(monkeypatch):
     monkeypatch.setattr("pynchy.operational_canaries.move_workspace_todo", move_todo)
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(linear_team_key="CANARY", linear_workspace="canary-workspace")
+        lambda: make_settings(
+            canary=CanaryConfig(linear_team_key="CANARY", linear_workspace="canary-workspace")
         ),
     )
     scenario = LinearWorkspaceRoundTripCanary(client_context=client_context)
@@ -149,8 +150,8 @@ async def test_linear_canary_cleans_an_issue_when_todo_creation_fails(monkeypatc
     )
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(linear_team_key="CANARY", linear_workspace="canary-workspace")
+        lambda: make_settings(
+            canary=CanaryConfig(linear_team_key="CANARY", linear_workspace="canary-workspace")
         ),
     )
     scenario = LinearWorkspaceRoundTripCanary(client_context=client_context)
@@ -201,10 +202,9 @@ async def test_google_calendar_canary_uses_real_mcp_tool_contract_and_removes_ev
 
     monkeypatch.setattr(
         "pynchy.google_mcp_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(
-                google_calendar_server="gcal.canary",
-                google_calendar_id="pynchy-canary",
+        lambda: make_settings(
+            canary=CanaryConfig(
+                google_calendar_server="gcal.canary", google_calendar_id="pynchy-canary"
             )
         ),
     )
@@ -235,8 +235,8 @@ async def test_google_drive_canary_searches_and_reads_a_configured_fixture(monke
 
     monkeypatch.setattr(
         "pynchy.google_mcp_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(
+        lambda: make_settings(
+            canary=CanaryConfig(
                 google_drive_server="gdrive.canary",
                 google_drive_probe_query="pynchy-canary-fixture",
                 google_drive_file_id="fixture-file-id",
@@ -303,11 +303,8 @@ async def test_proton_canary_sends_receives_reads_and_cleans_without_persisting_
     client = _FakeProtonClient()
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(
-                proton_mailbox="INBOX",
-                proton_recipient="canary@example.test",
-            )
+        lambda: make_settings(
+            canary=CanaryConfig(proton_mailbox="INBOX", proton_recipient="canary@example.test")
         ),
     )
     scenario = ProtonMailRoundTripCanary(client_factory=lambda: client)

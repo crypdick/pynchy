@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
+from pynchy.host.audio import AudioTranscriptionResult
 from pynchy.host.inbound_audio import (
     InboundAudioAttachment,
     InboundAudioProcessingRequest,
@@ -22,10 +22,10 @@ VOICE_FALLBACK = "[Audio attachment received; transcription is not available yet
 async def test_process_inbound_audio_caches_transcribes_and_returns_metadata_patch(
     tmp_path: Path,
 ) -> None:
-    def transcribe(path: Path) -> SimpleNamespace:
+    def transcribe(path: Path) -> AudioTranscriptionResult:
         assert path == tmp_path / "message_1-att_1.ogg"
         assert path.read_bytes() == b"voice bytes"
-        return SimpleNamespace(
+        return AudioTranscriptionResult(
             success=True,
             transcript="ship the shared audio boundary",
             provider="local",

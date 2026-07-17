@@ -6,7 +6,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -36,8 +35,9 @@ from pynchy.config.models import ReposConfig
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.host.orchestrator.deploy import BuildResult
-from pynchy.types import CanaryOutcome, CanaryRun, HostJob, ScheduledTask
+from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
+from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
+from pynchy.types import CanaryOutcome, CanaryRun, HostJob, ScheduledTask, WorkspaceProfile
 from pynchy.utils import ShellResult
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
@@ -66,6 +66,20 @@ class NullSchedulerDeps:
         return False
 
 
+@dataclass(frozen=True)
+class _ScheduleDescription:
+    """The Temporal schedule-update subset the reconciler reads."""
+
+    description: object | None
+
+
+@dataclass(frozen=True)
+class _ScheduleListEntry:
+    """The Temporal schedule-list subset the reconciler reads."""
+
+    id: str
+
+
 class FakeScheduleHandle:
     def __init__(self, schedule_id: str):
         self.schedule_id = schedule_id
@@ -73,7 +87,7 @@ class FakeScheduleHandle:
         self.deleted = False
 
     async def update(self, updater):
-        update = updater(SimpleNamespace(description=None))
+        update = updater(_ScheduleDescription(description=None))
         self.updates.append(update)
 
     async def delete(self):
@@ -122,7 +136,7 @@ class _ScheduleIterator:
             schedule_id = next(self._schedule_ids)
         except StopIteration:
             raise StopAsyncIteration from None
-        return SimpleNamespace(id=schedule_id)
+        return _ScheduleListEntry(id=schedule_id)
 
 
 @pytest.fixture
@@ -883,7 +897,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="workflow-completed"),
+            lambda: TemporalActivityInfo(workflow_id="workflow-completed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -913,7 +927,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="learning-workflow-completed"),
+            lambda: TemporalActivityInfo(workflow_id="learning-workflow-completed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -944,7 +958,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_interactive.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="interactive-workflow-completed"),
+            lambda: TemporalActivityInfo(workflow_id="interactive-workflow-completed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -1036,7 +1050,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="deploy-workflow-completed"),
+            lambda: TemporalActivityInfo(workflow_id="deploy-workflow-completed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -1073,9 +1087,9 @@ class TestTemporalSchedulerRuntime:
         )
         rollback_calls: list[str] = []
 
-        def rollback_deploy_checkout(sha: str) -> SimpleNamespace:
+        def rollback_deploy_checkout(sha: str) -> RollbackResult:
             rollback_calls.append(sha)
-            return SimpleNamespace(success=True, actual_sha="old-sha-full", error="")
+            return RollbackResult(success=True, actual_sha="old-sha-full")
 
         monkeypatch.setattr(
             temporal_deploy,
@@ -1087,7 +1101,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="deploy-workflow-failed"),
+            lambda: TemporalActivityInfo(workflow_id="deploy-workflow-failed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -1124,9 +1138,9 @@ class TestTemporalSchedulerRuntime:
         finalize_deploy = AsyncMock(side_effect=RuntimeError("database unavailable"))
         rollback_calls: list[str] = []
 
-        def rollback_deploy_checkout(sha: str) -> SimpleNamespace:
+        def rollback_deploy_checkout(sha: str) -> RollbackResult:
             rollback_calls.append(sha)
-            return SimpleNamespace(success=True, actual_sha="old-sha-full", error="")
+            return RollbackResult(success=True, actual_sha="old-sha-full")
 
         monkeypatch.setattr(temporal_deploy, "finalize_deploy", finalize_deploy)
         monkeypatch.setattr(
@@ -1138,7 +1152,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="deploy-workflow-restart-failed"),
+            lambda: TemporalActivityInfo(workflow_id="deploy-workflow-restart-failed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -1174,7 +1188,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="channel-reconcile-completed"),
+            lambda: TemporalActivityInfo(workflow_id="channel-reconcile-completed"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -1204,7 +1218,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="workflow-skipped"),
+            lambda: TemporalActivityInfo(workflow_id="workflow-skipped"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
@@ -1232,7 +1246,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: SimpleNamespace(workflow_id="workflow-failed"),
+            lambda: TemporalActivityInfo(workflow_id="workflow-failed"),
         )
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
@@ -1243,7 +1257,13 @@ class TestTemporalSchedulerRuntime:
     async def test_run_scheduled_canaries_uses_configured_target(self, monkeypatch):
         deps = NullSchedulerDeps()
         deps.workspaces = lambda: {
-            "admin": SimpleNamespace(jid="slack:admin", is_admin=True),
+            "admin": WorkspaceProfile(
+                jid="slack:admin",
+                name="admin",
+                folder="admin",
+                trigger="always",
+                is_admin=True,
+            ),
         }
         deps.broadcast_host_message = AsyncMock()
         settings = make_settings(

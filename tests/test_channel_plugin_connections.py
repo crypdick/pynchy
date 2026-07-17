@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from conftest import make_settings
@@ -14,6 +13,7 @@ from pynchy.config.models import (
     SlackConnectionConfig,
     WhatsAppConnectionConfig,
 )
+from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
 
@@ -33,7 +33,7 @@ _NEONIZE_MODULES = [
     "neonize.utils.jid",
     "neonize.utils.enum",
 ]
-_neonize_mocks: dict[str, ModuleType] = {}
+_neonize_mocks: dict[str, object] = {}
 for _mod_name in _NEONIZE_MODULES:
     if _mod_name not in sys.modules:
         _neonize_mocks[_mod_name] = MagicMock()
@@ -42,13 +42,14 @@ for _mod_name in _NEONIZE_MODULES:
 from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
 
 
-def _context() -> SimpleNamespace:
-    return SimpleNamespace(
+def _context() -> ChannelPluginContext:
+    return ChannelPluginContext(
         on_message_callback=MagicMock(),
         on_chat_metadata_callback=MagicMock(),
         on_reaction_callback=MagicMock(),
         on_ask_user_answer_callback=MagicMock(),
         workspaces=MagicMock(return_value={}),
+        send_message=MagicMock(),
     )
 
 

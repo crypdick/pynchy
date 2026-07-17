@@ -49,6 +49,7 @@ from ._history import (
 from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
+from ._models import parse_discord_message
 from ._provisioning import create_discord_group
 
 if TYPE_CHECKING:
@@ -479,7 +480,7 @@ class DiscordChannel:
             high_water_mark = history_high_water_mark(message, high_water_mark)
             inbound = history_message(
                 channel_jid=channel_jid,
-                message=message,
+                message=parse_discord_message(message),
                 bot_user_id=self.bot_user_id,
             )
             if inbound is not None:
