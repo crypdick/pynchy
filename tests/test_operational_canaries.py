@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_settings
 
 from pynchy.canaries import CanaryRunContext, registered_canary_scenarios
+from pynchy.config import CanaryConfig
 from pynchy.operational_canaries import (
     CalendarRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
@@ -42,7 +43,7 @@ async def test_calendar_canary_uses_configured_calendar_and_removes_event(monkey
     delete_event = AsyncMock(return_value={"result": {"uid": "event-1", "status": "deleted"}})
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(canary=SimpleNamespace(calendar_name="canary")),
+        lambda: make_settings(canary=CanaryConfig(calendar_name="canary")),
     )
     scenario = CalendarRoundTripCanary(
         list_calendars=list_calendars,
@@ -110,8 +111,8 @@ async def test_linear_canary_exercises_issue_and_todo_lifecycle(monkeypatch):
     monkeypatch.setattr("pynchy.operational_canaries.move_workspace_todo", move_todo)
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(linear_team_key="CANARY", linear_workspace="canary-workspace")
+        lambda: make_settings(
+            canary=CanaryConfig(linear_team_key="CANARY", linear_workspace="canary-workspace")
         ),
     )
     scenario = LinearWorkspaceRoundTripCanary(client_context=client_context)
@@ -146,8 +147,8 @@ async def test_linear_canary_cleans_an_issue_when_todo_creation_fails(monkeypatc
     )
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(
-            canary=SimpleNamespace(linear_team_key="CANARY", linear_workspace="canary-workspace")
+        lambda: make_settings(
+            canary=CanaryConfig(linear_team_key="CANARY", linear_workspace="canary-workspace")
         ),
     )
     scenario = LinearWorkspaceRoundTripCanary(client_context=client_context)
@@ -183,7 +184,7 @@ class _FakeProtonClient:
 async def test_proton_canary_does_not_persist_message_content(monkeypatch):
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(canary=SimpleNamespace(proton_mailbox="INBOX")),
+        lambda: make_settings(canary=CanaryConfig(proton_mailbox="INBOX")),
     )
     scenario = ProtonMailReadCanary(client_factory=_FakeProtonClient)
 

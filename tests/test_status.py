@@ -10,13 +10,15 @@ from __future__ import annotations
 import contextlib
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 import time
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase
+from conftest import make_settings
 
+from pynchy.config.models import RepoConfig, ReposConfig
+from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
@@ -39,14 +41,10 @@ _EMPTY_STATS = {
 }
 
 
-def _status_settings(*, repos: dict[str, Any] | None = None) -> SimpleNamespace:
-    return SimpleNamespace(
-        repos=SimpleNamespace(overrides=repos or {}),
-        scheduler=SimpleNamespace(
-            temporal_address="localhost:7233",
-            temporal_namespace="default",
-            temporal_task_queue="pynchy-scheduler",
-        ),
+def _status_settings(*, repos: dict[str, RepoConfig] | None = None):
+    return make_settings(
+        repos=ReposConfig(overrides=repos or {}),
+        scheduler=SchedulerConfig(),
     )
 
 
@@ -268,7 +266,10 @@ class TestCollectRepos:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
+            patch(
+                f"{_S}.get_settings",
+                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
+            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="def456"),
             patch(f"{_S}.is_repo_dirty", return_value=True),
@@ -296,7 +297,10 @@ class TestCollectRepos:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
+            patch(
+                f"{_S}.get_settings",
+                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
+            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="aaa111"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -344,7 +348,10 @@ class TestWorktreeStatus:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
+            patch(
+                f"{_S}.get_settings",
+                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
+            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="bbb222"),
             patch(f"{_S}.is_repo_dirty", return_value=True),
@@ -375,7 +382,10 @@ class TestWorktreeStatus:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
+            patch(
+                f"{_S}.get_settings",
+                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
+            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="ccc333"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -399,7 +409,10 @@ class TestWorktreeStatus:
 
         with (
             _inert_status(),
-            patch(f"{_S}.get_settings", return_value=_status_settings(repos={"owner/repo": None})),
+            patch(
+                f"{_S}.get_settings",
+                return_value=_status_settings(repos={"owner/repo": RepoConfig()}),
+            ),
             patch(f"{_S}.get_repo_context", return_value=ctx),
             patch(f"{_S}.get_head_sha", return_value="ddd444"),
             patch(f"{_S}.is_repo_dirty", return_value=False),
@@ -597,9 +610,9 @@ class TestCollectHostJobs:
 class TestCollectTemporal:
     @pytest.mark.asyncio
     async def test_surfaces_config_cluster_health_and_worker_state(self):
-        settings = SimpleNamespace(
-            repos=SimpleNamespace(overrides={}),
-            scheduler=SimpleNamespace(
+        settings = make_settings(
+            repos=ReposConfig(),
+            scheduler=SchedulerConfig(
                 temporal_address="temporal.internal:7233",
                 temporal_namespace="pynchy",
                 temporal_task_queue="pynchy-scheduler-prod",

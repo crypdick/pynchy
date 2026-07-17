@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+from conftest import make_settings
 
 from pynchy.__main__ import main
 from pynchy.host.migration_backups import prune_migration_backups
@@ -94,7 +94,7 @@ def test_cli_prune_migration_backups_defaults_to_dry_run(
     monkeypatch.setattr(sys, "argv", ["pynchy", "prune-migration-backups", "--keep", "1"])
     monkeypatch.setattr(
         "pynchy.config.get_settings",
-        lambda: SimpleNamespace(project_root=tmp_path),
+        lambda: make_settings(project_root=tmp_path),
     )
 
     main()

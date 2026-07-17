@@ -7,10 +7,10 @@ from their subsystem packages and wires up hook functionality.
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from conftest import make_settings
 
 from pynchy.config import PluginConfig
 from pynchy.event_bus import AgentTraceEvent, EventBus, MessageEvent
@@ -59,9 +59,7 @@ class TestInRepoPluginDiscovery:
 
     def test_disabled_plugin_skipped(self):
         """Plugin disabled via config.toml is not loaded."""
-        settings = SimpleNamespace(
-            plugins={"claude": PluginConfig(enabled=False)},
-        )
+        settings = make_settings(plugins={"claude": PluginConfig(enabled=False)})
 
         with (
             patch("pynchy.plugins.registry.get_settings", return_value=settings),

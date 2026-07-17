@@ -22,6 +22,13 @@ class TemporalSchedulerStatusSnapshot:
     last_error: str | None = None
 
 
+@dataclass(frozen=True)
+class TemporalActivityInfo:
+    """Pynchy-owned subset of Temporal activity execution metadata."""
+
+    workflow_id: str
+
+
 @dataclass
 class _RuntimeState:
     scheduler_deps: object | None = None
@@ -52,9 +59,17 @@ def _update_temporal_scheduler_status(**changes: object) -> None:
     )
 
 
+def parse_temporal_activity_info(raw_info: object) -> TemporalActivityInfo:
+    """Parse Temporal's rich activity metadata at the scheduler boundary."""
+    if isinstance(raw_info, TemporalActivityInfo):
+        return raw_info
+    workflow_id = getattr(raw_info, "workflow_id", "")
+    return TemporalActivityInfo(workflow_id=str(workflow_id))
+
+
 def _activity_workflow_id() -> str | None:
     try:
-        return activity.info().workflow_id
+        return parse_temporal_activity_info(activity.info()).workflow_id
     except RuntimeError:
         return None
 

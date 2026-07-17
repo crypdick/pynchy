@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -144,6 +143,46 @@ class _FakeDiscordClient:
     def get_all_members(self):
         for guild in self.guilds:
             yield from guild.members
+
+
+@dataclass
+class _DirectMessageClient:
+    """The narrow discord.Client surface used by direct-message resolution."""
+
+    get_user: object
+    fetch_user: object
+
+
+@dataclass
+class _HistoryAuthor:
+    id: str
+    bot: bool
+    display_name: str
+
+
+@dataclass
+class _HistoryChannel:
+    id: str
+    name: str | None = None
+    parent: object | None = None
+    parent_id: str | None = None
+
+
+@dataclass
+class _HistoryMessage:
+    """SDK-shaped input that exercises Discord's parser at the history boundary."""
+
+    id: str
+    author: _HistoryAuthor
+    channel: _HistoryChannel
+    content: str
+    created_at: datetime
+    guild: object | None = None
+    attachments: tuple[object, ...] = ()
+    reference: object | None = None
+    message_snapshots: tuple[object, ...] = ()
+    mentions: tuple[object, ...] = ()
+    type: object | None = None
 
 
 def test_satisfies_channel_protocol():
@@ -382,7 +421,10 @@ async def test_resolve_channel_caches_direct_message_channels():
 
     user = _FakeUser()
     fetch_user = AsyncMock(return_value=user)
-    ch.client = SimpleNamespace(get_user=lambda _snowflake: None, fetch_user=fetch_user)
+    ch.client = _DirectMessageClient(
+        get_user=lambda _snowflake: None,
+        fetch_user=fetch_user,
+    )
 
     first = await ch._resolve_channel("discord:direct:42")
     second = await ch._resolve_channel("discord:direct:42")
@@ -450,10 +492,11 @@ async def test_fetch_inbound_since_filters_bot_and_self():
     ch.client = object()
     ch.bot_user_id = "self"
 
-    def _msg(mid: str, author_id: str, *, bot: bool) -> SimpleNamespace:
-        return SimpleNamespace(
+    def _msg(mid: str, author_id: str, *, bot: bool) -> _HistoryMessage:
+        return _HistoryMessage(
             id=mid,
-            author=SimpleNamespace(id=author_id, bot=bot, display_name=f"user{author_id}"),
+            author=_HistoryAuthor(id=author_id, bot=bot, display_name=f"user{author_id}"),
+            channel=_HistoryChannel(id="1"),
             content=f"msg {mid}",
             created_at=datetime(2026, 7, 7, tzinfo=UTC),
         )

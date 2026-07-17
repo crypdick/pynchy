@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import make_settings
 
+from pynchy.config.models import NotificationsConfig
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
@@ -140,9 +141,9 @@ class TestAutoRollback:
 
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
-            lambda: SimpleNamespace(
+            lambda: make_settings(
                 data_dir=tmp_path,
-                notifications=SimpleNamespace(admin_workspace=None),
+                notifications=NotificationsConfig(admin_workspace=None),
             ),
         )
         monkeypatch.setattr(

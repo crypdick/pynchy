@@ -15,14 +15,48 @@ from ._ids import (
     parse_jid,
     snowflake_of,
 )
+from ._models import (
+    DiscordAttachment as DiscordAttachment,
+)
+from ._models import (
+    DiscordAuthor as DiscordAuthor,
+)
+from ._models import (
+    DiscordChannelDetails as DiscordChannelDetails,
+)
+from ._models import (
+    DiscordForwardedMessage as DiscordForwardedMessage,
+)
+from ._models import (
+    DiscordInboundMessage as DiscordInboundMessage,
+)
+from ._models import (
+    DiscordInboundReaction as DiscordInboundReaction,
+)
+from ._models import (
+    DiscordReply as DiscordReply,
+)
+from ._models import (
+    parse_discord_message as parse_discord_message,
+)
+from ._models import (
+    parse_discord_reaction as parse_discord_reaction,
+)
 from ._plugin import DiscordChannelPlugin as DiscordChannelPlugin
 
 __all__ = [
     "DISCORD_LIMIT",
     "JID_PREFIX",
+    "DiscordAttachment",
+    "DiscordAuthor",
     "DiscordChannel",
+    "DiscordChannelDetails",
     "DiscordChannelPlugin",
+    "DiscordForwardedMessage",
+    "DiscordInboundMessage",
+    "DiscordInboundReaction",
     "DiscordJid",
+    "DiscordReply",
     "channel_jid",
     "chunk_discord_text",
     "dm_jid",
@@ -30,6 +64,8 @@ __all__ = [
     "group_jid",
     "is_discord_jid",
     "logger",
+    "parse_discord_message",
+    "parse_discord_reaction",
     "parse_jid",
     "snowflake_of",
 ]

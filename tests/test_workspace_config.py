@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import tomllib
-from types import SimpleNamespace
+from collections.abc import Callable  # noqa: TC003, RUF100 - dataclass field type.
+from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
 import pluggy
@@ -27,10 +28,17 @@ from pynchy.host.orchestrator.workspace_config import (
 from pynchy.types import InboundFetchResult, OutboundEvent, WorkspaceProfile, WorkspaceSecurity
 
 
+@dataclass
+class _WorkspaceSpecHooks:
+    """The pluggy hook subset used to collect plugin workspace specifications."""
+
+    pynchy_workspace_spec: Callable[[], list[dict[str, object]]]
+
+
 class _FakePM(pluggy.PluginManager):
     """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
 
-    def __init__(self, hook: SimpleNamespace) -> None:
+    def __init__(self, hook: _WorkspaceSpecHooks) -> None:
         self.hook = hook
 
 
@@ -92,7 +100,7 @@ class TestLoadWorkspaceConfig:
     def test_loads_workspace_from_plugin_spec(self):
         s = _settings_with_workspaces(workspaces={})
         fake_pm = _FakePM(
-            SimpleNamespace(
+            _WorkspaceSpecHooks(
                 pynchy_workspace_spec=lambda: [
                     {
                         "folder": "code-improver",

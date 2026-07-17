@@ -10,6 +10,7 @@ import discord
 from pynchy.types import NewMessage
 
 from ._events import build_message_metadata, normalized_message_content
+from ._models import DiscordInboundMessage  # noqa: TC001, RUF100 - beartype resolves it.
 
 MESSAGE_ID_PREFIX = "discord-"
 
@@ -29,21 +30,19 @@ def history_high_water_mark(message: object, current: str) -> str:
 def history_message(
     *,
     channel_jid: str,
-    message: object,
+    message: DiscordInboundMessage,
     bot_user_id: str,
 ) -> NewMessage | None:
-    message_like = cast("Any", message)
-    author = message_like.author
-    if getattr(author, "bot", False) or str(author.id) == bot_user_id:
+    if message.author.is_bot or message.author.id == bot_user_id:
         return None
-    timestamp = message_like.created_at.isoformat() if message_like.created_at else ""
+    timestamp = message.created_at.isoformat() if message.created_at else ""
     return NewMessage(
-        id=f"{MESSAGE_ID_PREFIX}{message_like.id}",
+        id=f"{MESSAGE_ID_PREFIX}{message.id}",
         chat_jid=channel_jid,
-        sender=str(author.id),
-        sender_name=getattr(author, "display_name", None) or str(author),
-        content=normalized_message_content(message_like),
+        sender=message.author.id,
+        sender_name=message.author.display_name or message.author.rendered_name,
+        content=normalized_message_content(message),
         timestamp=timestamp or datetime.now(UTC).isoformat(),
         is_from_me=False,
-        metadata=build_message_metadata(message_like),
+        metadata=build_message_metadata(message),
     )

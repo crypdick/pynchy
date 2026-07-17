@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
+
+from claude_agent_sdk import SystemMessage
 
 from agent_runner.core import AgentCoreConfig
-from agent_runner.cores import claude as claude_core
 from agent_runner.cores.claude import ClaudeAgentCore
+from agent_runner.cores.claude_messages import (
+    ClaudeAssistantEvent,
+    ClaudeResultEvent,
+    ClaudeSystemEvent,
+    ClaudeTextBlock,
+    ClaudeThinkingBlock,
+    ClaudeToolResultBlock,
+    ClaudeToolUseBlock,
+    parse_claude_sdk_event,
+)
 
 
 def _core(session_id: str | None = None) -> ClaudeAgentCore:
@@ -24,32 +33,9 @@ def _core(session_id: str | None = None) -> ClaudeAgentCore:
     )
 
 
-@dataclass(slots=True)
-class _ThinkingBlock:
-    thinking: str
-
-
-@dataclass(slots=True)
-class _ToolUseBlock:
-    name: str
-    input: object
-
-
-@dataclass(slots=True)
-class _ToolResultBlock:
-    tool_use_id: str
-    content: object
-    is_error: bool = False
-
-
-@dataclass(slots=True)
-class _TextBlock:
-    text: str
-
-
 def test_system_event_updates_session_id():
     core = _core()
-    message = SimpleNamespace(subtype="init", data={"session_id": "sid-123"})
+    message = ClaudeSystemEvent(subtype="init", data={"session_id": "sid-123"})
 
     event = core._system_event(message)
 
@@ -58,19 +44,20 @@ def test_system_event_updates_session_id():
     assert core.session_id == "sid-123"
 
 
-def test_assistant_events_map_all_supported_block_types(monkeypatch):
-    monkeypatch.setattr(claude_core, "ThinkingBlock", _ThinkingBlock)
-    monkeypatch.setattr(claude_core, "ToolUseBlock", _ToolUseBlock)
-    monkeypatch.setattr(claude_core, "ToolResultBlock", _ToolResultBlock)
-    monkeypatch.setattr(claude_core, "TextBlock", _TextBlock)
+def test_sdk_system_message_is_parsed_at_the_core_boundary():
+    parsed = parse_claude_sdk_event(SystemMessage("init", {"session_id": "sid-123"}))
 
-    message = SimpleNamespace(
-        content=[
-            _ThinkingBlock("hmm"),
-            _ToolUseBlock("Bash", {"command": "ls"}),
-            _ToolResultBlock("t1", ["ok", 2], is_error=True),
-            _TextBlock("done"),
-        ]
+    assert parsed == ClaudeSystemEvent(subtype="init", data={"session_id": "sid-123"})
+
+
+def test_assistant_events_map_all_supported_block_types():
+    message = ClaudeAssistantEvent(
+        content=(
+            ClaudeThinkingBlock("hmm"),
+            ClaudeToolUseBlock("Bash", {"command": "ls"}),
+            ClaudeToolResultBlock("t1", ["ok", 2], is_error=True),
+            ClaudeTextBlock("done"),
+        )
     )
 
     events = _core()._assistant_events(message)
@@ -85,7 +72,7 @@ def test_assistant_events_map_all_supported_block_types(monkeypatch):
 
 def test_result_event_updates_session_and_metadata():
     core = _core()
-    message = SimpleNamespace(
+    message = ClaudeResultEvent(
         subtype="success",
         duration_ms=100,
         duration_api_ms=90,

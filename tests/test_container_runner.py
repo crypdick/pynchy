@@ -10,7 +10,6 @@ import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
 from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -53,6 +52,7 @@ from pynchy.host.container_manager.snapshots import write_groups_snapshot, write
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.learning.skill_activation import (
+    PreparedAgentHomes,
     prepare_agent_homes,
     refresh_learned_agent_skills,
 )
@@ -2002,7 +2002,8 @@ class TestContainerInputAgentCoreConfig:
             ),
             patch(
                 "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
-                return_value=SimpleNamespace(
+                return_value=PreparedAgentHomes(
+                    claude_home=tmp_path / ".claude",
                     codex_home=tmp_path / ".codex",
                     learning_paths=None,
                 ),

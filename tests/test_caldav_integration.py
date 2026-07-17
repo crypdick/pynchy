@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -50,6 +50,13 @@ class FakeDeps(NullIpcDeps):
 
     def workspaces(self):
         return self._groups
+
+
+@dataclass(frozen=True)
+class _WorkspaceSettings:
+    """The workspace-config subset consulted by the CalDAV service adapter."""
+
+    security: WorkspaceSecurity
 
 
 TEST_GROUP = WorkspaceProfile(
@@ -100,7 +107,7 @@ def _make_settings(caldav_cfg=CALDAV_CONFIG, ws_security=None):
                 )
             }
             self.workspaces = {
-                "test-ws": SimpleNamespace(security=ws_security or WorkspaceSecurity()),
+                "test-ws": _WorkspaceSettings(security=ws_security or WorkspaceSecurity()),
             }
 
     return FakeSettings()

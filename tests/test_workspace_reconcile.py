@@ -7,8 +7,9 @@ logic — bugs here mean periodic agents silently don't run or get double-schedu
 
 from __future__ import annotations
 
+from collections.abc import Callable  # noqa: TC003, RUF100 - dataclass field type.
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 
 import pluggy
@@ -27,10 +28,17 @@ from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
 from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
 
 
+@dataclass
+class _WorkspaceSpecHooks:
+    """The pluggy hook subset used to collect plugin workspace specifications."""
+
+    pynchy_workspace_spec: Callable[[], list[dict[str, object]]]
+
+
 class _FakePM(pluggy.PluginManager):
     """Real-class stand-in so isinstance(pm, pluggy.PluginManager) succeeds."""
 
-    def __init__(self, hook: SimpleNamespace) -> None:
+    def __init__(self, hook: _WorkspaceSpecHooks) -> None:
         self.hook = hook
 
 
@@ -899,7 +907,7 @@ class TestReconcileWorkspaces:
 
     async def test_invalid_plugin_workspace_config_is_ignored(self, db, groups_dir, tmp_path):
         fake_pm = _FakePM(
-            SimpleNamespace(
+            _WorkspaceSpecHooks(
                 pynchy_workspace_spec=lambda: [
                     {
                         "folder": "code-improver",

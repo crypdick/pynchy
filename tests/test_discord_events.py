@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
-import discord
-
 from pynchy.config.models import DiscordConnectionConfig
-from pynchy.plugins.channels.discord import DiscordChannel
+from pynchy.host.audio import AudioTranscriptionResult
+from pynchy.plugins.channels.discord import (
+    DiscordAttachment,
+    DiscordAuthor,
+    DiscordChannel,
+    DiscordChannelDetails,
+    DiscordForwardedMessage,
+    DiscordInboundMessage,
+    DiscordReply,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,20 +35,21 @@ def _user(
     display_name: str | None = None,
     global_name: str | None = None,
     name: str | None = None,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+) -> DiscordAuthor:
+    return DiscordAuthor(
         id=uid,
-        bot=bot,
-        roles=[SimpleNamespace(id=r) for r in roles],
+        is_bot=bot,
+        role_ids=frozenset(roles),
         display_name=display_name,
         global_name=global_name,
         name=name,
+        rendered_name=name or display_name or uid,
     )
 
 
 def _message(
     *,
-    author: SimpleNamespace,
+    author: DiscordAuthor,
     guild_id: str | None,
     channel_id: str,
     guild_name: str | None = None,
@@ -51,29 +58,29 @@ def _message(
     parent_name: str | None = None,
     mentions: tuple[str, ...] = (),
     content: str = "",
-    attachments: tuple[SimpleNamespace, ...] = (),
-    reference: SimpleNamespace | None = None,
-    message_snapshots: tuple[SimpleNamespace, ...] = (),
-    message_type: object | None = None,
-) -> SimpleNamespace:
-    guild = None if guild_id is None else SimpleNamespace(id=guild_id, name=guild_name)
-    parent = None
-    if parent_id is not None:
-        parent = SimpleNamespace(id=parent_id, name=parent_name)
-    channel = SimpleNamespace(id=channel_id, name=channel_name, parent=parent)
-    if parent_id is not None:
-        channel.parent_id = parent_id
-    return SimpleNamespace(
+    attachments: tuple[DiscordAttachment, ...] = (),
+    reference: DiscordReply | None = None,
+    message_snapshots: tuple[DiscordForwardedMessage, ...] = (),
+    message_type: str | None = None,
+) -> DiscordInboundMessage:
+    return DiscordInboundMessage(
         id="m1",
         author=author,
-        guild=guild,
-        channel=channel,
+        guild_id=guild_id,
+        guild_name=guild_name,
+        channel=DiscordChannelDetails(
+            id=channel_id,
+            name=channel_name,
+            parent_id=parent_id,
+            parent_name=parent_name,
+        ),
         content=content,
-        attachments=list(attachments),
-        reference=reference,
-        message_snapshots=list(message_snapshots),
-        mentions=[_user(m) for m in mentions],
-        type=message_type,
+        attachments=attachments,
+        reply=reference,
+        forwarded_messages=message_snapshots,
+        mentioned_user_ids=frozenset(mentions),
+        system_type=message_type,
+        created_at=None,
     )
 
 
@@ -88,8 +95,14 @@ def _attachment(
     description: str | None = None,
     spoiler: bool = False,
     data: bytes | None = None,
-) -> SimpleNamespace:
-    attachment = SimpleNamespace(
+) -> DiscordAttachment:
+    reader = None
+    if data is not None:
+
+        def reader() -> bytes:
+            return data
+
+    return DiscordAttachment(
         id=attachment_id,
         filename=filename,
         url=url,
@@ -98,18 +111,12 @@ def _attachment(
         size=size,
         description=description,
         spoiler=spoiler,
+        read=reader,
     )
-    if data is not None:
-
-        def read() -> bytes:
-            return data
-
-        attachment.read = read
-    return attachment
 
 
 async def _deliver(
-    msg: SimpleNamespace,
+    msg: DiscordInboundMessage,
     **cfg_kwargs: Any,
 ) -> tuple[str, NewMessage, list[tuple[str, str, str | None]]]:
     delivered: list[tuple[str, NewMessage]] = []
@@ -123,7 +130,7 @@ async def _deliver(
     )
     channel.bot_user_id = BOT_ID
 
-    await channel.events.handle_message(msg)
+    await channel.events.handle_inbound_message(msg)
 
     assert len(delivered) == 1
     jid, new_message = delivered[0]
@@ -207,14 +214,14 @@ async def test_thread_created_system_message_is_not_delivered_to_parent_channel_
     )
     channel.bot_user_id = BOT_ID
 
-    await channel.events.handle_message(
+    await channel.events.handle_inbound_message(
         _message(
             author=_user("5"),
             guild_id="g1",
             channel_id="c1",
             channel_name="admin",
             content="started a thread",
-            message_type=discord.MessageType.thread_created,
+            message_type="thread_created",
         )
     )
 
@@ -223,9 +230,7 @@ async def test_thread_created_system_message_is_not_delivered_to_parent_channel_
 
 
 async def test_reply_context_is_preserved_in_message_metadata():
-    replied_author = SimpleNamespace(id="42", display_name="Alice")
-    replied = SimpleNamespace(id="reply-1", author=replied_author, content="Original message")
-    reference = SimpleNamespace(message_id="reply-1", resolved=replied)
+    reference = DiscordReply(message_id="reply-1", sender_name="Alice", content="Original message")
     _jid, msg, _metadata = await _deliver(
         _message(
             author=_user("5"),
@@ -302,9 +307,9 @@ async def test_audio_only_attachment_gets_placeholder_content():
 
 
 async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
-    def transcribe(path: Path) -> SimpleNamespace:
+    def transcribe(path: Path) -> AudioTranscriptionResult:
         assert path.read_bytes() == b"voice bytes"
-        return SimpleNamespace(
+        return AudioTranscriptionResult(
             success=True,
             transcript="stretch first, then breathe",
             provider="local",
@@ -355,11 +360,11 @@ async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
 
 
 async def test_forwarded_snapshot_text_falls_back_when_message_content_missing():
-    snapshot = SimpleNamespace(
-        type="default",
+    snapshot = DiscordForwardedMessage(
+        type_name="default",
         content="Forwarded content",
         created_at=datetime(2026, 7, 7, tzinfo=UTC),
-        attachments=[
+        attachments=(
             _attachment(
                 attachment_id="forward-1",
                 filename="trace.json",
@@ -367,8 +372,8 @@ async def test_forwarded_snapshot_text_falls_back_when_message_content_missing()
                 proxy_url="https://cdn.example.invalid/trace.json",
                 content_type="application/json",
                 size=64,
-            )
-        ],
+            ),
+        ),
     )
     _jid, msg, _metadata = await _deliver(
         _message(

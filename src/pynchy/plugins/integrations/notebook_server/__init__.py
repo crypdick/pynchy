@@ -1,5 +1,8 @@
 """Built-in notebook execution MCP server plugin."""
 
+from pynchy.plugins.integrations.notebook_server._execution import (
+    KernelSession as KernelSession,
+)
 from pynchy.plugins.integrations.notebook_server._formats import (
     load_notebook,
     notebook_path,
@@ -13,6 +16,7 @@ from pynchy.plugins.integrations.notebook_server._plugin import (
 )
 
 __all__ = [
+    "KernelSession",
     "NotebookServerPlugin",
     "load_notebook",
     "notebook_path",
