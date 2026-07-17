@@ -138,7 +138,7 @@ Workspaces opt into skills via the `skills` config field:
 skills = ["core", "dev"]           # tier names and/or individual skill names
 ```
 
-When `skills` is unset, only core-tier skills are included (safe default). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill`. Core is always implicit when any filtering is active. Use `["all"]` to include every skill.
+When `skills` is unset, only core-tier skills are included (safe default). When set, entries are unioned — `["core", "my-skill"]` means all core-tier skills plus `my-skill`. Core is always implicit when any filtering is active. Use `["*"]` to include every skill.
 
 ## pynchy_create_channel
 

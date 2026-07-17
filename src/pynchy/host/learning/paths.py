@@ -25,10 +25,8 @@ class LearningPaths:
     global_skills_root: Path
     profile_root: Path
     memory_root: Path
-    skills_root: Path
     mounted_profile_root: str
     mounted_memory_root: str
-    mounted_skills_root: str
 
 
 class LearningConfigError(ValueError):
@@ -74,11 +72,9 @@ def resolve_learning_paths(
     profile_rel = _render_profile_root(obsidian.default_profile_root, profile_slug)
     profile_root = _resolve_under_vault(vault_root, profile_rel)
     memory_root = _resolve_under_vault(vault_root, profile_rel / obsidian.memory_dir_name)
-    skills_root = _resolve_under_vault(vault_root, profile_rel / obsidian.skills_dir_name)
 
     profile_vault_rel = profile_root.relative_to(vault_root)
     memory_vault_rel = memory_root.relative_to(vault_root)
-    skills_vault_rel = skills_root.relative_to(vault_root)
 
     mount_path = obsidian.mount_path
     return LearningPaths(
@@ -89,10 +85,8 @@ def resolve_learning_paths(
         global_skills_root=global_skills_root,
         profile_root=profile_root,
         memory_root=memory_root,
-        skills_root=skills_root,
         mounted_profile_root=_mounted_path(mount_path, profile_vault_rel),
         mounted_memory_root=_mounted_path(mount_path, memory_vault_rel),
-        mounted_skills_root=_mounted_path(mount_path, skills_vault_rel),
     )
 
 

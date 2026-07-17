@@ -77,10 +77,9 @@ def test_workspace_profile_resolves_profile_root(tmp_path):
     assert paths.profile_slug == "shopping"
     assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/shopping"
     assert paths.memory_root == paths.profile_root / "memory"
-    assert paths.skills_root == paths.profile_root / "skills"
+    assert paths.global_skills_root == vault.resolve() / "systems/pynchy/skills"
     assert paths.mounted_profile_root == "/workspace/vault/systems/pynchy/profiles/shopping"
     assert paths.mounted_memory_root == "/workspace/vault/systems/pynchy/profiles/shopping/memory"
-    assert paths.mounted_skills_root == "/workspace/vault/systems/pynchy/profiles/shopping/skills"
 
 
 def test_vault_root_expands_home_directory(tmp_path, monkeypatch):
@@ -115,7 +114,6 @@ def test_custom_mount_path_is_used_for_mounted_paths(tmp_path):
     assert paths.vault_mount_path == "/mnt/obsidian"
     assert paths.mounted_profile_root == "/mnt/obsidian/systems/pynchy/profiles/shopping"
     assert paths.mounted_memory_root == "/mnt/obsidian/systems/pynchy/profiles/shopping/memory"
-    assert paths.mounted_skills_root == "/mnt/obsidian/systems/pynchy/profiles/shopping/skills"
 
 
 def test_resolver_does_not_create_directories(tmp_path):
@@ -133,7 +131,7 @@ def test_resolver_does_not_create_directories(tmp_path):
     assert not vault.exists()
     assert not paths.profile_root.exists()
     assert not paths.memory_root.exists()
-    assert not paths.skills_root.exists()
+    assert not paths.global_skills_root.exists()
 
 
 def test_symlink_escape_through_profile_root_is_rejected(tmp_path):
@@ -262,7 +260,6 @@ def test_settings_validation_allows_learning_enabled_without_vault_root(tmp_path
                     "mount_path": "/workspace/vault",
                     "default_profile_root": "systems/pynchy/profiles/{profile}",
                     "memory_dir_name": "memory",
-                    "skills_dir_name": "skills",
                 },
             },
         }
@@ -281,8 +278,6 @@ def test_learning_dir_names_must_be_single_path_components():
     for value in invalid_values:
         with pytest.raises(ValidationError, match="single path component"):
             ObsidianLearningConfig(memory_dir_name=value)
-        with pytest.raises(ValidationError, match="single path component"):
-            ObsidianLearningConfig(skills_dir_name=value)
 
 
 def test_learning_operational_knobs_must_be_positive():

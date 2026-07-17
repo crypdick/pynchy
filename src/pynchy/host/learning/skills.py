@@ -1,4 +1,4 @@
-"""Discover profile-scoped learned skills stored in the Obsidian vault."""
+"""Discover globally shared learned skills stored in the Obsidian vault."""
 
 from __future__ import annotations
 
@@ -76,18 +76,14 @@ def _skill_dir_rejection(
 
 
 def iter_learned_skill_dirs(group_folder: str) -> list[Path]:
-    """Return learned skill directories selected from a group's learning profile."""
+    """Return learned skills from the global registry for later profile filtering."""
     paths = resolve_learning_paths(group_folder)
     if paths is None:
         return []
 
     skill_max_bytes = get_settings().learning.skill_max_bytes
     skill_dirs: list[Path] = []
-    # Global Obsidian-backed skills are shared by every profile. Profile-scoped
-    # skills are scanned after global ones so they can override an imported
-    # shared skill with the same directory name during session sync.
-    for skills_root in (paths.global_skills_root, paths.skills_root):
-        skill_dirs.extend(_iter_skill_dirs_from_root(skills_root, skill_max_bytes))
+    skill_dirs.extend(_iter_skill_dirs_from_root(paths.global_skills_root, skill_max_bytes))
 
     return skill_dirs
 

@@ -139,6 +139,35 @@ def sync_skills(
     sync_onecli_gateway_skill(skills_dst)
 
 
+def refresh_learned_skills(
+    session_dir: Path,
+    *,
+    workspace_skills: list[str] | None,
+    denied_skill_names: list[str] | None,
+    learned_skill_paths: list[Path] | None,
+) -> None:
+    """Refresh only vault-backed skills in an already-prepared agent home.
+
+    Warm sessions do not need their built-in, plugin, or OneCLI skills rebuilt.
+    They do need the reviewer output that appeared after their container started.
+    """
+    skills_dst = session_dir / "skills"
+    skills_dst.mkdir(parents=True, exist_ok=True)
+    desired_learned_skill_names = _selected_learned_skill_names(
+        learned_skill_paths,
+        workspace_skills,
+        denied_skill_names,
+    )
+    _prune_stale_learned_skill_copies(skills_dst, desired_learned_skill_names)
+    if learned_skill_paths and workspace_skills is not None:
+        _sync_learned_skills(
+            skills_dst,
+            learned_skill_paths,
+            workspace_skills,
+            denied_skill_names or [],
+        )
+
+
 def _sync_builtin_skills(
     skills_src: Path,
     skills_dst: Path,
@@ -334,12 +363,6 @@ def _selected_learned_skill_names(
     return selected_names
 
 
-def _learned_skills_selected(workspace_skills: list[str] | None) -> bool:
-    if workspace_skills is None:
-        return False
-    return bool(workspace_skills)
-
-
 def _prune_stale_learned_skill_copies(skills_dst: Path, desired_names: set[str]) -> None:
     for dst_dir in sorted(skills_dst.iterdir(), key=lambda path: path.name):
         if dst_dir.name in desired_names:
@@ -385,7 +408,11 @@ def _sync_learned_skills(
             continue
 
         dst_dir = skills_dst / skill_path.name
-        if dst_dir.exists() and not _is_learned_skill_copy(dst_dir):
+        if (
+            dst_dir.exists()
+            and not _is_learned_skill_copy(dst_dir)
+            and not _is_plugin_skill_copy_from(dst_dir, skill_path)
+        ):
             logger.warning(
                 "Skipping learned skill",
                 skill=skill_path.name,
@@ -393,6 +420,8 @@ def _sync_learned_skills(
                 reason="collision",
             )
             continue
+        # A vault plugin may export this exact source. The learned refresher
+        # owns that matching copy so reviewer edits reach current warm sessions.
 
         try:
             if dst_dir.exists():

@@ -69,7 +69,14 @@ def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> Non
     )
     (tmp_path / "groups" / "codex-group").mkdir(parents=True)
 
-    with patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings):
+    with (
+        patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
+        patch("pynchy.host.learning.skill_activation.get_settings", return_value=settings),
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
+        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.session_prep.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.onecli.get_settings", return_value=settings),
+    ):
         mounts = build_volume_mounts(_group(), is_admin=False)
 
     codex_mount = next(m for m in mounts if m.container_path == "/home/agent/.codex")
@@ -95,6 +102,11 @@ def test_build_volume_mounts_does_not_seed_host_codex_auth(tmp_path: Path) -> No
 
     with (
         patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
+        patch("pynchy.host.learning.skill_activation.get_settings", return_value=settings),
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
+        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.session_prep.get_settings", return_value=settings),
+        patch("pynchy.host.container_manager.onecli.get_settings", return_value=settings),
         patch("pynchy.host.container_manager.mounts.Path.home", return_value=host_home),
     ):
         build_volume_mounts(_group(), is_admin=False)

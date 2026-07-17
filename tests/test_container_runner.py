@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -44,12 +45,18 @@ from pynchy.host.container_manager.session import SessionDiedError
 from pynchy.host.container_manager.session_prep import (
     is_skill_selected,
     parse_skill_tier,
+    refresh_learned_skills,
     sync_skills,
     write_settings_json,
 )
 from pynchy.host.container_manager.snapshots import write_groups_snapshot, write_tasks_snapshot
 from pynchy.host.git_ops.repo import RepoContext, get_repo_token
 from pynchy.host.learning.paths import LearningConfigError
+from pynchy.host.learning.skill_activation import (
+    prepare_agent_homes,
+    refresh_learned_agent_skills,
+)
+from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.agent_runner import (
     PreContainerResult,
     build_admin_system_notices,
@@ -154,12 +161,15 @@ _SETTINGS_MODULES = [
     _CR_CREDS,
     "pynchy.host.container_manager.mounts",
     "pynchy.host.container_manager.session_prep",
+    "pynchy.host.container_manager.onecli",
     _CR_ORCH,
     "pynchy.host.container_manager.snapshots",
     "pynchy.host.learning.paths",
     "pynchy.host.learning.mirror",
     "pynchy.host.learning.skills",
+    "pynchy.host.learning.skill_activation",
     "pynchy.host.orchestrator.workspace_config",
+    "pynchy.host.orchestrator.host_execution",
 ]
 
 
@@ -733,7 +743,6 @@ class TestMountBuilding:
 
         profile_root = vault.resolve() / "systems/pynchy/profiles/deep-work"
         assert (profile_root / "memory").is_dir()
-        assert (profile_root / "skills").is_dir()
 
     def test_learning_mount_scans_skills_when_workspace_skills_is_none(
         self,
@@ -749,7 +758,7 @@ class TestMountBuilding:
         with (
             _patch_settings(tmp_path, learning=learning),
             patch(
-                "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
+                "pynchy.host.learning.skill_activation.iter_learned_skill_dirs",
                 return_value=[],
             ) as scan_learned_skills,
         ):
@@ -776,7 +785,7 @@ class TestMountBuilding:
         with (
             _patch_settings(tmp_path, learning=learning, workspaces=workspaces) as settings,
             patch(
-                "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
+                "pynchy.host.learning.skill_activation.iter_learned_skill_dirs",
                 return_value=[],
             ) as scan_learned_skills,
         ):
@@ -788,12 +797,12 @@ class TestMountBuilding:
         assert any(m.container_path == "/workspace/vault" for m in mounts)
         scan_learned_skills.assert_called_once_with("test-group")
 
-    def test_learning_mount_syncs_vault_profile_skill_when_learned_selected(
+    def test_learning_mount_syncs_global_skill_when_profile_allows_it(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/profiles/deep-work/skills/remember-routing"
+        learned_skill = vault / "systems/pynchy/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -802,7 +811,7 @@ class TestMountBuilding:
             enabled=True,
             obsidian=ObsidianLearningConfig(vault_root=str(vault)),
         )
-        profiles, workspace = _profile_workspace("Deep Work!!", skills=["learned"])
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["remember-routing"])
         workspaces = {"test-group": workspace}
 
         with _patch_settings(
@@ -822,12 +831,12 @@ class TestMountBuilding:
         )
         assert codex_skill_dst.exists()
 
-    def test_learning_mount_syncs_profile_skill_without_manual_learned_selection(
+    def test_learning_mount_does_not_sync_global_skill_without_profile_permission(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/profiles/deep-work/skills/remember-routing"
+        learned_skill = vault / "systems/pynchy/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -850,11 +859,85 @@ class TestMountBuilding:
             build_volume_mounts(TEST_GROUP, is_admin=False)
 
         skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
-        assert skill_dst.exists()
+        assert not skill_dst.exists()
         codex_skill_dst = (
             tmp_path / "data/sessions/test-group/.codex/skills/remember-routing" / "SKILL.md"
         )
-        assert codex_skill_dst.exists()
+        assert not codex_skill_dst.exists()
+
+    def test_refresh_learned_agent_skills_syncs_skill_written_after_session_start(
+        self,
+        tmp_path: Path,
+    ):
+        """A warm session sees reviewer output before its next query."""
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["core", "remember-routing"])
+        workspaces = {"test-group": workspace}
+
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
+
+            prepare_agent_homes("test-group")
+            learned_skill = vault / "systems/pynchy/skills/remember-routing"
+            learned_skill.mkdir(parents=True)
+            (learned_skill / "SKILL.md").write_text(
+                "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+            )
+
+            refresh_learned_agent_skills("test-group")
+
+        for agent_home in (".claude", ".codex"):
+            skill_dst = (
+                tmp_path
+                / "data/sessions/test-group"
+                / agent_home
+                / "skills/remember-routing/SKILL.md"
+            )
+            assert skill_dst.exists()
+
+    def test_host_execution_syncs_learned_skill_into_its_isolated_codex_home(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["core", "remember-routing"])
+        workspaces = {"test-group": workspace}
+
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
+            with patch.object(host_execution, "build_agent_env_vars", return_value={}):
+                codex_home = host_execution.prepare_host_codex_home("test-group", None)
+                env = host_execution.host_agent_env_vars(
+                    is_admin=False,
+                    group_folder="test-group",
+                    codex_home=codex_home,
+                )
+
+        assert codex_home == tmp_path / "data/sessions/test-group/.codex"
+        assert env["CODEX_HOME"] == str(codex_home)
+        assert (codex_home / "skills/remember-routing/SKILL.md").exists()
 
     def test_learning_mount_syncs_global_obsidian_skill_when_named(
         self,
@@ -1918,6 +2001,13 @@ class TestContainerInputAgentCoreConfig:
                 return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"},
             ),
             patch(
+                "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
+                return_value=SimpleNamespace(
+                    codex_home=tmp_path / ".codex",
+                    learning_paths=None,
+                ),
+            ),
+            patch(
                 "pynchy.host.orchestrator.agent_runner._cold_start",
                 new_callable=AsyncMock,
                 return_value="container-called",
@@ -1985,8 +2075,16 @@ class TestContainerInputAgentCoreConfig:
                 return_value=ctx,
             ),
             patch(
+                "pynchy.host.orchestrator.agent_runner._prepare_host_codex_home",
+                return_value=tmp_path / ".codex",
+            ),
+            patch(
                 "pynchy.host.orchestrator.agent_runner._codex_thread_exists_in_host_runtime",
                 return_value=False,
+            ) as thread_exists,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._host_agent_env_vars",
+                return_value={"CODEX_HOME": str(tmp_path / ".codex")},
             ),
             patch(
                 "pynchy.host.orchestrator.host_execution.run_host_input",
@@ -2010,6 +2108,52 @@ class TestContainerInputAgentCoreConfig:
         assert deps.sessions == {}
         destroy_session.assert_awaited_once_with(group.folder)
         clear_session.assert_awaited_once()
+        thread_exists.assert_called_once_with(
+            "codex:gpt-5.5:missing-thread",
+            codex_home=tmp_path / ".codex",
+        )
+
+    @pytest.mark.asyncio
+    async def test_warm_turn_refreshes_learned_skills_before_ipc(self):
+        """Reviewer output is synchronized before a persistent container's next turn."""
+        deps = _AgentRunnerDeps()
+        ctx = self._ctx()
+        session = session_mod.ContainerSession(TEST_GROUP.folder, "pynchy-test-group")
+        session.proc = MagicMock(spec=asyncio.subprocess.Process)
+        session.proc.returncode = None
+        session.send_ipc_message = AsyncMock()
+        settings = make_settings()
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch("pynchy.host.orchestrator.agent_runner.get_session", return_value=session),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.mcp_manager.get_mcp_manager",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.refresh_learned_agent_skills"
+            ) as refresh_skills,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._await_query",
+                new_callable=AsyncMock,
+                return_value="success",
+            ),
+        ):
+            result = await run_agent(deps, TEST_GROUP, "chat", [{"content": "follow up"}])
+
+        assert result == "success"
+        refresh_skills.assert_called_once_with(TEST_GROUP.folder)
+        session.send_ipc_message.assert_awaited_once()
 
 
 class TestAgentRunnerPreContainerHelpers:
@@ -2706,6 +2850,49 @@ class TestSyncSkills:
         assert copied_skill.read_text() == "plugin"
         assert "Skipping learned skill" in caplog.text
         assert "collision" in caplog.text
+
+    def test_learned_skill_replaces_plugin_copy_from_the_same_vault_source(
+        self,
+        tmp_path: Path,
+    ):
+        """Warm refreshes must update a global skill also exported by a plugin."""
+        learned_skill = tmp_path / "vault-skills" / "remember-routing"
+        learned_skill.mkdir(parents=True)
+        skill_md = learned_skill / "SKILL.md"
+        skill_md.write_text("---\nname: remember-routing\ntier: learned\n---\n# First Version\n")
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(learned_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        with _patch_settings(tmp_path):
+            sync_skills(
+                session_dir,
+                plugin_manager=FakePM(),
+                workspace_skills=["remember-routing"],
+                learned_skill_paths=[learned_skill],
+            )
+            skill_md.write_text(
+                "---\nname: remember-routing\ntier: learned\n---\n# Updated Version\n"
+            )
+            refresh_learned_skills(
+                session_dir,
+                workspace_skills=["remember-routing"],
+                denied_skill_names=None,
+                learned_skill_paths=[learned_skill],
+            )
+
+        skill_dst = session_dir / "skills/remember-routing"
+        assert (skill_dst / ".pynchy-learned-skill").is_file()
+        assert "# Updated Version" in (skill_dst / "SKILL.md").read_text()
 
 
 # ---------------------------------------------------------------------------
