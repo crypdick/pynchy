@@ -37,6 +37,13 @@ class _FakeKernelClient:
     def wait_for_ready(self, *, timeout: int) -> None:
         assert timeout == 30
 
+    def execute(self, _code: str) -> str:
+        return "fake-message-id"
+
+    def get_iopub_msg(self, timeout: int) -> dict[str, object]:
+        assert timeout == 300
+        return {}
+
 
 class _FakeKernelManager:
     instances: list[_FakeKernelManager] = []
@@ -82,13 +89,6 @@ def notebook_server(monkeypatch: pytest.MonkeyPatch, tmp_path) -> dict[str, Any]
 
 
 @pytest.mark.action("notebook.kernel.start")
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KernelSession resolves KernelManager at runtime, but _execution imports it only under "
-        "TYPE_CHECKING."
-    ),
-)
 @pytest.mark.asyncio
 async def test_start_kernel_creates_a_persisted_kernel_session(
     notebook_server: dict[str, Any],
@@ -103,10 +103,6 @@ async def test_start_kernel_creates_a_persisted_kernel_session(
 
 
 @pytest.mark.action("notebook.file.save")
-@pytest.mark.xfail(
-    strict=True,
-    reason="execute_cell stores dict outputs on an nbformat cell, which breaks an .ipynb save.",
-)
 @pytest.mark.asyncio
 async def test_save_as_persists_stream_output_in_its_notebook(
     notebook_server: dict[str, Any],

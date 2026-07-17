@@ -3,19 +3,16 @@
 ``KernelSession`` tracks a running kernel and its associated notebook.
 ``execute_code`` sends code to a kernel and collects outputs in nbformat schema.
 
-The ``KernelManager`` type is only imported under ``TYPE_CHECKING`` so this
-module stays importable without jupyter_client at type-check time.
+The kernel-manager protocol keeps this module importable without
+``jupyter_client`` while still allowing runtime type checks on sessions.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from nbformat.v4 import new_notebook
-
-if TYPE_CHECKING:
-    from jupyter_client import KernelManager
 
 
 @runtime_checkable
@@ -25,10 +22,23 @@ class _KernelClient(Protocol):
     def get_iopub_msg(self, timeout: int) -> dict[str, object]: ...
 
 
+@runtime_checkable
+class _KernelManager(Protocol):
+    """Runtime operations a session needs from a Jupyter kernel manager."""
+
+    def shutdown_kernel(self, *, now: bool) -> None: ...
+
+
 class KernelSession:
     """Tracks a running kernel and its associated notebook."""
 
-    def __init__(self, kernel_id: str, km: KernelManager, client: _KernelClient, name: str) -> None:
+    def __init__(
+        self,
+        kernel_id: str,
+        km: _KernelManager,
+        client: _KernelClient,
+        name: str,
+    ) -> None:
         self.kernel_id = kernel_id
         self.km = km
         self.client = client  # must already have start_channels() called
