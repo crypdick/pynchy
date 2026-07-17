@@ -106,3 +106,18 @@ The agent sees separate tool namespaces: `mcp__gcal_mycompany__list_events` and 
 ## How it works
 
 The gcal MCP server uses `@cocal/google-calendar-mcp`, which has native Streamable HTTP support (no supergateway needed). Credentials from the chrome profile directory mount into the container at `/home/chrome/`. The entrypoint copies tokens to gcal's expected format.
+
+## Operational canary
+
+To keep an already-authorized Google Calendar integration observable, add a
+dedicated calendar and select the managed server explicitly in `[canary]`:
+
+```toml
+scenario_ids = ["calendar.google.round.trip"]
+google_calendar_server = "gcal.mycompany"
+google_calendar_id = "pynchy-canary"
+```
+
+The check uses the actual MCP HTTP server to list capabilities, create a tagged
+event, retrieve it in a fresh session, delete it with `sendUpdates = "none"`,
+and confirm the event is gone. Do not point it at a personal or shared calendar.

@@ -15,6 +15,7 @@ import aiohttp
 
 from pynchy.canaries import CanaryExercise, CanaryRunContext, CanaryScenario
 from pynchy.config import get_settings
+from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
 from pynchy.plugins.integrations.caldav import (
     _handle_create_event,
     _handle_delete_event,
@@ -33,6 +34,8 @@ from pynchy.plugins.integrations.proton_bridge import ProtonMailClient, create_p
 _LINEAR_TIMEOUT_SECONDS = 30
 _CANARY_EVENT_DURATION = timedelta(minutes=1)
 _CANARY_EVENT_LEAD_TIME = timedelta(minutes=10)
+_PROTON_DELIVERY_TIMEOUT_SECONDS = 60
+_PROTON_DELIVERY_POLL_SECONDS = 2
 
 type ServiceHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 type ProtonClientFactory = Callable[[], ProtonMailClient]
@@ -263,49 +266,84 @@ class LinearWorkspaceRoundTripCanary:
         )
 
 
-class ProtonMailReadCanary:
-    """Verify read-only Proton Bridge mailbox, list, and message access."""
+class ProtonMailRoundTripCanary:
+    """Send, list, read, and permanently remove a tagged Bridge message."""
 
     def __init__(self, *, client_factory: ProtonClientFactory = create_proton_mail_client) -> None:
         self._client_factory = client_factory
 
-    async def exercise(self, _context: CanaryRunContext) -> CanaryExercise:
-        mailbox = get_settings().canary.proton_mailbox
+    async def exercise(self, context: CanaryRunContext) -> CanaryExercise:
+        settings = get_settings().canary
+        mailbox = settings.proton_mailbox
         client = self._client_factory()
         mailboxes = await asyncio.to_thread(client.list_mailboxes)
         if mailbox not in {entry.mailbox for entry in mailboxes.mailboxes}:
             raise CanaryServiceError("Proton Bridge did not return the configured mailbox")
-        messages = await asyncio.to_thread(
-            client.list_mail,
-            mailbox=mailbox,
-            limit=1,
-            offset=0,
-            unread=False,
+        delivery = await asyncio.to_thread(
+            client.send_mail,
+            recipients=[settings.proton_recipient],
+            subject=f"Pynchy canary {context.run_id}",
+            body="Automated Pynchy canary; removed after verification.",
         )
-        if not messages.messages or not messages.messages[0].message_id:
-            raise CanaryServiceError("Proton Bridge returned no message to verify read access")
-        message_id = messages.messages[0].message_id
         return CanaryExercise(
-            artifact=_ProtonArtifact(mailbox, message_id),
-            evidence_refs=("proton:mailboxes:listed", _ref("proton:message:listed", message_id)),
+            artifact=_ProtonArtifact(mailbox, delivery.message_id),
+            evidence_refs=(
+                "proton:mailboxes:listed",
+                _ref("proton:message:sent", delivery.message_id),
+            ),
         )
 
     async def verify(self, _context: CanaryRunContext, exercise: CanaryExercise) -> tuple[str, ...]:
         artifact = _proton_artifact(exercise)
+        deadline = asyncio.get_running_loop().time() + _PROTON_DELIVERY_TIMEOUT_SECONDS
+        while True:
+            if await self._listed_and_readable(artifact):
+                return (
+                    _ref("proton:message:listed", artifact.message_id),
+                    _ref("proton:message:read", artifact.message_id),
+                )
+            if asyncio.get_running_loop().time() >= deadline:
+                raise CanaryServiceError("Proton Bridge did not deliver the sent canary message")
+            await asyncio.sleep(_PROTON_DELIVERY_POLL_SECONDS)
+
+    async def cleanup(
+        self, _context: CanaryRunContext, exercise: CanaryExercise
+    ) -> tuple[str, ...]:
+        artifact = _proton_artifact(exercise)
+        client = self._client_factory()
+        await asyncio.to_thread(
+            client.delete_mail,
+            mailbox=artifact.mailbox,
+            message_id=artifact.message_id,
+        )
+        if await asyncio.to_thread(
+            client.message_exists,
+            mailbox=artifact.mailbox,
+            message_id=artifact.message_id,
+        ):
+            raise CanaryServiceError("Proton Bridge retained the deleted canary message")
+        return (_ref("proton:message:deleted", artifact.message_id),)
+
+    async def _listed_and_readable(self, artifact: _ProtonArtifact) -> bool:
+        client = self._client_factory()
+        messages = await asyncio.to_thread(
+            client.list_mail,
+            mailbox=artifact.mailbox,
+            limit=200,
+            offset=0,
+            unread=False,
+        )
+        if not any(message.message_id == artifact.message_id for message in messages.messages):
+            return False
         message = await asyncio.to_thread(
-            self._client_factory().read_mail,
+            client.read_mail,
             mailbox=artifact.mailbox,
             message_id=artifact.message_id,
             include_headers=False,
         )
         if message.message_id != artifact.message_id:
             raise CanaryServiceError("Proton Bridge read a different message than it listed")
-        return (_ref("proton:message:read", artifact.message_id),)
-
-    async def cleanup(
-        self, _context: CanaryRunContext, _exercise: CanaryExercise
-    ) -> tuple[str, ...]:
-        return ("proton:read-only",)
+        return True
 
 
 @asynccontextmanager
@@ -378,5 +416,7 @@ def register_operational_canary_scenarios(register: CanaryRegistration) -> None:
     # Keep credential setup and social posting out of this group: it proves that
     # already-configured services keep working. See docs/architecture/action-coverage.md.
     register("calendar.round.trip", CalendarRoundTripCanary())
+    register("calendar.google.round.trip", GoogleCalendarRoundTripCanary())
+    register("drive.google.round.trip", GoogleDriveRoundTripCanary())
     register("linear.workspace.round.trip", LinearWorkspaceRoundTripCanary())
-    register("proton.mail.read", ProtonMailReadCanary())
+    register("proton.mail.round.trip", ProtonMailRoundTripCanary())

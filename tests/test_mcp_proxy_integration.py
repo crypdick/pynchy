@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import make_settings
@@ -77,6 +77,24 @@ class TestMcpManagerHasProxy:
         mgr = McpManager(settings, gateway)
         assert isinstance(mgr._proxy, McpProxy)
         assert mgr._proxy_port == 0
+
+    @pytest.mark.asyncio
+    async def test_canary_endpoint_starts_the_one_named_server_on_its_host_port(self, tmp_path):
+        mgr = McpManager(make_settings(data_dir=tmp_path), MagicMock(spec=LiteLLMGateway))
+        mgr._instances = {
+            "gcal.canary": _make_instance(
+                "gcal.canary",
+                instance_id="gcal.canary",
+                transport="streamable_http",
+                port=3201,
+            )
+        }
+        ensure_running = AsyncMock()
+        with patch.object(mgr, "ensure_running", ensure_running):
+            endpoint = await mgr.get_canary_server_endpoint("gcal.canary")
+
+        assert endpoint == "http://localhost:3201/mcp"
+        ensure_running.assert_awaited_once_with("gcal.canary")
 
 
 class TestBuildTrustMap:

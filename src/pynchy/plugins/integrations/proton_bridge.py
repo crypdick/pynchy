@@ -1,11 +1,10 @@
-"""Direct, read-only IMAP access to a local Proton Mail Bridge instance."""
+"""Direct IMAP and SMTP access to a local Proton Mail Bridge instance."""
 
 from __future__ import annotations
 
 import base64
 import binascii
 import imaplib
-import os
 import re
 import shlex
 import ssl
@@ -18,23 +17,27 @@ from email.message import (
     EmailMessage,  # noqa: TC003, RUF100 - beartype resolves this hint at runtime.
 )
 from email.parser import BytesParser
+from email.utils import make_msgid
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, SecretStr
+
+from pynchy.plugins.integrations.proton_bridge_config import (
+    ProtonBridgeConfiguration,
+    ProtonMailError,
+)
+from pynchy.plugins.integrations.proton_bridge_smtp import (
+    ProtonBridgeSmtpError,
+    SmtpConnection,
+    SmtpConnectionFactory,
+    open_bridge_smtp_connection,
+)
 
 _BRIDGE_HOST = "127.0.0.1"
-_BRIDGE_IMAP_PORT = 1143
-# This is an environment-variable name, not a password value.
-_PASSWORD_COMMAND_ENV = "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND"  # noqa: S105  # pragma: allowlist secret
-_USERNAME_ENV = "PYNCHY_PROTON_BRIDGE_USERNAME"
 _COMMAND_TIMEOUT_SECONDS = 15
 _IMAP_TIMEOUT_SECONDS = 30
 _MAILBOX_NAME_PATTERN = re.compile(rb'(?:NIL|"(?:[^"\\]|\\.)*"|[^ ]+)$')
 _FLAGS_PATTERN = re.compile(rb"FLAGS \((?P<flags>[^)]*)\)")
-
-
-class ProtonMailError(RuntimeError):
-    """Raised when the local Proton Bridge integration cannot complete an operation."""
 
 
 class _StrictModel(BaseModel):
@@ -85,39 +88,15 @@ class ProtonMessage(_StrictModel):
     headers: list[ProtonMailHeader] | None = None
 
 
-class ProtonBridgeConfiguration(_StrictModel):
-    """Connection and credential-command configuration for local Bridge IMAP."""
+class ProtonMailDelivery(_StrictModel):
+    """Stable identifier returned after Bridge accepts a sent message."""
 
-    username: str = Field(min_length=1)
-    password_command: str = Field(min_length=1)
-
-    @field_validator("username")
-    @classmethod
-    def _validate_username(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized or "\r" in normalized or "\n" in normalized:
-            raise ValueError("username must be a single non-empty line")
-        return normalized
-
-    @classmethod
-    def from_environment(cls) -> ProtonBridgeConfiguration:
-        """Load the deliberately narrow Bridge configuration from the MCP environment."""
-        try:
-            return cls.model_validate(
-                {
-                    "username": os.environ.get(_USERNAME_ENV),
-                    "password_command": os.environ.get(_PASSWORD_COMMAND_ENV),
-                }
-            )
-        except ValidationError as exc:
-            raise ProtonMailError(
-                f"Configure {_USERNAME_ENV} and {_PASSWORD_COMMAND_ENV} for Proton Bridge"
-            ) from exc
+    message_id: str
 
 
 @runtime_checkable
 class ProtonMailClient(Protocol):
-    """Read-only operations required by the Proton Mail MCP server."""
+    """IMAP and SMTP operations required by the Proton Mail MCP server."""
 
     def list_mailboxes(self) -> ProtonMailboxList: ...
 
@@ -138,6 +117,18 @@ class ProtonMailClient(Protocol):
         include_headers: bool,
     ) -> ProtonMessage: ...
 
+    def send_mail(
+        self,
+        *,
+        recipients: list[str],
+        subject: str,
+        body: str,
+    ) -> ProtonMailDelivery: ...
+
+    def delete_mail(self, *, mailbox: str, message_id: str) -> None: ...
+
+    def message_exists(self, *, mailbox: str, message_id: str) -> bool: ...
+
 
 @runtime_checkable
 class _ImapConnection(Protocol):
@@ -154,6 +145,8 @@ class _ImapConnection(Protocol):
     ) -> tuple[str, list[bytes]]: ...
 
     def uid(self, command: str, *args: object) -> tuple[str, list[object]]: ...
+
+    def expunge(self) -> tuple[str, list[bytes]]: ...
 
 
 @dataclass(frozen=True)
@@ -219,21 +212,27 @@ class _BridgeImapConnection:
         # imaplib supports None as SEARCH's charset despite its narrow type stub.
         return self.client.uid(command, *args)  # type: ignore[arg-type]
 
+    def expunge(self) -> tuple[str, list[bytes]]:
+        status, data = self.client.expunge()
+        return status, [item for item in data if isinstance(item, bytes)]
+
 
 class ProtonBridgeImapClient:
-    """Protocol client that keeps every IMAP operation read-only and single-session."""
+    """Protocol client for local Bridge IMAP reads, cleanup, and SMTP delivery."""
 
     def __init__(
         self,
         configuration: ProtonBridgeConfiguration,
         password_reader: _PasswordReader,
         connection_factory: ImapConnectionFactory | None = None,
+        smtp_connection_factory: SmtpConnectionFactory | None = None,
     ) -> None:
         if not callable(password_reader):
             raise ProtonMailError("Proton Bridge password reader must be callable")
         self._configuration = configuration
         self._password_reader = password_reader
         self._connection_factory = connection_factory or _open_bridge_connection
+        self._smtp_connection_factory = smtp_connection_factory or open_bridge_smtp_connection
 
     def list_mailboxes(self) -> ProtonMailboxList:
         with self._connection() as connection:
@@ -276,6 +275,42 @@ class ProtonBridgeImapClient:
             headers=headers,
         )
 
+    def send_mail(
+        self,
+        *,
+        recipients: list[str],
+        subject: str,
+        body: str,
+    ) -> ProtonMailDelivery:
+        message_id = make_msgid(domain="pynchy.local")
+        message = EmailMessage(policy=policy.SMTP)
+        message["From"] = self._configuration.username
+        message["To"] = ", ".join(recipients)
+        message["Subject"] = subject
+        message["Message-ID"] = message_id
+        message.set_content(body)
+        with self._smtp_connection() as connection:
+            connection.send_message(
+                message,
+                sender=self._configuration.username,
+                recipients=recipients,
+            )
+        return ProtonMailDelivery(message_id=message_id)
+
+    def delete_mail(self, *, mailbox: str, message_id: str) -> None:
+        with self._connection() as connection:
+            _select_writable(connection, mailbox)
+            uid = _find_message_uid(connection, message_id)
+            status, _store_data = connection.uid("STORE", uid, "+FLAGS.SILENT", "(\\Deleted)")
+            _require_ok(status, "mark message deleted")
+            status, _expunge_data = connection.expunge()
+            _require_ok(status, "expunge deleted message")
+
+    def message_exists(self, *, mailbox: str, message_id: str) -> bool:
+        with self._connection() as connection:
+            _select_readonly(connection, mailbox)
+            return _find_message_uid_or_none(connection, message_id) is not None
+
     @contextmanager
     def _connection(self) -> Iterator[_ImapConnection]:
         connection: _ImapConnection | None = None
@@ -294,6 +329,24 @@ class ProtonBridgeImapClient:
                 with suppress(OSError, imaplib.IMAP4.error):
                     connection.logout()
 
+    @contextmanager
+    def _smtp_connection(self) -> Iterator[SmtpConnection]:
+        connection: SmtpConnection | None = None
+        try:
+            connection = self._smtp_connection_factory(
+                self._configuration,
+                self._password_reader(),
+            )
+            yield connection
+        except ProtonMailError:
+            raise
+        except ProtonBridgeSmtpError as exc:
+            raise ProtonMailError("Proton Bridge SMTP request failed") from exc
+        finally:
+            if connection is not None:
+                with suppress(ProtonBridgeSmtpError):
+                    connection.quit()
+
 
 def create_proton_mail_client() -> ProtonMailClient:
     """Create the production direct-IMAP client from the MCP process environment."""
@@ -309,7 +362,7 @@ def _open_bridge_connection(
     password: SecretStr,
 ) -> _ImapConnection:
     """Authenticate to the loopback-only Bridge listener with its self-signed TLS cert."""
-    client = imaplib.IMAP4(_BRIDGE_HOST, _BRIDGE_IMAP_PORT, timeout=_IMAP_TIMEOUT_SECONDS)
+    client = imaplib.IMAP4(_BRIDGE_HOST, configuration.imap_port, timeout=_IMAP_TIMEOUT_SECONDS)
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -323,6 +376,11 @@ def _select_readonly(connection: _ImapConnection, mailbox: str) -> None:
     _require_ok(status, f"select mailbox {mailbox!r}")
 
 
+def _select_writable(connection: _ImapConnection, mailbox: str) -> None:
+    status, _data = connection.select(_imap_quote(mailbox), readonly=False)
+    _require_ok(status, f"select mailbox {mailbox!r}")
+
+
 def _search_uids(connection: _ImapConnection, criterion: str) -> list[str]:
     status, data = connection.uid("SEARCH", None, criterion)
     _require_ok(status, "search mailbox")
@@ -332,6 +390,13 @@ def _search_uids(connection: _ImapConnection, criterion: str) -> list[str]:
 
 
 def _find_message_uid(connection: _ImapConnection, message_id: str) -> str:
+    uid = _find_message_uid_or_none(connection, message_id)
+    if uid is None:
+        raise ProtonMailError("Message was not found in the selected mailbox")
+    return uid
+
+
+def _find_message_uid_or_none(connection: _ImapConnection, message_id: str) -> str | None:
     status, data = connection.uid(
         "SEARCH",
         None,
@@ -341,10 +406,10 @@ def _find_message_uid(connection: _ImapConnection, message_id: str) -> str:
     )
     _require_ok(status, "find message by Message-ID")
     if not data or not isinstance(data[0], bytes):
-        raise ProtonMailError("Message was not found in the selected mailbox")
+        return None
     matches = [uid.decode("ascii") for uid in data[0].split() if uid.isdigit()]
     if not matches:
-        raise ProtonMailError("Message was not found in the selected mailbox")
+        return None
     if len(matches) > 1:
         raise ProtonMailError("Message-ID is ambiguous in the selected mailbox")
     return matches[0]

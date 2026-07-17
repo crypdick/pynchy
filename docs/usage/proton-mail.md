@@ -1,13 +1,15 @@
 # Proton Mail
 
-Give a workspace read-only access to Proton Mail through a host-side MCP server.
-The server connects directly to the local Proton Mail Bridge IMAP listener; it
-does not invoke `pm-cli` and it never gives a workspace the Bridge app password.
+Give a workspace read and send access to Proton Mail through a host-side MCP
+server. The server connects directly to local Proton Mail Bridge IMAP and SMTP
+listeners; it does not invoke `pm-cli` and it never gives a workspace the
+Bridge app password.
 
 ## Prerequisites
 
-- Proton Mail Bridge is running on the Pynchy host with its IMAP listener bound
-  to `127.0.0.1:1143`.
+- Proton Mail Bridge is running on the Pynchy host with its IMAP and SMTP
+  listeners bound to `127.0.0.1`. Bridge defaults to ports `1143` (IMAP) and
+  `1025` (SMTP).
 - The Bridge account's **app password** is available to a host-local command.
   The command must print only the password to stdout and must be readable only
   by the Pynchy host user. Do not put the password in `config.toml`, source
@@ -27,10 +29,10 @@ configuration, then select the tool in a profile:
 ```toml
 [tools.proton-mail]
 type = "mcp"
-public_source = false
+public_source = true
 secret_data = true
-public_sink = false
-dangerous_writes = false
+public_sink = true
+dangerous_writes = true
 
 [tools.proton-mail.mcp]
 runtime = "script"
@@ -40,7 +42,10 @@ port = 8475
 transport = "streamable_http"
 env = {
   PYNCHY_PROTON_BRIDGE_USERNAME = "you@example.com",
-  PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND = "/path/to/read-bridge-app-password"
+  PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND = "/path/to/read-bridge-app-password",
+  # Set only when Bridge uses non-default ports.
+  PYNCHY_PROTON_BRIDGE_IMAP_PORT = "1143",
+  PYNCHY_PROTON_BRIDGE_SMTP_PORT = "1025"
 }
 
 [profiles.mail-research]
@@ -63,7 +68,12 @@ or embedding it in the Pynchy configuration.
   IMAP UID, because Proton Bridge UIDs are not stable across connections.
 - `proton_read_mail` fetches by `message_id` and uses a readonly mailbox plus
   `BODY.PEEK`, so it does not alter the message's read/unread state.
+- `proton_send_mail` sends a plain-text message from the Bridge identity. It
+  accepts `to`, `subject`, and `body` and returns the generated `message_id`.
+- `proton_delete_mail` permanently removes a message by `message_id` from a
+  selected mailbox.
 
-The integration deliberately does not expose sending, deleting, moving, or
-flagging mail. Adding SMTP send capability changes the agent's authority and
-requires a separately reviewed approval flow.
+Mail content arrives from outside the workspace and mail delivery can send data
+to external recipients. Pynchy therefore marks this tool as a public source,
+secret data, public sink, and dangerous write. Sending or deletion follows the
+normal human-approval flow; the Bridge credential remains on the host.

@@ -38,13 +38,21 @@ target_profile = "external-canary"
 schedule = "0 5 * * *"
 scenario_ids = [
   "calendar.round.trip",
+  "calendar.google.round.trip",
+  "drive.google.round.trip",
   "linear.workspace.round.trip",
-  "proton.mail.read",
+  "proton.mail.round.trip",
 ]
 calendar_name = "pynchy-canary"
+google_calendar_server = "gcal.canary"
+google_calendar_id = "pynchy-canary"
+google_drive_server = "gdrive.canary"
+google_drive_probe_query = "pynchy-canary-fixture"
+google_drive_file_id = "permanent-fixture-file-id"
 linear_team_key = "PYNCHY"
 linear_workspace = "canary-workspace"
 proton_mailbox = "INBOX"
+proton_recipient = "canary-mailbox@example.com"
 ```
 
 `target_profile` must name a configured Pynchy profile that enables every
@@ -52,16 +60,28 @@ selected tool and labels that target in stored evidence. `scenario_ids` makes
 the operational scope explicit; unselected scenarios do not run. Calendar
 checks require a dedicated `calendar_name`. Linear checks require a dedicated
 test team and workspace, then permanently delete their test issues. Proton
-Mail checks use the named mailbox but only list and read messages. Each
-executable scenario registers an exercise, an independent verifier, and an
-idempotent cleanup step. The runner retries cleanup separately. A declared
-scenario without an executable implementation records `not_established`; it
-never reports a false pass.
+Mail checks use the named mailbox and a dedicated `proton_recipient`: they
+send a tagged message, list and read that message after delivery, then
+permanently delete it and independently confirm its absence. Each executable
+scenario registers an exercise, an independent verifier, and an idempotent
+cleanup step. The runner retries cleanup separately. A declared scenario
+without an executable implementation records `not_established`; it never
+reports a false pass.
 
-The built-in operational checks cover CalDAV calendar lifecycle, Linear issue
-and workspace-todo lifecycle, and read-only Proton Mail access. Credential
-setup, token refresh, social posting, desktop control, and channel interaction
-remain separate scenarios because they need their own dedicated test targets.
+Google Calendar checks use the named managed MCP server and dedicated calendar:
+they list provider tools and calendars, create a tagged event with a generated
+event ID, retrieve it through a fresh MCP session, then delete it without
+sending attendee updates and confirm it cannot be retrieved. Google Drive is
+intentionally read-only: its check proves the provider's published search and
+read tools against a configured harmless fixture file, without creating or
+changing remote content. The exact server names make multi-account targets
+unambiguous.
+
+The built-in operational checks cover CalDAV and Google Calendar lifecycle,
+Google Drive search/read access, Linear issue and workspace-todo lifecycle,
+and Proton Mail delivery, receipt, read, and deletion. Credential setup,
+token refresh, social posting, desktop control, and channel interaction remain
+separate scenarios because they need their own dedicated test targets.
 
 Pynchy stores every run with its scenario and action IDs, target profile, code
 and configuration revisions, timestamps, outcome, redacted error class, and
@@ -115,6 +135,7 @@ visibility or a data class.
 The built-in catalog covers calendars, memories, task lifecycle, todos,
 outbound delivery, vault-backed skill discovery and access, workspace and
 deployment operations, desktop controls, Google and Slack setup, X actions,
-and first-party Linear, Proton Mail, and notebook MCP actions. Third-party
-MCP servers remain outside the package's static tool inventory; their plugin
-tests need to establish their own action evidence at the provider boundary.
+and first-party Linear, Proton Mail, and notebook MCP actions. Provider MCP
+servers with user-facing operational effects must also declare semantic actions
+and exercise their own provider boundary; a third-party implementation is not
+an exemption from runtime evidence.

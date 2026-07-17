@@ -144,6 +144,24 @@ rm -f data/playwright-profiles/google/SingletonSocket
 rm -f data/playwright-profiles/google/SingletonCookie
 ```
 
+## Operational canary
+
+Drive is authorized with the read-only scope, so its operational check never
+creates or edits a file. Keep one harmless permanent fixture in Drive and add
+its ID plus a restrictive search query to `[canary]`:
+
+```toml
+scenario_ids = ["drive.google.round.trip"]
+google_drive_server = "gdrive.mycompany"
+google_drive_probe_query = "pynchy-canary-fixture"
+google_drive_file_id = "your-fixture-file-id"
+```
+
+The canary establishes a real MCP session, checks that the server still
+publishes `gdrive_search` and `gdrive_read_file`, searches with the configured
+query, and reads the fixture again through a fresh session. It stores only
+redacted evidence references, never Drive content.
+
 ## Migration from earlier gdrive setup
 
 If you previously used a Docker named volume for Google Drive credentials:
