@@ -13,7 +13,6 @@ from ._ipc_request import ipc_service_request
 from ._registry import tool, tool_error
 
 _SKILL_ROOT_ENV = "PYNCHY_SKILLS_ROOT"
-_PROFILE_SKILL_ROOT_ENV = "PYNCHY_PROFILE_SKILLS_ROOT"
 _MAX_SEARCH_RESULTS = 12
 _MAX_SKILL_CONTENT_CHARS = 40_000
 
@@ -21,7 +20,7 @@ _MAX_SKILL_CONTENT_CHARS = 40_000
 def _skill_dirs() -> dict[str, Path]:
     """Return readable skill directories keyed by their public directory name."""
     result: dict[str, Path] = {}
-    for env_name in (_SKILL_ROOT_ENV, _PROFILE_SKILL_ROOT_ENV):
+    for env_name in (_SKILL_ROOT_ENV,):
         root_value = os.environ.get(env_name)
         if not root_value:
             continue

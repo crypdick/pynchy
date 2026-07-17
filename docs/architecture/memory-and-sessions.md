@@ -36,9 +36,9 @@ Profile fallback paths use the active workspace profile name, or `default` when 
 | Purpose | Vault path |
 |---------|------------|
 | Fallback memory notes | `systems/pynchy/profiles/{profile}/memory` |
-| Learned skills | `systems/pynchy/profiles/{profile}/skills` |
+| Learned skills | `systems/pynchy/skills` |
 
-Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. When automatic learning is enabled, Pynchy adds the `learned` tier to the effective workspace skill selection, which copies learned skills into later container sessions. A session can discover vault skills with `search_skills` and request a one-time or persistent grant with `request_skill_access`; persistent decisions live in the workspace profile and are synchronized into the next session registry.
+Learned skills live in the shared registry at `systems/pynchy/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. Profiles determine which skills their workspaces may receive through `skills`; exact names are the preferred allowlist, while `learned` and `*` select by tier. `denied_skills` always blocks a named skill. A session can discover the global catalog with `search_skills` and request a one-time or persistent grant with `request_skill_access`; persistent decisions update the workspace profile and are synchronized into the next session registry. The selection refreshes for cold containers, warm-container follow-up turns, and direct-host turns.
 
 Learning packets live in a durable filesystem queue under `data/ipc/learning`. The queue uses pending, claimed, done, and error states so work can survive process restarts and another worker can reclaim expired jobs.
 

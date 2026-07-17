@@ -40,7 +40,14 @@ After each successful turn, Pynchy starts a Temporal learning review workflow. T
 
 The vault root is the global memory namespace. The hidden reviewer chooses existing semantic folders first, then falls back to `systems/pynchy/profiles/{profile}/memory` when no repo, machine, subject, or other existing folder clearly fits.
 
-Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md`. When automatic learning is enabled, Pynchy adds the `learned` tier to each workspace's effective skill selection, so reviewer-created skills load into later container sessions without extra profile configuration.
+Learned skills live in one shared registry at `systems/pynchy/skills/<skill-name>/SKILL.md`. A profile chooses which learned skills its workspaces may use through its existing `skills` list. Add a learned skill by its exact name alongside the profile's other skills:
+
+```toml
+[profiles.research]
+skills = ["core", "research-workflow"]
+```
+
+Pynchy applies that selection to cold containers, later warm-container turns, and direct-host turns. It does not grant learned skills automatically. A tier selector such as `learned`, or `*`, permits every learned skill; prefer exact names when profiles need different access. See [workspace configuration](../architecture/workspaces.md#profile-config-fields) for the general selection rules.
 
 ### Conversation Archives
 

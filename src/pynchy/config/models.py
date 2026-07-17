@@ -202,7 +202,6 @@ class ObsidianLearningConfig(_StrictModel):
     mount_path: str = "/workspace/vault"
     default_profile_root: str = "systems/pynchy/profiles/{profile}"
     memory_dir_name: str = "memory"
-    skills_dir_name: str = "skills"
 
     @field_validator("mount_path")
     @classmethod
@@ -230,7 +229,7 @@ class ObsidianLearningConfig(_StrictModel):
             raise ValueError(DEFAULT_PROFILE_PARENT_MESSAGE)
         return v
 
-    @field_validator("memory_dir_name", "skills_dir_name")
+    @field_validator("memory_dir_name")
     @classmethod
     def validate_learning_dir_name(cls, v: str) -> str:
         if not v or "/" in v or v in {".", ".."}:

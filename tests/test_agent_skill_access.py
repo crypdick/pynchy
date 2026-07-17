@@ -45,6 +45,21 @@ async def test_search_skills_returns_matching_catalog_entries(tmp_path: Path, mo
 
 
 @pytest.mark.asyncio
+async def test_search_skills_ignores_legacy_profile_catalog(tmp_path: Path, monkeypatch) -> None:
+    global_root = tmp_path / "global-skills"
+    legacy_profile_root = tmp_path / "profile-skills"
+    _write_skill(global_root, "shared-workflow", "Shared workflow.")
+    _write_skill(legacy_profile_root, "legacy-workflow", "Legacy profile workflow.")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(global_root))
+    monkeypatch.setenv("PYNCHY_PROFILE_SKILLS_ROOT", str(legacy_profile_root))
+
+    result = await skill_tools._search_skills_handle({"query": "workflow"})
+
+    assert "shared-workflow" in result[0].text
+    assert "legacy-workflow" not in result[0].text
+
+
+@pytest.mark.asyncio
 async def test_request_skill_access_grants_once_and_returns_skill_contents(
     tmp_path: Path, monkeypatch
 ) -> None:
