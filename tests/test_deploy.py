@@ -12,13 +12,14 @@ import json
 import os
 import shutil
 import signal
+import subprocess  # noqa: S404, RUF100 - tests construct completed process results without executing commands.
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import make_settings
 
-from pynchy.host.orchestrator.deploy import finalize_deploy
+from pynchy.host.orchestrator.deploy import finalize_deploy, rollback_deploy_checkout
 from pynchy.types import InFlightTurn, InFlightWorkKind
 
 if TYPE_CHECKING:
@@ -73,6 +74,46 @@ class TestFinalizeDeploy:
         assert continuation["resume_prompt"] == "Deploy complete."
         assert continuation["interrupted_turns"] == []
         assert "active_sessions" not in continuation
+
+
+class TestRollbackDeployCheckout:
+    """Tests for restoring a checkout when deploy preparation fails."""
+
+    def test_returns_the_verified_sha_after_reset(self):
+        reset_result = subprocess.CompletedProcess(
+            args=["git", "reset", "--hard", "previous-sha"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        with (
+            patch("pynchy.host.orchestrator.deploy.run_git", return_value=reset_result) as run_git,
+            patch(
+                "pynchy.host.orchestrator.deploy.get_head_sha",
+                return_value="previous-sha-full",
+            ),
+        ):
+            result = rollback_deploy_checkout("previous-sha")
+
+        run_git.assert_called_once_with("reset", "--hard", "previous-sha")
+        assert result.success is True
+        assert result.actual_sha == "previous-sha-full"
+
+    def test_reports_an_unverified_reset_as_a_rollback_failure(self):
+        reset_result = subprocess.CompletedProcess(
+            args=["git", "reset", "--hard", "previous-sha"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+        with (
+            patch("pynchy.host.orchestrator.deploy.run_git", return_value=reset_result),
+            patch("pynchy.host.orchestrator.deploy.get_head_sha", return_value="unknown"),
+        ):
+            result = rollback_deploy_checkout("previous-sha")
+
+        assert result.success is False
+        assert "could not verify" in result.error
 
     async def test_broadcasts_notification_with_short_sha(self, deploy_dir: Path):
         broadcast = AsyncMock()

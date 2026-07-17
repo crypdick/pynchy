@@ -165,6 +165,22 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
     continuation["previous_commit_sha"] = ""
     write_json_atomic(continuation_path, continuation, indent=2)
 
+    attempted_sha = str(continuation.get("commit_sha", "unknown"))
+    boot_warning_path = continuation_path.parent / "boot_warnings.json"
+    try:
+        warnings = json.loads(boot_warning_path.read_text()) if boot_warning_path.exists() else []
+    except (OSError, json.JSONDecodeError) as warning_exc:
+        logger.warning(
+            "Failed to read boot warnings while recording rollback",
+            err=str(warning_exc),
+        )
+        warnings = []
+    warnings.append(
+        f"Auto-deploy {attempted_sha} failed during startup: {type(exc).__name__}: {error_short}. "
+        f"Rolled back to {previous_sha}. Server health: healthy (recovered after rollback)."
+    )
+    write_json_atomic(boot_warning_path, warnings)
+
     logger.info("Rollback complete, exiting for service restart")
     sys.exit(1)
 

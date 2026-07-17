@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
+    send_boot_notification,
     validate_plugin_credentials,
 )
 from pynchy.state import begin_in_flight_turn, init_test_database
@@ -104,13 +106,14 @@ class TestAutoRollback:
         # Should not raise — just logs and returns
 
     @pytest.mark.asyncio
-    async def test_performs_rollback_and_rewrites_continuation(self, tmp_path):
-        """Should git reset to previous SHA and rewrite continuation."""
+    async def test_notifies_admin_of_a_healthy_rollback_on_recovery(self, tmp_path, monkeypatch):
+        """The next successful boot reports the failed and recovered SHAs to Discord."""
         cont_path = tmp_path / "continuation.json"
         cont_path.write_text(
             json.dumps(
                 {
                     "previous_commit_sha": "prev-sha-1",
+                    "commit_sha": "failed-sha-2",
                     "resume_prompt": "Deploy complete.",
                 }
             )
@@ -131,10 +134,38 @@ class TestAutoRollback:
         mock_git.assert_called_once_with("reset", "--hard", "prev-sha-1")
         assert exc_info.value.code == 1
 
-        # Continuation should be rewritten with rollback info
         updated = json.loads(cont_path.read_text())
         assert "ROLLBACK" in updated["resume_prompt"]
         assert not updated["previous_commit_sha"]  # prevents loop
+
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_settings",
+            lambda: SimpleNamespace(data_dir=tmp_path),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_head_sha",
+            lambda: "prev-sha-1",
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_head_commit_message",
+            lambda _max_length: "Recovered deploy",
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.startup_handler.is_repo_dirty", lambda: False)
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.credentials.has_api_credentials",
+            lambda: True,
+        )
+        deps = FakeDeps({"discord:admin": _make_workspace("discord:admin", "admin", True)})
+
+        await send_boot_notification(deps)
+
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "discord:admin",
+            "🦞 online -- prev-sha Recovered deploy\n"
+            "WARNING: Auto-deploy failed-sha-2 failed during startup: "
+            "RuntimeError: startup failed. "
+            "Rolled back to prev-sha-1. Server health: healthy (recovered after rollback).",
+        )
 
     @pytest.mark.asyncio
     async def test_returns_when_git_reset_fails(self, tmp_path):
