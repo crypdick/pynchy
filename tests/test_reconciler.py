@@ -167,6 +167,7 @@ class TestInboundReconciliation:
 
 
 @pytest.mark.usefixtures("_db")
+@pytest.mark.action("message.outbound.retry")
 class TestOutboundRetry:
     @pytest.mark.asyncio
     async def test_retries_pending_outbound(self):
