@@ -44,6 +44,7 @@ graph TB
 | [Git sync](git-sync.md) | Coordinated worktree sync, host-mediated merges |
 | [Security](security.md) | Trust model, security boundaries, credential handling |
 | [MCP management](mcp-management.md) | McpManager internals, instance deduplication, LiteLLM integration |
+| [Action coverage](action-coverage.md) | Semantic action catalog, hermetic test gate, and real-service canary contract |
 
 ## Pluggable Subsystems
 

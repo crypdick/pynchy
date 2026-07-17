@@ -22,6 +22,7 @@ async def backend(tmp_path):
         await b.close()
 
 
+@pytest.mark.action("memory.save")
 class TestSave:
     async def test_save_creates_memory(self, backend):
         result = await backend.save("group-a", "fav-color", "blue")
@@ -50,6 +51,7 @@ class TestSave:
         assert r2["status"] == "created"
 
 
+@pytest.mark.action("memory.recall")
 class TestRecall:
     async def test_recall_finds_by_content(self, backend):
         await backend.save("group-a", "fav-color", "My favorite color is blue")
@@ -116,6 +118,7 @@ class TestRecall:
         assert results[0]["key"] == "k2"
 
 
+@pytest.mark.action("memory.forget")
 class TestForget:
     async def test_forget_removes_memory(self, backend):
         await backend.save("group-a", "fav-color", "blue")
@@ -141,6 +144,7 @@ class TestForget:
         assert len(results_b) == 1
 
 
+@pytest.mark.action("memory.list")
 class TestListKeys:
     async def test_list_keys_returns_all(self, backend):
         await backend.save("group-a", "k1", "content1")

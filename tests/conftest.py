@@ -9,6 +9,7 @@ import pytest
 from pydantic import BaseModel, SecretStr
 
 import pynchy.state.connection as db_conn
+from pynchy.actions import ACTION_SPECS, assess_hermetic_coverage
 from pynchy.config import (
     AgentConfig,
     CommandCenterConfig,
@@ -28,6 +29,32 @@ from pynchy.state import init_test_database
 from pynchy.types import InboundFetchResult, NewMessage
 
 __all__ = ["NullChannel", "NullIpcDeps", "init_test_database"]
+
+
+def pytest_addoption(parser):
+    """Register the opt-in complete action-coverage gate for full CI runs."""
+    parser.addoption(
+        "--action-coverage",
+        action="store_true",
+        default=False,
+        help="require every registered action to have a pytest.mark.action test",
+    )
+
+
+def pytest_collection_finish(session):
+    """Validate action markers after every test has been collected."""
+    if not session.config.getoption("--action-coverage"):
+        return
+    marked_ids = [
+        action_id
+        for item in session.items
+        for marker in item.iter_markers(name="action")
+        for action_id in marker.args
+    ]
+    report = assess_hermetic_coverage(ACTION_SPECS, marked_ids)
+    if not report.is_complete:
+        raise pytest.UsageError(f"Action coverage incomplete: {report.describe()}")
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers (plain functions, not fixtures — importable by test files)
