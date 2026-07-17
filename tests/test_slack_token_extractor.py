@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -59,6 +59,37 @@ class _FakePlaywright:
         return None
 
 
+@pytest.mark.action("integration.slack.tokens.refresh")
+@pytest.mark.asyncio
+async def test_refresh_slack_tokens_persists_tokens_from_the_authenticated_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Exercise extraction through the service boundary without a real Slack account."""
+    dotenv_path = tmp_path / ".env"
+
+    monkeypatch.setattr(slack_token_extractor, "_find_dotenv", lambda: dotenv_path)
+    monkeypatch.setattr(slack_token_extractor, "profile_dir", lambda _name: tmp_path / "profile")
+    monkeypatch.setattr(
+        slack_token_extractor,
+        "_extract_tokens",
+        AsyncMock(return_value={"xoxc": "xoxc-test", "xoxd": "xoxd-test"}),
+    )
+
+    response = await slack_token_extractor._handle_refresh_slack_tokens(
+        {
+            "workspace_name": "acme",
+            "xoxc_var": "SLACK_XOXC_ACME",
+            "xoxd_var": "SLACK_XOXD_ACME",
+        }
+    )
+
+    assert response["result"]["status"] == "ok"
+    assert "SLACK_XOXC_ACME='xoxc-test'" in dotenv_path.read_text()
+    assert "SLACK_XOXD_ACME='xoxd-test'" in dotenv_path.read_text()
+
+
+@pytest.mark.action("integration.slack.session.setup")
 @pytest.mark.asyncio
 async def test_setup_slack_session_timeout_returns_novnc_url(
     monkeypatch: pytest.MonkeyPatch,

@@ -4,13 +4,13 @@ import asyncio
 import subprocess  # noqa: S404, RUF100 - test double subclasses Popen; no subprocess launch.
 from typing import TYPE_CHECKING, Any
 
+import pytest
+
 from pynchy.plugins.integrations import browser
 from pynchy.plugins.integrations.x_integration import XIntegrationPlugin
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pytest
 
 
 class _FakeProcess(subprocess.Popen[bytes]):
@@ -70,6 +70,7 @@ def test_browser_vnc_repair_uses_resolved_executables(monkeypatch: pytest.Monkey
     assert [command[0] for command in commands] == ["/opt/bin/x11vnc", "/opt/bin/websockify"]
 
 
+@pytest.mark.action("social.x.session.setup")
 async def test_x_session_setup_uses_resolved_display_executables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

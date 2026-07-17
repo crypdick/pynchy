@@ -31,6 +31,7 @@ def _response(payload: dict[str, object]) -> list[TextContent]:
 
 
 @pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
 async def test_search_skills_returns_matching_catalog_entries(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "skills"
     _write_skill(root, "obsidian-knowledge", "Read and search the Obsidian vault.")
@@ -45,6 +46,7 @@ async def test_search_skills_returns_matching_catalog_entries(tmp_path: Path, mo
 
 
 @pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
 async def test_search_skills_ignores_legacy_profile_catalog(tmp_path: Path, monkeypatch) -> None:
     global_root = tmp_path / "global-skills"
     legacy_profile_root = tmp_path / "profile-skills"
@@ -60,6 +62,7 @@ async def test_search_skills_ignores_legacy_profile_catalog(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
 async def test_request_skill_access_grants_once_and_returns_skill_contents(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -95,6 +98,7 @@ async def test_request_skill_access_grants_once_and_returns_skill_contents(
 
 
 @pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
 async def test_request_skill_access_persists_an_always_grant(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "skills"
     _write_skill(root, "pynchy-operations")
@@ -122,6 +126,7 @@ async def test_request_skill_access_persists_an_always_grant(tmp_path: Path, mon
 
 
 @pytest.mark.asyncio
+@pytest.mark.action("skill.access.request")
 async def test_request_skill_access_persists_an_always_denial(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "skills"
     _write_skill(root, "pynchy-operations")

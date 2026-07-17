@@ -53,6 +53,7 @@ async def test_take_screenshot_rejects_non_macos(tmp_path: Path) -> None:
     assert result == {"error": "Desktop screenshots are only supported on macOS hosts."}
 
 
+@pytest.mark.action("desktop.screenshot.capture")
 @pytest.mark.asyncio
 async def test_take_screenshot_runs_screencapture_into_workspace_ipc(tmp_path: Path) -> None:
     handler = _handler()
@@ -171,6 +172,7 @@ async def test_take_screenshot_returns_command_failure(tmp_path: Path) -> None:
     assert result == {"error": "screencapture failed: permission denied"}
 
 
+@pytest.mark.action("desktop.screenshot.analyze")
 @pytest.mark.asyncio
 async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: Path) -> None:
     handler = DesktopScreenshotPlugin().pynchy_service_handler()["tools"]["analyze_screenshot"]

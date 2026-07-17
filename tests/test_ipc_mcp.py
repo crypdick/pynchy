@@ -18,6 +18,8 @@ sys.path.insert(
 
 from agent_runner.agent_tools import call_tool, list_tools
 
+from pynchy.actions import ACTION_SPECS, ActionTransport
+
 
 def _read_request_file(path: Path) -> tuple[dict, dict]:
     """Read a canonical request envelope and return (envelope, payload)."""
@@ -694,3 +696,21 @@ class TestListToolsVisibility:
             "request_skill_access",
         ]:
             assert expected in tool_names, f"Missing base tool: {expected}"
+
+    @pytest.mark.asyncio
+    async def test_all_static_agent_tools_have_semantic_action_specs(self):
+        """A tool registration needs an action ID before it reaches an agent."""
+        with (
+            patch("agent_runner.agent_tools._ipc.is_admin", True),
+            patch("agent_runner.agent_tools._ipc.is_scheduled_task", True),
+        ):
+            tool_names = {tool.name for tool in await list_tools()}
+
+        cataloged_tools = {
+            surface.name
+            for spec in ACTION_SPECS
+            for surface in spec.surfaces
+            if surface.transport is ActionTransport.AGENT_TOOL and "{" not in surface.name
+        }
+
+        assert tool_names == cataloged_tools
