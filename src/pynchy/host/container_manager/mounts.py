@@ -162,6 +162,7 @@ def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _Learn
             learned_skill_paths=learned_skill_paths,
         )
 
+    workspace_skills = _with_learned_skill_tier(workspace_skills)
     _validate_learning_vault(learning_paths.vault_root)
     learning_paths.memory_root.mkdir(parents=True, exist_ok=True)
     learning_paths.skills_root.mkdir(parents=True, exist_ok=True)
@@ -172,8 +173,7 @@ def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _Learn
             readonly=False,
         )
     )
-    if _should_scan_learned_skills(workspace_skills):
-        learned_skill_paths = iter_learned_skill_dirs(group_folder)
+    learned_skill_paths = iter_learned_skill_dirs(group_folder)
     return _LearningMountContext(
         workspace_skills=workspace_skills,
         denied_skill_names=denied_skill_names,
@@ -187,10 +187,15 @@ def _validate_learning_vault(vault_root: Path) -> None:
     raise LearningConfigError(_LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR)
 
 
-def _should_scan_learned_skills(workspace_skills: list[str] | None) -> bool:
-    # A named global skill must be discovered before selection. The session
-    # synchronizer still applies the name/tier filter to every candidate.
-    return bool(workspace_skills)
+def _with_learned_skill_tier(workspace_skills: list[str] | None) -> list[str]:
+    """Include reviewer-created skills whenever Obsidian learning is enabled."""
+    # NOTE: Keep docs/usage/memory.md and docs/architecture/memory-and-sessions.md
+    # aligned with this activation contract.
+    if workspace_skills is None:
+        return ["learned"]
+    if "*" in workspace_skills or "learned" in workspace_skills:
+        return workspace_skills
+    return [*workspace_skills, "learned"]
 
 
 def _add_workspace_mounts(

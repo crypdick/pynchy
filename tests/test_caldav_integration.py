@@ -388,6 +388,7 @@ async def test_allow_overrides_ignore():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("calendar.event.list")
 @pytest.mark.asyncio
 async def test_list_calendar_returns_events():
     """list_calendar returns parsed events from CalDAV."""
@@ -518,6 +519,7 @@ async def test_list_calendar_filtered_out():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("calendar.calendar.list")
 @pytest.mark.asyncio
 async def test_list_calendars_discovers_all():
     """list_calendars returns calendars from all configured servers."""
@@ -603,6 +605,7 @@ async def test_list_calendars_respects_allow():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("calendar.event.create")
 @pytest.mark.asyncio
 async def test_create_event_success():
     """create_event calls save_event and returns UID."""
@@ -701,6 +704,7 @@ async def test_create_event_explicit_server():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("calendar.event.delete")
 @pytest.mark.asyncio
 async def test_delete_event_success():
     """delete_event calls event.delete() and returns confirmation."""

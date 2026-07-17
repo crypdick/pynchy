@@ -735,7 +735,7 @@ class TestMountBuilding:
         assert (profile_root / "memory").is_dir()
         assert (profile_root / "skills").is_dir()
 
-    def test_learning_mount_does_not_scan_skills_when_workspace_skills_is_none(
+    def test_learning_mount_scans_skills_when_workspace_skills_is_none(
         self,
         tmp_path: Path,
     ):
@@ -750,16 +750,17 @@ class TestMountBuilding:
             _patch_settings(tmp_path, learning=learning),
             patch(
                 "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
-                side_effect=AssertionError("unexpected scan"),
-            ),
+                return_value=[],
+            ) as scan_learned_skills,
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
 
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         assert any(m.container_path == "/workspace/vault" for m in mounts)
+        scan_learned_skills.assert_called_once_with("test-group")
 
-    def test_learning_mount_does_not_scan_skills_when_workspace_skills_is_empty(
+    def test_learning_mount_scans_skills_when_workspace_skills_is_empty(
         self,
         tmp_path: Path,
     ):
@@ -776,8 +777,8 @@ class TestMountBuilding:
             _patch_settings(tmp_path, learning=learning, workspaces=workspaces) as settings,
             patch(
                 "pynchy.host.container_manager.mounts.iter_learned_skill_dirs",
-                side_effect=AssertionError("unexpected scan"),
-            ),
+                return_value=[],
+            ) as scan_learned_skills,
         ):
             settings.profiles.update(profiles)
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
@@ -785,6 +786,7 @@ class TestMountBuilding:
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         assert any(m.container_path == "/workspace/vault" for m in mounts)
+        scan_learned_skills.assert_called_once_with("test-group")
 
     def test_learning_mount_syncs_vault_profile_skill_when_learned_selected(
         self,
@@ -815,6 +817,44 @@ class TestMountBuilding:
 
         skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
         assert skill_dst.exists()
+        codex_skill_dst = (
+            tmp_path / "data/sessions/test-group/.codex/skills/remember-routing" / "SKILL.md"
+        )
+        assert codex_skill_dst.exists()
+
+    def test_learning_mount_syncs_profile_skill_without_manual_learned_selection(
+        self,
+        tmp_path: Path,
+    ):
+        vault = tmp_path / "vault"
+        learned_skill = vault / "systems/pynchy/profiles/deep-work/skills/remember-routing"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+        )
+        learning = LearningConfig(
+            enabled=True,
+            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
+        )
+        profiles, workspace = _profile_workspace("Deep Work!!", skills=["core"])
+        workspaces = {"test-group": workspace}
+
+        with _patch_settings(
+            tmp_path,
+            learning=learning,
+            workspaces=workspaces,
+        ) as settings:
+            settings.profiles.update(profiles)
+            (tmp_path / "groups" / "test-group").mkdir(parents=True)
+
+            build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        skill_dst = tmp_path / "data/sessions/test-group/.claude/skills/remember-routing/SKILL.md"
+        assert skill_dst.exists()
+        codex_skill_dst = (
+            tmp_path / "data/sessions/test-group/.codex/skills/remember-routing" / "SKILL.md"
+        )
+        assert codex_skill_dst.exists()
 
     def test_learning_mount_syncs_global_obsidian_skill_when_named(
         self,

@@ -117,6 +117,7 @@ asyncio_mode = "auto"
 addopts = "-n auto --tb=short -q --no-header -m 'not live and not runtime' --durations=0 --durations-min=2.0 --failed-first"
 timeout = 30
 markers = [
+    "action(*ids): semantic action IDs covered by this behavioral test",
     "live: live integration tests that require real service connections (deselected by default)",
     "runtime: deterministic full-stack runtime tests managed by scripts/runtime_harness.py (deselected by default)",
     "parity: channel parity tests — verify output consistency across TUI, WhatsApp, and Slack",

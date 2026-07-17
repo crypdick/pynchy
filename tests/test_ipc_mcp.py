@@ -30,6 +30,7 @@ def _read_request_file(path: Path) -> tuple[dict, dict]:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("task.schedule")
 class TestScheduleTaskValidation:
     """Test schedule_task input validation via call_tool.
 
@@ -278,6 +279,7 @@ class TestDeployAuth:
         assert "admin" in result.content[0].text.lower()
 
 
+@pytest.mark.action("message.outbound.queue")
 class TestSendMessage:
     """Test send_message tool."""
 
@@ -316,6 +318,7 @@ class TestSendMessage:
         assert data["sender"] == "Researcher"
 
 
+@pytest.mark.action("task.list")
 class TestListTasks:
     """Test list_tasks tool behavior."""
 
@@ -414,6 +417,7 @@ class TestTaskLifecycle:
     """Test pause, resume, and cancel task tools."""
 
     @pytest.mark.asyncio
+    @pytest.mark.action("task.pause")
     async def test_pause_task(self, tmp_path):
 
         with (
@@ -429,6 +433,7 @@ class TestTaskLifecycle:
         assert payload["taskId"] == "task-123"
 
     @pytest.mark.asyncio
+    @pytest.mark.action("task.resume")
     async def test_resume_task(self, tmp_path):
 
         with (
@@ -440,6 +445,7 @@ class TestTaskLifecycle:
         assert "resume" in result[0].text.lower()
 
     @pytest.mark.asyncio
+    @pytest.mark.action("task.cancel")
     async def test_cancel_task(self, tmp_path):
 
         with (
@@ -455,6 +461,7 @@ class TestTodoTools:
     """Test list_todos and complete_todo MCP tools."""
 
     @pytest.mark.asyncio
+    @pytest.mark.action("todo.list")
     async def test_list_todos_empty(self, tmp_path):
 
         with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", tmp_path / "todos.json"):
@@ -534,6 +541,7 @@ class TestTodoTools:
         assert "def" in text
 
     @pytest.mark.asyncio
+    @pytest.mark.action("todo.complete")
     async def test_complete_todo(self, tmp_path):
 
         todos_file = tmp_path / "todos.json"

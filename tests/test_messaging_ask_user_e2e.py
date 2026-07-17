@@ -121,6 +121,7 @@ class FakeAskUserDeps:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("user.question.ask")
 class TestAskUserE2E:
     """Full round-trip integration tests for ask_user."""
 
