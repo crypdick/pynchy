@@ -68,6 +68,18 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="channel.ask.answer",
     ),
     agent_action(
+        "skill.catalog.search",
+        "agent-tools",
+        "Search the available vault-backed Pynchy skills.",
+        "search_skills",
+    ),
+    agent_action(
+        "skill.access.request",
+        "agent-tools",
+        "Request one-time or persistent access to a Pynchy skill.",
+        "request_skill_access",
+    ),
+    agent_action(
         "workspace.group.register",
         "agent-tools",
         "Register a chat group as a Pynchy workspace.",

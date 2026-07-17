@@ -61,8 +61,8 @@ visibility or a data class.
 5. Run `uv run pytest --action-coverage` before submitting the change.
 
 The built-in catalog covers calendars, memories, task lifecycle, todos,
-outbound delivery, workspace and deployment operations, desktop controls,
-Google and Slack setup, X actions, and first-party Linear, Proton Mail, and
-notebook MCP actions. Third-party MCP servers remain outside the package's
-static tool inventory; their plugin tests need to establish their own action
-evidence at the provider boundary.
+outbound delivery, vault-backed skill discovery and access, workspace and
+deployment operations, desktop controls, Google and Slack setup, X actions,
+and first-party Linear, Proton Mail, and notebook MCP actions. Third-party
+MCP servers remain outside the package's static tool inventory; their plugin
+tests need to establish their own action evidence at the provider boundary.
