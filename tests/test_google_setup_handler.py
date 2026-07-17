@@ -262,6 +262,7 @@ async def test_oauth_flow_waits_for_callback_thread_event_without_async_sleep(
     assert tokens == {"ok": True}
 
 
+@pytest.mark.action("integration.google.profile.setup")
 @pytest.mark.asyncio
 async def test_rest_token_refresh_rejects_non_https_endpoint_before_opening(
     monkeypatch: pytest.MonkeyPatch,

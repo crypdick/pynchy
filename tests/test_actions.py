@@ -6,6 +6,8 @@ from pynchy.actions import (
     ACTION_SPECS,
     ActionId,
     ActionSpec,
+    ActionSurface,
+    ActionTransport,
     EvidenceRequirement,
     assess_hermetic_coverage,
     validate_action_specs,
@@ -35,6 +37,27 @@ def test_catalog_rejects_duplicate_invalid_and_incomplete_agentic_actions():
     assert "not-an-action: summary is required" in errors
     assert "duplicate action id: task.create" in errors
     assert "task.create: agentic coverage requires a canary scenario" in errors
+
+
+def test_catalog_rejects_blank_action_surface_values():
+    errors = validate_action_specs(
+        (
+            ActionSpec(
+                ActionId("task.create"),
+                "tasks",
+                "Create a task.",
+                surfaces=(
+                    ActionSurface(ActionTransport.AGENT_TOOL, ""),
+                    ActionSurface(ActionTransport.AGENT_TOOL, "create_task", " "),
+                ),
+            ),
+        )
+    )
+
+    assert errors == (
+        "task.create: action surface name is required",
+        "task.create: action surface operation cannot be blank",
+    )
 
 
 def test_hermetic_coverage_reports_missing_and_unknown_actions():

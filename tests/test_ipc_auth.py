@@ -634,6 +634,7 @@ class TestScheduledTaskIsolation:
 # --- register_group success ---
 
 
+@pytest.mark.action("workspace.group.register")
 class TestRegisterGroupSuccess:
     async def test_admin_can_register_new_group(self, deps):
         await dispatch(
@@ -813,6 +814,7 @@ class TestAuthorizedTaskActionEdges:
 # --- deploy authorization ---
 
 
+@pytest.mark.action("deployment.apply")
 class TestDeployAuth:
     """Deploy IPC is admin-only. Non-admin attempts should be silently blocked."""
 
@@ -860,6 +862,7 @@ class TestDeployAuth:
 # --- reset_context execution ---
 
 
+@pytest.mark.action("lifecycle.context.reset")
 class TestResetContextExecution:
     """Tests for the reset_context IPC command execution paths."""
 
@@ -1000,6 +1003,7 @@ class TestResetContextExecution:
 # --- finished_work execution ---
 
 
+@pytest.mark.action("lifecycle.task.finish")
 class TestFinishedWorkExecution:
     """Tests for the finished_work IPC command."""
 

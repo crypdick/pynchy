@@ -41,6 +41,78 @@ def test_computer_use_plugin_is_registered() -> None:
     assert "computer_use" in handlers["tools"]
 
 
+@pytest.mark.action("desktop.computer.capture")
+@pytest.mark.action("desktop.computer.app.list")
+@pytest.mark.action("desktop.computer.window.list")
+@pytest.mark.action("desktop.computer.app.launch")
+@pytest.mark.action("desktop.computer.click")
+@pytest.mark.action("desktop.computer.double.click")
+@pytest.mark.action("desktop.computer.right.click")
+@pytest.mark.action("desktop.computer.text.type")
+@pytest.mark.action("desktop.computer.key.send")
+@pytest.mark.action("desktop.computer.scroll")
+@pytest.mark.action("desktop.computer.wait")
+@pytest.mark.action("desktop.computer.permissions.check")
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "arguments", "expected_cua_action"),
+    [
+        ("capture", {"pid": 844}, "get_window_state"),
+        ("list_apps", {}, "list_apps"),
+        ("list_windows", {}, "list_windows"),
+        ("launch_app", {"bundle_id": "com.apple.TextEdit"}, "launch_app"),
+        ("click", {"element": 14}, "click"),
+        ("double_click", {"coordinate": [12, 34]}, "double_click"),
+        ("right_click", {"coordinate": [12, 34]}, "right_click"),
+        ("type", {"pid": 844, "text": "hello"}, "type_text"),
+        ("key", {"pid": 844, "keys": "cmd+s"}, "hotkey"),
+        ("scroll", {"pid": 844, "delta_y": -240}, "scroll"),
+        ("wait", {"seconds": 0}, None),
+        ("check_permissions", {}, "check_permissions"),
+    ],
+)
+async def test_each_computer_action_reaches_its_cua_driver_operation(
+    action: str,
+    arguments: dict[str, object],
+    expected_cua_action: str | None,
+    tmp_path: Path,
+) -> None:
+    """Exercise every public computer action through the host service boundary."""
+    handler = _handler()
+    captured_calls: list[tuple[str, ...]] = []
+
+    def fake_exec(*args: str, **_kwargs: object) -> _FakeProcess:
+        captured_calls.append(args)
+        if "--screenshot-out-file" in args:
+            Path(args[-1]).write_bytes(b"png bytes")
+        return _FakeProcess(stdout=b"action completed")
+
+    with (
+        patch(
+            "pynchy.plugins.integrations.computer_use.platform.system",
+            return_value="Darwin",
+        ),
+        patch(
+            "pynchy.plugins.integrations.computer_use.shutil.which", return_value="/bin/cua-driver"
+        ),
+        patch(
+            "pynchy.plugins.integrations.computer_use.get_settings",
+            return_value=SimpleNamespace(data_dir=tmp_path),
+        ),
+        patch(
+            "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
+            new=AsyncMock(side_effect=fake_exec),
+        ),
+    ):
+        result = await handler({"source_group": "admin", "action": action, **arguments})
+
+    assert result["result"]["action"] == action
+    if expected_cua_action is None:
+        assert captured_calls == []
+    else:
+        assert captured_calls[0][2] == expected_cua_action
+
+
 @pytest.mark.asyncio
 async def test_computer_use_rejects_non_macos(tmp_path: Path) -> None:
     handler = _handler()

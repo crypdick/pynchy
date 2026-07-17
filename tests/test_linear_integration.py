@@ -206,6 +206,7 @@ class TestLinearMcpServer:
         finally:
             await client.close()
 
+    @pytest.mark.action("linear.issue.create")
     async def test_mcp_create_issue_calls_client(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
         fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
@@ -253,6 +254,7 @@ class TestLinearMcpServer:
             label_ids=None,
         )
 
+    @pytest.mark.action("linear.todo.create")
     async def test_mcp_create_workspace_todo_uses_server_workspace(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
         monkeypatch.delenv("LINEAR_TEAM_KEY", raising=False)
@@ -298,6 +300,7 @@ class TestLinearMcpServer:
         assert args[2] == "Review docs"
         assert kwargs["team_key"] is None
 
+    @pytest.mark.action("linear.todo.move")
     async def test_mcp_move_workspace_todo_uses_status_name(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
         monkeypatch.setenv("LINEAR_TEAM_KEY", "SYN")
@@ -344,6 +347,98 @@ class TestLinearMcpServer:
         assert kwargs["issue_id"] == "SYN-1"
         assert kwargs["status"] == "in_progress"
         assert kwargs["team_key"] == "SYN"
+
+    @pytest.mark.action("linear.team.list")
+    async def test_mcp_lists_teams_from_the_configured_linear_client(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.list_teams = AsyncMock(return_value=[{"id": "team-1", "name": "Pynchy"}])
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {"name": "linear_list_teams", "arguments": {}},
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"]) == [
+            {"id": "team-1", "name": "Pynchy"}
+        ]
+        fake_client.list_teams.assert_awaited_once()
+
+    @pytest.mark.action("linear.issue.list")
+    async def test_mcp_lists_issues_with_the_requested_team_and_limit(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.list_issues = AsyncMock(return_value=[{"id": "issue-1", "title": "Coverage"}])
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_list_issues",
+                            "arguments": {"team_id": "team-1", "first": 7},
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"]) == [
+            {"id": "issue-1", "title": "Coverage"}
+        ]
+        fake_client.list_issues.assert_awaited_once_with(team_id="team-1", first=7)
+
+    @pytest.mark.action("linear.todo.list")
+    async def test_mcp_lists_workspace_todos_with_the_server_workspace(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        with (
+            patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client),
+            patch(
+                "pynchy.plugins.integrations.linear.list_workspace_todos",
+                new=AsyncMock(return_value=[{"id": "issue-1", "title": "Coverage"}]),
+            ) as list_todos,
+        ):
+            client = TestClient(TestServer(build_app(workspace="code-improver")))
+            await client.start_server()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_list_todos",
+                            "arguments": {"include_done": True},
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"]) == [
+            {"id": "issue-1", "title": "Coverage"}
+        ]
+        _, args, kwargs = list_todos.mock_calls[0]
+        assert args[1].folder == "code-improver"
+        assert kwargs["include_done"] is True
 
 
 class TestDocs:

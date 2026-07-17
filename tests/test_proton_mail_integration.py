@@ -189,6 +189,7 @@ class TestProtonMailMcpServer:
             "proton_read_mail",
         }
 
+    @pytest.mark.action("mail.proton.message.read")
     async def test_mcp_reads_a_message_through_the_injected_direct_client(self):
         stub = StubProtonMailClient()
         client = await _start_mcp_client(stub)
@@ -212,3 +213,50 @@ class TestProtonMailMcpServer:
 
         text = payload["result"]["content"][0]["text"]
         assert json.loads(text)["message_id"] == "<event@example.com>"
+
+    @pytest.mark.action("mail.proton.mailbox.list")
+    async def test_mcp_lists_mailboxes_through_the_injected_direct_client(self):
+        stub = StubProtonMailClient()
+        client = await _start_mcp_client(stub)
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "proton_list_mailboxes", "arguments": {}},
+                },
+            )
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        text = payload["result"]["content"][0]["text"]
+        assert json.loads(text) == {"mailboxes": [{"mailbox": "INBOX", "name": "INBOX"}]}
+        assert stub.calls == [("list_mailboxes", None)]
+
+    @pytest.mark.action("mail.proton.message.list")
+    async def test_mcp_lists_messages_through_the_injected_direct_client(self):
+        stub = StubProtonMailClient()
+        client = await _start_mcp_client(stub)
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "proton_list_mail",
+                        "arguments": {"mailbox": "INBOX", "limit": 3, "unread": True},
+                    },
+                },
+            )
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        text = payload["result"]["content"][0]["text"]
+        assert json.loads(text)["messages"][0]["message_id"] == "<event@example.com>"
+        assert stub.calls == [("list_mail", ("INBOX", 3, 0, True))]

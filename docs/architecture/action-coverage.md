@@ -27,8 +27,10 @@ behind hermetic tests.
 ## Built-in catalog and CI gate
 
 `src/pynchy/actions.py` provides the built-in `ACTION_SPECS` catalog. Each
-`ActionSpec` names an action ID, owner, summary, evidence requirement, and
-optional canary scenario.
+`ActionSpec` names an action ID, owner, summary, evidence requirement,
+optional canary scenario, and the Pynchy tool or host workflow that exposes
+it. The catalog check compares built-in agent tools with those mappings, so a
+new tool must receive a semantic action before it becomes available.
 
 Attach an action ID to a behavioral test with `pytest.mark.action`:
 
@@ -58,7 +60,9 @@ visibility or a data class.
    scenario that includes independent verification and cleanup.
 5. Run `uv run pytest --action-coverage` before submitting the change.
 
-The catalog currently covers the first action families with established
-behavioral tests: calendars, memories, task lifecycle, todos, outbound
-delivery, and ask-user. Subsequent increments add the remaining tool,
-integration, security, workspace, and host-operation families.
+The built-in catalog covers calendars, memories, task lifecycle, todos,
+outbound delivery, workspace and deployment operations, desktop controls,
+Google and Slack setup, X actions, and first-party Linear, Proton Mail, and
+notebook MCP actions. Third-party MCP servers remain outside the package's
+static tool inventory; their plugin tests need to establish their own action
+evidence at the provider boundary.

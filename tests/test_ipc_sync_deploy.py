@@ -112,6 +112,7 @@ async def deps():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.action("lifecycle.worktree.sync")
 class TestSyncWorktreeToMain:
     """Tests for the sync_worktree_to_main IPC command handler."""
 
