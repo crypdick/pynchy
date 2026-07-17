@@ -28,7 +28,7 @@ from pynchy.host.orchestrator.adapters import (
     PeriodicAgentManager,
     SessionManager,
     UserMessageHandler,
-    find_admin_jid,
+    resolve_admin_notification_jid,
 )
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     PynchyApp,
@@ -130,7 +130,9 @@ async def _start_temporal_deploy(
     rebuild: bool = True,
 ) -> None:
     """Start a Temporal deploy workflow; in-flight turns are checkpointed in SQLite."""
-    chat_jid = find_admin_jid(workspaces)
+    chat_jid = resolve_admin_notification_jid(
+        workspaces, get_settings().notifications.admin_workspace
+    )
     if chat_jid:
         msg = (
             "Container files changed — starting deploy workflow..."
@@ -172,7 +174,9 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
         subscribe_events = event_adapter.subscribe_events
 
         def admin_chat_jid(self) -> str:
-            return find_admin_jid(app.workspaces)
+            return resolve_admin_notification_jid(
+                app.workspaces, get_settings().notifications.admin_workspace
+            )
 
         def is_shutting_down(self) -> bool:
             return app.is_shutting_down()

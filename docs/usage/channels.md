@@ -194,6 +194,17 @@ bot_token_env = "DISCORD_BOT_TOKEN"
 connection = "synapse"
 ```
 
+To route boot, deploy, and shutdown notifications to a predictable admin chat,
+set its registered workspace folder:
+
+```toml
+[notifications]
+admin_workspace = "discord-admin"
+```
+
+The configured workspace must be an admin workspace. Without this setting,
+Pynchy uses the first registered admin workspace for backward compatibility.
+
 ---
 
 **Want to customize this?** Write your own channel plugin — see the [Plugin Authoring Guide](../plugins/index.md). Have an idea but don't want to build it? [Open a feature request](https://github.com/crypdick/pynchy/issues).

@@ -56,7 +56,10 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     """Send a system message to the admin channel on startup."""
     s = get_settings()
 
-    admin_jid = adapters.find_admin_jid(deps.workspaces) or None
+    admin_jid = (
+        adapters.resolve_admin_notification_jid(deps.workspaces, s.notifications.admin_workspace)
+        or None
+    )
     if not admin_jid:
         return
 

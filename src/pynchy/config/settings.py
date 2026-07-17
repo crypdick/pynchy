@@ -54,6 +54,7 @@ from pynchy.config.models import (
     LoggingConfig,
     McpTool,
     McpToolConfig,
+    NotificationsConfig,
     OneCliConfig,
     PluginConfig,
     ReposConfig,
@@ -176,6 +177,7 @@ class Settings(BaseSettings):
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
+    notifications: NotificationsConfig = NotificationsConfig()
     connection: ConnectionsConfig = ConnectionsConfig()
     connections: dict[str, ConnectionConfig] = {}
     tools: dict[str, ToolConfig] = {}

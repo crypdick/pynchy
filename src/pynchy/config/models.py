@@ -96,6 +96,7 @@ ValidatedConnectionName = Annotated[str, AfterValidator(_validated_connection_na
 ValidatedChatRef = Annotated[ChatRefStr, AfterValidator(_validated_chat_ref)]
 ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
 ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
+ValidatedWorkspaceName = Annotated[WorkspaceName, AfterValidator(_validated_name)]
 ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
 CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
 
@@ -375,6 +376,12 @@ class CommandCenterConfig(_StrictModel):
     """Which connection is the dedicated command center."""
 
     connection: ValidatedConnectionName | None = None
+
+
+class NotificationsConfig(_StrictModel):
+    """Route host lifecycle notifications to one designated admin workspace."""
+
+    admin_workspace: ValidatedWorkspaceName | None = None
 
 
 def __getattr__(name: str) -> object:

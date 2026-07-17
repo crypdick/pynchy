@@ -140,7 +140,10 @@ class TestAutoRollback:
 
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
-            lambda: SimpleNamespace(data_dir=tmp_path),
+            lambda: SimpleNamespace(
+                data_dir=tmp_path,
+                notifications=SimpleNamespace(admin_workspace=None),
+            ),
         )
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_head_sha",

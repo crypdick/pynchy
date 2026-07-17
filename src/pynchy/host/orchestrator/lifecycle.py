@@ -79,7 +79,12 @@ def _start_shutdown_watchdog() -> object:
 
 async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
     try:
-        admin_jid = orchestrator_adapters.find_admin_jid(app.workspaces) or None
+        admin_jid = (
+            orchestrator_adapters.resolve_admin_notification_jid(
+                app.workspaces, get_settings().notifications.admin_workspace
+            )
+            or None
+        )
         if admin_jid and app.channels:
             await app.broadcast_host_message(admin_jid, f"Shutting down ({sig_name})")
     except Exception:  # noqa: BLE001, RUF100 - shutdown notification is best-effort and must not block teardown.

@@ -59,7 +59,10 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     monkeypatch.setattr(
         git_sync,
         "get_settings",
-        lambda: SimpleNamespace(project_root=tmp_path),
+        lambda: SimpleNamespace(
+            project_root=tmp_path,
+            notifications=SimpleNamespace(admin_workspace=None),
+        ),
     )
     monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-sha")
     monkeypatch.setattr(
