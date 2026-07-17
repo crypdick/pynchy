@@ -50,6 +50,8 @@ TIER2_TYPES = frozenset(
         "deploy",
         "register_group",
         "create_periodic_agent",
+        # Persistent learned-skill decisions use a host-only user approval record.
+        "skill_access:policy",
         # Lifecycle: still carries data, will be reviewed later
         "reset_context",
         "finished_work",
@@ -81,6 +83,7 @@ READ_ONLY_REQUEST_PREFIXES = (
     "service:list_",
     "service:read_",
     "service:recall_",
+    "skill_access:",
 )
 
 

@@ -112,6 +112,9 @@ class FakeAskUserDeps:
     def __init__(self) -> None:
         self.enqueue_message = AsyncMock()
 
+    def has_active_host_process(self, _group_folder: str) -> bool:
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Tests

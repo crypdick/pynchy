@@ -229,6 +229,13 @@ class GroupQueue:
         state = self._get_group(group_jid)
         return state.active and state.active_is_task
 
+    def has_active_host_process(self, group_folder: str) -> bool:
+        """Return whether a direct host agent is waiting for this group's IPC."""
+        return any(
+            state.active and state.is_host_process and state.group_folder == group_folder
+            for state in self._groups.values()
+        )
+
     def snapshot(self) -> dict[str, dict[str, object]]:
         """Return a read-only snapshot of queue state for status reporting.
 

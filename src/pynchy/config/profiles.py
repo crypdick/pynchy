@@ -26,6 +26,7 @@ class ProfileConfig(_StrictModel):
     includes: list[ValidatedProfileName] = Field(default_factory=list)
     prompts: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
+    denied_skills: list[str] = Field(default_factory=list)
     tools: list[ValidatedToolName] = Field(default_factory=list)
     repo: list[ValidatedRepoSlug] = Field(default_factory=list)
     model: str | None = None

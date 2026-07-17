@@ -65,6 +65,7 @@ class TestPathAContainerAlive:
 
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = False
         answer = {"auth_strategy": "JWT tokens"}
         response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
 
@@ -102,6 +103,7 @@ class TestPathAContainerAlive:
         alive_session.is_alive = True
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = False
 
         with (
             patch(
@@ -125,6 +127,41 @@ class TestPathAContainerAlive:
 
         mock_resolve.assert_called_once_with("req-abc123", "test-group")
 
+    @pytest.mark.asyncio
+    async def test_writes_ipc_response_when_host_process_is_alive(
+        self, settings, pending_question, tmp_path
+    ):
+        """A direct host runner must receive the answer through its IPC response."""
+        deps = MagicMock()
+        deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = True
+        response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",
+                return_value=pending_question,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.get_session",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.write_ipc_response"
+            ) as mock_write,
+            patch(
+                "pynchy.host.orchestrator.messaging.ask_user_handler.ipc_response_path",
+                return_value=response_path,
+            ),
+            patch("pynchy.host.orchestrator.messaging.ask_user_handler.resolve_pending_question"),
+        ):
+            await handle_ask_user_answer("req-abc123", {"answer": "Grant once"}, deps)
+
+        mock_write.assert_called_once_with(
+            response_path, {"result": {"answers": {"answer": "Grant once"}}}
+        )
+        deps.enqueue_message.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Path B: container dead -> cold-start with answer context
@@ -137,6 +174,7 @@ class TestPathBContainerDead:
         """When the container is dead, enqueue the answer as a synthetic message."""
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = False
 
         with (
             patch(
@@ -167,6 +205,7 @@ class TestPathBContainerDead:
         dead_session.is_alive = False
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = False
 
         with (
             patch(
@@ -188,6 +227,7 @@ class TestPathBContainerDead:
         """The pending question should be resolved even in the cold-start path."""
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = False
 
         with (
             patch(
@@ -218,6 +258,7 @@ class TestUnknownQuestion:
         """If the question doesn't exist, log a warning and don't crash."""
         deps = MagicMock()
         deps.enqueue_message = AsyncMock()
+        deps.has_active_host_process.return_value = False
 
         with (
             patch(
@@ -250,6 +291,7 @@ async def _cold_start_text(pending: dict, answer: dict) -> str:
     """
     deps = MagicMock()
     deps.enqueue_message = AsyncMock()
+    deps.has_active_host_process.return_value = False
     with (
         patch(
             "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",

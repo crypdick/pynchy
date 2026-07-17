@@ -2327,6 +2327,25 @@ class TestSyncSkills:
 
         assert (session_dir / "skills" / "obsidian-filer" / "SKILL.md").exists()
 
+    def test_denied_learned_skill_is_not_injected(self, tmp_path: Path):
+        learned_skill = tmp_path / "vault-skills" / "obsidian-filer"
+        learned_skill.mkdir(parents=True)
+        (learned_skill / "SKILL.md").write_text(
+            "---\nname: obsidian-filer\ntier: learned\n---\n# Obsidian Filer\n"
+        )
+        session_dir = tmp_path / "session" / ".codex"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            sync_skills(
+                session_dir,
+                workspace_skills=["*"],
+                denied_skill_names=["obsidian-filer"],
+                learned_skill_paths=[learned_skill],
+            )
+
+        assert not (session_dir / "skills" / "obsidian-filer").exists()
+
     def test_learned_skills_are_not_synced_when_workspace_skills_is_none(
         self,
         tmp_path: Path,

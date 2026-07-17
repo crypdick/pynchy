@@ -10,6 +10,7 @@ from pathlib import Path
 from pynchy.config.settings import Settings, get_settings
 
 _PROFILE_SLUG_PATTERN = re.compile(r"[^a-z0-9_.-]+")
+_DYNAMIC_THREAD_DELIMITER = "__thread_"
 _VAULT_ROOT_REQUIRED_ERROR = "learning.obsidian.vault_root is required when learning is enabled"
 _PROFILE_ROOT_TEMPLATE_ERROR = "learning.obsidian.default_profile_root must be a valid template"
 _PATH_OUTSIDE_VAULT_ERROR = "learning paths must stay inside learning.obsidian.vault_root"
@@ -40,6 +41,10 @@ def profile_name_for_group(group_folder: str) -> str:
 
 def _profile_name_for_group(settings: Settings, group_folder: str) -> str:
     workspace = settings.workspaces.get(group_folder)
+    if workspace is None:
+        parent_folder, delimiter, _thread = group_folder.partition(_DYNAMIC_THREAD_DELIMITER)
+        if delimiter and parent_folder:
+            workspace = settings.workspaces.get(parent_folder)
     if workspace is None or not workspace.profiles:
         return "default"
     return workspace.profiles[0]

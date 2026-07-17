@@ -16,6 +16,7 @@ class TestProfileConfigDefaults:
         assert cfg.includes == []
         assert cfg.prompts == []
         assert cfg.skills == []
+        assert cfg.denied_skills == []
         assert cfg.tools == []
         assert cfg.repo == []
         assert cfg.model is None
@@ -61,6 +62,10 @@ class TestProfileConfigListFields:
     def test_skills_accepts_list(self):
         cfg = ProfileConfig(skills=["core", "web"])
         assert cfg.skills == ["core", "web"]
+
+    def test_denied_skills_accepts_list(self):
+        cfg = ProfileConfig(denied_skills=["untrusted-workflow"])
+        assert cfg.denied_skills == ["untrusted-workflow"]
 
     def test_tools_accepts_list(self):
         cfg = ProfileConfig(tools=["github", "memory"])

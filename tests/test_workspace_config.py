@@ -11,6 +11,7 @@ import pytest
 from conftest import make_settings
 from pydantic import ValidationError
 
+import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import WorkspaceConfig
 from pynchy.config.models import ProfileConfig
 from pynchy.host.orchestrator.workspace_config import (
@@ -21,6 +22,7 @@ from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
     load_workspace_config,
     reconcile_workspaces,
+    update_profile_skill_policy,
 )
 from pynchy.types import InboundFetchResult, OutboundEvent, WorkspaceProfile, WorkspaceSecurity
 
@@ -167,6 +169,32 @@ is_admin = true
 
         data = tomllib.loads(toml_path.read_text())
         assert data["workspaces"]["discord-admin"]["profiles"] == ["pynchy-dev"]
+
+
+def test_update_profile_skill_policy_persists_grants_and_denials(tmp_path, monkeypatch):
+    toml_path = tmp_path / "config.toml"
+    toml_path.write_text(
+        """
+[profiles.pynchy-dev]
+skills = ["core"]
+denied_skills = ["blocked-skill"]
+
+[workspaces.pynchy-dev]
+profiles = ["pynchy-dev"]
+"""
+    )
+    settings = make_settings(project_root=tmp_path)
+    monkeypatch.setattr(workspace_config, "get_settings", lambda: settings)
+    monkeypatch.setattr(workspace_config, "reset_settings", lambda: None)
+
+    update_profile_skill_policy("pynchy-dev", "obsidian-knowledge", grant=True)
+    update_profile_skill_policy("pynchy-dev", "blocked-skill", grant=True)
+    update_profile_skill_policy("pynchy-dev", "pynchy-operations", grant=False)
+
+    data = tomllib.loads(toml_path.read_text())
+    profile = data["profiles"]["pynchy-dev"]
+    assert profile["skills"] == ["core", "obsidian-knowledge", "blocked-skill"]
+    assert profile["denied_skills"] == ["pynchy-operations"]
 
 
 class TestGetRepoAccess:

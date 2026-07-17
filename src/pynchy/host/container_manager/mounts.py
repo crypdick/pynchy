@@ -30,6 +30,7 @@ _LEARNING_REVIEW_FOLDER_PREFIX = "learning-review-"
 @dataclass(frozen=True)
 class _LearningMountContext:
     workspace_skills: list[str] | None
+    denied_skill_names: list[str] | None
     learned_skill_paths: list[Path] | None
 
 
@@ -90,6 +91,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
         codex_home,
         plugin_manager,
         workspace_skills=learning.workspace_skills,
+        denied_skill_names=learning.denied_skill_names,
         learned_skill_paths=learning.learned_skill_paths,
     )
     mounts.append(VolumeMount(str(codex_home), "/home/agent/.codex", readonly=False))
@@ -147,6 +149,7 @@ def _effective_repo_mounts(
 def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _LearningMountContext:
     resolved = load_resolved_config(group_folder)
     workspace_skills = resolved.skills if resolved else None
+    denied_skill_names = resolved.denied_skills if resolved else None
     learning_paths = resolve_learning_paths(
         group_folder,
         profile_override=_learning_profile_override_for_group(group_folder),
@@ -155,6 +158,7 @@ def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _Learn
     if learning_paths is None:
         return _LearningMountContext(
             workspace_skills=workspace_skills,
+            denied_skill_names=denied_skill_names,
             learned_skill_paths=learned_skill_paths,
         )
 
@@ -172,6 +176,7 @@ def _add_learning_mounts(mounts: list[VolumeMount], group_folder: str) -> _Learn
         learned_skill_paths = iter_learned_skill_dirs(group_folder)
     return _LearningMountContext(
         workspace_skills=workspace_skills,
+        denied_skill_names=denied_skill_names,
         learned_skill_paths=learned_skill_paths,
     )
 
@@ -219,6 +224,7 @@ def _add_claude_session_mount(
         session_dir,
         plugin_manager,
         workspace_skills=learning.workspace_skills,
+        denied_skill_names=learning.denied_skill_names,
         learned_skill_paths=learning.learned_skill_paths,
     )
     mounts.append(VolumeMount(str(session_dir), "/home/agent/.claude", readonly=False))

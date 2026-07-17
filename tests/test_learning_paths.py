@@ -190,6 +190,21 @@ def test_workspace_with_multiple_profiles_uses_first_profile_for_learning_contex
     assert paths.profile_root == vault.resolve() / "systems/pynchy/profiles/base"
 
 
+def test_dynamic_thread_uses_parent_workspace_learning_profile(tmp_path):
+    vault = tmp_path / "vault"
+    settings = _settings(
+        tmp_path=tmp_path,
+        learning=_enabled_learning(vault),
+        workspaces={"pynchy-dev": WorkspaceConfig(profiles=["pynchy-dev"])},
+    )
+
+    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
+        paths = resolve_learning_paths("pynchy-dev__thread_discord-channel-42")
+
+    assert paths is not None
+    assert paths.profile == "pynchy-dev"
+
+
 def test_profile_slug_is_path_safe_but_original_profile_is_preserved(tmp_path):
     vault = tmp_path / "vault"
     profile = "Shopping List!! / 2026"

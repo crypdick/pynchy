@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 IPC_SCHEMA_VERSION = 1
-IPC_DIR = Path("/workspace/ipc")
+IPC_DIR = Path(os.environ.get("PYNCHY_IPC_DIR", "/workspace/ipc"))
 MESSAGES_DIR = IPC_DIR / "messages"
 REQUESTS_DIR = IPC_DIR / "requests"
 
