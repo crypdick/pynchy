@@ -28,6 +28,7 @@ from pynchy.config.merge import (
 )
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.toml_io import mutate_config_toml
+from pynchy.config.workspace_names import DYNAMIC_THREAD_DELIMITER, parent_workspace_name
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
@@ -58,7 +59,6 @@ class _WorkspaceConfigState:
 
 
 _state = _WorkspaceConfigState()
-_DYNAMIC_THREAD_DELIMITER = "__thread_"
 
 
 def _safe_folder_fragment(value: str) -> str:
@@ -68,14 +68,11 @@ def _safe_folder_fragment(value: str) -> str:
 
 def dynamic_thread_folder(parent_folder: str, thread_jid: str) -> str:
     """Return the isolated runtime folder for a dynamic thread workspace."""
-    return f"{parent_folder}{_DYNAMIC_THREAD_DELIMITER}{_safe_folder_fragment(thread_jid)}"
+    return f"{parent_folder}{DYNAMIC_THREAD_DELIMITER}{_safe_folder_fragment(thread_jid)}"
 
 
 def _parent_folder_for_dynamic_thread(folder: str) -> str | None:
-    parent, sep, _child = folder.partition(_DYNAMIC_THREAD_DELIMITER)
-    if not sep or not parent:
-        return None
-    return parent
+    return parent_workspace_name(folder)
 
 
 def static_workspace_folder(folder: str) -> str:
@@ -131,11 +128,8 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     Returns None if the group has no [workspaces.<name>] section in config.toml.
     """
     specs = _workspace_specs()
-    spec = specs.get(group_folder)
-    if spec is None:
-        parent_folder = _parent_folder_for_dynamic_thread(group_folder)
-        if parent_folder is not None:
-            spec = specs.get(parent_folder)
+    parent_folder = _parent_folder_for_dynamic_thread(group_folder)
+    spec = specs.get(parent_folder or group_folder)
     if spec is None:
         return None
     config = spec.config
