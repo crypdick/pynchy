@@ -67,6 +67,7 @@ from pynchy.config.profiles import (
     ProfileConfig,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 )
 from pynchy.config.scheduler_models import (
+    CanaryConfig,
     CommandWordsConfig,
     CronJobConfig,
     IntervalsConfig,
@@ -169,6 +170,7 @@ class Settings(BaseSettings):
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
+    canary: CanaryConfig = CanaryConfig()
     cron_jobs: dict[str, CronJobConfig] = {}  # internal adapter for host [jobs.<job_name>]
     jobs: dict[str, JobConfig] = {}
     intervals: IntervalsConfig = IntervalsConfig()
@@ -234,15 +236,6 @@ class Settings(BaseSettings):
         return data
 
     @model_validator(mode="after")
-    def _require_explicit_fields(self) -> Settings:
-        """Keep defaulted fields valid for the composable schema.
-
-        Omitted profile fields use defaults, while strictness comes from
-        ``extra='forbid'`` on each model.
-        """
-        return self
-
-    @model_validator(mode="after")
     def _validate_profile_refs(self) -> Settings:
         """Validate that workspace profile references exist."""
         settings_validation.validate_profile_references(
@@ -251,6 +244,11 @@ class Settings(BaseSettings):
             jobs=self.jobs,
             tools=self.tools,
             expand_profile_names=self._expanded_profile_names,
+        )
+        settings_validation.validate_canary_target_profile(
+            enabled=self.canary.enabled,
+            target_profile=self.canary.target_profile,
+            profiles=self.profiles,
         )
         return self
 

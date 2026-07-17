@@ -160,6 +160,22 @@ class ChannelReconciliationWorkflow:
 
 
 @workflow.defn
+class CanaryRunWorkflow:
+    """Run every declared external-service canary through one host activity."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return cast(
+            "str",
+            await workflow.execute_activity(
+                "run_scheduled_canaries",
+                start_to_close_timeout=timedelta(hours=12),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
 class ScheduledAgentTaskWorkflow:
     """Run one scheduled agent task through a host-side activity."""
 

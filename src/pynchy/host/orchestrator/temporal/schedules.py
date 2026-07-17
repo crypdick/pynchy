@@ -16,6 +16,7 @@ from temporalio.client import (
 
 from pynchy.config import get_settings
 from pynchy.host.orchestrator.temporal.workflows import (
+    CanaryRunWorkflow,
     ChannelReconciliationWorkflow,
     ConfigHostCronWorkflow,
     DatabaseHostJobWorkflow,
@@ -35,9 +36,11 @@ SCHEDULE_PREFIXES = (
     "pynchy-host-cron-schedule-",
     "pynchy-git-sync-",
     "pynchy-channel-reconciliation",
+    "pynchy-canary-",
 )
 HOST_GIT_SYNC_SCHEDULE_ID = "pynchy-git-sync-host"
 CHANNEL_RECONCILIATION_SCHEDULE_ID = "pynchy-channel-reconciliation"
+CANARY_SCHEDULE_ID = "pynchy-canary-schedule"
 _UNSUPPORTED_RECURRING_SCHEDULE_TYPE = "Unsupported recurring schedule type: {schedule_type}"
 
 
@@ -86,6 +89,11 @@ def external_git_sync_schedule_id(repo_slug: str) -> str:
 def channel_reconciliation_schedule_id() -> str:
     """Return the Temporal Schedule ID for channel reconciliation polling."""
     return CHANNEL_RECONCILIATION_SCHEDULE_ID
+
+
+def canary_schedule_id() -> str:
+    """Return the Temporal Schedule ID for the external-service canary runner."""
+    return CANARY_SCHEDULE_ID
 
 
 def once_due_at(value: str | None) -> datetime:
@@ -212,6 +220,25 @@ def schedule_for_channel_reconciliation() -> Schedule:
                     )
                 )
             ]
+        ),
+        policy=_schedule_policy(),
+    )
+
+
+def schedule_for_canaries() -> Schedule:
+    """Build the configured recurring schedule for external-service canaries."""
+    scheduler_config = get_settings().scheduler
+    canary_config = get_settings().canary
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            CanaryRunWorkflow.run,
+            id=f"{canary_schedule_id()}-workflow",
+            task_queue=scheduler_config.temporal_task_queue,
+        ),
+        spec=_recurring_schedule_spec(
+            "cron",
+            canary_config.schedule,
+            timezone=_schedule_timezone(),
         ),
         policy=_schedule_policy(),
     )

@@ -17,6 +17,12 @@ This package is split into domain-specific submodules:
 
 # Re-export every public symbol so that `from pynchy.state import X` keeps working.
 
+from pynchy.state.canaries import (
+    get_latest_canary_runs,
+    get_recent_canary_runs,
+    get_unresolved_canary_regressions,
+    record_canary_run,
+)
 from pynchy.state.channel_cursors import (
     advance_cursors_atomic,
     get_channel_cursor,
@@ -112,6 +118,11 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "_get_db",
     "init_database",
     "init_test_database",
+    # canaries
+    "get_latest_canary_runs",
+    "get_recent_canary_runs",
+    "get_unresolved_canary_regressions",
+    "record_canary_run",
     # conversation_events
     "get_conversation_event_pointers_since",
     "store_conversation_event_pointer",

@@ -262,6 +262,36 @@ class TaskRunLog:
     escalation_reason: str | None = None
 
 
+class CanaryOutcome(StrEnum):
+    """Terminal outcome recorded for one external-service canary run."""
+
+    PASSED = "passed"
+    FAILED = "failed"
+    CLEANUP_FAILED = "cleanup_failed"
+    SKIPPED = "skipped"
+    NOT_ESTABLISHED = "not_established"
+
+
+@dataclass(frozen=True)
+class CanaryRun:
+    """Durable evidence from one declared external-service canary scenario."""
+
+    run_id: str
+    scenario_id: str
+    action_ids: tuple[str, ...]
+    target_profile: str
+    code_revision: str
+    config_revision: str
+    started_at: str
+    completed_at: str
+    outcome: CanaryOutcome
+    error_class: str | None = None
+    evidence_refs: tuple[str, ...] = ()
+    is_regression: bool = False
+    starts_regression: bool = False
+    is_recovery: bool = False
+
+
 @dataclass
 class HostJob:
     """Host-level cron job that runs shell commands directly (no LLM/container).

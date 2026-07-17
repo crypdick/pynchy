@@ -164,6 +164,28 @@ CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_chat ON events(chat_jid);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
 
+CREATE TABLE IF NOT EXISTS canary_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL UNIQUE,
+    scenario_id TEXT NOT NULL,
+    action_ids TEXT NOT NULL,
+    target_profile TEXT NOT NULL,
+    code_revision TEXT NOT NULL,
+    config_revision TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    error_class TEXT,
+    evidence_refs TEXT NOT NULL,
+    is_regression INTEGER NOT NULL DEFAULT 0,
+    starts_regression INTEGER NOT NULL DEFAULT 0,
+    is_recovery INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_canary_runs_scenario_target
+ON canary_runs(scenario_id, target_profile, id DESC);
+CREATE INDEX IF NOT EXISTS idx_canary_runs_regression
+ON canary_runs(is_regression, id DESC);
+
 CREATE TABLE IF NOT EXISTS conversation_events (
     event_id TEXT PRIMARY KEY,
     turn_id TEXT NOT NULL,

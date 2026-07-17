@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from aiohttp import web
 
+from pynchy.canaries import canary_run_to_dict, get_canary_report
 from pynchy.config import get_settings
 from pynchy.host.git_ops.utils import (
     files_changed_between,
@@ -31,6 +32,7 @@ from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
+from pynchy.state import get_recent_canary_runs
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
@@ -196,6 +198,32 @@ async def _handle_status(request: web.Request) -> web.Response:
     return web.json_response(data)
 
 
+def _canary_history_limit(request: web.Request) -> int | None:
+    raw_limit = request.query.get("limit", "50")
+    if not raw_limit.isdecimal():
+        return None
+    limit = int(raw_limit)
+    return limit if 1 <= limit <= 200 else None
+
+
+async def _handle_canary_report(request: web.Request) -> web.Response:
+    """Return current external-service canary evidence and regressions."""
+    limit = _canary_history_limit(request)
+    if limit is None:
+        return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
+    return web.json_response(await get_canary_report(history_limit=limit))
+
+
+async def _handle_canary_runs(request: web.Request) -> web.Response:
+    """Return result history for all canaries or one declared scenario."""
+    limit = _canary_history_limit(request)
+    if limit is None:
+        return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
+    scenario_id = request.query.get("scenario_id") or None
+    runs = await get_recent_canary_runs(limit=limit, scenario_id=scenario_id)
+    return web.json_response({"runs": [canary_run_to_dict(run) for run in runs]})
+
+
 # ------------------------------------------------------------------
 # TUI API endpoints
 # ------------------------------------------------------------------
@@ -323,6 +351,8 @@ def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) ->
         app[status_deps_key] = status_deps
     app.router.add_get("/health", _handle_health)
     app.router.add_get("/status", _handle_status)
+    app.router.add_get("/canaries/report", _handle_canary_report)
+    app.router.add_get("/canaries/runs", _handle_canary_runs)
     app.router.add_post("/deploy", _handle_deploy)
     app.router.add_get("/api/groups", _handle_api_groups)
     app.router.add_get("/api/messages", _handle_api_messages)
