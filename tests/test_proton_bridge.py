@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,6 +15,9 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonBridgeImapClient,
     ProtonMailError,
 )
+
+if TYPE_CHECKING:
+    from email.message import EmailMessage
 
 
 def _password_reader() -> SecretStr:
@@ -48,14 +52,44 @@ class FakeImapConnection:
         self.calls.append((command, args))
         if command == "SEARCH":
             return "OK", [self.search_results.pop(0)]
+        if command == "STORE":
+            return "OK", [b"20"]
         if command == "FETCH":
             uid = str(args[0])
             metadata, message = self.fetched_messages[uid]
             return "OK", [(metadata, message), b")"]
         raise AssertionError(f"Unexpected IMAP command: {command}")
 
+    def expunge(self) -> tuple[str, list[bytes]]:
+        self.calls.append(("EXPUNGE", ()))
+        return "OK", [b"1"]
 
-def _client(connection: FakeImapConnection) -> ProtonBridgeImapClient:
+
+@dataclass
+class FakeSmtpConnection:
+    """Small programmable SMTP transport that records accepted messages."""
+
+    messages: list[tuple[EmailMessage, str, list[str]]] = field(default_factory=list)
+    calls: list[str] = field(default_factory=list)
+
+    def send_message(
+        self,
+        message: EmailMessage,
+        *,
+        sender: str,
+        recipients: list[str],
+    ) -> None:
+        self.calls.append("SEND")
+        self.messages.append((message, sender, recipients))
+
+    def quit(self) -> None:
+        self.calls.append("QUIT")
+
+
+def _client(
+    connection: FakeImapConnection,
+    smtp_connection: FakeSmtpConnection | None = None,
+) -> ProtonBridgeImapClient:
     configuration = ProtonBridgeConfiguration(
         username="hi@example.com",
         password_command="unused-in-test",  # noqa: S106  # pragma: allowlist secret
@@ -64,6 +98,9 @@ def _client(connection: FakeImapConnection) -> ProtonBridgeImapClient:
         configuration,
         _password_reader,
         connection_factory=lambda _configuration, _password: connection,
+        smtp_connection_factory=lambda _configuration, _password: (
+            smtp_connection or FakeSmtpConnection()
+        ),
     )
 
 
@@ -172,6 +209,38 @@ class TestProtonBridgeImapClient:
                 message_id="<event@example.com>\r\nALL",
                 include_headers=False,
             )
+
+    def test_sends_plain_text_mail_through_the_bridge_smtp_identity(self):
+        connection = FakeImapConnection()
+        smtp = FakeSmtpConnection()
+
+        delivery = _client(connection, smtp).send_mail(
+            recipients=["recipient@example.com"],
+            subject="Canary",
+            body="Safe test body",
+        )
+
+        message, sender, recipients = smtp.messages[0]
+        assert delivery.message_id == message["Message-ID"]
+        assert delivery.message_id.endswith("@pynchy.local>")
+        assert message["From"] == "hi@example.com"
+        assert message["To"] == "recipient@example.com"
+        assert message["Subject"] == "Canary"
+        assert message.get_content() == "Safe test body\n"
+        assert sender == "hi@example.com"
+        assert recipients == ["recipient@example.com"]
+        assert smtp.calls == ["SEND", "QUIT"]
+
+    def test_permanently_deletes_a_message_and_checks_its_absence(self):
+        connection = FakeImapConnection(search_results=[b"20", b""])
+        client = _client(connection)
+
+        client.delete_mail(mailbox="INBOX", message_id="<canary@example.test>")
+
+        assert ("SELECT", ('"INBOX"', False)) in connection.calls
+        assert ("STORE", ("20", "+FLAGS.SILENT", "(\\Deleted)")) in connection.calls
+        assert ("EXPUNGE", ()) in connection.calls
+        assert client.message_exists(mailbox="INBOX", message_id="<canary@example.test>") is False
 
 
 class TestCommandPasswordProvider:

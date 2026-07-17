@@ -9,14 +9,17 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pynchy.canaries import CanaryRunContext, registered_canary_scenarios
+from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
+from pynchy.host.container_manager.mcp.canary_client import McpCanaryToolError
 from pynchy.operational_canaries import (
     CalendarRoundTripCanary,
     LinearWorkspaceRoundTripCanary,
-    ProtonMailReadCanary,
+    ProtonMailRoundTripCanary,
 )
 from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailbox,
     ProtonMailboxList,
+    ProtonMailDelivery,
     ProtonMailList,
     ProtonMessage,
     ProtonMessageEnvelope,
@@ -158,11 +161,113 @@ async def test_linear_canary_cleans_an_issue_when_todo_creation_fails(monkeypatc
     assert client.deleted == ["issue-1"]
 
 
+class _FakeGoogleMcpClient:
+    def __init__(self, tools: set[str]) -> None:
+        self.tools = tools
+        self.calls: list[tuple[str, dict[str, object]]] = []
+        self.events: set[str] = set()
+
+    async def list_tool_names(self) -> set[str]:
+        return self.tools
+
+    async def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        self.calls.append((name, arguments))
+        if name == "create-event":
+            self.events.add(str(arguments["eventId"]))
+        if name == "delete-event":
+            self.events.discard(str(arguments["eventId"]))
+        if name == "get-event" and str(arguments["eventId"]) not in self.events:
+            raise McpCanaryToolError("event not found")
+        return {"isError": False}
+
+
+@pytest.mark.action(
+    "calendar.google.calendar.list",
+    "calendar.google.event.list",
+    "calendar.google.event.create",
+    "calendar.google.event.read",
+    "calendar.google.event.delete",
+)
+@pytest.mark.asyncio
+async def test_google_calendar_canary_uses_real_mcp_tool_contract_and_removes_event(monkeypatch):
+    client = _FakeGoogleMcpClient(
+        {"list-calendars", "list-events", "create-event", "get-event", "delete-event"}
+    )
+
+    @asynccontextmanager
+    async def client_context(server_name: str):
+        assert server_name == "gcal.canary"
+        yield client
+
+    monkeypatch.setattr(
+        "pynchy.google_mcp_canaries.get_settings",
+        lambda: SimpleNamespace(
+            canary=SimpleNamespace(
+                google_calendar_server="gcal.canary",
+                google_calendar_id="pynchy-canary",
+            )
+        ),
+    )
+    scenario = GoogleCalendarRoundTripCanary(client_context=client_context)
+
+    exercise = await scenario.exercise(_context("calendar.google.round.trip"))
+    verified = await scenario.verify(_context("calendar.google.round.trip"), exercise)
+    cleaned = await scenario.cleanup(_context("calendar.google.round.trip"), exercise)
+
+    created = next(arguments for name, arguments in client.calls if name == "create-event")
+    assert created["calendarId"] == "pynchy-canary"
+    assert created["sendUpdates"] == "none"
+    assert str(created["eventId"]).isalnum()
+    assert set(str(created["eventId"])) <= set("0123456789abcdefghijklmnopqrstuv")
+    assert created["eventId"] not in client.events
+    assert all(ref.startswith("google-calendar:") for ref in (*verified, *cleaned))
+
+
+@pytest.mark.action("drive.google.file.search", "drive.google.file.read")
+@pytest.mark.asyncio
+async def test_google_drive_canary_searches_and_reads_a_configured_fixture(monkeypatch):
+    client = _FakeGoogleMcpClient({"gdrive_search", "gdrive_read_file"})
+
+    @asynccontextmanager
+    async def client_context(server_name: str):
+        assert server_name == "gdrive.canary"
+        yield client
+
+    monkeypatch.setattr(
+        "pynchy.google_mcp_canaries.get_settings",
+        lambda: SimpleNamespace(
+            canary=SimpleNamespace(
+                google_drive_server="gdrive.canary",
+                google_drive_probe_query="pynchy-canary-fixture",
+                google_drive_file_id="fixture-file-id",
+            )
+        ),
+    )
+    scenario = GoogleDriveRoundTripCanary(client_context=client_context)
+
+    exercise = await scenario.exercise(_context("drive.google.round.trip"))
+    verified = await scenario.verify(_context("drive.google.round.trip"), exercise)
+    cleaned = await scenario.cleanup(_context("drive.google.round.trip"), exercise)
+
+    assert client.calls == [
+        ("gdrive_search", {"query": "pynchy-canary-fixture", "pageSize": 1}),
+        ("gdrive_read_file", {"fileId": "fixture-file-id"}),
+        ("gdrive_read_file", {"fileId": "fixture-file-id"}),
+    ]
+    assert verified[0].startswith("google-drive:file:verified:")
+    assert cleaned == ()
+
+
 class _FakeProtonClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, object]] = []
+
     def list_mailboxes(self) -> ProtonMailboxList:
+        self.calls.append(("list_mailboxes", None))
         return ProtonMailboxList(mailboxes=[ProtonMailbox(name="Inbox", mailbox="INBOX")])
 
     def list_mail(self, **_kwargs: object) -> ProtonMailList:
+        self.calls.append(("list_mail", _kwargs))
         return ProtonMailList(
             messages=[
                 ProtonMessageEnvelope(
@@ -176,28 +281,66 @@ class _FakeProtonClient:
         )
 
     def read_mail(self, **_kwargs: object) -> ProtonMessage:
+        self.calls.append(("read_mail", _kwargs))
         return ProtonMessage(message_id="<canary@example.test>", body="Safe test body")
+
+    def send_mail(self, **kwargs: object) -> ProtonMailDelivery:
+        self.calls.append(("send_mail", kwargs))
+        return ProtonMailDelivery(message_id="<canary@example.test>")
+
+    def delete_mail(self, **kwargs: object) -> None:
+        self.calls.append(("delete_mail", kwargs))
+
+    def message_exists(self, **kwargs: object) -> bool:
+        self.calls.append(("message_exists", kwargs))
+        return False
 
 
 @pytest.mark.asyncio
-async def test_proton_canary_does_not_persist_message_content(monkeypatch):
+async def test_proton_canary_sends_receives_reads_and_cleans_without_persisting_content(
+    monkeypatch,
+):
+    client = _FakeProtonClient()
     monkeypatch.setattr(
         "pynchy.operational_canaries.get_settings",
-        lambda: SimpleNamespace(canary=SimpleNamespace(proton_mailbox="INBOX")),
+        lambda: SimpleNamespace(
+            canary=SimpleNamespace(
+                proton_mailbox="INBOX",
+                proton_recipient="canary@example.test",
+            )
+        ),
     )
-    scenario = ProtonMailReadCanary(client_factory=_FakeProtonClient)
+    scenario = ProtonMailRoundTripCanary(client_factory=lambda: client)
 
-    exercise = await scenario.exercise(_context("proton.mail.read"))
-    verified = await scenario.verify(_context("proton.mail.read"), exercise)
-    cleaned = await scenario.cleanup(_context("proton.mail.read"), exercise)
+    exercise = await scenario.exercise(_context("proton.mail.round.trip"))
+    verified = await scenario.verify(_context("proton.mail.round.trip"), exercise)
+    cleaned = await scenario.cleanup(_context("proton.mail.round.trip"), exercise)
 
     assert all("canary@example.test" not in ref for ref in (*exercise.evidence_refs, *verified))
-    assert cleaned == ("proton:read-only",)
+    assert client.calls[1] == (
+        "send_mail",
+        {
+            "recipients": ["canary@example.test"],
+            "subject": "Pynchy canary test-run",
+            "body": "Automated Pynchy canary; removed after verification.",
+        },
+    )
+    assert all(ref.startswith("proton:") for ref in cleaned)
+    assert (
+        "delete_mail",
+        {"mailbox": "INBOX", "message_id": "<canary@example.test>"},
+    ) in client.calls
+    assert (
+        "message_exists",
+        {"mailbox": "INBOX", "message_id": "<canary@example.test>"},
+    ) in client.calls
 
 
 def test_built_in_operational_canaries_register_only_safe_supported_services():
     assert set(registered_canary_scenarios()) == {
         "calendar.round.trip",
+        "calendar.google.round.trip",
+        "drive.google.round.trip",
         "linear.workspace.round.trip",
-        "proton.mail.read",
+        "proton.mail.round.trip",
     }

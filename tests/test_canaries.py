@@ -195,6 +195,67 @@ def test_enabled_canary_requires_explicit_scenario_selection():
         )
 
 
+def test_enabled_proton_round_trip_requires_a_delivery_recipient():
+    with pytest.raises(ValueError, match="proton_recipient is required"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {"tools": ["proton-mail"]}},
+                "tools": {
+                    "proton-mail": {
+                        "type": "mcp",
+                        "public_source": True,
+                        "secret_data": True,
+                        "public_sink": True,
+                        "dangerous_writes": True,
+                        "mcp": {
+                            "runtime": "script",
+                            "command": "uv",
+                            "args": ["run", "proton-mail"],
+                            "port": 8475,
+                            "transport": "streamable_http",
+                        },
+                    }
+                },
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["proton.mail.round.trip"],
+                },
+            }
+        )
+
+
+def test_enabled_google_drive_round_trip_requires_a_readable_fixture():
+    with pytest.raises(ValueError, match="google_drive_file_id is required"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {"tools": ["gdrive"]}},
+                "tools": {
+                    "gdrive": {
+                        "type": "mcp",
+                        "public_source": False,
+                        "secret_data": True,
+                        "public_sink": False,
+                        "dangerous_writes": False,
+                        "mcp": {
+                            "runtime": "docker",
+                            "image": "pynchy-mcp-gdrive:latest",
+                            "port": 3100,
+                            "transport": "streamable_http",
+                        },
+                    }
+                },
+                "canary": {
+                    "enabled": True,
+                    "target_profile": "external-canary",
+                    "scenario_ids": ["drive.google.round.trip"],
+                    "google_drive_server": "gdrive",
+                    "google_drive_probe_query": "pynchy-canary-fixture",
+                },
+            }
+        )
+
+
 def test_canary_registration_rejects_a_scenario_without_action_coverage():
     with pytest.raises(ValueError, match="not declared"):
         register_canary_scenario("mail.send.self", PassingScenario())

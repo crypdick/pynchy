@@ -1,4 +1,4 @@
-"""Read-only Proton Mail MCP server backed by direct local Bridge IMAP."""
+"""Proton Mail MCP server backed by local Bridge IMAP and SMTP."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 from collections.abc import Callable
+from email.utils import parseaddr
 from typing import Annotated, Literal, cast
 
 import pluggy
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError,
 from pynchy.logger import logger
 from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailClient,
+    ProtonMailDelivery,
     ProtonMailError,
     create_proton_mail_client,
 )
@@ -73,6 +75,41 @@ class _ReadMailArguments(_StrictModel):
         return normalized
 
 
+class _SendMailArguments(_StrictModel):
+    """Arguments for one plain-text SMTP submission through Proton Bridge."""
+
+    to: list[str] = Field(min_length=1, max_length=100)
+    subject: str = Field(max_length=998)
+    body: str
+
+    @field_validator("to")
+    @classmethod
+    def _validate_recipients(cls, value: list[str]) -> list[str]:
+        return [_mail_address(recipient) for recipient in value]
+
+    @field_validator("subject")
+    @classmethod
+    def _validate_subject(cls, value: str) -> str:
+        if "\r" in value or "\n" in value:
+            raise ValueError("subject must be a single line")
+        return value
+
+
+class _DeleteMailArguments(_StrictModel):
+    """Arguments for permanently removing one message by Message-ID."""
+
+    mailbox: str = "INBOX"
+    message_id: str = Field(min_length=1)
+
+    @field_validator("mailbox", "message_id")
+    @classmethod
+    def _validate_single_line(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or "\r" in normalized or "\n" in normalized:
+            raise ValueError("value must be a single non-empty line")
+        return normalized
+
+
 class _ListMailboxesCall(_StrictModel):
     name: Literal["proton_list_mailboxes"]
     arguments: _ListMailboxesArguments = Field(default_factory=_ListMailboxesArguments)
@@ -88,8 +125,18 @@ class _ReadMailCall(_StrictModel):
     arguments: _ReadMailArguments
 
 
+class _SendMailCall(_StrictModel):
+    name: Literal["proton_send_mail"]
+    arguments: _SendMailArguments
+
+
+class _DeleteMailCall(_StrictModel):
+    name: Literal["proton_delete_mail"]
+    arguments: _DeleteMailArguments
+
+
 type ProtonToolCall = Annotated[
-    _ListMailboxesCall | _ListMailCall | _ReadMailCall,
+    _ListMailboxesCall | _ListMailCall | _ReadMailCall | _SendMailCall | _DeleteMailCall,
     Field(discriminator="name"),
 ]
 _TOOL_CALL_ADAPTER: TypeAdapter[ProtonToolCall] = TypeAdapter(ProtonToolCall)
@@ -105,10 +152,12 @@ class _McpRequest(_StrictModel):
 
 
 class ProtonMailMcpPlugin:
-    """Register a host-side, read-only MCP server for Proton Mail."""
+    """Register a host-side MCP server for Proton Mail through local Bridge."""
 
     @hookimpl
     def pynchy_mcp_server_spec(self) -> dict[str, object]:
+        # Mail delivery and deletion must remain usable operationally; declare their
+        # external, irreversible effects so Pynchy's normal approval gate protects them.
         return {
             "name": "proton-mail",
             "type": "script",
@@ -125,10 +174,10 @@ class ProtonMailMcpPlugin:
             "transport": "streamable_http",
             "idle_timeout": 600,
             "trust": {
-                "public_source": False,
+                "public_source": True,
                 "secret_data": True,
-                "public_sink": False,
-                "dangerous_writes": False,
+                "public_sink": True,
+                "dangerous_writes": True,
             },
         }
 
@@ -183,7 +232,7 @@ def _initialize_result() -> dict[str, object]:
     return {
         "protocolVersion": "2025-06-18",
         "capabilities": {"tools": {}},
-        "serverInfo": {"name": "pynchy-proton-mail", "version": "0.2.0"},
+        "serverInfo": {"name": "pynchy-proton-mail", "version": "0.3.0"},
     }
 
 
@@ -257,6 +306,59 @@ def _tool_specs() -> list[dict[str, object]]:
                 "additionalProperties": False,
             },
         },
+        {
+            "name": "proton_send_mail",
+            "description": (
+                "Send a plain-text Proton Mail message through the host Proton Bridge. "
+                "This external, irreversible action requires Pynchy approval."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "array",
+                        "items": {"type": "string", "format": "email"},
+                        "description": "Recipient email addresses.",
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Single-line message subject.",
+                        "maxLength": 998,
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Plain-text message body.",
+                    },
+                },
+                "required": ["to", "subject", "body"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "proton_delete_mail",
+            "description": (
+                "Permanently delete one Proton Mail message by Message-ID from a mailbox. "
+                "This irreversible action requires Pynchy approval."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "Message-ID returned by proton_list_mail.",
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "description": "Mailbox identifier returned by proton_list_mailboxes.",
+                        "default": "INBOX",
+                    },
+                },
+                "required": ["message_id"],
+                "additionalProperties": False,
+            },
+        },
     ]
 
 
@@ -279,7 +381,7 @@ async def _call_tool(
             offset=list_arguments.offset,
             unread=list_arguments.unread,
         )
-    else:
+    elif isinstance(tool_call, _ReadMailCall):
         read_arguments = tool_call.arguments
         result = await asyncio.to_thread(
             client.read_mail,
@@ -287,6 +389,22 @@ async def _call_tool(
             message_id=read_arguments.message_id,
             include_headers=read_arguments.headers,
         )
+    elif isinstance(tool_call, _SendMailCall):
+        send_arguments = tool_call.arguments
+        result = await asyncio.to_thread(
+            client.send_mail,
+            recipients=send_arguments.to,
+            subject=send_arguments.subject,
+            body=send_arguments.body,
+        )
+    else:
+        delete_arguments = tool_call.arguments
+        await asyncio.to_thread(
+            client.delete_mail,
+            mailbox=delete_arguments.mailbox,
+            message_id=delete_arguments.message_id,
+        )
+        result = ProtonMailDelivery(message_id=delete_arguments.message_id)
     return _json_result(cast("BaseModel", result).model_dump(mode="json"))
 
 
@@ -295,6 +413,20 @@ def _parse_tool_call(params: object) -> ProtonToolCall:
         return _TOOL_CALL_ADAPTER.validate_python(params)
     except ValidationError as exc:
         raise ProtonMailError(f"Invalid Proton Mail tool arguments: {exc}") from exc
+
+
+def _mail_address(value: str) -> str:
+    """Accept one bare SMTP mailbox and reject header injection or display names."""
+    normalized = value.strip()
+    if not normalized or "\r" in normalized or "\n" in normalized:
+        raise ValueError("recipient must be a single non-empty line")
+    _display_name, address = parseaddr(normalized)
+    if address != normalized or address.count("@") != 1:
+        raise ValueError("recipient must be a bare email address")
+    local_part, domain = address.rsplit("@", maxsplit=1)
+    if not local_part or not domain or any(character.isspace() for character in address):
+        raise ValueError("recipient must be a valid email address")
+    return address
 
 
 def _json_result(value: object) -> dict[str, object]:

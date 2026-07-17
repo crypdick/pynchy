@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase
 
+from pynchy.canaries import declared_canary_actions
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
@@ -1005,7 +1006,7 @@ class TestStatusEndpoint(AioHTTPTestCase):
         invalid_response = await self.client.get("/canaries/runs?limit=zero")
 
         assert report_response.status == 200
-        assert report["summary"]["declared_scenarios"] == 12
+        assert report["summary"]["declared_scenarios"] == len(declared_canary_actions())
         assert history_response.status == 200
         assert history == {"runs": []}
         assert invalid_response.status == 400

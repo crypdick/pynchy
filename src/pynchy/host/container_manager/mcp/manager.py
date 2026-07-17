@@ -206,6 +206,32 @@ class McpManager:
         async with lock:
             await self._ensure_running_unlocked(instance_id)
 
+    async def get_canary_server_endpoint(self, server_name: str) -> str:
+        """Start one configured server and return its host-reachable MCP endpoint.
+
+        Canary targets name a concrete MCP server rather than a workspace so
+        scheduled checks cannot accidentally use an arbitrary user's session.
+        A server with multiple resolved instances is ambiguous by design: the
+        operator must name a dedicated, unshared target instance instead.
+        """
+        matches = [
+            instance for instance in self._instances.values() if instance.server_name == server_name
+        ]
+        if not matches:
+            raise RuntimeError(f"No configured MCP server named: {server_name}")
+        if len(matches) != 1:
+            raise RuntimeError(f"Canary MCP server must resolve to one instance: {server_name}")
+        instance = matches[0]
+        await self.ensure_running(instance.instance_id)
+        if instance.server_config.type == "url":
+            return instance.endpoint_url
+        if instance.port is None:
+            raise RuntimeError(f"Canary MCP server has no host port: {server_name}")
+        base = f"http://localhost:{instance.port}"
+        if instance.server_config.transport in ("http", "streamable_http"):
+            return f"{base}/mcp"
+        return base
+
     async def _ensure_workspace_instance(
         self, instance_id: str, group_folder: str
     ) -> tuple[str, bool, McpStartupFailure | None]:
