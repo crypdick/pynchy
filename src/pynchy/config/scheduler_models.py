@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from croniter import croniter
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 CRON_COMMAND_MESSAGE = "Cron job command cannot be empty"
 TIMEOUT_POSITIVE_MESSAGE = "timeout_seconds must be positive"
@@ -62,6 +62,11 @@ class CanaryConfig(_StrictModel):
     enabled: bool = False
     schedule: str = "0 5 * * *"
     target_profile: str = ""
+    scenario_ids: list[str] = Field(default_factory=list)
+    calendar_name: str = ""
+    linear_team_key: str = ""
+    linear_workspace: str = ""
+    proton_mailbox: str = "INBOX"
 
     @field_validator("schedule")
     @classmethod

@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
     Callable,
 )
+from typing import Protocol
 
+from pynchy.actions import ACTION_SPECS
 from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     JobConfig,
 )
@@ -17,6 +19,17 @@ from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves an
 from pynchy.config.profiles import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     ProfileConfig,
 )
+from pynchy.config.scheduler_models import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
+    CanaryConfig,
+)
+
+
+class _CanaryValidationSettings(Protocol):
+    """Settings fields needed to validate selected external-service canaries."""
+
+    canary: CanaryConfig
+    profiles: dict[str, ProfileConfig]
+    workspaces: dict[str, WorkspaceConfig]
 
 
 def validate_profile_references(
@@ -53,12 +66,54 @@ def validate_profile_references(
 
 
 def validate_canary_target_profile(
-    *, enabled: bool, target_profile: str, profiles: dict[str, ProfileConfig]
+    settings: _CanaryValidationSettings,
+    expand_profile_names: Callable[[str], list[str]],
 ) -> None:
-    """Ensure an enabled canary schedule uses a configured test profile."""
-    if enabled and target_profile not in profiles:
-        message = f"canary.target_profile references unknown profile: {target_profile}"
+    """Ensure an enabled canary schedule has safe, configured service targets."""
+    canary = settings.canary
+    if not canary.enabled:
+        return
+    if canary.target_profile not in settings.profiles:
+        message = f"canary.target_profile references unknown profile: {canary.target_profile}"
         raise ValueError(message)
+    if not canary.scenario_ids:
+        raise ValueError("canary.scenario_ids is required when canaries are enabled")
+
+    declared = {spec.canary_scenario for spec in ACTION_SPECS if spec.canary_scenario is not None}
+    unknown = sorted(set(canary.scenario_ids) - declared)
+    if unknown:
+        raise ValueError(f"canary.scenario_ids includes unknown scenarios: {unknown}")
+
+    resolved_tools = {
+        tool_name
+        for profile_name in expand_profile_names(canary.target_profile)
+        for tool_name in settings.profiles[profile_name].tools
+    }
+    required_tools = {
+        "calendar.round.trip": "caldav",
+        "linear.workspace.round.trip": "linear",
+        "proton.mail.read": "proton-mail",
+    }
+    missing_tools = sorted(
+        required_tool
+        for scenario_id, required_tool in required_tools.items()
+        if scenario_id in canary.scenario_ids and required_tool not in resolved_tools
+    )
+    if missing_tools:
+        raise ValueError(
+            "canary.target_profile does not enable required tools: " + ", ".join(missing_tools)
+        )
+    if "calendar.round.trip" in canary.scenario_ids and not canary.calendar_name.strip():
+        raise ValueError("canary.calendar_name is required for calendar.round.trip")
+    if "linear.workspace.round.trip" in canary.scenario_ids:
+        if not canary.linear_team_key.strip():
+            raise ValueError("canary.linear_team_key is required for linear.workspace.round.trip")
+        if not canary.linear_workspace.strip():
+            raise ValueError("canary.linear_workspace is required for linear.workspace.round.trip")
+        if canary.linear_workspace not in settings.workspaces:
+            raise ValueError(
+                f"canary.linear_workspace references unknown workspace: {canary.linear_workspace}"
+            )
 
 
 def reject_claude_sdk_model_overrides(

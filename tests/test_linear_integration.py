@@ -145,6 +145,20 @@ class TestLinearClient:
         assert kwargs["title"] == "Track tasks"
         assert kwargs["description"] == "Create task tracker"
 
+    async def test_get_issue_returns_none_after_canary_cleanup(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(return_value={"issue": None})
+
+        assert await client.get_issue("issue-1") is None
+
+    async def test_delete_issue_requires_provider_success(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(return_value={"issueDelete": {"success": True}})
+
+        await client.delete_issue("issue-1")
+
+        assert client.query.await_args.kwargs == {"issue_id": "issue-1"}
+
 
 class TestLinearMcpServer:
     async def test_mcp_initialize_returns_server_info(self, monkeypatch):

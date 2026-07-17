@@ -245,11 +245,7 @@ class Settings(BaseSettings):
             tools=self.tools,
             expand_profile_names=self._expanded_profile_names,
         )
-        settings_validation.validate_canary_target_profile(
-            enabled=self.canary.enabled,
-            target_profile=self.canary.target_profile,
-            profiles=self.profiles,
-        )
+        settings_validation.validate_canary_target_profile(self, self._expanded_profile_names)
         return self
 
     @model_validator(mode="after")
