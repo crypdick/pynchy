@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import (
+    Collection,  # noqa: TC003, RUF100 - beartype resolves canary runner annotations at runtime.
     Mapping,  # noqa: TC003, RUF100 - beartype resolves canary runner annotations at runtime.
 )
 from dataclasses import dataclass
@@ -98,16 +99,17 @@ class _CanaryRunRequest:
     config_revision: str
 
 
-async def run_declared_canaries(
+async def run_declared_canaries(  # noqa: PLR0913, RUF100 - optional revisions and executors support isolated runs.
     *,
     target_profile: str,
+    scenario_ids: Collection[str] | None = None,
     scheduler_deps: object | None = None,
     executors: Mapping[str, CanaryScenario] | None = None,
     code_revision: str | None = None,
     config_revision: str | None = None,
 ) -> list[CanaryRun]:
-    """Run every declared scenario and persist its independently classified result."""
-    scenario_actions = declared_canary_actions()
+    """Run selected declared scenarios and persist independently classified results."""
+    scenario_actions = _selected_canary_actions(scenario_ids)
     active_executors = _SCENARIO_EXECUTORS if executors is None else executors
     revisions = (
         code_revision or _code_revision(),
@@ -128,6 +130,18 @@ async def run_declared_canaries(
         )
         results.append(await record_canary_run(result))
     return results
+
+
+def _selected_canary_actions(
+    scenario_ids: Collection[str] | None,
+) -> dict[str, tuple[str, ...]]:
+    declared = declared_canary_actions()
+    if scenario_ids is None:
+        return declared
+    unknown = sorted(set(scenario_ids) - set(declared))
+    if unknown:
+        raise ValueError(f"Unknown canary scenarios: {unknown}")
+    return {scenario_id: declared[scenario_id] for scenario_id in scenario_ids}
 
 
 async def get_canary_report(*, history_limit: int = 50) -> dict[str, object]:
@@ -293,3 +307,15 @@ def _canary_run_dict(run: CanaryRun) -> dict[str, object]:
         "starts_regression": run.starts_regression,
         "is_recovery": run.is_recovery,
     }
+
+
+def _register_builtin_canary_scenarios() -> None:
+    """Install built-in service checks after the runner contract is available."""
+    from pynchy.operational_canaries import (  # noqa: PLC0415, RUF100 - avoids importing a module that depends on this contract too early.
+        register_operational_canary_scenarios,
+    )
+
+    register_operational_canary_scenarios(register_canary_scenario)
+
+
+_register_builtin_canary_scenarios()

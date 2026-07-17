@@ -252,6 +252,7 @@ async def run_scheduled_canaries() -> str:
         async with activity_heartbeats("canaries"):
             results = await run_declared_canaries(
                 target_profile=canary_config.target_profile,
+                scenario_ids=canary_config.scenario_ids,
                 scheduler_deps=scheduler_deps,
             )
         await _notify_canary_transitions(results, cast("SchedulerDependencies", scheduler_deps))

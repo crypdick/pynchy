@@ -1247,7 +1247,11 @@ class TestTemporalSchedulerRuntime:
         }
         deps.broadcast_host_message = AsyncMock()
         settings = make_settings(
-            canary=CanaryConfig(enabled=True, target_profile="external-canary")
+            canary=CanaryConfig(
+                enabled=True,
+                target_profile="external-canary",
+                scenario_ids=["calendar.round.trip"],
+            )
         )
         runner = AsyncMock(
             return_value=[
@@ -1277,6 +1281,7 @@ class TestTemporalSchedulerRuntime:
         assert result == "completed:1"
         runner.assert_awaited_once_with(
             target_profile="external-canary",
+            scenario_ids=["calendar.round.trip"],
             scheduler_deps=deps,
         )
         deps.broadcast_host_message.assert_awaited_once_with(

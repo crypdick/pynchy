@@ -28,26 +28,17 @@ from pynchy.plugins.integrations.linear_boards import (
     list_workspace_todos,
     move_workspace_todo,
 )
+from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_tools import tool_specs
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
-LINEAR_API_URL = "https://api.linear.app/graphql"
 DEFAULT_PORT = 8474
 LOCAL_MCP_BIND_HOST = "localhost"
 WORKSPACE_APP_KEY = web.AppKey("workspace", object)
-_LINEAR_DATA_OBJECT_MISSING = "Linear response did not include a data object"
-_LINEAR_ISSUE_NOT_CREATED = "Linear did not create the issue"
-_LINEAR_ISSUE_CREATE_ISSUE_MISSING = "Linear issueCreate response did not include an issue"
-_LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
-_LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
 _LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
 _LINEAR_WORKSPACE_REQUIRED = "Workspace-scoped Linear todo tools require an MCP workspace instance"
 _LINEAR_REQUIRED_ARGUMENT = "{key} is required"
-
-
-class LinearError(RuntimeError):
-    """Raised when Linear returns GraphQL errors or an unexpected payload."""
 
 
 @dataclass(frozen=True)
@@ -57,151 +48,6 @@ class WorkspaceContext:
     folder: str
     name: str
     jid: str = ""
-
-
-class LinearClient:
-    """Tiny async Linear GraphQL client for task-tracking MCP tools."""
-
-    def __init__(
-        self,
-        *,
-        api_key: str,
-        session: object,
-        endpoint: str = LINEAR_API_URL,
-    ) -> None:
-        self._api_key = api_key
-        self._session = session
-        self._endpoint = endpoint
-
-    async def query(self, query: str, **variables: object) -> dict[str, Any]:
-        payload = {"query": query, "variables": variables}
-        headers = {
-            "Authorization": self._api_key,
-            "Content-Type": "application/json",
-        }
-        session = cast("Any", self._session)
-        async with session.post(self._endpoint, json=payload, headers=headers) as response:
-            response.raise_for_status()
-            body = await response.json()
-
-        if errors := body.get("errors"):
-            messages = "; ".join(str(error.get("message", error)) for error in errors)
-            raise LinearError(messages)
-        data = body.get("data")
-        if not isinstance(data, dict):
-            raise LinearError(_LINEAR_DATA_OBJECT_MISSING)
-        return data
-
-    async def list_teams(self) -> list[dict[str, Any]]:
-        data = await self.query(
-            """
-            query ListTeams {
-              teams {
-                nodes { id key name }
-              }
-            }
-            """
-        )
-        return _nodes(data, "teams")
-
-    async def list_issues(
-        self,
-        *,
-        team_id: str | None = None,
-        first: int = 50,
-    ) -> list[dict[str, Any]]:
-        if team_id:
-            data = await self.query(
-                """
-                query ListTeamIssues($first: Int!, $teamId: String!) {
-                  issues(first: $first, filter: { team: { id: { eq: $teamId } } }) {
-                    nodes {
-                      id identifier title url priority createdAt updatedAt
-                      state { id name type }
-                      team { id key name }
-                      project { id name }
-                    }
-                  }
-                }
-                """,
-                first=first,
-                teamId=team_id,
-            )
-        else:
-            data = await self.query(
-                """
-                query ListIssues($first: Int!) {
-                  issues(first: $first) {
-                    nodes {
-                      id identifier title url priority createdAt updatedAt
-                      state { id name type }
-                      team { id key name }
-                      project { id name }
-                    }
-                  }
-                }
-                """,
-                first=first,
-            )
-        return _nodes(data, "issues")
-
-    async def create_issue(  # noqa: PLR0913, RUF100 - Linear issue creation follows the API field set.
-        self,
-        *,
-        team_id: str,
-        title: str,
-        description: str | None = None,
-        project_id: str | None = None,
-        state_id: str | None = None,
-        label_ids: list[str] | None = None,
-    ) -> dict[str, Any]:
-        data = await self.query(
-            """
-            mutation CreateIssue(
-              $team_id: String!,
-              $title: String!,
-              $description: String,
-              $project_id: String,
-              $state_id: String,
-              $label_ids: [String!]
-            ) {
-              issueCreate(input: {
-                teamId: $team_id,
-                title: $title,
-                description: $description,
-                projectId: $project_id,
-                stateId: $state_id,
-                labelIds: $label_ids
-              }) {
-                success
-                issue { id identifier title url }
-              }
-            }
-            """,
-            team_id=team_id,
-            title=title,
-            description=description,
-            project_id=project_id,
-            state_id=state_id,
-            label_ids=label_ids,
-        )
-        result = data.get("issueCreate")
-        if not isinstance(result, dict) or not result.get("success"):
-            raise LinearError(_LINEAR_ISSUE_NOT_CREATED)
-        issue = result.get("issue")
-        if not isinstance(issue, dict):
-            raise LinearError(_LINEAR_ISSUE_CREATE_ISSUE_MISSING)
-        return issue
-
-
-def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    connection = data.get(key)
-    if not isinstance(connection, dict):
-        raise LinearError(_LINEAR_CONNECTION_MISSING.format(key=key))
-    nodes = connection.get("nodes")
-    if not isinstance(nodes, list):
-        raise LinearError(_LINEAR_NODES_MISSING.format(key=key))
-    return [node for node in nodes if isinstance(node, dict)]
 
 
 class LinearMcpPlugin:

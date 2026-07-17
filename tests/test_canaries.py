@@ -98,6 +98,19 @@ async def test_runner_records_evidence_and_marks_unimplemented_scenarios_not_est
 
 
 @pytest.mark.asyncio
+async def test_runner_executes_only_the_configured_scenarios():
+    await init_test_database()
+
+    results = await run_declared_canaries(
+        target_profile="canary-profile",
+        scenario_ids=[_SCENARIO_ID],
+        executors={_SCENARIO_ID: PassingScenario()},
+    )
+
+    assert [result.scenario_id for result in results] == [_SCENARIO_ID]
+
+
+@pytest.mark.asyncio
 async def test_failure_after_success_becomes_regression_then_records_recovery():
     await init_test_database()
 
@@ -169,6 +182,16 @@ def test_enabled_canary_target_must_reference_a_configured_profile():
     with pytest.raises(ValueError, match="references unknown profile"):
         validate_settings_mapping(
             {"canary": {"enabled": True, "target_profile": "external-canary"}}
+        )
+
+
+def test_enabled_canary_requires_explicit_scenario_selection():
+    with pytest.raises(ValueError, match="scenario_ids is required"):
+        validate_settings_mapping(
+            {
+                "profiles": {"external-canary": {}},
+                "canary": {"enabled": True, "target_profile": "external-canary"},
+            }
         )
 
 

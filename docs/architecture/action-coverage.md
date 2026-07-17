@@ -36,14 +36,32 @@ production workspace.
 enabled = true
 target_profile = "external-canary"
 schedule = "0 5 * * *"
+scenario_ids = [
+  "calendar.round.trip",
+  "linear.workspace.round.trip",
+  "proton.mail.read",
+]
+calendar_name = "pynchy-canary"
+linear_team_key = "PYNCHY"
+linear_workspace = "canary-workspace"
+proton_mailbox = "INBOX"
 ```
 
-`target_profile` must name a configured Pynchy profile for the dedicated test
-target and labels that target in stored evidence. Each executable scenario
-registers an exercise, an independent verifier, and an idempotent cleanup
-step. The runner retries cleanup separately. A declared scenario without an
-executable implementation records `not_established`; it never reports a false
-pass.
+`target_profile` must name a configured Pynchy profile that enables every
+selected tool and labels that target in stored evidence. `scenario_ids` makes
+the operational scope explicit; unselected scenarios do not run. Calendar
+checks require a dedicated `calendar_name`. Linear checks require a dedicated
+test team and workspace, then permanently delete their test issues. Proton
+Mail checks use the named mailbox but only list and read messages. Each
+executable scenario registers an exercise, an independent verifier, and an
+idempotent cleanup step. The runner retries cleanup separately. A declared
+scenario without an executable implementation records `not_established`; it
+never reports a false pass.
+
+The built-in operational checks cover CalDAV calendar lifecycle, Linear issue
+and workspace-todo lifecycle, and read-only Proton Mail access. Credential
+setup, token refresh, social posting, desktop control, and channel interaction
+remain separate scenarios because they need their own dedicated test targets.
 
 Pynchy stores every run with its scenario and action IDs, target profile, code
 and configuration revisions, timestamps, outcome, redacted error class, and
