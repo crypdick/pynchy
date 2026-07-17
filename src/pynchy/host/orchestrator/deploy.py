@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 from pynchy import state as pynchy_state
 from pynchy.config import get_settings
+from pynchy.host.git_ops.utils import get_head_sha, run_git
 from pynchy.logger import logger
 from pynchy.utils import write_json_atomic
 
@@ -26,6 +27,43 @@ class BuildResult:
     success: bool
     skipped: bool = False  # True when build.sh doesn't exist
     stderr: str = ""
+
+
+@dataclass(frozen=True)
+class RollbackResult:
+    """Outcome of returning the checkout to its last deployed commit."""
+
+    success: bool
+    actual_sha: str = ""
+    error: str = ""
+
+
+def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
+    """Reset a failed pre-restart deploy and verify the resulting checkout SHA.
+
+    The current service has not been restarted on this path, so restoring the
+    checkout keeps a failed build or handoff from becoming the next boot's code.
+    """
+    if not previous_sha:
+        return RollbackResult(success=False, error="no previous deploy SHA was recorded")
+
+    try:
+        result = run_git("reset", "--hard", previous_sha)
+    except (OSError, subprocess.SubprocessError) as exc:
+        error = f"git reset could not run: {exc}"
+        logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
+        return RollbackResult(success=False, error=error)
+    if result.returncode != 0:
+        error = result.stderr.strip() or "git reset failed"
+        logger.error("Pre-restart deploy rollback failed", previous_sha=previous_sha, error=error)
+        return RollbackResult(success=False, error=error)
+
+    actual_sha = get_head_sha()
+    if actual_sha == "unknown":
+        return RollbackResult(success=False, error="could not verify checkout SHA after git reset")
+
+    logger.info("Pre-restart deploy rollback complete", rollback_sha=actual_sha)
+    return RollbackResult(success=True, actual_sha=actual_sha)
 
 
 def build_container_image(*, timeout: int = 600) -> BuildResult:

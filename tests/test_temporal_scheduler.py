@@ -1033,6 +1033,18 @@ class TestTemporalSchedulerRuntime:
             "build_container_image",
             lambda: BuildResult(success=False, stderr="image build exploded"),
         )
+        rollback_calls: list[str] = []
+
+        def rollback_deploy_checkout(sha: str) -> SimpleNamespace:
+            rollback_calls.append(sha)
+            return SimpleNamespace(success=True, actual_sha="old-sha-full", error="")
+
+        monkeypatch.setattr(
+            temporal_deploy,
+            "rollback_deploy_checkout",
+            rollback_deploy_checkout,
+            raising=False,
+        )
         monkeypatch.setattr(temporal_deploy, "finalize_deploy", finalize_deploy)
         monkeypatch.setattr(
             temporal_scheduler.activity,
@@ -1046,17 +1058,66 @@ class TestTemporalSchedulerRuntime:
             temporal_deploy.deploy_request_to_payload(request)
         )
 
-        assert result == "build_failed"
+        assert result == "build_failed_rolled_back"
         finalize_deploy.assert_not_awaited()
+        assert rollback_calls == ["old-sha"]
         deps.broadcast_host_message.assert_awaited_once_with(
             "slack:C123",
-            "Deploy failed: Container rebuild failed: image build exploded",
+            "Auto-deploy new-sha failed: Container rebuild failed: image build exploded\n"
+            "Rolled back to old-sha-full.\n"
+            "Server health: healthy (current service was not restarted).",
         )
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["last_workflow_id"] == "deploy-workflow-failed"
         assert status["last_task_id"] == "new-sha"
-        assert status["last_result"] == "build_failed"
+        assert status["last_result"] == "build_failed_rolled_back"
         assert status["last_error"] == "Container rebuild failed: image build exploded"
+
+    @pytest.mark.asyncio
+    async def test_run_deploy_activity_reports_restart_preparation_failure(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        deps.broadcast_host_message = AsyncMock()
+        request = temporal_deploy.DeployRequest(
+            chat_jid="slack:C123",
+            commit_sha="new-sha",
+            previous_sha="old-sha",
+            rebuild=False,
+        )
+        finalize_deploy = AsyncMock(side_effect=RuntimeError("database unavailable"))
+        rollback_calls: list[str] = []
+
+        def rollback_deploy_checkout(sha: str) -> SimpleNamespace:
+            rollback_calls.append(sha)
+            return SimpleNamespace(success=True, actual_sha="old-sha-full", error="")
+
+        monkeypatch.setattr(temporal_deploy, "finalize_deploy", finalize_deploy)
+        monkeypatch.setattr(
+            temporal_deploy,
+            "rollback_deploy_checkout",
+            rollback_deploy_checkout,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: SimpleNamespace(workflow_id="deploy-workflow-restart-failed"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        result = await temporal_deploy.run_deploy(
+            temporal_deploy.deploy_request_to_payload(request)
+        )
+
+        assert result == "restart_failed_rolled_back"
+        assert rollback_calls == ["old-sha"]
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "slack:C123",
+            "Auto-deploy new-sha failed: Restart preparation failed: "
+            "RuntimeError: database unavailable\n"
+            "Rolled back to old-sha-full.\n"
+            "Server health: healthy (current service was not restarted).",
+        )
 
     @pytest.mark.asyncio
     async def test_run_channel_reconciliation_activity_uses_bound_deps(self, monkeypatch):

@@ -25,7 +25,11 @@ from pynchy.host.git_ops.sync_poll import (
 )
 from pynchy.host.git_ops.utils import git_env_with_token
 from pynchy.host.orchestrator.adapters import SessionManager, find_admin_jid
-from pynchy.host.orchestrator.temporal.deploy import DeployRequest
+from pynchy.host.orchestrator.temporal.deploy import (
+    DeployFailureDeps,
+    DeployRequest,
+    rollback_and_report_failure,
+)
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,
@@ -87,7 +91,19 @@ class _TemporalGitSyncDeps:
             rebuild=rebuild,
             reason=self._reason,
         )
-        await start_deploy_workflow(request)
+        try:
+            await start_deploy_workflow(request)
+        # allow: exception-handling - scheduler failure must restore a changed checkout.
+        except Exception as exc:
+            error = f"Could not start deploy workflow: {type(exc).__name__}: {exc}"
+            await rollback_and_report_failure(
+                request=request,
+                deps=cast("DeployFailureDeps", self._deps),
+                status_id=request.commit_sha or request.previous_sha or request.reason,
+                failure_result="workflow_start_failed",
+                error=error,
+            )
+            raise
 
 
 async def _load_host_state() -> _HostSyncState:
