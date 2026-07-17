@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from croniter import croniter
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 CRON_COMMAND_MESSAGE = "Cron job command cannot be empty"
 TIMEOUT_POSITIVE_MESSAGE = "timeout_seconds must be positive"
@@ -54,6 +54,28 @@ class SchedulerConfig(_StrictModel):
         if v <= 0:
             raise ValueError("scheduler intervals must be positive")
         return v
+
+
+class CanaryConfig(_StrictModel):
+    """Opt-in schedule and target identity for external-service canaries."""
+
+    enabled: bool = False
+    schedule: str = "0 5 * * *"
+    target_profile: str = ""
+
+    @field_validator("schedule")
+    @classmethod
+    def validate_schedule(cls, v: str) -> str:
+        if not croniter.is_valid(v):
+            msg = f"Invalid cron expression: {v}"
+            raise ValueError(msg)
+        return v
+
+    @model_validator(mode="after")
+    def require_target_profile_when_enabled(self) -> CanaryConfig:
+        if self.enabled and not self.target_profile.strip():
+            raise ValueError("target_profile is required when canaries are enabled")
+        return self
 
 
 class CronJobConfig(_StrictModel):

@@ -24,13 +24,20 @@ import pynchy.host.orchestrator.temporal.learning as temporal_learning
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
-from pynchy.config import CronJobConfig, ProfileConfig, RepoConfig, SchedulerConfig, WorkspaceConfig
+from pynchy.config import (
+    CanaryConfig,
+    CronJobConfig,
+    ProfileConfig,
+    RepoConfig,
+    SchedulerConfig,
+    WorkspaceConfig,
+)
 from pynchy.config.models import ReposConfig
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult
-from pynchy.types import HostJob, ScheduledTask
+from pynchy.types import CanaryOutcome, CanaryRun, HostJob, ScheduledTask
 from pynchy.utils import ShellResult
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
@@ -609,6 +616,37 @@ class TestTemporalSchedulerRuntime:
         assert schedule.action.args == ["backup_db"]
 
     @pytest.mark.asyncio
+    async def test_reconcile_creates_schedule_for_enabled_canaries(self, monkeypatch):
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(
+            timezone="UTC",
+            scheduler=SchedulerConfig(),
+            canary=CanaryConfig(
+                enabled=True,
+                target_profile="external-canary",
+                schedule="30 4 * * *",
+            ),
+            cron_jobs={},
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        schedules = {schedule_id: schedule for schedule_id, schedule, _ in client.created_schedules}
+        schedule = schedules["pynchy-canary-schedule"]
+        assert schedule.spec.cron_expressions == ["30 4 * * *"]
+        assert schedule.spec.time_zone_name == "UTC"
+        assert schedule.action.workflow == "CanaryRunWorkflow"
+        assert schedule.action.id == "pynchy-canary-schedule-workflow"
+
+    @pytest.mark.asyncio
     async def test_quiet_success_config_host_job_suppresses_success_output_log(self, monkeypatch):
 
         settings = make_settings(
@@ -1139,6 +1177,53 @@ class TestTemporalSchedulerRuntime:
 
         with pytest.raises(RuntimeError, match="Scheduled agent task requested retry"):
             await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
+    @pytest.mark.asyncio
+    async def test_run_scheduled_canaries_uses_configured_target(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        deps.workspaces = lambda: {
+            "admin": SimpleNamespace(jid="slack:admin", is_admin=True),
+        }
+        deps.broadcast_host_message = AsyncMock()
+        settings = make_settings(
+            canary=CanaryConfig(enabled=True, target_profile="external-canary")
+        )
+        runner = AsyncMock(
+            return_value=[
+                CanaryRun(
+                    run_id="run-1",
+                    scenario_id="calendar.round.trip",
+                    action_ids=("calendar.event.create",),
+                    target_profile="external-canary",
+                    code_revision="code",
+                    config_revision="config",
+                    started_at="2026-07-16T00:00:00+00:00",
+                    completed_at="2026-07-16T00:01:00+00:00",
+                    outcome=CanaryOutcome.PASSED,
+                    error_class="ProviderUnavailable",
+                    is_regression=True,
+                    starts_regression=True,
+                )
+            ]
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_scheduler, "run_declared_canaries", runner)
+        temporal_scheduler.bind_scheduler_deps(deps)
+        temporal_scheduler.reset_temporal_scheduler_status()
+
+        result = await temporal_scheduler.run_scheduled_canaries()
+
+        assert result == "completed:1"
+        runner.assert_awaited_once_with(
+            target_profile="external-canary",
+            scheduler_deps=deps,
+        )
+        deps.broadcast_host_message.assert_awaited_once_with(
+            "slack:admin",
+            "Canary regression: calendar.round.trip on external-canary "
+            "(ProviderUnavailable). See /canaries/report for the unresolved regression report.",
+        )
+        assert temporal_scheduler.get_temporal_scheduler_status()["last_result"] == "completed"
 
     @pytest.mark.live
     @pytest.mark.asyncio

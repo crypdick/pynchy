@@ -12,6 +12,7 @@ import pynchy.state.connection as db_conn
 from pynchy.actions import ACTION_SPECS, assess_hermetic_coverage
 from pynchy.config import (
     AgentConfig,
+    CanaryConfig,
     CommandCenterConfig,
     CommandWordsConfig,
     ConnectionsConfig,
@@ -102,6 +103,7 @@ def make_settings(**overrides):
         "workspaces": {},
         "commands": CommandWordsConfig(),
         "scheduler": SchedulerConfig(),
+        "canary": CanaryConfig(),
         "intervals": IntervalsConfig(),
         "queue": QueueConfig(),
         "security": SecurityConfig(),

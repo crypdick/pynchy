@@ -24,6 +24,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
+from pynchy.canaries import run_declared_canaries
 from pynchy.config import get_settings
 from pynchy.config.scheduler_models import (
     SchedulerConfig,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
@@ -86,6 +87,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     safe_workflow_fragment,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
+    CanaryRunWorkflow,
     ChannelReconciliationWorkflow,
     ConfigHostCronWorkflow,
     DatabaseHostJobWorkflow,
@@ -104,6 +106,7 @@ from pynchy.state import (
     get_task_by_id,
 )
 from pynchy.types import (
+    CanaryRun,  # noqa: TC001, RUF100 - beartype resolves canary notification annotations.
     ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
 
@@ -237,6 +240,56 @@ async def run_scheduled_agent_task(task_id: str) -> str:
     return "completed"
 
 
+@activity.defn(name="run_scheduled_canaries")
+async def run_scheduled_canaries() -> str:
+    """Run configured external-service canaries without retrying side effects."""
+    canary_config = get_settings().canary
+    if not canary_config.enabled:
+        _record_activity_result("canaries", "disabled")
+        return "disabled"
+    scheduler_deps = _require_scheduler_deps()
+    try:
+        async with activity_heartbeats("canaries"):
+            results = await run_declared_canaries(
+                target_profile=canary_config.target_profile,
+                scheduler_deps=scheduler_deps,
+            )
+        await _notify_canary_transitions(results, cast("SchedulerDependencies", scheduler_deps))
+    except Exception as exc:  # noqa: BLE001, RUF100 - persist operational failure without exposing provider details.
+        _record_activity_result("canaries", "error", type(exc).__name__)
+        raise
+    _record_activity_result("canaries", "completed")
+    return f"completed:{len(results)}"
+
+
+async def _notify_canary_transitions(results: list[CanaryRun], deps: SchedulerDependencies) -> None:
+    """Send concise regression and recovery notices to every admin workspace."""
+    notices = [
+        _canary_transition_notice(result)
+        for result in results
+        if result.starts_regression or result.is_recovery
+    ]
+    if not notices:
+        return
+    admin_jids = [workspace.jid for workspace in deps.workspaces().values() if workspace.is_admin]
+    for jid in admin_jids:
+        for notice in notices:
+            await deps.broadcast_host_message(jid, notice)
+
+
+def _canary_transition_notice(result: CanaryRun) -> str:
+    if result.starts_regression:
+        return (
+            f"Canary regression: {result.scenario_id} on {result.target_profile} "
+            f"({result.error_class or 'unknown failure'}). "
+            "See /canaries/report for the unresolved regression report."
+        )
+    return (
+        f"Canary recovered: {result.scenario_id} on {result.target_profile}. "
+        "See /canaries/report for current evidence."
+    )
+
+
 class TemporalSchedulerRuntime:
     """Owns the Temporal client, worker, and schedule reconciliation."""
 
@@ -262,6 +315,7 @@ class TemporalSchedulerRuntime:
                     HostGitSyncWorkflow,
                     ExternalGitSyncWorkflow,
                     ChannelReconciliationWorkflow,
+                    CanaryRunWorkflow,
                     InteractiveMessageWorkflow,
                     InterruptedTurnWorkflow,
                     ScheduledAgentTaskWorkflow,
@@ -274,6 +328,7 @@ class TemporalSchedulerRuntime:
                     run_host_git_sync,
                     run_external_git_sync,
                     run_channel_reconciliation,
+                    run_scheduled_canaries,
                     run_interactive_message_turn,
                     run_interrupted_agent_turn,
                     run_scheduled_agent_task,

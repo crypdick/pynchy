@@ -17,12 +17,46 @@ fake provider when an external service participates.
 Actions marked `hermetic_and_agentic` also need a real-service canary. A
 canary runs with a dedicated test identity and workspace, uses tagged test
 data, verifies the remote effect independently of the agent's prose, and
-cleans up the test artifact. The future canary runner records the result and
-reports a failure only after the same action previously passed on that target.
+cleans up the test artifact. The scheduled canary runner records the result
+and reports a failure only after the same scenario previously passed on that
+target profile.
 
 Declaring a canary scenario does not claim that the real-service check exists
 or passed. It records the missing evidence so the implementation cannot hide
 behind hermetic tests.
+
+## Agentic canary runner
+
+Enable scheduled real-service canaries only after configuring a dedicated test
+identity and workspace. Never point this target at a personal account or a
+production workspace.
+
+```toml
+[canary]
+enabled = true
+target_profile = "external-canary"
+schedule = "0 5 * * *"
+```
+
+`target_profile` must name a configured Pynchy profile for the dedicated test
+target and labels that target in stored evidence. Each executable scenario
+registers an exercise, an independent verifier, and an idempotent cleanup
+step. The runner retries cleanup separately. A declared scenario without an
+executable implementation records `not_established`; it never reports a false
+pass.
+
+Pynchy stores every run with its scenario and action IDs, target profile, code
+and configuration revisions, timestamps, outcome, redacted error class, and
+safe evidence references. A failing first attempt remains an establishment
+failure. A failing run after a prior pass starts a regression, sends an admin
+notice, and appears in the report until a later pass records recovery.
+
+Use these HTTP surfaces to inspect the current report and durable history:
+
+- `GET /canaries/report` returns declared scenarios, their latest evidence,
+  unresolved regressions, and recent results.
+- `GET /canaries/runs?scenario_id=<id>&limit=<1-200>` returns filtered run
+  history. Omit `scenario_id` to list every scenario.
 
 ## Built-in catalog and CI gate
 

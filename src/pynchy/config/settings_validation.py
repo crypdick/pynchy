@@ -52,6 +52,15 @@ def validate_profile_references(
             raise ValueError(message)
 
 
+def validate_canary_target_profile(
+    *, enabled: bool, target_profile: str, profiles: dict[str, ProfileConfig]
+) -> None:
+    """Ensure an enabled canary schedule uses a configured test profile."""
+    if enabled and target_profile not in profiles:
+        message = f"canary.target_profile references unknown profile: {target_profile}"
+        raise ValueError(message)
+
+
 def reject_claude_sdk_model_overrides(
     *,
     agent: AgentConfig,

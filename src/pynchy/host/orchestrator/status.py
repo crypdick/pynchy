@@ -17,6 +17,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from temporalio.client import Client
 
+from pynchy.canaries import get_canary_report
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
 from pynchy.host.container_manager.onecli import collect_onecli_status
@@ -115,6 +116,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         gateway,
         onecli,
         temporal,
+        canaries,
     ) = await asyncio.gather(
         _collect_deploy(),
         asyncio.to_thread(_collect_repos),
@@ -124,6 +126,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         _collect_gateway(deps.get_gateway_info()),
         asyncio.to_thread(collect_onecli_status),
         _collect_temporal(),
+        get_canary_report(history_limit=10),
     )
 
     return {
@@ -138,6 +141,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "tasks": tasks,
         "host_jobs": host_jobs,
         "temporal": temporal,
+        "canaries": canaries,
         "groups": groups,
     }
 

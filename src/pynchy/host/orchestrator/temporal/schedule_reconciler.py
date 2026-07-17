@@ -24,6 +24,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
     agent_task_schedule_id,
     agent_task_workflow_id,
+    canary_schedule_id,
     channel_reconciliation_schedule_id,
     config_host_cron_schedule_id,
     database_host_job_schedule_id,
@@ -32,6 +33,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     host_git_sync_schedule_id,
     once_due_at,
     schedule_for_agent_task,
+    schedule_for_canaries,
     schedule_for_channel_reconciliation,
     schedule_for_config_host_cron,
     schedule_for_database_host_job,
@@ -65,7 +67,7 @@ async def reconcile_temporal_schedules(
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
 
-    await _reconcile_builtin_schedules(client, desired_schedule_ids)
+    await _reconcile_builtin_schedules(client, settings, desired_schedule_ids)
     await _reconcile_external_repo_sync_schedules(client, settings, desired_schedule_ids)
     await _reconcile_task_schedules(runtime, client, tasks, desired_schedule_ids)
     await _reconcile_host_job_schedules(runtime, client, host_jobs, desired_schedule_ids)
@@ -74,7 +76,9 @@ async def reconcile_temporal_schedules(
     await _delete_stale_schedules(client, desired_schedule_ids)
 
 
-async def _reconcile_builtin_schedules(client: object, desired_schedule_ids: set[str]) -> None:
+async def _reconcile_builtin_schedules(
+    client: object, settings: object, desired_schedule_ids: set[str]
+) -> None:
     client_any = cast("Any", client)
     host_sync_schedule_id = host_git_sync_schedule_id()
     desired_schedule_ids.add(host_sync_schedule_id)
@@ -87,6 +91,11 @@ async def _reconcile_builtin_schedules(client: object, desired_schedule_ids: set
         channel_schedule_id,
         schedule_for_channel_reconciliation(),
     )
+    settings_any = cast("Any", settings)
+    if settings_any.canary.enabled:
+        schedule_id = canary_schedule_id()
+        desired_schedule_ids.add(schedule_id)
+        await _upsert_schedule(client_any, schedule_id, schedule_for_canaries())
 
 
 async def _reconcile_external_repo_sync_schedules(

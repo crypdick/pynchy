@@ -20,6 +20,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
+from pynchy.state import init_test_database
 from pynchy.types import HostJob, ScheduledTask, TaskRunLog
 
 if TYPE_CHECKING:
@@ -73,6 +74,11 @@ def _inert_status():
             return_value=_status_settings(),
         )
         p("get_messaging_stats", new_callable=AsyncMock, return_value=dict(_EMPTY_STATS))
+        p(
+            "get_canary_report",
+            new_callable=AsyncMock,
+            return_value={"summary": {"unresolved_regressions": 0}},
+        )
         p("get_all_tasks", new_callable=AsyncMock, return_value=[])
         p("get_task_run_logs", new_callable=AsyncMock, return_value=[])
         p("get_all_host_jobs", new_callable=AsyncMock, return_value=[])
@@ -929,6 +935,7 @@ class TestCollectStatus:
             "tasks",
             "host_jobs",
             "temporal",
+            "canaries",
             "groups",
         }
         assert set(result.keys()) == expected_keys
@@ -940,6 +947,7 @@ class TestCollectStatus:
         assert result["service"]["status"] == "ok"
         assert result["service"]["uptime_seconds"] >= 120
         assert result["messages"]["total_inbound"] == 100
+        assert result["canaries"] == {"summary": {"unresolved_regressions": 0}}
 
     @pytest.mark.asyncio
     async def test_includes_onecli_status(self):
@@ -986,3 +994,18 @@ class TestStatusEndpoint(AioHTTPTestCase):
             assert "queue" in data
             assert "groups" in data
             assert data["channels"] == {"whatsapp": True}
+
+    async def test_canary_report_and_history_endpoints(self):
+        await init_test_database()
+
+        report_response = await self.client.get("/canaries/report")
+        report = await report_response.json()
+        history_response = await self.client.get("/canaries/runs?limit=1")
+        history = await history_response.json()
+        invalid_response = await self.client.get("/canaries/runs?limit=zero")
+
+        assert report_response.status == 200
+        assert report["summary"]["declared_scenarios"] == 12
+        assert history_response.status == 200
+        assert history == {"runs": []}
+        assert invalid_response.status == 400
