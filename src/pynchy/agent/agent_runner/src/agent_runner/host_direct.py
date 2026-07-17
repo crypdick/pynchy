@@ -1,15 +1,16 @@
 """One-shot direct host runner for agent cores.
 
-This module is launched by the Pynchy host process. It deliberately avoids
-Pynchy's container-only file IPC and built-in MCP server: stdin carries one
-input envelope, stdout streams ``ContainerOutput`` JSON lines, and stderr is
-reserved for runner/core logs.
+This module is launched by the Pynchy host process. It uses the same Pynchy
+MCP tools as container sessions, backed by a group-scoped host IPC directory.
+Stdin carries one input envelope, stdout streams ``ContainerOutput`` JSON
+lines, and stderr is reserved for runner/core logs.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 
 from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
@@ -32,10 +33,29 @@ def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> Agen
         is_admin=container_input.is_admin,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=container_input.system_prompt_append,
-        mcp_servers={},
+        mcp_servers={"pynchy": _host_pynchy_mcp_server(container_input)},
         plugin_hooks=[],
         extra=extra,
     )
+
+
+def _host_pynchy_mcp_server(container_input: ContainerInput) -> dict[str, object]:
+    """Build a direct-host Pynchy MCP entry backed by the host IPC directory."""
+    env = {
+        "PYNCHY_CHAT_JID": container_input.chat_jid,
+        "PYNCHY_GROUP_FOLDER": container_input.group_folder,
+        "PYNCHY_IS_ADMIN": "1" if container_input.is_admin else "0",
+        "PYNCHY_SESSION_ID": container_input.session_id or "",
+        "PYNCHY_IS_SCHEDULED_TASK": "1" if container_input.is_scheduled_task else "0",
+    }
+    for name in ("PYNCHY_IPC_DIR", "PYNCHY_SKILLS_ROOT", "PYNCHY_PROFILE_SKILLS_ROOT"):
+        if value := os.environ.get(name):
+            env[name] = value
+    return {
+        "command": sys.executable,
+        "args": ["-m", "agent_runner.agent_tools"],
+        "env": env,
+    }
 
 
 def _write_output(output: ContainerOutput) -> None:

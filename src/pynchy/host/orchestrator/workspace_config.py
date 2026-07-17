@@ -322,6 +322,34 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
     reset_settings()
 
 
+def update_profile_skill_policy(profile_name: str, skill_name: str, *, grant: bool) -> None:
+    """Persist a named learned-skill decision in one workspace profile."""
+    toml_path = get_settings().project_root / "config.toml"
+
+    def _mutate(doc: tomlkit.TOMLDocument) -> None:
+        profiles = doc.get("profiles")
+        if profiles is None or profile_name not in profiles:
+            raise ValueError(f"Profile '{profile_name}' is not configured")
+        profile = cast("Any", profiles[profile_name])
+        skills = [str(value) for value in profile.get("skills", [])]
+        denied_skills = [str(value) for value in profile.get("denied_skills", [])]
+        if grant:
+            skills = _deduplicate_preserving_order([*skills, skill_name])
+            denied_skills = [name for name in denied_skills if name != skill_name]
+        else:
+            skills = [name for name in skills if name != skill_name]
+            denied_skills = _deduplicate_preserving_order([*denied_skills, skill_name])
+        profile["skills"] = skills
+        profile["denied_skills"] = denied_skills
+
+    mutate_config_toml(toml_path, _mutate)
+    reset_settings()
+
+
+def _deduplicate_preserving_order(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
 def add_job_to_toml(job_name: str, config: JobConfig) -> None:
     """Programmatically add a job to config.toml using tomlkit."""
     toml_path = Path("config.toml")

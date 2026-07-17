@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.host.container_manager.mcp.manager as mcp_manager
 import pynchy.host.container_manager.process as container_process
-import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (
@@ -32,12 +31,24 @@ from pynchy.host.container_manager.orchestrator import (
     stable_container_name,
 )
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
+from pynchy.host.orchestrator.agent_core_config import (
+    agent_core_config_from_settings,
+)
+from pynchy.host.orchestrator.agent_core_config import (
+    session_model_mismatch as _session_model_mismatch,
+)
 from pynchy.host.orchestrator.host_execution import HostAgentTurnRequest, run_host_agent_turn
 from pynchy.host.orchestrator.host_execution import (
     codex_thread_exists_in_host_runtime as _codex_thread_exists_in_host_runtime,
 )
 from pynchy.host.orchestrator.host_execution import host_agent_env_vars as _host_agent_env_vars
 from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
+from pynchy.host.orchestrator.host_execution import (
+    migrate_host_codex_thread as _migrate_host_codex_thread,
+)
+from pynchy.host.orchestrator.host_execution import (
+    prepare_host_codex_home as _prepare_host_codex_home,
+)
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
@@ -56,8 +67,6 @@ pre_container_setup = _preflight.pre_container_setup
 session_tracking_output_handler = _preflight.session_tracking_output_handler
 build_admin_system_notices = _preflight.build_admin_system_notices
 session_id_from_output = _preflight.session_id_from_output
-
-_CODEX_SESSION_PREFIX = "codex:"
 
 
 @runtime_checkable
@@ -155,40 +164,8 @@ def build_container_input(
 
 
 def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, Any] | None:
-    s = get_settings()
-    resolved_model = s.agent.model
-    if group_folder is not None:
-        resolved = workspace_config.load_resolved_config(group_folder)
-        if resolved is not None and resolved.model:
-            resolved_model = resolved.model
-
-    result: dict[str, Any] = {}
-    if resolved_model:
-        result["model"] = resolved_model
-    if s.agent.model_reasoning_effort:
-        result["model_reasoning_effort"] = s.agent.model_reasoning_effort
-    return result or None
-
-
-def _codex_session_model(session_id: str) -> str | None:
-    if not session_id.startswith(_CODEX_SESSION_PREFIX):
-        return None
-    body = session_id.removeprefix(_CODEX_SESSION_PREFIX)
-    if ":" not in body:
-        return None
-    model, _thread_id = body.split(":", maxsplit=1)
-    return model or None
-
-
-def _session_model_mismatch(
-    session_id: str | None,
-    agent_core_config: dict[str, Any] | None,
-) -> bool:
-    """Return True when a stored Codex session cannot safely resume this model."""
-    if not session_id or not session_id.startswith(_CODEX_SESSION_PREFIX):
-        return False
-    resolved_model = (agent_core_config or {}).get("model")
-    return _codex_session_model(session_id) != resolved_model
+    """Resolve agent config through this module's settings seam for callers and tests."""
+    return agent_core_config_from_settings(get_settings(), group_folder)
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +404,9 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
 
     host_cwd = _host_execution_cwd(group.folder)
     if host_cwd is not None:
-        if not _codex_thread_exists_in_host_runtime(ctx.session_id):
+        codex_home = _prepare_host_codex_home(group.folder, deps.plugin_manager)
+        _migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
+        if not _codex_thread_exists_in_host_runtime(ctx.session_id, codex_home=codex_home):
             logger.info(
                 "Stored Codex session is not available to host runtime; starting fresh",
                 group=group.name,
@@ -456,7 +435,11 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
                 cwd=host_cwd,
                 on_output=ctx.wrapped_on_output,
                 timeout_seconds=ctx.config_timeout,
-                env=_host_agent_env_vars(is_admin=ctx.is_admin, group_folder=group.folder),
+                env=_host_agent_env_vars(
+                    is_admin=ctx.is_admin,
+                    group_folder=group.folder,
+                    codex_home=codex_home,
+                ),
                 queue=deps.queue,
                 chat_jid=chat_jid,
                 group_folder=group.folder,

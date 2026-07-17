@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,14 +13,18 @@ from urllib.parse import urlparse, urlunparse
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import build_agent_env_vars
+from pynchy.host.container_manager.session_prep import sync_skills
 from pynchy.host.learning.mirror import prepare_full_vault_host_root
 from pynchy.host.learning.paths import resolve_learning_paths
+from pynchy.host.learning.skills import iter_learned_skill_dirs
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
 
 if TYPE_CHECKING:
     import asyncio
+
+    import pluggy
 
     from pynchy.host.orchestrator.queue_state import HostProcessLease
 
@@ -69,7 +74,9 @@ def codex_thread_id(session_id: str | None) -> str | None:
     return body or None
 
 
-def codex_thread_exists_in_host_runtime(session_id: str | None) -> bool:
+def codex_thread_exists_in_host_runtime(
+    session_id: str | None, *, codex_home: Path | None = None
+) -> bool:
     thread_id = codex_thread_id(session_id)
     if thread_id is None:
         return True
@@ -77,7 +84,7 @@ def codex_thread_exists_in_host_runtime(session_id: str | None) -> bool:
     # Codex does not add every `exec` thread to session_index.jsonl, so that
     # file cannot prove whether a thread is resumable. The rollout is the
     # durable conversation state consumed by `codex exec resume`.
-    sessions_path = _codex_home() / "sessions"
+    sessions_path = (codex_home or _codex_home()) / "sessions"
     expected_suffix = f"-{thread_id}.jsonl"
     try:
         return any(
@@ -98,8 +105,82 @@ def host_execution_cwd(group_folder: str) -> Path | None:
     return Path(resolved.cwd).expanduser()
 
 
-def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
+def host_codex_home(group_folder: str) -> Path:
+    """Return the isolated Codex home for one direct-host workspace."""
+    return get_settings().data_dir / "sessions" / group_folder / ".codex"
+
+
+def prepare_host_codex_home(group_folder: str, plugin_manager: pluggy.PluginManager | None) -> Path:
+    """Synchronize selected skills into a direct-host workspace's Codex home."""
+    codex_home = host_codex_home(group_folder)
+    resolved = workspace_config.load_resolved_config(group_folder)
+    workspace_skills = resolved.skills if resolved else None
+    denied_skill_names = resolved.denied_skills if resolved else None
+    learned_skill_paths = iter_learned_skill_dirs(group_folder) if workspace_skills else None
+    sync_skills(
+        codex_home,
+        plugin_manager,
+        workspace_skills=workspace_skills,
+        denied_skill_names=denied_skill_names,
+        learned_skill_paths=learned_skill_paths,
+    )
+    return codex_home
+
+
+def migrate_host_codex_thread(
+    session_id: str | None,
+    *,
+    codex_home: Path,
+    legacy_codex_home: Path | None = None,
+) -> bool:
+    """Copy a pre-scoped host rollout into its workspace-local Codex home."""
+    thread_id = codex_thread_id(session_id)
+    if thread_id is None:
+        return True
+    if codex_thread_exists_in_host_runtime(session_id, codex_home=codex_home):
+        return True
+
+    source_home = legacy_codex_home or _codex_home()
+    source_sessions = source_home / "sessions"
+    expected_suffix = f"-{thread_id}.jsonl"
+    try:
+        rollout = next(
+            (
+                path
+                for path in source_sessions.rglob("*.jsonl")
+                if path.name.startswith("rollout-") and path.name.endswith(expected_suffix)
+            ),
+            None,
+        )
+    except OSError:
+        logger.warning("Could not inspect legacy Codex rollouts", path=str(source_sessions))
+        return False
+    if rollout is None:
+        return False
+
+    destination = codex_home / "sessions" / rollout.relative_to(source_sessions)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copy2(rollout, destination)
+    except OSError:
+        logger.warning(
+            "Could not scope legacy Codex rollout",
+            source=str(rollout),
+            destination=str(destination),
+        )
+        return False
+    logger.info("Scoped legacy Codex rollout", thread_id=thread_id, destination=str(destination))
+    return True
+
+
+def host_agent_env_vars(
+    *, is_admin: bool, group_folder: str, codex_home: Path | None = None
+) -> dict[str, str]:
     env = build_agent_env_vars(is_admin=is_admin, group_folder=group_folder)
+    s = get_settings()
+    env["PYNCHY_IPC_DIR"] = str(s.data_dir / "ipc" / group_folder)
+    if codex_home is not None:
+        env["CODEX_HOME"] = str(codex_home)
     for key in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"):
         if key in env:
             env[key] = _host_reachable_gateway_url(env[key])
@@ -109,6 +190,10 @@ def host_agent_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
         and (host_vault_root := prepare_full_vault_host_root(learning_paths))
     ):
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
+        env["PYNCHY_SKILLS_ROOT"] = str(host_vault_root / "systems" / "pynchy" / "skills")
+        env["PYNCHY_PROFILE_SKILLS_ROOT"] = str(
+            host_vault_root / learning_paths.skills_root.relative_to(learning_paths.vault_root)
+        )
     return env
 
 

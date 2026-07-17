@@ -33,6 +33,7 @@ class ResolvedWorkspaceConfig:
     cwd: str | None
     is_admin: bool
     contains_secrets: bool
+    denied_skills: list[str] = field(default_factory=list)
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
 
@@ -40,6 +41,7 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     """Merge profiles in already-expanded composition order."""
     prompts: list[str] = []
     skills: list[str] = []
+    denied_skills: list[str] = []
     tools: list[str] = []
     repo: list[str] = []
     model: str | None = None
@@ -52,6 +54,7 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     for profile in profiles:
         prompts.extend(profile.prompts)
         skills.extend(profile.skills)
+        denied_skills.extend(profile.denied_skills)
         tools.extend(profile.tools)
         repo.extend(profile.repo)
         if profile.model is not None:
@@ -72,6 +75,7 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     return ResolvedWorkspaceConfig(
         prompts=_deduplicate(prompts),
         skills=_deduplicate(skills),
+        denied_skills=_deduplicate(denied_skills),
         tools=_deduplicate(tools),
         repo=_deduplicate(repo),
         model=model,

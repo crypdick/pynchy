@@ -102,6 +102,7 @@ def sync_skills(
     plugin_manager: pluggy.PluginManager | None = None,
     *,
     workspace_skills: list[str] | None = None,
+    denied_skill_names: list[str] | None = None,
     learned_skill_paths: list[Path] | None = None,
 ) -> None:
     """Copy agent/skills/ and plugin skills into the session's skills directory.
@@ -123,11 +124,17 @@ def sync_skills(
     desired_learned_skill_names = _selected_learned_skill_names(
         learned_skill_paths,
         workspace_skills,
+        denied_skill_names,
     )
     _prune_stale_learned_skill_copies(skills_dst, desired_learned_skill_names)
 
     if learned_skill_paths and workspace_skills is not None:
-        _sync_learned_skills(skills_dst, learned_skill_paths, workspace_skills)
+        _sync_learned_skills(
+            skills_dst,
+            learned_skill_paths,
+            workspace_skills,
+            denied_skill_names or [],
+        )
 
     sync_onecli_gateway_skill(skills_dst)
 
@@ -309,17 +316,19 @@ def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path) -> bool:
 def _selected_learned_skill_names(
     learned_skill_paths: list[Path] | None,
     workspace_skills: list[str] | None,
+    denied_skill_names: list[str] | None,
 ) -> set[str]:
     if learned_skill_paths is None or workspace_skills is None:
         return set()
 
     selected_names: set[str] = set()
+    denied = set(denied_skill_names or [])
     for skill_path in learned_skill_paths:
         if not skill_path.exists() or not skill_path.is_dir():
             continue
 
         name, _tier = parse_skill_tier(skill_path)
-        if is_skill_selected(name, "learned", workspace_skills):
+        if name not in denied and is_skill_selected(name, "learned", workspace_skills):
             selected_names.add(skill_path.name)
 
     return selected_names
@@ -353,6 +362,7 @@ def _sync_learned_skills(
     skills_dst: Path,
     learned_skill_paths: list[Path],
     workspace_skills: list[str],
+    denied_skill_names: list[str],
 ) -> None:
     # Learned skill collisions are non-fatal because vault content should not
     # be able to break startup.
@@ -366,7 +376,7 @@ def _sync_learned_skills(
             continue
 
         name, _tier = parse_skill_tier(skill_path)
-        if not is_skill_selected(name, "learned", workspace_skills):
+        if name in denied_skill_names or not is_skill_selected(name, "learned", workspace_skills):
             logger.debug(
                 "Skipping learned skill (not selected)",
                 skill=name,

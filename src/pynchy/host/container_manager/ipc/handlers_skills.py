@@ -1,0 +1,85 @@
+"""IPC handler for persistent learned-skill access decisions."""
+
+from __future__ import annotations
+
+from typing import Any, cast
+
+from pynchy.host.container_manager.ipc.deps import (
+    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves handler annotations at runtime.
+)
+from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+from pynchy.host.container_manager.session_prep import is_skill_selected, parse_skill_tier
+from pynchy.host.learning.skills import find_learned_skill_dir
+from pynchy.host.orchestrator.workspace_config import (
+    load_resolved_config,
+)
+from pynchy.logger import logger
+
+
+def _write_result(source_group: str, request_id: str, result: dict[str, object]) -> None:
+    write_ipc_response(ipc_response_path(source_group, request_id), {"result": result})
+
+
+def _skill_status(group_folder: str, skill_name: str) -> str:
+    resolved = load_resolved_config(group_folder)
+    if resolved is None:
+        return "unavailable"
+    if skill_name in resolved.denied_skills:
+        return "denied"
+    skill_dir = find_learned_skill_dir(group_folder, skill_name)
+    if skill_dir is None:
+        return "unavailable"
+    name, tier = parse_skill_tier(skill_dir)
+    if is_skill_selected(name, tier, resolved.skills):
+        return "granted"
+    return "available"
+
+
+async def _handle_skill_access(  # noqa: RUF029, RUF100 - registered async IPC handler contract.
+    data: dict[str, Any],
+    source_group: str,
+    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
+    _deps: IpcDeps,
+) -> None:
+    request_id = data.get("request_id")
+    action = data.get("action")
+    skill_name = data.get("skill_name")
+    if not all(isinstance(value, str) for value in (request_id, action, skill_name)):
+        logger.warning("Malformed skill access request", source_group=source_group)
+        return
+    request_id = cast("str", request_id)
+    action = cast("str", action)
+    skill_name = cast("str", skill_name)
+
+    if find_learned_skill_dir(source_group, skill_name) is None:
+        _write_result(source_group, request_id, {"status": "unknown", "skill_name": skill_name})
+        return
+
+    if action == "status":
+        _write_result(
+            source_group,
+            request_id,
+            {"status": _skill_status(source_group, skill_name), "skill_name": skill_name},
+        )
+        return
+
+    if action not in {"grant_always", "deny_always"}:
+        _write_result(
+            source_group,
+            request_id,
+            {"status": "error", "message": f"Unknown skill access action: {action}"},
+        )
+        return
+
+    _write_result(
+        source_group,
+        request_id,
+        {
+            "status": "error",
+            "message": "Persistent skill decisions must be completed by an ask_user response.",
+        },
+    )
+
+
+register("skill_access:policy", _handle_skill_access)

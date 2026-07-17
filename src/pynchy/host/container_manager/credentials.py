@@ -215,10 +215,18 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
 
 
 def _agent_context_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
-    return {
+    env_vars = {
         "PYNCHY_GROUP_FOLDER": group_folder,
         "PYNCHY_IS_ADMIN": "1" if is_admin else "0",
     }
+    from pynchy.host.learning.paths import (  # noqa: PLC0415, RUF100 - learning is optional and only supplies mounted agent paths.
+        resolve_learning_paths,
+    )
+
+    if learning_paths := resolve_learning_paths(group_folder):
+        env_vars["PYNCHY_SKILLS_ROOT"] = f"{learning_paths.vault_mount_path}/systems/pynchy/skills"
+        env_vars["PYNCHY_PROFILE_SKILLS_ROOT"] = learning_paths.mounted_skills_root
+    return env_vars
 
 
 def build_agent_env_vars(

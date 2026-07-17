@@ -56,6 +56,7 @@ Each scheduled run resolves the target workspace's current effective model. To c
 | `includes` | `list[str]` | Profiles to compose before this profile |
 | `prompts` | `list[str]` | Prompt names to include |
 | `skills` | `list[str]` | Skill names to include |
+| `denied_skills` | `list[str]` | Learned skill names blocked for this profile, even when a selected tier would otherwise include them |
 | `tools` | `list[str]` | Tool names from `[tools.*]` to select |
 | `repo` | `list[str]` or `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts project worktrees |
 | `model` | `str` | Optional reusable default model; a workspace can override it |
@@ -63,6 +64,21 @@ Each scheduled run resolves the target workspace's current effective model. To c
 | `cwd` | `str` | Working directory for host execution |
 | `is_admin` | `bool` | Whether workspaces using this profile get admin privileges |
 | `contains_secrets` | `bool` | Whether workspace files may contain secrets |
+
+## Learned Skill Access
+
+Pynchy exposes the vault-backed skill catalog to sessions through
+`search_skills(query)`. An agent that finds a useful skill calls
+`request_skill_access(skill_name, reason)`, which posts one interactive choice:
+Grant once, Grant always, Deny once, or Deny always.
+
+One-time grants return the skill instructions to the current turn only. The
+always choices update the workspace's first profile: grants are stored in its
+`skills` list and denials in `denied_skills`. Pynchy synchronizes that resolved
+selection into the next session's skill registry; a denied skill is never
+injected, including when `skills = ["learned"]` or `skills = ["*"]` would
+otherwise select it. Dynamic Discord threads use their parent workspace's
+learning profile for both the catalog and persistent choice.
 
 ---
 

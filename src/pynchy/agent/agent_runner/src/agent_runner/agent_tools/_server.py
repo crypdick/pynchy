@@ -25,6 +25,7 @@ _TOOL_MODULES = (
     "_tools_memory",
     "_tools_messaging",
     "_tools_slack_tokens",
+    "_tools_skills",
     "_tools_tasks",
     "_tools_todos",
     "_tools_x",

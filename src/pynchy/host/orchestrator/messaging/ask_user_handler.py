@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from pynchy.host.container_manager.ipc.skill_access import persist_skill_access_choice
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.session import get_session
 from pynchy.host.orchestrator.messaging.pending_questions import (
@@ -40,6 +41,8 @@ class AskUserDeps(Protocol):
 
     async def enqueue_message(self, chat_jid: str, text: str) -> None: ...
 
+    def has_active_host_process(self, group_folder: str) -> bool: ...
+
 
 async def handle_ask_user_answer(
     request_id: str,
@@ -54,12 +57,20 @@ async def handle_ask_user_answer(
 
     source_group = pending["source_group"]
     session = get_session(GroupFolder(source_group))
+    try:
+        skill_access_status = persist_skill_access_choice(pending, answer)
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not persist skill access choice", request_id=request_id, err=str(exc))
+        skill_access_status = "error"
 
-    if session is not None and session.is_alive:
-        # Path A: container alive -- write IPC response file
+    if (session is not None and session.is_alive) or deps.has_active_host_process(source_group):
+        # Path A: container or direct host process alive -- write IPC response file.
         path = ipc_response_path(source_group, request_id)
         try:
-            write_ipc_response(path, {"result": {"answers": answer}})
+            result: dict[str, object] = {"answers": answer}
+            if skill_access_status is not None:
+                result["skill_access_status"] = skill_access_status
+            write_ipc_response(path, {"result": result})
             logger.info(
                 "ask_user answer delivered via IPC",
                 request_id=request_id,

@@ -38,7 +38,7 @@ Profile fallback paths use the active workspace profile name, or `default` when 
 | Fallback memory notes | `systems/pynchy/profiles/{profile}/memory` |
 | Learned skills | `systems/pynchy/profiles/{profile}/skills` |
 
-Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. When automatic learning is enabled, Pynchy adds the `learned` tier to the effective workspace skill selection, which copies learned skills into later container sessions.
+Learned skills live under `systems/pynchy/profiles/{profile}/skills/<skill-name>/SKILL.md` and use the existing Pynchy skill format. When automatic learning is enabled, Pynchy adds the `learned` tier to the effective workspace skill selection, which copies learned skills into later container sessions. A session can discover vault skills with `search_skills` and request a one-time or persistent grant with `request_skill_access`; persistent decisions live in the workspace profile and are synchronized into the next session registry.
 
 Learning packets live in a durable filesystem queue under `data/ipc/learning`. The queue uses pending, claimed, done, and error states so work can survive process restarts and another worker can reclaim expired jobs.
 
@@ -49,6 +49,7 @@ V1 learning deliberately mounts the configured vault root as a broad namespace. 
 - Each group maintains a conversation session via the agent core SDK
 - Sessions auto-compact when context grows too long (an SDK feature, not Pynchy's)
 - Session data lives at `data/sessions/{group}/.claude/` on the host, mounted into containers at `/home/agent/.claude`
+- Direct-host Codex workspaces use `data/sessions/{group}/.codex/` as their scoped Codex home. This gives them the same injected skill registry and Pynchy MCP tools as container sessions, while preserving host execution.
 - The PreCompact hook archives conversation transcripts before compaction (see [Usage — Memory § Conversation Archives](../usage/memory.md#conversation-archives))
 
 A persisted session means Pynchy can rehydrate that conversation; it does not mean an agent

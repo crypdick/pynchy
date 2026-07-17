@@ -495,6 +495,20 @@ class TestBuildCoreConfig:
         env = config.mcp_servers["pynchy"]["env"]
         assert env["PYNCHY_CHAT_JID"] == "456@g.us"
 
+    def test_mcp_env_includes_learned_skill_roots(self, monkeypatch):
+        monkeypatch.setenv("PYNCHY_SKILLS_ROOT", "/workspace/vault/systems/pynchy/skills")
+        monkeypatch.setenv(
+            "PYNCHY_PROFILE_SKILLS_ROOT",
+            "/workspace/vault/systems/pynchy/profiles/pynchy-dev/skills",
+        )
+        config = build_core_config(self._make_input())
+        env = config.mcp_servers["pynchy"]["env"]
+
+        assert env["PYNCHY_SKILLS_ROOT"] == "/workspace/vault/systems/pynchy/skills"
+        assert env["PYNCHY_PROFILE_SKILLS_ROOT"] == (
+            "/workspace/vault/systems/pynchy/profiles/pynchy-dev/skills"
+        )
+
     def test_mcp_env_is_admin_flag(self):
         ci = self._make_input(is_admin=True)
         config = build_core_config(ci)
@@ -596,7 +610,9 @@ class TestBuildCoreConfig:
 class TestBuildHostCoreConfig:
     """Test direct host AgentCoreConfig construction."""
 
-    def test_host_core_uses_real_cwd_and_no_pynchy_mcp(self):
+    def test_host_core_uses_real_cwd_and_pynchy_mcp(self, monkeypatch, tmp_path):
+        ipc_dir = tmp_path / "ipc"
+        monkeypatch.setenv("PYNCHY_IPC_DIR", str(ipc_dir))
         ci = ContainerInput(
             messages=[],
             session_id="sess-1",
@@ -618,7 +634,16 @@ class TestBuildHostCoreConfig:
         assert config.chat_jid == "slack:C123"
         assert config.is_admin is True
         assert config.system_prompt_append == "Prompt notes"
-        assert config.mcp_servers == {}
+        pynchy_mcp = config.mcp_servers["pynchy"]
+        assert pynchy_mcp["args"] == ["-m", "agent_runner.agent_tools"]
+        assert pynchy_mcp["env"] == {
+            "PYNCHY_CHAT_JID": "slack:C123",
+            "PYNCHY_GROUP_FOLDER": "admin-host",
+            "PYNCHY_IS_ADMIN": "1",
+            "PYNCHY_SESSION_ID": "sess-1",
+            "PYNCHY_IS_SCHEDULED_TASK": "0",
+            "PYNCHY_IPC_DIR": str(ipc_dir),
+        }
         assert config.plugin_hooks == []
         assert config.extra == {
             "approval_policy": "never",
