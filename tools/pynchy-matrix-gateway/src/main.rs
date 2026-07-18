@@ -297,6 +297,14 @@ async fn verify(device_id: String, timeout_seconds: u64) -> Result<()> {
             .context("waiting for Matrix verification events")?;
 
         if sas.is_none() {
+            sas = client
+                .encryption()
+                .get_verification(&owner, &flow_id)
+                .await
+                .and_then(|verification| verification.sas());
+        }
+
+        if sas.is_none() {
             if let Some(request) = client
                 .encryption()
                 .get_verification_request(&owner, &flow_id)
