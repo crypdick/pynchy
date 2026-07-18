@@ -41,7 +41,7 @@ Single source of truth for all pynchy work items.
     - Providers (AI models)
     - Runtime (container runtimes)
 - enforce `"forbidden"` trust level — `TrustLevel = "forbidden"` is declared in `ServiceTrustConfig` but doesn't block anything yet. Needs: (1) SecurityPolicy.evaluate_read/evaluate_write to reject forbidden operations, (2) plugin hook so plugins can declare forbidden operations in their trust config, (3) expose as first-class plugin API so marking a service property as `"forbidden"` actually changes behavior at the plugin level.
-- GMail integration
+- [Google Workspace integration via gog](1-approved/gog-google-workspace-integration.md) — Gmail, Contacts, Docs, and Sheets through typed host-side tools; do not expose unrestricted gog access.
 - [Protonmail integration](1-approved/proton-mcp.md) — direct, read-only Proton Bridge IMAP MCP; legacy plan retained for Calendar context
 - if a deployment fails, it should spawn a local claude agent out-of-band to rescue the deployment
 
