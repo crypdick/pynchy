@@ -107,6 +107,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "proton-mail",
     ),
     (
+        "pynchy.plugins.integrations.matrix_gateway",
+        "MatrixGatewayMcpPlugin",
+        "matrix-gateway",
+    ),
+    (
         "pynchy.plugins.integrations.notebook_server",
         "NotebookServerPlugin",
         "notebook",
