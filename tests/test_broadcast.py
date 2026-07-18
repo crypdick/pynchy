@@ -534,8 +534,8 @@ class TestBroadcastConsistency:
 class TestUserMessageBroadcast:
     """Verify the relay boundary for user messages from each input surface."""
 
-    async def test_tui_message_stays_local_to_the_tui_controller(self, app: PynchyApp):
-        """TUI input should not be re-posted to a physical chat channel as ``[You]``."""
+    async def test_tui_message_is_visible_without_synthetic_attribution(self, app: PynchyApp):
+        """TUI input should reach physical chat without a synthetic ``[You]`` prefix."""
         channel = FakeChannel()
         app.channels = [channel]
         capture = EventCapture(app.event_bus)
@@ -554,8 +554,8 @@ class TestUserMessageBroadcast:
         assert capture.messages[0].sender_name == "You"
         assert capture.messages[0].is_bot is False
 
-        # 3. The TUI's synthetic "You" message must not be cross-posted.
-        assert channel.sent_messages == []
+        # 3. The raw TUI message is visible externally, without ``[You]``.
+        assert channel.sent_messages == [("group@g.us", "Hello from TUI")]
 
     async def test_inbound_message_broadcasts_to_other_channels(self, app: PynchyApp):
         """Inbound messages from one channel should be broadcast to other channels."""

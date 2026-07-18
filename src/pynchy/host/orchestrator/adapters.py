@@ -425,8 +425,8 @@ class UserMessageHandler:
             timestamp=datetime.now(UTC).isoformat(),
             is_from_me=False,
         )
-        # Store and emit TUI input through unified ingestion.  Its "tui" source
-        # keeps the synthetic local user message out of physical chat channels.
+        # Store, emit, and visibly relay TUI input.  Its synthetic local "You"
+        # identity is not included in the physical-channel text.
         await self._ingest_message(msg, source_channel="tui")
         self._enqueue_check(jid)
 

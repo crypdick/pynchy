@@ -195,7 +195,7 @@ async def trigger_manual_redeploy(
 async def ingest_user_message(
     deps: SessionDeps, msg: NewMessage, *, source_channel: str | None = None
 ) -> None:
-    """Unified user message ingestion — stores, emits, and relays channel input.
+    """Unified user message ingestion — stores, emits, and relays user input.
 
     This is the common code path for ALL user inputs from ANY UI:
     - Channel messages
@@ -205,9 +205,9 @@ async def ingest_user_message(
     Args:
         deps: Session dependencies
         msg: The user message to ingest
-        source_channel: Optional name of the originating channel.  Physical
-            channel input is relayed to other channels, while ``"tui"`` is a
-            local controller input and is never relayed externally.
+        source_channel: Optional name of the originating channel.  TUI input
+            is relayed as plain text; physical channel input retains sender
+            attribution when relayed to another channel.
     """
     # 1. Store full chat body in SQLite. Phoenix remains an observability trace store.
     metadata = {"source": source_channel or "channel", **(msg.metadata or {})}
@@ -237,27 +237,30 @@ async def ingest_user_message(
         )
     )
 
-    # 3. The TUI is an internal control surface, not a physical chat channel.
-    # Relaying its synthetic ``You`` message would impersonate the user in a
-    # connected channel (for example, Discord).  The message remains stored
-    # and emitted above so the TUI still displays it and the agent can act on it.
+    # 3. TUI/API input needs to be visible in the selected physical chat so
+    # that its user instruction and the agent's reply have the same context.
+    # ``You`` is the TUI's local identity, not text that belongs in Discord.
+    # The bot can publish the raw content, but cannot post as the user's
+    # Discord account.
     if source_channel == "tui":
-        return
+        channel_text = msg.content
+        relay_source = "tui_injection"
+    else:
+        # Physical-channel input keeps its origin visible when it reaches a
+        # different channel, so it is not mistaken for bot output.
+        channel_text = f"[{msg.sender_name}] {msg.content}"
+        relay_source = "cross_post"
 
-    # 4. Broadcast physical-channel input to all connected channels except source.
-    # This ensures messages from one UI appear in all other UIs.
-    # Include sender attribution so the message isn't mistaken for bot
-    # output (e.g. Slack posts as the bot user).  The source channel is
-    # skipped, so magic-word detection on the originating channel is
-    # unaffected — and receiving channels won't re-ingest bot-posted
-    # messages (Slack filters bot_id, WhatsApp filters IsFromMe echoes).
-    channel_text = f"[{msg.sender_name}] {msg.content}"
+    # 4. Broadcast to all connected channels except an actual source channel.
+    # The source is skipped so magic-word detection there is unaffected — and
+    # receiving channels will not re-ingest bot-posted messages (Slack filters
+    # bot_id, WhatsApp filters IsFromMe echoes).
     await broadcast(
         deps,
         msg.chat_jid,
         OutboundEvent(type=OutboundEventType.TEXT, content=channel_text),
         skip_channel=source_channel,
-        source="cross_post",
+        source=relay_source,
     )
 
 
