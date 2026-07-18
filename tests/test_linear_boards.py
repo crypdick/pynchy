@@ -40,9 +40,18 @@ class FakeLinearClient:
 
     async def query(self, query: str, **variables: Any) -> dict[str, Any]:
         if "TeamLinearBoardResources" in query:
+            page_start = int(variables["projects_after"] or 0)
+            page_end = page_start + 50
+            next_page_start = str(page_end) if page_end < len(self.projects) else None
             return {
                 "team": {
-                    "projects": {"nodes": self.projects},
+                    "projects": {
+                        "nodes": self.projects[page_start:page_end],
+                        "pageInfo": {
+                            "hasNextPage": next_page_start is not None,
+                            "endCursor": next_page_start,
+                        },
+                    },
                     "states": {"nodes": self.states},
                 }
             }
@@ -170,6 +179,31 @@ class TestEnsureWorkspaceBoard:
 
         assert board.project["id"] == "project-existing"
         assert len(client.projects) == 1
+
+    async def test_reuses_existing_project_from_a_later_page(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            {
+                "id": f"project-{index}",
+                "name": f"Unrelated {index}",
+                "url": f"https://linear.app/acme/project/{index}",
+            }
+            for index in range(50)
+        )
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Code Improver",
+                "url": "https://linear.app/acme/project/existing",
+                "description": "Managed by Pynchy.\n\npynchy.workspace=code-improver\n",
+            }
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-existing"
+        assert len(client.projects) == 51
 
     async def test_project_name_uses_workspace_display_name(self):
         client = FakeLinearClient()
