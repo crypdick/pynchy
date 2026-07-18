@@ -208,11 +208,12 @@ A terminal UI built with Textual. Connects to Pynchy's HTTP/SSE server — no ex
 
 **Usage:**
 ```bash
-uv run pynchy --tui                          # Local
-uv run pynchy --tui --host your-server:8484  # Remote (over Tailscale)
+uv run pynchy --tui  # Local Unix socket, with loopback TCP fallback
 ```
 
-The TUI is always available — no config or extra dependencies required.
+The TUI is always available — no config or extra dependencies required. Remote
+connections require an explicit public bind and bearer token; see
+[Control Plane Access](control-plane.md#enable-remote-tui-access).
 
 ## Enabling and Disabling Channels
 

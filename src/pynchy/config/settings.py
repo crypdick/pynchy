@@ -60,7 +60,6 @@ from pynchy.config.models import (
     ReposConfig,
     SecretsConfig,
     SecurityConfig,
-    ServerConfig,
     ToolConfig,
     WorkspaceConfig,
 )
@@ -75,6 +74,7 @@ from pynchy.config.scheduler_models import (
     QueueConfig,
     SchedulerConfig,
 )
+from pynchy.config.server import ServerConfig
 from pynchy.config.settings_sources import (
     FilteredDotenvSettingsSource,
     hermetic_settings_sources,

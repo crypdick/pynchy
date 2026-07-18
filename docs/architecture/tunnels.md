@@ -1,16 +1,22 @@
 # Tunnels
 
-Pynchy's tunnel connectivity detection system. Use this page to make sure your Pynchy instance is reachable remotely — for the TUI client, deploy webhooks, and other HTTP-based access.
+Pynchy's tunnel connectivity detection system. Use this page to make sure an
+explicitly enabled remote control-plane listener can traverse your selected tunnel.
 
 Tunnels are pluggable. The built-in plugin detects Tailscale, but alternative providers (Cloudflare Tunnel, WireGuard, etc.) can be added via plugins.
 
 ## What Tunnels Do
 
-Pynchy exposes an HTTP server (default port 8484) for the TUI client, deploy webhooks, and SSE event streaming. On a headless server, you need a way to reach that port from other machines.
+Pynchy binds its HTTP control plane to loopback by default. Remote TUI or deployment
+access requires application-layer bearer authentication and an explicit public-bind
+option before a tunnel can reach port 8484. See
+[Control Plane Access](../usage/control-plane.md).
 
 The tunnel subsystem **detects** whether a tunnel is available — it doesn't create or manage tunnels itself. At startup, Pynchy checks every registered tunnel provider and warns if none are connected.
 
-**This is purely informational.** If no tunnel is detected, Pynchy continues running normally. You might still have connectivity through other means (direct network access, port forwarding, etc.).
+**This is purely informational.** If no tunnel is detected, Pynchy continues running
+normally. Tunnel detection never relaxes the control-plane bind, authentication,
+rate-limit, or deployment policy.
 
 ## Startup Check
 

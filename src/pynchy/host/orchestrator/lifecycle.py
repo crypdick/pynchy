@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import socket
 import threading
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
@@ -296,12 +295,14 @@ async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) 
         )
     )
 
-    hostname = socket.gethostname()
     logger.info(
-        "HTTP server ready",
+        "HTTP control plane ready",
+        host=s.server.host,
         port=s.server.port,
-        local=f"http://localhost:{s.server.port}/status",
-        remote=f"http://{hostname}:{s.server.port}/status",
+        local=f"http://{s.server.host}:{s.server.port}/status",
+        unix_socket=str(s.server.unix_socket) if s.server.unix_socket else None,
+        public_bind=s.server.allow_public_bind,
+        remote_deploy=s.server.allow_remote_deploy,
     )
 
 

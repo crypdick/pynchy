@@ -315,38 +315,23 @@ class TestHealthEndpoint(AioHTTPTestCase):
         return app
 
     async def test_health_returns_status_ok(self):
-        """Health endpoint returns ok status."""
-        with (
-            patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="abc123"),
-            patch(
-                "pynchy.host.orchestrator.http_server.get_head_commit_message",
-                return_value="Test commit",
-            ),
-            patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
-        ):
-            resp = await self.client.get("/health")
-            assert resp.status == 200
-            data = await resp.json()
-            assert data["status"] == "ok"
-            assert data["head_sha"] == "abc123"
-            assert data["head_commit"] == "Test commit"
-            assert data["dirty"] is False
-            assert data["channels_connected"] is True
-            assert "uptime_seconds" in data
+        """Health endpoint returns only its non-sensitive readiness contract."""
+        resp = await self.client.get("/health")
+        assert resp.status == 200
+        assert await resp.json() == {"status": "ok"}
 
-    async def test_health_includes_uptime(self):
-        """Health endpoint includes uptime_seconds."""
+    async def test_health_does_not_inspect_repository_or_channel_state(self):
+        """Public readiness cannot expose repository or channel details."""
         with (
-            patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="abc123"),
-            patch(
-                "pynchy.host.orchestrator.http_server.get_head_commit_message", return_value="Test"
-            ),
-            patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
+            patch("pynchy.host.orchestrator.http_server.get_head_sha") as head_sha,
+            patch("pynchy.host.orchestrator.http_server.get_head_commit_message") as head_commit,
+            patch("pynchy.host.orchestrator.http_server.is_repo_dirty") as repo_dirty,
         ):
             resp = await self.client.get("/health")
-            data = await resp.json()
-            assert isinstance(data["uptime_seconds"], int)
-            assert data["uptime_seconds"] >= 0
+        assert resp.status == 200
+        head_sha.assert_not_called()
+        head_commit.assert_not_called()
+        repo_dirty.assert_not_called()
 
 
 class TestTUIAPIEndpoints(AioHTTPTestCase):

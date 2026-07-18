@@ -1,8 +1,4 @@
-"""Embedded HTTP server for health checks, remote deploys, and TUI API.
-
-Exposes endpoints on 0.0.0.0:DEPLOY_PORT. Access is controlled by
-Tailscale ACLs and the machine firewall.
-"""
+"""Embedded HTTP server for readiness, operator diagnostics, deploys, and TUI."""
 
 from __future__ import annotations
 
@@ -33,6 +29,14 @@ from pynchy.host.orchestrator.capability_status import (
     collect_capability_status,
     resolve_workspace_capabilities,
 )
+from pynchy.host.orchestrator.http_control import (
+    ControlPlaneConfigurationError,
+    ControlPlaneRuntime,
+    build_control_plane_middleware,
+    register_unix_socket_cleanup,
+    resolve_control_plane_runtime,
+    start_control_plane_sites,
+)
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
@@ -48,7 +52,6 @@ else:
     AiohttpApplication = object
 
 _start_time = time.monotonic()
-REMOTE_HTTP_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - documented Tailscale/firewall-gated API listener for remote clients.
 
 # Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
 deps_key: web.AppKey[HttpDeps] = web.AppKey("deps")
@@ -103,17 +106,9 @@ class HttpDeps(Protocol):
 
 
 async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
-    deps: HttpDeps = request.app[deps_key]
-    return web.json_response(
-        {
-            "status": "ok",
-            "uptime_seconds": round(time.monotonic() - _start_time),
-            "head_sha": get_head_sha(),
-            "head_commit": get_head_commit_message(),
-            "dirty": is_repo_dirty(),
-            "channels_connected": deps.channels_connected(),
-        }
-    )
+    """Return a non-sensitive readiness response suitable for unauthenticated probes."""
+    del request
+    return web.json_response({"status": "ok"})
 
 
 async def _handle_deploy(request: web.Request) -> web.Response:
@@ -350,20 +345,48 @@ async def start_http_server(
     deps: HttpDeps, *, status_deps: StatusDeps | None = None
 ) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
-    app = create_http_app(deps, status_deps=status_deps)
+    settings = get_settings()
+    runtime = resolve_control_plane_runtime(
+        settings.server,
+        project_root=settings.project_root,
+    )
+    app = create_http_app(deps, status_deps=status_deps, runtime=runtime)
+    register_unix_socket_cleanup(app, runtime)
 
     runner = web.AppRunner(app)
     await runner.setup()
-    port = get_settings().server.port
-    site = web.TCPSite(runner, REMOTE_HTTP_BIND_HOST, port)
-    await site.start()
-    logger.info("HTTP server listening", port=port)
+    try:
+        await start_control_plane_sites(runner, runtime)
+    except (ControlPlaneConfigurationError, OSError):
+        await runner.cleanup()
+        raise
+    logger.info(
+        "HTTP control plane listening",
+        host=runtime.bind_host,
+        port=runtime.port,
+        unix_socket=str(runtime.unix_socket) if runtime.unix_socket else None,
+        public_bind=runtime.public_bind,
+        remote_deploy=runtime.allow_remote_deploy,
+        remote_auth=runtime.remote_auth_required,
+    )
     return runner
 
 
-def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) -> AiohttpApplication:
+def create_http_app(
+    deps: HttpDeps,
+    *,
+    status_deps: StatusDeps | None = None,
+    runtime: ControlPlaneRuntime | None = None,
+) -> AiohttpApplication:
     """Build the aiohttp app with all HTTP routes registered."""
-    app = web.Application()
+    resolved_runtime = runtime
+    if resolved_runtime is None:
+        settings = get_settings()
+        resolved_runtime = resolve_control_plane_runtime(
+            settings.server,
+            project_root=settings.project_root,
+        )
+    app = web.Application(middlewares=[build_control_plane_middleware(resolved_runtime)])
     app[deps_key] = deps
     if status_deps is not None:
         app[status_deps_key] = status_deps

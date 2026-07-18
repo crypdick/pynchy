@@ -367,13 +367,15 @@ The service auto-restarts on crashes (`RestartSec=10`) and starts on boot.
 
 ### 7. Connect the TUI (optional)
 
-From any machine on your Tailscale network:
+The local client prefers the permission-restricted Unix socket:
 
 ```bash
-uv run pynchy --tui --host your-server:8484
+uv run pynchy --tui
 ```
 
-Replace `your-server` with the Tailscale hostname of your server (visible in `tailscale status`).
+For remote access, bootstrap a bearer token and opt in to a public listener. Follow
+[Control Plane Access](usage/control-plane.md#enable-remote-tui-access); a Tailscale
+network alone does not authorize the HTTP API.
 
 ### 8. Daily Maintenance (recommended, Linux only)
 
@@ -403,11 +405,11 @@ The timer fires at 4 AM daily (with up to 5 minutes of randomized jitter). Verif
 
 After pushing changes to the repo, trigger a remote deploy:
 
-```bash
-curl -X POST http://your-server:8484/deploy
-```
-
-This pulls the latest code, validates the import, and restarts the service. If the import fails, Pynchy automatically rolls back.
+Remote deployment requires its own `allow_remote_deploy` option in addition to the
+public bind and bearer token. See
+[Enable remote deployment separately](usage/control-plane.md#enable-remote-deployment-separately).
+The endpoint pulls the latest code, validates the import, and restarts the service.
+If import validation fails, Pynchy automatically rolls back.
 
 ---
 
@@ -447,7 +449,8 @@ Then rebuild: `./src/pynchy/agent/build.sh`
 
 - Verify Tailscale is connected: `tailscale status`
 <!-- Source of truth for the default port: ServerConfig.port in src/pynchy/config/models.py — keep the 8484 references in this file in sync. -->
-- The HTTP server binds to `0.0.0.0:8484` by default, which is accessible over Tailscale without any additional configuration
+- Pynchy binds to `127.0.0.1:8484` by default and intentionally rejects remote clients
+- Follow [Control Plane Access](usage/control-plane.md#enable-remote-tui-access) to configure a public listener and bearer token
 - Check firewall rules if on a cloud provider
 
 ### macOS launchd service does not stay loaded
