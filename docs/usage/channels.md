@@ -168,19 +168,20 @@ allowed member leaves. Only final agent responses play as speech; streamed text,
 tool traces, and status messages remain silent.
 
 Discord voice needs the `discord` extra, `ffmpeg`, and a system `libopus`
-library. It also needs the normal host STT provider described below and a local
-TTS command. On macOS, the built-in `say` command works with:
+library. It also needs the normal host STT provider described below and the
+local Pocket TTS service. On macOS, install Pocket TTS and its launchd service:
 
 ```bash
-PYNCHY_LOCAL_TTS_COMMAND='say -o {output_path} -f {input_path}'
+uv tool install pocket-tts
+sed "s|\\$HOME|$HOME|g" launchd/com.pynchy.pocket-tts.plist \
+  > "$HOME/Library/LaunchAgents/com.pynchy.pocket-tts.plist"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.pynchy.pocket-tts.plist"
 ```
 
-Set that environment variable for the Pynchy service, not in `config.toml`.
-Pynchy sends `{input_path}` and `{output_path}` as argv substitutions and never
-uses a shell. If any voice prerequisite is missing, Pynchy logs the failure and
-does not create a room or fall back to an unprotected channel.
-Voice replies use an AIFF temporary file so macOS `say` can synthesize it before
-FFmpeg re-encodes the result to Discord Opus.
+Pocket TTS binds only to `127.0.0.1:8000`. Pynchy sends the final reply to that
+service and writes its WAV response to a temporary file before FFmpeg re-encodes
+it to Discord Opus. If the service is unavailable, Pynchy logs the failure and
+does not create a room or fall back to a system voice.
 
 Pynchy loads `libopus` through the system resolver and also checks the usual
 Homebrew locations. Set `PYNCHY_DISCORD_OPUS_LIBRARY` to an absolute library

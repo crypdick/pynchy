@@ -412,7 +412,7 @@ async def test_voice_manager_serializes_duplicate_connect_attempts(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_voice_session_uses_aiff_for_macos_say():
+async def test_voice_session_uses_wav_from_pocket_tts():
     session = _VoiceSession(_channel(), "discord:voice:1", _FakePynchyVoiceClient(), {})
     captured_suffixes: list[str] = []
 
@@ -429,7 +429,7 @@ async def test_voice_session_uses_aiff_for_macos_say():
     ):
         await session.speak("Hello")
 
-    assert captured_suffixes == [".aiff"]
+    assert captured_suffixes == [".wav"]
 
 
 @pytest.mark.asyncio

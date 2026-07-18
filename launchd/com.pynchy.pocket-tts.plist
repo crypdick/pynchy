@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Replace $HOME with an absolute path before installing; launchd does not
+     expand shell variables in plist string values. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pynchy.pocket-tts</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$HOME/.local/bin/pocket-tts</string>
+        <string>serve</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$HOME</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$HOME/Library/Logs/pynchy/pocket-tts.log</string>
+    <key>StandardErrorPath</key>
+    <string>$HOME/Library/Logs/pynchy/pocket-tts.err.log</string>
+</dict>
+</plist>

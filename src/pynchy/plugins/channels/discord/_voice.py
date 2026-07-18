@@ -270,9 +270,7 @@ class _VoiceSession:
             return
         async with self._speaking_lock:
             with tempfile.TemporaryDirectory(prefix="pynchy-discord-tts-") as temp_dir:
-                # macOS ``say`` selects its output codec from this suffix; FFmpeg
-                # accepts AIFF and re-encodes it to Opus for Discord.
-                output_path = Path(temp_dir) / "reply.aiff"
+                output_path = Path(temp_dir) / "reply.wav"
                 result = await synthesize_speech_to_file(text, output_path)
                 if not result.success or result.output_path is None:
                     logger.warning(
