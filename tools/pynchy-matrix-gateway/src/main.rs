@@ -68,6 +68,9 @@ enum Command {
         /// Fail rather than wait indefinitely for the other device.
         #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u64).range(30..=1800))]
         timeout_seconds: u64,
+        /// Optional local file containing `confirm` after the emoji comparison.
+        #[arg(long)]
+        confirmation_file: Option<PathBuf>,
     },
     /// Send one plain-text Matrix message as the gateway owner.
     Send {
@@ -243,7 +246,35 @@ fn verification_confirmation_receiver() -> mpsc::Receiver<String> {
     receiver
 }
 
-async fn verify(device_id: String, timeout_seconds: u64) -> Result<()> {
+fn take_file_confirmation(path: &Path) -> Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(value) => {
+            fs::remove_file(path)
+                .with_context(|| format!("removing confirmation file {}", path.display()))?;
+            Ok(Some(value.trim().to_owned()))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => {
+            Err(error).with_context(|| format!("reading confirmation file {}", path.display()))
+        }
+    }
+}
+
+async fn verify(
+    device_id: String,
+    timeout_seconds: u64,
+    confirmation_file: Option<PathBuf>,
+) -> Result<()> {
+    if let Some(path) = confirmation_file.as_deref() {
+        match fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("clearing confirmation file {}", path.display()))
+            }
+        }
+    }
     let (client, saved) = restored_client().await?;
     initial_sync(&client).await?;
 
@@ -351,19 +382,29 @@ async fn verify(device_id: String, timeout_seconds: u64) -> Result<()> {
                 presented = true;
             }
             if presented && !confirmed {
-                match confirmation.try_recv() {
-                    Ok(value) if value == "confirm" => {
+                let stdin_confirmation = match confirmation.try_recv() {
+                    Ok(value) => Some(value),
+                    Err(mpsc::TryRecvError::Empty) => None,
+                    Err(mpsc::TryRecvError::Disconnected) if confirmation_file.is_none() => {
+                        bail!("verification input closed before confirmation")
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => None,
+                };
+                let file_confirmation = confirmation_file
+                    .as_deref()
+                    .map(take_file_confirmation)
+                    .transpose()?
+                    .flatten();
+                match stdin_confirmation.or(file_confirmation) {
+                    Some(value) if value == "confirm" => {
                         sas_verification
                             .confirm()
                             .await
                             .context("confirming Matrix SAS verification")?;
                         confirmed = true;
                     }
-                    Ok(_) => bail!("verification requires the exact confirmation word: confirm"),
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        bail!("verification input closed before confirmation")
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {}
+                    Some(_) => bail!("verification requires the exact confirmation word: confirm"),
+                    None => {}
                 }
             }
         }
@@ -543,7 +584,8 @@ async fn main() -> Result<()> {
         Command::Verify {
             device,
             timeout_seconds,
-        } => verify(device, timeout_seconds).await,
+            confirmation_file,
+        } => verify(device, timeout_seconds, confirmation_file).await,
         Command::Send { room, body_stdin } => send(room, body_stdin).await,
     }
 }
