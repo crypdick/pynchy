@@ -72,3 +72,4 @@ japanese-emoticons.md
 config-from-pynchy-server.toml
 .new-feature/
 *.local.toml
+*.swp
