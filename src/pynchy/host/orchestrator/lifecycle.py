@@ -55,7 +55,12 @@ from pynchy.plugins.channel_runtime import (
 from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.runtimes import system_checks
-from pynchy.state import init_database, initialize_deployment_state, store_chat_metadata
+from pynchy.state import (
+    init_database,
+    initialize_deployment_state,
+    recover_incomplete_action_intents,
+    store_chat_metadata,
+)
 from pynchy.types import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
@@ -164,6 +169,9 @@ async def _initialize_core(app: PynchyApp) -> None:
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
     await init_database()
+    # A crash can leave an external write without a receipt. Recovery fails closed
+    # rather than replaying that side effect.
+    await recover_incomplete_action_intents()
     await initialize_deployment_state(current_deploy_revision())
     logger.info("Database initialized")
 

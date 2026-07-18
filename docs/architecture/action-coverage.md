@@ -129,6 +129,19 @@ up the current descriptor and re-run `SecurityPolicy`; provider handlers still
 perform their real operation-time checks. A stale `ready` result cannot grant
 access.
 
+## Transactional external actions
+
+Write descriptors can opt into an `ActionIntentContract`. Before a provider
+call, Pynchy persists the canonical recipient and payload, source references,
+policy decision, approval identity, and IPC idempotency key. It then claims and
+marks the intent executing before the provider call. A provider receipt
+confirms the intent; an interrupted or unreceipted call becomes
+`outcome_unknown` during startup recovery and is never automatically replayed.
+
+`GET /actions` exposes bounded, workspace-filterable operator state without
+returning the draft payload. Matrix send is the first consumer; future external
+writes must use the same lifecycle rather than inventing another retry ledger.
+
 ## Built-in catalog and CI gate
 
 `src/pynchy/actions.py` provides the built-in `ACTION_SPECS` catalog. Plugins

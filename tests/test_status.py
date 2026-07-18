@@ -1058,6 +1058,16 @@ class TestStatusEndpoint(AioHTTPTestCase):
         assert await response.json() == {"workspace": "project", "work_items": []}
         assert invalid.status == 400
 
+    async def test_actions_endpoint_returns_empty_bounded_projection(self):
+        await init_test_database()
+
+        response = await self.client.get("/actions?workspace=project&limit=1")
+        invalid = await self.client.get("/actions?limit=zero")
+
+        assert response.status == 200
+        assert await response.json() == {"workspace": "project", "actions": []}
+        assert invalid.status == 400
+
     async def test_canary_report_and_history_endpoints(self):
         await init_test_database()
 

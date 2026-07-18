@@ -18,6 +18,11 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves the
 )
 from pynchy.config import get_settings
 from pynchy.config.models import McpTool
+from pynchy.host.container_manager.action_intents import (
+    execute_action_intent,
+    policy_approval_timestamp,
+    prepare_action_intent,
+)
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
@@ -34,6 +39,11 @@ from pynchy.plugins.host_actions import (
     HostActionCatalog,
     clear_host_action_catalog_cache,
     get_host_action_catalog,
+)
+from pynchy.state import (
+    approve_action_intent,
+    deny_action_intent,
+    mark_action_intent_awaiting_approval,
 )
 
 
@@ -123,6 +133,11 @@ async def _request_human_approval(
         request_data=context.data,
         expires_after_seconds=context.action.approval.expires_after_seconds,
     )
+    if context.action.action_intent is not None:
+        await mark_action_intent_awaiting_approval(
+            context.request.request_id,
+            policy_decision=context.reason or "human approval required",
+        )
 
     preface = None
     if context.action.approval.mode is ApprovalMode.SESSION_TOOL:
@@ -223,12 +238,28 @@ async def _handle_service_request(
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
+    intent, replay_response = await prepare_action_intent(
+        action,
+        data,
+        workspace=source_group,
+        chat_jid=chat_jid,
+        request_id=request.request_id,
+    )
+    if replay_response is not None:
+        _write_response(source_group, request.request_id, replay_response)
+        return
+
     # Host-side integrations declare their non-mutating operations explicitly.
     # Reading an untrusted source must taint the turn before an agent can use
     # that content to influence a later external action.
     decision = evaluate_host_action_policy(action, gate, data)
 
     if not decision.allowed:
+        if intent is not None:
+            await deny_action_intent(
+                request.request_id,
+                reason=f"Policy denied: {decision.reason}",
+            )
         await record_security_event(
             chat_jid=chat_jid,
             workspace=source_group,
@@ -278,6 +309,14 @@ async def _handle_service_request(
     ):
         return
 
+    if intent is not None:
+        await approve_action_intent(
+            request.request_id,
+            approver="policy",
+            approved_at=policy_approval_timestamp(),
+            policy_decision=decision.reason or "allowed by current policy",
+        )
+
     # Allowed — record audit and dispatch to plugin handler
     await record_security_event(
         chat_jid=chat_jid,
@@ -300,7 +339,7 @@ async def _handle_service_request(
 
     data["source_group"] = source_group
     try:
-        response = await action.handler(data)
+        response = await execute_action_intent(action, data, request_id=request.request_id)
     except Exception as exc:  # noqa: BLE001, RUF100 - host action boundary must audit terminal failure before watcher recovery.
         await record_security_event(
             chat_jid=chat_jid,

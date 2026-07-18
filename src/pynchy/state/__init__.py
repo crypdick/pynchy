@@ -17,6 +17,23 @@ This package is split into domain-specific submodules:
 
 # Re-export every public symbol so that `from pynchy.state import X` keeps working.
 
+from pynchy.state.action_intents import (
+    ActionIntentCreateRequest,
+    action_intent_to_dict,
+    approve_action_intent,
+    claim_action_intent,
+    confirm_action_intent,
+    create_action_intent,
+    deny_action_intent,
+    expire_action_intent,
+    fail_action_intent,
+    get_action_intent_by_request,
+    list_action_intents,
+    mark_action_intent_awaiting_approval,
+    mark_action_intent_executing,
+    mark_action_intent_outcome_unknown,
+    recover_incomplete_action_intents,
+)
 from pynchy.state.canaries import (
     get_latest_canary_runs,
     get_recent_canary_runs,
@@ -150,6 +167,22 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_recent_canary_runs",
     "get_unresolved_canary_regressions",
     "record_canary_run",
+    # action_intents
+    "ActionIntentCreateRequest",
+    "action_intent_to_dict",
+    "approve_action_intent",
+    "claim_action_intent",
+    "confirm_action_intent",
+    "create_action_intent",
+    "deny_action_intent",
+    "expire_action_intent",
+    "fail_action_intent",
+    "get_action_intent_by_request",
+    "list_action_intents",
+    "mark_action_intent_awaiting_approval",
+    "mark_action_intent_executing",
+    "mark_action_intent_outcome_unknown",
+    "recover_incomplete_action_intents",
     # conversation_events
     "get_conversation_event_pointers_since",
     "store_conversation_event_pointer",
