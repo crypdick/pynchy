@@ -62,6 +62,7 @@ No config files to learn. Just tell Pynchy what you want:
 | [Prompts](prompts.md) | System prompt extensions via profiles and workspaces |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
 | [Computer use](computer-use.md) | Drive the macOS host desktop through Cua Driver for real-browser/native-app workflows |
+| [Matrix communications](matrix-gateway.md) | Read bridged chats and send approval-gated replies as the account owner |
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
 | [Proton Mail](proton-mail.md) | Read, send, and delete Proton Mail through a host-side MCP server |
 | [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
