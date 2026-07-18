@@ -91,3 +91,7 @@ contains_secrets = true
 The tools are `matrix_list_chats`, `matrix_list_messages`, and
 `matrix_send_message`. The first two are read-only. The send tool always stops at
 Pynchy's human-approval boundary before the host gateway transmits it.
+
+Matrix chat text is treated as an untrusted source. Reading it taints the agent turn
+before any later external operation, so the existing approval boundary remains in
+effect even if a bridged message tries to steer the agent.

@@ -95,7 +95,7 @@ def _make_settings(**kwargs):
     return FakeSettings()
 
 
-def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
+def _make_fake_plugin_manager(*tool_names: str, handler_fn=None, read_tools: tuple[str, ...] = ()):
     """Create a fake plugin manager that provides handlers for the given tool names."""
 
     def _stub_handler(data: dict):
@@ -106,7 +106,7 @@ def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
     fn = handler_fn or _stub_handler
     fake_pm = MagicMock()
     fake_pm.hook.pynchy_service_handler.return_value = [
-        {"tools": dict.fromkeys(tool_names, fn)},
+        {"tools": dict.fromkeys(tool_names, fn), "read_tools": read_tools},
     ]
     return fake_pm
 
@@ -150,6 +150,45 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
     response = json.loads(response_file.read_text())
     assert response == {"result": {"status": "ok"}}
+
+
+@pytest.mark.asyncio
+async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, register_gate):
+    """A Matrix read must taint the turn before later actions can use its text."""
+    mock_handler = AsyncMock(return_value={"result": {"messages": ["untrusted text"]}})
+    fake_pm = _make_fake_plugin_manager(
+        "matrix_list_messages",
+        handler_fn=mock_handler,
+        read_tools=("matrix_list_messages",),
+    )
+    registered_gate = register_gate(
+        matrix_list_messages=ServiceTrustConfig(
+            public_source=True,
+            secret_data=True,
+            public_sink=False,
+            dangerous_writes=False,
+        )
+    )
+
+    settings = _make_settings()
+    settings.data_dir = tmp_path
+    deps = FakeDeps({"test@g.us": TEST_GROUP})
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
+        ),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
+            return_value=fake_pm,
+        ),
+    ):
+        await registry.dispatch(_make_request("matrix_list_messages"), "test-ws", False, deps)
+
+    mock_handler.assert_awaited_once()
+    assert registered_gate.policy.corruption_tainted is True
+    assert registered_gate.policy.secret_tainted is True
 
 
 @pytest.mark.asyncio

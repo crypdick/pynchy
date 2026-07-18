@@ -10,7 +10,9 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "beartype>=0.22.9",
     "croniter>=6.0.0",
+    "davey>=0.1.6",
     "detect-secrets>=1.5.0",
+    "discord-py[voice]>=2.7.1",
     "mcp>=1.26.0",
     "pluggy>=1.6.0",
     "pydantic>=2.12.5",
@@ -19,16 +21,14 @@ dependencies = [
     "temporalio>=1.30.0",
     "textual>=7.5.0",
     "tomlkit>=0.13",
+    "urllib3>=2.6.0",
     "watchdog>=6.0.0",
 ]
 
 [project.optional-dependencies]
 whatsapp = ["neonize>=0.3.14.post0", "qrcode>=8.2"]
 slack = ["slack-bolt>=1.27.0", "slack-sdk>=3.40.0"]
-discord = [
-    "davey>=0.1.6",
-    "discord-py[voice]>=2.7.1",
-]
+discord = ["discord-py[voice]>=2.7.1"]
 caldav = ["caldav>=1.4.0"]
 browser = ["playwright"]
 all = ["pynchy[whatsapp,slack,discord,caldav,browser,notebook,voice]"]

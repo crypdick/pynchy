@@ -3209,7 +3209,9 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "beartype" },
     { name = "croniter" },
+    { name = "davey" },
     { name = "detect-secrets" },
+    { name = "discord-py", extra = ["voice"] },
     { name = "mcp" },
     { name = "pluggy" },
     { name = "pydantic" },
@@ -3218,13 +3220,13 @@ dependencies = [
     { name = "temporalio" },
     { name = "textual" },
     { name = "tomlkit" },
+    { name = "urllib3" },
     { name = "watchdog" },
 ]
 
 [package.optional-dependencies]
 all = [
     { name = "caldav" },
-    { name = "davey" },
     { name = "discord-py", extra = ["voice"] },
     { name = "faster-whisper" },
     { name = "fastmcp" },
@@ -3247,7 +3249,6 @@ caldav = [
     { name = "caldav" },
 ]
 discord = [
-    { name = "davey" },
     { name = "discord-py", extra = ["voice"] },
 ]
 notebook = [
@@ -3308,8 +3309,9 @@ requires-dist = [
     { name = "beartype", specifier = ">=0.22.9" },
     { name = "caldav", marker = "extra == 'caldav'", specifier = ">=1.4.0" },
     { name = "croniter", specifier = ">=6.0.0" },
-    { name = "davey", marker = "extra == 'discord'", specifier = ">=0.1.6" },
+    { name = "davey", specifier = ">=0.1.6" },
     { name = "detect-secrets", specifier = ">=1.5.0" },
+    { name = "discord-py", extras = ["voice"], specifier = ">=2.7.1" },
     { name = "discord-py", extras = ["voice"], marker = "extra == 'discord'", specifier = ">=2.7.1" },
     { name = "faster-whisper", marker = "extra == 'voice'", specifier = ">=1.2.1" },
     { name = "fastmcp", marker = "extra == 'notebook'", specifier = ">=2.10" },
@@ -3333,6 +3335,7 @@ requires-dist = [
     { name = "textual", specifier = ">=7.5.0" },
     { name = "tomlkit", specifier = ">=0.13" },
     { name = "ubuntu-namer", marker = "extra == 'notebook'", specifier = ">=1.1" },
+    { name = "urllib3", specifier = ">=2.6.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
 provides-extras = ["whatsapp", "slack", "discord", "caldav", "browser", "all", "notebook", "voice"]

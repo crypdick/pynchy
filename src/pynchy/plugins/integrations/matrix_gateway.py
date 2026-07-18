@@ -156,5 +156,6 @@ class MatrixGatewayPlugin:
                 "matrix_send_message": _only_in_enabled_workspace(
                     "matrix_send_message", _handle_send_message
                 ),
-            }
+            },
+            "read_tools": frozenset({"matrix_list_chats", "matrix_list_messages"}),
         }

@@ -66,11 +66,16 @@ def _handlers() -> dict[str, object]:
 
 class TestMatrixGatewayPlugin:
     def test_plugin_provides_native_ipc_handlers(self):
-        assert set(_handlers()) == {
+        plugin_config = matrix_gateway.MatrixGatewayPlugin().pynchy_service_handler()
+
+        assert set(plugin_config["tools"]) == {
             "matrix_list_chats",
             "matrix_list_messages",
             "matrix_send_message",
         }
+        assert plugin_config["read_tools"] == frozenset(
+            {"matrix_list_chats", "matrix_list_messages"}
+        )
 
     def test_plugin_is_registered(self):
         plugin = get_plugin_manager().get_plugin("builtin-matrix-gateway")
