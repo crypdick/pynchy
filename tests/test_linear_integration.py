@@ -151,6 +151,12 @@ class TestLinearClient:
 
         assert await client.get_issue("issue-1") is None
 
+    async def test_get_issue_returns_none_when_linear_reports_a_deleted_issue(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(side_effect=LinearError("Entity not found: Issue"))
+
+        assert await client.get_issue("issue-1") is None
+
     async def test_delete_issue_requires_provider_success(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         client.query = AsyncMock(return_value={"issueDelete": {"success": True}})

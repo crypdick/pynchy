@@ -9,6 +9,7 @@ _LINEAR_DATA_OBJECT_MISSING = "Linear response did not include a data object"
 _LINEAR_ISSUE_NOT_CREATED = "Linear did not create the issue"
 _LINEAR_ISSUE_CREATE_ISSUE_MISSING = "Linear issueCreate response did not include an issue"
 _LINEAR_ISSUE_DELETE_FAILED = "Linear did not delete the issue"
+_LINEAR_ISSUE_NOT_FOUND = "Entity not found: Issue"
 _LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
 _LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
 
@@ -153,18 +154,24 @@ class LinearClient:
 
     async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
         """Fetch one issue by ID for independent verification or cleanup."""
-        data = await self.query(
-            """
-            query GetIssue($issue_id: String!) {
-              issue(id: $issue_id) {
-                id identifier title url updatedAt
-                state { id name type }
-                project { id name }
-              }
-            }
-            """,
-            issue_id=issue_id,
-        )
+        try:
+            data = await self.query(
+                """
+                query GetIssue($issue_id: String!) {
+                  issue(id: $issue_id) {
+                    id identifier title url updatedAt
+                    state { id name type }
+                    project { id name }
+                  }
+                }
+                """,
+                issue_id=issue_id,
+            )
+        except LinearError as exc:
+            # Linear reports a deleted issue as a GraphQL error, not a null field.
+            if str(exc) == _LINEAR_ISSUE_NOT_FOUND:
+                return None
+            raise
         issue = data.get("issue")
         if issue is None:
             return None
