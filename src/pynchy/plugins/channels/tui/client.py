@@ -111,7 +111,7 @@ class PynchyTUI(App[None]):
         headers = {"Authorization": f"Bearer {self._bearer_token}"} if self._bearer_token else None
         self._session = aiohttp.ClientSession(connector=connector, headers=headers)
         try:
-            await self._load_groups()
+            await self.load_groups()
             self._sse_task = asyncio.create_task(self._listen_sse())
             await self._update_status()
         except aiohttp.ClientError as exc:
@@ -152,16 +152,16 @@ class PynchyTUI(App[None]):
     # Group list
     # ------------------------------------------------------------------
 
-    async def _load_groups(self) -> None:
+    async def load_groups(self) -> None:
         self._groups = cast("list[dict[str, Any]]", await self._get("/api/groups"))
         group_list = self.query_one("#group-list", ListView)
         group_list.clear()
         for g in self._groups:
             group_list.append(ListItem(Static(g["name"]), id=f"grp-{_sanitize(g['jid'])}"))
         if not self._active_jid and self._groups:
-            await self._switch_to_group(self._groups[0]["jid"])
+            await self.switch_to_group(self._groups[0]["jid"])
 
-    async def _switch_to_group(self, jid: str) -> None:
+    async def switch_to_group(self, jid: str) -> None:
         group = next((g for g in self._groups if g["jid"] == jid), None)
         if not group:
             return
@@ -187,7 +187,7 @@ class PynchyTUI(App[None]):
             sanitized = item_id[len(prefix) :]
             for g in self._groups:
                 if _sanitize(g["jid"]) == sanitized:
-                    await self._switch_to_group(g["jid"])
+                    await self.switch_to_group(g["jid"])
                     break
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -230,7 +230,7 @@ class PynchyTUI(App[None]):
         ) as resp:
             if connected_before and self._active_jid:
                 # Reconnected after a drop — reload messages to fill the gap
-                await self._switch_to_group(self._active_jid)
+                await self.switch_to_group(self._active_jid)
                 await self._update_status()
             async for line in resp.content:
                 decoded = line.decode("utf-8").strip()
@@ -240,10 +240,10 @@ class PynchyTUI(App[None]):
                     event = json.loads(decoded[6:])
                 except json.JSONDecodeError:
                     continue
-                self._handle_sse_event(event)
+                self.handle_sse_event(event)
         return True
 
-    def _handle_sse_event(self, event: dict[str, Any]) -> None:
+    def handle_sse_event(self, event: dict[str, Any]) -> None:
         message = self._message_event(event)
         if message is not None:
             chat_log = self.query_one(ChatLog)
@@ -325,7 +325,7 @@ class PynchyTUI(App[None]):
         except ValueError:
             idx = -1
         new_idx = (idx + direction) % len(jids)
-        await self._switch_to_group(jids[new_idx])
+        await self.switch_to_group(jids[new_idx])
 
 
 class ChatLog(RichLog):

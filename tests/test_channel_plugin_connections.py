@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sys
+from types import ModuleType
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from conftest import make_settings
 
@@ -23,23 +24,56 @@ SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
 DISCORD_BOT_ENV = "DISCORD"
 
-_NEONIZE_MODULES = [
-    "neonize",
-    "neonize.aioze",
-    "neonize.aioze.client",
-    "neonize.aioze.events",
-    "neonize.events",
-    "neonize.proto",
-    "neonize.proto.Neonize_pb2",
-    "neonize.utils",
-    "neonize.utils.jid",
-    "neonize.utils.enum",
-]
-_neonize_mocks: dict[str, object] = {}
-for _mod_name in _NEONIZE_MODULES:
-    if _mod_name not in sys.modules:
-        _neonize_mocks[_mod_name] = MagicMock()
-        sys.modules[_mod_name] = _neonize_mocks[_mod_name]
+
+def _install_module(name: str, *, package: bool = False) -> ModuleType:
+    module = ModuleType(name)
+    if package:
+        module.__path__ = []  # type: ignore[attr-defined]  # noqa: RUF100 - import package marker.
+    sys.modules[name] = module
+    return module
+
+
+neonize = _install_module("neonize", package=True)
+aioze = _install_module("neonize.aioze", package=True)
+aioze_client = _install_module("neonize.aioze.client")
+aioze_events = _install_module("neonize.aioze.events")
+neonize_events = _install_module("neonize.events")
+neonize_utils = _install_module("neonize.utils", package=True)
+neonize_jid = _install_module("neonize.utils.jid")
+neonize_enum = _install_module("neonize.utils.enum")
+
+neonize.aioze = aioze
+aioze.client = aioze_client
+aioze.events = aioze_events
+neonize.utils = neonize_utils
+neonize_utils.jid = neonize_jid
+neonize_utils.enum = neonize_enum
+
+
+class _NeonizeClient:
+    pass
+
+
+class _ChatPresence:
+    CHAT_PRESENCE_COMPOSING = "composing"
+    CHAT_PRESENCE_PAUSED = "paused"
+
+
+class _ChatPresenceMedia:
+    CHAT_PRESENCE_MEDIA_TEXT = "text"
+
+
+aioze_client.NewAClient = _NeonizeClient
+neonize_events.ConnectedEv = type("ConnectedEv", (), {})
+neonize_events.ConnectFailureEv = type("ConnectFailureEv", (), {})
+neonize_events.DisconnectedEv = type("DisconnectedEv", (), {})
+neonize_events.LoggedOutEv = type("LoggedOutEv", (), {})
+neonize_events.MessageEv = type("MessageEv", (), {})
+neonize_events.PairStatusEv = type("PairStatusEv", (), {})
+neonize_enum.ChatPresence = _ChatPresence
+neonize_enum.ChatPresenceMedia = _ChatPresenceMedia
+neonize_jid.Jid2String = lambda jid: getattr(jid, "value", "")
+neonize_jid.build_jid = lambda *parts: parts
 
 from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
 
@@ -81,7 +115,7 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
     assert len(channels) == 1
     assert isinstance(channels[0], SlackChannel)
     assert channels[0].name == "synapse"
-    assert channels[0]._allow_create is True  # allow: private-test-imports
+    assert channels[0].allow_create is True
     assert channels[0].on_approval_decision is context.on_approval_decision_callback
 
 
@@ -98,19 +132,34 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
     )
 
     speech_synthesizer = PocketTtsProvider()
+    discord_token = "-".join(("discord", "token"))
     context = _context(speech_synthesizer=speech_synthesizer)
     with (
         patch("pynchy.plugins.channels.discord.get_settings", return_value=settings),
-        patch.dict("os.environ", {"DISCORD": "discord-token"}, clear=False),
+        patch(
+            "pynchy.plugins.channels.discord._plugin.DiscordChannel",
+            wraps=DiscordChannel,
+        ) as channel_class,
+        patch.dict("os.environ", {"DISCORD": discord_token}, clear=False),
     ):
         channels = DiscordChannelPlugin().pynchy_create_channel(context=context)
 
     assert channels is not None
     assert len(channels) == 1
     assert isinstance(channels[0], DiscordChannel)
-    assert channels[0].name == "synapse"
-    assert channels[0].on_approval_decision is context.on_approval_decision_callback
-    assert channels[0].voice._speech_synthesizer is speech_synthesizer
+    channel_class.assert_called_once_with(
+        connection_name="synapse",
+        config=settings.connections["synapse"],
+        bot_token=ANY,
+        on_message=context.on_message_callback,
+        on_chat_metadata=context.on_chat_metadata_callback,
+        on_reaction=context.on_reaction_callback,
+        on_ask_user_answer=context.on_ask_user_answer_callback,
+        on_approval_decision=context.on_approval_decision_callback,
+        workspaces=context.workspaces,
+        speech_synthesizer=speech_synthesizer,
+    )
+    assert channel_class.call_args.kwargs["bot_token"] == discord_token
 
 
 def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:

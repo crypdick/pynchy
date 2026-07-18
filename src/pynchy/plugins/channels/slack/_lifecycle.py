@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, cast
 
 from pynchy.logger import logger
 
+RECONNECT_INITIAL_DELAY_SECONDS = 5.0
+
 if TYPE_CHECKING:
     from ._channel import SlackChannel, _SlackApp
 else:
@@ -55,11 +57,11 @@ class SlackLifecycle:
             logger.warning("Failed to resolve bot user ID (mention stripping disabled)")
 
         await ch.sync_allowed_channels()
-        ch.events.register_handlers()
+        ch.register_inbound_handlers()
 
         ch.handler = AsyncSocketModeHandler(app, ch.app_token)
         ch.handler_task = asyncio.create_task(ch.handler.start_async(), name="slack-socket-mode")
-        ch.handler_task.add_done_callback(self._on_handler_done)
+        ch.handler_task.add_done_callback(ch.handle_socket_mode_exit)
         ch.connected = True
         logger.info(
             "Slack channel connected (Socket Mode)",
@@ -125,7 +127,7 @@ class SlackLifecycle:
             exc=str(exc) if exc else "cancelled",
         )
         ch.connected = False
-        coro = self._reconnect_with_backoff()
+        coro = self._reconnect_with_backoff(RECONNECT_INITIAL_DELAY_SECONDS)
         try:
             ch.reconnect_task = task.get_loop().create_task(coro, name="slack-reconnect")
         except RuntimeError:

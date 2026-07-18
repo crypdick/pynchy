@@ -194,7 +194,7 @@ def _validate_task_type(task_type: str) -> CallToolResult | None:
 
 
 def _host_task_permission_error(task_type: str) -> CallToolResult | None:
-    if task_type != "host" or _ipc.is_admin:
+    if task_type != "host" or _ipc.get_agent_tool_runtime().is_admin:
         return None
     return tool_error("Only the admin group can schedule host-level jobs.")
 
@@ -222,12 +222,13 @@ def _host_task_payload(
         "schedule_value": schedule_value,
         "cwd": arguments.get("cwd"),
         "timeout_seconds": arguments.get("timeout_seconds", 600),
-        "createdBy": _ipc.group_folder,
+        "createdBy": _ipc.get_agent_tool_runtime().group_folder,
     }
 
 
 def _agent_target_group(arguments: dict[str, Any]) -> str:
-    return (arguments.get("target_group") if _ipc.is_admin else None) or _ipc.group_folder
+    runtime = _ipc.get_agent_tool_runtime()
+    return (arguments.get("target_group") if runtime.is_admin else None) or runtime.group_folder
 
 
 def _agent_task_payload(
@@ -238,7 +239,7 @@ def _agent_task_payload(
         "schedule_type": schedule_type,
         "schedule_value": schedule_value,
         "targetGroup": _agent_target_group(arguments),
-        "createdBy": _ipc.group_folder,
+        "createdBy": _ipc.get_agent_tool_runtime().group_folder,
     }
 
 
@@ -250,8 +251,12 @@ def _list_tasks_text(tasks_file: Path) -> list[TextContent]:
     all_tasks = json.loads(tasks_file.read_text(encoding="utf-8"))
     tasks = (
         all_tasks
-        if _ipc.is_admin
-        else [t for t in all_tasks if t.get("groupFolder") == _ipc.group_folder]
+        if _ipc.get_agent_tool_runtime().is_admin
+        else [
+            task
+            for task in all_tasks
+            if task.get("groupFolder") == _ipc.get_agent_tool_runtime().group_folder
+        ]
     )
 
     if not tasks:
@@ -335,7 +340,7 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
 async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
     _arguments: dict[str, Any],
 ) -> list[TextContent]:
-    tasks_file = _ipc.IPC_DIR / "current_tasks.json"
+    tasks_file = _ipc.get_agent_tool_runtime().ipc_dir / "current_tasks.json"
 
     try:
         if not tasks_file.exists():
@@ -366,8 +371,8 @@ def _task_action(action: str, task_id: str) -> list[TextContent]:
         action,
         {
             "taskId": task_id,
-            "groupFolder": _ipc.group_folder,
-            "isAdmin": _ipc.is_admin,
+            "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
+            "isAdmin": _ipc.get_agent_tool_runtime().is_admin,
         },
         reply_to=None,
     )

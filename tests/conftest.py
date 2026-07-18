@@ -8,7 +8,6 @@ import re
 import pytest
 from pydantic import BaseModel, SecretStr
 
-import pynchy.state.connection as db_conn
 from pynchy.actions import ACTION_SPECS, ActionId, assess_hermetic_coverage
 from pynchy.capabilities import (
     ApprovalContract,
@@ -40,7 +39,7 @@ from pynchy.config import (
     Settings,
 )
 from pynchy.plugins.host_actions import HostActionCatalog
-from pynchy.state import init_test_database
+from pynchy.state import close_test_database, init_test_database
 from pynchy.types import InboundFetchResult, NewMessage
 
 __all__ = [
@@ -354,11 +353,7 @@ def _close_test_database():
     close the loop before an async session fixture can tear down.
     """
     yield
-    if db_conn._state.db is not None:
-        db_conn._state.db.stop()
-        if db_conn._state.db._thread is not None and db_conn._state.db._thread.is_alive():
-            db_conn._state.db._thread.join(timeout=2)
-        db_conn._state.db = None
+    close_test_database()
 
 
 # ---------------------------------------------------------------------------

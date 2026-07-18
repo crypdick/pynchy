@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -44,6 +43,18 @@ class _FakeSlackApp:
 
 def _fake_slack_app() -> _FakeSlackApp:
     return _FakeSlackApp()
+
+
+_HISTORY_SINCE = datetime.fromtimestamp(1_700_000_000, tz=UTC).isoformat()
+
+
+def _attach_slack_app(ch: SlackChannel) -> _FakeSlackApp:
+    """Attach an SDK-shaped fake with observable identity lookups."""
+    app = _fake_slack_app()
+    app.client.users_info.return_value = {"user": {"profile": {"display_name": "Alice"}}}
+    app.client.conversations_info.return_value = {"channel": {"name": "general"}}
+    ch.slack_app = app
+    return app
 
 
 # ------------------------------------------------------------------
@@ -152,75 +163,80 @@ class TestSlackChannelDisconnect:
 
 
 class TestReconnectShutdownRace:
-    """Regression tests for the shutdown race in _reconnect_with_backoff.
+    """Regression tests for the Socket Mode transport-exit boundary.
 
-    If disconnect() is called while the reconnect backoff is sleeping,
-    _reconnect_with_backoff must bail out instead of calling connect()
+    If disconnect() is called while the reconnect backoff is sleeping, the
+    transport-exit handler must bail out instead of calling connect()
     (which spawns aiohttp tasks that disconnect() can't cancel).
     """
 
     @pytest.mark.asyncio
-    async def test_reconnect_aborts_when_already_connected(self) -> None:
+    async def test_transport_exit_does_not_double_connect(self, monkeypatch) -> None:
         """If another path reconnected while we slept, don't double-connect."""
         ch = _make_channel()
-        # Simulate: _on_handler_done set _connected=False and scheduled us,
-        # but another path (e.g. forced reconnect()) already reconnected.
         ch.connected = True
-
-        # Patch connect to detect if it gets called
         ch.connect = AsyncMock()
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.return_value = RuntimeError("websocket dropped")
+        task.get_loop.return_value = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            "pynchy.plugins.channels.slack._lifecycle.RECONNECT_INITIAL_DELAY_SECONDS",
+            0.0,
+        )
 
-        await ch._reconnect_with_backoff(delay=0.0)
+        ch.handle_socket_mode_exit(task)
+        ch.connected = True
+        reconnect_task = ch.reconnect_task
+        assert reconnect_task is not None
+        await reconnect_task
 
         ch.connect.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_reconnect_proceeds_when_not_connected(self) -> None:
-        """Normal reconnect path: _connected is False, so connect() runs."""
+    async def test_transport_exit_reconnects(self, monkeypatch) -> None:
+        """An unexpected Socket Mode exit reconnects the public channel."""
         ch = _make_channel()
-        ch.connected = False
+        ch.connected = True
 
-        # connect() will set _connected = True; mock it to avoid real Slack calls
         async def fake_connect() -> None:
             await asyncio.sleep(0)
             ch.connected = True
 
         ch.connect = AsyncMock(side_effect=fake_connect)
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.return_value = RuntimeError("websocket dropped")
+        task.get_loop.return_value = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            "pynchy.plugins.channels.slack._lifecycle.RECONNECT_INITIAL_DELAY_SECONDS",
+            0.0,
+        )
 
-        await ch._reconnect_with_backoff(delay=0.0)
+        ch.handle_socket_mode_exit(task)
+        reconnect_task = ch.reconnect_task
+        assert reconnect_task is not None
+        await reconnect_task
 
         ch.connect.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_reconnect_aborts_when_shutting_down(self) -> None:
+    async def test_transport_exit_does_not_reconnect_after_shutdown(self) -> None:
         """prepare_shutdown() prevents reconnect even when _connected is False."""
         ch = _make_channel()
-        ch.connected = False
-        ch.shutting_down = True
-
-        ch.connect = AsyncMock()
-
-        await ch._reconnect_with_backoff(delay=0.0)
-
-        ch.connect.assert_not_awaited()
-
-    def test_on_handler_done_skips_reconnect_when_shutting_down(self) -> None:
-        """_on_handler_done does nothing after prepare_shutdown()."""
-        ch = _make_channel()
         ch.connected = True
-        ch.shutting_down = True
-
+        ch.connect = AsyncMock()
+        ch.prepare_shutdown()
         task = MagicMock(spec=asyncio.Task)
         task.cancelled.return_value = False
-        task.exception.return_value = None
+        task.exception.return_value = RuntimeError("websocket dropped")
 
-        ch._on_handler_done(task)
+        ch.handle_socket_mode_exit(task)
 
-        # Should not schedule a reconnect
+        ch.connect.assert_not_awaited()
         task.get_loop.assert_not_called()
-        assert ch.reconnect_task is None
 
-    def test_on_handler_done_catches_runtime_error(self) -> None:
+    def test_transport_exit_ignores_loop_shutdown_error(self) -> None:
         """create_task RuntimeError during loop shutdown doesn't propagate."""
         ch = _make_channel()
         ch.connected = True
@@ -234,7 +250,7 @@ class TestReconnectShutdownRace:
         )
 
         # Should not raise
-        ch._on_handler_done(task)
+        ch.handle_socket_mode_exit(task)
 
         # _connected should be False (we tried to reconnect but couldn't)
         assert ch.connected is False
@@ -260,78 +276,13 @@ class TestPrepareShutdown:
         assert ch.shutting_down is True
 
 
-class TestNormalizeBotMention:
-    """_normalize_bot_mention replaces <@BOTID> with the canonical trigger."""
-
-    def test_replaces_mention_at_start(self) -> None:
-        ch = _make_channel()
-        ch.bot_user_id = "U_BOT"
-        result = ch._normalize_bot_mention("<@U_BOT> hello")
-        assert result == "@pynchy hello"
-
-    def test_replaces_mention_in_middle(self) -> None:
-        ch = _make_channel()
-        ch.bot_user_id = "U_BOT"
-        result = ch._normalize_bot_mention("hey <@U_BOT> hello")
-        assert result == "hey @pynchy hello"
-
-    def test_preserves_other_mentions(self) -> None:
-        ch = _make_channel()
-        ch.bot_user_id = "U_BOT"
-        assert ch._normalize_bot_mention("<@U_OTHER> hello") == "<@U_OTHER> hello"
-
-    def test_noop_when_no_bot_id(self) -> None:
-        ch = _make_channel()
-        ch.bot_user_id = ""
-        assert ch._normalize_bot_mention("<@U_BOT> hello") == "<@U_BOT> hello"
-
-    def test_single_word_command_after_mention(self) -> None:
-        ch = _make_channel()
-        ch.bot_user_id = "U_BOT"
-        result = ch._normalize_bot_mention("<@U_BOT> c")
-        assert result == "@pynchy c"
-
-    def test_mention_only(self) -> None:
-        ch = _make_channel()
-        ch.bot_user_id = "U_BOT"
-        result = ch._normalize_bot_mention("<@U_BOT>")
-        assert result == "@pynchy"
-
-    def test_trigger_pattern_matches_after_normalize(self) -> None:
-        """Verify the canonical trigger survives the trigger pattern check."""
-        ch = _make_channel()
-        ch.bot_user_id = "U_BOT"
-        result = ch._normalize_bot_mention("<@U_BOT> do something")
-        pattern = re.compile(r"^@pynchy\b", re.IGNORECASE)
-        assert pattern.search(result), f"Trigger pattern should match: {result!r}"
-
-
-class TestDedupTs:
-    def test_first_ts_returns_false(self) -> None:
-        ch = _make_channel()
-        assert ch._dedup_ts("1234567890.000001") is False
-
-    def test_duplicate_ts_returns_true(self) -> None:
-        ch = _make_channel()
-        ch._dedup_ts("1234567890.000001")
-        assert ch._dedup_ts("1234567890.000001") is True
-
-    def test_different_ts_returns_false(self) -> None:
-        ch = _make_channel()
-        ch._dedup_ts("1234567890.000001")
-        assert ch._dedup_ts("1234567890.000002") is False
-
-
-class TestSlackChannelInbound:
+class TestSlackInboundBoundary:
     @pytest.mark.asyncio
-    async def test_on_slack_message_calls_callback(self) -> None:
+    async def test_ingest_inbound_event_calls_callbacks(self) -> None:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch.slack_app = _fake_slack_app()
-        # Stub user/channel name resolution
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
-        ch._resolve_channel_name = AsyncMock(return_value="general")
+        _attach_slack_app(ch)
 
         event = {
             "channel": "C12345",
@@ -340,7 +291,7 @@ class TestSlackChannelInbound:
             "ts": "1234567890.000001",
             "channel_type": "channel",
         }
-        await ch._on_slack_message(event)
+        await ch.ingest_inbound_event(event)
 
         on_metadata.assert_called_once()
         meta_args = on_metadata.call_args[0]
@@ -356,36 +307,47 @@ class TestSlackChannelInbound:
         assert msg.content == "hello pynchy"
 
     @pytest.mark.asyncio
-    async def test_on_slack_message_normalizes_bot_mention(self) -> None:
-        """Bot @mention is replaced with canonical trigger, not stripped."""
+    @pytest.mark.parametrize(
+        ("bot_user_id", "text", "expected"),
+        [
+            ("U_BOT", "<@U_BOT> hello", "@pynchy hello"),
+            ("U_BOT", "hey <@U_BOT> hello", "hey @pynchy hello"),
+            ("U_BOT", "<@U_OTHER> hello", "<@U_OTHER> hello"),
+            ("", "<@U_BOT> hello", "<@U_BOT> hello"),
+            ("U_BOT", "<@U_BOT> c", "@pynchy c"),
+            ("U_BOT", "<@U_BOT>", "@pynchy"),
+        ],
+    )
+    async def test_ingest_inbound_event_normalizes_bot_mentions(
+        self,
+        bot_user_id: str,
+        text: str,
+        expected: str,
+    ) -> None:
+        """Slack mentions become the downstream trigger through the public adapter."""
         on_message = MagicMock()
-        on_metadata = MagicMock()
-        ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch.slack_app = _fake_slack_app()
-        ch.bot_user_id = "U_BOT"
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
-        ch._resolve_channel_name = AsyncMock(return_value="general")
+        ch = _make_channel(on_message=on_message)
+        _attach_slack_app(ch)
+        ch.bot_user_id = bot_user_id
 
         event = {
             "channel": "C12345",
             "user": "U999",
-            "text": "<@U_BOT> c",
+            "text": text,
             "ts": "1234567890.000010",
             "channel_type": "channel",
         }
-        await ch._on_slack_message(event)
+        await ch.ingest_inbound_event(event)
 
         msg = on_message.call_args[0][1]
-        assert msg.content == "@pynchy c"
+        assert msg.content == expected
 
     @pytest.mark.asyncio
-    async def test_on_slack_message_deduplicates_same_ts(self) -> None:
+    async def test_ingest_inbound_event_deduplicates_one_slack_timestamp(self) -> None:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
-        ch._resolve_channel_name = AsyncMock(return_value="general")
+        _attach_slack_app(ch)
 
         event = {
             "channel": "C12345",
@@ -394,27 +356,27 @@ class TestSlackChannelInbound:
             "ts": "1234567890.000020",
             "channel_type": "channel",
         }
-        await ch._on_slack_message(event)
-        await ch._on_slack_message(event)  # duplicate (app_mention)
+        await ch.ingest_inbound_event(event)
+        await ch.ingest_inbound_event(event)  # duplicate Slack app_mention
 
         on_message.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_on_slack_message_ignores_bot_messages(self) -> None:
+    async def test_ingest_inbound_event_ignores_bot_messages(self) -> None:
         on_message = MagicMock()
         ch = _make_channel(on_message=on_message)
-        ch.slack_app = _fake_slack_app()
+        _attach_slack_app(ch)
 
         event = {"channel": "C12345", "user": "U999", "text": "bot msg", "bot_id": "B123"}
-        await ch._on_slack_message(event)
+        await ch.ingest_inbound_event(event)
 
         on_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_on_slack_message_ignores_edits(self) -> None:
+    async def test_ingest_inbound_event_ignores_edits(self) -> None:
         on_message = MagicMock()
         ch = _make_channel(on_message=on_message)
-        ch.slack_app = _fake_slack_app()
+        _attach_slack_app(ch)
 
         event = {
             "channel": "C12345",
@@ -422,7 +384,7 @@ class TestSlackChannelInbound:
             "text": "edited",
             "subtype": "message_changed",
         }
-        await ch._on_slack_message(event)
+        await ch.ingest_inbound_event(event)
 
         on_message.assert_not_called()
 
@@ -474,19 +436,18 @@ class TestSlackChannelPlugin:
 
 
 # ------------------------------------------------------------------
-# History catch-up (_fetch_missed_messages_with_watermark)
+# History catch-up (public fetch_inbound_since)
 # ------------------------------------------------------------------
 
 
-class TestFetchMissedMessages:
+class TestFetchInboundSince:
     @pytest.mark.asyncio
     async def test_returns_messages_in_chronological_order(self) -> None:
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        app = _attach_slack_app(ch)
 
         # Slack returns newest-first
-        ch.slack_app.client.conversations_history = AsyncMock(
+        app.client.conversations_history = AsyncMock(
             return_value={
                 "messages": [
                     {"user": "U1", "text": "second", "ts": "1700000002.000000"},
@@ -495,23 +456,23 @@ class TestFetchMissedMessages:
             }
         )
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
+        messages = result.messages
 
-        assert len(result) == 2
+        assert len(messages) == 2
         # Chronological order (oldest first)
-        assert result[0].content == "first"
-        assert result[1].content == "second"
-        assert result[0].id == "slack-1700000001.000000"
-        assert result[1].id == "slack-1700000002.000000"
-        assert result[0].chat_jid == "slack:C12345"
+        assert messages[0].content == "first"
+        assert messages[1].content == "second"
+        assert messages[0].id == "slack-1700000001.000000"
+        assert messages[1].id == "slack-1700000002.000000"
+        assert messages[0].chat_jid == "slack:C12345"
 
     @pytest.mark.asyncio
     async def test_filters_bot_messages(self) -> None:
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        app = _attach_slack_app(ch)
 
-        ch.slack_app.client.conversations_history = AsyncMock(
+        app.client.conversations_history = AsyncMock(
             return_value={
                 "messages": [
                     {"user": "U1", "text": "human", "ts": "1700000001.000000"},
@@ -520,18 +481,17 @@ class TestFetchMissedMessages:
             }
         )
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
-        assert len(result) == 1
-        assert result[0].content == "human"
+        assert len(result.messages) == 1
+        assert result.messages[0].content == "human"
 
     @pytest.mark.asyncio
     async def test_filters_subtypes(self) -> None:
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        app = _attach_slack_app(ch)
 
-        ch.slack_app.client.conversations_history = AsyncMock(
+        app.client.conversations_history = AsyncMock(
             return_value={
                 "messages": [
                     {"user": "U1", "text": "normal", "ts": "1700000001.000000"},
@@ -551,19 +511,18 @@ class TestFetchMissedMessages:
             }
         )
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
-        assert len(result) == 1
-        assert result[0].content == "normal"
+        assert len(result.messages) == 1
+        assert result.messages[0].content == "normal"
 
     @pytest.mark.asyncio
     async def test_normalizes_bot_mentions(self) -> None:
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
+        app = _attach_slack_app(ch)
         ch.bot_user_id = "U_BOT"
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
 
-        ch.slack_app.client.conversations_history = AsyncMock(
+        app.client.conversations_history = AsyncMock(
             return_value={
                 "messages": [
                     {"user": "U1", "text": "<@U_BOT> c", "ts": "1700000001.000000"},
@@ -571,27 +530,26 @@ class TestFetchMissedMessages:
             }
         )
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
-        assert len(result) == 1
-        assert result[0].content == "@pynchy c"
+        assert len(result.messages) == 1
+        assert result.messages[0].content == "@pynchy c"
 
     @pytest.mark.asyncio
     async def test_handles_api_error(self) -> None:
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
-        ch.slack_app.client.conversations_history = AsyncMock(side_effect=Exception("API error"))
+        app = _attach_slack_app(ch)
+        app.client.conversations_history = AsyncMock(side_effect=Exception("API error"))
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
-        assert result == []
+        assert result.messages == []
 
     @pytest.mark.asyncio
     async def test_skips_bot_only_page_then_returns_next_user_message(self) -> None:
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
-        ch.slack_app.client.conversations_history = AsyncMock(
+        app = _attach_slack_app(ch)
+        app.client.conversations_history = AsyncMock(
             side_effect=[
                 {
                     "messages": [
@@ -608,41 +566,38 @@ class TestFetchMissedMessages:
             ]
         )
 
-        result, high_water_mark = await ch._fetch_missed_messages_with_watermark(
-            "C12345", "1700000000.000000"
-        )
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
-        assert len(result) == 1
-        assert result[0].content == "human"
-        assert result[0].id == "slack-1700000003.000000"
-        assert high_water_mark.endswith("+00:00")
-        assert ch.slack_app.client.conversations_history.await_count == 2
+        assert len(result.messages) == 1
+        assert result.messages[0].content == "human"
+        assert result.messages[0].id == "slack-1700000003.000000"
+        assert result.high_water_mark.endswith("+00:00")
+        assert app.client.conversations_history.await_count == 2
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_app(self) -> None:
         ch = _make_channel()
         ch.slack_app = None
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
-        assert result == []
+        assert result.messages == []
 
     @pytest.mark.asyncio
     async def test_uses_actual_message_timestamp(self) -> None:
         """Timestamp should be derived from Slack ts, not current time."""
         ch = _make_channel()
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
+        app = _attach_slack_app(ch)
 
         ts = "1700000001.000000"
-        ch.slack_app.client.conversations_history = AsyncMock(
+        app.client.conversations_history = AsyncMock(
             return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}
         )
 
-        result, _ = await ch._fetch_missed_messages_with_watermark("C12345", "1700000000.000000")
+        result = await ch.fetch_inbound_since("slack:C12345", _HISTORY_SINCE)
 
         expected = datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
-        assert result[0].timestamp == expected
+        assert result.messages[0].timestamp == expected
 
 
 # ------------------------------------------------------------------
@@ -652,13 +607,11 @@ class TestFetchMissedMessages:
 
 class TestDeterministicMessageIds:
     @pytest.mark.asyncio
-    async def test_on_slack_message_uses_deterministic_id(self) -> None:
+    async def test_ingest_inbound_event_uses_deterministic_id(self) -> None:
         on_message = MagicMock()
         on_metadata = MagicMock()
         ch = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch.slack_app = _fake_slack_app()
-        ch._resolve_user_name = AsyncMock(return_value="Alice")
-        ch._resolve_channel_name = AsyncMock(return_value="general")
+        _attach_slack_app(ch)
 
         ts = "1234567890.000099"
         event = {
@@ -668,7 +621,7 @@ class TestDeterministicMessageIds:
             "ts": ts,
             "channel_type": "channel",
         }
-        await ch._on_slack_message(event)
+        await ch.ingest_inbound_event(event)
 
         msg = on_message.call_args[0][1]
         assert msg.id == f"slack-{ts}"
@@ -681,24 +634,23 @@ class TestDeterministicMessageIds:
 
         ts = "1234567890.000055"
 
-        # First call via _on_slack_message
+        # First call through the public Slack event adapter.
         ch1 = _make_channel(on_message=on_message, on_chat_metadata=on_metadata)
-        ch1._app = _fake_slack_app()
-        ch1._resolve_user_name = AsyncMock(return_value="Alice")
-        ch1._resolve_channel_name = AsyncMock(return_value="general")
-        await ch1._on_slack_message(
+        _attach_slack_app(ch1)
+        await ch1.ingest_inbound_event(
             {"channel": "C1", "user": "U1", "text": "hi", "ts": ts, "channel_type": "channel"}
         )
         id_from_live = on_message.call_args[0][1].id
 
         # Second call via history catch-up
         ch2 = _make_channel()
-        ch2._app = _fake_slack_app()
-        ch2._resolve_user_name = AsyncMock(return_value="Alice")
-        ch2._app.client.conversations_history = AsyncMock(
+        app = _attach_slack_app(ch2)
+        app.client.conversations_history = AsyncMock(
             return_value={"messages": [{"user": "U1", "text": "hi", "ts": ts}]}
         )
-        msgs, _ = await ch2._fetch_missed_messages_with_watermark("C1", "0")
-        id_from_catchup = msgs[0].id
+        result = await ch2.fetch_inbound_since(
+            "slack:C1", datetime.fromtimestamp(0, tz=UTC).isoformat()
+        )
+        id_from_catchup = result.messages[0].id
 
         assert id_from_live == id_from_catchup == f"slack-{ts}"

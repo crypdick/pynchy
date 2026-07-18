@@ -73,6 +73,28 @@ def _metadata_as_strings(metadata: object) -> dict[str, str] | None:
     return {str(key): str(value) for key, value in metadata.items()}
 
 
+def build_mcp_server(
+    name: str,
+    spec: dict[str, Any],
+) -> MCPServerStdio | MCPServerSse | MCPServerStreamableHttp | None:
+    """Build one SDK MCP server from its container configuration."""
+    if "command" in spec:
+        return _stdio_server(name, spec)
+
+    transport = spec.get("type") or spec.get("transport")
+    if transport is None and "url" in spec:
+        transport = "sse"
+
+    if transport == "sse":
+        return _sse_server(name, spec)
+
+    if transport in ("streamable_http", "http"):
+        return _streamable_http_server(name, spec)
+
+    _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Patch editor — applies file patches directly in the container
 # ---------------------------------------------------------------------------
@@ -256,26 +278,6 @@ class OpenAIAgentCore:
         self._previous_response_id: str | None = previous
         self._session_id: str | None = previous
 
-    def _build_mcp_server(
-        self, name: str, spec: dict[str, Any]
-    ) -> MCPServerStdio | MCPServerSse | MCPServerStreamableHttp | None:
-        """Build an MCP server from a generic config dict."""
-        if "command" in spec:
-            return _stdio_server(name, spec)
-
-        transport = spec.get("type") or spec.get("transport")
-        if transport is None and "url" in spec:
-            transport = "sse"
-
-        if transport == "sse":
-            return _sse_server(name, spec)
-
-        if transport in ("streamable_http", "http"):
-            return _streamable_http_server(name, spec)
-
-        _log(f"Skipping MCP server '{name}': unsupported spec {spec}")
-        return None
-
     def _make_agent(self, model: str) -> Agent:
         if self._instructions is None:
             raise RuntimeError(_NOT_STARTED_MISSING_INSTRUCTIONS)
@@ -299,7 +301,7 @@ class OpenAIAgentCore:
     async def _initialize_runtime(self) -> None:
         # Convert config.mcp_servers dict → MCPServer* instances
         for name, spec in self.config.mcp_servers.items():
-            built = self._build_mcp_server(name, spec)
+            built = build_mcp_server(name, spec)
             if built is not None:
                 self._mcp_servers.append(built)
 

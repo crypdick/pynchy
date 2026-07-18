@@ -20,9 +20,12 @@ from mcp.types import TextContent
 from watchdog.events import FileCreatedEvent, FileMovedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from ._ipc import IPC_DIR, write_request_file
+from . import _ipc
 
-RESPONSES_DIR = IPC_DIR / "responses"
+
+def _responses_dir() -> Path:
+    """Return the active runtime's directory for host IPC responses."""
+    return _ipc.get_agent_tool_runtime().ipc_dir / "responses"
 
 
 class _ResponseWatcher(FileSystemEventHandler):
@@ -75,8 +78,8 @@ def _read_response(response_file: Path) -> list[TextContent]:
     ]
 
 
-def _ensure_responses_dir() -> None:
-    RESPONSES_DIR.mkdir(parents=True, exist_ok=True)
+def _ensure_responses_dir(responses_dir: Path) -> None:
+    responses_dir.mkdir(parents=True, exist_ok=True)
 
 
 def _response_file_exists(response_file: Path) -> bool:
@@ -110,7 +113,7 @@ async def _wait_for_response_file(
 async def ipc_service_request(
     tool_name: str,
     request: dict[str, object],
-    response_timeout_seconds: float = 300,
+    response_timeout_seconds: float | None = None,
     *,
     type_override: str | None = None,
 ) -> list[TextContent]:
@@ -134,16 +137,22 @@ async def ipc_service_request(
     """
     request_id = uuid.uuid4().hex
     request_kind = type_override or f"service:{tool_name}"
+    timeout_seconds = (
+        response_timeout_seconds
+        if response_timeout_seconds is not None
+        else _ipc.get_agent_tool_runtime().service_request_timeout_seconds
+    )
 
-    response_file = RESPONSES_DIR / f"{request_id}.json"
-    await asyncio.to_thread(_ensure_responses_dir)
+    responses_dir = _responses_dir()
+    response_file = responses_dir / f"{request_id}.json"
+    await asyncio.to_thread(_ensure_responses_dir, responses_dir)
 
     loop = asyncio.get_running_loop()
     wakeup = asyncio.Event()
 
     handler = _ResponseWatcher(response_file.name, loop, wakeup)
     observer = Observer()
-    observer.schedule(handler, str(RESPONSES_DIR), recursive=False)
+    observer.schedule(handler, str(responses_dir), recursive=False)
     observer.daemon = True
     observer_started = False
     try:
@@ -161,7 +170,7 @@ async def ipc_service_request(
 
         # Write request to requests/ (picked up by host IPC watcher).
         # Done *after* observer is started so we can't miss the response.
-        write_request_file(request_kind, request, request_id=request_id, reply_to="responses")
+        _ipc.write_request_file(request_kind, request, request_id=request_id, reply_to="responses")
 
         # Second check: host may have responded between observer.start()
         # and now (especially fast in tests or local setups)
@@ -169,7 +178,7 @@ async def ipc_service_request(
             return _read_response(response_file)
 
         # Watchdog should wake this promptly; polling covers missed/unavailable events.
-        await _wait_for_response_file(response_file, wakeup, response_timeout_seconds)
+        await _wait_for_response_file(response_file, wakeup, timeout_seconds)
 
         return _read_response(response_file)
 

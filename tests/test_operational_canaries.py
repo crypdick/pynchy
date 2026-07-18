@@ -336,7 +336,7 @@ async def test_proton_canary_sends_receives_reads_and_cleans_without_persisting_
     ) in client.calls
 
 
-def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
+async def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
     settings = make_settings(
         tools={
             "proton-mail": McpTool(
@@ -365,7 +365,7 @@ def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
     monkeypatch.setattr("pynchy.operational_canaries.get_settings", lambda: settings)
     monkeypatch.setattr("pynchy.operational_canaries.create_proton_mail_client", create_client)
 
-    ProtonMailRoundTripCanary()._client_factory()
+    await ProtonMailRoundTripCanary().exercise(_context("proton.mail.round.trip"))
 
     assert captured_environment is not None
     assert captured_environment["PYNCHY_PROTON_BRIDGE_USERNAME"] == "mail@example.test"

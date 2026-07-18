@@ -1,62 +1,120 @@
-"""Tests for WhatsApp ask_user: numbered text fallback and answer interception."""
+"""Behavior tests for WhatsApp ask_user delivery and answer ingestion."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import ModuleType
+from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock
 
 import pytest
 
-from pynchy.host.orchestrator.messaging.pending_questions import find_pending_for_jid
-
-# ---------------------------------------------------------------------------
-# Neonize mock setup — must happen before importing WhatsAppChannel
-# ---------------------------------------------------------------------------
-
-# Create fake neonize modules so the WhatsApp channel module can be imported
-# in environments where neonize (a native Go binding) isn't installed.
-_NEONIZE_MODULES = [
-    "neonize",
-    "neonize.aioze",
-    "neonize.aioze.client",
-    "neonize.aioze.events",
-    "neonize.events",
-    "neonize.proto",
-    "neonize.proto.Neonize_pb2",
-    "neonize.utils",
-    "neonize.utils.jid",
-    "neonize.utils.enum",
-]
-_neonize_mocks: dict[str, ModuleType] = {}
-for _mod_name in _NEONIZE_MODULES:
-    if _mod_name not in sys.modules:
-        _neonize_mocks[_mod_name] = MagicMock()
-        sys.modules[_mod_name] = _neonize_mocks[_mod_name]
-
-# Now it's safe to import
-from pynchy.plugins.channels.whatsapp.channel import WhatsAppChannel  # noqa: E402
+from pynchy.host.orchestrator.messaging import pending_questions
+from pynchy.types import OutboundEvent, OutboundEventType, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from types import ModuleType
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+
+# Create a typed stand-in for the optional neonize package before importing
+# the channel. Real classes keep beartype from treating SDK annotations as
+# MagicMock instances.
+def _install_module(name: str, *, package: bool = False) -> ModuleType:
+    module = ModuleType(name)
+    if package:
+        module.__path__ = []  # type: ignore[attr-defined]  # noqa: RUF100 - import package marker.
+    sys.modules[name] = module
+    return module
+
+
+neonize = _install_module("neonize", package=True)
+aioze = _install_module("neonize.aioze", package=True)
+aioze_client = _install_module("neonize.aioze.client")
+aioze_events = _install_module("neonize.aioze.events")
+neonize_events = _install_module("neonize.events")
+neonize_utils = _install_module("neonize.utils", package=True)
+neonize_jid = _install_module("neonize.utils.jid")
+neonize_enum = _install_module("neonize.utils.enum")
+
+neonize.aioze = aioze
+aioze.client = aioze_client
+aioze.events = aioze_events
+neonize.utils = neonize_utils
+neonize_utils.jid = neonize_jid
+neonize_utils.enum = neonize_enum
+
+
+class _NeonizeClient:
+    pass
+
+
+class _ConnectedEvent:
+    pass
+
+
+class _ConnectFailureEvent:
+    pass
+
+
+class _DisconnectedEvent:
+    pass
+
+
+class _LoggedOutEvent:
+    pass
+
+
+class _MessageEvent:
+    pass
+
+
+class _PairStatusEvent:
+    pass
+
+
+class _ChatPresence:
+    CHAT_PRESENCE_COMPOSING = "composing"
+    CHAT_PRESENCE_PAUSED = "paused"
+
+
+class _ChatPresenceMedia:
+    CHAT_PRESENCE_MEDIA_TEXT = "text"
+
+
+aioze_client.NewAClient = _NeonizeClient
+neonize_events.ConnectedEv = _ConnectedEvent
+neonize_events.ConnectFailureEv = _ConnectFailureEvent
+neonize_events.DisconnectedEv = _DisconnectedEvent
+neonize_events.LoggedOutEv = _LoggedOutEvent
+neonize_events.MessageEv = _MessageEvent
+neonize_events.PairStatusEv = _PairStatusEvent
+neonize_enum.ChatPresence = _ChatPresence
+neonize_enum.ChatPresenceMedia = _ChatPresenceMedia
+neonize_jid.Jid2String = lambda jid: getattr(jid, "value", "")
+neonize_jid.build_jid = lambda *parts: parts
+
+from pynchy.plugins.channels.whatsapp import (  # noqa: E402
+    WhatsAppChannel,
+    resolve_ask_user_answer,
+)
+from pynchy.plugins.channels.whatsapp import channel as whatsapp_channel  # noqa: E402
 
 CHAT_JID = "120363001234567890@g.us"
 REQUEST_ID = "req-wa-test-001"
+WORKSPACE = WorkspaceProfile(
+    jid=CHAT_JID,
+    name="Test chat",
+    folder="test-group",
+    trigger="always",
+    added_at="2024-01-01",
+)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _questions_with_options() -> list[dict]:
+def _questions_with_options() -> list[dict[str, Any]]:
     return [
         {
             "question": "Which auth strategy?",
@@ -69,477 +127,357 @@ def _questions_with_options() -> list[dict]:
     ]
 
 
-def _questions_with_string_options() -> list[dict]:
-    """Options as plain strings instead of dicts."""
-    return [
-        {
-            "question": "Pick a color",
-            "options": ["Red", "Green", "Blue"],
-        }
-    ]
+def _questions_with_string_options() -> list[dict[str, Any]]:
+    return [{"question": "Pick a color", "options": ["Red", "Green", "Blue"]}]
 
 
-def _questions_no_options() -> list[dict]:
-    return [
-        {
-            "question": "What is the project name?",
-        }
-    ]
+def _questions_without_options() -> list[dict[str, Any]]:
+    return [{"question": "What is the project name?"}]
 
 
 def _pending_data(
     *,
     chat_jid: str = CHAT_JID,
     request_id: str = REQUEST_ID,
-    questions: list[dict] | None = None,
+    questions: list[dict[str, Any]] | None = None,
     timestamp: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "request_id": request_id,
-        "short_id": request_id[:8],
-        "source_group": "test-group",
         "chat_jid": chat_jid,
-        "channel_name": "connection.whatsapp.main",
-        "session_id": "sess-001",
         "questions": questions or _questions_with_options(),
-        "message_id": None,
         "timestamp": timestamp or datetime.now(UTC).isoformat(),
     }
 
 
-def _make_channel(
-    *,
-    on_ask_user_answer: object | None = None,
-) -> WhatsAppChannel:
-    """Create a WhatsAppChannel with mocked internals.
+class _FakeEventRegistry:
+    def __init__(self) -> None:
+        self.handlers: dict[object, Any] = {}
+        self.qr_handler: Any = None
 
-    Uses __new__ to bypass __init__ which requires neonize native bindings.
-    """
-    ch = WhatsAppChannel.__new__(WhatsAppChannel)
-    # Manually initialise the attributes we care about
-    ch.name = "connection.whatsapp.test"
-    ch._connection_name = "connection.whatsapp.test"
-    ch._on_message = MagicMock()
-    ch._on_chat_metadata = MagicMock()
-    ch._on_ask_user_answer = on_ask_user_answer
-    ch._workspaces = lambda: {CHAT_JID: MagicMock()}
-    ch._connected = True
-    ch._outgoing_queue = MagicMock()
-    ch._lid_to_phone = {}
-    ch._send_text = AsyncMock()
-    return ch
+    def __call__(self, event_type: object) -> Any:
+        def register(handler: Any) -> Any:
+            self.handlers[event_type] = handler
+            return handler
+
+        return register
+
+    def qr(self, handler: Any) -> Any:
+        self.qr_handler = handler
+        return handler
 
 
-# ---------------------------------------------------------------------------
-# send_ask_user tests
-# ---------------------------------------------------------------------------
+class _FakeWhatsAppClient:
+    """Small SDK-shaped client driven through WhatsAppChannel's public API."""
+
+    def __init__(self) -> None:
+        self.event = _FakeEventRegistry()
+        self.me: object | None = None
+        self.sent_messages: list[tuple[object, object]] = []
+        self._idle = asyncio.Event()
+
+    async def connect(self) -> None:
+        handler = self.event.handlers[whatsapp_channel.ConnectedEv]
+        await handler(self, object())
+
+    async def idle(self) -> None:
+        await self._idle.wait()
+
+    async def disconnect(self) -> None:
+        self._idle.set()
+
+    async def send_message(self, target: object, text: object) -> None:
+        self.sent_messages.append((target, text))
+
+    async def get_joined_groups(self) -> list[object]:
+        return []
+
+
+class _NoopMetadataSyncWhatsAppChannel(WhatsAppChannel):
+    async def sync_group_metadata(self, *, force: bool = False) -> None:
+        _ = force
+
+
+@dataclass
+class _ConnectedChannel:
+    channel: WhatsAppChannel
+    client: _FakeWhatsAppClient
+    on_message: MagicMock
+    on_metadata: MagicMock
+    on_answer: MagicMock
+
+
+@pytest.fixture
+async def connected_channel(tmp_path: Path) -> _ConnectedChannel:
+    client = _FakeWhatsAppClient()
+    on_message = MagicMock()
+    on_metadata = MagicMock()
+    on_answer = MagicMock()
+    channel = _NoopMetadataSyncWhatsAppChannel(
+        connection_name="connection.whatsapp.test",
+        auth_db_path=str(tmp_path / "neonize.db"),
+        on_message=on_message,
+        on_chat_metadata=on_metadata,
+        workspaces=lambda: {CHAT_JID: WORKSPACE},
+        on_ask_user_answer=on_answer,
+        client_factory=lambda _auth_db: client,
+    )
+    await channel.connect()
+    try:
+        yield _ConnectedChannel(channel, client, on_message, on_metadata, on_answer)
+    finally:
+        await channel.disconnect()
+
+
+@dataclass(frozen=True)
+class _Jid:
+    value: str
+    User: str
+    Server: str
+
+
+@dataclass(frozen=True)
+class _MessageSource:
+    Chat: _Jid
+    Sender: _Jid
+    IsFromMe: bool
+
+
+@dataclass(frozen=True)
+class _MessageInfo:
+    MessageSource: _MessageSource
+    Timestamp: int
+    ID: str
+    Pushname: str
+
+
+@dataclass(frozen=True)
+class _TextPart:
+    text: str = ""
+
+
+@dataclass(frozen=True)
+class _MediaPart:
+    caption: str = ""
+
+
+@dataclass(frozen=True)
+class _MessageBody:
+    conversation: str
+    extendedTextMessage: _TextPart = field(default_factory=_TextPart)  # noqa: N815, RUF100 - WhatsApp SDK field name.
+    imageMessage: _MediaPart = field(default_factory=_MediaPart)  # noqa: N815, RUF100 - WhatsApp SDK field name.
+    videoMessage: _MediaPart = field(default_factory=_MediaPart)  # noqa: N815, RUF100 - WhatsApp SDK field name.
+
+
+@dataclass(frozen=True)
+class _InboundEvent:
+    Info: _MessageInfo
+    Message: _MessageBody
+
+
+def _inbound_event(content: str, *, is_from_me: bool = False) -> _InboundEvent:
+    chat = _Jid(value=CHAT_JID, User="120363001234567890", Server="g.us")
+    sender = _Jid(value="5551234@s.whatsapp.net", User="5551234", Server="s.whatsapp.net")
+    return _InboundEvent(
+        Info=_MessageInfo(
+            MessageSource=_MessageSource(Chat=chat, Sender=sender, IsFromMe=is_from_me),
+            Timestamp=1_740_000_000,
+            ID="msg-123",
+            Pushname="Test User",
+        ),
+        Message=_MessageBody(conversation=content),
+    )
+
+
+def _rendered_text(client: _FakeWhatsAppClient) -> str:
+    assert len(client.sent_messages) == 1
+    text = client.sent_messages[0][1]
+    assert isinstance(text, str)
+    return text
 
 
 class TestSendAskUser:
-    @pytest.mark.asyncio
-    async def test_formats_numbered_text(self) -> None:
-        """Verify numbered text formatting with options."""
-        ch = _make_channel()
-        await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_options())
+    async def test_formats_numbered_text(self, connected_channel: _ConnectedChannel) -> None:
+        await connected_channel.channel.send_ask_user(
+            CHAT_JID, REQUEST_ID, _questions_with_options()
+        )
 
-        ch._send_text.assert_called_once()
-        text = ch._send_text.call_args[0][1]
-
+        text = _rendered_text(connected_channel.client)
         assert "Which auth strategy?" in text
         assert "1. JWT tokens" in text
         assert "2. Session cookies" in text
         assert "3. OAuth 2.0" in text
         assert "Reply with a number" in text
 
-    @pytest.mark.asyncio
-    async def test_formats_string_options(self) -> None:
-        """Options as plain strings should also render correctly."""
-        ch = _make_channel()
-        await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_string_options())
+    async def test_formats_string_options(self, connected_channel: _ConnectedChannel) -> None:
+        await connected_channel.channel.send_ask_user(
+            CHAT_JID, REQUEST_ID, _questions_with_string_options()
+        )
 
-        text = ch._send_text.call_args[0][1]
+        text = _rendered_text(connected_channel.client)
         assert "1. Red" in text
         assert "2. Green" in text
         assert "3. Blue" in text
 
-    @pytest.mark.asyncio
-    async def test_no_options(self) -> None:
-        """Question with no options should still format correctly."""
-        ch = _make_channel()
-        await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_no_options())
+    async def test_formats_free_text_prompt(self, connected_channel: _ConnectedChannel) -> None:
+        await connected_channel.channel.send_ask_user(
+            CHAT_JID, REQUEST_ID, _questions_without_options()
+        )
 
-        text = ch._send_text.call_args[0][1]
+        text = _rendered_text(connected_channel.client)
         assert "What is the project name?" in text
-        assert "Reply with your answer" in text
-        # Should NOT contain numbered options
+        assert "Reply with your answer." in text
         assert "1." not in text
 
-    @pytest.mark.asyncio
-    async def test_returns_message_id(self) -> None:
-        """send_ask_user returns a string message ID."""
-        ch = _make_channel()
-        result = await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_options())
-        assert result is not None
-        assert isinstance(result, str)
+    async def test_returns_request_id_and_delivers_one_message(
+        self, connected_channel: _ConnectedChannel
+    ) -> None:
+        result = await connected_channel.channel.send_ask_user(
+            CHAT_JID, REQUEST_ID, _questions_with_options()
+        )
 
-    @pytest.mark.asyncio
-    async def test_sends_to_correct_jid(self) -> None:
-        """The message is sent to the correct chat JID."""
-        ch = _make_channel()
-        await ch.send_ask_user(CHAT_JID, REQUEST_ID, _questions_with_options())
+        assert result == REQUEST_ID
+        assert len(connected_channel.client.sent_messages) == 1
 
-        sent_jid = ch._send_text.call_args[0][0]
-        assert sent_jid == CHAT_JID
+    async def test_send_event_renders_and_delivers_text(
+        self, connected_channel: _ConnectedChannel
+    ) -> None:
+        await connected_channel.channel.send_event(
+            CHAT_JID,
+            OutboundEvent(type=OutboundEventType.TEXT, content="Hello world"),
+        )
 
-
-# ---------------------------------------------------------------------------
-# _resolve_answer tests
-# ---------------------------------------------------------------------------
+        assert _rendered_text(connected_channel.client) == "Hello world"
 
 
-class TestResolveAnswer:
-    def test_number_match_dict_options(self) -> None:
-        """Numeric reply matching a dict option returns the label."""
-        ch = _make_channel()
-        pending = _pending_data()
-        answer = ch._resolve_answer("2", pending)
-        assert answer == {"answer": "Session cookies"}
-
-    def test_number_match_string_options(self) -> None:
-        """Numeric reply matching a plain-string option returns the string."""
-        ch = _make_channel()
-        pending = _pending_data(questions=_questions_with_string_options())
-        answer = ch._resolve_answer("1", pending)
-        assert answer == {"answer": "Red"}
-
-    def test_number_out_of_range(self) -> None:
-        """Number beyond the option range is treated as free-form text."""
-        ch = _make_channel()
-        pending = _pending_data()
-        answer = ch._resolve_answer("99", pending)
-        assert answer == {"answer": "99"}
-
-    def test_number_zero(self) -> None:
-        """Zero is out of range (1-indexed) and treated as free-form."""
-        ch = _make_channel()
-        pending = _pending_data()
-        answer = ch._resolve_answer("0", pending)
-        assert answer == {"answer": "0"}
-
-    def test_free_text(self) -> None:
-        """Non-numeric text is returned as free-form answer."""
-        ch = _make_channel()
-        pending = _pending_data()
-        answer = ch._resolve_answer("I want something else", pending)
-        assert answer == {"answer": "I want something else"}
-
-    def test_strips_whitespace(self) -> None:
-        """Leading/trailing whitespace is stripped before matching."""
-        ch = _make_channel()
-        pending = _pending_data()
-        answer = ch._resolve_answer("  1  ", pending)
-        assert answer == {"answer": "JWT tokens"}
-
-    def test_no_questions_in_pending(self) -> None:
-        """If pending has no questions, treat as free-form."""
-        ch = _make_channel()
-        pending = _pending_data(questions=[])
-        answer = ch._resolve_answer("hello", pending)
-        assert answer == {"answer": "hello"}
-
-    def test_unicode_superscript_digit_treated_as_freeform(self) -> None:
-        """Unicode superscript digits (e.g. '²') must NOT match as numeric option.
-
-        str.isdigit() returns True for these but int() raises ValueError.
-        The regex [0-9]+ guard ensures only ASCII digits are matched.
-        """
-        ch = _make_channel()
-        pending = _pending_data()
-        # '\u00b2' is superscript 2 — isdigit() returns True but int() would crash
-        answer = ch._resolve_answer("\u00b2", pending)
-        assert answer == {"answer": "\u00b2"}
+class TestResolveAskUserAnswer:
+    @pytest.mark.parametrize(
+        ("reply", "questions", "expected"),
+        [
+            ("2", _questions_with_options(), {"answer": "Session cookies"}),
+            ("1", _questions_with_string_options(), {"answer": "Red"}),
+            ("99", _questions_with_options(), {"answer": "99"}),
+            ("0", _questions_with_options(), {"answer": "0"}),
+            (
+                "I want something else",
+                _questions_with_options(),
+                {"answer": "I want something else"},
+            ),
+            ("  1  ", _questions_with_options(), {"answer": "JWT tokens"}),
+            ("hello", [], {"answer": "hello"}),
+            ("²", _questions_with_options(), {"answer": "²"}),
+        ],
+    )
+    def test_resolves_numbered_or_free_text_answer(
+        self,
+        reply: str,
+        questions: list[dict[str, Any]],
+        expected: dict[str, str],
+    ) -> None:
+        assert resolve_ask_user_answer(reply, questions) == expected
 
 
-# ---------------------------------------------------------------------------
-# Answer interception tests
-# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class _Settings:
+    data_dir: Path
 
 
-class TestAnswerIntercept:
-    def test_number_match_calls_callback(self) -> None:
-        """Incoming '2' while pending question exists triggers callback with matched label."""
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-        pending = _pending_data()
-
-        answer = ch._resolve_answer("2", pending)
-        ch._on_ask_user_answer(pending["request_id"], answer)
-
-        callback.assert_called_once_with(REQUEST_ID, {"answer": "Session cookies"})
-
-    def test_free_text_calls_callback(self) -> None:
-        """Non-numeric text triggers callback with raw text."""
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-        pending = _pending_data()
-
-        answer = ch._resolve_answer("Actually, use API keys", pending)
-        ch._on_ask_user_answer(pending["request_id"], answer)
-
-        callback.assert_called_once_with(REQUEST_ID, {"answer": "Actually, use API keys"})
-
-    def test_skips_normal_pipeline(self) -> None:
-        """When a pending question is intercepted, _on_message is NOT called."""
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-        pending = _pending_data()
-
-        # Simulate the interception path: resolve + call callback
-        answer = ch._resolve_answer("1", pending)
-        ch._on_ask_user_answer(pending["request_id"], answer)
-
-        # _on_message should NOT have been called
-        ch._on_message.assert_not_called()
-
-    def test_no_callback_no_error(self) -> None:
-        """If on_ask_user_answer is None, resolving an answer should not raise."""
-        ch = _make_channel(on_ask_user_answer=None)
-        pending = _pending_data()
-
-        # This should work without error even with no callback
-        answer = ch._resolve_answer("1", pending)
-        assert answer == {"answer": "JWT tokens"}
-        # When callback is None, the _handle_message code simply skips the call
-
-
-# ---------------------------------------------------------------------------
-# find_pending_for_jid tests
-# ---------------------------------------------------------------------------
+def _use_pending_question_data_dir(monkeypatch: pytest.MonkeyPatch, data_dir: Path) -> None:
+    monkeypatch.setattr(pending_questions, "get_settings", lambda: _Settings(data_dir))
 
 
 class TestFindPendingForJid:
-    def test_finds_matching_jid(self, tmp_path: Path) -> None:
-        """Finds a pending question by chat_jid across groups."""
-        ipc_dir = tmp_path / "ipc"
-        pq_dir = ipc_dir / "my-group" / "pending_questions"
-        pq_dir.mkdir(parents=True)
-        data = _pending_data()
-        (pq_dir / f"{REQUEST_ID}.json").write_text(json.dumps(data))
+    def test_finds_matching_jid(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        question_dir = tmp_path / "ipc" / "my-group" / "pending_questions"
+        question_dir.mkdir(parents=True)
+        (question_dir / f"{REQUEST_ID}.json").write_text(json.dumps(_pending_data()))
+        _use_pending_question_data_dir(monkeypatch, tmp_path)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.pending_questions.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.data_dir = tmp_path
-            result = find_pending_for_jid(CHAT_JID)
-
-        assert result is not None
-        assert result["request_id"] == REQUEST_ID
-        assert result["chat_jid"] == CHAT_JID
-
-    def test_returns_none_when_no_match(self, tmp_path: Path) -> None:
-        """Returns None when no pending question matches the JID."""
-        ipc_dir = tmp_path / "ipc"
-        pq_dir = ipc_dir / "my-group" / "pending_questions"
-        pq_dir.mkdir(parents=True)
-        data = _pending_data(chat_jid="different@g.us")
-        (pq_dir / "other-req.json").write_text(json.dumps(data))
-
-        with patch(
-            "pynchy.host.orchestrator.messaging.pending_questions.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.data_dir = tmp_path
-            result = find_pending_for_jid(CHAT_JID)
-
-        assert result is None
-
-    def test_returns_none_when_ipc_dir_missing(self, tmp_path: Path) -> None:
-        """Returns None when ipc directory doesn't exist."""
-        with patch(
-            "pynchy.host.orchestrator.messaging.pending_questions.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.data_dir = tmp_path
-            result = find_pending_for_jid(CHAT_JID)
-
-        assert result is None
-
-    def test_skips_errors_dir(self, tmp_path: Path) -> None:
-        """The 'errors' directory is skipped during search."""
-        ipc_dir = tmp_path / "ipc"
-        errors_dir = ipc_dir / "errors" / "pending_questions"
-        errors_dir.mkdir(parents=True)
-        data = _pending_data()
-        (errors_dir / f"{REQUEST_ID}.json").write_text(json.dumps(data))
-
-        with patch(
-            "pynchy.host.orchestrator.messaging.pending_questions.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.data_dir = tmp_path
-            result = find_pending_for_jid(CHAT_JID)
-
-        assert result is None
-
-    def test_handles_corrupt_json(self, tmp_path: Path) -> None:
-        """Corrupt JSON files are silently skipped."""
-        ipc_dir = tmp_path / "ipc"
-        pq_dir = ipc_dir / "my-group" / "pending_questions"
-        pq_dir.mkdir(parents=True)
-        (pq_dir / "corrupt.json").write_text("{bad json")
-
-        # Also add a valid one that should still be found
-        data = _pending_data()
-        (pq_dir / f"{REQUEST_ID}.json").write_text(json.dumps(data))
-
-        with patch(
-            "pynchy.host.orchestrator.messaging.pending_questions.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.data_dir = tmp_path
-            result = find_pending_for_jid(CHAT_JID)
+        result = pending_questions.find_pending_for_jid(CHAT_JID)
 
         assert result is not None
         assert result["request_id"] == REQUEST_ID
 
-    def test_searches_multiple_groups(self, tmp_path: Path) -> None:
-        """Searches across multiple group directories."""
-        ipc_dir = tmp_path / "ipc"
+    def test_ignores_nonmatching_and_error_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        question_dir = tmp_path / "ipc" / "my-group" / "pending_questions"
+        question_dir.mkdir(parents=True)
+        (question_dir / "other.json").write_text(
+            json.dumps(_pending_data(chat_jid="different@g.us"))
+        )
+        error_dir = tmp_path / "ipc" / "errors" / "pending_questions"
+        error_dir.mkdir(parents=True)
+        (error_dir / f"{REQUEST_ID}.json").write_text(json.dumps(_pending_data()))
+        _use_pending_question_data_dir(monkeypatch, tmp_path)
 
-        # Group A — different JID
-        pq_dir_a = ipc_dir / "group-a" / "pending_questions"
-        pq_dir_a.mkdir(parents=True)
-        data_a = _pending_data(chat_jid="other@g.us", request_id="req-a")
-        (pq_dir_a / "req-a.json").write_text(json.dumps(data_a))
+        assert pending_questions.find_pending_for_jid(CHAT_JID) is None
 
-        # Group B — matching JID
-        pq_dir_b = ipc_dir / "group-b" / "pending_questions"
-        pq_dir_b.mkdir(parents=True)
-        data_b = _pending_data(chat_jid=CHAT_JID, request_id="req-b")
-        (pq_dir_b / "req-b.json").write_text(json.dumps(data_b))
+    def test_skips_corrupt_files_and_finds_later_match(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        question_dir = tmp_path / "ipc" / "my-group" / "pending_questions"
+        question_dir.mkdir(parents=True)
+        (question_dir / "corrupt.json").write_text("{bad json")
+        (question_dir / f"{REQUEST_ID}.json").write_text(json.dumps(_pending_data()))
+        _use_pending_question_data_dir(monkeypatch, tmp_path)
 
-        with patch(
-            "pynchy.host.orchestrator.messaging.pending_questions.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.data_dir = tmp_path
-            result = find_pending_for_jid(CHAT_JID)
+        result = pending_questions.find_pending_for_jid(CHAT_JID)
 
         assert result is not None
-        assert result["request_id"] == "req-b"
+        assert result["request_id"] == REQUEST_ID
 
 
-# ---------------------------------------------------------------------------
-# Callback wiring tests
-# ---------------------------------------------------------------------------
+class TestInboundMessageAdapter:
+    async def test_pending_answer_is_intercepted(
+        self,
+        connected_channel: _ConnectedChannel,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(whatsapp_channel, "Jid2String", lambda jid: jid.value)
+        monkeypatch.setattr(whatsapp_channel, "find_pending_for_jid", lambda _jid: _pending_data())
+
+        await connected_channel.channel.ingest_inbound_message(_inbound_event("2"))
+
+        connected_channel.on_answer.assert_called_once_with(
+            REQUEST_ID, {"answer": "Session cookies"}
+        )
+        connected_channel.on_message.assert_not_called()
+
+    async def test_stale_question_reaches_normal_message_pipeline(
+        self,
+        connected_channel: _ConnectedChannel,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(whatsapp_channel, "Jid2String", lambda jid: jid.value)
+        monkeypatch.setattr(
+            whatsapp_channel,
+            "find_pending_for_jid",
+            lambda _jid: _pending_data(timestamp="2025-01-01T00:00:00+00:00"),
+        )
+
+        await connected_channel.channel.ingest_inbound_message(_inbound_event("hello there"))
+
+        connected_channel.on_answer.assert_not_called()
+        delivered = connected_channel.on_message.call_args.args[1]
+        assert delivered.content == "hello there"
+
+    async def test_own_agent_echo_is_not_reemitted(
+        self,
+        connected_channel: _ConnectedChannel,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(whatsapp_channel, "Jid2String", lambda jid: jid.value)
+        agent_name = whatsapp_channel.get_settings().agent.name
+
+        await connected_channel.channel.ingest_inbound_message(
+            _inbound_event(f"{agent_name}: working on it", is_from_me=True)
+        )
+
+        connected_channel.on_answer.assert_not_called()
+        connected_channel.on_message.assert_not_called()
 
 
-class TestCallbackWiring:
-    def test_callback_stored_on_init(self) -> None:
-        """on_ask_user_answer is stored as an instance attribute."""
-        cb = MagicMock()
-        ch = _make_channel(on_ask_user_answer=cb)
-        assert ch._on_ask_user_answer is cb
-
-    def test_callback_defaults_to_none(self) -> None:
-        """on_ask_user_answer defaults to None."""
-        ch = _make_channel(on_ask_user_answer=None)
-        assert ch._on_ask_user_answer is None
-
-
-# ---------------------------------------------------------------------------
-# _handle_message integration tests
-# ---------------------------------------------------------------------------
-
-
-class TestHandleMessageIntercept:
-    """End-to-end test that calls _handle_message and verifies the ask_user
-    interception path triggers the callback and skips normal routing."""
-
-    def _build_message_ev(self, content: str = "2") -> MagicMock:
-        """Build a mock MessageEv with the structure _handle_message expects."""
-        message = MagicMock()
-        message.Info.MessageSource.Chat = MagicMock()  # JID object
-        message.Info.MessageSource.IsFromMe = False
-        message.Info.MessageSource.Sender = MagicMock()
-        message.Info.MessageSource.Sender.User = "5551234"
-        message.Info.Timestamp = 1740000000
-        message.Info.ID = "msg-123"
-        message.Info.Pushname = "Test User"
-        message.Message.conversation = content
-        message.Message.extendedTextMessage.text = ""
-        message.Message.imageMessage.caption = ""
-        message.Message.videoMessage.caption = ""
-        return message
-
-    @pytest.mark.asyncio
-    async def test_intercepts_answer_and_skips_on_message(self) -> None:
-        """A numeric reply to a pending question calls the callback and
-        does NOT reach _on_message."""
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-
-        message = self._build_message_ev("2")
-        pending = _pending_data()
-
-        # Patch Jid2String to return the CHAT_JID for any call
-        jid2string_mock = sys.modules["neonize.utils.jid"].Jid2String
-        jid2string_mock.return_value = CHAT_JID
-
-        # Patch _translate_jid to return CHAT_JID (bypass LID translation)
-        ch._translate_jid = MagicMock(return_value=CHAT_JID)
-
-        with patch(
-            "pynchy.plugins.channels.whatsapp.channel.find_pending_for_jid",
-            return_value=pending,
-        ):
-            await ch._handle_message(message)
-
-        # The ask_user callback should have been called with the resolved answer
-        callback.assert_called_once_with(REQUEST_ID, {"answer": "Session cookies"})
-
-        # Normal message pipeline should NOT have been called
-        ch._on_message.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_stale_pending_question_not_intercepted(self) -> None:
-        """A stale pending question (old timestamp) should NOT intercept messages.
-
-        If a pending question file was left behind by a crash, real user
-        messages must flow to the normal pipeline instead of being swallowed.
-        """
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-
-        message = self._build_message_ev("hello there")
-        # Create a pending question with a very old timestamp (well past timeout)
-        stale_pending = _pending_data()
-        stale_pending["timestamp"] = "2025-01-01T00:00:00+00:00"
-
-        jid2string_mock = sys.modules["neonize.utils.jid"].Jid2String
-        jid2string_mock.return_value = CHAT_JID
-        ch._translate_jid = MagicMock(return_value=CHAT_JID)
-
-        with patch(
-            "pynchy.plugins.channels.whatsapp.channel.find_pending_for_jid",
-            return_value=stale_pending,
-        ):
-            await ch._handle_message(message)
-
-        # The callback should NOT have been called — stale question is skipped
-        callback.assert_not_called()
-
-        # Normal message pipeline SHOULD have been called
-        ch._on_message.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_own_agent_echo_is_skipped(self) -> None:
-        callback = MagicMock()
-        ch = _make_channel(on_ask_user_answer=callback)
-
-        message = self._build_message_ev("pynchy: working on it")
-        message.Info.MessageSource.IsFromMe = True
-
-        jid2string_mock = sys.modules["neonize.utils.jid"].Jid2String
-        jid2string_mock.return_value = CHAT_JID
-        ch._translate_jid = MagicMock(return_value=CHAT_JID)
-
-        await ch._handle_message(message)
-
-        callback.assert_not_called()
-        ch._on_message.assert_not_called()
+class TestCallbackSurface:
+    def test_exposes_answer_callback(self, connected_channel: _ConnectedChannel) -> None:
+        assert connected_channel.channel.on_ask_user_answer is connected_channel.on_answer

@@ -37,7 +37,7 @@ def test_system_event_updates_session_id():
     core = _core()
     message = ClaudeSystemEvent(subtype="init", data={"session_id": "sid-123"})
 
-    event = core._system_event(message)
+    (event,) = core.map_sdk_event(message)
 
     assert event.type == "system"
     assert event.data["system_subtype"] == "init"
@@ -60,7 +60,7 @@ def test_assistant_events_map_all_supported_block_types():
         )
     )
 
-    events = _core()._assistant_events(message)
+    events = _core().map_sdk_event(message)
 
     assert [event.type for event in events] == ["thinking", "tool_use", "tool_result", "text"]
     assert events[0].data["thinking"] == "hmm"
@@ -84,7 +84,7 @@ def test_result_event_updates_session_and_metadata():
         result="all done",
     )
 
-    event = core._result_event(message)
+    (event,) = core.map_sdk_event(message)
 
     assert event.type == "result"
     assert event.data["result"] == "all done"

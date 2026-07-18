@@ -1,15 +1,12 @@
-"""Tests for the Codex CLI agent core.
-
-The core drives ``codex exec --json`` and maps Codex JSONL events back into
-Pynchy's provider-agnostic ``AgentEvent`` stream.
-"""
+"""Tests for Codex CLI's public process and stream-event contracts."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import signal
 import tomllib
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -56,12 +53,112 @@ def _set_gateway_env(
     monkeypatch.setenv("OPENAI_API_KEY", "gw-test")
 
 
-def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
+class _FakeStdin:
+    def __init__(self) -> None:
+        self.writes: list[bytes] = []
+
+    def write(self, content: bytes) -> None:
+        self.writes.append(content)
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class _FinishedStdout:
+    def __init__(self, lines: list[bytes] | None = None) -> None:
+        self._lines = iter(lines or [])
+
+    def __aiter__(self) -> _FinishedStdout:
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            return next(self._lines)
+        except StopIteration:
+            raise StopAsyncIteration from None
+
+
+class _FakeStderr:
+    async def read(self) -> bytes:
+        return b""
+
+
+class _FakeProc:
+    def __init__(
+        self,
+        *,
+        returncode: int | None = 0,
+        stdout: _FinishedStdout | _BlockingStdout | None = None,
+    ) -> None:
+        self.returncode = returncode
+        self.signals: list[int] = []
+        self.killed = False
+        self.stdin = _FakeStdin()
+        self.stdout = stdout or _FinishedStdout()
+        self.stderr = _FakeStderr()
+
+    def send_signal(self, sig: int) -> None:
+        self.signals.append(sig)
+
+    def kill(self) -> None:
+        self.killed = True
+
+    async def wait(self) -> int:
+        return self.returncode or 0
+
+
+class _BlockingStdout:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    def __aiter__(self) -> _BlockingStdout:
+        return self
+
+    async def __anext__(self) -> bytes:
+        self.started.set()
+        await self.release.wait()
+        raise StopAsyncIteration
+
+
+async def _run_query(
+    core: CodexCLIAgentCore,
+    proc: _FakeProc,
+) -> tuple[list[object], AsyncMock]:
+    with patch(
+        "agent_runner.cores.codex.asyncio.create_subprocess_exec",
+        new_callable=AsyncMock,
+        return_value=proc,
+    ) as spawn:
+        events = [event async for event in core.query("hello")]
+    return events, spawn
+
+
+def _run_public_query(core: CodexCLIAgentCore, proc: _FakeProc) -> tuple[list[object], AsyncMock]:
+    return asyncio.run(_run_query(core, proc))
+
+
+def _started_core(tmp_path, monkeypatch, **kwargs) -> CodexCLIAgentCore:
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     _set_gateway_env(monkeypatch)
-    core = _core()
-
+    core = _core(**kwargs)
     asyncio.run(core.start())
+    return core
+
+
+def _command_args(spawn: AsyncMock) -> tuple[object, ...]:
+    return spawn.await_args.args
+
+
+def _json_line(event: dict[str, object]) -> bytes:
+    return (json.dumps(event) + "\n").encode()
+
+
+def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
+    core = _started_core(tmp_path, monkeypatch)
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
     expected_top_level = {
@@ -100,6 +197,7 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     hooks = config["hooks"]["PreToolUse"]
     assert hooks[0]["matcher"] == "*"
     assert hooks[0]["hooks"][0]["command"].endswith("-m agent_runner.security.hook_entry")
+    assert core.session_id is None
 
 
 def test_start_preserves_native_codex_plugin_state(tmp_path, monkeypatch):
@@ -125,23 +223,24 @@ def test_start_preserves_native_codex_plugin_state(tmp_path, monkeypatch):
 
 
 def test_start_writes_configured_model_reasoning_effort(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
-    core = _core(extra={"model": "gpt-5.6-terra", "model_reasoning_effort": "ultra"})
-
-    asyncio.run(core.start())
+    core = _started_core(
+        tmp_path,
+        monkeypatch,
+        extra={"model": "gpt-5.6-terra", "model_reasoning_effort": "ultra"},
+    )
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
     assert config["model"] == "gpt-5.6-terra"
     assert config["model_reasoning_effort"] == "ultra"
+    assert core.session_id is None
 
 
 def test_start_can_disable_pynchy_hooks_for_host_direct_mode(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
-    core = _core(extra={"model": "gpt-5.2-codex", "pynchy_hooks_enabled": False})
-
-    asyncio.run(core.start())
+    _started_core(
+        tmp_path,
+        monkeypatch,
+        extra={"model": "gpt-5.2-codex", "pynchy_hooks_enabled": False},
+    )
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
     assert "hooks" not in config
@@ -152,165 +251,136 @@ def test_start_rejects_missing_gateway_env(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "gw-test")
-    core = _core()
 
     with pytest.raises(RuntimeError, match="OPENAI_BASE_URL"):
-        asyncio.run(core.start())
+        asyncio.run(_core().start())
 
 
 def test_start_normalizes_gateway_base_url_with_v1_suffix(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     _set_gateway_env(monkeypatch, "http://gateway:4000/v1/")
-    core = _core()
-
-    asyncio.run(core.start())
+    asyncio.run(_core().start())
 
     config = tomllib.loads((tmp_path / "config.toml").read_text())
     assert config["model_providers"]["pynchy_litellm"]["base_url"] == "http://gateway:4000/v1"
 
 
-def test_start_falls_back_to_installer_path_when_codex_not_on_path(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
+def test_query_uses_fallback_installer_path_when_codex_not_on_path(tmp_path, monkeypatch):
     monkeypatch.setattr("agent_runner.cores.codex.shutil.which", lambda _: None)
     monkeypatch.setattr(
         "agent_runner.cores.codex.Path.exists",
         lambda self: str(self) == "/usr/local/bin/codex",
     )
-    core = _core()
+    core = _started_core(tmp_path, monkeypatch)
 
-    asyncio.run(core.start())
+    _events, spawn = _run_public_query(core, _FakeProc())
 
-    assert core._codex_path == "/usr/local/bin/codex"
+    assert _command_args(spawn)[0] == "/usr/local/bin/codex"
 
 
-def test_build_args_for_new_session(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
-    core = _core()
-    asyncio.run(core.start())
+def test_new_session_query_spawns_expected_codex_command(tmp_path, monkeypatch):
+    core = _started_core(tmp_path, monkeypatch)
 
-    args = core._build_args()
+    _events, spawn = _run_public_query(core, _FakeProc())
 
-    assert args[:2] == [core._codex_path, "--cd"]
+    args = _command_args(spawn)
+    assert str(args[0]).endswith("codex")
+    assert args[1] == "--cd"
     assert "/workspace/repos/owner/project" in args
     assert "--ask-for-approval" in args
     assert "never" in args
     assert "--sandbox" in args
     assert "danger-full-access" in args
     assert "--dangerously-bypass-hook-trust" in args
-    assert args[-6:] == ["exec", "--json", "--skip-git-repo-check", "--model", "gpt-5.2-codex", "-"]
+    assert args[-6:] == ("exec", "--json", "--skip-git-repo-check", "--model", "gpt-5.2-codex", "-")
 
 
-def test_build_args_skips_missing_group_workspace(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
+def test_query_skips_missing_group_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr("agent_runner.cores.codex.Path.exists", lambda self: False)
-    core = _core()
-    asyncio.run(core.start())
+    core = _started_core(tmp_path, monkeypatch)
 
-    args = core._build_args()
+    _events, spawn = _run_public_query(core, _FakeProc())
 
-    assert "/workspace/group" not in args
+    assert "/workspace/group" not in _command_args(spawn)
 
 
-def test_build_args_adds_group_workspace_when_mounted(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
+def test_query_adds_mounted_group_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr("agent_runner.cores.codex.Path.exists", lambda self: True)
-    core = _core()
-    asyncio.run(core.start())
+    core = _started_core(tmp_path, monkeypatch)
 
-    args = core._build_args()
+    _events, spawn = _run_public_query(core, _FakeProc())
 
-    assert args[args.index("--add-dir") : args.index("--add-dir") + 2] == [
-        "--add-dir",
-        "/workspace/group",
-    ]
+    args = _command_args(spawn)
+    add_dir = args.index("--add-dir")
+    assert args[add_dir : add_dir + 2] == ("--add-dir", "/workspace/group")
 
 
-def test_build_args_for_resumed_session(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
-    core = _core(session_id="codex:thread-019c6e27")
-    asyncio.run(core.start())
+@pytest.mark.parametrize(
+    ("session_id", "expected_suffix"),
+    [
+        ("codex:thread-019c6e27", ("thread-019c6e27", "-")),
+        ("codex:gpt-5.2-codex:thread-019c6e27", ("thread-019c6e27", "-")),
+    ],
+)
+def test_resumed_session_query_passes_original_thread_id(
+    tmp_path, monkeypatch, session_id, expected_suffix
+):
+    core = _started_core(tmp_path, monkeypatch, session_id=session_id)
 
-    args = core._build_args()
+    _events, spawn = _run_public_query(core, _FakeProc())
 
+    args = _command_args(spawn)
     assert "resume" in args
-    assert args[-7:] == [
-        "resume",
-        "--json",
-        "--skip-git-repo-check",
-        "--model",
-        "gpt-5.2-codex",
-        "thread-019c6e27",
-        "-",
-    ]
+    assert args[-2:] == expected_suffix
 
 
-def test_build_args_for_model_tagged_resumed_session(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
-    core = _core(session_id="codex:gpt-5.2-codex:thread-019c6e27")
-    asyncio.run(core.start())
+def test_query_ignores_foreign_session_id(tmp_path, monkeypatch):
+    core = _started_core(tmp_path, monkeypatch, session_id="019c6e27-e55b-73d1-87d8-4e01f1f75043")
 
-    args = core._build_args()
+    _events, spawn = _run_public_query(core, _FakeProc())
 
-    assert args[-2:] == ["thread-019c6e27", "-"]
-
-
-def test_build_args_ignores_foreign_session_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    _set_gateway_env(monkeypatch)
-    core = _core(session_id="019c6e27-e55b-73d1-87d8-4e01f1f75043")
-    asyncio.run(core.start())
-
-    args = core._build_args()
-
-    assert "resume" not in args
+    assert "resume" not in _command_args(spawn)
     assert core.session_id is None
-    assert args[-6:] == ["exec", "--json", "--skip-git-repo-check", "--model", "gpt-5.2-codex", "-"]
 
 
-def test_build_stdin_includes_system_prompt():
-    assert _core()._build_stdin("hello").decode() == (
-        "Follow the local Pynchy prompts.\n\nUser message:\nhello\n"
-    )
+def test_query_sends_system_prompt_to_codex_stdin(tmp_path, monkeypatch):
+    core = _started_core(tmp_path, monkeypatch)
+    proc = _FakeProc()
+
+    _events, _spawn = _run_public_query(core, proc)
+
+    assert proc.stdin.writes == [b"Follow the local Pynchy prompts.\n\nUser message:\nhello\n"]
 
 
-def test_thread_started_captures_session_id():
+def test_stream_event_maps_thread_started_and_exposes_session_id():
     core = _core()
 
-    events = core._map_event({"type": "thread.started", "thread_id": "thread-1"})
+    events = core.map_stream_event({"type": "thread.started", "thread_id": "thread-1"})
 
-    assert [e.type for e in events] == ["system"]
+    assert [event.type for event in events] == ["system"]
     assert core.session_id == "codex:gpt-5.2-codex:thread-1"
     assert events[0].data["system_data"]["session_id"] == "codex:gpt-5.2-codex:thread-1"
 
 
-def test_agent_message_maps_to_text_and_last_result():
-    core = _core()
-
-    events = core._map_event(
+def test_stream_event_maps_agent_message_to_text():
+    events = _core().map_stream_event(
         {"type": "item.completed", "item": {"type": "agent_message", "text": "done"}}
     )
 
-    assert [e.type for e in events] == ["text"]
+    assert [event.type for event in events] == ["text"]
     assert events[0].data["text"] == "done"
-    assert core._last_agent_message == "done"
 
 
-def test_command_item_maps_to_tool_events():
+def test_stream_event_maps_command_item_to_tool_events():
     core = _core()
 
-    started = core._map_event(
+    started = core.map_stream_event(
         {
             "type": "item.started",
             "item": {"id": "cmd-1", "type": "command_execution", "command": "ls -la"},
         }
     )
-    completed = core._map_event(
+    completed = core.map_stream_event(
         {
             "type": "item.completed",
             "item": {
@@ -329,10 +399,8 @@ def test_command_item_maps_to_tool_events():
     assert completed[0].data["tool_result_content"] == "ok"
 
 
-def test_turn_failed_maps_to_error_result():
-    core = _core()
-
-    (event,) = core._map_event(
+def test_stream_event_maps_terminal_failure_to_error_result():
+    (event,) = _core().map_stream_event(
         {"type": "turn.failed", "error": {"message": "auth failed", "code": "not_logged_in"}}
     )
 
@@ -342,13 +410,13 @@ def test_turn_failed_maps_to_error_result():
     assert event.data["result_metadata"]["subtype"] == "not_logged_in"
 
 
-def test_paired_turn_failed_and_error_emit_one_terminal_result():
+def test_stream_event_emits_one_result_for_paired_turn_failure():
     core = _core()
 
-    failed = core._map_event(
+    failed = core.map_stream_event(
         {"type": "turn.failed", "error": {"message": "request failed", "code": "timeout"}}
     )
-    duplicate = core._map_event(
+    duplicate = core.map_stream_event(
         {"type": "error", "error": {"message": "request failed", "code": "timeout"}}
     )
 
@@ -357,72 +425,103 @@ def test_paired_turn_failed_and_error_emit_one_terminal_result():
     assert duplicate == []
 
 
-def test_query_resets_terminal_error_guard_between_turns(monkeypatch):
+def test_public_queries_reset_terminal_error_guard_between_turns():
     core = _core()
-    event_batches = iter(
-        [
+    first_proc = _FakeProc(
+        returncode=1,
+        stdout=_FinishedStdout(
             [
-                {"type": "turn.failed", "error": {"message": "first failed"}},
-                {"type": "error", "error": {"message": "first failed"}},
-            ],
+                _json_line({"type": "turn.failed", "error": {"message": "first failed"}}),
+                _json_line({"type": "error", "error": {"message": "first failed"}}),
+            ]
+        ),
+    )
+    second_proc = _FakeProc(
+        returncode=1,
+        stdout=_FinishedStdout(
             [
-                {"type": "error", "error": {"message": "second failed"}},
-                {"type": "turn.failed", "error": {"message": "second failed"}},
-            ],
-        ]
+                _json_line({"type": "error", "error": {"message": "second failed"}}),
+                _json_line({"type": "turn.failed", "error": {"message": "second failed"}}),
+            ]
+        ),
     )
 
-    async def _stream_events(_proc):
-        await asyncio.sleep(0)
-        for obj in next(event_batches):
-            for event in core._map_event(obj):
-                yield event
-
-    spawn_process = AsyncMock(side_effect=[object(), object()])
-    write_prompt = AsyncMock()
-    finish_process = AsyncMock(return_value=("", 1))
-
-    monkeypatch.setattr(core, "_spawn_process", spawn_process)
-    monkeypatch.setattr(core, "_write_prompt", write_prompt)
-    monkeypatch.setattr(core, "_stream_events", _stream_events)
-    monkeypatch.setattr(core, "_finish_process", finish_process)
-
-    async def _run_queries():
-        first = [event async for event in core.query("first")]
-        second = [event async for event in core.query("second")]
+    async def run_queries():
+        with patch(
+            "agent_runner.cores.codex.asyncio.create_subprocess_exec",
+            new_callable=AsyncMock,
+            side_effect=[first_proc, second_proc],
+        ):
+            first = [event async for event in core.query("first")]
+            second = [event async for event in core.query("second")]
         return first, second
 
-    first, second = asyncio.run(_run_queries())
+    first, second = asyncio.run(run_queries())
 
     assert [event.data["result"] for event in first] == ["first failed"]
     assert [event.data["result"] for event in second] == ["second failed"]
-    assert spawn_process.await_count == 2
-    assert write_prompt.await_count == 2
-    assert finish_process.await_count == 2
 
 
-class _FakeProc:
-    def __init__(self, returncode=None):
-        self.returncode = returncode
-        self.signals: list[int] = []
-        self.killed = False
-
-    def send_signal(self, sig):
-        self.signals.append(sig)
-
-    def kill(self):
-        self.killed = True
-
-    async def wait(self):
-        return 0
+async def _start_active_query(core: CodexCLIAgentCore, proc: _FakeProc):
+    with patch(
+        "agent_runner.cores.codex.asyncio.create_subprocess_exec",
+        new_callable=AsyncMock,
+        return_value=proc,
+    ):
+        query = core.query("stop test")
+        next_event = asyncio.create_task(anext(query))
+        assert isinstance(proc.stdout, _BlockingStdout)
+        await proc.stdout.started.wait()
+    return query, next_event
 
 
-def test_stop_sends_sigint_and_clears_proc():
+async def _finish_query(proc: _FakeProc, next_event: asyncio.Task) -> None:
+    assert isinstance(proc.stdout, _BlockingStdout)
+    proc.stdout.release.set()
+    event = await next_event
+    assert event.type == "result"
+
+
+async def _stop_active_query(core: CodexCLIAgentCore, proc: _FakeProc) -> None:
+    _query, next_event = await _start_active_query(core, proc)
+    await core.stop()
+    await _finish_query(proc, next_event)
+
+
+def test_stop_sends_sigint_to_an_active_public_query():
     core = _core()
-    proc = _FakeProc(returncode=None)
-    core._proc = proc
-    asyncio.run(core.stop())
+    proc = _FakeProc(returncode=None, stdout=_BlockingStdout())
+
+    asyncio.run(_stop_active_query(core, proc))
 
     assert proc.signals == [signal.SIGINT]
     assert proc.killed is False
-    assert core._proc is None
+
+
+def test_stop_escalates_to_kill_on_timeout(monkeypatch):
+    core = _core()
+    proc = _FakeProc(returncode=None, stdout=_BlockingStdout())
+
+    def _raise_timeout(awaitable=None, *_args, **_kwargs):
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise TimeoutError
+
+    monkeypatch.setattr(asyncio, "wait_for", _raise_timeout)
+    asyncio.run(_stop_active_query(core, proc))
+
+    assert proc.killed is True
+
+
+def test_stop_leaves_an_already_exited_public_query_alone():
+    core = _core()
+    proc = _FakeProc(returncode=0, stdout=_BlockingStdout())
+
+    asyncio.run(_stop_active_query(core, proc))
+
+    assert proc.signals == []
+    assert proc.killed is False
+
+
+def test_stop_noop_when_no_active_public_query():
+    asyncio.run(_core().stop())

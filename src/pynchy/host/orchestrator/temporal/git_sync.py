@@ -14,13 +14,13 @@ from pynchy.config import get_settings
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
 from pynchy.host.git_ops.repo import get_repo_context
 from pynchy.host.git_ops.sync_poll import (
+    HostSyncState,
     _check_local_head_drift,
-    _check_origin_drift,
     _find_pynchy_repo_ctx,
-    _host_get_origin_main_sha,
-    _HostSyncState,
+    check_origin_drift,
     get_deploy_config_hash,
     get_local_head_sha,
+    host_get_origin_main_sha,
     host_update_main,
 )
 from pynchy.host.git_ops.utils import git_env_with_token
@@ -47,8 +47,8 @@ from pynchy.types import (
 )
 
 HOST_GIT_SYNC_ID = "git-sync-host"
+HOST_STATE_KEY = "temporal_git_sync_host_state"
 EXTERNAL_GIT_SYNC_PREFIX = "git-sync-repo:"
-_HOST_STATE_KEY = "temporal_git_sync_host_state"
 _EXTERNAL_STATE_PREFIX = "temporal_git_sync_external_state:"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 
@@ -115,14 +115,14 @@ class _TemporalGitSyncDeps:
             raise
 
 
-async def _load_host_state() -> _HostSyncState:
+async def _load_host_state() -> HostSyncState:
     settings = get_settings()
-    raw = await get_router_state(_HOST_STATE_KEY)
-    state: _HostSyncState | None = None
+    raw = await get_router_state(HOST_STATE_KEY)
+    state: HostSyncState | None = None
     if raw:
         try:
             payload = json.loads(raw)
-            state = _HostSyncState(
+            state = HostSyncState(
                 last_origin_sha=payload.get("last_origin_sha"),
                 deployed_sha=str(payload.get("deployed_sha", "")),
                 config_hash=str(payload.get("config_hash", "")),
@@ -132,9 +132,9 @@ async def _load_host_state() -> _HostSyncState:
             logger.warning("Corrupt Temporal host git-sync state, reinitializing")
 
     if state is None:
-        state = _HostSyncState(
+        state = HostSyncState(
             last_origin_sha=await asyncio.to_thread(
-                _host_get_origin_main_sha, settings.project_root
+                host_get_origin_main_sha, settings.project_root
             ),
             deployed_sha=await asyncio.to_thread(get_local_head_sha, settings.project_root),
             config_hash=await asyncio.to_thread(get_deploy_config_hash),
@@ -147,11 +147,11 @@ async def _load_host_state() -> _HostSyncState:
     return state
 
 
-async def _save_host_state(state: _HostSyncState) -> None:
-    await set_router_state(_HOST_STATE_KEY, json.dumps(asdict(state)))
+async def _save_host_state(state: HostSyncState) -> None:
+    await set_router_state(HOST_STATE_KEY, json.dumps(asdict(state)))
 
 
-async def _config_drift_started_deploy(state: _HostSyncState, deps: _TemporalGitSyncDeps) -> bool:
+async def _config_drift_started_deploy(state: HostSyncState, deps: _TemporalGitSyncDeps) -> bool:
     current_config_hash = await asyncio.to_thread(get_deploy_config_hash)
     if current_config_hash == state.config_hash:
         return False
@@ -180,7 +180,7 @@ async def run_host_git_sync() -> str:
         if (
             await _config_drift_started_deploy(state, deps)
             or await _check_local_head_drift(settings.project_root, state, repo_ctx, deps)
-            or await _check_origin_drift(settings.project_root, state, repo_ctx, deps)
+            or await check_origin_drift(settings.project_root, state, repo_ctx, deps)
         ):
             result = "deploy_started"
     finally:
@@ -210,7 +210,7 @@ async def run_external_git_sync(repo_slug: str) -> str:
 
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="external_git_sync")
     env = git_env_with_token(repo_slug)
-    current_origin = await asyncio.to_thread(_host_get_origin_main_sha, repo_ctx.root, env)
+    current_origin = await asyncio.to_thread(host_get_origin_main_sha, repo_ctx.root, env)
     if not current_origin:
         _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "unavailable")
         return "unavailable"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from pynchy.conversation.events import ConversationEvent, ConversationEventKind
@@ -11,10 +13,7 @@ from pynchy.state import (
     store_conversation_event_pointer,
     store_message_direct,
 )
-from pynchy.state.conversation_events import (
-    ConversationEventRef,
-    _decode_metadata,  # noqa: PLC2701  # allow: private-test-imports - decoder coverage.
-)
+from pynchy.state.conversation_events import ConversationEventRef
 
 
 def _event(
@@ -225,5 +224,14 @@ async def test_store_projection_pointer_rejects_mismatched_ref() -> None:
     assert rows == []
 
 
-def test_decode_metadata_returns_empty_dict_for_malformed_json() -> None:
-    assert _decode_metadata("{not valid json") == {}
+async def test_reader_returns_empty_metadata_for_malformed_persisted_json() -> None:
+    """A corrupt historical row is safely represented through the public reader."""
+    cursor = MagicMock()
+    cursor.fetchall = AsyncMock(return_value=[{"metadata": "{not valid json"}])
+    database = MagicMock()
+    database.execute = AsyncMock(return_value=cursor)
+
+    with patch("pynchy.state.conversation_events._get_db", return_value=database):
+        rows = await get_conversation_event_pointers_since("slack:C123", None)
+
+    assert rows == [{"metadata": {}}]

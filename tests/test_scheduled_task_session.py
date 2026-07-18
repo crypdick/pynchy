@@ -1,6 +1,6 @@
-"""Tests that _run_scheduled_task uses session-based real-time streaming.
+"""Tests that scheduled task execution uses session-based real-time streaming.
 
-These tests verify the session-based orchestration in _run_scheduled_task
+These tests verify the session-based orchestration in the public agent entry point
 (create_session → IPC watcher streams events in real-time), NOT the
 end-to-end output routing (which is tested via the IPC watcher tests).
 """
@@ -108,6 +108,7 @@ _P_SPAWN = "pynchy.host.orchestrator.agent_runner._spawn_container"
 _P_CREATE = "pynchy.host.orchestrator.agent_runner.create_session"
 _P_DESTROY = "pynchy.host.orchestrator.agent_runner.destroy_session"
 _P_CLEAR_SESSION = "pynchy.host.orchestrator.agent_runner.clear_session"
+_P_PREFLIGHT = "pynchy.host.orchestrator.agent_runner.pre_container_setup"
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +117,7 @@ _P_CLEAR_SESSION = "pynchy.host.orchestrator.agent_runner.clear_session"
 
 
 class TestScheduledTaskUsesSession:
-    """Verify _run_scheduled_task uses the session-based pattern."""
+    """Verify scheduled tasks use the session-based execution path."""
 
     @pytest.fixture(autouse=True)
     def _setup(self):
@@ -127,14 +128,16 @@ class TestScheduledTaskUsesSession:
         self.fake_session = _make_fake_session()
 
     async def _call(self):
-        """Call _run_scheduled_task with standard mocks."""
-        return await agent_runner._run_scheduled_task(
-            self.deps,
-            self.group,
-            "test@g.us",
-            [{"content": "do stuff", "sender": "task"}],
-            self.ctx,
-        )
+        """Drive the public agent entry point through its scheduled-task path."""
+        with patch(_P_PREFLIGHT, new_callable=AsyncMock, return_value=self.ctx):
+            return await agent_runner.run_agent(
+                self.deps,
+                self.group,
+                "test@g.us",
+                [{"content": "do stuff", "sender": "task"}],
+                is_scheduled_task=True,
+                input_source="scheduled_task",
+            )
 
     @pytest.mark.asyncio
     async def test_creates_session_with_configured_idle_timeout(self):
@@ -296,7 +299,9 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        mock_destroy.assert_not_awaited()
+        # The public entry point tears down a prior interactive session before
+        # starting scheduled work. Cancellation must not add one-shot cleanup.
+        mock_destroy.assert_awaited_once_with("test-group")
 
     @pytest.mark.asyncio
     async def test_cancelled_error_preserves_deps_sessions(self):

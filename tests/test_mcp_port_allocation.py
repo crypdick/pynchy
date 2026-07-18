@@ -298,7 +298,7 @@ class TestResolveAllInstancesPortOffset:
     two workspaces sharing the same server share one instance.
     """
 
-    def _make_manager(self, workspaces: dict, tool_mcp_configs: dict):
+    def _settings(self, workspaces: dict, tool_mcp_configs: dict):
         ws_configs = {}
         profiles = {}
         for name, servers in workspaces.items():
@@ -306,7 +306,7 @@ class TestResolveAllInstancesPortOffset:
             profiles[profile_name] = ProfileConfig(tools=servers)
             ws_configs[name] = WorkspaceConfig(profiles=[profile_name])
 
-        settings = validate_settings_mapping(
+        return validate_settings_mapping(
             {
                 "profiles": {
                     name: profile.model_dump(exclude_defaults=True)
@@ -321,11 +321,13 @@ class TestResolveAllInstancesPortOffset:
                 },
             }
         )
-        gateway = MagicMock(spec=LiteLLMGateway)
-        return McpManager(settings, gateway)
+
+    def _resolve_instances(self, workspaces: dict, tool_mcp_configs: dict):
+        settings = self._settings(workspaces, tool_mcp_configs)
+        return resolve_all_instances(settings, merged_mcp_servers(settings, {}))
 
     def test_inject_workspace_two_workspaces_get_different_ports(self):
-        mgr = self._make_manager(
+        state = self._resolve_instances(
             workspaces={
                 "ws1": ["browser"],
                 "ws2": ["browser"],
@@ -339,12 +341,11 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         ports = sorted(inst.port for inst in state.instances.values())
         assert ports == [9100, 9101]
 
     def test_single_workspace_gets_base_port(self):
-        mgr = self._make_manager(
+        state = self._resolve_instances(
             workspaces={"ws1": ["browser"]},
             tool_mcp_configs={
                 "browser": {
@@ -354,12 +355,14 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         inst = next(iter(state.instances.values()))
         assert inst.port == 9100
 
-    def test_dynamic_thread_uses_parent_workspace_instances(self):
-        mgr = self._make_manager(
+    @pytest.mark.asyncio
+    async def test_sync_makes_parent_workspace_instances_available_to_dynamic_threads(
+        self, monkeypatch
+    ):
+        settings = self._settings(
             workspaces={"admin": ["browser"]},
             tool_mcp_configs={
                 "browser": {
@@ -369,18 +372,41 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
-        mgr._instances = state.instances
-        mgr._workspace_instances = state.workspace_instances
+        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
 
-        parent_ids = mgr.get_workspace_instance_ids("admin")
-        child_ids = mgr.get_workspace_instance_ids("admin__thread_discord-channel-thread")
+        def close_background_task(coro, **_kwargs):
+            coro.close()
+            return MagicMock()
+
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.McpProxy.start",
+            AsyncMock(return_value=0),
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.sync_mcp_endpoints", AsyncMock()
+        )
+        monkeypatch.setattr("pynchy.host.container_manager.mcp.manager.sync_teams", AsyncMock())
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.load_teams_cache", lambda _: {}
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.save_teams_cache", lambda *_: None
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.manager.create_background_task",
+            close_background_task,
+        )
+
+        await manager.sync()
+
+        parent_ids = manager.get_workspace_instance_ids("admin")
+        child_ids = manager.get_workspace_instance_ids("admin__thread_discord-channel-thread")
 
         assert child_ids == parent_ids
         assert child_ids
 
     def test_inject_workspace_independent_port_counters_per_server(self):
-        mgr = self._make_manager(
+        state = self._resolve_instances(
             workspaces={
                 "ws1": ["browser", "notebook"],
                 "ws2": ["browser", "notebook"],
@@ -400,7 +426,6 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         browser_ports = sorted(
             inst.port for inst in state.instances.values() if inst.server_name == "browser"
         )
@@ -412,7 +437,7 @@ class TestResolveAllInstancesPortOffset:
 
     def test_shared_instance_no_duplicate_port(self):
         """Two workspaces with no per-workspace kwargs share one instance."""
-        mgr = self._make_manager(
+        state = self._resolve_instances(
             workspaces={
                 "ws1": ["search"],
                 "ws2": ["search"],
@@ -425,14 +450,13 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         # Same instance ID (no kwargs → no hash), so only one instance
         assert len(state.instances) == 1
         inst = next(iter(state.instances.values()))
         assert inst.port == 7000
 
     def test_url_type_gets_none_port(self):
-        mgr = self._make_manager(
+        state = self._resolve_instances(
             workspaces={"ws1": ["remote"]},
             tool_mcp_configs={
                 "remote": {
@@ -441,7 +465,6 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        state = resolve_all_instances(mgr._settings, mgr._merged_mcp_servers)
         inst = next(iter(state.instances.values()))
         assert inst.port is None
 

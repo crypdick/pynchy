@@ -85,11 +85,11 @@ repos:
         types: [python]
         files: ^src/
       - id: check-private-test-imports
-        name: Flag tests importing private first-party symbols
-        entry: uv run python scripts/pre_commit_hooks/check_private_test_imports.py
+        name: Forbid tests from reaching private first-party implementation details
+        entry: uv run python scripts/pre_commit_hooks/check_private_test_imports.py --package pynchy --package agent_runner --package scripts
         language: system
         types: [python]
-        files: ^tests/
+        files: (^tests/|^src/pynchy/agent/agent_runner/tests/)
       - id: check-test-simple-namespace
         name: Ban SimpleNamespace in tests
         entry: uv run python scripts/pre_commit_hooks/check_test_simple_namespace.py

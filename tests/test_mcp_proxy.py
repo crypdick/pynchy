@@ -10,10 +10,9 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from pynchy.host.container_manager.mcp.proxy import McpProxy, create_proxy_app
-from pynchy.host.container_manager.security import approval, gate
 from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import CopVerdict
-from pynchy.host.container_manager.security.gate import create_gate
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
 # Fully safe trust config — passes outbound gating without triggering needs_human
@@ -24,10 +23,9 @@ _SAFE_TRUST = ServiceTrustConfig(
 
 @pytest.fixture(autouse=True)
 def _cleanup_gates():
-    """Ensure no gates or approval futures leak between tests."""
+    """Ensure the proxy gate is removed through the public lifecycle API."""
     yield
-    gate._gates.clear()
-    approval._mcp_proxy_futures.clear()
+    destroy_gate("test-ws", 1000.0)
 
 
 @pytest.fixture(autouse=True)

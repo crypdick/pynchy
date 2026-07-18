@@ -42,7 +42,7 @@ def get_local_head_sha(repo_root: Path | None = None) -> str:
     return "" if sha == "unknown" else sha
 
 
-def _host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
+def host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
     """Lightweight check: get origin/main SHA via ls-remote."""
     try:
         main = detect_main_branch(cwd=repo_root)
@@ -204,7 +204,7 @@ def _find_pynchy_repo_ctx(s: Settings, pynchy_root: Path) -> RepoContext | None:
 
 
 @dataclass
-class _HostSyncState:
+class HostSyncState:
     """Mutable baseline tracked across polling iterations."""
 
     last_origin_sha: str | None
@@ -213,7 +213,7 @@ class _HostSyncState:
     local_head: str | None = None
 
 
-async def _check_config_drift(state: _HostSyncState, deps: GitSyncDeps) -> bool:
+async def _check_config_drift(state: HostSyncState, deps: GitSyncDeps) -> bool:
     """Return True (after triggering a deploy) if config files drifted."""
     current_config_hash = _hash_config_files()
     if current_config_hash == state.config_hash:
@@ -225,7 +225,7 @@ async def _check_config_drift(state: _HostSyncState, deps: GitSyncDeps) -> bool:
 
 async def _check_local_head_drift(
     pynchy_root: Path,
-    state: _HostSyncState,
+    state: HostSyncState,
     pynchy_repo_ctx: RepoContext | None,
     deps: GitSyncDeps,
 ) -> bool:
@@ -252,14 +252,14 @@ async def _check_local_head_drift(
     return True
 
 
-async def _check_origin_drift(
+async def check_origin_drift(
     pynchy_root: Path,
-    state: _HostSyncState,
+    state: HostSyncState,
     pynchy_repo_ctx: RepoContext | None,
     deps: GitSyncDeps,
 ) -> bool:
     """Detect origin/main drift, pull, and deploy if needed. Returns True to stop the loop."""
-    current_origin = await asyncio.to_thread(_host_get_origin_main_sha, pynchy_root)
+    current_origin = await asyncio.to_thread(host_get_origin_main_sha, pynchy_root)
     if not current_origin or current_origin == state.last_origin_sha:
         return False
 
@@ -303,7 +303,7 @@ async def _notify_origin_sync_if_needed(
 
 
 async def _deploy_pulled_head_if_needed(
-    state: _HostSyncState,
+    state: HostSyncState,
     deps: GitSyncDeps,
     new_head: str,
 ) -> bool:

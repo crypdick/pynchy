@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from importlib import import_module
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -15,7 +14,7 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-skill_tools = import_module("agent_runner.agent_tools._tools_skills")
+from agent_runner.agent_tools import call_tool
 
 
 def _write_skill(root: Path, name: str, description: str = "Useful vault workflow.") -> None:
@@ -39,7 +38,7 @@ async def test_search_skills_returns_matching_catalog_entries(tmp_path: Path, mo
     monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
     monkeypatch.delenv("PYNCHY_PROFILE_SKILLS_ROOT", raising=False)
 
-    result = await skill_tools._search_skills_handle({"query": "obsidian search"})
+    result = await call_tool("search_skills", {"query": "obsidian search"})
 
     assert "obsidian-knowledge" in result[0].text
     assert "request_skill_access" in result[0].text
@@ -55,7 +54,7 @@ async def test_search_skills_ignores_legacy_profile_catalog(tmp_path: Path, monk
     monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(global_root))
     monkeypatch.setenv("PYNCHY_PROFILE_SKILLS_ROOT", str(legacy_profile_root))
 
-    result = await skill_tools._search_skills_handle({"query": "workflow"})
+    result = await call_tool("search_skills", {"query": "workflow"})
 
     assert "shared-workflow" in result[0].text
     assert "legacy-workflow" not in result[0].text
@@ -76,10 +75,11 @@ async def test_request_skill_access_grants_once_and_returns_skill_contents(
             _response({"answers": {"answer": "Grant once"}}),
         ]
     )
-    monkeypatch.setattr(skill_tools, "ipc_service_request", request)
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
 
-    result = await skill_tools._request_skill_access_handle(
-        {"skill_name": "obsidian-knowledge", "reason": "I need prior project context."}
+    result = await call_tool(
+        "request_skill_access",
+        {"skill_name": "obsidian-knowledge", "reason": "I need prior project context."},
     )
 
     assert "Access granted" in result[0].text
@@ -115,10 +115,11 @@ async def test_request_skill_access_persists_an_always_grant(tmp_path: Path, mon
             ),
         ]
     )
-    monkeypatch.setattr(skill_tools, "ipc_service_request", request)
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
 
-    result = await skill_tools._request_skill_access_handle(
-        {"skill_name": "pynchy-operations", "reason": "I need live Pynchy guidance."}
+    result = await call_tool(
+        "request_skill_access",
+        {"skill_name": "pynchy-operations", "reason": "I need live Pynchy guidance."},
     )
 
     assert "future turns through this profile" in result[0].text
@@ -143,10 +144,11 @@ async def test_request_skill_access_persists_an_always_denial(tmp_path: Path, mo
             ),
         ]
     )
-    monkeypatch.setattr(skill_tools, "ipc_service_request", request)
+    monkeypatch.setattr("agent_runner.agent_tools._tools_skills.ipc_service_request", request)
 
-    result = await skill_tools._request_skill_access_handle(
-        {"skill_name": "pynchy-operations", "reason": "I need live Pynchy guidance."}
+    result = await call_tool(
+        "request_skill_access",
+        {"skill_name": "pynchy-operations", "reason": "I need live Pynchy guidance."},
     )
 
     assert result[0].text == "Access to 'pynchy-operations' was denied permanently."

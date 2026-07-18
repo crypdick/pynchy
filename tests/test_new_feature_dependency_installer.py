@@ -1,203 +1,147 @@
+"""Public CLI tests for the isolated-runtime dependency installer."""
+
 from __future__ import annotations
 
-import hashlib
-import io
-import tarfile
-from typing import TYPE_CHECKING
+import subprocess  # noqa: S404 - test doubles only record dependency command results.
+import sys
+from pathlib import Path
 
 import pytest
 from scripts import install_new_feature_dependencies as installer
 
-if TYPE_CHECKING:
-    from pathlib import Path
 
-
-def _archive_with_temporal(payload: bytes) -> bytes:
-    output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archive:
-        member = tarfile.TarInfo("release/temporal")
-        member.size = len(payload)
-        archive.addfile(member, io.BytesIO(payload))
-    return output.getvalue()
-
-
-def test_temporal_binary_reads_only_named_archive_member() -> None:
-    assert installer._temporal_binary(_archive_with_temporal(b"binary")) == b"binary"
-
-
-def test_temporal_binary_rejects_missing_binary() -> None:
-    output = io.BytesIO()
-    with tarfile.open(fileobj=output, mode="w:gz") as archive:
-        member = tarfile.TarInfo("README.md")
-        member.size = 4
-        archive.addfile(member, io.BytesIO(b"docs"))
-    with pytest.raises(installer.DependencyError, match="exactly one temporal binary"):
-        installer._temporal_binary(output.getvalue())
-
-
-def test_verify_digest_rejects_tampering() -> None:
-    expected = hashlib.sha256(b"expected").hexdigest()
-    with pytest.raises(installer.DependencyError, match="checksum mismatch"):
-        installer._verify_digest(b"tampered", expected)
-
-
-def test_resolved_command_prefers_the_selected_bin_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def _invoke_main(
+    monkeypatch: pytest.MonkeyPatch,
+    *args: str,
 ) -> None:
-    selected = tmp_path / "bin" / "new-feature"
-    selected.parent.mkdir()
-    selected.touch()
-    monkeypatch.setattr(installer.shutil, "which", lambda _name: "/usr/bin/new-feature")
-
-    assert installer._resolved_command("new-feature", selected.parent) == str(selected)
+    monkeypatch.setattr(sys, "argv", ["install_new_feature_dependencies.py", *args])
+    installer.main()
 
 
-def test_pinned_new_feature_requires_the_selected_bin_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def _fake_tool_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    def command_exists(name: str) -> str | None:
+        return {"docker": "/usr/bin/docker", "uv": "/usr/bin/uv"}.get(name)
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command == ["/usr/bin/docker", "info"]:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        if command[-1] == "--version" and Path(command[0]).name == "temporal":
+            return subprocess.CompletedProcess(
+                command, 0, stdout="temporal version 1.8.0\n", stderr=""
+            )
+        if command[-1] == "--version" and Path(command[0]).name == "new-feature":
+            return subprocess.CompletedProcess(command, 0, stdout="new-feature 1.1.6\n", stderr="")
+        raise AssertionError(f"Unexpected dependency command: {command}")
+
+    monkeypatch.setattr(installer.shutil, "which", command_exists)
+    monkeypatch.setattr(installer.subprocess, "run", run)
+
+
+def test_runtime_only_check_reports_healthy_selected_tools(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(installer.shutil, "which", lambda _name: "/usr/bin/new-feature")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "temporal").touch()
+    _fake_tool_commands(monkeypatch)
 
-    with pytest.raises(installer.DependencyError, match=r"Pinned new-feature v1\.1\.6 is missing"):
-        installer._ensure_pinned_new_feature("/usr/bin/uv", tmp_path, check_only=True)
+    _invoke_main(monkeypatch, "--bin-dir", str(bin_dir), "--runtime-only", "--check")
 
-
-def test_new_feature_version_parses_cli_output(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        installer.subprocess,
-        "run",
-        lambda *_args, **_kwargs: installer.subprocess.CompletedProcess(
-            ["new-feature", "--version"],
-            0,
-            stdout="new-feature 1.1.6\n",
-            stderr="",
-        ),
-    )
-
-    assert installer._new_feature_version("/tools/new-feature") == "1.1.6"
+    assert capsys.readouterr().out.splitlines() == [
+        "Docker: ready",
+        f"Temporal CLI: {bin_dir / 'temporal'}",
+        f"Add {bin_dir} to PATH before running the deterministic runtime",
+    ]
 
 
-def test_pinned_new_feature_reinstalls_a_stale_version(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_runtime_only_check_fails_when_the_pinned_temporal_binary_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    command = "/tools/new-feature"
-    versions = iter(("0.6.2", "1.1.6"))
-    installed: list[tuple[str, Path]] = []
-    monkeypatch.setattr(installer, "_selected_command", lambda _name, _bin_dir: command)
-    monkeypatch.setattr(installer, "_new_feature_version", lambda _command: next(versions))
-    monkeypatch.setattr(
-        installer,
-        "_install_new_feature",
-        lambda uv, bin_dir: installed.append((uv, bin_dir)),
-    )
+    _fake_tool_commands(monkeypatch)
 
-    assert (
-        installer._ensure_pinned_new_feature("/usr/bin/uv", tmp_path, check_only=False) == command
-    )
-    assert installed == [("/usr/bin/uv", tmp_path)]
+    with pytest.raises(SystemExit, match="1"):
+        _invoke_main(monkeypatch, "--bin-dir", str(tmp_path / "bin"), "--runtime-only", "--check")
+
+    assert "Pinned Temporal CLI v1.8.0 is missing" in capsys.readouterr().err
 
 
-def test_pinned_new_feature_rejects_a_stale_version_in_check_mode(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(
-        installer,
-        "_selected_command",
-        lambda _name, _bin_dir: "/tools/new-feature",
-    )
-    monkeypatch.setattr(installer, "_new_feature_version", lambda _command: "0.6.2")
-
-    with pytest.raises(installer.DependencyError, match=r"must be v1\.1\.6; found 0\.6\.2"):
-        installer._ensure_pinned_new_feature("/usr/bin/uv", tmp_path, check_only=True)
-
-
-def test_install_new_feature_forces_the_pinned_release(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    commands: list[list[str]] = []
-    environments: list[dict[str, str] | None] = []
-
-    def run_checked(command: list[str], *, env: dict[str, str] | None = None) -> None:
-        commands.append(command)
-        environments.append(env)
-
-    monkeypatch.setattr(installer, "_run_checked", run_checked)
-
-    installer._install_new_feature("/usr/bin/uv", tmp_path)
-
-    assert commands == [["/usr/bin/uv", "tool", "install", "--force", "new-feature==1.1.6"]]
-    assert environments[0] is not None
-    assert environments[0]["UV_TOOL_BIN_DIR"] == str(tmp_path)
-
-
-def test_install_temporal_writes_verified_executable(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    archive = _archive_with_temporal(b"binary")
-    monkeypatch.setattr(installer, "_platform_key", lambda: ("linux", "amd64"))
-    monkeypatch.setattr(installer, "_download", lambda _url: archive)
-    monkeypatch.setitem(
-        installer._TEMPORAL_DIGESTS,
-        ("linux", "amd64"),
-        hashlib.sha256(archive).hexdigest(),
-    )
-
-    destination = installer._install_temporal(tmp_path / "bin")
-
-    assert destination.read_bytes() == b"binary"
-    assert destination.stat().st_mode & 0o111 == 0o111
-
-
-def test_runtime_dependencies_install_temporal_in_the_selected_bin_dir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_runtime_only_install_places_temporal_in_the_selected_bin_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     bin_dir = tmp_path / "runtime-bin"
     installed: list[Path] = []
-    temporal = bin_dir / "temporal"
+    _fake_tool_commands(monkeypatch)
 
-    monkeypatch.setattr(
-        installer.shutil,
-        "which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
-    )
-    monkeypatch.setattr(installer, "_docker_ready", lambda _docker: True)
-
-    def install(destination: Path) -> Path:
+    def install_temporal(destination: Path) -> Path:
         installed.append(destination)
         destination.mkdir()
-        temporal.touch()
+        temporal = destination / "temporal"
+        temporal.write_text("installed")
         return temporal
 
-    monkeypatch.setattr(installer, "_install_temporal", install)
+    monkeypatch.setattr(
+        "scripts.install_new_feature_dependencies._install_temporal", install_temporal
+    )
 
-    installer._ensure_runtime_dependencies(bin_dir=bin_dir, check_only=False)
+    _invoke_main(monkeypatch, "--bin-dir", str(bin_dir), "--runtime-only")
 
     assert installed == [bin_dir]
+    assert (bin_dir / "temporal").read_text() == "installed"
+    assert f"Temporal CLI: {bin_dir / 'temporal'}" in capsys.readouterr().out
 
 
-def test_runtime_dependencies_reject_missing_pinned_temporal_in_check_mode(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_full_profile_check_accepts_selected_pinned_clis(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for command in ("temporal", "new-feature", "codex"):
+        (bin_dir / command).touch()
+    _fake_tool_commands(monkeypatch)
+
+    _invoke_main(monkeypatch, "--bin-dir", str(bin_dir), "--check")
+
+    assert capsys.readouterr().out.splitlines() == [
+        "Docker: ready",
+        f"Temporal CLI: {bin_dir / 'temporal'}",
+        f"new-feature: {bin_dir / 'new-feature'}",
+        f"Codex CLI: {bin_dir / 'codex'}",
+        f"Add {bin_dir} to PATH before running new-feature",
+    ]
+
+
+def test_full_profile_install_creates_missing_selected_clis(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "temporal").touch()
+    _fake_tool_commands(monkeypatch)
+    installs: list[tuple[str, Path]] = []
+
+    def install_new_feature(_uv: str, destination: Path) -> None:
+        installs.append(("new-feature", destination))
+        (destination / "new-feature").touch()
+
+    def install_codex(_npm: str, destination: Path) -> None:
+        installs.append(("codex", destination))
+        (destination / "codex").touch()
+
     monkeypatch.setattr(
-        installer.shutil,
-        "which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
+        "scripts.install_new_feature_dependencies._install_new_feature", install_new_feature
     )
-    monkeypatch.setattr(installer, "_docker_ready", lambda _docker: True)
+    monkeypatch.setattr("scripts.install_new_feature_dependencies._install_codex", install_codex)
 
-    with pytest.raises(installer.DependencyError, match=r"Pinned Temporal CLI v1\.8\.0 is missing"):
-        installer._ensure_runtime_dependencies(bin_dir=tmp_path / "runtime-bin", check_only=True)
+    def command_exists(name: str) -> str | None:
+        if name == "npm":
+            return "/usr/bin/npm"
+        return {"docker": "/usr/bin/docker", "uv": "/usr/bin/uv"}.get(name)
 
+    monkeypatch.setattr(installer.shutil, "which", command_exists)
 
-@pytest.mark.parametrize(
-    ("system", "machine", "expected"),
-    [
-        ("Linux", "x86_64", ("linux", "amd64")),
-        ("Linux", "aarch64", ("linux", "arm64")),
-        ("Darwin", "x86_64", ("darwin", "amd64")),
-        ("Darwin", "arm64", ("darwin", "arm64")),
-    ],
-)
-def test_platform_key_normalizes_supported_hosts(monkeypatch, system, machine, expected) -> None:
-    monkeypatch.setattr(installer.platform, "system", lambda: system)
-    monkeypatch.setattr(installer.platform, "machine", lambda: machine)
-    assert installer._platform_key() == expected
+    _invoke_main(monkeypatch, "--bin-dir", str(bin_dir))
+
+    assert installs == [("new-feature", bin_dir), ("codex", bin_dir)]
+    assert (bin_dir / "new-feature").is_file()
+    assert (bin_dir / "codex").is_file()
+    assert f"new-feature: {bin_dir / 'new-feature'}" in capsys.readouterr().out

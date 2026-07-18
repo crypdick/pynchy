@@ -216,11 +216,11 @@ async def archive_transcript(transcript_path: str, session_id: str) -> Path | No
 
         # Best-effort: also save to structured memory for search
         try:
-            from .agent_tools._ipc_request import (  # noqa: PLC0415, RUF100 - only needed for best-effort memory archival.
-                ipc_service_request,
+            from .agent_tools import (  # noqa: PLC0415, RUF100 - only needed for best-effort memory archival.
+                request_host_service,
             )
 
-            await ipc_service_request(
+            await request_host_service(
                 "save_memory",
                 {
                     "key": f"conversation-{file_path.stem}",

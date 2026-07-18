@@ -58,7 +58,15 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    """A Temporal outage is a failed auto-deploy, not a silent changed checkout."""
+    """A config drift + Temporal outage rolls back rather than leaving a changed checkout."""
+    await init_test_database()
+    previous = DeployRevision("old-sha", "old-config")
+    await initialize_deployment_state(previous)
+    await set_router_state(
+        git_sync.HOST_STATE_KEY,
+        '{"last_origin_sha":"old-sha","deployed_sha":"old-sha",'
+        '"config_hash":"old-config","local_head":"old-sha"}',
+    )
     workspace = WorkspaceProfile(
         jid="discord:admin",
         name="admin",
@@ -70,7 +78,6 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
         workspaces={workspace.jid: workspace},
         broadcast_host_message=AsyncMock(),
     )
-    adapter = git_sync._TemporalGitSyncDeps(runtime_deps, reason="host_git_sync")
     report_failure = AsyncMock(return_value="workflow_start_failed_rolled_back")
 
     monkeypatch.setattr(
@@ -82,6 +89,8 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
         ),
     )
     monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: "new-sha")
+    monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: "new-config")
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: runtime_deps)
     monkeypatch.setattr(
         temporal_scheduler,
         "start_deploy_workflow",
@@ -95,7 +104,7 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     )
 
     with pytest.raises(RuntimeError, match="Temporal unavailable"):
-        await adapter.trigger_deploy("old-sha")
+        await git_sync.run_host_git_sync()
 
     report_failure.assert_awaited_once()
     request = report_failure.await_args.kwargs["request"]
@@ -116,7 +125,7 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
     await claim_deployment(deployed)
     await complete_deployment(deployed)
     await set_router_state(
-        git_sync._HOST_STATE_KEY,
+        git_sync.HOST_STATE_KEY,
         '{"last_origin_sha":"new-sha","deployed_sha":"old-sha",'
         '"config_hash":"config-a","local_head":"new-sha"}',
     )
@@ -129,11 +138,9 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
     monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: deployed.commit_sha)
     monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: deployed.config_hash)
     monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
-    monkeypatch.setattr(git_sync, "_check_origin_drift", AsyncMock(return_value=False))
+    monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
     runtime_deps = object()
     monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: runtime_deps)
-    trigger_deploy = AsyncMock()
-    monkeypatch.setattr(git_sync._TemporalGitSyncDeps, "trigger_deploy", trigger_deploy)
     recorded: list[tuple[str, str]] = []
     monkeypatch.setattr(
         git_sync,
@@ -142,5 +149,4 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
     )
 
     assert await git_sync.run_host_git_sync() == "idle"
-    trigger_deploy.assert_not_awaited()
     assert recorded == [(git_sync.HOST_GIT_SYNC_ID, "idle")]

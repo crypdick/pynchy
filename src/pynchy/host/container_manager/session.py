@@ -23,9 +23,11 @@ import asyncio
 import contextlib
 import sys
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves session callback signatures at runtime.
+    Awaitable,
     Callable,
     Coroutine,
 )
+from dataclasses import dataclass
 from typing import Any
 
 from pynchy.config import get_settings
@@ -36,8 +38,8 @@ from pynchy.host.container_manager.ipc.write import (
 )
 from pynchy.host.container_manager.process import (
     OnOutput,
-    _graceful_stop,
     docker_rm_force,
+    graceful_stop,
     reap_apple_runtime_orphans,
 )
 from pynchy.logger import logger
@@ -52,25 +54,34 @@ class SessionDiedError(Exception):
     """Raised when the container process exits unexpectedly."""
 
 
-_RUNTIME_POLL_INTERVAL_SECONDS = 0.5
-_RUNTIME_START_GRACE_SECONDS = 5.0
-_RUNTIME_CLI_KILL_WAIT_SECONDS = 2.0
 _MISSING_STDERR_PIPE_ERROR = "Container {container_name} spawned without stderr pipe"
 _CONTAINER_DIED_DURING_QUERY_ERROR = "Container {container_name} died during query"
 
 
-async def _wait_for_runtime_poll_interval() -> None:
+@dataclass(frozen=True)
+class RuntimeMonitorPolicy:
+    """Timing policy for checking a container runtime outside its CLI process."""
+
+    poll_interval_seconds: float = 0.5
+    start_grace_seconds: float = 5.0
+    cli_kill_wait_seconds: float = 2.0
+
+
+DEFAULT_RUNTIME_MONITOR_POLICY = RuntimeMonitorPolicy()
+
+
+async def _wait_for_runtime_poll_interval(interval_seconds: float) -> None:
     """Wait for the runtime poll cadence without sleep-polling inside loops."""
     loop = asyncio.get_running_loop()
     waiter = loop.create_future()
-    handle = loop.call_later(_RUNTIME_POLL_INTERVAL_SECONDS, waiter.set_result, None)
+    handle = loop.call_later(interval_seconds, waiter.set_result, None)
     try:
         await waiter
     finally:
         handle.cancel()
 
 
-async def _runtime_container_running(container_name: str) -> bool:
+async def runtime_container_running(container_name: str) -> bool:
     """Return whether the runtime still reports the named container running."""
     if sys.platform != "darwin":
         return False
@@ -103,7 +114,14 @@ class ContainerSession:
     detecting unexpected container death).
     """
 
-    def __init__(self, group_folder: str, container_name: str) -> None:
+    def __init__(
+        self,
+        group_folder: str,
+        container_name: str,
+        *,
+        runtime_probe: Callable[[str], Awaitable[bool]] = runtime_container_running,
+        runtime_monitor_policy: RuntimeMonitorPolicy = DEFAULT_RUNTIME_MONITOR_POLICY,
+    ) -> None:
         self.group_folder = group_folder
         self.container_name = container_name
         self.proc: asyncio.subprocess.Process | None = None
@@ -118,6 +136,8 @@ class ContainerSession:
         self._idle_handle: asyncio.TimerHandle | None = None
         self._idle_timeout: float = get_settings().idle_timeout
         self._on_idle_expire: Callable[[], Coroutine[Any, Any, None]] | None = None
+        self._runtime_probe = runtime_probe
+        self._runtime_monitor_policy = runtime_monitor_policy
 
     @property
     def is_alive(self) -> bool:
@@ -229,7 +249,7 @@ class ContainerSession:
 
         # Stop the container
         if self.proc and self.proc.returncode is None:
-            await _graceful_stop(self.proc, self.container_name)
+            await graceful_stop(self.proc, self.container_name)
 
         # Force remove (handles cases where graceful stop didn't clean up)
         await docker_rm_force(self.container_name)
@@ -304,7 +324,7 @@ class ContainerSession:
         if self._dead:
             return
 
-        if await _runtime_container_running(self.container_name):
+        if await self._runtime_probe(self.container_name):
             self._runtime_alive_after_proc_exit = True
             logger.info(
                 "Container CLI process exited while runtime container remains running",
@@ -321,10 +341,10 @@ class ContainerSession:
         """Detect Apple runtime container death even if ``container run`` hangs."""
         seen_running = False
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + _RUNTIME_START_GRACE_SECONDS
+        deadline = loop.time() + self._runtime_monitor_policy.start_grace_seconds
 
         while proc.returncode is None and not self._dead:
-            running = await _runtime_container_running(self.container_name)
+            running = await self._runtime_probe(self.container_name)
             if running:
                 seen_running = True
             elif seen_running:
@@ -343,20 +363,26 @@ class ContainerSession:
                 )
                 await self._kill_stuck_runtime_cli(proc)
                 return
-            await _wait_for_runtime_poll_interval()
+            await _wait_for_runtime_poll_interval(
+                self._runtime_monitor_policy.poll_interval_seconds
+            )
 
     async def _kill_stuck_runtime_cli(self, proc: asyncio.subprocess.Process) -> None:
         with contextlib.suppress(ProcessLookupError):
             proc.kill()
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(proc.wait(), timeout=_RUNTIME_CLI_KILL_WAIT_SECONDS)
+            await asyncio.wait_for(
+                proc.wait(), timeout=self._runtime_monitor_policy.cli_kill_wait_seconds
+            )
         await reap_apple_runtime_orphans(self.container_name)
         await self._mark_container_exited(1)
 
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
         """Poll runtime state after the CLI client exits before the container."""
-        while await _runtime_container_running(self.container_name):
-            await _wait_for_runtime_poll_interval()
+        while await self._runtime_probe(self.container_name):
+            await _wait_for_runtime_poll_interval(
+                self._runtime_monitor_policy.poll_interval_seconds
+            )
         await self._mark_container_exited(cli_exit_code)
 
     async def _mark_container_exited(self, exit_code: int) -> None:

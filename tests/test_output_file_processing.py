@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import init_test_database
@@ -61,7 +61,7 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -87,7 +87,7 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -108,7 +108,7 @@ class TestOutputFileProcessing:
         )
 
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=None,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -130,7 +130,7 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -155,7 +155,7 @@ class TestOutputFileProcessing:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -191,18 +191,17 @@ class TestQueryDonePulse:
         )
 
         handler = AsyncMock()
+        session = MagicMock()
         with (
             patch(
-                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                "pynchy.host.container_manager.session.get_session_output_handler",
                 return_value=handler,
             ),
-            patch(
-                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
-            ) as mock_signal,
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
 
-        mock_signal.assert_called_once_with("test-group")
+        session.signal_query_done.assert_called_once()
         assert not file_path.exists()
 
     async def test_text_event_does_not_signal_query_done(self, tmp_path: Path):
@@ -218,18 +217,17 @@ class TestQueryDonePulse:
             },
         )
 
+        session = MagicMock()
         with (
             patch(
-                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                "pynchy.host.container_manager.session.get_session_output_handler",
                 return_value=None,
             ),
-            patch(
-                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
-            ) as mock_signal,
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
 
-        mock_signal.assert_not_called()
+        session.signal_query_done.assert_not_called()
 
     async def test_result_with_error_does_not_signal_query_done(self, tmp_path: Path):
         """A result event with an error should not signal query done."""
@@ -246,19 +244,18 @@ class TestQueryDonePulse:
             },
         )
 
+        session = MagicMock()
         with (
             patch(
-                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                "pynchy.host.container_manager.session.get_session_output_handler",
                 return_value=None,
             ),
-            patch(
-                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
-            ) as mock_signal,
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
 
         # is_query_done_pulse requires error=None
-        mock_signal.assert_not_called()
+        session.signal_query_done.assert_not_called()
 
     async def test_result_with_text_result_does_not_signal_query_done(self, tmp_path: Path):
         """A result event with a non-None result should not signal query done."""
@@ -274,19 +271,18 @@ class TestQueryDonePulse:
             },
         )
 
+        session = MagicMock()
         with (
             patch(
-                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                "pynchy.host.container_manager.session.get_session_output_handler",
                 return_value=None,
             ),
-            patch(
-                "pynchy.host.container_manager.ipc.output_processing._signal_query_done"
-            ) as mock_signal,
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
 
         # is_query_done_pulse requires result=None
-        mock_signal.assert_not_called()
+        session.signal_query_done.assert_not_called()
 
     async def test_handler_called_before_query_done_signal(self, tmp_path: Path):
         """Handler should be called even for query-done pulse events."""
@@ -302,18 +298,24 @@ class TestQueryDonePulse:
             },
         )
 
-        handler = AsyncMock()
+        observed: list[str] = []
+
+        async def handler(_output: ContainerOutput) -> None:
+            await asyncio.sleep(0)
+            observed.append("handler")
+
+        session = MagicMock()
+        session.signal_query_done.side_effect = lambda: observed.append("query-done")
         with (
             patch(
-                "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+                "pynchy.host.container_manager.session.get_session_output_handler",
                 return_value=handler,
             ),
-            patch("pynchy.host.container_manager.ipc.output_processing._signal_query_done"),
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
 
-        # Handler should still have been called
-        handler.assert_called_once()
+        assert observed == ["handler", "query-done"]
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +353,7 @@ class TestOutputFileErrors:
 
         handler = AsyncMock(side_effect=consume_file)
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -378,7 +380,7 @@ class TestOutputFileErrors:
 
         handler = AsyncMock(side_effect=slow_handler)
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await asyncio.gather(
@@ -435,7 +437,7 @@ class TestOutputFileErrors:
 
         handler = AsyncMock(side_effect=RuntimeError("handler boom"))
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
@@ -463,7 +465,7 @@ class TestOutputFileErrors:
 
         handler = AsyncMock()
         with patch(
-            "pynchy.host.container_manager.ipc.output_processing._get_output_handler",
+            "pynchy.host.container_manager.session.get_session_output_handler",
             return_value=handler,
         ):
             await process_output_file(file1, "test-group", ipc_dir)

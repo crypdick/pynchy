@@ -42,6 +42,10 @@ class PynchyVoiceClient(discord.VoiceClient):
         return VoiceConnectionState(self, hook=self._on_voice_gateway_payload)
 
     async def _on_voice_gateway_payload(self, _websocket: object, payload: dict[str, Any]) -> None:
+        await self.handle_voice_gateway_payload(payload)
+
+    async def handle_voice_gateway_payload(self, payload: dict[str, Any]) -> None:
+        """Record a Discord voice-gateway SPEAKING notification."""
         if payload.get("op") != _SPEAKING_OPCODE:
             return
         data = payload.get("d")
@@ -58,17 +62,17 @@ class PynchyVoiceClient(discord.VoiceClient):
         if self._packet_listener is not None:
             self.stop_receiving()
         self._packet_listener = listener
-        self._connection.add_socket_listener(self._on_socket_packet)
+        self._connection.add_socket_listener(self.receive_voice_packet)
 
     def stop_receiving(self) -> None:
         if self._packet_listener is None:
             return
-        self._connection.remove_socket_listener(self._on_socket_packet)
+        self._connection.remove_socket_listener(self.receive_voice_packet)
         self._packet_listener = None
         self._speaker_ids.clear()
 
-    def _on_socket_packet(self, packet: bytes) -> None:
-        """Decrypt UDP packets on discord.py's socket-reader thread."""
+    def receive_voice_packet(self, packet: bytes) -> None:
+        """Receive one encrypted Discord UDP voice packet from the socket reader."""
         listener = self._packet_listener
         parsed = _parse_rtp_packet(packet)
         if listener is None or parsed is None:

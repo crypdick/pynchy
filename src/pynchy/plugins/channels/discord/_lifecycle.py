@@ -57,7 +57,7 @@ class DiscordLifecycle:
 
         @client.event
         async def on_voice_state_update(member: object, before: object, after: object) -> None:  # noqa: RUF029, RUF100 - discord.py event callbacks are async.
-            await ch.voice.on_voice_state_update(member, before, after)
+            await ch.handle_voice_state_update(member, before, after)
 
         self._task = asyncio.ensure_future(self._run(client))
 

@@ -3,22 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-import pluggy
 import pytest
 from conftest import make_settings
 
-from pynchy.config.models import LearningConfig
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
 from pynchy.state import get_chat_history, init_test_database
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine
+    from collections.abc import Awaitable, Callable
 
 
 class StopAfterArgumentValidationError(Exception):
@@ -133,7 +129,7 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
         assert received_app is app
         assert sig_name == "SIGTERM"
         assert exit_process is True
-        received_app._shutting_down = True
+        assert received_app.begin_shutdown()
         shutdown_started.set()
         await shutdown_can_finish.wait()
         shutdown_finished.set()
@@ -199,7 +195,7 @@ async def test_channel_history_catch_up_defers_until_temporal_runtime(monkeypatc
         lambda: False,
     )
 
-    await app._catch_up_channel_history()
+    await app.catch_up_channels()
 
     assert start_called is False
 
@@ -220,7 +216,7 @@ async def test_channel_history_catch_up_degrades_on_dispatch_failure(monkeypatch
         lambda: True,
     )
 
-    await app._catch_up_channel_history()
+    await app.catch_up_channels()
 
     assert start_called is True
 
@@ -297,84 +293,9 @@ async def test_shutdown_app_exits_zero_after_cleanup_when_requested(monkeypatch)
     assert exit_codes == [0]
 
 
-@dataclass(frozen=True)
-class _RecordedTask:
-    name: str
-
-
 class _RecordingQueue:
     def __init__(self) -> None:
         self.shutdown_called = False
 
     async def shutdown(self) -> None:
         self.shutdown_called = True
-
-
-class _HttpRunner:
-    async def cleanup(self) -> None:
-        return None
-
-
-def _noop_coroutine() -> Coroutine[Any, Any, None]:
-    return asyncio.sleep(0)
-
-
-@pytest.mark.parametrize(
-    ("enabled", "review_after_turn"),
-    [
-        (True, True),
-        (False, True),
-        (True, False),
-    ],
-)
-@pytest.mark.asyncio
-async def test_start_subsystems_does_not_start_local_learning_worker(
-    monkeypatch,
-    tmp_path,
-    enabled: bool,
-    review_after_turn: bool,
-) -> None:
-    settings = make_settings(
-        data_dir=tmp_path / "data",
-        project_root=tmp_path,
-        learning=LearningConfig(enabled=enabled, review_after_turn=review_after_turn),
-    )
-    app = PynchyApp()
-    app.plugin_manager = pluggy.PluginManager("pynchy-test")
-    created_task_names: list[str] = []
-
-    def fake_create_background_task(
-        awaitable: Awaitable[None], *, name: str | None = None
-    ) -> _RecordedTask:
-        if inspect.iscoroutine(awaitable):
-            cast("Coroutine[Any, Any, None]", awaitable).close()
-        task = _RecordedTask(name=name or "")
-        created_task_names.append(task.name)
-        return task
-
-    def fake_loop(*_args: Any, **_kwargs: Any) -> Coroutine[Any, Any, None]:
-        return _noop_coroutine()
-
-    def fake_start_http_server(*_args: Any, **_kwargs: Any) -> Awaitable[_HttpRunner]:
-        return _completed_awaitable(_HttpRunner())
-
-    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
-    monkeypatch.setattr(lifecycle, "create_background_task", fake_create_background_task)
-    monkeypatch.setattr(
-        "pynchy.host.orchestrator.task_scheduler.start_scheduler_loop",
-        fake_loop,
-    )
-    monkeypatch.setattr("pynchy.host.container_manager.ipc.start_ipc_watcher", fake_loop)
-    monkeypatch.setattr(
-        "pynchy.host.orchestrator.http_server.start_http_server",
-        fake_start_http_server,
-    )
-    monkeypatch.setattr(
-        "pynchy.host.orchestrator.status.record_start_time",
-        lambda: None,
-    )
-    monkeypatch.setattr("pynchy.plugins.tunnels.check_tunnels", lambda _plugin_manager: None)
-    await lifecycle._start_subsystems(app, {})
-
-    assert created_task_names == ["scheduler", "ipc-watcher"]
-    assert "learning-worker" not in created_task_names

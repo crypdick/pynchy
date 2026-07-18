@@ -10,30 +10,38 @@ JSON file, and these tools let the agent read/manage it.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from mcp.types import CallToolResult, TextContent
 
+from . import _ipc
 from ._registry import tool, tool_error
 
-_TODOS_FILE = Path("/workspace/ipc/todos.json")
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def _todos_file() -> Path:
+    """Return the todo file for the active agent-tool runtime."""
+    return _ipc.get_agent_tool_runtime().ipc_dir / "todos.json"
 
 
 def _read_todos() -> list[dict[str, Any]]:
-    if not _TODOS_FILE.exists():
+    todos_file = _todos_file()
+    if not todos_file.exists():
         return []
     try:
-        return cast("list[dict[str, Any]]", json.loads(_TODOS_FILE.read_text(encoding="utf-8")))
+        return cast("list[dict[str, Any]]", json.loads(todos_file.read_text(encoding="utf-8")))
     except (json.JSONDecodeError, OSError):
         return []
 
 
 def _write_todos(todos: list[dict[str, Any]]) -> None:
-    _TODOS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _TODOS_FILE.with_suffix(".json.tmp")
+    todos_file = _todos_file()
+    todos_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = todos_file.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(todos, indent=2), encoding="utf-8")
-    tmp.rename(_TODOS_FILE)
+    tmp.rename(todos_file)
 
 
 # -- list_todos ----------------------------------------------------------------

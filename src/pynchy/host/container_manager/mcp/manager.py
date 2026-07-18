@@ -21,7 +21,9 @@ import time
 from dataclasses import dataclass
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config import Settings, get_settings
+from pynchy.config import (
+    Settings,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
+)
 from pynchy.config.mcp import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
@@ -63,6 +65,49 @@ from pynchy.utils import create_background_task
 
 
 _MCP_FAILURE_RETRY_SECONDS = 300.0
+
+
+@dataclass(frozen=True)
+class DirectMcpServerConfigRequest:
+    """The resolved state needed to configure one agent's MCP proxy routes."""
+
+    group_folder: str
+    instance_ids: tuple[str, ...]
+    instances: dict[str, McpInstance]
+    proxy_port: int
+    container_host: str
+    invocation_ts: float = 0.0
+
+
+def build_direct_server_configs(
+    request: DirectMcpServerConfigRequest,
+) -> list[dict[str, str]]:
+    """Build agent MCP configs that route selected instances through the proxy.
+
+    The caller supplies only instances that finished starting.  Omitting an
+    unavailable instance is deliberate: an optional MCP must not be advertised
+    to the agent until its proxy route can serve it.
+    """
+    if not request.instance_ids or not request.proxy_port:
+        return []
+
+    host = resolve_container_host(request.container_host)
+    configs: list[dict[str, str]] = []
+    for instance_id in request.instance_ids:
+        instance = request.instances.get(instance_id)
+        if instance is None:
+            continue
+        configs.append(
+            {
+                "name": instance_id,
+                "url": (
+                    f"http://{host}:{request.proxy_port}/mcp/{request.group_folder}/"
+                    f"{request.invocation_ts}/{instance_id}"
+                ),
+                "transport": instance.server_config.transport,
+            }
+        )
+    return configs
 
 
 # ---------------------------------------------------------------------------
@@ -368,23 +413,16 @@ class McpManager:
         """
         if instance_ids is None:
             instance_ids = self.get_workspace_instance_ids(group_folder)
-        if not instance_ids or not self._proxy.port:
-            return []
-
-        host = resolve_container_host(get_settings().gateway.container_host)
-        configs: list[dict[str, str]] = []
-        for iid in instance_ids:
-            instance = self._instances.get(iid)
-            if instance is None:
-                continue
-            configs.append(
-                {
-                    "name": iid,
-                    "url": f"http://{host}:{self._proxy.port}/mcp/{group_folder}/{invocation_ts}/{iid}",
-                    "transport": instance.server_config.transport,
-                }
+        return build_direct_server_configs(
+            DirectMcpServerConfigRequest(
+                group_folder=group_folder,
+                instance_ids=tuple(instance_ids),
+                instances=self._instances,
+                proxy_port=self._proxy.port,
+                container_host=self._settings.gateway.container_host,
+                invocation_ts=invocation_ts,
             )
-        return configs
+        )
 
     # ------------------------------------------------------------------
     # Internal: idle checker

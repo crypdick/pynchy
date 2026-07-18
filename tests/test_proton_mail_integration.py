@@ -17,7 +17,6 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailbox,
     ProtonMailboxList,
     ProtonMailDelivery,
-    ProtonMailError,
     ProtonMailList,
     ProtonMessage,
     ProtonMessageEnvelope,
@@ -147,79 +146,6 @@ class TestProtonMailMcpPlugin:
         assert resolved["proton-mail"].port == 8475
 
 
-class TestProtonMailOperations:
-    async def test_list_mail_forwards_typed_filters_to_the_direct_client(self):
-        stub = StubProtonMailClient()
-
-        result = await proton_mail._call_tool(
-            {
-                "name": "proton_list_mail",
-                "arguments": {"mailbox": "Archive", "limit": 2, "offset": 3, "unread": True},
-            },
-            lambda: stub,
-        )
-
-        assert json.loads(result["content"][0]["text"])["messages"][0]["message_id"] == (
-            "<event@example.com>"
-        )
-        assert stub.calls == [("list_mail", ("Archive", 2, 3, True))]
-
-    async def test_read_mail_uses_message_id_not_a_persistent_imap_uid(self):
-        stub = StubProtonMailClient()
-
-        result = await proton_mail._call_tool(
-            {
-                "name": "proton_read_mail",
-                "arguments": {"message_id": "<event@example.com>", "headers": True},
-            },
-            lambda: stub,
-        )
-
-        assert json.loads(result["content"][0]["text"])["body"] == "Event details"
-        assert stub.calls == [("read_mail", ("INBOX", "<event@example.com>", True))]
-
-    async def test_read_mail_rejects_the_removed_uid_argument(self):
-        with pytest.raises(ProtonMailError, match="Invalid Proton Mail tool arguments"):
-            await proton_mail._call_tool(
-                {"name": "proton_read_mail", "arguments": {"uid": "34"}},
-                StubProtonMailClient,
-            )
-
-    async def test_send_mail_forwards_a_validated_plain_text_submission(self):
-        stub = StubProtonMailClient()
-
-        result = await proton_mail._call_tool(
-            {
-                "name": "proton_send_mail",
-                "arguments": {
-                    "to": ["recipient@example.com"],
-                    "subject": "Canary",
-                    "body": "Safe test body",
-                },
-            },
-            lambda: stub,
-        )
-
-        assert json.loads(result["content"][0]["text"]) == {"message_id": "<sent@example.com>"}
-        assert stub.calls == [
-            ("send_mail", (["recipient@example.com"], "Canary", "Safe test body"))
-        ]
-
-    async def test_send_mail_rejects_recipient_header_injection(self):
-        with pytest.raises(ProtonMailError, match="Invalid Proton Mail tool arguments"):
-            await proton_mail._call_tool(
-                {
-                    "name": "proton_send_mail",
-                    "arguments": {
-                        "to": ["recipient@example.com\r\nBcc: attacker@example.com"],
-                        "subject": "Canary",
-                        "body": "Safe test body",
-                    },
-                },
-                StubProtonMailClient,
-            )
-
-
 class TestProtonMailMcpServer:
     async def test_mcp_lists_all_operational_mail_tools(self):
         stub = StubProtonMailClient()
@@ -256,7 +182,7 @@ class TestProtonMailMcpServer:
                     "method": "tools/call",
                     "params": {
                         "name": "proton_read_mail",
-                        "arguments": {"message_id": "<event@example.com>"},
+                        "arguments": {"message_id": "<event@example.com>", "headers": True},
                     },
                 },
             )
@@ -267,6 +193,7 @@ class TestProtonMailMcpServer:
 
         text = payload["result"]["content"][0]["text"]
         assert json.loads(text)["message_id"] == "<event@example.com>"
+        assert stub.calls == [("read_mail", ("INBOX", "<event@example.com>", True))]
 
     @pytest.mark.action("mail.proton.mailbox.list")
     async def test_mcp_lists_mailboxes_through_the_injected_direct_client(self):
@@ -303,7 +230,12 @@ class TestProtonMailMcpServer:
                     "method": "tools/call",
                     "params": {
                         "name": "proton_list_mail",
-                        "arguments": {"mailbox": "INBOX", "limit": 3, "unread": True},
+                        "arguments": {
+                            "mailbox": "Archive",
+                            "limit": 2,
+                            "offset": 3,
+                            "unread": True,
+                        },
                     },
                 },
             )
@@ -313,7 +245,44 @@ class TestProtonMailMcpServer:
 
         text = payload["result"]["content"][0]["text"]
         assert json.loads(text)["messages"][0]["message_id"] == "<event@example.com>"
-        assert stub.calls == [("list_mail", ("INBOX", 3, 0, True))]
+        assert stub.calls == [("list_mail", ("Archive", 2, 3, True))]
+
+    @pytest.mark.parametrize(
+        ("name", "arguments"),
+        [
+            ("proton_read_mail", {"uid": "34"}),
+            (
+                "proton_send_mail",
+                {
+                    "to": ["recipient@example.com\r\nBcc: attacker@example.com"],
+                    "subject": "Canary",
+                    "body": "Safe test body",
+                },
+            ),
+        ],
+    )
+    async def test_mcp_rejects_invalid_tool_arguments(
+        self,
+        name: str,
+        arguments: dict[str, object],
+    ) -> None:
+        client = await _start_mcp_client(StubProtonMailClient())
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": name, "arguments": arguments},
+                },
+            )
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        assert payload["result"]["isError"] is True
+        assert "Invalid Proton Mail tool arguments" in payload["result"]["content"][0]["text"]
 
     @pytest.mark.action("mail.proton.message.send")
     async def test_mcp_sends_mail_through_the_injected_bridge_client(self):

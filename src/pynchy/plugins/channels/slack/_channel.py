@@ -147,7 +147,13 @@ class SlackChannel:
     def prepare_shutdown(self) -> None:
         self.lifecycle.prepare_shutdown()
 
-    def _on_handler_done(self, task: asyncio.Task[None]) -> None:
+    def handle_socket_mode_exit(self, task: asyncio.Task[None]) -> None:
+        """Handle a Socket Mode transport task ending unexpectedly.
+
+        This is the callback boundary between Slack's SDK task and the
+        channel lifecycle. It lets an SDK integration report an exit without
+        relying on lifecycle collaborator internals.
+        """
         self.lifecycle.on_handler_done(task)
 
     async def _reconnect_with_backoff(self, delay: float = 5.0) -> None:
@@ -311,17 +317,23 @@ class SlackChannel:
     # Inbound events — delegated to self.events
     # ------------------------------------------------------------------
 
-    def _register_handlers(self) -> None:
+    def register_inbound_handlers(self) -> None:
+        """Register this channel's Slack Bolt event and interaction callbacks.
+
+        Connection setup calls this after the Slack SDK app is available. It
+        is also the adapter boundary for hosts that provision the SDK app
+        outside ``connect()``.
+        """
         self.events.register_handlers()
 
-    async def _on_slack_message(self, event: JsonDict) -> None:
+    async def ingest_inbound_event(self, event: JsonDict) -> None:
+        """Ingest one Slack SDK message or mention event.
+
+        Slack Bolt handlers and reconnect-safe adapter tests both enter here.
+        The method deliberately exposes the channel boundary, while parsing,
+        deduplication, and callback wiring stay behind the event collaborator.
+        """
         await self.events.on_slack_message(event)
-
-    def _dedup_ts(self, ts: str) -> bool:
-        return self.events.dedup_ts(ts)
-
-    def _normalize_bot_mention(self, text: str) -> str:
-        return self.events.normalize_bot_mention(text)
 
     # ------------------------------------------------------------------
     # Channel protocol
@@ -452,24 +464,6 @@ class SlackChannel:
     # History catch-up (reconnect recovery)
     # ------------------------------------------------------------------
 
-    async def _fetch_missed_messages_with_watermark(
-        self, channel_id: str, oldest: str, *, limit: int = 1000
-    ) -> tuple[list[NewMessage], str]:
-        """Fetch messages via ``conversations.history`` with pagination.
-
-        Returns ``(user_messages, high_water_mark)`` where *high_water_mark*
-        is the ISO timestamp of the newest raw message seen (including bot
-        messages).  The reconciler uses it to advance its cursor past
-        bot-only windows.
-
-        Paginates through bot-only pages (up to 10 pages) so that stale
-        cursors buried under hundreds of bot messages can still reach
-        recent user messages.
-        """
-        return await self.history.fetch_missed_messages_with_watermark(
-            channel_id, oldest, limit=limit
-        )
-
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         """Fetch Slack messages newer than ``since`` for a single channel.
 
@@ -497,7 +491,9 @@ class SlackChannel:
         dt = datetime.fromisoformat(since)
         total_us = int(dt.timestamp() * 1_000_000) + 1  # +1μs epsilon
         since_epoch = f"{total_us // 1_000_000}.{total_us % 1_000_000:06d}"
-        messages, hwm = await self._fetch_missed_messages_with_watermark(channel_id, since_epoch)
+        messages, hwm = await self.history.fetch_missed_messages_with_watermark(
+            channel_id, since_epoch
+        )
         return InboundFetchResult(messages=messages, high_water_mark=hwm)
 
     # ------------------------------------------------------------------

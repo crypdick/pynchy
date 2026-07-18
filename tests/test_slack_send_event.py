@@ -14,7 +14,7 @@ SLACK_APP_VALUE = "xapp-test"
 
 
 @pytest.fixture
-def slack_channel():
+def slack_channel() -> SlackChannel:
     """Create a SlackChannel with mocked Slack app."""
     ch = SlackChannel(
         connection_name="test",
@@ -25,12 +25,12 @@ def slack_channel():
         on_message=MagicMock(),
         on_chat_metadata=MagicMock(),
     )
-    ch._app = MagicMock()
-    ch._app.client = MagicMock()
-    ch._app.client.chat_postMessage = AsyncMock(return_value={"ts": "123.456"})
-    ch._app.client.chat_update = AsyncMock()
-    ch._connected = True
-    ch._allowed_channel_ids = {"C123"}
+    app = MagicMock()
+    app.client = MagicMock()
+    app.client.chat_postMessage = AsyncMock(return_value={"ts": "123.456"})
+    app.client.chat_update = AsyncMock()
+    ch.slack_app = app
+    ch.register_allowed_channel("general", "C123")
     return ch
 
 
@@ -42,7 +42,7 @@ async def test_send_event_posts_text(slack_channel):
         metadata={"prefix_assistant_name": False},
     )
     await slack_channel.send_event("slack:C123", event)
-    slack_channel._app.client.chat_postMessage.assert_called_once()
+    slack_channel.require_slack_app().client.chat_postMessage.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -53,12 +53,12 @@ async def test_send_event_skips_non_owned_jid(slack_channel):
         metadata={"prefix_assistant_name": False},
     )
     await slack_channel.send_event("slack:WRONG", event)
-    slack_channel._app.client.chat_postMessage.assert_not_called()
+    slack_channel.require_slack_app().client.chat_postMessage.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_send_event_skips_when_no_app(slack_channel):
-    slack_channel._app = None
+    slack_channel.slack_app = None
     event = OutboundEvent(
         type=OutboundEventType.RESULT,
         content="Hello world",
@@ -78,8 +78,8 @@ async def test_send_event_sends_blocks_for_long_text(slack_channel):
     )
     await slack_channel.send_event("slack:C123", event)
     # SlackBlocksFormatter always produces blocks, so a single API call is made
-    assert slack_channel._app.client.chat_postMessage.await_count == 1
-    call_kwargs = slack_channel._app.client.chat_postMessage.call_args.kwargs
+    assert slack_channel.require_slack_app().client.chat_postMessage.await_count == 1
+    call_kwargs = slack_channel.require_slack_app().client.chat_postMessage.call_args.kwargs
     assert "blocks" in call_kwargs
 
 
@@ -97,7 +97,7 @@ async def test_send_event_with_blocks_sends_blocks(slack_channel):
         return_value=MagicMock(text="Hello world", blocks=blocks)
     )
     await slack_channel.send_event("slack:C123", event)
-    call_kwargs = slack_channel._app.client.chat_postMessage.call_args.kwargs
+    call_kwargs = slack_channel.require_slack_app().client.chat_postMessage.call_args.kwargs
     assert call_kwargs["blocks"] == blocks
     assert call_kwargs["text"] == "Hello world"
 
@@ -122,7 +122,7 @@ async def test_post_event_returns_none_for_wrong_jid(slack_channel):
 
 @pytest.mark.asyncio
 async def test_post_event_returns_none_when_no_app(slack_channel):
-    slack_channel._app = None
+    slack_channel.slack_app = None
     event = OutboundEvent(
         type=OutboundEventType.TEXT, content="streaming", metadata={"cursor": True}
     )
@@ -137,7 +137,7 @@ async def test_post_event_passes_blocks_when_present(slack_channel):
     blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "text"}}]
     slack_channel.formatter.render = MagicMock(return_value=MagicMock(text="text", blocks=blocks))
     await slack_channel.post_event("slack:C123", event)
-    call_kwargs = slack_channel._app.client.chat_postMessage.call_args.kwargs
+    call_kwargs = slack_channel.require_slack_app().client.chat_postMessage.call_args.kwargs
     assert call_kwargs["blocks"] == blocks
 
 
@@ -147,7 +147,7 @@ async def test_update_event_calls_chat_update(slack_channel):
         type=OutboundEventType.TEXT, content="final text", metadata={"cursor": False}
     )
     await slack_channel.update_event("slack:C123", "123.456", event)
-    slack_channel._app.client.chat_update.assert_called_once()
+    slack_channel.require_slack_app().client.chat_update.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -156,12 +156,12 @@ async def test_update_event_skips_non_owned_jid(slack_channel):
         type=OutboundEventType.TEXT, content="final text", metadata={"cursor": False}
     )
     await slack_channel.update_event("slack:WRONG", "123.456", event)
-    slack_channel._app.client.chat_update.assert_not_called()
+    slack_channel.require_slack_app().client.chat_update.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_update_event_skips_when_no_app(slack_channel):
-    slack_channel._app = None
+    slack_channel.slack_app = None
     event = OutboundEvent(
         type=OutboundEventType.TEXT, content="final text", metadata={"cursor": False}
     )
@@ -176,7 +176,7 @@ async def test_update_event_passes_blocks_when_present(slack_channel):
     blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "text"}}]
     slack_channel.formatter.render = MagicMock(return_value=MagicMock(text="text", blocks=blocks))
     await slack_channel.update_event("slack:C123", "123.456", event)
-    call_kwargs = slack_channel._app.client.chat_update.call_args.kwargs
+    call_kwargs = slack_channel.require_slack_app().client.chat_update.call_args.kwargs
     assert call_kwargs["blocks"] == blocks
     assert call_kwargs["ts"] == "123.456"
 
@@ -186,7 +186,7 @@ async def test_update_event_includes_blocks_from_blocks_formatter(slack_channel)
     """update_event should include blocks when SlackBlocksFormatter produces them."""
     event = OutboundEvent(type=OutboundEventType.TEXT, content="text", metadata={})
     await slack_channel.update_event("slack:C123", "123.456", event)
-    call_kwargs = slack_channel._app.client.chat_update.call_args.kwargs
+    call_kwargs = slack_channel.require_slack_app().client.chat_update.call_args.kwargs
     # SlackBlocksFormatter always produces blocks for TEXT events
     assert "blocks" in call_kwargs
     assert any(b["type"] == "markdown" for b in call_kwargs["blocks"])

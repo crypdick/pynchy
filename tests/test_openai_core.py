@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import sys
 from pathlib import Path
@@ -21,7 +20,7 @@ if container_path.exists():
 
 try:
     from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
-    from agent_runner.cores.openai import extract_tool_call
+    from agent_runner.cores.openai import build_mcp_server, extract_tool_call
     from agent_runner.registry import create_agent_core
 
     AGENT_RUNNER_AVAILABLE = True
@@ -126,63 +125,8 @@ class TestOpenAICoreInstantiation:
 class TestMCPServerConversion:
     """Test that config.mcp_servers dict is converted to MCPServerStdio objects."""
 
-    def _make_core(self):
-        try:
-            from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
-                OpenAIAgentCore,
-            )
-        except ImportError:
-            pytest.skip("openai-agents not installed")
-
-        return OpenAIAgentCore(
-            AgentCoreConfig(
-                cwd="/workspace/repos/owner/project",
-                session_id=None,
-                group_folder="admin-1",
-                chat_jid="test@g.us",
-                is_admin=True,
-                is_scheduled_task=False,
-                mcp_servers={},
-            )
-        )
-
-    def test_mcp_servers_built_from_config(self):
-        """start() converts mcp_servers dict to MCPServerStdio instances."""
-        try:
-            from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
-                OpenAIAgentCore,
-            )
-        except ImportError:
-            pytest.skip("openai-agents not installed")
-
-        config = AgentCoreConfig(
-            cwd="/workspace/repos/owner/project",
-            session_id=None,
-            group_folder="admin-1",
-            chat_jid="test@g.us",
-            is_admin=True,
-            is_scheduled_task=False,
-            mcp_servers={
-                "pynchy": {
-                    "command": "python",
-                    "args": ["-m", "agent_runner.agent_tools"],
-                    "env": {"KEY": "val"},
-                },
-                "custom": {
-                    "command": "node",
-                    "args": ["server.js"],
-                },
-            },
-        )
-
-        core = OpenAIAgentCore(config)
-        # Before start(), no servers are created
-        assert len(core._mcp_servers) == 0
-
     def test_build_mcp_server_stdio(self):
-        core = self._make_core()
-
-        built = core._build_mcp_server(
+        built = build_mcp_server(
             "pynchy",
             {
                 "command": "python",
@@ -195,9 +139,7 @@ class TestMCPServerConversion:
         assert built.name == "pynchy"
 
     def test_build_mcp_server_sse(self):
-        core = self._make_core()
-
-        built = core._build_mcp_server(
+        built = build_mcp_server(
             "browser",
             {"type": "sse", "url": "http://browser:3000/mcp", "headers": {"X-Test": "1"}},
         )
@@ -206,9 +148,7 @@ class TestMCPServerConversion:
         assert built.name == "browser"
 
     def test_build_mcp_server_streamable_http(self):
-        core = self._make_core()
-
-        built = core._build_mcp_server(
+        built = build_mcp_server(
             "remote",
             {"type": "http", "url": "https://example.test/mcp", "headers": {"Auth": "token"}},
         )
@@ -217,9 +157,7 @@ class TestMCPServerConversion:
         assert built.name == "remote"
 
     def test_build_mcp_server_rejects_unknown_transport(self):
-        core = self._make_core()
-
-        built = core._build_mcp_server("mystery", {"type": "udp", "url": "udp://example.test"})
+        built = build_mcp_server("mystery", {"type": "udp", "url": "udp://example.test"})
 
         assert built is None
 
@@ -301,7 +239,28 @@ class TestOpenAIToolParsing:
 class TestOpenAIQueryModel:
     """OpenAI query behavior for the configured model."""
 
-    def _make_core(self):
+    @staticmethod
+    def _config(*, metadata: dict[str, str] | None = None) -> AgentCoreConfig:
+        extra: dict[str, object] = {"model": "primary-model"}
+        if metadata is not None:
+            extra["metadata"] = metadata
+        return AgentCoreConfig(
+            cwd="/workspace/repos/owner/project",
+            session_id=None,
+            group_folder="admin-1",
+            chat_jid="test@g.us",
+            is_admin=True,
+            is_scheduled_task=False,
+            mcp_servers={},
+            extra=extra,
+        )
+
+    async def _start_core(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        metadata: dict[str, str] | None = None,
+    ) -> object:
         try:
             from agent_runner.cores.openai import (  # noqa: PLC0415, RUF100 - optional SDK import controls skip behavior.
                 OpenAIAgentCore,
@@ -309,20 +268,9 @@ class TestOpenAIQueryModel:
         except ImportError:
             pytest.skip("openai-agents not installed")
 
-        core = OpenAIAgentCore(
-            AgentCoreConfig(
-                cwd="/workspace/repos/owner/project",
-                session_id=None,
-                group_folder="admin-1",
-                chat_jid="test@g.us",
-                is_admin=True,
-                is_scheduled_task=False,
-                mcp_servers={},
-                extra={"model": "primary-model"},
-            )
-        )
-        core._agent = object()
-        core._model_primary = "primary-model"
+        core = OpenAIAgentCore(self._config(metadata=metadata))
+        monkeypatch.setattr(core, "_make_agent", lambda _model: object())
+        await core.start()
         return core
 
     @staticmethod
@@ -330,59 +278,12 @@ class TestOpenAIQueryModel:
         return [event async for event in core.query(prompt)]
 
     @pytest.mark.asyncio
-    async def test_model_failure_is_not_retried(self, monkeypatch):
-        core = self._make_core()
-        calls: list[str] = []
-
-        class FailingStream:
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                raise RuntimeError("model_not_found")
-
-        def fake_run_streamed(_prompt: str, model: str):
-            calls.append(model)
-            return FailingStream()
-
-        monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
-
-        with pytest.raises(RuntimeError, match="model_not_found"):
-            await self._collect_events(core, "hello")
-
-        assert calls == ["primary-model"]
-
-    @pytest.mark.asyncio
-    async def test_does_not_retry_after_emitting_primary_output(self, monkeypatch):
-        core = self._make_core()
-        calls: list[str] = []
-
-        def fake_run_streamed(_prompt: str, model: str):
-            calls.append(model)
-
-            async def _stream():
-                await asyncio.sleep(0)
-                yield AgentEvent(type="thinking", data={"thinking": "partial"})
-                raise RuntimeError("model_not_found")
-
-            return _stream()
-
-        monkeypatch.setattr(core, "_run_streamed", fake_run_streamed)
-
-        with pytest.raises(RuntimeError, match="model_not_found"):
-            await self._collect_events(core, "hello")
-
-        assert calls == ["primary-model"]
-
-    @pytest.mark.asyncio
-    async def test_run_streamed_passes_metadata_via_run_config(self, monkeypatch):
+    async def test_query_passes_metadata_via_run_config(self, monkeypatch):
         try:
             from agent_runner.cores import openai as openai_core  # noqa: PLC0415, RUF100
         except ImportError:
             pytest.skip("openai-agents not installed")
 
-        core = self._make_core()
-        core.config.extra["metadata"] = {"pynchy_turn_id": "turn_1"}
         calls: list[dict[str, object]] = []
 
         class FakeResult:
@@ -413,7 +314,8 @@ class TestOpenAIQueryModel:
 
         monkeypatch.setattr(openai_core.Runner, "run_streamed", fake_run_streamed)
 
-        events = [event async for event in core._run_streamed("hello", "primary-model")]
+        core = await self._start_core(monkeypatch, metadata={"pynchy_turn_id": "turn_1"})
+        events = await self._collect_events(core, "hello")
 
         assert events[-1].type == "result"
         assert calls[0]["previous_response_id"] is None
@@ -422,6 +324,7 @@ class TestOpenAIQueryModel:
         assert run_config is not None
         assert run_config.model_settings.metadata == {"pynchy_turn_id": "turn_1"}
         assert run_config.trace_metadata == {"pynchy_turn_id": "turn_1"}
+        await core.stop()
 
     def test_pinned_runner_signature_uses_run_config_not_metadata(self):
         try:

@@ -270,7 +270,7 @@ class CodexCLIAgentCore:
         except json.JSONDecodeError:
             _log(f"skipping non-JSON stdout line: {line[:200]}")
             return []
-        return self._map_event(obj) if isinstance(obj, dict) else []
+        return self.map_stream_event(obj) if isinstance(obj, dict) else []
 
     async def _finish_process(self, proc: asyncio.subprocess.Process) -> tuple[str, int]:
         stderr = _require_stream(proc.stderr, "stderr")
@@ -297,8 +297,13 @@ class CodexCLIAgentCore:
             },
         )
 
-    def _map_event(self, obj: dict[str, object]) -> list[AgentEvent]:
-        """Map one Codex JSONL event object to zero or more ``AgentEvent``s."""
+    def map_stream_event(self, obj: dict[str, object]) -> list[AgentEvent]:
+        """Map one Codex stream event to Pynchy's agent-event contract.
+
+        This is the owned protocol boundary for ``codex exec --json``. It
+        permits focused mapping tests without exposing subprocess lifecycle or
+        internal event-dispatch helpers as test API.
+        """
         event_type = obj.get("type")
 
         if event_type == "thread.started":

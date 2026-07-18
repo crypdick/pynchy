@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from conftest import make_settings
 
 from pynchy.config.mcp import McpServerConfig
-from pynchy.host.container_manager import orchestrator
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp import litellm
-from pynchy.host.container_manager.mcp.manager import McpManager
-from pynchy.host.container_manager.mcp.proxy import McpProxy
+from pynchy.host.container_manager.mcp.manager import (
+    DirectMcpServerConfigRequest,
+    build_direct_server_configs,
+)
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
 
 
@@ -66,35 +65,25 @@ def _make_gateway(tmp_path) -> LiteLLMGateway:
     )
 
 
-class TestMcpManagerHasProxy:
-    """McpManager should own an McpProxy instance."""
-
-    def test_init_creates_proxy(self, tmp_path):
-        """McpManager.__init__ should create an McpProxy instance."""
-        settings = make_settings(data_dir=tmp_path)
-        gateway = MagicMock(spec=LiteLLMGateway)
-
-        mgr = McpManager(settings, gateway)
-        assert isinstance(mgr._proxy, McpProxy)
-        assert mgr._proxy_port == 0
-
-    @pytest.mark.asyncio
-    async def test_canary_endpoint_starts_the_one_named_server_on_its_host_port(self, tmp_path):
-        mgr = McpManager(make_settings(data_dir=tmp_path), MagicMock(spec=LiteLLMGateway))
-        mgr._instances = {
-            "gcal.canary": _make_instance(
-                "gcal.canary",
-                instance_id="gcal.canary",
-                transport="streamable_http",
-                port=3201,
-            )
-        }
-        ensure_running = AsyncMock()
-        with patch.object(mgr, "ensure_running", ensure_running):
-            endpoint = await mgr.get_canary_server_endpoint("gcal.canary")
-
-        assert endpoint == "http://localhost:3201/mcp"
-        ensure_running.assert_awaited_once_with("gcal.canary")
+def _build_direct_configs(
+    *,
+    group_folder: str = "test-ws",
+    instance_ids: tuple[str, ...] = (),
+    instances: dict[str, McpInstance] | None = None,
+    proxy_port: int = 8080,
+    container_host: str = "host.docker.internal",
+    invocation_ts: float = 0.0,
+) -> list[dict[str, str]]:
+    return build_direct_server_configs(
+        DirectMcpServerConfigRequest(
+            group_folder=group_folder,
+            instance_ids=instance_ids,
+            instances=instances or {},
+            proxy_port=proxy_port,
+            container_host=container_host,
+            invocation_ts=invocation_ts,
+        )
+    )
 
 
 class TestBuildTrustMap:
@@ -235,24 +224,16 @@ class TestLiteLLMSyncEndpoints:
         ) in calls
 
 
-class TestGetDirectServerConfigsProxy:
-    """get_direct_server_configs should route through the proxy."""
+class TestBuildDirectServerConfigs:
+    """Direct agent MCP configs must route only ready instances through the proxy."""
 
     def test_includes_proxy_url(self):
         """Configs should contain the proxy URL pattern with group/ts/iid."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._proxy._port = 8080
-        mgr._workspace_instances = {"test-ws": ["browser_abc"]}
-        mgr._instances = {
-            "browser_abc": MagicMock(
-                server_config=MagicMock(transport="streamable_http"),
-            ),
-        }
-
-        with patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings:
-            mock_settings.return_value.gateway.container_host = "host.docker.internal"
-            configs = mgr.get_direct_server_configs("test-ws", invocation_ts=42.0)
+        configs = _build_direct_configs(
+            instance_ids=("browser_abc",),
+            instances={"browser_abc": _make_instance("browser", transport="streamable_http")},
+            invocation_ts=42.0,
+        )
 
         assert len(configs) == 1
         assert configs[0]["name"] == "browser_abc"
@@ -262,146 +243,68 @@ class TestGetDirectServerConfigsProxy:
 
     def test_default_container_host_resolves_for_apple_runtime(self):
         """Apple Container needs the host gateway IP, not Docker's DNS name."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._proxy._port = 8080
-        mgr._workspace_instances = {"test-ws": ["browser_abc"]}
-        mgr._instances = {
-            "browser_abc": MagicMock(
-                server_config=MagicMock(transport="streamable_http"),
-            ),
-        }
         runtime = MagicMock()
         runtime.name = "apple"
 
-        with (
-            patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings,
-            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
-        ):
-            mock_settings.return_value.gateway.container_host = "host.docker.internal"
-            configs = mgr.get_direct_server_configs("test-ws", invocation_ts=42.0)
+        with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
+            configs = _build_direct_configs(
+                instance_ids=("browser_abc",),
+                instances={"browser_abc": _make_instance("browser", transport="streamable_http")},
+                invocation_ts=42.0,
+            )
 
         assert configs[0]["url"].startswith("http://192.168.64.1:8080/")
 
     def test_empty_when_no_proxy(self):
         """Should return empty list when proxy not started (port=0)."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()  # port=0 (not started)
-        mgr._workspace_instances = {"test-ws": ["browser"]}
-        mgr._instances = {"browser": MagicMock()}
-
-        configs = mgr.get_direct_server_configs("test-ws")
+        configs = _build_direct_configs(
+            instance_ids=("browser",),
+            instances={"browser": _make_instance("browser")},
+            proxy_port=0,
+        )
         assert configs == []
 
     def test_empty_when_no_instances(self):
         """Should return empty list for unknown workspace."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._proxy._port = 8080
-        mgr._workspace_instances = {}
-
-        configs = mgr.get_direct_server_configs("unknown-ws")
+        configs = _build_direct_configs(
+            group_folder="unknown-ws",
+        )
         assert configs == []
 
     def test_skips_missing_instances(self):
-        """Should skip instance IDs that don't exist in _instances dict."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._proxy._port = 8080
-        mgr._workspace_instances = {"test-ws": ["exists", "missing"]}
-        mgr._instances = {
-            "exists": MagicMock(
-                server_config=MagicMock(transport="sse"),
-            ),
-        }
-
-        with patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings:
-            mock_settings.return_value.gateway.container_host = "host.docker.internal"
-            configs = mgr.get_direct_server_configs("test-ws", invocation_ts=1.0)
+        """Should skip selected instance IDs absent from the resolved set."""
+        configs = _build_direct_configs(
+            instance_ids=("exists", "missing"),
+            instances={"exists": _make_instance("exists")},
+            invocation_ts=1.0,
+        )
 
         assert len(configs) == 1
         assert configs[0]["name"] == "exists"
 
     def test_limits_configs_to_instances_that_started_successfully(self):
         """A failed optional MCP must not be advertised to the new agent."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._proxy._port = 8080
-        mgr._workspace_instances = {"test-ws": ["ready", "failed"]}
-        mgr._instances = {
-            "ready": MagicMock(server_config=MagicMock(transport="sse")),
-            "failed": MagicMock(server_config=MagicMock(transport="sse")),
-        }
-
-        with patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings:
-            mock_settings.return_value.gateway.container_host = "host.docker.internal"
-            configs = mgr.get_direct_server_configs(
-                "test-ws", invocation_ts=1.0, instance_ids=("ready",)
-            )
+        configs = _build_direct_configs(
+            instance_ids=("ready",),
+            instances={
+                "ready": _make_instance("ready"),
+                "failed": _make_instance("failed"),
+            },
+            invocation_ts=1.0,
+        )
 
         assert [config["name"] for config in configs] == ["ready"]
 
     def test_accepts_invocation_ts_parameter(self):
-        """get_direct_server_configs should accept invocation_ts parameter."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._proxy._port = 9090
-        mgr._workspace_instances = {"ws": ["svc"]}
-        mgr._instances = {
-            "svc": MagicMock(
-                server_config=MagicMock(transport="http"),
-            ),
-        }
-
-        with patch("pynchy.host.container_manager.mcp.manager.get_settings") as mock_settings:
-            mock_settings.return_value.gateway.container_host = "localhost"
-            configs = mgr.get_direct_server_configs("ws", invocation_ts=1234567890.123)
+        """Invocation time scopes every proxy route to one agent session."""
+        configs = _build_direct_configs(
+            group_folder="ws",
+            instance_ids=("svc",),
+            instances={"svc": _make_instance("svc", transport="http")},
+            proxy_port=9090,
+            container_host="localhost",
+            invocation_ts=1234567890.123,
+        )
 
         assert len(configs) == 1
         assert "1234567890.123" in configs[0]["url"]
-
-
-class TestStopAllStopsProxy:
-    """stop_all should stop the proxy."""
-
-    @pytest.mark.asyncio
-    async def test_stop_all_calls_proxy_stop(self):
-        """stop_all() should call self._proxy.stop()."""
-        mgr = McpManager.__new__(McpManager)
-        mgr._proxy = McpProxy()
-        mgr._instances = {}
-        mgr._idle_task = None
-        mgr._warm_task = None
-
-        # Spy on the proxy stop method
-        original_stop = mgr._proxy.stop
-        stop_called = False
-
-        async def track_stop():
-            nonlocal stop_called
-            stop_called = True
-            await original_stop()
-
-        mgr._proxy.stop = track_stop
-
-        await mgr.stop_all()
-        assert stop_called
-
-
-class TestOrchestratorPassesInvocationTs:
-    """orchestrator.py should pass invocation_ts to get_direct_server_configs."""
-
-    def test_spawn_container_passes_invocation_ts_to_get_direct_server_configs(self):
-        """Verify _spawn_container passes invocation_ts when calling get_direct_server_configs.
-
-        This is a structural test -- we verify the specific call pattern
-        ``get_direct_server_configs(..., invocation_ts=...)`` exists in the source.
-        """
-        source = inspect.getsource(orchestrator._spawn_container)
-        assert "get_direct_server_configs" in source
-        # The invocation_ts kwarg must appear in the get_direct_server_configs call
-        assert (
-            "invocation_ts=input_data.invocation_ts" in source
-            or "invocation_ts=" in source.split("get_direct_server_configs")[1]
-        )
-        assert "instance_ids=mcp_startup.ready_instance_ids" in source

@@ -35,7 +35,7 @@ from pynchy.host.learning.packet_models import (
 )
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
-    _run_scheduled_agent,
+    run_scheduled_agent,
 )
 from pynchy.host.orchestrator.temporal.channel_reconciliation import (
     run_channel_reconciliation,
@@ -229,7 +229,7 @@ async def run_scheduled_agent_task(task_id: str) -> str:
 
     try:
         async with activity_heartbeats(task_id):
-            completed = await _run_scheduled_agent(
+            completed = await run_scheduled_agent(
                 task,
                 cast("SchedulerDependencies", _require_scheduler_deps()),
             )

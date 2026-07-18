@@ -48,6 +48,20 @@ def _resolve_provider(path: str) -> tuple[str, str] | None:
     return None
 
 
+def build_upstream_headers(
+    headers_in: Mapping[str, str], provider: str, api_key: str
+) -> dict[str, str]:
+    """Build provider-native headers without forwarding gateway credentials."""
+    headers = {
+        key: value for key, value in headers_in.items() if key.lower() not in _STRIP_REQUEST_HEADERS
+    }
+    if provider == "anthropic":
+        headers["x-api-key"] = api_key
+    elif provider == "openai":
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
 async def _relay_upstream_response(
     *,
     session: aiohttp.ClientSession,
@@ -148,23 +162,6 @@ class BuiltinGateway:
         api_key = headers.get("X-Api-Key", "")
         return auth == f"Bearer {self.key}" or api_key == self.key
 
-    def _build_upstream_headers(
-        self, headers_in: Mapping[str, str], provider: str
-    ) -> dict[str, str]:
-        headers = {
-            key: value
-            for key, value in headers_in.items()
-            if key.lower() not in _STRIP_REQUEST_HEADERS
-        }
-
-        creds = self._credentials[provider]
-        if provider == "anthropic":
-            headers["x-api-key"] = creds["value"]
-        elif provider == "openai":
-            headers["Authorization"] = f"Bearer {creds['value']}"
-
-        return headers
-
     # Avoid annotating this as web.Request: beartype inspects aiohttp's
     # typing.MutableMapping base and emits a PEP 585 warning.
     async def _proxy_handler(self, request: object) -> web.StreamResponse:
@@ -190,7 +187,11 @@ class BuiltinGateway:
         if session is None:
             raise RuntimeError(_SESSION_NOT_INITIALIZED_ERROR)
 
-        headers = self._build_upstream_headers(proxy_request.headers, provider)
+        headers = build_upstream_headers(
+            proxy_request.headers,
+            provider,
+            self._credentials[provider]["value"],
+        )
         body = await proxy_request.read()
 
         try:

@@ -320,9 +320,7 @@ class GroupQueue:
         # Force-stop the container process (for one-shot containers without sessions)
         container_name = state.container_name
         if proc and container_name and proc.returncode is None:
-            await container_process._graceful_stop(  # noqa: SLF001, RUF100 - queue owns force-stopping active container processes.
-                proc, container_name
-            )
+            await container_process.graceful_stop(proc, container_name)
 
     def clear_pending_tasks(self, group_jid: str) -> None:
         """Drop all pending tasks for a group."""
@@ -516,12 +514,7 @@ class GroupQueue:
         )
 
         await asyncio.gather(
-            *(
-                container_process._graceful_stop(  # noqa: SLF001, RUF100 - shutdown drains live container processes.
-                    proc, name
-                )
-                for proc, name in active
-            ),
+            *(container_process.graceful_stop(proc, name) for proc, name in active),
             return_exceptions=True,
         )
         logger.info(

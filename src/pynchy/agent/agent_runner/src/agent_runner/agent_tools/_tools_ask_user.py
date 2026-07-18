@@ -12,14 +12,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from . import _ipc
 from ._ipc_request import ipc_service_request
 from ._registry import tool, tool_error
 
 if TYPE_CHECKING:
     from mcp.types import CallToolResult, TextContent
-
-ASK_USER_TIMEOUT = 1800  # 30 minutes — user may take a while to reply
-
 
 # ---------------------------------------------------------------------------
 # Tool definition and handler
@@ -79,6 +77,6 @@ async def _ask_user_handle(arguments: dict[str, Any]) -> list[TextContent] | Cal
     return await ipc_service_request(
         "ask_user",
         {"questions": questions},
-        response_timeout_seconds=ASK_USER_TIMEOUT,
+        response_timeout_seconds=_ipc.get_agent_tool_runtime().ask_user_timeout_seconds,
         type_override="ask_user:ask",
     )

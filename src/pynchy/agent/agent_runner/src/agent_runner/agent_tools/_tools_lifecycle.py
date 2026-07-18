@@ -35,13 +35,13 @@ async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent]
     _ipc.write_request_file(
         "sync_worktree_to_main",
         {
-            "groupFolder": _ipc.group_folder,
+            "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
         },
         request_id=request_id,
         reply_to="merge_results",
     )
 
-    result_file = _ipc.IPC_DIR / "merge_results" / f"{request_id}.json"
+    result_file = _ipc.get_agent_tool_runtime().ipc_dir / "merge_results" / f"{request_id}.json"
     timeout = 120
     start = time.time()
     while time.time() - start < timeout:
@@ -87,7 +87,7 @@ def _exit_container() -> NoReturn:
         "immediately. Do NOT attempt further work."
     ),
     {"type": "object", "properties": {}},
-    visible=lambda: _ipc.is_scheduled_task,
+    visible=lambda: _ipc.get_agent_tool_runtime().is_scheduled_task,
 )
 async def _finished_work_handle(  # noqa: RUF029, RUF100 - async tool API.
     _arguments: dict[str, Any],
@@ -95,8 +95,8 @@ async def _finished_work_handle(  # noqa: RUF029, RUF100 - async tool API.
     _ipc.write_request_file(
         "finished_work",
         {
-            "groupFolder": _ipc.group_folder,
-            "chatJid": _ipc.chat_jid,
+            "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
+            "chatJid": _ipc.get_agent_tool_runtime().chat_jid,
         },
         reply_to=None,
     )
@@ -145,8 +145,8 @@ async def _reset_context_handle(  # noqa: RUF029, RUF100 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent]:
     data: dict[str, str] = {
-        "chatJid": _ipc.chat_jid,
-        "groupFolder": _ipc.group_folder,
+        "chatJid": _ipc.get_agent_tool_runtime().chat_jid,
+        "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
     }
     if arguments.get("message"):
         data["message"] = arguments["message"]

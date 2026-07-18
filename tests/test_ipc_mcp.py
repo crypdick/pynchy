@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +15,7 @@ sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.agent_tools import call_tool, list_tools
+from agent_runner.agent_tools import AgentToolRuntime, call_tool, list_tools, use_agent_tool_runtime
 
 from pynchy.actions import ACTION_SPECS, ActionTransport
 
@@ -25,6 +24,25 @@ def _read_request_file(path: Path) -> tuple[dict, dict]:
     """Read a canonical request envelope and return (envelope, payload)."""
     envelope = json.loads(path.read_text(encoding="utf-8"))
     return envelope, envelope["payload"]
+
+
+def _runtime(tmp_path: Path, **overrides: object) -> AgentToolRuntime:
+    values: dict[str, object] = {
+        "chat_jid": "test@g.us",
+        "group_folder": "test-group",
+        "is_admin": True,
+        "is_scheduled_task": False,
+        "ipc_dir": tmp_path,
+    }
+    values.update(overrides)
+    return AgentToolRuntime(**values)
+
+
+@pytest.fixture(autouse=True)
+def agent_tool_runtime(tmp_path: Path):
+    """Run every tool call with an explicit public agent-tools runtime."""
+    with use_agent_tool_runtime(_runtime(tmp_path)):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -36,34 +54,19 @@ def _read_request_file(path: Path) -> tuple[dict, dict]:
 class TestScheduleTaskValidation:
     """Test schedule_task input validation via call_tool.
 
-    These tests exercise the validation logic in the call_tool handler
-    by calling it directly with mocked environment state.
+    These tests exercise the validation logic through the public tool facade.
     """
 
-    @pytest.fixture(autouse=True)
-    def _patch_env(self, tmp_path):
-        """Patch module-level state for testing."""
-        with (
-            patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
-            patch("agent_runner.agent_tools._ipc.group_folder", "test-group"),
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
-            yield
-
     @pytest.mark.asyncio
-    async def test_valid_cron(self, tmp_path):
-
-        with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
-            result = await call_tool(
-                "schedule_task",
-                {
-                    "prompt": "do something",
-                    "schedule_type": "cron",
-                    "schedule_value": "0 9 * * *",
-                },
-            )
+    async def test_valid_cron(self):
+        result = await call_tool(
+            "schedule_task",
+            {
+                "prompt": "do something",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+            },
+        )
         # Should succeed (list of TextContent, not CallToolResult with isError)
         assert isinstance(result, list)
         assert "scheduled" in result[0].text.lower() or "Task" in result[0].text
@@ -85,17 +88,15 @@ class TestScheduleTaskValidation:
         assert "Invalid cron" in result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_valid_interval(self, tmp_path):
-
-        with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
-            result = await call_tool(
-                "schedule_task",
-                {
-                    "prompt": "repeat",
-                    "schedule_type": "interval",
-                    "schedule_value": "300000",
-                },
-            )
+    async def test_valid_interval(self):
+        result = await call_tool(
+            "schedule_task",
+            {
+                "prompt": "repeat",
+                "schedule_type": "interval",
+                "schedule_value": "300000",
+            },
+        )
         assert isinstance(result, list)
 
     @pytest.mark.asyncio
@@ -140,17 +141,15 @@ class TestScheduleTaskValidation:
         assert result.isError is True
 
     @pytest.mark.asyncio
-    async def test_valid_once(self, tmp_path):
-
-        with patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"):
-            result = await call_tool(
-                "schedule_task",
-                {
-                    "prompt": "one-time",
-                    "schedule_type": "once",
-                    "schedule_value": "2026-03-01T10:00:00",
-                },
-            )
+    async def test_valid_once(self):
+        result = await call_tool(
+            "schedule_task",
+            {
+                "prompt": "one-time",
+                "schedule_type": "once",
+                "schedule_value": "2026-03-01T10:00:00",
+            },
+        )
         assert isinstance(result, list)
 
     @pytest.mark.asyncio
@@ -171,10 +170,7 @@ class TestScheduleTaskValidation:
     async def test_non_admin_cannot_set_target_group(self, tmp_path):
         """Non-admin groups should have target_group ignored."""
 
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             result = await call_tool(
                 "schedule_task",
                 {
@@ -195,19 +191,15 @@ class TestScheduleTaskValidation:
     async def test_admin_can_set_target_group(self, tmp_path):
         """Admin groups should be able to set target_group."""
 
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
-            result = await call_tool(
-                "schedule_task",
-                {
-                    "prompt": "task",
-                    "schedule_type": "cron",
-                    "schedule_value": "0 9 * * *",
-                    "target_group": "other-group",
-                },
-            )
+        result = await call_tool(
+            "schedule_task",
+            {
+                "prompt": "task",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "target_group": "other-group",
+            },
+        )
         assert isinstance(result, list)
         files = list((tmp_path / "requests").glob("*.json"))
         envelope, payload = _read_request_file(files[0])
@@ -224,12 +216,8 @@ class TestRegisterGroupAuth:
     """Test register_group admin-only authorization."""
 
     @pytest.mark.asyncio
-    async def test_non_admin_register_group_rejected(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.group_folder", "non-admin"),
-        ):
+    async def test_non_admin_register_group_rejected(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="non-admin")):
             result = await call_tool(
                 "register_group",
                 {
@@ -244,21 +232,16 @@ class TestRegisterGroupAuth:
         assert "admin" in result.content[0].text.lower()
 
     @pytest.mark.asyncio
-    async def test_admin_register_group_accepted(self, tmp_path):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
-            result = await call_tool(
-                "register_group",
-                {
-                    "jid": "new@g.us",
-                    "name": "New Group",
-                    "folder": "new-group",
-                    "trigger": "@bot",
-                },
-            )
+    async def test_admin_register_group_accepted(self):
+        result = await call_tool(
+            "register_group",
+            {
+                "jid": "new@g.us",
+                "name": "New Group",
+                "folder": "new-group",
+                "trigger": "@bot",
+            },
+        )
         assert isinstance(result, list)
         assert "registered" in result[0].text.lower()
 
@@ -272,9 +255,8 @@ class TestDeployAuth:
     """Test deploy_changes admin-only authorization."""
 
     @pytest.mark.asyncio
-    async def test_non_admin_deploy_rejected(self):
-
-        with patch("agent_runner.agent_tools._ipc.is_admin", False):
+    async def test_non_admin_deploy_rejected(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             result = await call_tool("deploy_changes", {})
         assert hasattr(result, "isError")
         assert result.isError is True
@@ -288,12 +270,7 @@ class TestSendMessage:
     @pytest.mark.asyncio
     async def test_basic_send(self, tmp_path):
 
-        with (
-            patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
-            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.MESSAGES_DIR", tmp_path / "messages"),
-        ):
-            result = await call_tool("send_message", {"text": "Hello world"})
+        result = await call_tool("send_message", {"text": "Hello world"})
 
         assert isinstance(result, list)
         assert "sent" in result[0].text.lower()
@@ -308,12 +285,7 @@ class TestSendMessage:
     @pytest.mark.asyncio
     async def test_send_with_sender(self, tmp_path):
 
-        with (
-            patch("agent_runner.agent_tools._ipc.chat_jid", "test@g.us"),
-            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.MESSAGES_DIR", tmp_path / "messages"),
-        ):
-            await call_tool("send_message", {"text": "Update", "sender": "Researcher"})
+        await call_tool("send_message", {"text": "Update", "sender": "Researcher"})
 
         files = list((tmp_path / "messages").glob("*.json"))
         data = json.loads(files[0].read_text(encoding="utf-8"))
@@ -327,8 +299,7 @@ class TestListTasks:
     @pytest.mark.asyncio
     async def test_no_tasks_file(self, tmp_path):
 
-        with patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path):
-            result = await call_tool("list_tasks", {})
+        result = await call_tool("list_tasks", {})
         assert isinstance(result, list)
         assert "no" in result[0].text.lower()
 
@@ -337,11 +308,7 @@ class TestListTasks:
 
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text("[]")
-        with (
-            patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-        ):
-            result = await call_tool("list_tasks", {})
+        result = await call_tool("list_tasks", {})
         assert "no" in result[0].text.lower()
 
     @pytest.mark.asyncio
@@ -367,11 +334,7 @@ class TestListTasks:
         ]
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text(json.dumps(tasks))
-        with (
-            patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-        ):
-            result = await call_tool("list_tasks", {})
+        result = await call_tool("list_tasks", {})
         text = result[0].text
         assert "t1" in text
         assert "t2" in text
@@ -399,11 +362,7 @@ class TestListTasks:
         ]
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text(json.dumps(tasks))
-        with (
-            patch("agent_runner.agent_tools._ipc.IPC_DIR", tmp_path),
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.group_folder", "my-group"),
-        ):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="my-group")):
             result = await call_tool("list_tasks", {})
         text = result[0].text
         assert "t1" in text
@@ -422,11 +381,7 @@ class TestTaskLifecycle:
     @pytest.mark.action("task.pause")
     async def test_pause_task(self, tmp_path):
 
-        with (
-            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="test")):
             result = await call_tool("pause_task", {"task_id": "task-123"})
         assert "pause" in result[0].text.lower()
         files = list((tmp_path / "requests").glob("*.json"))
@@ -438,11 +393,7 @@ class TestTaskLifecycle:
     @pytest.mark.action("task.resume")
     async def test_resume_task(self, tmp_path):
 
-        with (
-            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="test")):
             result = await call_tool("resume_task", {"task_id": "task-123"})
         assert "resume" in result[0].text.lower()
 
@@ -450,11 +401,7 @@ class TestTaskLifecycle:
     @pytest.mark.action("task.cancel")
     async def test_cancel_task(self, tmp_path):
 
-        with (
-            patch("agent_runner.agent_tools._ipc.group_folder", "test"),
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.REQUESTS_DIR", tmp_path / "requests"),
-        ):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="test")):
             result = await call_tool("cancel_task", {"task_id": "task-123"})
         assert "cancel" in result[0].text.lower()
 
@@ -466,8 +413,7 @@ class TestTodoTools:
     @pytest.mark.action("todo.list")
     async def test_list_todos_empty(self, tmp_path):
 
-        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", tmp_path / "todos.json"):
-            result = await call_tool("list_todos", {})
+        result = await call_tool("list_todos", {})
         assert isinstance(result, list)
         assert "no" in result[0].text.lower()
 
@@ -488,8 +434,7 @@ class TestTodoTools:
             )
         )
 
-        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
-            result = await call_tool("list_todos", {})
+        result = await call_tool("list_todos", {})
         text = result[0].text
         assert "abc" in text
         assert "rename x to y" in text
@@ -512,8 +457,7 @@ class TestTodoTools:
             )
         )
 
-        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
-            result = await call_tool("list_todos", {})
+        result = await call_tool("list_todos", {})
         text = result[0].text
         assert "def" in text
         assert "abc" not in text
@@ -536,8 +480,7 @@ class TestTodoTools:
             )
         )
 
-        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
-            result = await call_tool("list_todos", {"include_done": True})
+        result = await call_tool("list_todos", {"include_done": True})
         text = result[0].text
         assert "abc" in text
         assert "def" in text
@@ -560,8 +503,7 @@ class TestTodoTools:
             )
         )
 
-        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
-            result = await call_tool("complete_todo", {"todo_id": "abc"})
+        result = await call_tool("complete_todo", {"todo_id": "abc"})
         assert isinstance(result, list)
         assert "done" in result[0].text.lower()
 
@@ -575,8 +517,7 @@ class TestTodoTools:
         todos_file = tmp_path / "todos.json"
         todos_file.write_text(json.dumps([]))
 
-        with patch("agent_runner.agent_tools._tools_todos._TODOS_FILE", todos_file):
-            result = await call_tool("complete_todo", {"todo_id": "nope"})
+        result = await call_tool("complete_todo", {"todo_id": "nope"})
         assert hasattr(result, "isError")
         assert result.isError is True
         assert "not found" in result.content[0].text.lower()
@@ -608,77 +549,47 @@ class TestListToolsVisibility:
 
     @pytest.mark.asyncio
     async def test_admin_sees_deploy(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-        ):
-            tools = await list_tools()
+        tools = await list_tools()
         tool_names = [t.name for t in tools]
         assert "deploy_changes" in tool_names
 
     @pytest.mark.asyncio
-    async def test_non_admin_no_deploy(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-        ):
+    async def test_non_admin_no_deploy(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
         assert "deploy_changes" not in tool_names
 
     @pytest.mark.asyncio
     async def test_admin_sees_register_group(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-        ):
-            tools = await list_tools()
+        tools = await list_tools()
         tool_names = [t.name for t in tools]
         assert "register_group" in tool_names
 
     @pytest.mark.asyncio
-    async def test_non_admin_no_register_group(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-        ):
+    async def test_non_admin_no_register_group(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
         assert "register_group" not in tool_names
 
     @pytest.mark.asyncio
-    async def test_scheduled_task_sees_finished_work(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", True),
-        ):
+    async def test_scheduled_task_sees_finished_work(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, is_scheduled_task=True)):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
         assert "finished_work" in tool_names
 
     @pytest.mark.asyncio
-    async def test_non_scheduled_no_finished_work(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-        ):
+    async def test_non_scheduled_no_finished_work(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
         assert "finished_work" not in tool_names
 
     @pytest.mark.asyncio
-    async def test_all_base_tools_present(self):
-
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", False),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", False),
-        ):
+    async def test_all_base_tools_present(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             tools = await list_tools()
         tool_names = [t.name for t in tools]
         for expected in [
@@ -698,12 +609,9 @@ class TestListToolsVisibility:
             assert expected in tool_names, f"Missing base tool: {expected}"
 
     @pytest.mark.asyncio
-    async def test_all_static_agent_tools_have_semantic_action_specs(self):
+    async def test_all_static_agent_tools_have_semantic_action_specs(self, tmp_path):
         """A tool registration needs an action ID before it reaches an agent."""
-        with (
-            patch("agent_runner.agent_tools._ipc.is_admin", True),
-            patch("agent_runner.agent_tools._ipc.is_scheduled_task", True),
-        ):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_scheduled_task=True)):
             tool_names = {tool.name for tool in await list_tools()}
 
         cataloged_tools = {

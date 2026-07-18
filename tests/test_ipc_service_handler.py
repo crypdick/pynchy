@@ -14,18 +14,29 @@ from pynchy.capabilities import ApprovalMode
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
-from pynchy.host.container_manager.security import gate
-from pynchy.host.container_manager.security.gate import create_gate
-from pynchy.state import connection
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
-async def _setup():
+async def _setup(monkeypatch: pytest.MonkeyPatch):
     await state.init_test_database()
     clear_plugin_handler_cache()
+    created: list[tuple[str, float]] = []
+    original_create_gate = create_gate
+
+    def track_created_gate(
+        source_group: str,
+        invocation_ts: float,
+        security: WorkspaceSecurity,
+    ):
+        created.append((source_group, invocation_ts))
+        return original_create_gate(source_group, invocation_ts, security)
+
+    monkeypatch.setitem(globals(), "create_gate", track_created_gate)
     yield
-    gate._gates.clear()
+    for source_group, invocation_ts in created:
+        destroy_gate(source_group, invocation_ts)
 
 
 @pytest.fixture
@@ -159,11 +170,8 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
     response = json.loads(response_file.read_text())
     assert response == {"result": {"status": "ok"}}
 
-    db = connection._get_db()
-    cursor = await db.execute(
-        "SELECT metadata FROM messages WHERE sender = 'security' ORDER BY timestamp"
-    )
-    events = [json.loads(row["metadata"]) for row in await cursor.fetchall()]
+    history = await state.get_chat_history("test@g.us", limit=10)
+    events = [message.metadata for message in history if message.sender == "security"]
     assert [event["decision"] for event in events] == ["allowed", "execution_succeeded"]
     assert all(event["capability_id"] == "test.my.tool" for event in events)
     assert all(event["action_ids"] == ["test.my.tool"] for event in events)

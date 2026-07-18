@@ -40,8 +40,8 @@ _ERR_MISSING_REAL_HOST_PATH = "Allowed mount validation result is missing real_h
 _ERR_MISSING_EFFECTIVE_READONLY = "Allowed mount validation result is missing effective_readonly"
 
 
-def _reset_cache() -> None:  # pyright: ignore[reportUnusedFunction]
-    """Reset allowlist cache (for tests)."""
+def reset_mount_allowlist_cache() -> None:
+    """Clear cached mount policy before reloading configuration."""
     _state.cached_allowlist = None
     _state.allowlist_load_error = None
 

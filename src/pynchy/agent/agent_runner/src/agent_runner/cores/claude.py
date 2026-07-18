@@ -323,6 +323,22 @@ class ClaudeAgentCore:
             },
         )
 
+    def map_sdk_event(
+        self,
+        message: ClaudeSystemEvent | ClaudeAssistantEvent | ClaudeResultEvent,
+    ) -> list[AgentEvent]:
+        """Map one parsed Claude SDK event to Pynchy's agent-event contract.
+
+        This is the owned boundary for the Claude SDK's protocol. It lets
+        transport tests exercise the provider-to-Pynchy translation without
+        coupling to the private dispatch helpers that implement it.
+        """
+        if isinstance(message, ClaudeSystemEvent):
+            return [self._system_event(message)]
+        if isinstance(message, ClaudeAssistantEvent):
+            return self._assistant_events(message)
+        return [self._result_event(message)]
+
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Execute a query using Claude SDK."""
         if self._client is None:
@@ -341,12 +357,7 @@ class ClaudeAgentCore:
             if message is None:
                 continue
 
-            if isinstance(message, ClaudeSystemEvent):
-                yield self._system_event(message)
-            elif isinstance(message, ClaudeAssistantEvent):
-                for event in self._assistant_events(message):
-                    yield event
-            elif isinstance(message, ClaudeResultEvent):
+            if isinstance(message, ClaudeResultEvent):
                 result_count += 1
                 text_result = message.result
                 _log(
@@ -355,7 +366,8 @@ class ClaudeAgentCore:
                     f"{f' text={text_result[:200]}' if text_result else ''}"
                 )
 
-                yield self._result_event(message)
+            for event in self.map_sdk_event(message):
+                yield event
 
         _log(f"Query done. Messages: {message_count}, results: {result_count}")
 

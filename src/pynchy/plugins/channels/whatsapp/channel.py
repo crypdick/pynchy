@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import re
 import sys
 from collections import deque
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
@@ -50,6 +49,8 @@ from pynchy.types import (
     WorkspaceProfile,
 )
 
+from .ask_user import resolve_ask_user_answer
+
 GROUP_SYNC_INTERVAL: float = 24 * 60 * 60  # 24 hours in seconds
 
 
@@ -83,6 +84,8 @@ class WhatsAppChannel:
         on_chat_metadata: Callable[[str, str, str | None], None],
         workspaces: Callable[[], dict[str, WorkspaceProfile]],
         on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None = None,
+        *,
+        client_factory: Callable[[str], Any] | None = None,
     ) -> None:
         self.name = connection_name
         self.formatter = TextFormatter()
@@ -110,7 +113,7 @@ class WhatsAppChannel:
 
         auth_db = self._auth_db_path
         Path(auth_db).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        self._client = NewAClient(auth_db)
+        self._client = (client_factory or NewAClient)(auth_db)
         self._register_events()
 
     def _spawn(self, coro: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
@@ -133,7 +136,7 @@ class WhatsAppChannel:
                     self._lid_to_phone[lid.User] = f"{jid.User}@s.whatsapp.net"
 
             self._spawn(self._flush_outgoing_queue())
-            self._spawn(self._sync_group_metadata())
+            self._spawn(self.sync_group_metadata())
             if self._group_sync_task is None:
                 self._group_sync_task = asyncio.ensure_future(self._periodic_group_sync())
             self._first_connect.set()
@@ -162,7 +165,7 @@ class WhatsAppChannel:
         @self._client.event(MessageEv)  # type: ignore[untyped-decorator]  # neonize event decorator is untyped
         async def on_message(_client: NewAClient, message: MessageEv) -> None:
             try:
-                await self._handle_message(message)
+                await self.ingest_inbound_message(message)
             except Exception:  # noqa: BLE001, RUF100 - WhatsApp message handler isolation keeps the client alive.
                 logger.exception(
                     "Unhandled error in message handler",
@@ -294,7 +297,7 @@ class WhatsAppChannel:
         while True:
             await asyncio.sleep(GROUP_SYNC_INTERVAL)
             try:
-                await self._sync_group_metadata()
+                await self.sync_group_metadata()
             except Exception as err:  # noqa: BLE001, RUF100 - periodic sync failures should not stop the loop.
                 logger.error("Periodic group sync failed", error=str(err))
 
@@ -341,30 +344,6 @@ class WhatsAppChannel:
         # Use request_id as a tracking identifier since WhatsApp _send_text
         # doesn't return a message ID we can use.
         return request_id
-
-    def _resolve_answer(self, content: str, pending: dict[str, Any]) -> dict[str, Any]:
-        """Match user reply to pending question options.
-
-        Only resolves numeric option selection against the first question's
-        options. Multi-question ask_user requests fall back to free-form text
-        matching, which is acceptable since WhatsApp's text-only interface
-        can't distinguish which question a number answers.
-        """
-        content = content.strip()
-        # Try to match a number.  Use re.fullmatch with [0-9] instead of
-        # str.isdigit() because isdigit() accepts unicode superscript digits
-        # (e.g. '²', '³') that int() cannot parse, causing a ValueError.
-        questions = pending.get("questions", [])
-        if questions:
-            options = questions[0].get("options", [])
-            if re.fullmatch(r"[0-9]+", content):
-                idx = int(content) - 1  # 1-indexed
-                if 0 <= idx < len(options):
-                    opt = options[idx]
-                    label = opt.get("label", opt) if isinstance(opt, dict) else str(opt)
-                    return {"answer": label}
-        # Free-form text
-        return {"answer": content}
 
     @staticmethod
     def _message_content(message: object) -> str:
@@ -416,7 +395,8 @@ class WhatsAppChannel:
         pending = find_pending_for_jid(chat_jid)
         if pending is None or self._is_stale_pending_question(pending):
             return None
-        return pending["request_id"], self._resolve_answer(content, pending)
+        questions = cast("list[dict[str, Any]]", pending.get("questions", []))
+        return pending["request_id"], resolve_ask_user_answer(content, questions)
 
     @staticmethod
     def _is_own_agent_echo(context: _InboundMessageContext, content: str) -> bool:
@@ -434,7 +414,13 @@ class WhatsAppChannel:
             is_from_me=context.is_from_me,
         )
 
-    async def _handle_message(self, message: object) -> None:
+    @property
+    def on_ask_user_answer(self) -> Callable[[str, dict[str, Any]], None] | None:
+        """Callback that receives answers intercepted from pending questions."""
+        return self._on_ask_user_answer
+
+    async def ingest_inbound_message(self, message: object) -> None:
+        """Ingest one message event received from the WhatsApp SDK."""
         context = self._message_context(message)
         if context is None:
             return

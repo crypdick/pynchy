@@ -45,8 +45,7 @@ async def test_archive_transcript_writes_markdown_and_saves_memory(
     monkeypatch.setattr("agent_runner.transcript_archive.CONVERSATIONS_DIR", conversations_dir)
 
     with patch(
-        "agent_runner.agent_tools._ipc_request.ipc_service_request",
-        new=AsyncMock(return_value=[]),
+        "agent_runner.agent_tools.request_host_service", new=AsyncMock(return_value=[])
     ) as save_memory:
         archived_path = await archive_transcript(str(transcript_path), "session-1")
 

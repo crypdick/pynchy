@@ -40,7 +40,7 @@ from pynchy.host.container_manager.orchestrator import (
     write_initial_input,
 )
 from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
-from pynchy.host.container_manager.session import SessionDiedError
+from pynchy.host.container_manager.session import RuntimeMonitorPolicy, SessionDiedError
 from pynchy.host.container_manager.session_prep import (
     is_skill_selected,
     parse_skill_tier,
@@ -373,10 +373,10 @@ class TestContainerProcessHelpers:
                 "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=proc),
             ) as create_proc,
-            patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
-            patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
         ):
-            await process_mod.docker_rm_force("pynchy-code-improver")
+            await process_mod.docker_rm_force(
+                "pynchy-code-improver", timeout_seconds=0.01, retry_timeout_seconds=0.01
+            )
 
         assert proc.killed is True
         create_proc.assert_awaited_once_with(
@@ -425,10 +425,10 @@ class TestContainerProcessHelpers:
                 "pynchy.host.container_manager.process.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
             ) as reap_orphan,
-            patch("pynchy.host.container_manager.process._RM_FORCE_TIMEOUT_SECONDS", 0.01),
-            patch("pynchy.host.container_manager.process._RM_FORCE_KILL_WAIT_SECONDS", 0.01),
         ):
-            await process_mod.docker_rm_force("pynchy-code-improver")
+            await process_mod.docker_rm_force(
+                "pynchy-code-improver", timeout_seconds=0.01, retry_timeout_seconds=0.01
+            )
 
         assert hung_delete.killed is True
         reap_orphan.assert_awaited_once_with("pynchy-code-improver")
@@ -3438,14 +3438,13 @@ class TestInputToDictEdgeCases:
 class TestContainerSessionSignalQueryDone:
     """Tests for ContainerSession.signal_query_done() public method."""
 
-    async def test_signal_query_done_sets_event(self):
-        """signal_query_done() should set the _query_done event."""
+    async def test_signal_query_done_unblocks_waiter(self):
+        """A query-done pulse should complete an in-flight query."""
         session = session_mod.ContainerSession("test-group", "pynchy-test-group")
-        assert not session._query_done.is_set()
 
         session.signal_query_done()
 
-        assert session._query_done.is_set()
+        await session.wait_for_query_done(query_timeout_seconds=0.1)
 
     async def test_signal_query_done_clears_output_handler(self):
         """signal_query_done() should clear the active output callback."""
@@ -3457,59 +3456,27 @@ class TestContainerSessionSignalQueryDone:
         assert session.output_handler is None
 
     async def test_signal_query_done_resets_idle_timer(self):
-        """signal_query_done() should restart the idle timer.
-
-        With idle_timeout=0, _reset_idle_timer cancels any existing handle
-        but does not schedule a new one.
-        """
+        """A completed query should trigger idle teardown after the configured delay."""
         session = session_mod.ContainerSession("test-group", "pynchy-test-group")
-        session.set_idle_timeout(0.0)
+        expired = asyncio.Event()
+        on_idle = AsyncMock(side_effect=expired.set)
 
-        # Create a real timer handle to verify cancellation
-        loop = asyncio.get_running_loop()
-        session._idle_handle = loop.call_later(9999, lambda: None)
-        assert session._idle_handle is not None
-
+        session.set_idle_timeout(0.01)
+        session.set_idle_callback(on_idle)
         session.signal_query_done()
 
-        # _reset_idle_timer cancels the old handle and, since timeout=0,
-        # does not schedule a new one
-        assert session._idle_handle is None
-
-    async def test_idle_callback_called_on_expiry(self):
-        """When the idle timer expires, the on_idle_expire callback should
-        be called before the session is destroyed."""
-        session = session_mod.ContainerSession("idle-cb-test", "pynchy-idle-cb-test")
-        callback = AsyncMock()
-        session.set_idle_callback(callback)
-
-        mock_proc = MagicMock()
-        mock_proc.returncode = None
-        session.proc = mock_proc
-
-        with patch(
-            "pynchy.host.container_manager.session.destroy_session", new_callable=AsyncMock
-        ) as mock_destroy:
-            session._on_idle_expired()
-            # Let the background task run
-            await asyncio.sleep(0.05)
-
-        callback.assert_awaited_once()
-        mock_destroy.assert_awaited_once_with("idle-cb-test")
+        await asyncio.wait_for(expired.wait(), timeout=0.2)
 
     async def test_signal_query_done_after_set_output_handler(self):
-        """Full cycle: set handler, signal done, verify state reset."""
+        """A completion pulse must detach the callback before the next turn."""
         session = session_mod.ContainerSession("test-group", "pynchy-test-group")
         handler = AsyncMock()
 
-        # Simulate a query in progress
         session.set_output_handler(handler)
-        assert not session._query_done.is_set()
         assert session.output_handler is handler
 
-        # Signal query done
         session.signal_query_done()
-        assert session._query_done.is_set()
+        await session.wait_for_query_done(query_timeout_seconds=0.1)
         assert session.output_handler is None
 
 
@@ -3519,7 +3486,7 @@ class TestGetSessionOutputHandler:
     @pytest.fixture(autouse=True)
     def _patch_session_cleanup(self):
         with (
-            patch("pynchy.host.container_manager.session._graceful_stop", new=AsyncMock()),
+            patch("pynchy.host.container_manager.session.graceful_stop", new=AsyncMock()),
             patch(
                 "pynchy.host.container_manager.session.docker_rm_force",
                 new=AsyncMock(),
@@ -3563,8 +3530,8 @@ class TestGetSessionOutputHandler:
             await session_mod.destroy_session("no-handler-test")
 
 
-class TestSessionStartOnlyStderr:
-    """Tests that session.start() only starts stderr reader and proc monitor (not stdout)."""
+class TestSessionProcessLifecycle:
+    """Tests for observable process and runtime lifecycle outcomes."""
 
     @pytest.fixture(autouse=True)
     def _patch_container_record_cleanup(self):
@@ -3573,72 +3540,22 @@ class TestSessionStartOnlyStderr:
                 "pynchy.host.container_manager.session.docker_rm_force",
                 new_callable=AsyncMock,
             ) as cleanup,
-            patch(
-                "pynchy.host.container_manager.session._runtime_container_running",
-                new=AsyncMock(return_value=False),
-            ),
         ):
             self.container_record_cleanup = cleanup
             yield cleanup
 
-    async def test_start_creates_stderr_task(self):
-        """start() should create a stderr reader task."""
-        session = session_mod.ContainerSession("start-test", "pynchy-start-test")
-        proc = FakeProcess()
-
-        session.start(proc)  # type: ignore[arg-type]
-
-        assert session._stderr_task is not None
-        assert not session._stderr_task.done()
-
-        # Clean up
-        proc.close()
-
-    async def test_start_creates_proc_monitor_task(self):
-        """start() should create a proc monitor task."""
-        session = session_mod.ContainerSession("monitor-test", "pynchy-monitor-test")
-        proc = FakeProcess()
-
-        session.start(proc)  # type: ignore[arg-type]
-
-        assert session._proc_monitor_task is not None
-        assert not session._proc_monitor_task.done()
-
-        # Clean up
-        proc.close()
-
-    async def test_start_does_not_create_stdout_task(self):
-        """start() should NOT create a stdout reader task (output is via IPC files now)."""
-        session = session_mod.ContainerSession("no-stdout-test", "pynchy-no-stdout-test")
-        proc = FakeProcess()
-
-        session.start(proc)  # type: ignore[arg-type]
-
-        # The session should not have a _stdout_task attribute at all
-        assert not hasattr(session, "_stdout_task")
-
-        # Clean up
-        proc.close()
-
     async def test_proc_monitor_detects_death_during_query(self):
-        """When the container dies mid-query, proc monitor should set _died_before_pulse."""
+        """A crash before a completion pulse should fail the active query."""
         session = session_mod.ContainerSession("death-test", "pynchy-death-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
-
-        # Simulate a query in progress
         session.set_output_handler(AsyncMock())
-
-        # Kill the container with a non-zero exit code
         proc.close(code=1)
 
-        # Wait for the proc monitor to detect the exit
-        await asyncio.sleep(0.05)
-
-        assert session._dead is True
-        assert session._died_before_pulse is True
-        assert session._query_done.is_set()
+        with pytest.raises(SessionDiedError):
+            await session.wait_for_query_done(query_timeout_seconds=0.2)
+        assert session.is_alive is False
 
     async def test_proc_monitor_removes_exited_container_record(self):
         """Exited containers should be removed even when no teardown command runs."""
@@ -3647,47 +3564,38 @@ class TestSessionStartOnlyStderr:
 
         session.start(proc)  # type: ignore[arg-type]
         proc.close(code=0)
-        await asyncio.sleep(0.05)
+        await session.wait_for_query_done(query_timeout_seconds=0.2)
+        await asyncio.sleep(0)
 
         self.container_record_cleanup.assert_awaited_once_with("pynchy-record-cleanup-test")
 
-    async def test_proc_monitor_clean_exit_no_died_before_pulse(self):
-        """A clean exit (code 0) during query should NOT set _died_before_pulse."""
+    async def test_proc_monitor_clean_exit_completes_query(self):
+        """A clean exit before a pulse should not be reported as a crash."""
         session = session_mod.ContainerSession("clean-exit-test", "pynchy-clean-exit-test")
         proc = FakeProcess()
 
         session.start(proc)  # type: ignore[arg-type]
 
-        # Simulate a query in progress
         session.set_output_handler(AsyncMock())
-
-        # Clean exit
         proc.close(code=0)
 
-        # Wait for the proc monitor to detect the exit
-        await asyncio.sleep(0.05)
-
-        assert session._dead is True
-        assert session._died_before_pulse is False
-        assert session._query_done.is_set()
+        await session.wait_for_query_done(query_timeout_seconds=0.2)
+        assert session.is_alive is False
 
     async def test_runtime_container_survives_cli_process_exit(self):
         """Apple Container can keep the container alive after the CLI process exits."""
-        session = session_mod.ContainerSession("apple-cli-test", "pynchy-apple-cli-test")
-        proc = FakeProcess()
         runtime_running = True
 
-        def fake_runtime_running(_container_name: str) -> bool:
-            return runtime_running
+        runtime_probe = AsyncMock(side_effect=lambda _container_name: runtime_running)
 
-        with (
-            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
-            patch(
-                "pynchy.host.container_manager.session._runtime_container_running",
-                side_effect=fake_runtime_running,
-            ),
-            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
-        ):
+        session = session_mod.ContainerSession(
+            "apple-cli-test",
+            "pynchy-apple-cli-test",
+            runtime_probe=runtime_probe,
+            runtime_monitor_policy=RuntimeMonitorPolicy(poll_interval_seconds=0.01),
+        )
+        proc = FakeProcess()
+        with patch("pynchy.host.container_manager.session.sys.platform", "darwin"):
             session.start(proc)  # type: ignore[arg-type]
             session.set_output_handler(AsyncMock())
 
@@ -3695,78 +3603,31 @@ class TestSessionStartOnlyStderr:
             await asyncio.sleep(0.05)
 
             assert session.is_alive is True
-            assert session._dead is False
-            assert session._died_before_pulse is False
-            assert not session._query_done.is_set()
 
             session.signal_query_done()
             runtime_running = False
             await asyncio.sleep(0.05)
 
-        assert session._dead is True
-        assert session._died_before_pulse is False
-        assert session._query_done.is_set()
-
-    async def test_runtime_monitor_waits_without_async_sleep(self):
-        """Runtime polling should use an async wait primitive, not sleep-polling."""
-        session = session_mod.ContainerSession("apple-runtime-wait-test", "pynchy-runtime-wait")
-        proc = FakeProcess()
-        runtime_running = True
-
-        def fake_runtime_running(_container_name: str) -> bool:
-            return runtime_running
-
-        def fail_sleep(_delay: float) -> None:
-            message = "runtime monitor should not use asyncio.sleep for polling"
-            raise AssertionError(message)
-
-        with (
-            patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
-            patch(
-                "pynchy.host.container_manager.session._runtime_container_running",
-                side_effect=fake_runtime_running,
-            ),
-            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
-            patch.object(session_mod.asyncio, "sleep", side_effect=fail_sleep),
-        ):
-            session.start(proc)  # type: ignore[arg-type]
-            session.set_output_handler(AsyncMock())
-
-            proc.close(code=1)
-            await asyncio.wait_for(session._runtime_monitor_task, timeout=0.5)
-
-            assert session.is_alive is True
-            assert session._dead is False
-            assert not session._query_done.is_set()
-
-            session.signal_query_done()
-            runtime_running = False
-            await asyncio.wait_for(session._proc_monitor_task, timeout=0.5)
-
-        assert session._dead is True
-        assert session._died_before_pulse is False
-        assert session._query_done.is_set()
+        assert session.is_alive is False
 
     async def test_runtime_container_stop_unblocks_query_when_cli_process_hangs(self):
         """Apple Container can stop the container while the CLI process keeps hanging."""
+        runtime_running = True
+
+        runtime_probe = AsyncMock(side_effect=lambda _container_name: runtime_running)
+
         session = session_mod.ContainerSession(
             "apple-runtime-stop-test",
             "pynchy-apple-runtime-stop-test",
+            runtime_probe=runtime_probe,
+            runtime_monitor_policy=RuntimeMonitorPolicy(
+                poll_interval_seconds=0.01,
+                cli_kill_wait_seconds=0.01,
+            ),
         )
         proc = FakeProcess()
-        runtime_running = True
-
-        def fake_runtime_running(_container_name: str) -> bool:
-            return runtime_running
-
         with (
             patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
-            patch(
-                "pynchy.host.container_manager.session._runtime_container_running",
-                side_effect=fake_runtime_running,
-            ),
-            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
-            patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
             patch(
                 "pynchy.host.container_manager.session.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
@@ -3783,30 +3644,26 @@ class TestSessionStartOnlyStderr:
 
         assert proc._killed is True
         reap_orphan.assert_awaited_once_with("pynchy-apple-runtime-stop-test")
-        assert session._dead is True
-        assert session._died_before_pulse is True
-        assert session._query_done.is_set()
+        assert session.is_alive is False
 
     async def test_runtime_container_never_starts_unblocks_query_when_cli_process_hangs(self):
         """Apple Container can leave ``container run`` alive after startup failure."""
+
+        runtime_probe = AsyncMock(return_value=False)
+
         session = session_mod.ContainerSession(
             "apple-runtime-never-start-test",
             "pynchy-never-start",
+            runtime_probe=runtime_probe,
+            runtime_monitor_policy=RuntimeMonitorPolicy(
+                poll_interval_seconds=0.01,
+                start_grace_seconds=0.02,
+                cli_kill_wait_seconds=0.01,
+            ),
         )
         proc = FakeProcess()
-
-        def fake_runtime_running(_container_name: str) -> bool:
-            return False
-
         with (
             patch("pynchy.host.container_manager.session.sys.platform", "darwin"),
-            patch(
-                "pynchy.host.container_manager.session._runtime_container_running",
-                side_effect=fake_runtime_running,
-            ),
-            patch("pynchy.host.container_manager.session._RUNTIME_POLL_INTERVAL_SECONDS", 0.01),
-            patch("pynchy.host.container_manager.session._RUNTIME_START_GRACE_SECONDS", 0.02),
-            patch("pynchy.host.container_manager.session._RUNTIME_CLI_KILL_WAIT_SECONDS", 0.01),
             patch(
                 "pynchy.host.container_manager.session.reap_apple_runtime_orphans",
                 new=AsyncMock(return_value=True),
@@ -3820,6 +3677,4 @@ class TestSessionStartOnlyStderr:
 
         assert proc._killed is True
         reap_orphan.assert_awaited_once_with("pynchy-never-start")
-        assert session._dead is True
-        assert session._died_before_pulse is True
-        assert session._query_done.is_set()
+        assert session.is_alive is False

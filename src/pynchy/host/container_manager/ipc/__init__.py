@@ -11,10 +11,22 @@ import pynchy.host.container_manager.ipc.handlers_skills
 import pynchy.host.container_manager.ipc.handlers_tasks
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import dispatch
-from pynchy.host.container_manager.ipc.watcher import start_ipc_watcher
+from pynchy.host.container_manager.ipc.watcher import (
+    process_ipc_message_file,
+    process_ipc_output_file,
+    process_ipc_request_file,
+    recover_ipc_runtime,
+    recover_ipc_startup,
+    start_ipc_watcher,
+)
 
 __all__ = [
     "IpcDeps",
     "dispatch",
+    "process_ipc_message_file",
+    "process_ipc_output_file",
+    "process_ipc_request_file",
+    "recover_ipc_runtime",
+    "recover_ipc_startup",
     "start_ipc_watcher",
 ]

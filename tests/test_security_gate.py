@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from pynchy.config.settings import validate_settings_mapping
-from pynchy.host.container_manager.security import gate as _gate_module
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     create_gate,
@@ -20,11 +19,23 @@ from pynchy.types import ContainerInput, ServiceTrustConfig, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
-def _cleanup():
-    """Ensure no gates leak between tests."""
-    yield
+def _cleanup(monkeypatch: pytest.MonkeyPatch):
+    """Ensure gates made through the public registry API do not leak between tests."""
+    created: list[tuple[str, float]] = []
+    original_create_gate = create_gate
 
-    _gate_module._gates.clear()
+    def track_created_gate(
+        source_group: str,
+        invocation_ts: float,
+        security: WorkspaceSecurity,
+    ) -> SecurityGate:
+        created.append((source_group, invocation_ts))
+        return original_create_gate(source_group, invocation_ts, security)
+
+    monkeypatch.setitem(globals(), "create_gate", track_created_gate)
+    yield
+    for source_group, invocation_ts in created:
+        destroy_gate(source_group, invocation_ts)
 
 
 def _make_security(**services: ServiceTrustConfig) -> WorkspaceSecurity:
@@ -378,23 +389,24 @@ class TestInvocationTsOnContainerInput:
         assert ci.invocation_ts == 42
 
 
-class TestRegisterProcessAcceptsInvocationTs:
-    def test_register_process_stores_invocation_ts(self):
-        """register_process() should accept and store invocation_ts."""
+class TestRegisterHostProcessInvocation:
+    def test_release_destroys_matching_invocation_gate(self):
+        """A registered host process releases the gate for its invocation."""
         queue = GroupQueue()
-        queue.register_process(
-            "test@g.us",
-            None,
-            "pynchy-test",
-            group_folder="test-ws",
-            invocation_ts=42.0,
-        )
-        state = queue._get_group("test@g.us")
-        assert state.invocation_ts == 42
+        gate = create_gate("test-ws", 42.0, WorkspaceSecurity())
+        lease = queue.acquire_host_process("test@g.us")
 
-    def test_register_process_defaults_invocation_ts_to_zero(self):
-        """register_process() without invocation_ts should default to 0.0."""
-        queue = GroupQueue()
-        queue.register_process("test@g.us", None, "pynchy-test", group_folder="test-ws")
-        state = queue._get_group("test@g.us")
-        assert state.invocation_ts == 0
+        assert (
+            queue.register_host_process(
+                lease,
+                None,
+                "pynchy-test",
+                group_folder="test-ws",
+                invocation_ts=42.0,
+            )
+            is True
+        )
+
+        assert queue.release_host_process(lease) is False
+        assert get_gate("test-ws", 42.0) is None
+        assert gate is not None

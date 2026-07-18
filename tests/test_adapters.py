@@ -265,13 +265,6 @@ class TestMessageBroadcaster:
         await broadcaster.broadcast_to_channels("group@g.us", _make_event("hello"))
         assert len(working.sent) == 1
 
-    async def test_broadcast_formatted_is_removed(self):
-        """_broadcast_formatted should no longer exist on MessageBroadcaster."""
-        broadcaster = MessageBroadcaster([])
-        assert not hasattr(broadcaster, "_broadcast_formatted"), (
-            "_broadcast_formatted should be removed — callers construct OutboundEvent directly"
-        )
-
     async def test_broadcast_to_empty_channel_list(self):
         """Broadcasting to empty channel list is a no-op."""
         broadcaster = MessageBroadcaster([])

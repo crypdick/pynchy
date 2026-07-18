@@ -166,10 +166,10 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
             logger.debug("Scheduler loop already running, skipping duplicate start")
             return
         _state.scheduler_running = True
-    scheduler_config = get_settings().scheduler
-    logger.info("Scheduler loop started", backend="temporal")
 
     try:
+        scheduler_config = get_settings().scheduler
+        logger.info("Scheduler loop started", backend="temporal")
         async with _build_temporal_runtime(deps, scheduler_config) as temporal_runtime:
             await _run_scheduler_loop(deps, temporal_runtime)
     finally:
@@ -361,7 +361,7 @@ async def resume_interrupted_scheduled_turn(
     return completed
 
 
-async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
+async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
     """Execute a single scheduled agent task via the unified run_agent path."""
     start_time = datetime.now(UTC)
     interrupted_turn = await get_in_flight_turn_for_task(task.id)

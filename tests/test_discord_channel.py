@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,16 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
-from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
-from pynchy.plugins.channels.discord._voice import (  # noqa: PLC2701
-    DiscordVoiceManager,
-    _load_opus,  # allow: private-test-imports - platform Opus loader.
-    _VoiceSession,  # allow: private-test-imports - voice playback boundary.
-)
-from pynchy.plugins.channels.discord._voice_client import (  # noqa: PLC2701
-    PynchyVoiceClient,
-    _parse_rtp_packet,  # allow: private-test-imports - exercises RTP crypto boundary.
-)
+from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin, PynchyVoiceClient
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType, WorkspaceProfile
@@ -45,6 +36,26 @@ def _channel(speech_synthesizer: object | None = None) -> DiscordChannel:
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        speech_synthesizer=speech_synthesizer,
+    )
+
+
+def _configured_voice_channel(speech_synthesizer: object | None = None) -> DiscordChannel:
+    return DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            chat={
+                "1": {
+                    "name": "Pynchy",
+                    "channels": {"2": {"name": "General", "kind": "voice"}},
+                }
+            },
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _message: None,
+        on_chat_metadata=lambda _jid, _timestamp, _name: None,
+        workspaces=lambda: {"discord:voice:2": cast("WorkspaceProfile", object())},
         speech_synthesizer=speech_synthesizer,
     )
 
@@ -95,17 +106,20 @@ class _FakeTypingChannel:
 
 class _FakePynchyVoiceClient(PynchyVoiceClient):
     def __init__(self) -> None:
-        pass
+        self.received_listener: object | None = None
+        self.played_audio: list[object] = []
 
     def is_connected(self) -> bool:
         return True
 
+    def start_receiving(self, listener: object) -> None:
+        self.received_listener = listener
 
-class _FakeReceivingVoiceClient(PynchyVoiceClient):
-    def __init__(self) -> None:
-        pass
+    def play(self, audio: object, *, after) -> None:
+        self.played_audio.append(audio)
+        after(None)
 
-    def start_receiving(self, _listener: object) -> None:
+    def stop(self) -> None:
         pass
 
 
@@ -116,18 +130,33 @@ class _FakeVoiceChannel:
         self.connected = connected
         self.release = release
         self.connect_calls = 0
+        self.voice_client = _FakePynchyVoiceClient()
+        self.guild = _FakeDiscordGuild(1, "Pynchy", [])
+        self.name = "General"
 
-    async def connect(self, **_kwargs: object) -> _FakeReceivingVoiceClient:
+    async def connect(self, **_kwargs: object) -> _FakePynchyVoiceClient:
         self.connect_calls += 1
         self.connected.set()
         await self.release.wait()
-        return _FakeReceivingVoiceClient()
+        return self.voice_client
+
+
+@dataclass(slots=True)
+class _VoiceState:
+    channel: object | None
 
 
 @dataclass
 class _VoiceConnectionDecryptHarness:
     dave_session: object
     can_encrypt: bool
+    listeners: list[object] = field(default_factory=list)
+
+    def add_socket_listener(self, listener: object) -> None:
+        self.listeners.append(listener)
+
+    def remove_socket_listener(self, listener: object) -> None:
+        self.listeners.remove(listener)
 
 
 @dataclass
@@ -135,6 +164,28 @@ class _VoiceClientDecryptHarness:
     mode: str
     secret_key: bytes
     _connection: _VoiceConnectionDecryptHarness
+    _packet_listener: object | None = None
+    _speaker_ids: dict[int, str] = field(default_factory=dict)
+    _loop: asyncio.AbstractEventLoop = field(default_factory=asyncio.get_running_loop)
+
+
+async def _activate_voice_session(
+    channel: DiscordChannel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> _FakePynchyVoiceClient:
+    connected = asyncio.Event()
+    release = asyncio.Event()
+    release.set()
+    voice_channel = _FakeVoiceChannel(connected, release)
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _voice_channel: {"42": "Alice"},
+    )
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
+
+    await channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+
+    return voice_channel.voice_client
 
 
 class _FakeUser:
@@ -264,7 +315,9 @@ def test_owns_only_discord_jids():
     assert ch.owns_jid("slack:C1") is False
 
 
-def test_load_opus_uses_homebrew_fallback(monkeypatch):
+@pytest.mark.asyncio
+async def test_voice_state_update_uses_homebrew_opus_fallback(monkeypatch):
+    """A configured voice workspace starts receiving after the public gateway event."""
     loaded: list[str] = []
     monkeypatch.delenv("PYNCHY_DISCORD_OPUS_LIBRARY", raising=False)
 
@@ -279,12 +332,28 @@ def test_load_opus_uses_homebrew_fallback(monkeypatch):
         patch("pynchy.plugins.channels.discord._voice.opus.is_loaded", return_value=False),
         patch("pynchy.plugins.channels.discord._voice.opus.load_opus", side_effect=load_opus),
     ):
-        assert _load_opus() is True
+        channel = _configured_voice_channel()
+        connected = asyncio.Event()
+        release = asyncio.Event()
+        release.set()
+        voice_channel = _FakeVoiceChannel(connected, release)
+        monkeypatch.setattr(
+            "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+            lambda _manager, _voice_channel: {"42": "Alice"},
+        )
+
+        await channel.handle_voice_state_update(
+            object(),
+            object(),
+            _VoiceState(voice_channel),
+        )
 
     assert loaded == ["/opt/homebrew/opt/opus/lib/libopus.0.dylib"]
+    assert voice_channel.voice_client.received_listener is not None
 
 
-def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
+@pytest.mark.asyncio
+async def test_receive_voice_packet_preserves_rtp_extension_boundary():
     """RTP-size transport crypto authenticates only the extension preamble."""
 
     # Voice crypto is optional in ordinary Pynchy installs. Keeping this import
@@ -312,10 +381,6 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
         .ciphertext
         + nonce[:4]
     )
-    parsed = _parse_rtp_packet(header + encrypted_payload)
-
-    assert parsed is not None
-    parsed_header, parsed_ssrc, payload, extension_length = parsed
     dave_session = _FakeDaveSession()
     voice_client = cast(
         "PynchyVoiceClient",
@@ -325,25 +390,27 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
             _connection=_VoiceConnectionDecryptHarness(dave_session=dave_session, can_encrypt=True),
         ),
     )
+    received: list[tuple[str, bytes]] = []
 
-    assert parsed_ssrc == ssrc
-    assert extension_length == len(extension_payload)
-    assert (
-        PynchyVoiceClient._decrypt_voice_payload(
-            voice_client,
-            parsed_header,
-            payload,
-            "42",
-            extension_length,
-        )
-        == dave_payload
+    def record_packet(speaker: str, packet: bytes) -> None:
+        received.append((speaker, packet))
+
+    PynchyVoiceClient.start_receiving(voice_client, record_packet)
+    await PynchyVoiceClient.handle_voice_gateway_payload(
+        voice_client,
+        {"op": 5, "d": {"user_id": "42", "ssrc": ssrc}},
     )
+    PynchyVoiceClient.receive_voice_packet(voice_client, header + encrypted_payload)
+    await asyncio.sleep(0)
+
+    assert received == [("42", dave_payload)]
     assert dave_session.packets[0][0] == 42
     assert dave_session.packets[0][1] is davey.MediaType.audio
     assert dave_session.packets[0][2] == dave_payload
 
 
-def test_decrypt_voice_payload_retries_dave_transition_frame():
+@pytest.mark.asyncio
+async def test_receive_voice_packet_retries_dave_transition_frame():
     nacl_secret = pytest.importorskip("nacl.secret")
 
     class _FakeDaveSession:
@@ -378,34 +445,42 @@ def test_decrypt_voice_payload_retries_dave_transition_frame():
             _connection=_VoiceConnectionDecryptHarness(dave_session=dave_session, can_encrypt=True),
         ),
     )
+    received: list[tuple[str, bytes]] = []
 
-    assert (
-        PynchyVoiceClient._decrypt_voice_payload(
-            voice_client,
-            header,
-            encrypted_payload,
-            "42",
-            0,
-        )
-        == dave_payload
+    def record_packet(speaker: str, packet: bytes) -> None:
+        received.append((speaker, packet))
+
+    PynchyVoiceClient.start_receiving(voice_client, record_packet)
+    await PynchyVoiceClient.handle_voice_gateway_payload(
+        voice_client,
+        {"op": 5, "d": {"user_id": "42", "ssrc": 3}},
     )
+    PynchyVoiceClient.receive_voice_packet(voice_client, header + encrypted_payload)
+    await asyncio.sleep(0)
+
+    assert received == [("42", dave_payload)]
     assert dave_session.passthrough == [(True, 10)]
 
 
 @pytest.mark.asyncio
 async def test_voice_manager_serializes_duplicate_connect_attempts(monkeypatch):
-    channel = _channel()
-    channel.workspaces = lambda: {"discord:voice:2": cast("WorkspaceProfile", object())}
-    manager = DiscordVoiceManager(channel)
+    channel = _configured_voice_channel()
     connected = asyncio.Event()
     release = asyncio.Event()
     voice_channel = _FakeVoiceChannel(connected, release)
-    monkeypatch.setattr(manager, "_allowed_members", lambda _voice_channel: {"42": "Alice"})
+    monkeypatch.setattr(
+        "pynchy.plugins.channels.discord._voice.DiscordVoiceManager._allowed_members",
+        lambda _manager, _voice_channel: {"42": "Alice"},
+    )
     monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
 
-    first = asyncio.create_task(manager._refresh(voice_channel))
+    first = asyncio.create_task(
+        channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+    )
     await connected.wait()
-    second = asyncio.create_task(manager._refresh(voice_channel))
+    second = asyncio.create_task(
+        channel.handle_voice_state_update(object(), object(), _VoiceState(voice_channel))
+    )
     await asyncio.sleep(0)
 
     assert voice_channel.connect_calls == 1
@@ -417,7 +492,7 @@ async def test_voice_manager_serializes_duplicate_connect_attempts(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_voice_session_uses_wav_from_pocket_tts():
+async def test_voice_result_uses_wav_from_speech_synthesizer(monkeypatch):
     captured_suffixes: list[str] = []
 
     class FakeSpeechSynthesizer:
@@ -431,36 +506,32 @@ async def test_voice_session_uses_wav_from_pocket_tts():
             return SpeechSynthesizerHealth(ready=True)
 
     synthesizer = FakeSpeechSynthesizer()
-    session = _VoiceSession(
-        _channel(synthesizer),
-        "discord:voice:1",
-        _FakePynchyVoiceClient(),
-        {},
-        synthesizer,
-    )
+    channel = _configured_voice_channel(synthesizer)
+    channel.client = object()
+    voice_client = await _activate_voice_session(channel, monkeypatch)
 
-    with (
-        patch.object(session, "_play_audio", new_callable=AsyncMock),
-    ):
-        await session.speak("Hello")
+    with patch("pynchy.plugins.channels.discord._voice.discord.FFmpegOpusAudio"):
+        await channel.send_event(
+            "discord:voice:2",
+            OutboundEvent(type=OutboundEventType.RESULT, content="Hello"),
+        )
 
     assert captured_suffixes == [".wav"]
+    assert len(voice_client.played_audio) == 1
 
 
 @pytest.mark.asyncio
-async def test_voice_session_skips_playback_without_speech_provider():
-    session = _VoiceSession(
-        _channel(),
-        "discord:voice:1",
-        _FakePynchyVoiceClient(),
-        {},
-        None,
+async def test_voice_result_skips_playback_without_speech_provider(monkeypatch):
+    channel = _configured_voice_channel()
+    channel.client = object()
+    voice_client = await _activate_voice_session(channel, monkeypatch)
+
+    await channel.send_event(
+        "discord:voice:2",
+        OutboundEvent(type=OutboundEventType.RESULT, content="Hello"),
     )
 
-    with patch.object(session, "_play_audio", new_callable=AsyncMock) as play_audio:
-        await session.speak("Hello")
-
-    play_audio.assert_not_awaited()
+    assert voice_client.played_audio == []
 
 
 @pytest.mark.asyncio
@@ -667,7 +738,7 @@ async def test_send_event_chunks_long_text_with_safe_mentions():
     ch = _channel()
     ch.client = object()  # non-None so the guard passes
     fake = _FakeSendChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
 
     long_text = "word " * 1000  # ~5000 chars -> multiple chunks
     await ch.send_event(
@@ -684,13 +755,13 @@ async def test_send_event_chunks_long_text_with_safe_mentions():
 async def test_send_event_skips_empty_text():
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
         side_effect=AssertionError("should not resolve for empty text")
     )
     await ch.send_event(
         "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="   ")
     )
-    assert ch._resolve_channel.await_count == 0
+    assert ch.resolve_channel.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -714,11 +785,11 @@ async def test_voice_channel_only_speaks_final_result():
 async def test_send_event_ignores_foreign_jid():
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
         side_effect=AssertionError("should not resolve for a foreign jid")
     )
     await ch.send_event("slack:C1", OutboundEvent(type=OutboundEventType.TEXT, content="hi"))
-    assert ch._resolve_channel.await_count == 0
+    assert ch.resolve_channel.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -734,7 +805,7 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
     )
     ch.client = object()
     fake = _FakeStreamChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
 
     await ch.send_event(
         "discord:direct:42",
@@ -771,7 +842,7 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
 async def test_send_reaction_ignores_non_discord_message_id():
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
         side_effect=AssertionError("should not resolve for a non-Discord message id")
     )
     # slack-style id must be a no-op, not an error
@@ -789,8 +860,8 @@ async def test_resolve_channel_caches_direct_message_channels():
         fetch_user=fetch_user,
     )
 
-    first = await ch._resolve_channel("discord:direct:42")
-    second = await ch._resolve_channel("discord:direct:42")
+    first = await ch.resolve_channel("discord:direct:42")
+    second = await ch.resolve_channel("discord:direct:42")
 
     assert first is second
     assert fetch_user.await_count == 1
@@ -800,12 +871,19 @@ async def test_resolve_channel_caches_direct_message_channels():
 @pytest.mark.asyncio
 async def test_disconnect_clears_direct_message_cache():
     ch = _channel()
-    ch._dm_channels["42"] = _FakeSendChannel()
+    user = _FakeUser()
+    fetch_user = AsyncMock(return_value=user)
+    ch.client = _DirectMessageClient(
+        get_user=lambda _snowflake: None,
+        fetch_user=fetch_user,
+    )
     ch.lifecycle.disconnect = AsyncMock()
 
+    await ch.resolve_channel("discord:direct:42")
     await ch.disconnect()
+    await ch.resolve_channel("discord:direct:42")
 
-    assert ch._dm_channels == {}
+    assert fetch_user.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -813,16 +891,17 @@ async def test_set_typing_starts_background_refresh_and_stops_cleanly():
     ch = _channel()
     ch.client = object()
     fake = _FakeTypingChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.set_typing("discord:channel:1", is_typing=True)
     await asyncio.sleep(0)
 
     assert fake.typing_calls >= 1
-    assert "discord:channel:1" in ch._typing_tasks
 
     await ch.set_typing("discord:channel:1", is_typing=False)
+    calls_after_stop = fake.typing_calls
+    await asyncio.sleep(0)
 
-    assert "discord:channel:1" not in ch._typing_tasks
+    assert fake.typing_calls == calls_after_stop
 
 
 @pytest.mark.asyncio
@@ -840,11 +919,12 @@ async def test_typing_loop_refreshes_until_cancelled(monkeypatch: pytest.MonkeyP
         if sleep_calls >= 2:
             raise asyncio.CancelledError
 
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     monkeypatch.setattr(asyncio, "sleep", _fake_sleep)
 
-    with pytest.raises(asyncio.CancelledError):
-        await ch._typing_loop("discord:channel:1")
+    await ch.set_typing("discord:channel:1", is_typing=True)
+    for _ in range(3):
+        await orig_sleep(0)
 
     assert fake.typing_calls == 2
 
@@ -874,7 +954,7 @@ async def test_fetch_inbound_since_filters_bot_and_self():
 
             return gen()
 
-    ch._resolve_channel = AsyncMock(return_value=_HistChannel())  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=_HistChannel())  # type: ignore[method-assign]
 
     result = await ch.fetch_inbound_since("discord:channel:1", "2026-07-06T00:00:00+00:00")
     ids = [m.id for m in result.messages]
@@ -891,7 +971,7 @@ async def test_post_event_sends_preview_and_returns_message_id():
     ch = _channel()
     ch.client = object()
     fake = _FakeStreamChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     msg_id = await ch.post_event(
         "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="hi there")
     )
@@ -905,7 +985,7 @@ async def test_post_event_sends_preview_and_returns_message_id():
 async def test_post_event_returns_none_for_empty_text():
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
         side_effect=AssertionError("should not resolve for empty text")
     )
     result = await ch.post_event(
@@ -920,7 +1000,7 @@ async def test_post_event_returns_none_when_too_large_to_stream():
     # returning None makes core route it through chunked send_event instead.
     ch = _channel()
     ch.client = object()
-    ch._resolve_channel = AsyncMock(  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(  # type: ignore[method-assign]
         side_effect=AssertionError("should not resolve when text exceeds the limit")
     )
     result = await ch.post_event(
@@ -936,7 +1016,7 @@ async def test_update_event_edits_message_in_place():
     ch.client = object()
     fake = _FakeStreamChannel()
     msg = await fake.send("initial", allowed_mentions=None)
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     await ch.update_event(
         "discord:channel:1",
         f"discord-{msg.id}",
@@ -952,7 +1032,7 @@ async def test_update_event_raises_when_too_large_so_core_falls_back():
     ch = _channel()
     ch.client = object()
     fake = _FakeStreamChannel()
-    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
     with pytest.raises(ValueError, match="exceeds 2000 chars"):
         await ch.update_event(
             "discord:channel:1",

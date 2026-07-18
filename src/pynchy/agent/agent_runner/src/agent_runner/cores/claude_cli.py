@@ -235,7 +235,7 @@ class ClaudeCLIAgentCore:
             except json.JSONDecodeError:
                 _log(f"skipping non-JSON stdout line: {line[:200]}")
                 continue
-            for event in self._map_line(obj):
+            for event in self.map_stream_line(obj):
                 if event.type == "result":
                     saw_result = True
                 yield event
@@ -266,15 +266,12 @@ class ClaudeCLIAgentCore:
                 },
             )
 
-    def _map_line(self, obj: dict[str, Any]) -> list[AgentEvent]:
-        """Map one stream-json line to zero or more ``AgentEvent``s.
+    def map_stream_line(self, obj: dict[str, Any]) -> list[AgentEvent]:
+        """Map one Claude CLI stream-json line to zero or more ``AgentEvent``s.
 
-        >>> INJECTION SEAM (output) <<<
-        Every raw wire line passes through here before becoming an event.
-        Rewrite, drop, or splice in synthetic events for turn-by-turn stream
-        control. Enable ``--include-partial-messages`` in :meth:`_build_args`
-        to also receive token-level ``stream_event`` deltas and handle them
-        below.
+        This is the owned boundary for Claude's external stream protocol.
+        It lets adapters and integration tests turn a received line into the
+        normal agent event contract without depending on the subprocess loop.
         """
         msg_type = obj.get("type")
         if msg_type == "system":

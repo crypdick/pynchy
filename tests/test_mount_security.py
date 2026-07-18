@@ -29,12 +29,10 @@ def _test_settings(allowlist_path: Path):
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    # Reset the module-level allowlist cache for test isolation. The reset is a
-    # test-only affordance on the module; reaching it by attribute avoids
-    # importing a private symbol.
-    mount_security._reset_cache()
+    """Reset mount policy between isolated configuration scenarios."""
+    mount_security.reset_mount_allowlist_cache()
     yield
-    mount_security._reset_cache()
+    mount_security.reset_mount_allowlist_cache()
 
 
 def _write_allowlist(path: Path, content: str) -> None:

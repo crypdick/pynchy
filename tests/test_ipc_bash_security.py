@@ -12,7 +12,7 @@ from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.types import OutboundEventType, WorkspaceProfile, WorkspaceSecurity
+from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 def _make_gate(
@@ -20,11 +20,26 @@ def _make_gate(
     corruption: bool = False,
     secret: bool = False,
 ) -> SecurityGate:
-    gate = SecurityGate(WorkspaceSecurity())
+    services = {}
     if corruption:
-        gate.policy._corruption_tainted = True
+        services["browser"] = ServiceTrustConfig(
+            public_source=True,
+            secret_data=False,
+            public_sink=False,
+            dangerous_writes=False,
+        )
     if secret:
-        gate.policy._secret_tainted = True
+        services["passwords"] = ServiceTrustConfig(
+            public_source=False,
+            secret_data=True,
+            public_sink=False,
+            dangerous_writes=False,
+        )
+    gate = SecurityGate(WorkspaceSecurity(services=services))
+    if corruption:
+        gate.evaluate_read("browser")
+    if secret:
+        gate.evaluate_read("passwords")
     return gate
 
 

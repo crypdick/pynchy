@@ -1,7 +1,7 @@
-"""Tests for the claude-cli agent core's stream-json -> AgentEvent mapping.
+"""Tests for the Claude CLI core's public stream-json -> AgentEvent mapping.
 
 The core parses raw ``claude`` stdout line-by-line (cores/claude_cli.py). These
-tests pin the ``_map_line`` contract -- in particular the hardening that keeps a
+tests pin the ``map_stream_line`` contract -- in particular the hardening that keeps a
 "user" message (which on this stream carries only tool_result blocks) from ever
 surfacing a text block as an agent ``text`` event.
 """
@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import signal
 from pathlib import Path
+from unittest.mock import patch
 
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.claude_cli import ClaudeCLIAgentCore
@@ -30,7 +31,7 @@ def _core(session_id: str | None = None) -> ClaudeCLIAgentCore:
 
 
 def _types(core: ClaudeCLIAgentCore, obj: dict) -> list[str]:
-    return [e.type for e in core._map_line(obj)]
+    return [e.type for e in core.map_stream_line(obj)]
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +60,7 @@ def test_user_tool_result_kept():
             ]
         },
     }
-    events = _core()._map_line(obj)
+    events = _core().map_stream_line(obj)
     assert len(events) == 1
     e = events[0]
     assert e.type == "tool_result"
@@ -73,7 +74,7 @@ def test_user_tool_result_list_content_json_encoded():
         "type": "user",
         "message": {"content": [{"type": "tool_result", "tool_use_id": "t2", "content": [1, 2]}]},
     }
-    (e,) = _core()._map_line(obj)
+    (e,) = _core().map_stream_line(obj)
     assert e.data["tool_result_content"] == "[1, 2]"
 
 
@@ -106,7 +107,7 @@ def test_assistant_all_block_types_in_order():
             ]
         },
     }
-    events = _core()._map_line(obj)
+    events = _core().map_stream_line(obj)
     assert [e.type for e in events] == ["thinking", "tool_use", "text"]
     assert events[0].data["thinking"] == "hmm"
     assert events[1].data["tool_name"] == "Bash"
@@ -116,7 +117,7 @@ def test_assistant_all_block_types_in_order():
 
 def test_assistant_bare_string_coerced_to_text():
     obj = {"type": "assistant", "message": {"content": "plain reply"}}
-    (e,) = _core()._map_line(obj)
+    (e,) = _core().map_stream_line(obj)
     assert e.type == "text"
     assert e.data["text"] == "plain reply"
 
@@ -128,7 +129,7 @@ def test_assistant_bare_string_coerced_to_text():
 
 def test_system_init_captures_session_id():
     core = _core()
-    events = core._map_line({"type": "system", "subtype": "init", "session_id": "sid-9"})
+    events = core.map_stream_line({"type": "system", "subtype": "init", "session_id": "sid-9"})
     assert core.session_id == "sid-9"
     assert len(events) == 1
     assert events[0].type == "system"
@@ -146,7 +147,7 @@ def test_result_maps_metadata_and_updates_session_id():
         "total_cost_usd": 0.01,
         "result": "all done",
     }
-    (e,) = core._map_line(obj)
+    (e,) = core.map_stream_line(obj)
     assert e.type == "result"
     assert e.data["result"] == "all done"
     assert e.data["result_metadata"]["subtype"] == "success"
@@ -170,6 +171,9 @@ class _FakeProc:
         self.returncode = returncode
         self.signals: list[int] = []
         self.killed = False
+        self.stdin = _FakeStdin()
+        self.stdout = _BlockingStdout()
+        self.stderr = _FakeStderr()
 
     def send_signal(self, sig):
         self.signals.append(sig)
@@ -181,20 +185,71 @@ class _FakeProc:
         return 0
 
 
-def test_stop_sends_sigint_and_clears_proc():
+class _FakeStdin:
+    def write(self, _content: bytes) -> None:
+        pass
+
+    async def drain(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class _FakeStderr:
+    async def read(self) -> bytes:
+        return b""
+
+
+class _BlockingStdout:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> bytes:
+        self.started.set()
+        await self.release.wait()
+        raise StopAsyncIteration
+
+
+async def _start_active_query(core: ClaudeCLIAgentCore, proc: _FakeProc):
+    with patch(
+        "agent_runner.cores.claude_cli.asyncio.create_subprocess_exec",
+        return_value=proc,
+    ):
+        query = core.query("stop test")
+        next_event = asyncio.create_task(anext(query))
+        await proc.stdout.started.wait()
+    return query, next_event
+
+
+async def _finish_query(proc: _FakeProc, next_event: asyncio.Task) -> None:
+    proc.stdout.release.set()
+    event = await next_event
+    assert event.type == "result"
+
+
+async def _stop_active_query(core: ClaudeCLIAgentCore, proc: _FakeProc) -> None:
+    _query, next_event = await _start_active_query(core, proc)
+    await core.stop()
+    await _finish_query(proc, next_event)
+
+
+def test_stop_sends_sigint_to_an_active_public_query():
     core = _core()
     proc = _FakeProc(returncode=None)
-    core._proc = proc
-    asyncio.run(core.stop())
+    asyncio.run(_stop_active_query(core, proc))
+
     assert proc.signals == [signal.SIGINT]
     assert proc.killed is False
-    assert core._proc is None
 
 
 def test_stop_escalates_to_kill_on_timeout(monkeypatch):
     core = _core()
     proc = _FakeProc(returncode=None)
-    core._proc = proc
 
     def _raise_timeout(awaitable=None, *_args, **_kwargs):
         # Close the proc.wait() coroutine we're bypassing so it isn't reported
@@ -204,22 +259,20 @@ def test_stop_escalates_to_kill_on_timeout(monkeypatch):
         raise TimeoutError
 
     monkeypatch.setattr(asyncio, "wait_for", _raise_timeout)
-    asyncio.run(core.stop())
+    asyncio.run(_stop_active_query(core, proc))
+
     assert proc.killed is True
-    assert core._proc is None
 
 
-def test_stop_noop_when_already_exited():
+def test_stop_leaves_an_already_exited_public_query_alone():
     core = _core()
     proc = _FakeProc(returncode=0)  # already finished
-    core._proc = proc
-    asyncio.run(core.stop())
+    asyncio.run(_stop_active_query(core, proc))
+
     assert proc.signals == []
     assert proc.killed is False
 
 
 def test_stop_noop_when_no_proc():
     core = _core()
-    core._proc = None
     asyncio.run(core.stop())  # must not raise
-    assert core._proc is None

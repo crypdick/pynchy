@@ -9,14 +9,22 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
-from conftest import NullIpcDeps, init_test_database, make_settings
+from conftest import NullIpcDeps, init_test_database
 from watchdog.events import FileCreatedEvent, FileMovedEvent
 
-from pynchy.host.container_manager.ipc import watcher
+from pynchy.host.container_manager.ipc import (
+    process_ipc_message_file,
+    process_ipc_request_file,
+    recover_ipc_runtime,
+    recover_ipc_startup,
+)
+from pynchy.host.container_manager.ipc.events import IpcEventHandler
+from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
 from pynchy.host.container_manager.ipc.protocol import make_ipc_request
+from pynchy.state.tasks import get_all_tasks
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -38,10 +46,6 @@ OTHER_GROUP = WorkspaceProfile(
     trigger="@pynchy",
     added_at="2024-01-01",
 )
-
-
-def _test_settings(*, data_dir: Path):
-    return make_settings(data_dir=data_dir)
 
 
 class MockDeps(NullIpcDeps):
@@ -127,7 +131,7 @@ def _write_ipc_file(base_dir: Path, group: str, subdir: str, data: dict) -> Path
 
 
 class TestStartupSweep:
-    """Tests for _sweep_directory which processes files left over from crashes."""
+    """Tests for startup recovery of files left over from crashes."""
 
     async def test_sweep_processes_message_files(self, deps, tmp_path: Path):
         """Startup sweep should process leftover message files."""
@@ -139,11 +143,7 @@ class TestStartupSweep:
             {"type": "message", "chatJid": "other@g.us", "text": "hello from sweep"},
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            processed = await watcher._sweep_directory(ipc_dir, deps)
+        processed = await recover_ipc_startup(ipc_dir, deps)
 
         assert processed == 1
         assert len(deps.broadcast_messages) == 1
@@ -170,11 +170,7 @@ class TestStartupSweep:
             ),
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            processed = await watcher._sweep_directory(ipc_dir, deps)
+        processed = await recover_ipc_startup(ipc_dir, deps)
 
         assert processed == 1
         assert "new@g.us" in deps.workspaces()
@@ -195,13 +191,9 @@ class TestStartupSweep:
             ),
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            deps.sync_group_metadata = AsyncMock()
-            deps.get_available_groups = AsyncMock(return_value=[])
-            processed = await watcher._sweep_directory(ipc_dir, deps)
+        deps.sync_group_metadata = AsyncMock()
+        deps.get_available_groups = AsyncMock(return_value=[])
+        processed = await recover_ipc_startup(ipc_dir, deps)
 
         assert processed == 1
         deps.sync_group_metadata.assert_called_once_with(force=True)
@@ -211,7 +203,7 @@ class TestStartupSweep:
         ipc_dir = tmp_path / "ipc"
         ipc_dir.mkdir()
 
-        processed = await watcher._sweep_directory(ipc_dir, deps)
+        processed = await recover_ipc_startup(ipc_dir, deps)
         assert processed == 0
 
     async def test_sweep_skips_errors_directory(self, deps, tmp_path: Path):
@@ -221,7 +213,7 @@ class TestStartupSweep:
         error_dir.mkdir(parents=True)
         (error_dir / "test.json").write_text(json.dumps({"type": "bad"}))
 
-        processed = await watcher._sweep_directory(ipc_dir, deps)
+        processed = await recover_ipc_startup(ipc_dir, deps)
         assert processed == 0
 
     async def test_sweep_cleans_up_processed_files(self, deps, tmp_path: Path):
@@ -234,11 +226,7 @@ class TestStartupSweep:
             {"type": "message", "chatJid": "admin-1@g.us", "text": "cleanup test"},
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._sweep_directory(ipc_dir, deps)
+        await recover_ipc_startup(ipc_dir, deps)
 
         assert not file_path.exists()
 
@@ -260,20 +248,8 @@ class TestStartupSweep:
             },
         )
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.watcher.get_settings",
-                return_value=_test_settings(data_dir=tmp_path),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.watcher._process_output_file",
-                new_callable=AsyncMock,
-            ) as mock_process,
-        ):
-            handled = await watcher._sweep_directory(ipc_dir, deps)
+        handled = await recover_ipc_startup(ipc_dir, deps)
 
-        # File should be deleted without calling _process_output_file
-        mock_process.assert_not_called()
         assert handled == 1
         assert not (ipc_dir / "admin-1" / "output" / "test.json").exists()
 
@@ -285,11 +261,7 @@ class TestStartupSweep:
         initial_file = input_dir / "initial.json"
         initial_file.write_text(json.dumps({"type": "initial", "text": "stale prompt"}))
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            handled = await watcher._sweep_directory(ipc_dir, deps)
+        handled = await recover_ipc_startup(ipc_dir, deps)
 
         assert handled == 1
         assert not initial_file.exists()
@@ -315,11 +287,7 @@ class TestStartupSweep:
         input_dir.mkdir(parents=True, exist_ok=True)
         (input_dir / "initial.json").write_text(json.dumps({"type": "initial"}))
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            handled = await watcher._sweep_directory(ipc_dir, deps)
+        handled = await recover_ipc_startup(ipc_dir, deps)
 
         # 1 processed + 2 output cleaned + 1 initial cleaned = 4
         assert handled == 4
@@ -335,11 +303,7 @@ class TestStartupSweep:
         bad_file = target_dir / "bad.json"
         bad_file.write_text("not json {{{")
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._sweep_directory(ipc_dir, deps)
+        await recover_ipc_startup(ipc_dir, deps)
 
         assert not bad_file.exists()
         assert (ipc_dir / "errors" / "admin-1-bad.json").exists()
@@ -351,14 +315,14 @@ class TestStartupSweep:
 
 
 class TestSignalHandling:
-    """Tests for the _handle_signal dispatcher."""
+    """Tests for the signal request boundary."""
 
     async def test_refresh_groups_signal_from_admin(self, deps):
         """Admin group sending refresh_groups signal should trigger metadata sync."""
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
 
-        await watcher._handle_signal("refresh_groups", "admin-1", True, deps)
+        await handle_signal("refresh_groups", "admin-1", True, deps)
 
         deps.sync_group_metadata.assert_called_once_with(force=True)
         assert len(deps.snapshot_calls) == 1
@@ -367,14 +331,14 @@ class TestSignalHandling:
         """Non-admin groups should not be able to trigger refresh_groups."""
         deps.sync_group_metadata = AsyncMock()
 
-        await watcher._handle_signal("refresh_groups", "other-group", False, deps)
+        await handle_signal("refresh_groups", "other-group", False, deps)
 
         deps.sync_group_metadata.assert_not_called()
 
     async def test_unknown_signal_is_logged(self, deps):
         """Unknown signals should be handled gracefully (logged but not crash)."""
         # This shouldn't raise — the watcher should log and continue
-        await watcher._handle_signal("unknown_future_signal", "admin-1", True, deps)
+        await handle_signal("unknown_future_signal", "admin-1", True, deps)
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +347,7 @@ class TestSignalHandling:
 
 
 class TestRequestSignalProcessing:
-    """Tests for _process_request_file distinguishing signals from requests."""
+    """Tests for the request-file boundary distinguishing signals from requests."""
 
     async def test_signal_file_is_handled_as_signal(self, deps, tmp_path: Path):
         """A refresh_groups request should be routed through _handle_signal."""
@@ -404,17 +368,13 @@ class TestRequestSignalProcessing:
         deps.sync_group_metadata = AsyncMock()
         deps.get_available_groups = AsyncMock(return_value=[])
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._process_request_file(
-                file_path,
-                "admin-1",
-                is_admin=True,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
+        await process_ipc_request_file(
+            file_path,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         deps.sync_group_metadata.assert_called_once()
         assert not file_path.exists()  # File should be cleaned up
@@ -429,7 +389,7 @@ class TestRequestSignalProcessing:
             {"signal": "refresh_groups", "extra_payload": "bad"},
         )
 
-        await watcher._process_request_file(
+        await process_ipc_request_file(
             file_path,
             "admin-1",
             is_admin=True,
@@ -471,7 +431,7 @@ class TestRequestFileProcessing:
             ),
         )
 
-        await watcher._process_request_file(
+        await process_ipc_request_file(
             file_path,
             "admin-1",
             is_admin=True,
@@ -503,7 +463,7 @@ class TestRequestFileProcessing:
             ),
         )
 
-        await watcher._process_request_file(
+        await process_ipc_request_file(
             file_path,
             "other-group",
             is_admin=False,
@@ -537,30 +497,24 @@ class TestRequestFileProcessing:
         first.write_text(json.dumps(request))
         second.write_text(json.dumps(request))
         ledger_file = ipc_dir / "admin-1" / "request_ledger" / "req-mutate.json"
-        dispatch_calls: list[str] = []
+        await process_ipc_request_file(
+            first,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
+        await process_ipc_request_file(
+            second,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
-        def fake_dispatch(envelope, source_group, is_admin, deps):
-            assert ledger_file.exists()
-            dispatch_calls.append(envelope.request_id)
-            return asyncio.sleep(0)
-
-        with patch("pynchy.host.container_manager.ipc.watcher.dispatch", fake_dispatch):
-            await watcher._process_request_file(
-                first,
-                "admin-1",
-                is_admin=True,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
-            await watcher._process_request_file(
-                second,
-                "admin-1",
-                is_admin=True,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
-
-        assert dispatch_calls == ["req-mutate"]
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].prompt == "hello"
         assert not first.exists()
         assert not second.exists()
         assert ledger_file.exists()
@@ -588,11 +542,7 @@ class TestRequestFileProcessing:
             ),
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            processed = await watcher._sweep_runtime_directory(ipc_dir, deps)
+        processed = await recover_ipc_runtime(ipc_dir, deps)
 
         assert processed == 1
         assert "sweep@g.us" in deps.workspaces()
@@ -611,20 +561,10 @@ class TestRequestFileProcessing:
             },
         )
 
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.watcher.get_settings",
-                return_value=_test_settings(data_dir=tmp_path),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.watcher._process_output_file",
-                new_callable=AsyncMock,
-            ) as mock_process,
-        ):
-            processed = await watcher._sweep_runtime_directory(ipc_dir, deps)
+        processed = await recover_ipc_runtime(ipc_dir, deps)
 
         assert processed == 1
-        mock_process.assert_awaited_once_with(output_file, "admin-1", ipc_dir)
+        assert output_file.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +573,7 @@ class TestRequestFileProcessing:
 
 
 class TestMessageFileProcessing:
-    """Tests for _process_message_file."""
+    """Tests for the message-file boundary."""
 
     async def test_authorized_message_is_broadcast(self, deps, tmp_path: Path):
         """Admin group message to any chat should be broadcast."""
@@ -645,17 +585,13 @@ class TestMessageFileProcessing:
             {"type": "message", "chatJid": "other@g.us", "text": "hello"},
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._process_message_file(
-                file_path,
-                "admin-1",
-                is_admin=True,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
+        await process_ipc_message_file(
+            file_path,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         assert len(deps.broadcast_messages) == 1
         assert "hello" in deps.broadcast_messages[0][1]
@@ -671,17 +607,13 @@ class TestMessageFileProcessing:
             {"type": "message", "chatJid": "admin-1@g.us", "text": "sneaky"},
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._process_message_file(
-                file_path,
-                "other-group",
-                is_admin=False,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
+        await process_ipc_message_file(
+            file_path,
+            "other-group",
+            is_admin=False,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         assert len(deps.broadcast_messages) == 0
         # File should still be cleaned up (not retried)
@@ -702,17 +634,13 @@ class TestMessageFileProcessing:
             },
         )
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._process_message_file(
-                file_path,
-                "admin-1",
-                is_admin=True,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
+        await process_ipc_message_file(
+            file_path,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         assert deps.broadcast_messages[0][1] == "Researcher: update"
 
@@ -724,17 +652,13 @@ class TestMessageFileProcessing:
         file_path = target_dir / "broken.json"
         file_path.write_text("not valid json")
 
-        with patch(
-            "pynchy.host.container_manager.ipc.watcher.get_settings",
-            return_value=_test_settings(data_dir=tmp_path),
-        ):
-            await watcher._process_message_file(
-                file_path,
-                "admin-1",
-                is_admin=True,
-                ipc_base_dir=ipc_dir,
-                deps=deps,
-            )
+        await process_ipc_message_file(
+            file_path,
+            "admin-1",
+            is_admin=True,
+            ipc_base_dir=ipc_dir,
+            deps=deps,
+        )
 
         assert not file_path.exists()
         assert (ipc_dir / "errors" / "admin-1-broken.json").exists()
@@ -763,7 +687,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = tmp_path / "test-ipc"
 
-        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
+        handler = IpcEventHandler(ipc_dir, loop, queue)
 
         # JSON file in expected path — should be queued
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "messages" / "test.json")))
@@ -783,7 +707,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = tmp_path / "test-ipc"
 
-        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
+        handler = IpcEventHandler(ipc_dir, loop, queue)
 
         # File directly in group dir (not a watched IPC subdir) — ignored
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "random.json")))
@@ -808,7 +732,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = tmp_path / "test-ipc"
 
-        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
+        handler = IpcEventHandler(ipc_dir, loop, queue)
 
         handler.on_created(FileCreatedEvent(str(ipc_dir / "admin-1" / "output" / "001.json")))
         self._drain(loop)
@@ -826,7 +750,7 @@ class TestIpcEventHandler:
         queue: asyncio.Queue[Path] = asyncio.Queue()
         ipc_dir = tmp_path / "test-ipc"
 
-        handler = watcher._IpcEventHandler(ipc_dir, loop, queue)
+        handler = IpcEventHandler(ipc_dir, loop, queue)
 
         handler.on_moved(
             FileMovedEvent(

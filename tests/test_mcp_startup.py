@@ -3,51 +3,67 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from conftest import make_settings
 
+import pynchy.host.container_manager.mcp.manager as mcp_manager
 from pynchy.config.mcp import McpServerConfig
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.manager import McpManager
-from pynchy.host.container_manager.mcp.resolution import McpInstance
+from pynchy.host.container_manager.mcp.proxy import McpProxy
 
 
-def _instance(name: str) -> McpInstance:
-    return McpInstance(
-        server_name=name,
-        server_config=McpServerConfig(type="docker", image="test-image", port=8000),
-        kwargs={},
-        instance_id=name,
-        container_name=f"pynchy-mcp-{name}",
-        port=8000,
+async def _synced_manager(tmp_path, monkeypatch: pytest.MonkeyPatch) -> McpManager:
+    """Build manager state through its public configuration and sync APIs."""
+    settings = make_settings(
+        data_dir=tmp_path,
+        profiles={"test": ProfileConfig(tools=["healthy", "broken"])},
+        workspaces={"workspace": WorkspaceConfig(profiles=["test"])},
     )
+    manager = McpManager(
+        settings,
+        MagicMock(spec=LiteLLMGateway),
+        plugin_mcp_servers={
+            "healthy": McpServerConfig(type="docker", image="healthy-image", port=8000),
+            "broken": McpServerConfig(type="docker", image="broken-image", port=8001),
+        },
+    )
+    monkeypatch.setattr(McpProxy, "start", AsyncMock(return_value=12345))
+    monkeypatch.setattr(mcp_manager, "sync_mcp_endpoints", AsyncMock())
+    monkeypatch.setattr(mcp_manager, "sync_teams", AsyncMock())
 
+    def discard_background_task(coro, **_kwargs):
+        coro.close()
+        return MagicMock()
 
-def _manager() -> McpManager:
-    manager = McpManager(make_settings(), MagicMock(spec=LiteLLMGateway))
-    manager._workspace_instances = {"workspace": ["healthy", "broken"]}
-    manager._instances = {"healthy": _instance("healthy"), "broken": _instance("broken")}
+    monkeypatch.setattr(mcp_manager, "create_background_task", discard_background_task)
+
+    await manager.sync()
+
     return manager
 
 
 class TestWorkspaceMcpStartup:
     @pytest.mark.asyncio
-    async def test_starts_instances_concurrently_and_preserves_healthy_tools(self, monkeypatch):
-        manager = _manager()
+    async def test_starts_instances_concurrently_and_preserves_healthy_tools(
+        self, tmp_path, monkeypatch
+    ):
+        manager = await _synced_manager(tmp_path, monkeypatch)
         both_started = asyncio.Event()
         started: set[str] = set()
 
-        async def start(instance_id: str) -> None:
-            started.add(instance_id)
+        async def start(instance) -> None:
+            started.add(instance.instance_id)
             if len(started) == 2:
                 both_started.set()
             await asyncio.wait_for(both_started.wait(), timeout=0.1)
-            if instance_id == "broken":
+            if instance.instance_id == "broken":
                 raise TimeoutError("test timeout")
 
-        monkeypatch.setattr(manager, "_ensure_running_unlocked", start)
+        monkeypatch.setattr(mcp_manager, "ensure_docker_running", start)
 
         result = await manager.ensure_workspace_running("workspace")
 
@@ -57,18 +73,20 @@ class TestWorkspaceMcpStartup:
         assert result.failures[0].reason == "start timed out"
 
     @pytest.mark.asyncio
-    async def test_failed_instance_uses_retry_cooldown_without_repeating_notice(self, monkeypatch):
-        manager = _manager()
+    async def test_failed_instance_uses_retry_cooldown_without_repeating_notice(
+        self, tmp_path, monkeypatch
+    ):
+        manager = await _synced_manager(tmp_path, monkeypatch)
         attempts = 0
 
-        async def start(instance_id: str) -> None:
+        async def start(instance) -> None:
             nonlocal attempts
             attempts += 1
             await asyncio.sleep(0)
-            if instance_id == "broken":
+            if instance.instance_id == "broken":
                 raise RuntimeError("test failure")
 
-        monkeypatch.setattr(manager, "_ensure_running_unlocked", start)
+        monkeypatch.setattr(mcp_manager, "ensure_docker_running", start)
 
         first = await manager.ensure_workspace_running("workspace")
         second = await manager.ensure_workspace_running("workspace")

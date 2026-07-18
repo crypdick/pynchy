@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from pynchy.plugins.integrations import slack_token_extractor
+from pynchy.plugins.integrations.slack_token_extractor import SlackTokenExtractorPlugin
 
 TIMED_OUT_MESSAGE = "timed out"
 
@@ -76,7 +77,8 @@ async def test_refresh_slack_tokens_persists_tokens_from_the_authenticated_sessi
         AsyncMock(return_value={"xoxc": "xoxc-test", "xoxd": "xoxd-test"}),
     )
 
-    response = await slack_token_extractor._handle_refresh_slack_tokens(
+    handler = SlackTokenExtractorPlugin().pynchy_service_handler()["tools"]["refresh_slack_tokens"]
+    response = await handler(
         {
             "workspace_name": "acme",
             "xoxc_var": "SLACK_XOXC_ACME",
@@ -117,7 +119,8 @@ async def test_setup_slack_session_timeout_returns_novnc_url(
         type("_PlaywrightModule", (), {"async_playwright": fake_async_playwright}),
     )
 
-    response = await slack_token_extractor._handle_setup_slack_session(
+    handler = SlackTokenExtractorPlugin().pynchy_service_handler()["tools"]["setup_slack_session"]
+    response = await handler(
         {
             "workspace_name": "acme",
             "workspace_url": "https://app.slack.com/client",

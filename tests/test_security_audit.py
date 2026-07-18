@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from pynchy import state
 from pynchy.host.container_manager.security.audit import prune_security_audit, record_security_event
-from pynchy.state import connection, store_message_direct
+from pynchy.state import get_chat_history, store_message_direct
 
 
 @pytest.fixture(autouse=True)
@@ -32,12 +30,11 @@ async def test_record_security_event():
         action_ids=("mail.message.list", "mail.message.read"),
     )
 
-    db = connection._get_db()
-    cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
-    entries = await cursor.fetchall()
+    entries = await get_chat_history("group@test")
     assert len(entries) == 1
 
-    metadata = json.loads(entries[0]["metadata"])
+    metadata = entries[0].metadata
+    assert metadata is not None
     assert metadata["tool_name"] == "read_email"
     assert metadata["decision"] == "allowed"
     assert metadata["workspace"] == "main"
@@ -58,12 +55,11 @@ async def test_record_security_event_strips_none():
         decision="denied",
     )
 
-    db = connection._get_db()
-    cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
-    entries = await cursor.fetchall()
+    entries = await get_chat_history("group@test")
     assert len(entries) == 1
 
-    metadata = json.loads(entries[0]["metadata"])
+    metadata = entries[0].metadata
+    assert metadata is not None
     assert "reason" not in metadata
     assert "request_id" not in metadata
     # corruption_tainted and secret_tainted are booleans (False), not None
@@ -83,9 +79,7 @@ async def test_record_multiple_events():
             request_id=f"req-{i}",
         )
 
-    db = connection._get_db()
-    cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
-    entries = await cursor.fetchall()
+    entries = await get_chat_history("group@test")
     assert len(entries) == 5
 
 
@@ -107,9 +101,7 @@ async def test_prune_security_audit_deletes_old_entries():
     deleted = await prune_security_audit(retention_days=1)
     assert deleted == 1
 
-    db = connection._get_db()
-    cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
-    entries = await cursor.fetchall()
+    entries = await get_chat_history("group@test")
     assert len(entries) == 0
 
 
@@ -143,10 +135,8 @@ async def test_prune_security_audit_preserves_chat_messages():
     deleted = await prune_security_audit(retention_days=1)
     assert deleted == 1  # Only the security row
 
-    db = connection._get_db()
-    cursor = await db.execute("SELECT * FROM messages WHERE sender = 'user@s.whatsapp.net'")
-    entries = await cursor.fetchall()
-    assert len(entries) == 1  # Chat message preserved
+    entries = await get_chat_history("group@test")
+    assert [entry.sender for entry in entries] == ["user@s.whatsapp.net"]
 
 
 @pytest.mark.asyncio
@@ -164,7 +154,5 @@ async def test_prune_security_audit_preserves_recent():
     deleted = await prune_security_audit(retention_days=1)
     assert deleted == 0  # Nothing old enough to delete
 
-    db = connection._get_db()
-    cursor = await db.execute("SELECT * FROM messages WHERE sender = 'security'")
-    entries = await cursor.fetchall()
+    entries = await get_chat_history("group@test")
     assert len(entries) == 1  # Recent entry preserved

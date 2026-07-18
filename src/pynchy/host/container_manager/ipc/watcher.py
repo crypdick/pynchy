@@ -14,8 +14,8 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC watcher deps at runtime.
 )
-from pynchy.host.container_manager.ipc.events import IpcEventHandler as _IpcEventHandler
-from pynchy.host.container_manager.ipc.handlers_signals import handle_signal as _handle_signal
+from pynchy.host.container_manager.ipc.events import IpcEventHandler
+from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
 from pynchy.host.container_manager.ipc.input_processing import (
     classify_queued_ipc_file,
     handle_message_file,
@@ -90,7 +90,7 @@ def _group_folders_in_ipc_dir(ipc_base_dir: Path) -> list[str]:
     return [f.name for f in ipc_base_dir.iterdir() if f.is_dir() and f.name != "errors"]
 
 
-async def _process_message_file(
+async def process_ipc_message_file(
     file_path: Path,
     source_group: str,
     *,
@@ -110,7 +110,7 @@ async def _process_message_file(
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
 
 
-async def _process_request_file(
+async def process_ipc_request_file(
     file_path: Path,
     source_group: str,
     *,
@@ -154,7 +154,7 @@ async def _handle_request_file(
         )
 
     if envelope.kind == "refresh_groups":
-        await _handle_signal(
+        await handle_signal(
             envelope.kind,
             source_group,
             is_admin=is_admin,
@@ -168,7 +168,7 @@ async def _handle_request_file(
     await asyncio.to_thread(_unlink_path, file_path)
 
 
-async def _process_output_file(
+async def process_ipc_output_file(
     file_path: Path,
     source_group: str,
     ipc_base_dir: Path,
@@ -189,7 +189,7 @@ async def _sweep_messages(
     try:
         count = 0
         for file_path in await asyncio.to_thread(_json_files_in_dir, messages_dir):
-            await _process_message_file(
+            await process_ipc_message_file(
                 file_path,
                 source_group,
                 is_admin=is_admin,
@@ -216,7 +216,7 @@ async def _sweep_requests(
     try:
         count = 0
         for file_path in await asyncio.to_thread(_json_files_in_dir, requests_dir):
-            await _process_request_file(
+            await process_ipc_request_file(
                 file_path,
                 source_group,
                 is_admin=is_admin,
@@ -236,7 +236,7 @@ async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir
     try:
         count = 0
         for file_path in await asyncio.to_thread(_json_files_in_dir, output_dir):
-            await _process_output_file(file_path, source_group, ipc_base_dir)
+            await process_ipc_output_file(file_path, source_group, ipc_base_dir)
             count += 1
     except OSError as exc:
         _log_sweep_error(
@@ -323,7 +323,7 @@ async def _sweep_expired_state() -> None:
         logger.info("Expired pending questions auto-expired during sweep", count=len(expired_qs))
 
 
-async def _sweep_directory(
+async def recover_ipc_startup(
     ipc_base_dir: Path,
     deps: IpcDeps,
 ) -> int:
@@ -374,7 +374,7 @@ async def _sweep_directory(
     return processed + cleaned
 
 
-async def _sweep_runtime_directory(
+async def recover_ipc_runtime(
     ipc_base_dir: Path,
     deps: IpcDeps,
 ) -> int:
@@ -420,7 +420,7 @@ async def _runtime_sweep_loop(ipc_base_dir: Path, deps: IpcDeps) -> None:
     """Periodically sweep live IPC files in case watchdog drops an event."""
     while True:
         await asyncio.sleep(IPC_RUNTIME_SWEEP_INTERVAL_SECONDS)
-        handled = await _sweep_runtime_directory(ipc_base_dir, deps)
+        handled = await recover_ipc_runtime(ipc_base_dir, deps)
         if handled:
             logger.info("IPC runtime sweep processed files", count=handled)
 
@@ -450,7 +450,7 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
         return
 
     if queued.subdir == "messages":
-        await _process_message_file(
+        await process_ipc_message_file(
             queued.path,
             queued.source_group,
             is_admin=queued.is_admin,
@@ -458,7 +458,7 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
             deps=deps,
         )
     elif queued.subdir == "requests":
-        await _process_request_file(
+        await process_ipc_request_file(
             queued.path,
             queued.source_group,
             is_admin=queued.is_admin,
@@ -466,7 +466,7 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
             deps=deps,
         )
     elif queued.subdir == "output":
-        await _process_output_file(queued.path, queued.source_group, ipc_base_dir)
+        await process_ipc_output_file(queued.path, queued.source_group, ipc_base_dir)
     elif queued.subdir == "approval_decisions":
         from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - approval handler imports service dispatch; keep watcher startup narrow.
             process_approval_decision,
@@ -492,7 +492,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     await asyncio.to_thread(_mkdir_parents, ipc_base_dir)
 
     # --- Startup sweep (crash recovery) ---
-    swept = await _sweep_directory(ipc_base_dir, deps)
+    swept = await recover_ipc_startup(ipc_base_dir, deps)
     if swept > 0:
         logger.info("IPC startup sweep processed files", count=swept)
 
@@ -500,7 +500,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[Path] = asyncio.Queue()
 
-    handler = _IpcEventHandler(ipc_base_dir, loop, queue)
+    handler = IpcEventHandler(ipc_base_dir, loop, queue)
     observer = Observer()
     observer.schedule(handler, str(ipc_base_dir), recursive=True)
     observer.daemon = True

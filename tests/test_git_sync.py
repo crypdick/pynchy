@@ -526,13 +526,13 @@ class TestPollingHelpers:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="main-sha-001\trefs/heads/main\n"
             )
-            sha = sync_poll._host_get_origin_main_sha(tmp_path)
+            sha = sync_poll.host_get_origin_main_sha(tmp_path)
             assert sha == "main-sha-001"
 
     def test_host_get_origin_main_sha_failure(self, tmp_path: Path):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="")
-            sha = sync_poll._host_get_origin_main_sha(tmp_path)
+            sha = sync_poll.host_get_origin_main_sha(tmp_path)
             assert sha is None
 
     def test_container_files_change_triggers_rebuild(self):
@@ -623,7 +623,7 @@ class TestCheckOriginDrift:
     @pytest.mark.asyncio
     async def test_origin_change_updates_baseline_when_local_already_matches(self, tmp_path: Path):
         deps = _RecordingGitSyncDeps()
-        state = sync_poll._HostSyncState(
+        state = sync_poll.HostSyncState(
             last_origin_sha="old-origin",
             deployed_sha="deployed",
             config_hash="cfg",
@@ -631,10 +631,10 @@ class TestCheckOriginDrift:
         )
 
         with patch(
-            "pynchy.host.git_ops.sync_poll._host_get_origin_main_sha",
+            "pynchy.host.git_ops.sync_poll.host_get_origin_main_sha",
             return_value="new-origin",
         ):
-            changed = await sync_poll._check_origin_drift(tmp_path, state, None, deps)
+            changed = await sync_poll.check_origin_drift(tmp_path, state, None, deps)
 
         assert changed is False
         assert state.last_origin_sha == "new-origin"
@@ -644,7 +644,7 @@ class TestCheckOriginDrift:
     async def test_origin_change_pulls_notifies_and_deploys(self, tmp_path: Path):
         deps = _RecordingGitSyncDeps()
         repo_ctx = RepoContext(slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt")
-        state = sync_poll._HostSyncState(
+        state = sync_poll.HostSyncState(
             last_origin_sha="old-origin",
             deployed_sha="deployed-sha",
             config_hash="cfg",
@@ -653,7 +653,7 @@ class TestCheckOriginDrift:
 
         with (
             patch(
-                "pynchy.host.git_ops.sync_poll._host_get_origin_main_sha",
+                "pynchy.host.git_ops.sync_poll.host_get_origin_main_sha",
                 return_value="origin-new",
             ),
             patch("pynchy.host.git_ops.sync_poll.host_update_main", return_value=True),
@@ -666,7 +666,7 @@ class TestCheckOriginDrift:
             ) as notify,
         ):
             sync_poll.last_notified_sha.pop(str(tmp_path), None)
-            changed = await sync_poll._check_origin_drift(tmp_path, state, repo_ctx, deps)
+            changed = await sync_poll.check_origin_drift(tmp_path, state, repo_ctx, deps)
 
         assert changed is True
         assert state.last_origin_sha == "origin-new"
@@ -686,10 +686,10 @@ class TestHashConfigFiles:
         config_path = project / "config.toml"
 
         config_path.write_text("[agent]\nname = 'test'\n")
-        hash1 = sync_poll._hash_config_files()
+        hash1 = sync_poll.get_deploy_config_hash()
 
         config_path.write_text("[agent]\nname = 'changed'\n")
-        hash2 = sync_poll._hash_config_files()
+        hash2 = sync_poll.get_deploy_config_hash()
 
         assert hash1 != hash2
 
@@ -699,8 +699,8 @@ class TestHashConfigFiles:
         config_path = project / "config.toml"
         config_path.write_text("[agent]\nname = 'test'\n")
 
-        hash1 = sync_poll._hash_config_files()
-        hash2 = sync_poll._hash_config_files()
+        hash1 = sync_poll.get_deploy_config_hash()
+        hash2 = sync_poll.get_deploy_config_hash()
 
         assert hash1 == hash2
 

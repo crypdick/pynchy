@@ -69,6 +69,13 @@ _SALT_KEY_FILE = "salt.key"
 _PHOENIX_CALLBACK = "arize_phoenix"
 _PHOENIX_ENDPOINT_ENV = "PHOENIX_COLLECTOR_HTTP_ENDPOINT"
 _OTEL_CONTENT_ENV = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+_GATEWAY_MANAGED_VARS = frozenset(
+    {
+        "LITELLM_MASTER_KEY",
+        "LITELLM_SALT_KEY",
+        "DATABASE_URL",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +91,42 @@ def _load_or_create_persistent_key(path: Path, prefix: str = "") -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(key, encoding="utf-8")
     return key
+
+
+def resolve_litellm_environment(config_path: Path) -> dict[str, str]:
+    """Load the config's sibling ``.env`` and overlay the host environment."""
+    from dotenv import (  # noqa: PLC0415, RUF100 - lazy import keeps optional dotenv dependency out of module startup.
+        dotenv_values,
+    )
+
+    dotenv_path = config_path.parent / ".env"
+    dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
+    merged: dict[str, str] = {key: value for key, value in dotenv_vars.items() if value is not None}
+    merged.update(os.environ)
+    return merged
+
+
+def collect_litellm_yaml_environment(
+    config_path: Path, env: dict[str, str]
+) -> list[tuple[str, str]]:
+    """Resolve non-gateway ``os.environ/`` references from a LiteLLM config."""
+    text = config_path.read_text(encoding="utf-8")
+    var_names = set(re.findall(r"os\.environ/(\w+)", text))
+    var_names -= _GATEWAY_MANAGED_VARS
+
+    resolved: list[tuple[str, str]] = []
+    for name in sorted(var_names):
+        value = env.get(name)
+        if not value:
+            logger.warning("YAML references unset env var", var=name)
+        elif PLACEHOLDER_RE.search(value):
+            logger.warning(
+                "Skipping env var with placeholder value",
+                var=name,
+            )
+        else:
+            resolved.append((name, value))
+    return resolved
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +199,11 @@ class LiteLLMGateway:
         return f"http://{self.container_host}:{self.port}"
 
     @property
+    def required_models(self) -> tuple[str, ...]:
+        """Return model aliases this gateway is configured to serve."""
+        return self._required_models
+
+    @property
     def _database_url(self) -> str:
         return (
             f"postgresql://{_POSTGRES_USER}:{self._pg_password}"
@@ -174,61 +222,6 @@ class LiteLLMGateway:
     # ------------------------------------------------------------------
     # Env-var forwarding
     # ------------------------------------------------------------------
-
-    # Vars that pynchy sets itself — never forward from host env.
-    _GATEWAY_MANAGED_VARS = frozenset(
-        {
-            "LITELLM_MASTER_KEY",
-            "LITELLM_SALT_KEY",
-            "DATABASE_URL",
-        }
-    )
-
-    @staticmethod
-    def _resolve_env(config_path: Path) -> dict[str, str]:
-        """Build a merged env dict from ``.env`` file + ``os.environ``.
-
-        ``.env`` is expected as a sibling of the config file (= project
-        root).  ``os.environ`` wins on conflicts.
-        """
-        from dotenv import (  # noqa: PLC0415, RUF100 - lazy import keeps optional dotenv dependency out of module startup.
-            dotenv_values,
-        )
-
-        dotenv_path = config_path.parent / ".env"
-        dotenv_vars = dotenv_values(dotenv_path) if dotenv_path.exists() else {}
-        merged: dict[str, str] = {k: v for k, v in dotenv_vars.items() if v is not None}
-        merged.update(os.environ)
-        return merged
-
-    @staticmethod
-    def _collect_yaml_env_refs(config_path: Path, env: dict[str, str]) -> list[tuple[str, str]]:
-        """Scan litellm config for ``os.environ/`` references and resolve from *env*.
-
-        Returns ``(name, value)`` pairs for every referenced var that is
-        set in *env*.  Gateway-managed vars are excluded.  Missing or
-        placeholder vars produce a warning and are skipped.
-
-        Callers should pass the **filtered** config path so that env vars
-        belonging to filtered-out model entries are not forwarded.
-        """
-        text = config_path.read_text(encoding="utf-8")
-        var_names = set(re.findall(r"os\.environ/(\w+)", text))
-        var_names -= LiteLLMGateway._GATEWAY_MANAGED_VARS
-
-        resolved: list[tuple[str, str]] = []
-        for name in sorted(var_names):
-            value = env.get(name)
-            if not value:
-                logger.warning("YAML references unset env var", var=name)
-            elif PLACEHOLDER_RE.search(value):
-                logger.warning(
-                    "Skipping env var with placeholder value",
-                    var=name,
-                )
-            else:
-                resolved.append((name, value))
-        return resolved
 
     @staticmethod
     def _uses_chatgpt_provider(config_path: Path) -> bool:
@@ -402,7 +395,7 @@ class LiteLLMGateway:
         await remove_container(self._litellm_container)
 
         # Resolve env vars once — shared by config filtering and env-var forwarding.
-        env = self._resolve_env(self._config_path)
+        env = resolve_litellm_environment(self._config_path)
 
         # Filter the config: remove model entries with missing/placeholder keys
         filtered_config = self._config_preparer.prepare(
@@ -438,7 +431,7 @@ class LiteLLMGateway:
 
         # Forward env vars referenced in the *filtered* config so we don't
         # forward vars for model entries that were filtered out.
-        for var_name, value in self._collect_yaml_env_refs(filtered_config, env):
+        for var_name, value in collect_litellm_yaml_environment(filtered_config, env):
             env_vars.extend(["-e", f"{var_name}={value}"])
 
         # Add UI credentials if configured

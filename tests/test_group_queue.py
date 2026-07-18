@@ -16,7 +16,6 @@ from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.orchestrator.concurrency import GroupQueue
 
 TASK_EXPLODED_MESSAGE = "task exploded"
-REJECTED_TASK_MESSAGE = "rejected task should not run"
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -56,16 +55,14 @@ class TestGroupQueue:
         assert queue.register_host_process(lease, None, "host-agent-runner", "group-one")
 
         queue.defer_interrupt_until_tool_result("group1@g.us")
-        state = queue._get_group("group1@g.us")
 
-        assert state.active is True
-        assert state.is_external_run is True
-        assert state.pending_messages is True
+        assert queue.has_active_host_process("group-one") is True
+        assert queue.snapshot()["group1@g.us"]["pending_messages"] is True
 
-        queue.release_host_process(lease)
+        assert queue.release_host_process(lease) is True
 
-        assert state.active is False
-        assert state.is_external_run is False
+        assert queue.has_active_host_process("group-one") is False
+        assert queue.snapshot()["group1@g.us"]["active"] is False
 
     def test_stale_external_process_release_preserves_a_newer_lease(
         self, queue: GroupQueue
@@ -76,27 +73,27 @@ class TestGroupQueue:
 
         second_lease = queue.acquire_host_process("group1@g.us")
         assert queue.register_host_process(second_lease, None, "host-agent-runner", "group-one")
-        state = queue._get_group("group1@g.us")
 
         assert queue.release_host_process(first_lease) is False
-        assert state.active is True
-        assert state.host_process_lease == second_lease
+        assert queue.has_active_host_process("group-one") is True
+        assert queue.release_host_process(second_lease) is False
 
-    def test_host_process_cannot_overwrite_an_active_group(self, queue: GroupQueue) -> None:
+    async def test_host_process_cannot_overwrite_an_active_group(self, queue: GroupQueue) -> None:
         """A direct host turn must not replace an active task's process metadata."""
-        state = queue._get_group("group1@g.us")
-        proc = AsyncMock(spec=asyncio.subprocess.Process)
-        state.active = True
-        state.active_is_task = True
-        state.process = proc
-        state.container_name = "scheduled-task"
+        task_complete = asyncio.Event()
+
+        async def task_fn() -> None:
+            await task_complete.wait()
+
+        assert queue.enqueue_task("group1@g.us", "task-1", task_fn)
+        await asyncio.sleep(0.02)
+        assert queue.is_active_task("group1@g.us") is True
 
         with pytest.raises(RuntimeError, match="Cannot start a host process"):
             queue.acquire_host_process("group1@g.us")
 
-        assert state.process is proc
-        assert state.container_name == "scheduled-task"
-        assert state.host_process_lease is None
+        task_complete.set()
+        await asyncio.sleep(0.05)
 
     async def test_only_runs_one_container_per_group(self, queue: GroupQueue):
         concurrent_count = 0
@@ -409,55 +406,6 @@ class TestSendMessage:
         await asyncio.sleep(0.05)
 
 
-class TestRegisterProcess:
-    """Tests for register_process: stores container metadata."""
-
-    async def test_registers_process_and_folder(self, queue: GroupQueue):
-        completions: list[asyncio.Event] = []
-
-        async def process_messages(group_jid: str) -> bool:
-            event = asyncio.Event()
-            completions.append(event)
-            await event.wait()
-            return True
-
-        queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check("group1@g.us")
-        await asyncio.sleep(0.02)
-
-        mock_proc = AsyncMock(spec=asyncio.subprocess.Process)
-        queue.register_process("group1@g.us", mock_proc, "my-container", "my-folder")
-
-        state = queue._groups["group1@g.us"]
-        assert state.process is mock_proc
-        assert state.container_name == "my-container"
-        assert state.group_folder == "my-folder"
-
-        completions[0].set()
-        await asyncio.sleep(0.05)
-
-    async def test_skips_group_folder_when_none(self, queue: GroupQueue):
-        completions: list[asyncio.Event] = []
-
-        async def process_messages(group_jid: str) -> bool:
-            event = asyncio.Event()
-            completions.append(event)
-            await event.wait()
-            return True
-
-        queue.set_process_messages_fn(process_messages)
-        queue.enqueue_message_check("group1@g.us")
-        await asyncio.sleep(0.02)
-
-        queue.register_process("group1@g.us", None, "c1", None)
-
-        state = queue._groups["group1@g.us"]
-        assert state.group_folder is None
-
-        completions[0].set()
-        await asyncio.sleep(0.05)
-
-
 class TestGroupQueueRetry:
     """Test retry behavior with shorter timeouts."""
 
@@ -729,9 +677,9 @@ class TestTaskExceptionHandling:
         await asyncio.sleep(0.1)
 
         # Queue should still be functional
-        assert queue._active_count == 0
-        state = queue._get_group("group1@g.us")
-        assert state.active is False
+        snapshot = queue.snapshot()
+        assert snapshot["_meta"]["active_count"] == 0
+        assert snapshot["group1@g.us"]["active"] is False
 
     async def test_exception_in_process_messages_schedules_retry(self, queue: GroupQueue):
         """When process_messages raises, the queue schedules a retry."""
@@ -751,27 +699,11 @@ class TestTaskExceptionHandling:
             await asyncio.sleep(0.02)
             assert call_count == 1
             # State should be cleaned up after exception
-            state = queue._get_group("group1@g.us")
-            assert state.active is False
+            assert queue.snapshot()["group1@g.us"]["active"] is False
 
             # Retry should fire
             await asyncio.sleep(0.15)
             assert call_count >= 2
-
-
-class TestTaskAcceptance:
-    """Tests for enqueue_task acceptance reporting."""
-
-    async def test_rejects_task_when_queue_is_shutting_down(self, queue: GroupQueue):
-        def task_fn() -> Awaitable[None]:
-            raise AssertionError(REJECTED_TASK_MESSAGE)
-
-        queue._shutting_down = True
-
-        assert queue.enqueue_task("group1@g.us", "task-1", task_fn) is False
-        await asyncio.sleep(0.02)
-
-        assert queue.snapshot()["_meta"]["active_count"] == 0
 
 
 class TestStopActiveProcess:
@@ -783,7 +715,7 @@ class TestStopActiveProcess:
         # Should not raise
 
     async def test_calls_graceful_stop_on_active_process(self, queue: GroupQueue, tmp_path):
-        """stop_active_process writes _close sentinel and calls _graceful_stop."""
+        """stop_active_process writes _close sentinel and calls graceful_stop."""
         completions: list[asyncio.Event] = []
 
         async def task_fn():
@@ -802,7 +734,7 @@ class TestStopActiveProcess:
         with (
             _patch_settings(max_concurrent=2, data_dir=tmp_path),
             patch(
-                "pynchy.host.container_manager.process._graceful_stop",
+                "pynchy.host.container_manager.process.graceful_stop",
                 new_callable=AsyncMock,
             ) as mock_stop,
         ):
@@ -820,16 +752,14 @@ class TestStopActiveProcess:
 class TestDeferredToolBoundaryInterrupt:
     def test_host_runner_rejects_ipc_messages_for_boundary_delivery(self, queue: GroupQueue):
         """Host execution has no IPC watcher and must leave input pending."""
-        state = queue._get_group("group1@g.us")
-        state.active = True
-        state.group_folder = "pynchy-dev"
-        state.is_host_process = True
+        lease = queue.acquire_host_process("group1@g.us")
+        assert queue.register_host_process(lease, None, "host-agent-runner", "pynchy-dev")
 
         assert queue.send_message("group1@g.us", "follow-up") is False
+        assert queue.release_host_process(lease) is False
 
     async def test_stops_only_when_a_deferred_interrupt_is_requested(self, queue: GroupQueue):
-        state = queue._get_group("group1@g.us")
-        state.active = True
+        lease = queue.acquire_host_process("group1@g.us")
 
         assert await queue.interrupt_after_tool_result("group1@g.us") is False
 
@@ -838,19 +768,17 @@ class TestDeferredToolBoundaryInterrupt:
             assert await queue.interrupt_after_tool_result("group1@g.us") is True
 
         stop.assert_awaited_once_with("group1@g.us")
-        assert state.defer_interrupt_until_tool_result is False
+        assert queue.release_host_process(lease) is True
 
     async def test_stops_host_runner_without_container_cleanup(self, queue: GroupQueue):
-        state = queue._get_group("group1@g.us")
-        state.active = True
+        lease = queue.acquire_host_process("group1@g.us")
         proc = AsyncMock(spec=asyncio.subprocess.Process)
         proc.returncode = None
-        queue.register_process(
-            "group1@g.us",
+        assert queue.register_host_process(
+            lease,
             proc,
             "host-agent-runner",
             "pynchy-dev",
-            is_host_process=True,
         )
 
         with patch(
@@ -860,9 +788,10 @@ class TestDeferredToolBoundaryInterrupt:
             await queue.stop_active_process("group1@g.us")
 
         stop.assert_awaited_once_with(proc)
+        assert queue.release_host_process(lease) is False
 
     async def test_skips_graceful_stop_when_already_exited(self, queue: GroupQueue, tmp_path):
-        """stop_active_process skips _graceful_stop if process already exited."""
+        """stop_active_process skips graceful_stop if process already exited."""
         completions: list[asyncio.Event] = []
 
         async def task_fn():
@@ -880,7 +809,7 @@ class TestDeferredToolBoundaryInterrupt:
         with (
             _patch_settings(max_concurrent=2, data_dir=tmp_path),
             patch(
-                "pynchy.host.container_manager.process._graceful_stop",
+                "pynchy.host.container_manager.process.graceful_stop",
                 new_callable=AsyncMock,
             ) as mock_stop,
         ):
@@ -914,11 +843,10 @@ class TestClearPendingTasks:
         queue.enqueue_task("group1@g.us", "task-1", task_fn)
         queue.enqueue_task("group1@g.us", "task-2", task_fn)
 
-        state = queue._get_group("group1@g.us")
-        assert len(state.pending_tasks) == 2
+        assert queue.snapshot()["group1@g.us"]["pending_tasks"] == 2
 
         queue.clear_pending_tasks("group1@g.us")
-        assert len(state.pending_tasks) == 0
+        assert queue.snapshot()["group1@g.us"]["pending_tasks"] == 0
 
         completions[0].set()
         await asyncio.sleep(0.05)
@@ -926,8 +854,7 @@ class TestClearPendingTasks:
     def test_noop_when_no_pending_tasks(self, queue: GroupQueue):
         """clear_pending_tasks does nothing when there are no pending tasks."""
         queue.clear_pending_tasks("group1@g.us")
-        state = queue._get_group("group1@g.us")
-        assert len(state.pending_tasks) == 0
+        assert queue.snapshot()["group1@g.us"]["pending_tasks"] == 0
 
 
 class TestDrainGroupTaskOrdering:

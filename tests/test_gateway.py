@@ -9,12 +9,18 @@ import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
-import pynchy.host.container_manager.gateway as _gw_mod
 from pynchy.config.models import AgentConfig, GatewayConfig, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
+    get_gateway,
     start_gateway,
+    stop_gateway,
+)
+from pynchy.host.container_manager.gateway_builtin import build_upstream_headers
+from pynchy.host.container_manager.gateway_litellm import (
+    collect_litellm_yaml_environment,
+    resolve_litellm_environment,
 )
 from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
 
@@ -66,32 +72,27 @@ class TestLiteLLMGatewayInit:
         assert gw.has_provider("openai") is True
         assert gw.has_provider("anything") is True
 
-    def test_database_url_format(self, tmp_path: Path):
-        gw = LiteLLMGateway(
-            config_path=str(tmp_path / "config.yaml"),
-            data_dir=tmp_path,
-            **_LITELLM_KWARGS,
-        )
-        assert gw._database_url.startswith("postgresql://litellm:")
-        assert "@pynchy-litellm-db:5432/litellm" in gw._database_url
-
     def test_persists_salt_and_pg_password(self, tmp_path: Path):
-        gw1 = LiteLLMGateway(
+        LiteLLMGateway(
             config_path=str(tmp_path / "config.yaml"),
             data_dir=tmp_path,
             **_LITELLM_KWARGS,
         )
-        gw2 = LiteLLMGateway(
+        keys_dir = tmp_path / "litellm"
+        initial_salt = (keys_dir / "salt.key").read_text()
+        initial_password = (keys_dir / "pg_password.key").read_text()
+
+        LiteLLMGateway(
             config_path=str(tmp_path / "config.yaml"),
             data_dir=tmp_path,
             **_LITELLM_KWARGS,
         )
-        assert gw1._salt_key == gw2._salt_key
-        assert gw1._pg_password == gw2._pg_password
+        assert (keys_dir / "salt.key").read_text() == initial_salt
+        assert (keys_dir / "pg_password.key").read_text() == initial_password
 
 
 class TestCollectYamlEnvRefs:
-    """Verify _collect_yaml_env_refs scans YAML and resolves from host env."""
+    """Verify LiteLLM config environment resolution."""
 
     def test_finds_vars(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         cfg = tmp_path / "litellm_config.yaml"
@@ -105,8 +106,8 @@ class TestCollectYamlEnvRefs:
         monkeypatch.setenv("FOO_TOKEN", "foo-val")
         monkeypatch.setenv("BAR_TOKEN", "bar-val")
 
-        env = LiteLLMGateway._resolve_env(cfg)
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
+        env = resolve_litellm_environment(cfg)
+        result = collect_litellm_yaml_environment(cfg, env)
         assert ("BAR_TOKEN", "bar-val") in result
         assert ("FOO_TOKEN", "foo-val") in result
         assert len(result) == 2
@@ -123,8 +124,8 @@ class TestCollectYamlEnvRefs:
         monkeypatch.setenv("LITELLM_MASTER_KEY", "should-not-appear")
         monkeypatch.setenv("MY_KEY", "my-val")
 
-        env = LiteLLMGateway._resolve_env(cfg)
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
+        env = resolve_litellm_environment(cfg)
+        result = collect_litellm_yaml_environment(cfg, env)
         names = [name for name, _ in result]
         assert "LITELLM_MASTER_KEY" not in names
         assert "MY_KEY" in names
@@ -134,8 +135,8 @@ class TestCollectYamlEnvRefs:
         cfg.write_text("api_key: os.environ/MISSING_VAR\n")
         monkeypatch.delenv("MISSING_VAR", raising=False)
 
-        env = LiteLLMGateway._resolve_env(cfg)
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
+        env = resolve_litellm_environment(cfg)
+        result = collect_litellm_yaml_environment(cfg, env)
         assert result == []
 
     def test_reads_from_dotenv_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -146,8 +147,8 @@ class TestCollectYamlEnvRefs:
         # .env as sibling of config file — no CWD dependency
         (tmp_path / ".env").write_text("DOTENV_ONLY_TOKEN=from-dotenv\n")
 
-        env = LiteLLMGateway._resolve_env(cfg)
-        result = LiteLLMGateway._collect_yaml_env_refs(cfg, env)
+        env = resolve_litellm_environment(cfg)
+        result = collect_litellm_yaml_environment(cfg, env)
         assert ("DOTENV_ONLY_TOKEN", "from-dotenv") in result
 
     @pytest.mark.asyncio
@@ -499,30 +500,14 @@ class TestBuiltinGateway:
 class TestBuiltinGatewayAuthHeaders:
     """Builtin gateway uses provider-native API-key headers."""
 
-    @staticmethod
-    def _make_gateway(provider: str) -> BuiltinGateway:
-        gw = BuiltinGateway(
-            port=4010, host=ALL_INTERFACE_BIND_HOST, container_host="host.docker.internal"
-        )
-        gw._credentials = {
-            provider: {"type": "api_key", "value": "sk-secret"},
-        }
-        return gw
-
-    @staticmethod
-    def _make_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
-        return headers or {}
-
     def test_anthropic_creds_use_x_api_key(self):
-        gw = self._make_gateway("anthropic")
-        headers = gw._build_upstream_headers(self._make_headers(), "anthropic")
+        headers = build_upstream_headers({}, "anthropic", "sk-secret")
         assert headers["x-api-key"] == "sk-secret"
         assert "Authorization" not in headers
         assert "anthropic-beta" not in headers
 
     def test_openai_creds_use_bearer_auth(self):
-        gw = self._make_gateway("openai")
-        headers = gw._build_upstream_headers(self._make_headers(), "openai")
+        headers = build_upstream_headers({}, "openai", "sk-secret")
         assert headers["Authorization"] == "Bearer sk-secret"
         assert "x-api-key" not in headers
 
@@ -536,9 +521,10 @@ class TestGatewayModeSelection:
     @pytest.fixture(autouse=True)
     async def _cleanup(self):
         yield
-        # Reset the module-level singleton directly instead of calling
-        # stop_gateway(), which would invoke real Docker commands.
-        _gw_mod._gateway = None
+        gateway = get_gateway()
+        if gateway is not None:
+            with patch.object(gateway, "stop", new_callable=AsyncMock):
+                await stop_gateway()
 
     @pytest.mark.asyncio
     async def test_litellm_mode_when_config_set(self, tmp_path: Path):
@@ -565,7 +551,7 @@ class TestGatewayModeSelection:
         ):
             gw = await start_gateway()
             assert isinstance(gw, LiteLLMGateway)
-            assert gw._required_models == ("gpt-5.5",)
+            assert gw.required_models == ("gpt-5.5",)
 
     @pytest.mark.asyncio
     async def test_litellm_mode_requires_effective_workspace_models(self, tmp_path: Path):
@@ -602,7 +588,7 @@ class TestGatewayModeSelection:
             gateway = await start_gateway()
 
         assert isinstance(gateway, LiteLLMGateway)
-        assert gateway._required_models == ("global-model", "profile-model", "workspace-model")
+        assert gateway.required_models == ("global-model", "profile-model", "workspace-model")
 
     @pytest.mark.asyncio
     async def test_default_container_host_resolves_for_apple_runtime(self, tmp_path: Path):

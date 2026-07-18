@@ -2,7 +2,7 @@
 
 Provides:
   - is_query_done_pulse() — detects query-done events in the IPC output stream
-  - _graceful_stop() — stops a container gracefully, killing it if it times out
+  - graceful_stop() — stops a container gracefully, killing it if it times out
   - docker_rm_force() — async force-remove a container by name
   - OnOutput type alias — callback for output events
 """
@@ -22,8 +22,8 @@ from pynchy.types import ContainerOutput
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
-_RM_FORCE_TIMEOUT_SECONDS = 15.0
-_RM_FORCE_KILL_WAIT_SECONDS = 2.0
+DEFAULT_RM_FORCE_TIMEOUT_SECONDS = 15.0
+DEFAULT_RM_FORCE_KILL_WAIT_SECONDS = 2.0
 _APPLE_RUNTIME_REAP_WAIT_SECONDS = 2.0
 _APPLE_RUNTIME_REAP_POLL_SECONDS = 0.05
 
@@ -44,7 +44,7 @@ def is_query_done_pulse(output: ContainerOutput) -> bool:
     )
 
 
-async def _graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:
+async def graceful_stop(proc: asyncio.subprocess.Process, container_name: str) -> None:
     """Stop container gracefully with a short timeout, killing it if it doesn't exit."""
     try:
         await _stop_container_process(proc, container_name)
@@ -88,7 +88,11 @@ async def _stop_container_process(proc: asyncio.subprocess.Process, container_na
                 await proc.wait()
 
 
-async def _run_rm_force(container_name: str, rm_timeout_seconds: float) -> bool:
+async def _run_rm_force(
+    container_name: str,
+    rm_timeout_seconds: float,
+    kill_wait_seconds: float,
+) -> bool:
     """Run ``container rm -f``/``docker rm -f`` once, bounded by ``rm_timeout_seconds``."""
     proc = await asyncio.create_subprocess_exec(
         get_runtime().cli,
@@ -108,7 +112,7 @@ async def _run_rm_force(container_name: str, rm_timeout_seconds: float) -> bool:
         with contextlib.suppress(ProcessLookupError):
             proc.kill()
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(proc.wait(), timeout=_RM_FORCE_KILL_WAIT_SECONDS)
+            await asyncio.wait_for(proc.wait(), timeout=kill_wait_seconds)
         return False
     else:
         return True
@@ -233,7 +237,12 @@ async def reap_apple_runtime_orphans(container_name: str) -> bool:
     return True
 
 
-async def docker_rm_force(container_name: str) -> None:
+async def docker_rm_force(
+    container_name: str,
+    *,
+    timeout_seconds: float = DEFAULT_RM_FORCE_TIMEOUT_SECONDS,
+    retry_timeout_seconds: float = DEFAULT_RM_FORCE_KILL_WAIT_SECONDS,
+) -> None:
     """Force-remove a container by name, ignoring expected errors.
 
     Async counterpart of :func:`_docker.remove_container` — used by the
@@ -241,9 +250,9 @@ async def docker_rm_force(container_name: str) -> None:
     management, one-shot container cleanup).
     """
     try:
-        await _run_rm_force(container_name, _RM_FORCE_TIMEOUT_SECONDS)
+        await _run_rm_force(container_name, timeout_seconds, retry_timeout_seconds)
         if await reap_apple_runtime_orphans(container_name):
-            await _run_rm_force(container_name, _RM_FORCE_KILL_WAIT_SECONDS)
+            await _run_rm_force(container_name, retry_timeout_seconds, retry_timeout_seconds)
     except OSError as exc:
         # OSError covers FileNotFoundError (CLI missing) and other
         # process-spawn failures — expected in degraded environments.

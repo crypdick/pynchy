@@ -20,8 +20,7 @@ from pynchy import state
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
-from pynchy.host.container_manager.security import gate
-from pynchy.host.container_manager.security.gate import create_gate
+from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
 from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
 from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
@@ -34,7 +33,7 @@ async def _setup():
     await state.init_test_database()
     clear_plugin_handler_cache()
     yield
-    gate._gates.clear()
+    destroy_gate("mygroup", 1000.0)
 
 
 @pytest.fixture

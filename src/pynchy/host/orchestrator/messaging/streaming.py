@@ -246,6 +246,11 @@ def get_trace_batcher() -> TraceBatcher | None:
     return _state.trace_batcher
 
 
+def reset_trace_batcher() -> None:
+    """Clear the process-wide trace batcher before a fresh app lifecycle."""
+    _state.trace_batcher = None
+
+
 async def enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, event: OutboundEvent) -> None:
     """Enqueue via batcher if available, otherwise broadcast directly."""
     if _state.trace_batcher is not None:

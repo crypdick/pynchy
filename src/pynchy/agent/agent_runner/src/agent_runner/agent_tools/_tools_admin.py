@@ -47,12 +47,12 @@ from ._registry import tool, tool_error
         },
         "required": ["jid", "name", "folder", "trigger"],
     },
-    visible=lambda: _ipc.is_admin,
+    visible=lambda: _ipc.get_agent_tool_runtime().is_admin,
 )
 async def _register_group_handle(  # noqa: RUF029, RUF100 - async tool API.
     arguments: dict[str, Any],
 ) -> list[TextContent] | CallToolResult:
-    if not _ipc.is_admin:
+    if not _ipc.get_agent_tool_runtime().is_admin:
         return tool_error("Only the admin group can register new groups.")
 
     payload = {
@@ -105,10 +105,10 @@ async def _register_group_handle(  # noqa: RUF029, RUF100 - async tool API.
             },
         },
     },
-    visible=lambda: _ipc.is_admin,
+    visible=lambda: _ipc.get_agent_tool_runtime().is_admin,
 )
 async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
-    if not _ipc.is_admin:
+    if not _ipc.get_agent_tool_runtime().is_admin:
         return tool_error("Only the admin group can deploy.")
 
     try:
@@ -135,7 +135,7 @@ async def _deploy_changes_handle(arguments: dict[str, Any]) -> list[TextContent]
         ),
         "headSha": head_sha,
         "sessionId": session_id,
-        "chatJid": _ipc.chat_jid,
+        "chatJid": _ipc.get_agent_tool_runtime().chat_jid,
     }
     _ipc.write_request_file("deploy", payload, reply_to=None)
     return [

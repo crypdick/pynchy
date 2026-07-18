@@ -44,13 +44,13 @@ async def _handle(  # noqa: RUF029, RUF100 - async tool API.
 ) -> list[TextContent]:
     data = {
         "type": "message",
-        "chatJid": _ipc.chat_jid,
+        "chatJid": _ipc.get_agent_tool_runtime().chat_jid,
         "text": arguments["text"],
-        "groupFolder": _ipc.group_folder,
+        "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
         "timestamp": _ipc.now_iso(),
     }
     if arguments.get("sender"):
         data["sender"] = arguments["sender"]
 
-    _ipc.write_ipc_file(_ipc.MESSAGES_DIR, data)
+    _ipc.write_ipc_file(_ipc.get_agent_tool_runtime().ipc_dir / "messages", data)
     return [TextContent(type="text", text="Message sent.")]

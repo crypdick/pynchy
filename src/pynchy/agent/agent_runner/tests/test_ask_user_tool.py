@@ -1,15 +1,14 @@
-"""Tests for the ask_user MCP tool."""
+"""Behavioral tests for the public ask_user agent tool."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 
-from agent_runner.agent_tools import call_tool
+from agent_runner.agent_tools import AgentToolRuntime, call_tool, use_agent_tool_runtime
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,21 +16,23 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def ipc_dirs(tmp_path: Path) -> dict[str, Path]:
-    """Create temporary IPC directories and return them."""
+    """Create a complete IPC workspace for one agent-tool invocation."""
     responses = tmp_path / "responses"
     responses.mkdir()
-    requests = tmp_path / "requests"
-    requests.mkdir()
-    return {"responses": responses, "requests": requests, "ipc": tmp_path}
+    return {"responses": responses, "requests": tmp_path / "requests", "ipc": tmp_path}
 
 
 @pytest.fixture(autouse=True)
-def _patch_ipc_dirs(ipc_dirs: dict[str, Path]):
-    """Redirect IPC_DIR and RESPONSES_DIR to temp dirs."""
-    with (
-        patch("agent_runner.agent_tools._ipc_request.IPC_DIR", ipc_dirs["ipc"]),
-        patch("agent_runner.agent_tools._ipc_request.RESPONSES_DIR", ipc_dirs["responses"]),
-        patch("agent_runner.agent_tools._ipc_request.write_request_file"),
+def agent_tool_runtime(ipc_dirs: dict[str, Path]):
+    """Route public tool calls through an isolated, explicit runtime context."""
+    with use_agent_tool_runtime(
+        AgentToolRuntime(
+            chat_jid="test@g.us",
+            group_folder="test-group",
+            is_admin=False,
+            is_scheduled_task=False,
+            ipc_dir=ipc_dirs["ipc"],
+        )
     ):
         yield
 
@@ -43,7 +44,7 @@ def _write_response(
     result: dict | None = None,
     error: str | None = None,
 ) -> None:
-    """Write a response file atomically (tmp -> rename), matching host behavior."""
+    """Write a response atomically, matching the host IPC contract."""
     data: dict = {}
     if error:
         data["error"] = error
@@ -51,317 +52,159 @@ def _write_response(
         data["result"] = result
 
     final = responses_dir / f"{request_id}.json"
-    tmp = final.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data))
-    tmp.rename(final)
+    temporary = final.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(data))
+    temporary.rename(final)
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+async def _respond_to_request(
+    ipc_dirs: dict[str, Path],
+    *,
+    result: dict | None = None,
+    error: str | None = None,
+    delay_seconds: float = 0.0,
+) -> dict:
+    """Wait for a real IPC request, respond to it, and return its envelope."""
+    for _ in range(50):
+        request_files = list(ipc_dirs["requests"].glob("*.json"))
+        if request_files:
+            request = json.loads(request_files[0].read_text(encoding="utf-8"))
+            if delay_seconds:
+                await asyncio.sleep(delay_seconds)
+            _write_response(
+                ipc_dirs["responses"],
+                request["request_id"],
+                result=result,
+                error=error,
+            )
+            return request
+        await asyncio.sleep(0.02)
+    raise AssertionError("agent tool never wrote an IPC request")
 
 
 class TestAskUserIPCRequest:
-    """The IPC helper writes the correct request and returns the response."""
+    """The public tool writes a canonical request and returns the host response."""
 
     @pytest.mark.asyncio
     async def test_sends_correct_type_and_payload(self, ipc_dirs: dict[str, Path]) -> None:
-        """Verify the request has kind 'ask_user:ask' and the questions payload."""
-        captured_data: list[dict] = []
+        responder = asyncio.create_task(_respond_to_request(ipc_dirs, result={"answers": ["yes"]}))
 
-        def capture_write(
-            kind: str,
-            payload: dict,
-            *,
-            request_id: str | None = None,
-            reply_to: str | None = "responses",
-            deadline: str | None = None,
-        ) -> tuple[str, str]:
-            assert request_id is not None
-            captured_data.append(
-                {
-                    "kind": kind,
-                    "payload": payload,
-                    "request_id": request_id,
-                    "reply_to": reply_to,
-                    "deadline": deadline,
-                }
-            )
-            # Immediately write a response so the request unblocks
-            _write_response(
-                ipc_dirs["responses"],
-                request_id,
-                result={"answers": ["yes"]},
-            )
-            return "fake.json", request_id
+        questions = [{"question": "Continue?"}]
+        await asyncio.wait_for(call_tool("ask_user", {"questions": questions}), timeout=10.0)
+        request = await responder
 
-        with patch(
-            "agent_runner.agent_tools._ipc_request.write_request_file",
-            side_effect=capture_write,
-        ):
-            questions = [{"question": "Continue?"}]
-            await asyncio.wait_for(
-                call_tool("ask_user", {"questions": questions}),
-                timeout=10.0,
-            )
-
-        assert len(captured_data) == 1
-        request = captured_data[0]
         assert request["kind"] == "ask_user:ask"
-        assert request["payload"]["questions"] == [{"question": "Continue?"}]
-        assert "request_id" in request
+        assert request["payload"]["questions"] == questions
 
     @pytest.mark.asyncio
     async def test_returns_answer(self, ipc_dirs: dict[str, Path]) -> None:
-        """Verify the tool returns the user's answer from the response file."""
-        captured_id: list[str] = []
-
-        def capture_write(
-            kind: str,
-            payload: dict,
-            *,
-            request_id: str | None = None,
-            reply_to: str | None = "responses",
-            deadline: str | None = None,
-        ) -> tuple[str, str]:
-            assert request_id is not None
-            captured_id.append(request_id)
-            return "fake.json", request_id
-
-        with patch(
-            "agent_runner.agent_tools._ipc_request.write_request_file",
-            side_effect=capture_write,
-        ):
-
-            async def write_response_after_delay() -> None:
-                for _ in range(50):
-                    if captured_id:
-                        break
-                    await asyncio.sleep(0.02)
-                assert captured_id, "request_id was never captured"
-                await asyncio.sleep(0.1)
-                _write_response(
-                    ipc_dirs["responses"],
-                    captured_id[0],
-                    result={"answers": [{"text": "yes, go ahead"}]},
-                )
-
-            task = asyncio.create_task(write_response_after_delay())
-            result = await asyncio.wait_for(
-                call_tool("ask_user", {"questions": [{"question": "Should I proceed?"}]}),
-                timeout=10.0,
+        responder = asyncio.create_task(
+            _respond_to_request(
+                ipc_dirs,
+                result={"answers": [{"text": "yes, go ahead"}]},
+                delay_seconds=0.1,
             )
-            await task
+        )
 
-        assert len(result) == 1
-        response_data = json.loads(result[0].text)
-        assert response_data["answers"] == [{"text": "yes, go ahead"}]
+        result = await asyncio.wait_for(
+            call_tool("ask_user", {"questions": [{"question": "Should I proceed?"}]}),
+            timeout=10.0,
+        )
+        await responder
+
+        assert json.loads(result[0].text) == {"answers": [{"text": "yes, go ahead"}]}
 
     @pytest.mark.asyncio
-    async def test_timeout_returns_error(
-        self,
-        ipc_dirs: dict[str, Path],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Verify timeout produces a descriptive error."""
-        monkeypatch.setattr("agent_runner.agent_tools._tools_ask_user.ASK_USER_TIMEOUT", 1.0)
+    async def test_timeout_returns_error(self, ipc_dirs: dict[str, Path]) -> None:
+        runtime = AgentToolRuntime(
+            chat_jid="test@g.us",
+            group_folder="test-group",
+            is_admin=False,
+            is_scheduled_task=False,
+            ipc_dir=ipc_dirs["ipc"],
+            ask_user_timeout_seconds=0.01,
+        )
+        with use_agent_tool_runtime(runtime):
+            result = await call_tool("ask_user", {"questions": [{"question": "Hello?"}]})
 
-        result = await call_tool("ask_user", {"questions": [{"question": "Hello?"}]})
-
-        assert len(result) == 1
         assert "timed out" in result[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_questions_with_options(self, ipc_dirs: dict[str, Path]) -> None:
-        """Verify questions with options are passed through correctly."""
-        captured_data: list[dict] = []
+        questions = [
+            {
+                "question": "Which option?",
+                "options": [
+                    {"label": "Option A", "description": "First choice"},
+                    {"label": "Option B", "description": "Second choice"},
+                ],
+            }
+        ]
+        responder = asyncio.create_task(
+            _respond_to_request(ipc_dirs, result={"answers": ["Option A"]})
+        )
 
-        def capture_write(
-            kind: str,
-            payload: dict,
-            *,
-            request_id: str | None = None,
-            reply_to: str | None = "responses",
-            deadline: str | None = None,
-        ) -> tuple[str, str]:
-            assert request_id is not None
-            captured_data.append({"kind": kind, "payload": payload, "request_id": request_id})
-            _write_response(
-                ipc_dirs["responses"],
-                request_id,
-                result={"answers": ["Option A"]},
-            )
-            return "fake.json", request_id
+        await asyncio.wait_for(call_tool("ask_user", {"questions": questions}), timeout=10.0)
+        request = await responder
 
-        with patch(
-            "agent_runner.agent_tools._ipc_request.write_request_file",
-            side_effect=capture_write,
-        ):
-            questions = [
-                {
-                    "question": "Which option?",
-                    "options": [
-                        {"label": "Option A", "description": "First choice"},
-                        {"label": "Option B", "description": "Second choice"},
-                    ],
-                }
-            ]
-            await asyncio.wait_for(
-                call_tool("ask_user", {"questions": questions}),
-                timeout=10.0,
-            )
-
-        assert captured_data[0]["kind"] == "ask_user:ask"
-        assert captured_data[0]["payload"]["questions"] == questions
+        assert request["payload"]["questions"] == questions
 
 
 class TestAskUserHandler:
-    """The MCP tool handler validates input before calling the IPC helper."""
+    """The public handler validates before sending an IPC request."""
 
     @pytest.mark.asyncio
     async def test_empty_questions_returns_error(self) -> None:
-        """Empty questions list should return an error without making an IPC call."""
         result = await call_tool("ask_user", {"questions": []})
         assert result.isError is True
         assert "non-empty" in result.content[0].text.lower()
 
     @pytest.mark.asyncio
     async def test_missing_questions_returns_error(self) -> None:
-        """Missing questions key should return an error."""
         result = await call_tool("ask_user", {})
         assert result.isError is True
         assert "non-empty" in result.content[0].text.lower()
 
     @pytest.mark.asyncio
-    async def test_handler_calls_ipc(self, ipc_dirs: dict[str, Path]) -> None:
-        """Handler forwards questions to the IPC helper."""
-        captured_data: list[dict] = []
+    async def test_handler_forwards_questions(self, ipc_dirs: dict[str, Path]) -> None:
+        responder = asyncio.create_task(_respond_to_request(ipc_dirs, result={"answers": ["42"]}))
 
-        def capture_write(
-            kind: str,
-            payload: dict,
-            *,
-            request_id: str | None = None,
-            reply_to: str | None = "responses",
-            deadline: str | None = None,
-        ) -> tuple[str, str]:
-            assert request_id is not None
-            captured_data.append({"kind": kind, "payload": payload, "request_id": request_id})
-            _write_response(
-                ipc_dirs["responses"],
-                request_id,
-                result={"answers": ["42"]},
-            )
-            return "fake.json", request_id
+        result = await asyncio.wait_for(
+            call_tool("ask_user", {"questions": [{"question": "What is the answer?"}]}),
+            timeout=10.0,
+        )
+        await responder
 
-        with patch(
-            "agent_runner.agent_tools._ipc_request.write_request_file",
-            side_effect=capture_write,
-        ):
-            result = await asyncio.wait_for(
-                call_tool("ask_user", {"questions": [{"question": "What is the answer?"}]}),
-                timeout=10.0,
-            )
-
-        assert len(result) == 1
         assert "42" in result[0].text
 
 
-class TestAskUserErrorResponse:
-    """Host returns an error in the response file."""
+class TestAskUserResponses:
+    """Public ask_user responses propagate errors and clean up consumed files."""
 
     @pytest.mark.asyncio
-    async def test_error_propagated(self, ipc_dirs: dict[str, Path]) -> None:
-        """Error responses from the host are surfaced to the agent."""
-        captured_id: list[str] = []
+    async def test_error_response_is_propagated(self, ipc_dirs: dict[str, Path]) -> None:
+        responder = asyncio.create_task(
+            _respond_to_request(ipc_dirs, error="channel unavailable", delay_seconds=0.05)
+        )
 
-        def capture_write(
-            kind: str,
-            payload: dict,
-            *,
-            request_id: str | None = None,
-            reply_to: str | None = "responses",
-            deadline: str | None = None,
-        ) -> tuple[str, str]:
-            assert request_id is not None
-            captured_id.append(request_id)
-            return "fake.json", request_id
+        result = await asyncio.wait_for(
+            call_tool("ask_user", {"questions": [{"question": "Hello?"}]}),
+            timeout=10.0,
+        )
+        await responder
 
-        with patch(
-            "agent_runner.agent_tools._ipc_request.write_request_file",
-            side_effect=capture_write,
-        ):
-
-            async def write_error_response() -> None:
-                for _ in range(50):
-                    if captured_id:
-                        break
-                    await asyncio.sleep(0.02)
-                assert captured_id
-                await asyncio.sleep(0.05)
-                _write_response(
-                    ipc_dirs["responses"],
-                    captured_id[0],
-                    error="channel unavailable",
-                )
-
-            task = asyncio.create_task(write_error_response())
-            result = await asyncio.wait_for(
-                call_tool(
-                    "ask_user",
-                    {"questions": [{"question": "Hello?"}]},
-                ),
-                timeout=10.0,
-            )
-            await task
-
-        assert len(result) == 1
-        assert "channel unavailable" in result[0].text
-
-
-class TestResponseFileCleanup:
-    """Response file is deleted after reading."""
+        assert result[0].text == "Error: channel unavailable"
 
     @pytest.mark.asyncio
-    async def test_file_deleted_after_read(self, ipc_dirs: dict[str, Path]) -> None:
-        captured_id: list[str] = []
+    async def test_response_file_is_deleted_after_read(self, ipc_dirs: dict[str, Path]) -> None:
+        responder = asyncio.create_task(
+            _respond_to_request(ipc_dirs, result={"answers": ["done"]}, delay_seconds=0.05)
+        )
 
-        def capture_write(
-            kind: str,
-            payload: dict,
-            *,
-            request_id: str | None = None,
-            reply_to: str | None = "responses",
-            deadline: str | None = None,
-        ) -> tuple[str, str]:
-            assert request_id is not None
-            captured_id.append(request_id)
-            return "fake.json", request_id
+        await asyncio.wait_for(
+            call_tool("ask_user", {"questions": [{"question": "Done?"}]}),
+            timeout=10.0,
+        )
+        request = await responder
 
-        with patch(
-            "agent_runner.agent_tools._ipc_request.write_request_file",
-            side_effect=capture_write,
-        ):
-
-            async def write_response_after_delay() -> None:
-                for _ in range(50):
-                    if captured_id:
-                        break
-                    await asyncio.sleep(0.02)
-                assert captured_id
-                await asyncio.sleep(0.05)
-                _write_response(
-                    ipc_dirs["responses"],
-                    captured_id[0],
-                    result={"answers": ["done"]},
-                )
-
-            task = asyncio.create_task(write_response_after_delay())
-            await asyncio.wait_for(
-                call_tool("ask_user", {"questions": [{"question": "Done?"}]}),
-                timeout=10.0,
-            )
-            await task
-
-        response_file = ipc_dirs["responses"] / f"{captured_id[0]}.json"
-        assert not response_file.exists()
+        assert not (ipc_dirs["responses"] / f"{request['request_id']}.json").exists()

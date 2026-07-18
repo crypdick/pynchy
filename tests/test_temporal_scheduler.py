@@ -893,7 +893,7 @@ class TestTemporalSchedulerRuntime:
             self._assert_registered_temporal_workflows(captured, temporal_scheduler)
 
     @pytest.mark.asyncio
-    async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch):
+    async def test_startup_failure_unbinds_scheduler_deps(self, monkeypatch, temporal_task):
 
         def fail_connect(*args, **kwargs):
             raise RuntimeError(TEMPORAL_UNAVAILABLE_MESSAGE)
@@ -913,12 +913,20 @@ class TestTemporalSchedulerRuntime:
             async with runtime:
                 pass
 
-        with pytest.raises(RuntimeError, match="dependencies are not bound"):
-            temporal_scheduler._require_scheduler_deps()
-
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["worker_running"] is False
         assert status["last_error"] == "temporal unavailable"
+
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "get_task_by_id",
+            lambda task_id: asyncio.sleep(
+                0,
+                result=temporal_task if task_id == temporal_task.id else None,
+            ),
+        )
+        with pytest.raises(RuntimeError, match="dependencies are not bound"):
+            await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_uses_shared_runner(
@@ -937,7 +945,7 @@ class TestTemporalSchedulerRuntime:
             return asyncio.sleep(0, result=None)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
-        monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
@@ -1265,7 +1273,7 @@ class TestTemporalSchedulerRuntime:
             raise AssertionError(PAUSED_TASK_RUN_MESSAGE)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
-        monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
@@ -1293,7 +1301,7 @@ class TestTemporalSchedulerRuntime:
             return asyncio.sleep(0, result=False)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
-        monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
@@ -1381,7 +1389,7 @@ class TestTemporalSchedulerRuntime:
             return asyncio.sleep(0, result=None)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
-        monkeypatch.setattr(temporal_scheduler, "_run_scheduled_agent", fake_run_scheduled_agent)
+        monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
         temporal_scheduler.bind_scheduler_deps(deps)
 
         env = await WorkflowEnvironment.start_time_skipping()

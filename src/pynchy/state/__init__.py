@@ -39,7 +39,7 @@ from pynchy.state.chats import (
     store_chat_metadata,
     update_chat_name,
 )
-from pynchy.state.connection import _get_db, init_database, init_test_database
+from pynchy.state.connection import _get_db, close_test_database, init_database, init_test_database
 from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
     store_conversation_event_pointer,
@@ -142,6 +142,7 @@ from pynchy.state.work_items import (
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
     # connection
     "_get_db",
+    "close_test_database",
     "init_database",
     "init_test_database",
     # canaries

@@ -163,6 +163,15 @@ class DiscordChannel:
         self._dm_channels.clear()
         self.lifecycle.prepare_shutdown()
 
+    async def handle_voice_state_update(
+        self,
+        member: object,
+        before: object,
+        after: object,
+    ) -> None:
+        """Handle Discord's gateway notification that a voice state changed."""
+        await self.voice.on_voice_state_update(member, before, after)
+
     # ------------------------------------------------------------------
     # Channel protocol — outbound
     # ------------------------------------------------------------------
@@ -302,7 +311,7 @@ class DiscordChannel:
         raw = channel_cfg.name if channel_cfg and channel_cfg.name else target.target_id
         return normalize_discord_channel_name(raw)
 
-    async def _resolve_channel(self, jid: str) -> object:
+    async def resolve_channel(self, jid: str) -> object:
         """Resolve a jid to a sendable discord.py channel (creating a DM if needed)."""
         client = cast("Any", _require_client(self.client))
         parsed = parse_jid(jid)
@@ -321,9 +330,6 @@ class DiscordChannel:
             channel = await client.fetch_channel(snowflake)
         return channel
 
-    async def resolve_channel(self, jid: str) -> object:
-        return await self._resolve_channel(jid)
-
     def forget_ask_user_view(self, message_id: str) -> None:
         self._ask_user_views.pop(message_id, None)
 
@@ -341,7 +347,7 @@ class DiscordChannel:
         if not rendered.text.strip():
             return
         try:
-            channel = await self._resolve_channel(jid)
+            channel = await self.resolve_channel(jid)
         except discord.DiscordException as exc:
             logger.warning("Discord send failed to resolve channel", jid=jid, err=str(exc))
             return
@@ -371,7 +377,7 @@ class DiscordChannel:
         if not text.strip() or len(text) > DISCORD_LIMIT:
             return None
         try:
-            channel = await self._resolve_channel(jid)
+            channel = await self.resolve_channel(jid)
             message = await cast("Any", channel).send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none(),
@@ -398,7 +404,7 @@ class DiscordChannel:
         if len(text) > DISCORD_LIMIT:
             raise ValueError(_DISCORD_MESSAGE_TOO_LONG)
         raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
-        channel = cast("Any", await self._resolve_channel(jid))
+        channel = cast("Any", await self.resolve_channel(jid))
         message = await channel.fetch_message(int(raw_id))
         await cast("Any", message).edit(
             content=text, allowed_mentions=discord.AllowedMentions.none()
@@ -413,7 +419,7 @@ class DiscordChannel:
             return  # not a Discord-originated message id
         raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
         try:
-            channel = cast("Any", await self._resolve_channel(jid))
+            channel = cast("Any", await self.resolve_channel(jid))
             message = await channel.fetch_message(int(raw_id))
             await cast("Any", message).add_reaction(emoji)
         except discord.DiscordException as exc:
@@ -454,7 +460,7 @@ class DiscordChannel:
         """
         try:
             while True:
-                channel = await self._resolve_channel(jid)
+                channel = await self.resolve_channel(jid)
                 await channel.typing()
                 await asyncio.sleep(_TYPING_REFRESH_SECONDS)
         except asyncio.CancelledError:
@@ -488,7 +494,7 @@ class DiscordChannel:
         if parse_jid(channel_jid).kind == "voice":
             return InboundFetchResult(messages=[])
         try:
-            channel = await self._resolve_channel(channel_jid)
+            channel = await self.resolve_channel(channel_jid)
         except discord.DiscordException:
             return InboundFetchResult(messages=[])
 

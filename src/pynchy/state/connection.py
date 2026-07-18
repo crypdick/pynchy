@@ -151,3 +151,22 @@ async def init_test_database() -> None:
     db.row_factory = aiosqlite.Row
     _state.db = db
     await create_schema(db)
+
+
+def close_test_database() -> None:
+    """Synchronously stop the in-memory test connection after its loop closes.
+
+    Pytest creates the connection on a function-scoped event loop, so session
+    teardown cannot safely await its normal close operation. ``stop()`` sends
+    the shutdown sentinel directly to aiosqlite's worker, and the bounded join
+    prevents the worker thread leaking into the next test process.
+    """
+    db = _state.db
+    if db is None:
+        return
+    db.stop()
+    thread = db._thread  # noqa: SLF001 - aiosqlite exposes no synchronous join API.
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=2)
+    _state.db = None
+    _state.write_lock = None

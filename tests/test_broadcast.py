@@ -223,7 +223,7 @@ async def app(tmp_path: Path):
 async def _run_with_trace_sequence(
     app: PynchyApp, tmp_path: Path, trace_outputs: list[dict[str, Any]]
 ) -> tuple[FakeChannel, EventCapture]:
-    """Run app._process_group_messages with a sequence of trace outputs.
+    """Run public group processing with a sequence of trace outputs.
 
     Delivers output via the session's public API (simulating the IPC watcher).
     Returns (channel, event_capture) for assertions.
@@ -237,24 +237,26 @@ async def _run_with_trace_sequence(
         # Wait for session to be created with an output handler
         for _ in range(100):
             session = get_session("test-group")
-            if session is not None and session._on_output is not None:
+            if session is not None and session.output_handler is not None:
                 break
             await asyncio.sleep(0.01)
         assert session is not None, "No session found for test-group"
+        handler = session.output_handler
+        assert handler is not None, "Session has no output handler"
+        emitted_pulse = False
 
         for output_dict in trace_outputs:
             await asyncio.sleep(0.01)
             parsed = ContainerOutput(**output_dict)
-            if session._on_output:
-                await session._on_output(parsed)
+            await handler(parsed)
             if is_query_done_pulse(parsed):
+                emitted_pulse = True
                 session.signal_query_done()
 
         # Append query-done pulse if not already signaled
-        if not session._query_done.is_set():
+        if not emitted_pulse:
             pulse = ContainerOutput(status="success", result=None, new_session_id="test-session")
-            if session._on_output:
-                await session._on_output(pulse)
+            await handler(pulse)
             session.signal_query_done()
 
         await asyncio.sleep(0.01)
@@ -275,7 +277,7 @@ async def _run_with_trace_sequence(
         _patch_test_settings(tmp_path),
     ):
         (tmp_path / "groups" / "test-group").mkdir(parents=True)
-        await app._process_group_messages("group@g.us")
+        await app.process_group_messages("group@g.us")
 
     await driver
     await capture.drain()
@@ -570,7 +572,7 @@ class TestUserMessageBroadcast:
 
         # Simulate an inbound message from the source channel
         msg = _make_message(content="Hello from source")
-        await app._on_inbound("group@g.us", msg)
+        await app.on_inbound("group@g.us", msg)
         await capture.drain()
 
         # 1. EventBus should receive the message

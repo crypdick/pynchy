@@ -266,7 +266,7 @@ class TestBlockActionHandlers:
         """Submit with checkbox selections should invoke on_ask_user_answer callback."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
-        ch._register_handlers()
+        ch.register_inbound_handlers()
 
         action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
         assert action_handler is not None
@@ -318,7 +318,7 @@ class TestBlockActionHandlers:
         """After submit, the original message should be updated with the answer."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
-        ch._register_handlers()
+        ch.register_inbound_handlers()
 
         action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
@@ -368,7 +368,7 @@ class TestBlockActionHandlers:
         """Submit with free-text (no checkboxes) should use the text answer."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
-        ch._register_handlers()
+        ch.register_inbound_handlers()
 
         action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
         assert action_handler is not None
@@ -411,7 +411,7 @@ class TestBlockActionHandlers:
         """When both checkboxes and text are filled, text takes priority."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
-        ch._register_handlers()
+        ch.register_inbound_handlers()
 
         action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
@@ -458,7 +458,7 @@ class TestBlockActionHandlers:
         """Bare checkbox toggle events should be ignored (no callback, no update)."""
         callback = MagicMock()
         ch = _make_channel(on_ask_user_answer=callback)
-        ch._register_handlers()
+        ch.register_inbound_handlers()
 
         action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 
@@ -485,7 +485,7 @@ class TestBlockActionHandlers:
     async def test_no_callback_no_error(self) -> None:
         """If on_ask_user_answer is None, submit should not raise."""
         ch = _make_channel(on_ask_user_answer=None)
-        ch._register_handlers()
+        ch.register_inbound_handlers()
 
         action_handler = _extract_action_handler(ch.slack_app, pattern=ASK_USER_ACTION_RE)
 

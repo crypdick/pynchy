@@ -6,10 +6,10 @@ import contextlib
 import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase
+import pytest
+from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 from conftest import make_settings
 
 from pynchy.host.git_ops.utils import (
@@ -18,12 +18,14 @@ from pynchy.host.git_ops.utils import (
     is_repo_dirty,
     push_local_commits,
 )
-from pynchy.host.orchestrator import http_server
-from pynchy.host.orchestrator.http_server import deps_key
-from pynchy.types import NewMessage
+from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
+from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.types import DeployClaim, DeployClaimStatus, NewMessage
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from aiohttp import web
 
 
 def _cp(
@@ -34,8 +36,8 @@ def _cp(
 
 
 @contextlib.contextmanager
-def _patch_settings(*, data_dir: Path):
-    s = make_settings(data_dir=data_dir)
+def _patch_settings(*, data_dir: Path, **overrides: Any):
+    s = make_settings(data_dir=data_dir, **overrides)
     with patch("pynchy.host.orchestrator.http_server.get_settings", return_value=s):
         yield
 
@@ -217,43 +219,75 @@ def testpush_local_commits_exception():
 
 
 # ---------------------------------------------------------------------------
-# Boot warning tests
+# Deploy rollback warning tests
 # ---------------------------------------------------------------------------
 
 
-def test_write_boot_warning_creates_file(tmp_path: Path):
-    """_write_boot_warning creates boot_warnings.json with message."""
-    with _patch_settings(data_dir=tmp_path):
-        http_server._write_boot_warning("Test warning")
-        warnings_file = tmp_path / "boot_warnings.json"
-        assert warnings_file.exists()
-        warnings = json.loads(warnings_file.read_text())
-        assert warnings == ["Test warning"]
+@pytest.mark.parametrize(
+    ("existing_warnings", "expected_warnings"),
+    [
+        (None, ["Deploy rolled back"]),
+        ('["Earlier warning"]', ["Earlier warning", "Deploy rolled back"]),
+        ("{invalid json}", ["Deploy rolled back"]),
+    ],
+)
+async def test_failed_deploy_records_operator_boot_warning(
+    tmp_path: Path,
+    existing_warnings: str | None,
+    expected_warnings: list[str],
+):
+    """POST /deploy preserves an actionable warning when rebase fails."""
+    warnings_file = tmp_path / "boot_warnings.json"
+    if existing_warnings is not None:
+        warnings_file.write_text(existing_warnings)
 
+    def failed_rebase(*args: str) -> subprocess.CompletedProcess[str]:
+        if args == ("rebase", "origin/main"):
+            return _cp(returncode=1, stderr="merge conflict")
+        if args == ("stash",):
+            return _cp(stdout="No local changes")
+        return _cp()
 
-def test_write_boot_warning_appends_to_existing(tmp_path: Path):
-    """_write_boot_warning appends to existing warnings."""
-    with _patch_settings(data_dir=tmp_path):
-        # First warning
-        http_server._write_boot_warning("Warning 1")
-        # Second warning
-        http_server._write_boot_warning("Warning 2")
+    with (
+        _patch_settings(data_dir=tmp_path),
+        patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="same-sha"),
+        patch("pynchy.host.orchestrator.http_server.push_local_commits", return_value=True),
+        patch("pynchy.host.orchestrator.http_server.run_git", side_effect=failed_rebase),
+        patch("pynchy.host.orchestrator.http_server.get_deploy_config_hash", return_value="config"),
+        patch(
+            "pynchy.host.orchestrator.http_server.start_deploy_workflow",
+            new=AsyncMock(return_value=DeployClaim(DeployClaimStatus.CLAIMED)),
+        ),
+        patch(
+            "pynchy.host.orchestrator.http_server.get_head_commit_message",
+            return_value="commit",
+        ),
+        patch("pynchy.host.orchestrator.http_server.is_repo_dirty", return_value=False),
+    ):
+        runtime = ControlPlaneRuntime(
+            bind_host="127.0.0.1",
+            port=8484,
+            unix_socket=None,
+            public_bind=False,
+            remote_auth_required=False,
+            allow_remote_deploy=True,
+            auth_token=None,
+            rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        )
+        app = create_http_app(MockHttpDeps(), runtime=runtime)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            response = await client.post("/deploy")
+            assert response.status == 200
+            assert (await response.json())["status"] == "restarting"
+        finally:
+            await client.close()
 
-        warnings_file = tmp_path / "boot_warnings.json"
-        warnings = json.loads(warnings_file.read_text())
-        assert warnings == ["Warning 1", "Warning 2"]
-
-
-def test_write_boot_warning_handles_corrupted_file(tmp_path: Path):
-    """_write_boot_warning creates new array if file is corrupted."""
-    with _patch_settings(data_dir=tmp_path):
-        warnings_file = tmp_path / "boot_warnings.json"
-        warnings_file.write_text("{invalid json}")
-
-        http_server._write_boot_warning("New warning")
-
-        warnings = json.loads(warnings_file.read_text())
-        assert warnings == ["New warning"]
+    warnings = json.loads(warnings_file.read_text())
+    assert len(warnings) == len(expected_warnings)
+    for actual, expected in zip(warnings, expected_warnings, strict=True):
+        assert expected in actual
 
 
 # ---------------------------------------------------------------------------
@@ -303,16 +337,19 @@ class MockHttpDeps:
     async def get_periodic_agents(self) -> list[dict[str, Any]]:
         return self._periodic_agents
 
+    def get_active_sessions(self) -> dict[str, str]:
+        return {}
+
+    def is_shutting_down(self) -> bool:
+        return False
+
 
 class TestHealthEndpoint(AioHTTPTestCase):
     """Tests for /health endpoint."""
 
     async def get_application(self) -> web.Application:
-        app = web.Application()
         self.deps = MockHttpDeps()
-        app[deps_key] = self.deps
-        app.router.add_get("/health", http_server._handle_health)
-        return app
+        return create_http_app(self.deps)
 
     async def test_health_returns_status_ok(self):
         """Health endpoint returns only its non-sensitive readiness contract."""
@@ -338,7 +375,6 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
     """Tests for TUI API endpoints."""
 
     async def get_application(self) -> web.Application:
-        app = web.Application()
         self.deps = MockHttpDeps()
         self.deps._messages = [
             NewMessage(
@@ -362,12 +398,7 @@ class TestTUIAPIEndpoints(AioHTTPTestCase):
         ]
         self.deps._periodic_agents = [{"name": "test-agent", "status": "running"}]
 
-        app[deps_key] = self.deps
-        app.router.add_get("/api/groups", http_server._handle_api_groups)
-        app.router.add_get("/api/messages", http_server._handle_api_messages)
-        app.router.add_post("/api/send", http_server._handle_api_send)
-        app.router.add_get("/api/periodic", http_server._handle_api_periodic)
-        return app
+        return create_http_app(self.deps)
 
     async def test_api_groups_returns_groups(self):
         """GET /api/groups returns registered groups."""

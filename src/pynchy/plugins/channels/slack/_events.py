@@ -85,12 +85,12 @@ class SlackEvents:
         @app.event("message")  # type: ignore[untyped-decorator]
         async def _handle_message(event: JsonDict, say: object) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
-            await self.on_slack_message(event)
+            await ch.ingest_inbound_event(event)
 
         @app.event("app_mention")  # type: ignore[untyped-decorator]
         async def _handle_mention(event: JsonDict, say: object) -> None:
             _ = say  # Slack Bolt supplies this callback argument.
-            await self.on_slack_message(event)
+            await ch.ingest_inbound_event(event)
 
         @app.event("reaction_added")  # type: ignore[untyped-decorator]
         async def _handle_reaction(event: JsonDict) -> None:

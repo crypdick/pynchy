@@ -24,7 +24,7 @@ from conftest import make_settings
 from pynchy.config import CronJobConfig, SchedulerConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.host.orchestrator.task_scheduler import start_scheduler_loop
+from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.state import (
     get_in_flight_turn_for_task,
     init_test_database,
@@ -86,14 +86,9 @@ def _patch_scheduler_temporal_runtime(runtime_cls=RecordingTemporalRuntime):
 
 
 async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
-    """Run the scheduled-agent runner directly under the caller's patches.
-
-    The scheduler loop now hands due tasks to Temporal. Runner behavior still
-    has focused tests here; scheduler tests separately prove the Temporal
-    handoff.
-    """
+    """Run the public scheduled-agent runner under the caller's patches."""
     if isinstance(ts_mod.get_task_run_logs, Mock):
-        await ts_mod._run_scheduled_agent(task, deps)
+        await run_scheduled_agent(task, deps)
         return
 
     with patch(
@@ -101,12 +96,11 @@ async def _run_due_task_via_scheduler(deps, task: ScheduledTask) -> None:
         new_callable=AsyncMock,
         return_value=[],
     ):
-        await ts_mod._run_scheduled_agent(task, deps)
+        await run_scheduled_agent(task, deps)
 
 
 async def _run_scheduler_reconcile_once(deps) -> type[RecordingTemporalRuntime]:
     """Drive the public scheduler loop through one Temporal reconciliation poll."""
-    ts_mod._state.scheduler_running = False
 
     def stop_after_poll(delay):
         raise asyncio.CancelledError
@@ -318,20 +312,6 @@ def sample_group():
     )
 
 
-@pytest.fixture(autouse=True)
-def reset_scheduler_state(monkeypatch):
-    """Reset the scheduler's module-level state before each test.
-
-    ``_state.scheduler_running`` lives for the whole process; a raw rebind would leak
-    across tests and xdist workers. Using ``monkeypatch`` auto-reverts it,
-    keeping tests order-independent.
-    """
-    monkeypatch.setattr(
-        "pynchy.host.orchestrator.task_scheduler._state.scheduler_running",
-        False,
-    )
-
-
 class TestStartSchedulerLoop:
     """Test the scheduler loop initialization and duplicate prevention."""
 
@@ -517,7 +497,7 @@ class TestStartSchedulerLoop:
 class TestRunScheduledAgent:
     """Test task execution logic.
 
-    Since _run_scheduled_agent now delegates to deps.run_agent (the unified
+    Since run_scheduled_agent delegates to deps.run_agent (the unified
     entry point), these tests verify that the scheduler correctly constructs
     messages, passes the right flags, handles return values, and logs runs.
     """

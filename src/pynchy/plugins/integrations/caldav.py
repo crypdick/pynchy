@@ -40,7 +40,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 _caldav_client_cache: dict[str, object] = {}  # keyed by server name
 
 
-def _get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> object:
+def get_caldav_client(name: str, server_cfg: CalDAVServerConfig) -> object:
     """Get or create a cached DAVClient for a named server."""
     import caldav  # noqa: PLC0415, RUF100 - optional integration dependency loaded only when CalDAV is used.
 
@@ -134,7 +134,7 @@ def _resolve_calendar(
     If calendar_name is None, returns the first visible calendar.
     Respects allow/ignore filtering — rejects filtered-out calendars.
     """
-    client = _get_caldav_client(server_name, server_cfg)
+    client = get_caldav_client(server_name, server_cfg)
     principal = client.principal()
     all_cals = principal.calendars()
     visible = _filter_calendars(all_cals, server_cfg)
@@ -195,7 +195,7 @@ async def _handle_list_calendars(_data: dict[str, Any]) -> dict[str, Any]:  # no
 
     result: dict[str, list[str]] = {}
     for name, server_cfg in cfg.servers.items():
-        client = _get_caldav_client(name, server_cfg)
+        client = get_caldav_client(name, server_cfg)
         principal = client.principal()
         all_cals = principal.calendars()
         visible = _filter_calendars(all_cals, server_cfg)

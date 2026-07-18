@@ -620,7 +620,8 @@ def _wait_for_port(port: int, process: subprocess.Popen[bytes], log_dir: Path) -
     raise TimeoutError(f"Port {port} did not become ready; inspect {log_dir}")
 
 
-def _runtime_ready(status: object) -> bool:
+def is_runtime_ready(status: object) -> bool:
+    """Return whether a runtime status response proves every service is usable."""
     if not isinstance(status, dict):
         return False
     service = status.get("service")
@@ -652,7 +653,7 @@ def _wait_for_runtime(spec: RuntimeSpec, process: subprocess.Popen[bytes]) -> No
             with urllib.request.urlopen(url, timeout=2) as response:  # noqa: S310, RUF100 - fixed loopback status URL.
                 if response.status == 200:
                     last_status = json.loads(response.read())
-                    if _runtime_ready(last_status):
+                    if is_runtime_ready(last_status):
                         return
         except (OSError, ValueError, json.JSONDecodeError):
             pass

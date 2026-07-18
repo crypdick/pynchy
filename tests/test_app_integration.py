@@ -188,17 +188,17 @@ class FakeProcess(asyncio.subprocess.Process):
         session = None
         for _ in range(200):
             session = get_session(self._group_folder)
-            if session is not None and session._on_output is not None:
+            if session is not None and session.output_handler is not None:
                 break
             await asyncio.sleep(0.01)
 
         assert session is not None, f"No session found for {self._group_folder}"
-        assert session._on_output is not None, "Session has no output handler"
+        handler = session.output_handler
+        assert handler is not None, "Session has no output handler"
 
         if self._output:
             output = serialization.parse_container_output(json.dumps(self._output))
-            if session._on_output:
-                await session._on_output(output)
+            await handler(output)
 
             # Emit query-done pulse via signal_query_done
             pulse_data = {
@@ -207,8 +207,7 @@ class FakeProcess(asyncio.subprocess.Process):
                 "new_session_id": self._output.get("new_session_id", "test-session"),
             }
             pulse = serialization.parse_container_output(json.dumps(pulse_data))
-            if session._on_output:
-                await session._on_output(pulse)
+            await handler(pulse)
             session.signal_query_done()
 
         await asyncio.sleep(0.01)
@@ -260,27 +259,29 @@ async def _schedule_outputs_via_session(
     # Wait for session to have an output handler
     for _ in range(100):
         session = get_session(group_folder)
-        if session is not None and session._on_output is not None:
+        if session is not None and session.output_handler is not None:
             break
         await asyncio.sleep(0.01)
 
     assert session is not None, f"No session found for {group_folder}"
+    handler = session.output_handler
+    assert handler is not None, "Session has no output handler"
+    emitted_pulse = False
 
     for output_dict in outputs:
         await asyncio.sleep(0.01)
         parsed = serialization.parse_container_output(json.dumps(output_dict))
-        if session._on_output:
-            await session._on_output(parsed)
+        await handler(parsed)
         if is_query_done_pulse(parsed):
+            emitted_pulse = True
             session.signal_query_done()
 
     # If no output triggered query done, append a pulse
-    if not session._query_done.is_set():
+    if not emitted_pulse:
         pulse = serialization.parse_container_output(
             json.dumps({"status": "success", "result": None, "new_session_id": final_session_id})
         )
-        if session._on_output:
-            await session._on_output(pulse)
+        await handler(pulse)
         session.signal_query_done()
 
     await asyncio.sleep(0.01)
@@ -411,7 +412,7 @@ class TestProcessGroupMessages:
             _patch_test_settings(tmp_path) as image_check,
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app._process_group_messages("group@g.us")
+            result = await app.process_group_messages("group@g.us")
 
         await driver
         assert result is True
@@ -448,7 +449,7 @@ class TestProcessGroupMessages:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app._process_group_messages("group@g.us")
+            result = await app.process_group_messages("group@g.us")
 
         await driver
         assert result is True
@@ -461,7 +462,7 @@ class TestProcessGroupMessages:
         run_agent = AsyncMock(return_value="error")
         app.run_agent = run_agent  # type: ignore[method-assign] - isolates message routing from containers.
 
-        result = await app._process_group_messages("group@g.us")
+        result = await app.process_group_messages("group@g.us")
 
         assert result is False
         run_agent.assert_awaited_once()
@@ -494,7 +495,7 @@ class TestProcessGroupMessages:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app._process_group_messages("group@g.us")
+            result = await app.process_group_messages("group@g.us")
 
         await driver
         assert result is False  # Error → should return False for retry
@@ -543,7 +544,7 @@ class TestProcessGroupMessages:
             patch("pynchy.host.git_ops.worktree.ensure_worktree", return_value=fake_wt),
         ):
             (tmp_path / "groups" / "main").mkdir(parents=True)
-            result = await app._process_group_messages("main@g.us")
+            result = await app.process_group_messages("main@g.us")
 
         await driver
         assert result is True
@@ -637,11 +638,11 @@ class TestStatePersistence:
     async def test_save_and_load_state(self, app: PynchyApp):
         app.last_timestamp = "2024-06-01T12:00:00Z"
         app.last_agent_timestamp = {"group@g.us": "2024-06-01T11:00:00Z"}
-        await app._save_state()
+        await app.save_state()
 
         # Create a new app and load state
         app2 = PynchyApp()
-        await app2._load_state()
+        await app2.load_state()
         assert app2.last_timestamp == "2024-06-01T12:00:00Z"
         assert app2.last_agent_timestamp == {"group@g.us": "2024-06-01T11:00:00Z"}
 
@@ -649,7 +650,7 @@ class TestStatePersistence:
         await set_router_state("last_agent_timestamp", "not valid json")
 
         app2 = PynchyApp()
-        await app2._load_state()
+        await app2.load_state()
         # Should reset to empty dict, not crash
         assert app2.last_agent_timestamp == {}
 
@@ -696,7 +697,7 @@ class TestTraceLocalPersistence:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            await app._process_group_messages("group@g.us")
+            await app.process_group_messages("group@g.us")
 
         await driver
 
@@ -739,7 +740,7 @@ class TestTraceLocalPersistence:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            await app._process_group_messages("group@g.us")
+            await app.process_group_messages("group@g.us")
 
         await driver
 
@@ -785,7 +786,7 @@ class TestTraceLocalPersistence:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            await app._process_group_messages("group@g.us")
+            await app.process_group_messages("group@g.us")
 
         await driver
 

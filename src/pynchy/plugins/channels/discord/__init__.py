@@ -44,6 +44,7 @@ from ._models import (
     parse_discord_reaction as parse_discord_reaction,
 )
 from ._plugin import DiscordChannelPlugin as DiscordChannelPlugin
+from ._voice_client import PynchyVoiceClient as PynchyVoiceClient
 
 __all__ = [
     "DISCORD_LIMIT",
@@ -58,6 +59,7 @@ __all__ = [
     "DiscordInboundReaction",
     "DiscordJid",
     "DiscordReply",
+    "PynchyVoiceClient",
     "channel_jid",
     "chunk_discord_text",
     "dm_jid",
