@@ -14,6 +14,7 @@ from ._ids import (
     is_discord_jid,
     parse_jid,
     snowflake_of,
+    voice_jid,
 )
 from ._models import (
     DiscordAttachment as DiscordAttachment,
@@ -68,4 +69,5 @@ __all__ = [
     "parse_discord_reaction",
     "parse_jid",
     "snowflake_of",
+    "voice_jid",
 ]

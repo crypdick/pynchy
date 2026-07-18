@@ -7,6 +7,7 @@ A Discord jid is ``discord:<kind>:<snowflake>`` where *kind* is:
 - ``channel`` — a guild text channel *or* a thread, keyed on the channel
   snowflake. Threads are ordinary channels with their own snowflake, so they
   need no distinct kind.
+- ``voice`` — a guild voice channel, keyed on its channel snowflake.
 - ``group`` — a group DM, keyed on the group-channel snowflake.
 """
 
@@ -18,9 +19,10 @@ JID_PREFIX = "discord:"
 
 DM_KIND = "direct"
 CHANNEL_KIND = "channel"
+VOICE_KIND = "voice"
 GROUP_KIND = "group"
 
-_KINDS = frozenset({DM_KIND, CHANNEL_KIND, GROUP_KIND})
+_KINDS = frozenset({DM_KIND, CHANNEL_KIND, VOICE_KIND, GROUP_KIND})
 _NOT_DISCORD_JID = "not a Discord jid: {jid!r}"
 _UNKNOWN_DISCORD_JID_KIND = "unknown Discord jid kind: {kind!r}"
 
@@ -41,6 +43,11 @@ def dm_jid(user_id: int | str) -> str:
 def channel_jid(channel_id: int | str) -> str:
     """Build the jid for a guild channel or thread, keyed on its snowflake."""
     return f"{JID_PREFIX}{CHANNEL_KIND}:{channel_id}"
+
+
+def voice_jid(channel_id: int | str) -> str:
+    """Build the jid for a guild voice channel."""
+    return f"{JID_PREFIX}{VOICE_KIND}:{channel_id}"
 
 
 def group_jid(channel_id: int | str) -> str:

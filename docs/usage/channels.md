@@ -75,8 +75,9 @@ inherits its parent channel's access config.
    Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**
    (required to read message text).
 2. Invite the bot with the `bot` scope and at least *View Channels*, *Send
-   Messages*, *Send Messages in Threads*, *Read Message History*, and *Add
-   Reactions* permissions. Do not grant Administrator; Pynchy does not need it.
+   Messages*, *Send Messages in Threads*, *Read Message History*, *Add
+   Reactions*, *Connect*, and *Speak* permissions. Do not grant Administrator;
+   Pynchy does not need it.
 3. Choose stable config names for the server, channels, and users. Pynchy looks
    up matching Discord names at startup, creates missing configured guild
    channels, and stores Discord's raw IDs in runtime state.
@@ -99,6 +100,18 @@ dm_policy = "allowlist"               # open | allowlist | disabled
 allow_from = ["alice"]                # DM allowlist by Discord display/user name
 group_policy = "allowlist"            # open | disabled | allowlist
 
+[connections.mybot.chat.pynchy]
+name = "Pynchy"                       # Discord server name
+users = ["alice"]                     # voice and text member allowlist
+
+[connections.mybot.chat.pynchy.channels.general]
+name = "General"                      # existing Discord voice channel name
+kind = "voice"
+
+[workspaces.discord-general]
+profiles = ["pynchy-dev"]
+chat = "connection.discord.mybot.chat.pynchy.channels.general"
+
 [workspaces.discord-admin]
 profiles = ["pynchy-dev"]
 
@@ -109,9 +122,9 @@ profiles = ["pynchy-dev"]
 Set `profiles` on Discord workspaces the same way you set it on Slack or TUI
 workspaces. Repo-backed agent cores need a profile with `repo = "owner/repo"`.
 After startup reconciliation, Pynchy stores the concrete Discord channel or DM
-identifier in workspace state as `discord:channel:<id>` or `discord:direct:<id>`.
-Discord threads under a configured channel become dynamic isolated contexts and
-inherit the parent workspace profile.
+identifier in workspace state as `discord:channel:<id>`, `discord:voice:<id>`,
+or `discord:direct:<id>`. Discord threads under a configured text channel become
+dynamic isolated contexts and inherit the parent workspace profile.
 
 6. Install dependencies:
 ```bash
@@ -139,8 +152,36 @@ Send a message in the configured channel or DM to confirm inbound delivery.
 - Safe mention defaults (never pings `@everyone` unless asked)
 - History catch-up after reconnect
 - Inbound voice/audio attachment transcription when host speech-to-text is available
+- One configured Discord voice workspace with spoken turns and final spoken replies
 
-DM pairing, interactive question widgets, and outbound voice are not yet supported.
+## Discord Voice Workspace
+
+Pynchy supports one existing voice channel per Discord connection. Configure the
+server and channel by name, as in the `General` example above, then bind that
+target to a normal workspace. Pynchy never creates a voice channel for this
+feature. Its internal ID stays in runtime state, not in the human-edited config.
+
+Joining the configured channel activates a voice session. The Discord
+guild/channel user and role allowlists still apply, so a member who cannot send
+to the workspace cannot make Pynchy join the room. Pynchy leaves when the last
+allowed member leaves. Only final agent responses play as speech; streamed text,
+tool traces, and status messages remain silent.
+
+Discord voice needs the `discord` extra, `ffmpeg`, and a system `libopus`
+library. It also needs the normal host STT provider described below and a local
+TTS command. On macOS, the built-in `say` command works with:
+
+```bash
+PYNCHY_LOCAL_TTS_COMMAND='say -o {output_path} -f {input_path}'
+```
+
+Set that environment variable for the Pynchy service, not in `config.toml`.
+Pynchy sends `{input_path}` and `{output_path}` as argv substitutions and never
+uses a shell. If any voice prerequisite is missing, Pynchy logs the failure and
+does not create a room or fall back to an unprotected channel.
+
+DM pairing, interactive question widgets, voice rooms other than the configured
+workspace, Discord video, and Stage channels are not supported.
 
 ## Inbound Speech-to-Text
 

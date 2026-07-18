@@ -44,6 +44,7 @@ class InboundContext:
     author_role_ids: frozenset[str]
     mentions_bot: bool
     author_names: frozenset[str] = frozenset()
+    is_voice: bool = False
 
 
 def interaction_context(interaction: object) -> InboundContext:
@@ -233,7 +234,9 @@ class DiscordAccess:
         users, roles = _member_allowlists(guild, channel)
         if not _is_member_allowed(ctx, users=users, roles=roles):
             return "deny"
-        require_mention = _requires_mention(guild, channel)
+        # Entering a configured voice channel is the explicit activation gesture;
+        # Discord does not provide a message mention in a live voice stream.
+        require_mention = False if ctx.is_voice else _requires_mention(guild, channel)
         if require_mention and not ctx.mentions_bot:
             return "deny"
         return "allow"

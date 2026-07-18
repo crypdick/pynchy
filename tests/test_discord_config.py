@@ -73,6 +73,39 @@ def test_nested_guild_and_channel_config():
     assert channel.deny == ["dangerous_tool"]
 
 
+def test_voice_channel_config_uses_a_name_not_a_snowflake():
+    cfg = DiscordConnectionConfig(
+        bot_token_env=DISCORD_BOT_ENV,
+        chat={
+            "pynchy": {
+                "name": "Pynchy",
+                "channels": {
+                    "general": {"name": "General", "kind": "voice"},
+                },
+            }
+        },
+    )
+
+    voice = cfg.chat["pynchy"].channels["general"]
+    assert voice.name == "General"
+    assert voice.kind == "voice"
+
+
+def test_discord_connection_rejects_multiple_voice_channels():
+    with pytest.raises(ValidationError, match="one active Pynchy voice channel"):
+        DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            chat={
+                "pynchy": {
+                    "channels": {
+                        "general": {"kind": "voice"},
+                        "standup": {"kind": "voice"},
+                    }
+                }
+            },
+        )
+
+
 def test_channel_require_mention_defaults_to_none_for_inheritance():
     # None means "inherit from the guild"; only an explicit bool overrides.
     cfg = DiscordConnectionConfig(
@@ -172,6 +205,39 @@ def test_settings_accept_discord_dm_name_allowlist_with_workspace_profile():
     assert settings.connections["mybot"].allow_from == ["alice"]
 
 
-def test_workspace_chat_ref_is_not_part_of_config_schema():
-    with pytest.raises(ValidationError, match="Extra inputs"):
-        WorkspaceConfig(profile="admin", chat="connection.discord.mybot.chat.123.channels.456")
+def test_workspace_chat_ref_binds_a_configured_discord_channel():
+    workspace = WorkspaceConfig(
+        profiles=["admin"],
+        chat="connection.discord.mybot.chat.pynchy.channels.general",
+    )
+
+    assert workspace.chat == "connection.discord.mybot.chat.pynchy.channels.general"
+
+
+def test_settings_binds_general_voice_channel_to_workspace_profile():
+    settings = Settings(
+        connections={
+            "mybot": {
+                "type": "discord",
+                "bot_token_env": "DISCORD_BOT_TOKEN",
+                "group_policy": "allowlist",
+                "chat": {
+                    "pynchy": {
+                        "name": "Pynchy",
+                        "channels": {
+                            "general": {"name": "General", "kind": "voice"},
+                        },
+                    }
+                },
+            }
+        },
+        profiles=_profiles(),
+        workspaces={
+            "general": WorkspaceConfig(
+                profiles=["admin"],
+                chat="connection.discord.mybot.chat.pynchy.channels.general",
+            )
+        },
+    )
+
+    assert settings.workspaces["general"].profiles == ["admin"]

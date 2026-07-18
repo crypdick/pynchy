@@ -30,6 +30,7 @@ DEFAULT_LOCAL_LANGUAGE = "en"
 LOCAL_COMMAND_ENV = "PYNCHY_LOCAL_STT_COMMAND"
 LOCAL_MODEL_ENV = "PYNCHY_LOCAL_STT_MODEL"
 LOCAL_LANGUAGE_ENV = "PYNCHY_LOCAL_STT_LANGUAGE"
+LOCAL_TTS_COMMAND_ENV = "PYNCHY_LOCAL_TTS_COMMAND"
 
 
 class _LocalModelCache:
@@ -46,6 +47,14 @@ class AudioTranscriptionResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class AudioSynthesisResult:
+    success: bool
+    output_path: Path | None = None
+    provider: str = "none"
+    error: str | None = None
+
+
 def is_supported_audio_filename(filename: str) -> bool:
     return Path(filename).suffix.lower() in SUPPORTED_AUDIO_SUFFIXES
 
@@ -53,6 +62,79 @@ def is_supported_audio_filename(filename: str) -> bool:
 async def transcribe_audio_file(path: Path) -> AudioTranscriptionResult:
     """Transcribe an audio file using the best available host STT provider."""
     return await asyncio.to_thread(_transcribe_audio_file_sync, path)
+
+
+async def synthesize_speech_to_file(text: str, output_path: Path) -> AudioSynthesisResult:
+    """Synthesize text through the explicitly configured local TTS command."""
+    return await asyncio.to_thread(_synthesize_speech_to_file_sync, text, output_path)
+
+
+def _synthesize_speech_to_file_sync(text: str, output_path: Path) -> AudioSynthesisResult:
+    content = text.strip()
+    if not content:
+        return AudioSynthesisResult(success=False, error="Cannot synthesize empty text")
+    command_template = os.getenv(LOCAL_TTS_COMMAND_ENV, "").strip()
+    if not command_template:
+        return AudioSynthesisResult(
+            success=False,
+            error=f"No TTS provider available. Configure {LOCAL_TTS_COMMAND_ENV}.",
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        input_path = _write_tts_input(content)
+    except OSError as exc:
+        return AudioSynthesisResult(success=False, error=f"Failed to prepare TTS input: {exc}")
+    try:
+        _run_tts_command(command_template, input_path, output_path)
+    except (
+        KeyError,
+        OSError,
+        ValueError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ) as exc:
+        logger.warning("Local TTS command failed", output_path=str(output_path), err=str(exc))
+        return AudioSynthesisResult(
+            success=False,
+            provider="local_command",
+            error=f"Local TTS command failed: {exc}",
+        )
+    finally:
+        input_path.unlink(missing_ok=True)
+
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        return AudioSynthesisResult(
+            success=False,
+            provider="local_command",
+            error="Local TTS command did not produce audio",
+        )
+    return AudioSynthesisResult(
+        success=True,
+        output_path=output_path,
+        provider="local_command",
+    )
+
+
+def _write_tts_input(content: str) -> Path:
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix="pynchy-tts-",
+        suffix=".txt",
+        delete=False,
+    ) as input_file:
+        input_file.write(content)
+        return Path(input_file.name)
+
+
+def _run_tts_command(command_template: str, input_path: Path, output_path: Path) -> None:
+    command = shlex.split(
+        command_template.format(input_path=str(input_path), output_path=str(output_path))
+    )
+    if not command:
+        raise ValueError("TTS command is empty")
+    _run_local_command(command)
 
 
 def _transcribe_audio_file_sync(path: Path) -> AudioTranscriptionResult:

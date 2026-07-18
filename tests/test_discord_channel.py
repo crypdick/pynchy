@@ -95,6 +95,12 @@ class _FakeDiscordTextChannel:
     name: str
 
 
+@dataclass(slots=True)
+class _FakeDiscordVoiceChannel:
+    id: int
+    name: str
+
+
 class _FakeDiscordUser:
     def __init__(self, user_id: int, name: str, *, display_name: str | None = None) -> None:
         self.id = user_id
@@ -113,11 +119,13 @@ class _FakeDiscordGuild:
         name: str,
         channels: list[_FakeDiscordTextChannel],
         members: list[_FakeDiscordUser] | None = None,
+        voice_channels: list[_FakeDiscordVoiceChannel] | None = None,
     ) -> None:
         self.id = guild_id
         self.name = name
         self.text_channels = channels
         self.members = members or []
+        self.voice_channels = voice_channels or []
         self.created: list[str] = []
 
     async def create_text_channel(self, name: str, **kwargs) -> _FakeDiscordTextChannel:
@@ -317,6 +325,39 @@ async def test_resolve_chat_jid_maps_configured_name_ref_to_existing_channel():
 
 
 @pytest.mark.asyncio
+async def test_resolve_chat_jid_maps_configured_general_voice_channel_by_name():
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            dm_policy="allowlist",
+            group_policy="allowlist",
+            chat={
+                "pynchy": {
+                    "name": "Pynchy",
+                    "channels": {"general": {"name": "General", "kind": "voice"}},
+                }
+            },
+        ),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda jid, msg: None,
+        on_chat_metadata=lambda jid, ts, name: None,
+    )
+    ch.client = _FakeDiscordClient(
+        [
+            _FakeDiscordGuild(
+                123,
+                "Pynchy",
+                [],
+                voice_channels=[_FakeDiscordVoiceChannel(456, "General")],
+            )
+        ]
+    )
+
+    assert await ch.resolve_chat_jid("pynchy.channels.general") == "discord:voice:456"
+
+
+@pytest.mark.asyncio
 async def test_create_group_creates_named_discord_channel():
     ch = DiscordChannel(
         connection_name="connection.discord.test",
@@ -391,6 +432,23 @@ async def test_send_event_skips_empty_text():
         "discord:channel:1", OutboundEvent(type=OutboundEventType.TEXT, content="   ")
     )
     assert ch._resolve_channel.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_voice_channel_only_speaks_final_result():
+    ch = _channel()
+    ch.client = object()
+    ch.voice.speak = AsyncMock()  # type: ignore[method-assign]
+
+    await ch.send_event(
+        "discord:voice:456",
+        OutboundEvent(type=OutboundEventType.TEXT, content="draft"),
+    )
+    await ch.send_event(
+        "discord:voice:456", OutboundEvent(type=OutboundEventType.RESULT, content="final reply")
+    )
+
+    ch.voice.speak.assert_awaited_once_with("discord:voice:456", "final reply")
 
 
 @pytest.mark.asyncio

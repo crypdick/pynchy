@@ -81,6 +81,8 @@ Single source of truth for all pynchy work items.
 ### 4 - In Progress
 *Being implemented.*
 
+- [Discord General voice workspace](4-in-progress/discord-general-voice.md) — Bind one existing, profile-configured Discord `General` voice channel to Pynchy
+
 
 ### Completed
 We don't track completed items here. Completed plans are deleted — git history is the archive — and the line is removed.

@@ -307,6 +307,7 @@ class DiscordChannelConfig(_StrictModel):
     """
 
     name: str | None = None
+    kind: Literal["text", "voice"] = "text"
     enabled: bool = True
     require_mention: bool | None = None
     users: list[str] = []
@@ -344,6 +345,23 @@ class DiscordConnectionConfig(_StrictModel):
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
     security: ChannelOverrideConfig | None = None
     chat: dict[str, DiscordGuildConfig] = {}
+
+    @model_validator(mode="after")
+    def validate_single_voice_channel(self) -> DiscordConnectionConfig:
+        """Keep one Discord connection bound to one live voice session."""
+        voice_channels = [
+            f"{guild_name}.channels.{channel_name}"
+            for guild_name, guild in self.chat.items()
+            for channel_name, channel in guild.channels.items()
+            if channel.kind == "voice"
+        ]
+        if len(voice_channels) > 1:
+            joined = ", ".join(voice_channels)
+            raise ValueError(
+                "Discord supports one active Pynchy voice channel per connection; "
+                f"configure one voice channel, not: {joined}"
+            )
+        return self
 
 
 class ConnectionsConfig(_StrictModel):
@@ -421,6 +439,7 @@ class RepoConfig(_StrictModel):
 class WorkspaceConfig(_StrictModel):
     profiles: list[ValidatedProfileName] = Field(default_factory=list)
     model: str | None = None
+    chat: ValidatedChatRef | None = None
 
 
 class ReposConfig(_StrictModel):

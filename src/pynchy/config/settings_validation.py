@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotations at runtime.
     Callable,
 )
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from pynchy.actions import ACTION_SPECS
+from pynchy.config.discord_refs import discord_chat_ref_error
 from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     JobConfig,
 )
@@ -19,9 +20,15 @@ from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves an
 from pynchy.config.profiles import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     ProfileConfig,
 )
+from pynchy.config.refs import parse_chat_ref
 from pynchy.config.scheduler_models import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     CanaryConfig,
 )
+
+if TYPE_CHECKING:
+    from pynchy.config.settings import Settings
+else:
+    Settings = object
 
 
 class _CanaryValidationSettings(Protocol):
@@ -63,6 +70,30 @@ def validate_profile_references(
         if job.workspace != "host" and job.workspace not in workspaces:
             message = f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
             raise ValueError(message)
+
+
+def validate_workspace_chat_references(settings: Settings) -> None:
+    """Ensure workspace chat bindings name configured connection targets."""
+    for workspace_name, workspace in settings.workspaces.items():
+        if workspace.chat is None:
+            continue
+        parsed = parse_chat_ref(workspace.chat)
+        if parsed is None:
+            continue
+        connection = settings.connections.get(parsed.name)
+        if connection is None:
+            raise ValueError(
+                f"workspaces.{workspace_name}.chat references unknown connection: {parsed.name}"
+            )
+        if parsed.platform != "discord":
+            continue
+        if connection.type != "discord":
+            raise TypeError(
+                f"workspaces.{workspace_name}.chat requires a Discord connection: {parsed.name}"
+            )
+        error = discord_chat_ref_error(connection, parsed.chat)
+        if error is not None:
+            raise ValueError(f"workspaces.{workspace_name}.chat {error}")
 
 
 def validate_canary_target_profile(

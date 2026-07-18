@@ -16,6 +16,7 @@ from pynchy.config.merge import (
 from pynchy.config.models import (
     WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
 )
+from pynchy.config.refs import parse_chat_ref
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
 )
@@ -34,6 +35,13 @@ class _WorkspaceCreationChannel(Protocol):
     name: str
 
     async def create_group(self, name: str) -> str: ...
+
+
+@runtime_checkable
+class _WorkspaceResolutionChannel(Protocol):
+    name: str
+
+    async def resolve_chat_jid(self, chat_name: str) -> str | None: ...
 
 
 def resolve_display_name(folder: str) -> str:
@@ -67,26 +75,29 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
     if jid is not None:
         return jid
 
-    channel = _workspace_creation_channel(channels, settings.command_center.connection)
-    if channel is None:
-        logger.warning(
-            "Workspace has no registered JID and no creation-capable command center",
-            folder=folder,
-            command_center=settings.command_center.connection,
-        )
-        return None
+    if config.chat is not None:
+        created_jid = await _resolve_configured_chat_jid(folder, config.chat, channels)
+    else:
+        channel = _workspace_creation_channel(channels, settings.command_center.connection)
+        if channel is None:
+            logger.warning(
+                "Workspace has no registered JID and no creation-capable command center",
+                folder=folder,
+                command_center=settings.command_center.connection,
+            )
+            return None
 
-    try:
-        created_jid = await channel.create_group(display_name)
-    except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one workspace must not block startup.
-        logger.warning(
-            "Workspace chat creation failed; skipping registration",
-            folder=folder,
-            display_name=display_name,
-            exc_type=type(exc).__name__,
-            err=str(exc),
-        )
-        return None
+        try:
+            created_jid = await channel.create_group(display_name)
+        except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one workspace must not block startup.
+            logger.warning(
+                "Workspace chat creation failed; skipping registration",
+                folder=folder,
+                display_name=display_name,
+                exc_type=type(exc).__name__,
+                err=str(exc),
+            )
+            return None
     if not isinstance(created_jid, str) or not created_jid:
         logger.warning("Workspace channel creation returned no JID", folder=folder)
         return None
@@ -115,6 +126,44 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
     await register_fn(profile)
     logger.info("Registered configured workspace", folder=folder, jid=created_jid)
     return created_jid
+
+
+async def _resolve_configured_chat_jid(
+    folder: str,
+    chat_ref: str,
+    channels: list[Channel],
+) -> str | None:
+    """Resolve a configured chat reference without provisioning another chat."""
+    parsed = parse_chat_ref(chat_ref)
+    if parsed is None:
+        return None
+    expected_name = parsed.name
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.name == expected_name
+            and isinstance(candidate, _WorkspaceResolutionChannel)
+        ),
+        None,
+    )
+    if channel is None:
+        logger.warning(
+            "Configured workspace chat has no resolving channel",
+            folder=folder,
+            chat=chat_ref,
+            channel=expected_name,
+        )
+        return None
+    resolved_jid = await channel.resolve_chat_jid(parsed.chat)
+    if not resolved_jid:
+        logger.warning(
+            "Configured workspace chat could not be resolved",
+            folder=folder,
+            chat=chat_ref,
+        )
+        return None
+    return resolved_jid
 
 
 def _workspace_creation_channel(

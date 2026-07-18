@@ -305,6 +305,7 @@ class Settings(BaseSettings):
         """Validate command_center.connection against [connections.<name>]."""
         _validated_command_center_connection(self)
         _validate_owner_aliases(self)
+        settings_validation.validate_workspace_chat_references(self)
         return self
 
     @model_validator(mode="after")

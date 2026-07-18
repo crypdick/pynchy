@@ -6,7 +6,6 @@ Standalone project/integration ideas. Each could become its own backlog item whe
 - Fun plans MCP
 - Friends hangout MCP
 - Health / wellness / exercise MCP
-- Ability to call me (voice)
 - Voice announcements to home speakers
 - Cloudflare MCP
 - Host skill for creating new repos — creates a new GitHub app password granting the workspace access to just that repo

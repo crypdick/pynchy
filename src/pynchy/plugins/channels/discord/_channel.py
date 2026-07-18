@@ -1,17 +1,9 @@
-"""DiscordChannel — pynchy ``Channel`` protocol backed by discord.py.
-
-Composition root: it owns the shared connection state (the ``discord.Client``,
-the bot's user id) and implements the outbound-facing protocol, delegating
-inbound handling to :class:`DiscordEvents` and connection management to
-:class:`DiscordLifecycle`. Collaborators hold a back-reference to this channel
-and read the late-bound ``client`` live, since it is recreated on reconnect.
-
-Outbound text is rendered by the shared ``TextFormatter`` and split into
-Discord-sized messages by the outbound collaborator.
-"""
+"""Discord channel adapter for a shared discord.py connection."""
 
 from __future__ import annotations
 
+# allow: file-length - Protocol methods share this connection's live client state.
+# Splitting them would obscure the connection-level lifecycle.
 import asyncio
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
     Callable,
@@ -46,12 +38,14 @@ from ._history import (
     history_high_water_mark,
     history_message,
 )
-from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
+from ._ids import dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
 from ._models import parse_discord_message
 from ._outbound import send_approval, send_text
 from ._provisioning import create_discord_group
+from ._targets import configured_channel_kind, resolve_configured_channel_jid
+from ._voice import DiscordVoiceManager
 
 if TYPE_CHECKING:
     from pynchy.config.models import DiscordConnectionConfig
@@ -70,7 +64,12 @@ def _require_client(client: object | None) -> object:
 
 
 class DiscordChannel:
-    """Pynchy ``Channel`` protocol implementation backed by discord.py."""
+    """Composition root for one Discord connection.
+
+    It owns the late-bound client and delegates inbound events, outbound text,
+    and voice lifecycle to focused collaborators.  Those collaborators retain
+    a back-reference because Discord recreates the client on reconnect.
+    """
 
     prefix_assistant_name: bool = False  # Discord shows the bot's own username
     auto_provision_configured_chats: bool = True
@@ -107,6 +106,7 @@ class DiscordChannel:
         self._ask_user_views: dict[str, discord.ui.View] = {}
 
         self.access = DiscordAccess(config)
+        self.voice = DiscordVoiceManager(self)
         self.events = DiscordEvents(self)
         self.lifecycle = DiscordLifecycle(self)
 
@@ -147,6 +147,7 @@ class DiscordChannel:
     async def disconnect(self) -> None:
         self._cancel_all_typing_tasks()
         self._dm_channels.clear()
+        await self.voice.disconnect()
         await self.lifecycle.disconnect()
 
     async def reconnect(self) -> None:
@@ -182,7 +183,7 @@ class DiscordChannel:
             return None
         if target.kind == "direct":
             return await self._resolve_direct_chat_jid(target.target_id)
-        return await self._resolve_channel_chat_jid(target)
+        return await resolve_configured_channel_jid(self, target)
 
     async def _resolve_direct_chat_jid(self, user_key: str) -> str | None:
         if user_key.isdecimal():
@@ -191,15 +192,6 @@ class DiscordChannel:
         if user is not None:
             return dm_jid(str(user.id))
         return await self._find_stored_direct_jid(user_key)
-
-    async def _resolve_channel_chat_jid(self, target: DiscordChatTarget) -> str | None:
-        if self.client is not None:
-            channel = await self.find_configured_channel(target)
-            if channel is not None:
-                return channel_jid(str(cast("Any", channel).id))
-        if not target.target_id.isdecimal():
-            return None
-        return channel_jid(target.target_id)
 
     def _known_users(self) -> Iterable[object]:
         if self.client is None:
@@ -263,7 +255,12 @@ class DiscordChannel:
             if existing is not None:
                 return cast("object", existing)
         channel_name = self.configured_channel_name(target)
-        for channel in getattr(guild, "text_channels", []):
+        channel_collection = (
+            getattr(guild, "voice_channels", [])
+            if configured_channel_kind(self.config, target) == "voice"
+            else getattr(guild, "text_channels", [])
+        )
+        for channel in channel_collection:
             if channel_key.isdecimal() and str(channel.id) == channel_key:
                 return cast("object", channel)
             if same_name(getattr(channel, "name", None), channel_name):
@@ -332,6 +329,10 @@ class DiscordChannel:
     async def send_event(self, jid: str, event: OutboundEvent) -> None:
         if self.client is None or not self.owns_jid(jid):
             return
+        if parse_jid(jid).kind == "voice":
+            if event.type is OutboundEventType.RESULT:
+                await self.voice.speak(jid, event.content)
+            return
         rendered = self.formatter.render(event)
         if not rendered.text.strip():
             return
@@ -360,6 +361,8 @@ class DiscordChannel:
         """
         if self.client is None or not self.owns_jid(jid):
             return None
+        if parse_jid(jid).kind == "voice":
+            return None
         text = self.formatter.render(event).text
         if not text.strip() or len(text) > DISCORD_LIMIT:
             return None
@@ -383,6 +386,8 @@ class DiscordChannel:
         """
         if self.client is None or not self.owns_jid(jid):
             return
+        if parse_jid(jid).kind == "voice":
+            return
         if not message_id.startswith(_MESSAGE_ID_PREFIX):
             return
         text = self.formatter.render(event).text
@@ -397,6 +402,8 @@ class DiscordChannel:
 
     async def send_reaction(self, jid: str, message_id: str, _sender: str, emoji: str) -> None:
         if self.client is None or not self.owns_jid(jid):
+            return
+        if parse_jid(jid).kind == "voice":
             return
         if not message_id.startswith(_MESSAGE_ID_PREFIX):
             return  # not a Discord-originated message id
@@ -416,6 +423,8 @@ class DiscordChannel:
     async def set_typing(self, jid: str, *, is_typing: bool) -> None:
         """Keep Discord's transient typing signal alive while work is active."""
         if self.client is None or not self.owns_jid(jid):
+            return
+        if parse_jid(jid).kind == "voice":
             return
 
         if not is_typing:
@@ -465,10 +474,14 @@ class DiscordChannel:
     async def send_ask_user(
         self, jid: str, request_id: str, questions: list[dict[str, object]]
     ) -> str | None:
+        if parse_jid(jid).kind == "voice":
+            return None
         return await send_ask_user_prompt(self, jid, request_id, questions)
 
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         if self.client is None or not self.owns_jid(channel_jid) or not since:
+            return InboundFetchResult(messages=[])
+        if parse_jid(channel_jid).kind == "voice":
             return InboundFetchResult(messages=[])
         try:
             channel = await self._resolve_channel(channel_jid)

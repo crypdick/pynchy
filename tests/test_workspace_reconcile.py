@@ -65,7 +65,11 @@ def _write_workspace_yaml(workspaces, folder_name, data):
                 schedule=d["schedule"],
                 prompt=d["prompt"],
             )
-    workspaces[folder_name] = WorkspaceConfig(profiles=[profile_name])
+    workspace_data: dict[str, object] = {"profiles": [profile_name]}
+    chat = d.get("chat")
+    if isinstance(chat, str) and chat.startswith("connection."):
+        workspace_data["chat"] = chat
+    workspaces[folder_name] = WorkspaceConfig.model_validate(workspace_data)
 
 
 class TestReconcileWorkspaces:
@@ -308,7 +312,7 @@ class TestReconcileWorkspaces:
         )
 
         mock_channel = AsyncMock(spec=Channel)
-        mock_channel.name = conn_ref
+        mock_channel.name = "main"
         mock_channel.create_group = AsyncMock(return_value="new-agent@g.us")
 
         registered: dict[str, WorkspaceProfile] = {}
@@ -347,7 +351,7 @@ class TestReconcileWorkspaces:
         _write_workspace_yaml(workspaces, "dddd-evening-review", {"repo_access": shared_repo})
 
         mock_channel = AsyncMock(spec=Channel)
-        mock_channel.name = conn_ref
+        mock_channel.name = "main"
         mock_channel.create_group = AsyncMock(
             side_effect=["project-managing@g.us", "dddd-evening-review@g.us"]
         )
@@ -521,7 +525,7 @@ class TestReconcileWorkspaces:
         )
 
         mock_channel = AsyncMock(spec=Channel)
-        mock_channel.name = conn_ref
+        mock_channel.name = "main"
         mock_channel.auto_provision_configured_chats = True
         mock_channel.resolve_chat_jid = AsyncMock(return_value=None)
         mock_channel.create_group = AsyncMock(return_value="discord:channel:789")
@@ -531,8 +535,44 @@ class TestReconcileWorkspaces:
 
         await reconcile_workspaces(registered, [mock_channel], register_fn)
 
+        mock_channel.resolve_chat_jid.assert_awaited_once_with("synapse.channels.code-improver")
         mock_channel.create_group.assert_not_called()
         register_fn.assert_not_called()
+
+    async def test_discord_workspace_resolves_configured_voice_channel(
+        self, db, monkeypatch, tmp_path
+    ):
+        conn_ref = "connection.discord.main"
+        workspaces = _WorkspaceHarness()
+        s = make_settings(
+            workspaces=workspaces,
+            profiles=workspaces.profiles,
+            jobs=workspaces.jobs,
+            groups_dir=tmp_path / "groups",
+        )
+        monkeypatch.setattr("pynchy.host.orchestrator.workspace_config.get_settings", lambda: s)
+
+        _write_workspace_yaml(
+            workspaces,
+            "general",
+            {
+                "chat": f"{conn_ref}.chat.pynchy.channels.general",
+            },
+        )
+
+        mock_channel = AsyncMock(spec=Channel)
+        mock_channel.name = "main"
+        mock_channel.resolve_chat_jid = AsyncMock(return_value="discord:voice:456")
+        mock_channel.create_group = AsyncMock()
+        registered: dict[str, WorkspaceProfile] = {}
+        register_fn = AsyncMock()
+
+        await reconcile_workspaces(registered, [mock_channel], register_fn)
+
+        mock_channel.resolve_chat_jid.assert_awaited_once_with("pynchy.channels.general")
+        mock_channel.create_group.assert_not_called()
+        assert registered["discord:voice:456"].folder == "general"
+        register_fn.assert_awaited_once()
 
     async def test_skips_when_no_channel_supports_create_group(self, db, monkeypatch, tmp_path):
         """Workspace needing new group should be skipped if no channel supports it."""

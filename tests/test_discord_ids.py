@@ -18,6 +18,7 @@ from pynchy.plugins.channels.discord import (
     is_discord_jid,
     parse_jid,
     snowflake_of,
+    voice_jid,
 )
 
 
@@ -33,9 +34,14 @@ def test_group_jid_keys_off_channel_snowflake():
     assert group_jid(789) == "discord:group:789"
 
 
+def test_voice_jid_keys_off_channel_snowflake():
+    assert voice_jid(456) == "discord:voice:456"
+
+
 def test_jid_builders_accept_str_ids():
     assert dm_jid("123") == "discord:direct:123"
     assert channel_jid("456") == "discord:channel:456"
+    assert voice_jid("456") == "discord:voice:456"
 
 
 def test_prefix_constant():
@@ -55,9 +61,14 @@ def test_parse_roundtrip_group():
     assert parse_jid(group_jid(789)) == DiscordJid(kind="group", snowflake="789")
 
 
+def test_parse_roundtrip_voice():
+    assert parse_jid(voice_jid(456)) == DiscordJid(kind="voice", snowflake="456")
+
+
 def test_snowflake_of_extracts_id_regardless_of_kind():
     assert snowflake_of(dm_jid(123)) == "123"
     assert snowflake_of(channel_jid(456)) == "456"
+    assert snowflake_of(voice_jid(456)) == "456"
 
 
 def test_is_discord_jid_true_for_discord_jids():
