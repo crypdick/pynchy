@@ -32,11 +32,13 @@ from pynchy.plugins import get_plugin_manager
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
 PluginHandlers = dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]
+ReadOnlyServiceTools = frozenset[str]
 
 
 @dataclass
 class _PluginHandlerState:
     plugin_handlers: PluginHandlers | None = None
+    read_only_tools: ReadOnlyServiceTools = frozenset()
 
 
 _state = _PluginHandlerState()
@@ -60,25 +62,31 @@ class _ApprovalRequestContext:
     reason: str | None
 
 
-def _get_plugin_handlers() -> PluginHandlers:
+def _get_plugin_handlers() -> tuple[PluginHandlers, ReadOnlyServiceTools]:
     """Collect and cache tool handlers from all MCP server plugins."""
     handlers = _state.plugin_handlers
     if handlers is not None:
-        return handlers
+        return handlers, _state.read_only_tools
 
     pm = get_plugin_manager()
     merged: PluginHandlers = {}
+    read_only_tools: set[str] = set()
     for result in pm.hook.pynchy_service_handler():
         tools = result.get("tools", {})
         merged.update(tools)
+        declared_reads = result.get("read_tools", ())
+        if isinstance(declared_reads, (list, tuple, set, frozenset)):
+            read_only_tools.update(name for name in declared_reads if isinstance(name, str))
 
     _state.plugin_handlers = merged
-    return merged
+    _state.read_only_tools = frozenset(read_only_tools)
+    return merged, _state.read_only_tools
 
 
 def clear_plugin_handler_cache() -> None:
     """Clear the cached plugin handler mapping (for tests or config reload)."""
     _state.plugin_handlers = None
+    _state.read_only_tools = frozenset()
 
 
 def _write_response(source_group: str, request_id: str, response: dict[str, Any]) -> None:
@@ -200,7 +208,7 @@ async def _handle_service_request(
         return
 
     # Look up handler from plugins
-    handlers = _get_plugin_handlers()
+    handlers, read_only_tools = _get_plugin_handlers()
     handler = handlers.get(request.tool_name)
 
     if handler is None:
@@ -221,8 +229,14 @@ async def _handle_service_request(
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
 
-    # Evaluate policy — service requests are writes (they perform actions)
-    decision = gate.evaluate_write(request.tool_name, data)
+    # Host-side integrations declare their non-mutating operations explicitly.
+    # Reading an untrusted source must taint the turn before an agent can use
+    # that content to influence a later external action.
+    decision = (
+        gate.evaluate_read(request.tool_name)
+        if request.tool_name in read_only_tools
+        else gate.evaluate_write(request.tool_name, data)
+    )
 
     if not decision.allowed:
         await record_security_event(
