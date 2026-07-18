@@ -118,9 +118,9 @@ without correction.
 | --- | --- | --- |
 | `host` | `127.0.0.1` | TCP bind address |
 | `port` | `8484` | TCP fallback port |
-| `unix_socket` | `data/pynchy.sock` | Preferred local control socket; set to `null` to disable |
+| `unix_socket` | `data/pynchy.sock` | Preferred local control socket path |
 | `allow_public_bind` | `false` | Permit a non-loopback TCP listener |
-| `allow_remote_deploy` | `false` | Permit `/deploy` on a public TCP listener |
+| `allow_remote_deploy` | `false` | Permit `/deploy` over TCP |
 | `auth_token_env` | `PYNCHY_CONTROL_TOKEN` | Server environment variable that carries the bearer token |
 | `auth_token_file` | `data/control-plane.token` | Server-side fallback token file |
 | `rate_limit_requests` | `120` | Requests allowed per client and window |
