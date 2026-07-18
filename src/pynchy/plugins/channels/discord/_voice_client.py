@@ -5,12 +5,10 @@ from __future__ import annotations
 import asyncio
 import struct
 from collections.abc import Callable
+from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-import davey
 import discord
-import nacl.exceptions
-import nacl.secret
 from discord.voice_state import VoiceConnectionState
 
 from pynchy.logger import logger
@@ -87,21 +85,27 @@ class PynchyVoiceClient(discord.VoiceClient):
     ) -> bytes | None:
         if self.mode != _AEAD_MODE or len(encrypted_payload) <= 4:
             return None
-        nonce = bytearray(nacl.secret.Aead.NONCE_SIZE)
+        session = self._connection.dave_session
+        if session is None or not self._connection.can_encrypt:
+            return None
+        # Discord text support is intentionally usable without the ``voice`` extra.
+        # discord.py guards its own voice-only imports, so do the same here rather
+        # than breaking plugin discovery and test collection for text-only installs.
+        davey = import_module("davey")
+        nacl_exceptions = import_module("nacl.exceptions")
+        nacl_secret = import_module("nacl.secret")
+        nonce = bytearray(nacl_secret.Aead.NONCE_SIZE)
         nonce[:4] = encrypted_payload[-4:]
         try:
-            transport_payload = nacl.secret.Aead(bytes(self.secret_key)).decrypt(
+            transport_payload = nacl_secret.Aead(bytes(self.secret_key)).decrypt(
                 encrypted_payload[:-4],
                 header,
                 bytes(nonce),
             )
-        except nacl.exceptions.CryptoError:
+        except nacl_exceptions.CryptoError:
             logger.debug("Discarded Discord voice packet that failed transport decryption")
             return None
 
-        session = self._connection.dave_session
-        if session is None or not self._connection.can_encrypt:
-            return None
         decrypted = session.decrypt(int(speaker_id), davey.MediaType.audio, transport_payload)
         return decrypted if isinstance(decrypted, bytes) else None
 
