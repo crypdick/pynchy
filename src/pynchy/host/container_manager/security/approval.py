@@ -35,6 +35,7 @@ from pynchy.host.container_manager.ipc.write import (
 )
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
+from pynchy.types import OutboundEvent, OutboundEventType
 
 # Alphabet for short approval IDs: lowercase + digits = 36 chars.
 # 2-char IDs give 1296 combinations — more than enough for the handful
@@ -411,4 +412,28 @@ def format_approval_notification(
         f"{details_str}\n"
         f"\n"
         f"\u2192 approve {short_id}  /  deny {short_id}"
+    )
+
+
+def approval_event(
+    tool_name: str,
+    request_data: dict[str, Any],
+    short_id: str,
+    *,
+    preface: str | None = None,
+) -> OutboundEvent:
+    """Build one channel-neutral approval prompt.
+
+    Rich channels use the short ID to attach controls, while text-only
+    channels render explicit command instructions in the notification body.
+    Keeping this construction next to the pending-approval state prevents a
+    gate producer from accidentally emitting an unstructured text message.
+    """
+    content = format_approval_notification(tool_name, request_data, short_id)
+    if preface:
+        content = f"{preface}\n\n{content}"
+    return OutboundEvent(
+        type=OutboundEventType.APPROVAL,
+        content=content,
+        metadata={"short_id": short_id, "tool_name": tool_name},
     )

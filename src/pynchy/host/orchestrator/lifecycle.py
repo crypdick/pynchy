@@ -38,6 +38,7 @@ from pynchy.host.orchestrator import (
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
     PynchyApp,
 )
+from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.logger import logger
@@ -197,6 +198,12 @@ async def _setup_channels(app: PynchyApp) -> None:
             app.on_ask_user_answer(request_id, answer), name="on-ask-user-answer"
         )
 
+    def dispatch_approval_decision(chat_jid: str, action: str, short_id: str, sender: str) -> None:
+        create_background_task(
+            approval_handler.handle_approval_command(app, chat_jid, action, short_id, sender),
+            name="on-approval-decision",
+        )
+
     context = ChannelPluginContext(
         on_message_callback=dispatch_inbound,
         on_chat_metadata_callback=dispatch_chat_metadata,
@@ -204,6 +211,7 @@ async def _setup_channels(app: PynchyApp) -> None:
         send_message=send_text_message,
         on_reaction_callback=dispatch_reaction,
         on_ask_user_answer_callback=dispatch_ask_user_answer,
+        on_approval_decision_callback=dispatch_approval_decision,
     )
     plugin_manager = _require_plugin_manager(app, "_setup_channels")
     app.channels = load_channels(plugin_manager, context)

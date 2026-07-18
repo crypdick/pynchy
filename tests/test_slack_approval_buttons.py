@@ -1,7 +1,7 @@
 """Tests for Slack interactive buttons — approval and stop button rendering.
 
 Validates that:
-- HOST events with approval metadata render Approve/Deny action buttons
+- APPROVAL events render Approve/Deny action buttons
 - TEXT events with streaming metadata render a Stop button
 - Non-approval HOST events and non-streaming TEXT events have no action buttons
 """
@@ -15,13 +15,10 @@ from pynchy.types import OutboundEvent, OutboundEventType
 def test_approval_event_has_buttons():
     fmt = SlackBlocksFormatter()
     event = OutboundEvent(
-        type=OutboundEventType.HOST,
+        type=OutboundEventType.APPROVAL,
         content="Approval required: x_post",
         metadata={
-            "approval": True,
             "short_id": "a1",
-            "operation": "x_post",
-            "details": {"text": "Hello world"},
         },
     )
     result = fmt.render(event)
@@ -39,12 +36,10 @@ def test_approval_buttons_encode_short_id():
     """Approve/Deny buttons should encode the approval short_id in their action_id."""
     fmt = SlackBlocksFormatter()
     event = OutboundEvent(
-        type=OutboundEventType.HOST,
+        type=OutboundEventType.APPROVAL,
         content="Approval required: x_post",
         metadata={
-            "approval": True,
             "short_id": "z9",
-            "operation": "x_post",
         },
     )
     result = fmt.render(event)
@@ -60,12 +55,10 @@ def test_approval_buttons_have_correct_styles():
     """Approve button should be 'primary', Deny button should be 'danger'."""
     fmt = SlackBlocksFormatter()
     event = OutboundEvent(
-        type=OutboundEventType.HOST,
+        type=OutboundEventType.APPROVAL,
         content="Approval required: x_post",
         metadata={
-            "approval": True,
             "short_id": "a1",
-            "operation": "x_post",
         },
     )
     result = fmt.render(event)

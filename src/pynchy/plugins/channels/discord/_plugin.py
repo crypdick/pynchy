@@ -42,6 +42,7 @@ def _channel_context(
         Callable[[str, str, str | None], None],
         Callable[[str, str, str, str], None] | None,
         Callable[[str, dict[str, object]], None] | None,
+        Callable[[str, str, str, str], None] | None,
         Callable[[], dict[str, WorkspaceProfile]] | None,
     ]
     | None
@@ -58,6 +59,7 @@ def _channel_context(
         on_metadata,
         getattr(context, "on_reaction_callback", None),
         getattr(context, "on_ask_user_answer_callback", None),
+        getattr(context, "on_approval_decision_callback", None),
         getattr(context, "workspaces", None),
     )
 
@@ -70,6 +72,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
     on_metadata: Callable[[str, str, str | None], None],
     on_reaction: Callable[[str, str, str, str], None] | None,
     on_ask_user_answer: Callable[[str, dict[str, object]], None] | None,
+    on_approval_decision: Callable[[str, str, str, str], None] | None,
     workspaces: Callable[[], dict[str, WorkspaceProfile]] | None,
 ) -> DiscordChannel | None:
     """Build one DiscordChannel or log why that connection was skipped."""
@@ -99,6 +102,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
         on_chat_metadata=on_metadata,
         on_reaction=on_reaction,
         on_ask_user_answer=on_ask_user_answer,
+        on_approval_decision=on_approval_decision,
         workspaces=workspaces,
     )
 
@@ -119,7 +123,14 @@ class DiscordChannelPlugin:
         callbacks = _channel_context(context)
         if callbacks is None:
             return None
-        on_message, on_metadata, on_reaction, on_ask_user_answer, workspaces = callbacks
+        (
+            on_message,
+            on_metadata,
+            on_reaction,
+            on_ask_user_answer,
+            on_approval_decision,
+            workspaces,
+        ) = callbacks
 
         channels: list[DiscordChannel] = []
         for name, cfg in configs.items():
@@ -130,6 +141,7 @@ class DiscordChannelPlugin:
                 on_metadata=on_metadata,
                 on_reaction=on_reaction,
                 on_ask_user_answer=on_ask_user_answer,
+                on_approval_decision=on_approval_decision,
                 workspaces=workspaces,
             )
             if channel is not None:

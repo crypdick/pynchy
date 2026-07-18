@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -402,6 +402,52 @@ async def test_send_event_ignores_foreign_jid():
     )
     await ch.send_event("slack:C1", OutboundEvent(type=OutboundEventType.TEXT, content="hi"))
     assert ch._resolve_channel.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_send_approval_event_posts_controls_and_routes_decision():
+    decision_callback = MagicMock()
+    ch = DiscordChannel(
+        connection_name="connection.discord.test",
+        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, dm_policy="open"),
+        bot_token=DISCORD_BOT_VALUE,
+        on_message=lambda _jid, _msg: None,
+        on_chat_metadata=lambda _jid, _ts, _name: None,
+        on_approval_decision=decision_callback,
+    )
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    ch._resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+
+    await ch.send_event(
+        "discord:direct:42",
+        OutboundEvent(
+            type=OutboundEventType.APPROVAL,
+            content="Approval required\n\n→ approve js / deny js",
+            metadata={"short_id": "js"},
+        ),
+    )
+
+    view = fake.sends[0][1]["view"]
+    assert [item.label for item in view.children] == ["Approve", "Deny"]
+
+    interaction = MagicMock()
+    interaction.user.id = "42"
+    interaction.user.bot = False
+    interaction.user.roles = []
+    interaction.channel.id = "42"
+    interaction.channel.parent = None
+    interaction.channel.parent_id = None
+    interaction.channel.name = None
+    interaction.guild = None
+    interaction.response.edit_message = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+
+    approve = view.children[0]
+    await approve.callback(interaction)
+
+    decision_callback.assert_called_once_with("discord:direct:42", "approve", "js", "42")
+    interaction.response.edit_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
