@@ -8,27 +8,14 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir
+from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001, RUF100 - beartype validates browser helper contracts at runtime.
+    XLocator,
+    XPage,
+)
 from pynchy.plugins.integrations.x_integration._display import ensure_xvfb
-
-if TYPE_CHECKING:
-    from playwright.async_api import Locator, Page
-else:
-    # playwright is an optional dependency (the "browser" extra) — this module
-    # must stay importable without it.  Fall back to Any so beartype's runtime
-    # forward-ref resolution degrades to a no-op instead of crashing every call
-    # when playwright is absent; when it IS installed, Page resolves to the
-    # real class and calls get genuine runtime validation.
-    try:
-        from playwright.async_api import Page
-    except ImportError:
-        Page = Any
-    try:
-        from playwright.async_api import Locator
-    except ImportError:
-        Locator = Any
 
 # X UI selectors (data-testid based).  These match X's React component
 # test IDs and are the same ones the archived TS implementation used.
@@ -71,7 +58,7 @@ _BROWSER_ARGS = [
 ]
 
 
-async def is_visible(locator: Locator) -> bool:
+async def is_visible(locator: XLocator) -> bool:
     """Check locator visibility without raising on detached elements."""
     try:
         return bool(await locator.is_visible())
@@ -88,7 +75,7 @@ def validate_content(content: str | None, label: str = "Tweet") -> str | None:
     return None
 
 
-async def navigate_to_tweet(page: Page, tweet_url: str) -> str | None:
+async def navigate_to_tweet(page: XPage, tweet_url: str) -> str | None:
     """Navigate to a tweet page.  Returns error message or None on success."""
     url = tweet_url.strip()
     if re.match(r"^\d+$", url):
@@ -127,7 +114,7 @@ def launch_kwargs(profile_path: Path) -> dict[str, Any]:
 
 
 async def with_browser(
-    fn: Callable[[Page], Awaitable[dict[str, Any]]],
+    fn: Callable[[XPage], Awaitable[dict[str, Any]]],
 ) -> dict[str, Any]:
     """Run *fn(page)* inside a persistent browser context.
 
@@ -153,7 +140,7 @@ async def with_browser(
             await context.close()
 
 
-async def check_login(page: Page) -> str | None:
+async def check_login(page: XPage) -> str | None:
     """Return an error string if not logged in, None if OK."""
     if await is_visible(page.locator(SEL["account_switcher"])):
         return None

@@ -25,6 +25,24 @@ SLACK_BOT_VALUE = "xoxb-fake"
 SLACK_APP_VALUE = "xapp-fake"
 
 
+class _FakeSlackClient:
+    """Recording subset of the Slack Web API used by these tests."""
+
+    def __init__(self) -> None:
+        self.chat_postMessage = AsyncMock(return_value={"ts": "1234567890.123456"})
+        self.chat_update = AsyncMock(return_value={"ok": True})
+
+
+class _FakeSlackApp:
+    """Slack Bolt-shaped fake that satisfies the channel and event contracts."""
+
+    def __init__(self) -> None:
+        self.client = _FakeSlackClient()
+        self.action = MagicMock()
+        self.event = MagicMock()
+        self.use = MagicMock()
+
+
 def _make_channel(
     *,
     on_ask_user_answer: object | None = None,
@@ -43,9 +61,7 @@ def _make_channel(
         on_ask_user_answer=on_ask_user_answer,
     )
     # Stub the Slack app so we don't need a real Socket Mode connection
-    ch.slack_app = MagicMock()
-    ch.slack_app.client.chat_postMessage = AsyncMock(return_value={"ts": "1234567890.123456"})
-    ch.slack_app.client.chat_update = AsyncMock(return_value={"ok": True})
+    ch.slack_app = _FakeSlackApp()
     # Mark the test channel as allowed
     ch.register_allowed_channel("general", allowed_channel_id)
     return ch
@@ -526,7 +542,7 @@ class TestOnAskUserAnswerCallback:
 
 
 def _extract_action_handler(
-    mock_app: MagicMock, *, pattern: re.Pattern | None = None
+    mock_app: _FakeSlackApp, *, pattern: re.Pattern | None = None
 ) -> object | None:
     """Extract the handler function registered via ``@app.action(pattern)``.
 

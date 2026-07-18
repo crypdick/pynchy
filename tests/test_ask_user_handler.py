@@ -25,6 +25,17 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+class _FakeAskUserDeps:
+    """Recording implementation of the handler's two dependency operations."""
+
+    def __init__(self, *, host_process_alive: bool = False) -> None:
+        self.enqueue_message = AsyncMock()
+        self._host_process_alive = host_process_alive
+
+    def has_active_host_process(self, _group_folder: str) -> bool:
+        return self._host_process_alive
+
+
 @pytest.fixture
 def settings(tmp_path: Path):
     return make_settings(data_dir=tmp_path)
@@ -63,9 +74,7 @@ class TestPathAContainerAlive:
         alive_session = MagicMock()
         alive_session.is_alive = True
 
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = False
+        deps = _FakeAskUserDeps()
         answer = {"auth_strategy": "JWT tokens"}
         response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
 
@@ -101,9 +110,7 @@ class TestPathAContainerAlive:
         """After writing IPC response, the pending question file should be resolved."""
         alive_session = MagicMock()
         alive_session.is_alive = True
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = False
+        deps = _FakeAskUserDeps()
 
         with (
             patch(
@@ -132,9 +139,7 @@ class TestPathAContainerAlive:
         self, settings, pending_question, tmp_path
     ):
         """A direct host runner must receive the answer through its IPC response."""
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = True
+        deps = _FakeAskUserDeps(host_process_alive=True)
         response_path = tmp_path / "fake" / "responses" / "req-abc123.json"
 
         with (
@@ -172,9 +177,7 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_enqueues_message_when_dead(self, settings, pending_question):
         """When the container is dead, enqueue the answer as a synthetic message."""
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = False
+        deps = _FakeAskUserDeps()
 
         with (
             patch(
@@ -203,9 +206,7 @@ class TestPathBContainerDead:
         """A session that exists but is_alive=False should trigger cold-start path."""
         dead_session = MagicMock()
         dead_session.is_alive = False
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = False
+        deps = _FakeAskUserDeps()
 
         with (
             patch(
@@ -225,9 +226,7 @@ class TestPathBContainerDead:
     @pytest.mark.asyncio
     async def test_resolves_pending_question_when_dead(self, settings, pending_question):
         """The pending question should be resolved even in the cold-start path."""
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = False
+        deps = _FakeAskUserDeps()
 
         with (
             patch(
@@ -256,9 +255,7 @@ class TestUnknownQuestion:
     @pytest.mark.asyncio
     async def test_unknown_question_returns_early(self, settings):
         """If the question doesn't exist, log a warning and don't crash."""
-        deps = MagicMock()
-        deps.enqueue_message = AsyncMock()
-        deps.has_active_host_process.return_value = False
+        deps = _FakeAskUserDeps()
 
         with (
             patch(
@@ -289,9 +286,7 @@ async def _cold_start_text(pending: dict, answer: dict) -> str:
     it as a synthetic message — so the enqueued text is the observable output
     of the answer-context formatting.
     """
-    deps = MagicMock()
-    deps.enqueue_message = AsyncMock()
-    deps.has_active_host_process.return_value = False
+    deps = _FakeAskUserDeps()
     with (
         patch(
             "pynchy.host.orchestrator.messaging.ask_user_handler.find_pending_question",

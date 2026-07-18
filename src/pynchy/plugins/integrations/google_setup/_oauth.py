@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.google_setup._paths import (
@@ -32,16 +32,11 @@ def _token_exchange_failure_message(error: object) -> str:
     return f"Token exchange failed: {error}"
 
 
-if TYPE_CHECKING:
-    from playwright.async_api import Page
-else:
-    try:
-        from playwright.async_api import Page
-    except ImportError:
+@runtime_checkable
+class OAuthPage(Protocol):
+    """The browser surface required to complete the OAuth consent flow."""
 
-        @runtime_checkable
-        class Page(Protocol):
-            async def goto(self, url: str, *, wait_until: str) -> object: ...
+    async def goto(self, url: str, *, wait_until: str) -> object: ...
 
 
 def parse_client_credentials(kp: Path) -> tuple[str, str]:
@@ -149,7 +144,7 @@ def save_credentials_to_profile(tokens: dict[str, object], profile_name: str) ->
     return dest
 
 
-async def run_oauth_flow(page: Page, kp: Path, scopes: str) -> dict[str, object]:
+async def run_oauth_flow(page: OAuthPage, kp: Path, scopes: str) -> dict[str, object]:
     """Run the OAuth consent + token exchange flow."""
     client_id, client_secret = parse_client_credentials(kp)
     done_event, auth_codes, callback_server = start_callback_server()
