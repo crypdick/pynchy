@@ -90,6 +90,25 @@ class TestMcpProxyRouting:
         finally:
             await client.close()
 
+    async def test_proxy_does_not_duplicate_streamable_http_mcp_path(self, mock_backend):
+        """A streamable-HTTP client must not make the backend path ``/mcp/mcp``."""
+        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        create_gate("test-ws", 1000.0, security)
+
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        app = create_proxy_app({"browser": backend_url})
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/browser/mcp",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+            assert resp.status == 200
+        finally:
+            await client.close()
+
     async def test_proxy_404_unknown_instance(self):
         """Proxy should return 404 for unknown MCP instances."""
         app = create_proxy_app({})

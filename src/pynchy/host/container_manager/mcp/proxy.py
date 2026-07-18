@@ -239,9 +239,15 @@ async def _backend_response(
     context: _BackendForwardContext,
 ) -> web.Response:
     request = cast("web.Request", context.request)
+    # Codex and other streamable-HTTP clients address the proxy at ``.../mcp``.
+    # The managed backend endpoint already includes that suffix, so forwarding it
+    # a second time would turn a valid endpoint into ``.../mcp/mcp``.
+    backend_url = context.backend_url
+    if context.tail and not backend_url.rstrip("/").endswith(context.tail):
+        backend_url = f"{backend_url}{context.tail}"
     async with context.session.request(
         request.method,
-        context.backend_url + context.tail,
+        backend_url,
         data=context.body,
         headers=_forwarded_headers(request),
     ) as backend_resp:
