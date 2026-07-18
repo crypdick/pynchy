@@ -27,6 +27,7 @@ from pathlib import (
 from typing import TYPE_CHECKING, Any, cast
 
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    ApprovalMode,
     HostActionDescriptor,
 )
 from pynchy.config import Settings, get_settings
@@ -238,6 +239,8 @@ async def _execute_service_approval(
                 action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
             )
             return
+        if action.approval.mode is ApprovalMode.SESSION_TOOL:
+            context.gate.grant_session_tool_approval(str(action.tool_name))
         try:
             context.request_data["source_group"] = context.source_group
             response = await action.handler(context.request_data)

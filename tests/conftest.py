@@ -12,6 +12,7 @@ import pynchy.state.connection as db_conn
 from pynchy.actions import ACTION_SPECS, ActionId, assess_hermetic_coverage
 from pynchy.capabilities import (
     ApprovalContract,
+    ApprovalMode,
     AuditContract,
     CapabilityDescriptor,
     CapabilityId,
@@ -144,6 +145,7 @@ def make_host_action_catalog(
     *tool_names: str,
     handler,
     read_tools: tuple[str, ...] = (),
+    approval_mode: ApprovalMode = ApprovalMode.EXACT_REQUEST,
 ) -> HostActionCatalog:
     """Build a typed catalog for dispatch-focused tests.
 
@@ -165,7 +167,7 @@ def make_host_action_catalog(
                 tool_name=HostToolName(tool_name),
                 handler=handler,
                 access=access,
-                approval=ApprovalContract(),
+                approval=ApprovalContract(mode=approval_mode),
                 idempotency=IdempotencyContract(
                     IdempotencyMode.NOT_REQUIRED
                     if access is HostActionAccess.READ

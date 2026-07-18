@@ -119,9 +119,12 @@ Screenshots are saved under the workspace IPC directory and exposed inside the
 agent container at `/workspace/ipc/computer-use/<file>.png`.
 
 This tool controls the real host desktop. Gate it with workspace security
-policy for non-admin workspaces. Agents should not enter secrets, payment
-details, 2FA codes, or destructive confirmations unless the user explicitly
-authorized that exact action.
+policy for non-admin workspaces. When policy requires approval, the approval
+covers only `computer_use` for the active agent session and clears when that
+session ends. Other tools keep their own approval scope, and no approval
+overrides a later policy denial.
+Agents should not enter secrets, payment details, 2FA codes, or destructive
+confirmations unless the user explicitly authorized that exact action.
 
 ---
 

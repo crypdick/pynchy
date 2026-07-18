@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from pynchy.actions import ActionId
 from pynchy.capabilities import (
     ApprovalContract,
+    ApprovalMode,
     AuditContract,
     CapabilityDescriptor,
     CapabilityId,
@@ -251,7 +252,7 @@ class ComputerUsePlugin:
             tool_name=HostToolName("computer_use"),
             handler=_handler(config, backends),
             access=HostActionAccess.WRITE,
-            approval=ApprovalContract(),
+            approval=ApprovalContract(mode=ApprovalMode.SESSION_TOOL),
             idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),
             audit=AuditContract(),
         )

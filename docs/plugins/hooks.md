@@ -85,8 +85,10 @@ def pynchy_service_handler(self) -> HostActionRegistration:
 `CapabilityDescriptor` owns the operator-facing identity, requirements,
 read-only probe, setup and recovery guidance, documentation, and semantic
 action links. `HostActionDescriptor` owns dispatch metadata: tool name,
-handler, read/write access, approval expiry, idempotency, and terminal audit
-contract.
+handler, read/write access, approval scope and expiry, idempotency, and terminal
+audit contract. `ApprovalContract()` defaults to one approval per exact request.
+Use `ApprovalContract(mode=ApprovalMode.SESSION_TOOL)` only for a tool whose
+multi-step workflow should reuse approval until the active agent session ends.
 
 For a new semantic action, the same plugin also implements
 [`pynchy_action_specs`](#pynchy_action_specs). A plugin may use a built-in

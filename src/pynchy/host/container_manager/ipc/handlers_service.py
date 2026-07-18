@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    ApprovalMode,
     HostActionDescriptor,
     HostActionHandler,
 )
@@ -123,9 +124,20 @@ async def _request_human_approval(
         expires_after_seconds=context.action.approval.expires_after_seconds,
     )
 
+    preface = None
+    if context.action.approval.mode is ApprovalMode.SESSION_TOOL:
+        preface = (
+            "Approving grants this tool for the rest of the active agent session: "
+            f"{context.request.tool_name}"
+        )
     await context.deps.broadcast_to_channels(
         context.chat_jid,
-        approval_event(context.request.tool_name, context.data, short_id),
+        approval_event(
+            context.request.tool_name,
+            context.data,
+            short_id,
+            preface=preface,
+        ),
     )
 
     await record_security_event(

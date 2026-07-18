@@ -135,8 +135,13 @@ Descriptors do not define a second permission system. The capability snapshot
 shown by `/capabilities` and `/status` is read-only diagnostic state.
 `SecurityPolicy` evaluates current semantic capability rules and service trust
 again at each dispatch. Approved replay also rechecks denial and descriptor
-availability; the human decision satisfies the approval requirement but cannot
-override a policy change made while the request waited.
+availability. Each host-action plugin declares an approval scope in its
+`ApprovalContract`. The default `exact_request` scope approves only the pending
+request, which suits one-shot effects such as sending one email. An opted-in
+`session_tool` scope grants that tool on the active container invocation's
+`SecurityGate`, which suits multi-step tools such as computer use. A session
+grant disappears when the container invocation ends, does not cover another
+tool, and cannot override a policy denial added before or after approval.
 
 Policy, approval, and terminal execution events use the existing security
 audit sink. Descriptor-backed events include `capability_id`, `action_ids`,

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import init_test_database, make_host_action_catalog, make_settings
 
+from pynchy.capabilities import ApprovalMode
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.types import CapabilityRule, WorkspaceSecurity
@@ -88,7 +89,12 @@ class TestProcessApprovalDecision:
         decision_file = _write_decision(ipc_dir, "grp", "req123", approved=True)
 
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
-        catalog = make_host_action_catalog("my_tool", handler=mock_handler)
+        catalog = make_host_action_catalog(
+            "my_tool",
+            handler=mock_handler,
+            approval_mode=ApprovalMode.SESSION_TOOL,
+        )
+        current_gate = SecurityGate(WorkspaceSecurity())
 
         with (
             patch(
@@ -99,6 +105,10 @@ class TestProcessApprovalDecision:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
                 return_value=catalog,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval._approval_replay_gate",
+                return_value=current_gate,
             ),
         ):
             await process_approval_decision(decision_file, "grp")
@@ -113,6 +123,7 @@ class TestProcessApprovalDecision:
         assert response_file.exists()
         response = json.loads(response_file.read_text())
         assert response["result"]["status"] == "posted"
+        assert current_gate.has_session_tool_approval("my_tool")
 
         # Pending and decision files cleaned up
         assert not (ipc_dir / "grp" / "pending_approvals" / "req123.json").exists()
