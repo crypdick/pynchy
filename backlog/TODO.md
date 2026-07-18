@@ -46,7 +46,6 @@ Single source of truth for all pynchy work items.
 - [Peekaboo computer-use plugin](1-approved/peekaboo-computer-use-plugin.md) — Semantic macOS accessibility automation behind Pynchy's host policy boundary, with Cua Driver fallback.
 - [Sherpa ONNX text-to-speech plugin](1-approved/sherpa-onnx-tts-plugin.md) — Local speech synthesis plus the outbound-media path needed to deliver audio to channels.
 - [Managed flow model on Temporal](1-approved/managed-flow-model.md) — Product-level, durable wait/resume/child-flow state layered on Temporal rather than a Temporal replacement.
-- [Protonmail integration](1-approved/proton-mcp.md) — direct Proton Bridge IMAP/SMTP MCP; legacy plan retained for Calendar context
 - if a deployment fails, it should spawn a local claude agent out-of-band to rescue the deployment
 
 

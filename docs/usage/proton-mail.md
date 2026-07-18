@@ -2,8 +2,7 @@
 
 Give a workspace read and send access to Proton Mail through a host-side MCP
 server. The server connects directly to local Proton Mail Bridge IMAP and SMTP
-listeners; it does not invoke `pm-cli` and it never gives a workspace the
-Bridge app password.
+listeners and never gives a workspace the Bridge app password.
 
 ## Prerequisites
 
