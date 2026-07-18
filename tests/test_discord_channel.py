@@ -10,12 +10,15 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
+from pynchy.plugins.channels.discord._voice import (  # noqa: PLC2701
+    _load_opus,  # allow: private-test-imports - platform Opus loader.
+)
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
@@ -202,6 +205,26 @@ def test_owns_only_discord_jids():
     assert ch.owns_jid("discord:channel:1") is True
     assert ch.owns_jid("discord:direct:1") is True
     assert ch.owns_jid("slack:C1") is False
+
+
+def test_load_opus_uses_homebrew_fallback(monkeypatch):
+    loaded: list[str] = []
+    monkeypatch.delenv("PYNCHY_DISCORD_OPUS_LIBRARY", raising=False)
+
+    def load_opus(library: str) -> None:
+        if library.endswith("libopus.0.dylib"):
+            loaded.append(library)
+            return
+        raise OSError("not found")
+
+    with (
+        patch("pynchy.plugins.channels.discord._voice.find_library", return_value=None),
+        patch("pynchy.plugins.channels.discord._voice.opus.is_loaded", return_value=False),
+        patch("pynchy.plugins.channels.discord._voice.opus.load_opus", side_effect=load_opus),
+    ):
+        assert _load_opus() is True
+
+    assert loaded == ["/opt/homebrew/opt/opus/lib/libopus.0.dylib"]
 
 
 @pytest.mark.asyncio

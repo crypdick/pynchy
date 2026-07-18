@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import tempfile
 import wave
+from ctypes.util import find_library
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +39,30 @@ _PCM_SAMPLE_WIDTH = 2
 _SILENCE_FRAMES = 30
 _SPEECH_RMS_THRESHOLD = 250
 _MAX_TURN_BYTES = _PCM_SAMPLE_RATE * _PCM_CHANNELS * _PCM_SAMPLE_WIDTH * 30
+_OPUS_LIBRARY_ENV = "PYNCHY_DISCORD_OPUS_LIBRARY"
+_OPUS_LIBRARY_CANDIDATES = (
+    "/opt/homebrew/opt/opus/lib/libopus.0.dylib",
+    "/usr/local/opt/opus/lib/libopus.0.dylib",
+)
+
+
+def _load_opus() -> bool:
+    """Load libopus from the platform resolver or the supported macOS installs."""
+    if opus.is_loaded():
+        return True
+    candidates = (
+        os.getenv(_OPUS_LIBRARY_ENV),
+        find_library("opus"),
+        *_OPUS_LIBRARY_CANDIDATES,
+    )
+    for candidate in dict.fromkeys(candidate for candidate in candidates if candidate):
+        try:
+            opus.load_opus(candidate)
+        except OSError:
+            continue
+        logger.info("Loaded libopus for Discord voice", library=candidate)
+        return True
+    return False
 
 
 @dataclass
@@ -211,8 +237,12 @@ class _VoiceSession:
         self._receiving = False
 
     def start(self) -> None:
-        if not opus.is_loaded():
-            logger.warning("Discord voice input disabled; libopus is not available", jid=self.jid)
+        if not _load_opus():
+            logger.warning(
+                "Discord voice input disabled; libopus is not available",
+                jid=self.jid,
+                env_var=_OPUS_LIBRARY_ENV,
+            )
             return
         self._voice_client.start_receiving(self._on_packet)
         self._receiving = True

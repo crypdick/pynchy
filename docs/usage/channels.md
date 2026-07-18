@@ -180,6 +180,10 @@ Pynchy sends `{input_path}` and `{output_path}` as argv substitutions and never
 uses a shell. If any voice prerequisite is missing, Pynchy logs the failure and
 does not create a room or fall back to an unprotected channel.
 
+Pynchy loads `libopus` through the system resolver and also checks the usual
+Homebrew locations. Set `PYNCHY_DISCORD_OPUS_LIBRARY` to an absolute library
+path only when the host installs Opus somewhere else.
+
 DM pairing, interactive question widgets, voice rooms other than the configured
 workspace, Discord video, and Stage channels are not supported.
 
