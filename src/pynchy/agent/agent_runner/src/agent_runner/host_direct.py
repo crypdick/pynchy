@@ -12,9 +12,10 @@ import asyncio
 import json
 import os
 import sys
+from urllib.parse import urlparse, urlunparse
 
 from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
-from agent_runner.main import build_sdk_messages, event_to_output
+from agent_runner.main import _direct_mcp_server_entry, build_sdk_messages, event_to_output
 from agent_runner.models import ContainerInput, ContainerOutput
 from agent_runner.registry import create_agent_core
 
@@ -25,6 +26,12 @@ def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> Agen
         **(container_input.agent_core_config or {}),
         "pynchy_hooks_enabled": False,
     }
+    mcp_servers: dict[str, dict[str, object]] = {"pynchy": _host_pynchy_mcp_server(container_input)}
+    for server in container_input.mcp_direct_servers or []:
+        name = server.get("name")
+        if isinstance(name, str) and name:
+            mcp_servers[name] = _host_direct_mcp_server_entry(server)
+
     return AgentCoreConfig(
         cwd=cwd,
         session_id=container_input.session_id,
@@ -33,10 +40,30 @@ def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> Agen
         is_admin=container_input.is_admin,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=container_input.system_prompt_append,
-        mcp_servers={"pynchy": _host_pynchy_mcp_server(container_input)},
+        mcp_servers=mcp_servers,
         plugin_hooks=[],
         extra=extra,
     )
+
+
+def _host_direct_mcp_server_entry(server: dict[str, object]) -> dict[str, object]:
+    """Build a local MCP-proxy entry for an agent executing on the host.
+
+    The shared direct-server resolver deliberately uses the container-reachable
+    address. Host-direct agents run beside the MCP proxy, which binds only to
+    loopback, so route the same proxy URL through localhost instead.
+    """
+    url = server.get("url")
+    if not isinstance(url, str):
+        raise TypeError("direct MCP server URL must be a string")
+    parsed = urlparse(url)
+    if parsed.hostname is None:
+        raise ValueError("direct MCP server URL must include a hostname")
+    netloc = "localhost"
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    local_server = {**server, "url": urlunparse(parsed._replace(netloc=netloc))}
+    return _direct_mcp_server_entry(local_server)
 
 
 def _host_pynchy_mcp_server(container_input: ContainerInput) -> dict[str, object]:

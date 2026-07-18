@@ -50,6 +50,9 @@ from pynchy.host.orchestrator.host_execution import (
 from pynchy.host.orchestrator.host_execution import (
     prepare_host_codex_home as _prepare_host_codex_home,
 )
+from pynchy.host.orchestrator.host_execution import (
+    prepare_host_direct_mcp_servers as _prepare_host_direct_mcp_servers,
+)
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
@@ -431,6 +434,12 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             chat_jid,
             group,
             is_scheduled_task=is_scheduled_task,
+        )
+        await _prepare_host_direct_mcp_servers(
+            input_data,
+            group_folder=group.folder,
+            chat_jid=chat_jid,
+            broadcast_host_message=deps.broadcast_host_message,
         )
         return await run_host_agent_turn(
             HostAgentTurnRequest(
