@@ -8,7 +8,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import Any
+from typing import Any, cast
 
 from pynchy.plugins.integrations.browser import chrome_path, cleanup_lock_files, profile_dir
 from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001, RUF100 - beartype validates browser helper contracts at runtime.
@@ -135,7 +135,10 @@ async def with_browser(
         )
         try:
             page = context.pages[0] if context.pages else await context.new_page()
-            return await fn(page)
+            # Playwright narrows keyword parameters with Literal types, so its
+            # Page does not structurally satisfy the smaller integration
+            # protocol even though it provides every operation we consume.
+            return await fn(cast("XPage", page))
         finally:
             await context.close()
 

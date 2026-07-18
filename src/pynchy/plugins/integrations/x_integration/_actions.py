@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import re
 import subprocess  # noqa: S404, TC003, RUF100 - trusted display helper handles and beartype runtime annotation binding.
-from typing import Any
+from typing import Any, cast
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations._service import service_tool
@@ -26,6 +26,7 @@ from pynchy.plugins.integrations.x_integration._browser import (
     with_browser,
 )
 from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001, RUF100 - beartype validates nested action contracts at runtime.
+    XLocator,
     XPage,
 )
 from pynchy.plugins.integrations.x_integration._display import ensure_xvfb, start_vnc_layer
@@ -74,7 +75,7 @@ async def _run_x_session_setup(timeout_seconds: int, novnc_url: str | None) -> d
         await page.wait_for_timeout(TIMEOUTS["page_load"])
 
         # Already logged in?
-        if await is_visible(page.locator(SEL["account_switcher"])):
+        if await is_visible(cast("XLocator", page.locator(SEL["account_switcher"]))):
             result: dict[str, Any] = {
                 "status": "ok",
                 "message": f"Already logged in to X. Profile saved at {x_profile}",
