@@ -55,27 +55,39 @@ not recover old encrypted history automatically.
 
 ## Pynchy configuration
 
-Select the tool only in the profile trusted with the full private inbox:
+These are native Pynchy tools, not a separately hosted remote MCP server. Select
+them only in the profile trusted with the full private inbox:
 
 ```toml
-[tools.matrix-gateway]
-type = "mcp"
+[tools.matrix_list_chats]
+type = "builtin"
+name = "matrix_list_chats"
 public_source = true
+secret_data = true
+public_sink = false
+dangerous_writes = false
+
+[tools.matrix_list_messages]
+type = "builtin"
+name = "matrix_list_messages"
+public_source = true
+secret_data = true
+public_sink = false
+dangerous_writes = false
+
+[tools.matrix_send_message]
+type = "builtin"
+name = "matrix_send_message"
+public_source = false
 secret_data = true
 public_sink = true
 dangerous_writes = true
 
-[tools.matrix-gateway.mcp]
-runtime = "script"
-command = "uv"
-args = ["run", "python", "-m", "pynchy.plugins.integrations.matrix_gateway", "--port", "{port}"]
-port = 8476
-transport = "streamable_http"
-
 [profiles.personal-communications]
-tools = ["matrix-gateway"]
+tools = ["matrix_list_chats", "matrix_list_messages", "matrix_send_message"]
 contains_secrets = true
 ```
 
 The tools are `matrix_list_chats`, `matrix_list_messages`, and
-`matrix_send_message`. The first two are read-only; the send tool is approval-gated.
+`matrix_send_message`. The first two are read-only. The send tool always stops at
+Pynchy's human-approval boundary before the host gateway transmits it.

@@ -108,7 +108,7 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ),
     (
         "pynchy.plugins.integrations.matrix_gateway",
-        "MatrixGatewayMcpPlugin",
+        "MatrixGatewayPlugin",
         "matrix-gateway",
     ),
     (
