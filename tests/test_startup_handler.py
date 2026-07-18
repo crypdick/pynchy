@@ -13,11 +13,26 @@ from pynchy.config.models import NotificationsConfig
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
+    confirm_deploy_startup,
+    prepare_interrupted_turn_recovery,
     send_boot_notification,
     validate_plugin_credentials,
 )
-from pynchy.state import begin_in_flight_turn, init_test_database
-from pynchy.types import InFlightTurn, InFlightWorkKind, WorkspaceProfile
+from pynchy.state import (
+    begin_in_flight_turn,
+    claim_deployment,
+    get_deployment_state,
+    get_router_state,
+    init_test_database,
+    initialize_deployment_state,
+)
+from pynchy.types import (
+    DeploymentState,
+    DeployRevision,
+    InFlightTurn,
+    InFlightWorkKind,
+    WorkspaceProfile,
+)
 
 # ---------------------------------------------------------------------------
 # validate_plugin_credentials
@@ -138,6 +153,7 @@ class TestAutoRollback:
         updated = json.loads(cont_path.read_text())
         assert "ROLLBACK" in updated["resume_prompt"]
         assert not updated["previous_commit_sha"]  # prevents loop
+        assert updated["rolled_back"] is True
 
         monkeypatch.setattr(
             "pynchy.host.orchestrator.startup_handler.get_settings",
@@ -418,3 +434,82 @@ class TestCheckDeployContinuation:
         notice = deps.broadcast_host_message.await_args.args[1]
         assert "Pynchy restarted" in notice
         assert "Deploy complete" not in notice
+
+
+class TestConfirmDeployStartup:
+    """Tests for promoting a claimed revision only after a successful boot."""
+
+    @staticmethod
+    def _settings(monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_settings",
+            type("S", (), {"data_dir": tmp_path}),
+        )
+
+    @pytest.mark.asyncio
+    async def test_promotes_the_continuation_revision_before_sync_can_poll(
+        self,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        await init_test_database()
+        applied = DeployRevision("old-sha", "config-a")
+        target = DeployRevision("new-sha", "config-b")
+        await initialize_deployment_state(applied)
+        await claim_deployment(target)
+        continuation_path = tmp_path / "deploy_continuation.json"
+        continuation_path.write_text(
+            json.dumps(
+                {
+                    "commit_sha": target.commit_sha,
+                    "config_hash": target.config_hash,
+                    "resume_prompt": "Deploy complete.",
+                }
+            )
+        )
+        self._settings(monkeypatch, tmp_path)
+
+        recovery = await prepare_interrupted_turn_recovery()
+        assert continuation_path.exists()
+        await confirm_deploy_startup(recovery)
+
+        assert not continuation_path.exists()
+        assert recovery.deploy_revision == target
+        assert await get_deployment_state() == DeploymentState(
+            applied=target,
+            pending=None,
+        )
+        assert await get_router_state("last_deploy_sha") == target.commit_sha
+        assert await get_router_state("last_deploy_at") is not None
+
+    @pytest.mark.asyncio
+    async def test_rollback_releases_the_failed_revision_without_promoting_it(
+        self,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        await init_test_database()
+        applied = DeployRevision("old-sha", "config-a")
+        failed = DeployRevision("failed-sha", "config-b")
+        await initialize_deployment_state(applied)
+        await claim_deployment(failed)
+        continuation_path = tmp_path / "deploy_continuation.json"
+        continuation_path.write_text(
+            json.dumps(
+                {
+                    "commit_sha": failed.commit_sha,
+                    "config_hash": failed.config_hash,
+                    "rolled_back": True,
+                }
+            )
+        )
+        self._settings(monkeypatch, tmp_path)
+
+        recovery = await prepare_interrupted_turn_recovery()
+        assert continuation_path.exists()
+        await confirm_deploy_startup(recovery)
+
+        assert not continuation_path.exists()
+        state = await get_deployment_state()
+        assert state.applied == applied
+        assert state.pending is None

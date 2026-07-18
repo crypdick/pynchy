@@ -37,7 +37,17 @@ from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
-from pynchy.types import CanaryOutcome, CanaryRun, HostJob, ScheduledTask, WorkspaceProfile
+from pynchy.state import init_test_database, initialize_deployment_state
+from pynchy.types import (
+    CanaryOutcome,
+    CanaryRun,
+    DeployChangeKind,
+    DeployClaimStatus,
+    DeployRevision,
+    HostJob,
+    ScheduledTask,
+    WorkspaceProfile,
+)
 from pynchy.utils import ShellResult
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
@@ -212,7 +222,9 @@ class TestTemporalSchedulerRuntime:
             "broadcast_host_message": deps.broadcast_host_message,
             "chat_jid": "slack:C123",
             "commit_sha": "new-sha",
+            "config_hash": "config-hash",
             "previous_sha": "old-sha",
+            "change_kind": DeployChangeKind.CODE,
             "resume_prompt": "Deploy complete. Verifying service health.",
             "sigterm_delay": 0.25,
         }
@@ -280,9 +292,11 @@ class TestTemporalSchedulerRuntime:
         assert workflow_id == "pynchy-interrupted-turn-turn-123-with-spaces"
 
     def test_deploy_workflow_id_is_stable_and_temporal_safe(self):
-        workflow_id = temporal_scheduler.deploy_workflow_id("abc1234/with spaces")
+        workflow_id = temporal_scheduler.deploy_workflow_id(
+            DeployRevision("abc1234/with spaces", "config/hash")
+        )
 
-        assert workflow_id == "pynchy-deploy-abc1234-with-spaces"
+        assert workflow_id == "pynchy-deploy-abc1234-with-spaces-config-hash"
 
     @pytest.mark.asyncio
     async def test_start_scheduled_agent_task_uses_configured_task_queue(self, temporal_task):
@@ -429,9 +443,12 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_start_deploy_starts_temporal_workflow(self):
+        await init_test_database()
+        await initialize_deployment_state(DeployRevision("def456", "config-hash"))
         request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="abc123",
+            config_hash="config-hash",
             previous_sha="def456",
             rebuild=True,
             reason="origin",
@@ -448,10 +465,37 @@ class TestTemporalSchedulerRuntime:
         assert len(client.started_workflows) == 1
         workflow, args, kwargs = client.started_workflows[0]
         assert workflow == temporal_workflows.DeployWorkflow.run
-        assert args == (temporal_deploy.deploy_request_to_payload(request),)
-        assert kwargs["id"] == "pynchy-deploy-abc123"
+        payload = args[0]
+        assert payload["change_kind"] == "code change"
+        assert payload["commit_sha"] == "abc123"
+        assert payload["config_hash"] == "config-hash"
+        assert kwargs["id"] == "pynchy-deploy-abc123-config-hash"
         assert kwargs["task_queue"] == "pynchy-test"
         assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE"
+
+    @pytest.mark.asyncio
+    async def test_start_deploy_skips_a_revision_that_already_booted(self):
+        revision = DeployRevision("abc123", "config-hash")
+        await init_test_database()
+        await initialize_deployment_state(revision)
+        request = temporal_deploy.DeployRequest(
+            chat_jid="slack:C123",
+            commit_sha=revision.commit_sha,
+            config_hash=revision.config_hash,
+            previous_sha="def456",
+            rebuild=True,
+            reason="host_git_sync",
+        )
+        client = FakeScheduleClient()
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+
+        claim = await runtime.start_deploy(request)
+
+        assert claim.status is DeployClaimStatus.ALREADY_APPLIED
+        assert client.started_workflows == []
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_recurring_agent_task(
@@ -1030,13 +1074,16 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_builds_then_finalizes(self, monkeypatch):
+        await init_test_database()
         deps = NullSchedulerDeps()
         deps.broadcast_host_message = AsyncMock()
         finalize_deploy = AsyncMock()
         request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="new-sha",
+            config_hash="config-hash",
             previous_sha="old-sha",
+            change_kind=DeployChangeKind.CODE,
             rebuild=True,
             reason="test",
         )
@@ -1070,12 +1117,14 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_reports_build_failure(self, monkeypatch):
+        await init_test_database()
         deps = NullSchedulerDeps()
         deps.broadcast_host_message = AsyncMock()
         finalize_deploy = AsyncMock()
         request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="new-sha",
+            config_hash="config-hash",
             previous_sha="old-sha",
             rebuild=True,
         )
@@ -1127,11 +1176,13 @@ class TestTemporalSchedulerRuntime:
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_reports_restart_preparation_failure(self, monkeypatch):
+        await init_test_database()
         deps = NullSchedulerDeps()
         deps.broadcast_host_message = AsyncMock()
         request = temporal_deploy.DeployRequest(
             chat_jid="slack:C123",
             commit_sha="new-sha",
+            config_hash="config-hash",
             previous_sha="old-sha",
             rebuild=False,
         )

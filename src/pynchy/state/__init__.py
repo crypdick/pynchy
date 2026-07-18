@@ -44,6 +44,14 @@ from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
     store_conversation_event_pointer,
 )
+from pynchy.state.deployments import (
+    advance_deployment_baseline,
+    claim_deployment,
+    clear_pending_deployment,
+    complete_deployment,
+    get_deployment_state,
+    initialize_deployment_state,
+)
 from pynchy.state.events import store_event
 from pynchy.state.groups import (
     delete_workspace_profile,
@@ -126,6 +134,13 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     # conversation_events
     "get_conversation_event_pointers_since",
     "store_conversation_event_pointer",
+    # deployments
+    "advance_deployment_baseline",
+    "claim_deployment",
+    "clear_pending_deployment",
+    "complete_deployment",
+    "get_deployment_state",
+    "initialize_deployment_state",
     # channel_cursors
     "advance_cursors_atomic",
     "get_channel_cursor",

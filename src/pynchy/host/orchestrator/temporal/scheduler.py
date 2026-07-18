@@ -8,7 +8,7 @@ import contextlib
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import (
     timedelta,  # noqa: TC003, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
@@ -101,12 +101,16 @@ from pynchy.host.orchestrator.temporal.workflows import (
 )
 from pynchy.logger import logger
 from pynchy.state import (
+    claim_deployment,
+    clear_pending_deployment,
     get_all_host_jobs,
     get_all_tasks,
     get_task_by_id,
 )
 from pynchy.types import (
     CanaryRun,  # noqa: TC001, RUF100 - beartype resolves canary notification annotations.
+    DeployClaim,
+    DeployClaimStatus,
     ScheduledTask,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
 
@@ -192,10 +196,10 @@ async def start_interrupted_turn_workflow(turn_id: str, chat_jid: str) -> None:
     await runtime.start_interrupted_turn(turn_id, chat_jid)
 
 
-async def start_deploy_workflow(request: DeployRequest) -> None:
+async def start_deploy_workflow(request: DeployRequest) -> DeployClaim:
     """Start a Temporal workflow to perform a deploy handoff."""
     runtime = await _require_active_runtime()
-    await runtime.start_deploy(request)
+    return await runtime.start_deploy(request)
 
 
 async def start_channel_reconciliation_workflow() -> None:
@@ -425,18 +429,35 @@ class TemporalSchedulerRuntime:
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
 
-    async def start_deploy(self, request: DeployRequest) -> None:
+    async def start_deploy(self, request: DeployRequest) -> DeployClaim:
         """Start a Temporal workflow for a deploy handoff."""
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
 
-        await self._start_workflow(
-            DeployWorkflow.run,
-            deploy_request_to_payload(request),
-            workflow_id=deploy_workflow_id(request.commit_sha or request.previous_sha),
-            status_id=request.commit_sha or request.previous_sha or request.reason,
-            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-        )
+        claim = await claim_deployment(request.revision, force=request.force)
+        if claim.status is not DeployClaimStatus.CLAIMED:
+            logger.info(
+                "Deploy request skipped",
+                commit_sha=request.commit_sha,
+                config_hash=request.config_hash,
+                reason=request.reason,
+                status=claim.status.value,
+            )
+            return claim
+
+        claimed_request = replace(request, change_kind=claim.change_kind)
+        try:
+            await self._start_workflow(
+                DeployWorkflow.run,
+                deploy_request_to_payload(claimed_request),
+                workflow_id=deploy_workflow_id(request.revision),
+                status_id=request.commit_sha or request.previous_sha or request.reason,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            )
+        except Exception:
+            await clear_pending_deployment(request.revision)
+            raise
+        return claim
 
     async def start_channel_reconciliation(self) -> None:
         """Start a Temporal workflow for immediate channel reconciliation."""

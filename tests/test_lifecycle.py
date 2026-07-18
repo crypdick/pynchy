@@ -108,6 +108,10 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
         recovery_order.append("start_worker")
         return _completed_awaitable()
 
+    def fake_confirm_recovery(*_args: Any) -> Awaitable[None]:
+        recovery_order.append("confirm")
+        return _completed_awaitable()
+
     def fake_dispatch_recovery(*_args: Any) -> Awaitable[set[str]]:
         recovery_order.append("dispatch")
         return _completed_awaitable(set())
@@ -157,6 +161,11 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
         "dispatch_interrupted_turn_recovery",
         fake_dispatch_recovery,
     )
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "confirm_deploy_startup",
+        fake_confirm_recovery,
+    )
     monkeypatch.setattr(lifecycle.startup_handler, "setup_admin_group", noop_phase)
     monkeypatch.setattr(lifecycle, "start_message_loop", fake_start_message_loop)
     monkeypatch.setattr(lifecycle, "shutdown_app", fake_shutdown_app)
@@ -171,7 +180,7 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_can_finish.set()
     await run_task
     assert shutdown_finished.is_set()
-    assert recovery_order == ["prepare", "start_worker", "dispatch"]
+    assert recovery_order == ["prepare", "confirm", "start_worker", "dispatch"]
 
 
 @pytest.mark.asyncio

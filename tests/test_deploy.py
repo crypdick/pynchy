@@ -20,7 +20,9 @@ import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator.deploy import finalize_deploy, rollback_deploy_checkout
-from pynchy.types import InFlightTurn, InFlightWorkKind
+from pynchy.types import DeployChangeKind, InFlightTurn, InFlightWorkKind
+
+_CONFIG_HASH = "config-hash-001"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,11 +33,6 @@ def _patch_settings(*, data_dir: Path):
     s = make_settings(data_dir=data_dir)
     with (
         patch("pynchy.host.orchestrator.deploy.get_settings", return_value=s),
-        # finalize_deploy() persists deploy metadata via set_router_state(),
-        # which requires an initialized DB.  Mock it out for unit tests.
-        # Patch on pynchy.state (the re-export) so the local import inside
-        # finalize_deploy picks up the mock.
-        patch("pynchy.state.set_router_state", new_callable=AsyncMock),
         patch(
             "pynchy.state.get_in_flight_turns",
             new_callable=AsyncMock,
@@ -63,13 +60,17 @@ class TestFinalizeDeploy:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="commit-sha-001",
+                config_hash=_CONFIG_HASH,
                 previous_sha="previous-sha-001",
+                change_kind=DeployChangeKind.CODE,
                 resume_prompt="Deploy complete.",
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
         assert continuation["chat_jid"] == "group@g.us"
         assert continuation["commit_sha"] == "commit-sha-001"
+        assert continuation["config_hash"] == _CONFIG_HASH
+        assert continuation["change_kind"] == "code change"
         assert continuation["previous_commit_sha"] == "previous-sha-001"
         assert continuation["resume_prompt"] == "Deploy complete."
         assert continuation["interrupted_turns"] == []
@@ -115,7 +116,21 @@ class TestRollbackDeployCheckout:
         assert result.success is False
         assert "could not verify" in result.error
 
-    async def test_broadcasts_notification_with_short_sha(self, deploy_dir: Path):
+    @pytest.mark.parametrize(
+        ("change_kind", "reason"),
+        [
+            (DeployChangeKind.CODE, "code change"),
+            (DeployChangeKind.CONFIG, "config change"),
+            (DeployChangeKind.CODE_AND_CONFIG, "code and config changes"),
+            (DeployChangeKind.RESTART, "restart request"),
+        ],
+    )
+    async def test_broadcasts_notification_with_short_sha_and_reason(
+        self,
+        deploy_dir: Path,
+        change_kind: DeployChangeKind,
+        reason: str,
+    ):
         broadcast = AsyncMock()
 
         with patch("pynchy.host.orchestrator.deploy.os.kill"):
@@ -123,13 +138,15 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="commit-sha-001",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=change_kind,
             )
 
         broadcast.assert_called_once()
         jid, text = broadcast.call_args[0]
         assert jid == "group@g.us"
-        assert "commit-s" in text  # First 8 chars of SHA
+        assert text == f"Deploying commit-s ({reason})... restarting now."
 
     async def test_skips_broadcast_when_no_chat_jid(self, deploy_dir: Path):
         broadcast = AsyncMock()
@@ -139,7 +156,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="",
                 commit_sha="abc123",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CONFIG,
             )
 
         broadcast.assert_not_called()
@@ -152,7 +171,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="abc",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CODE_AND_CONFIG,
             )
 
         mock_kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
@@ -169,7 +190,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="abc",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CONFIG,
                 sigterm_delay=2.0,
             )
 
@@ -191,7 +214,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="abc",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CODE,
             )
 
         assert (deploy_dir / "deploy_continuation.json").exists()
@@ -204,7 +229,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="",
+                config_hash=_CONFIG_HASH,
                 previous_sha="",
+                change_kind=DeployChangeKind.RESTART,
             )
 
         broadcast.assert_called_once()
@@ -219,7 +246,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="group@g.us",
                 commit_sha="abc",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CONFIG,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
@@ -251,7 +280,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="admin-1@g.us",
                 commit_sha="abc123",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CODE,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())
@@ -272,7 +303,9 @@ class TestRollbackDeployCheckout:
                 broadcast_host_message=broadcast,
                 chat_jid="admin-1@g.us",
                 commit_sha="abc",
+                config_hash=_CONFIG_HASH,
                 previous_sha="000",
+                change_kind=DeployChangeKind.CODE,
             )
 
         continuation = json.loads((deploy_dir / "deploy_continuation.json").read_text())

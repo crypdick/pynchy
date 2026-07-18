@@ -9,6 +9,7 @@ from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves deploy handler signatures at runtime.
 )
 from pynchy.host.container_manager.ipc.registry import register
+from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.orchestrator import adapters
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.logger import logger
@@ -68,6 +69,7 @@ async def _handle_deploy(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=head_sha,
+            config_hash=get_deploy_config_hash(),
             previous_sha=head_sha,
             resume_prompt=resume_prompt,
             rebuild=bool(rebuild_container),

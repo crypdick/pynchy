@@ -18,6 +18,7 @@ from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartyp
 from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     GitSyncDeps,
 )
+from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
@@ -148,6 +149,7 @@ async def _start_temporal_deploy(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=get_head_sha(),
+            config_hash=get_deploy_config_hash(),
             previous_sha=previous_sha,
             rebuild=rebuild,
             reason="dependency_adapter",

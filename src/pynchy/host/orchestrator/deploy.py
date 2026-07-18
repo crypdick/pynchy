@@ -11,12 +11,13 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves deploy 
     Callable,
 )
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from pynchy import state as pynchy_state
 from pynchy.config import get_settings
+from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha, run_git
 from pynchy.logger import logger
+from pynchy.types import DeployChangeKind, DeployRevision
 from pynchy.utils import write_json_atomic
 
 
@@ -36,6 +37,14 @@ class RollbackResult:
     success: bool
     actual_sha: str = ""
     error: str = ""
+
+
+def current_deploy_revision() -> DeployRevision:
+    """Capture the code and configuration revision effective for a restart."""
+    return DeployRevision(
+        commit_sha=get_head_sha(),
+        config_hash=get_deploy_config_hash(),
+    )
 
 
 def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
@@ -99,7 +108,9 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
     broadcast_host_message: Callable[[str, str], Awaitable[None]],
     chat_jid: str,
     commit_sha: str,
+    config_hash: str,
     previous_sha: str,
+    change_kind: DeployChangeKind,
     resume_prompt: str = "Deploy complete. Verifying service health.",
     sigterm_delay: float = 0,
 ) -> None:
@@ -110,15 +121,13 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
             and emit a host message to all UIs.
         chat_jid: JID of the chat to notify.
         commit_sha: The HEAD after deploy.
+        config_hash: Hash of restart-sensitive configuration after deploy.
         previous_sha: The HEAD before deploy (for rollback).
+        change_kind: User-facing distinction between code and config changes.
         resume_prompt: Message injected into the agent on restart.
         sigterm_delay: Seconds to wait before SIGTERM. Use >0 when an HTTP
             response needs to flush before the process dies.
     """
-    # 0. Persist deploy metadata in router_state for /status endpoint
-    await pynchy_state.set_router_state("last_deploy_at", datetime.now(UTC).isoformat())
-    await pynchy_state.set_router_state("last_deploy_sha", commit_sha)
-
     # The database rows are the source of truth. This snapshot is diagnostic;
     # startup scans the table again so a turn that begins before SIGTERM but
     # after this write is still recovered.
@@ -127,6 +136,8 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
         "chat_jid": chat_jid,
         "resume_prompt": resume_prompt,
         "commit_sha": commit_sha,
+        "config_hash": config_hash,
+        "change_kind": change_kind.value,
         "previous_commit_sha": previous_sha,
         "interrupted_turns": [
             {
@@ -145,12 +156,14 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
     if chat_jid:
         await broadcast_host_message(
             chat_jid,
-            f"Deploying {short_sha}... restarting now.",
+            f"Deploying {short_sha} ({change_kind.value})... restarting now.",
         )
 
     logger.info(
         "Deploy: restarting service",
         commit_sha=commit_sha,
+        config_hash=config_hash,
+        change_kind=change_kind.value,
         previous_sha=previous_sha,
     )
 

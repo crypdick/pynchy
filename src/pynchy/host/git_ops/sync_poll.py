@@ -8,6 +8,12 @@ import subprocess  # noqa: S404, RUF100 - used only for subprocess exception typ
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
 
+from pydantic_settings import (
+    DotEnvSettingsSource,
+    EnvSettingsSource,
+    TomlConfigSettingsSource,
+)
+
 from pynchy.config import get_settings
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
@@ -143,16 +149,49 @@ def _hash_config_files() -> str:
     """Hash config files that require a restart when changed."""
     h = hashlib.sha256()
     s = get_settings()
+    litellm_config = _fresh_litellm_config_path(s)
     for path in [
         s.project_root / "config.toml",
         s.project_root / ".env",
-        Path(s.gateway.litellm_config) if s.gateway.litellm_config else None,
+        litellm_config,
     ]:
         if path and path.exists():
             h.update(path.read_bytes())
         else:
             h.update(b"__missing__")
     return h.hexdigest()
+
+
+def _fresh_litellm_config_path(settings: Settings) -> Path | None:
+    """Resolve the on-disk config path without relying on cached settings.
+
+    A restart can change ``gateway.litellm_config`` itself. Reading the current
+    TOML and dotenv sources makes the effective revision stable on both sides
+    of that restart even though the active process's Settings singleton remains
+    cached until process replacement.
+    """
+    configured: object = settings.gateway.litellm_config
+    root = settings.project_root
+    try:
+        sources = (
+            TomlConfigSettingsSource(Settings, toml_file=root / "config.toml")(),
+            DotEnvSettingsSource(Settings, env_file=root / ".env")(),
+            EnvSettingsSource(Settings)(),
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        logger.warning("Could not parse fresh deploy configuration", error=str(exc))
+        return Path(str(configured)) if configured else None
+
+    for source in sources:
+        gateway = source.get("gateway")
+        if isinstance(gateway, dict) and "litellm_config" in gateway:
+            configured = gateway["litellm_config"]
+    return Path(str(configured)) if configured else None
+
+
+def get_deploy_config_hash() -> str:
+    """Return the effective hash of host configuration that requires restart."""
+    return _hash_config_files()
 
 
 def _find_pynchy_repo_ctx(s: Settings, pynchy_root: Path) -> RepoContext | None:

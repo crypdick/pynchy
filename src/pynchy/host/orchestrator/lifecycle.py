@@ -38,6 +38,7 @@ from pynchy.host.orchestrator import (
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
     PynchyApp,
 )
+from pynchy.host.orchestrator.deploy import current_deploy_revision
 from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
@@ -55,7 +56,7 @@ from pynchy.plugins.channel_runtime import (
 from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.runtimes import system_checks
-from pynchy.state import init_database, store_chat_metadata
+from pynchy.state import init_database, initialize_deployment_state, store_chat_metadata
 from pynchy.types import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
@@ -164,6 +165,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
     await init_database()
+    await initialize_deployment_state(current_deploy_revision())
     logger.info("Database initialized")
 
     app.attach_observers(observer_plugins.attach_observers(app.event_bus))
@@ -359,6 +361,7 @@ async def run_app(app: PynchyApp) -> None:
 
     repo_groups = await _reconcile_state(app)
     interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
+    await startup_handler.confirm_deploy_startup(interrupted_recovery)
     await _start_subsystems(app, repo_groups)
 
     await startup_handler.send_boot_notification(app)

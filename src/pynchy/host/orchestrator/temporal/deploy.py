@@ -19,6 +19,8 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
 from pynchy.logger import logger
+from pynchy.state import clear_pending_deployment
+from pynchy.types import DeployChangeKind, DeployRevision
 
 
 @dataclass(frozen=True)
@@ -27,10 +29,18 @@ class DeployRequest:
 
     chat_jid: str
     commit_sha: str
+    config_hash: str
     previous_sha: str
+    change_kind: DeployChangeKind | None = None
     resume_prompt: str = "Deploy complete. Verifying service health."
     rebuild: bool = True
     reason: str = "manual"
+    force: bool = False
+
+    @property
+    def revision(self) -> DeployRevision:
+        """Return the effective revision claimed by this request."""
+        return DeployRevision(self.commit_sha, self.config_hash)
 
 
 @runtime_checkable
@@ -45,30 +55,40 @@ def deploy_request_to_payload(request: DeployRequest) -> dict[str, Any]:
     return {
         "chat_jid": request.chat_jid,
         "commit_sha": request.commit_sha,
+        "config_hash": request.config_hash,
         "previous_sha": request.previous_sha,
+        "change_kind": request.change_kind.value if request.change_kind else None,
         "resume_prompt": request.resume_prompt,
         "rebuild": request.rebuild,
         "reason": request.reason,
+        "force": request.force,
     }
 
 
 def deploy_request_from_payload(payload: dict[str, Any]) -> DeployRequest:
     """Parse a DeployRequest from Temporal's plain payload shape."""
+    raw_change_kind = payload.get("change_kind")
     return DeployRequest(
         chat_jid=str(payload.get("chat_jid", "")),
         commit_sha=str(payload.get("commit_sha", "")),
+        config_hash=str(payload.get("config_hash", "")),
         previous_sha=str(payload.get("previous_sha", "")),
+        change_kind=(
+            DeployChangeKind(str(raw_change_kind)) if raw_change_kind is not None else None
+        ),
         resume_prompt=str(
             payload.get("resume_prompt", "Deploy complete. Verifying service health.")
         ),
         rebuild=bool(payload.get("rebuild", True)),
         reason=str(payload.get("reason", "manual")),
+        force=bool(payload.get("force")),
     )
 
 
-def deploy_workflow_id(commit_sha: str) -> str:
+def deploy_workflow_id(revision: DeployRevision) -> str:
     """Return the Temporal workflow ID for a deploy request."""
-    fragment = safe_workflow_fragment(commit_sha or "unknown") or "unknown"
+    identity = f"{revision.commit_sha or 'unknown'}-{revision.config_hash or 'unknown'}"
+    fragment = safe_workflow_fragment(identity) or "unknown"
     return f"pynchy-deploy-{fragment}"
 
 
@@ -82,6 +102,7 @@ async def rollback_and_report_failure(
 ) -> str:
     """Restore the checkout and tell the admin what is still running."""
     rollback = await asyncio.to_thread(rollback_deploy_checkout, request.previous_sha)
+    await clear_pending_deployment(request.revision)
     if rollback.success:
         result = f"{failure_result}_rolled_back"
         message = (
@@ -149,7 +170,9 @@ async def run_deploy(payload: dict[str, Any]) -> str:
             broadcast_host_message=deps.broadcast_host_message,
             chat_jid=request.chat_jid,
             commit_sha=request.commit_sha,
+            config_hash=request.config_hash,
             previous_sha=request.previous_sha,
+            change_kind=request.change_kind or DeployChangeKind.RESTART,
             resume_prompt=request.resume_prompt,
             sigterm_delay=0.25,
         )
