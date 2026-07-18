@@ -13,10 +13,12 @@ from urllib.parse import urlparse, urlunparse
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import build_agent_env_vars
+from pynchy.host.container_manager.mcp import manager as mcp_manager
 from pynchy.host.learning.mirror import prepare_full_vault_host_root
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.skill_activation import prepare_agent_homes
 from pynchy.host.orchestrator.host_runner import run_host_input
+from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
 
@@ -179,6 +181,32 @@ def host_agent_env_vars(
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
         env["PYNCHY_SKILLS_ROOT"] = str(host_vault_root / "systems" / "pynchy" / "skills")
     return env
+
+
+async def prepare_host_direct_mcp_servers(
+    input_data: ContainerInput,
+    *,
+    group_folder: str,
+    chat_jid: str,
+    broadcast_host_message: Callable[[str, str], Awaitable[None]],
+) -> None:
+    """Start selected MCP servers and attach their proxy routes to a host turn."""
+    mcp_mgr = mcp_manager.get_mcp_manager()
+    if mcp_mgr is None:
+        return
+
+    mcp_startup = await mcp_mgr.ensure_workspace_running(group_folder)
+    if mcp_startup.failures:
+        await notify_mcp_startup_failures(
+            broadcast_host_message,
+            chat_jid,
+            mcp_startup.failures,
+        )
+    input_data.mcp_direct_servers = mcp_mgr.get_direct_server_configs(
+        group_folder,
+        invocation_ts=input_data.invocation_ts,
+        instance_ids=mcp_startup.ready_instance_ids,
+    )
 
 
 async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:

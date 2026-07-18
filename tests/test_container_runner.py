@@ -33,6 +33,7 @@ from pynchy.host.container_manager.credentials import (
 )
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
+from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
 from pynchy.host.container_manager.onecli import OneCliMaterial
 from pynchy.host.container_manager.orchestrator import (
@@ -2037,6 +2038,90 @@ class TestContainerInputAgentCoreConfig:
             "host-group",
             input_data.invocation_ts,
         )
+
+    @pytest.mark.asyncio
+    async def test_host_execution_includes_ready_direct_mcp_servers(self, tmp_path: Path):
+        group = WorkspaceProfile(
+            jid="host@g.us",
+            name="Host Group",
+            folder="host-group",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        deps = _AgentRunnerDeps()
+        ctx = self._ctx()
+        ctx.is_admin = True
+        settings = make_settings(
+            profiles={
+                "host-admin": ProfileConfig(
+                    is_admin=True,
+                    execution_mode="host",
+                    cwd=str(tmp_path),
+                )
+            },
+            workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
+        )
+        mcp_mgr = MagicMock()
+        mcp_mgr.ensure_workspace_running = AsyncMock(
+            return_value=McpWorkspaceStartup(ready_instance_ids=("linear",), failures=())
+        )
+        mcp_mgr.get_direct_server_configs.return_value = [
+            {
+                "name": "linear",
+                "url": "http://192.168.64.1:9876/mcp/host-group/0/linear",
+                "transport": "streamable_http",
+            }
+        ]
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_execution.run_host_input",
+                new_callable=AsyncMock,
+                return_value="success",
+            ) as run_host_input,
+            patch(
+                "pynchy.host.orchestrator.host_execution.build_agent_env_vars",
+                return_value={"OPENAI_BASE_URL": "http://192.168.64.1:4000"},
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_execution.prepare_agent_homes",
+                return_value=PreparedAgentHomes(
+                    claude_home=tmp_path / ".claude",
+                    codex_home=tmp_path / ".codex",
+                    learning_paths=None,
+                ),
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_execution.mcp_manager.get_mcp_manager",
+                return_value=mcp_mgr,
+            ),
+        ):
+            result = await run_agent(deps, group, "chat", [{"content": "hi"}])
+
+        assert result == "success"
+        mcp_mgr.ensure_workspace_running.assert_awaited_once_with("host-group")
+        mcp_mgr.get_direct_server_configs.assert_called_once_with(
+            "host-group",
+            invocation_ts=0.0,
+            instance_ids=("linear",),
+        )
+        assert run_host_input.await_args.args[0].mcp_direct_servers == [
+            {
+                "name": "linear",
+                "url": "http://192.168.64.1:9876/mcp/host-group/0/linear",
+                "transport": "streamable_http",
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_host_execution_clears_codex_session_missing_from_host_runtime(

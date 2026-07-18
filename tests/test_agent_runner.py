@@ -643,3 +643,25 @@ class TestBuildHostCoreConfig:
             "approval_policy": "never",
             "pynchy_hooks_enabled": False,
         }
+
+    def test_host_core_routes_direct_mcp_servers_through_local_proxy(self):
+        ci = ContainerInput(
+            messages=[],
+            group_folder="admin-host",
+            chat_jid="slack:C123",
+            is_admin=True,
+            mcp_direct_servers=[
+                {
+                    "name": "linear",
+                    "url": "http://192.168.64.1:9876/mcp/admin-host/0/linear",
+                    "transport": "streamable_http",
+                }
+            ],
+        )
+
+        config = build_host_core_config(ci, cwd="/workspace/project")
+
+        assert config.mcp_servers["linear"] == {
+            "type": "http",
+            "url": "http://localhost:9876/mcp/admin-host/0/linear/mcp",
+        }
