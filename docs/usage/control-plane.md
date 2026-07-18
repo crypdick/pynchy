@@ -126,5 +126,5 @@ without correction.
 | `rate_limit_requests` | `120` | Requests allowed per client and window |
 | `rate_limit_window_seconds` | `60` | Fixed-window duration |
 
-<!-- Source of truth: ServerConfig in src/pynchy/config/models.py and
+<!-- Source of truth: ServerConfig in src/pynchy/config/server.py and
 http_control.py in src/pynchy/host/orchestrator/. Keep defaults and policy in sync. -->
