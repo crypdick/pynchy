@@ -10,7 +10,12 @@ import pytest
 from conftest import make_settings
 from pydantic import ValidationError
 
-from pynchy.capabilities import CapabilityProbeContext, HostActionHandler, ProbeStatus
+from pynchy.capabilities import (
+    ApprovalMode,
+    CapabilityProbeContext,
+    HostActionHandler,
+    ProbeStatus,
+)
 from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.computer_use import (
@@ -92,6 +97,7 @@ def test_computer_use_surface_and_provider_plugins_are_registered() -> None:
     assert descriptor.capability.id == "desktop.computer.use"
     assert descriptor.capability.owner == "computer-use"
     assert len(descriptor.capability.action_ids) == 29
+    assert descriptor.approval.mode is ApprovalMode.SESSION_TOOL
 
 
 def test_provider_plugins_can_be_disabled_independently() -> None:

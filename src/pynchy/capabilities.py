@@ -82,6 +82,7 @@ class ApprovalMode(StrEnum):
     """Approval mechanism used when dispatch policy requires a person."""
 
     EXACT_REQUEST = "exact_request"
+    SESSION_TOOL = "session_tool"
 
 
 class IdempotencyMode(StrEnum):

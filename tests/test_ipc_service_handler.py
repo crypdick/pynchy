@@ -10,6 +10,7 @@ import pytest
 from conftest import NullIpcDeps, make_host_action_catalog
 
 from pynchy import state
+from pynchy.capabilities import ApprovalMode
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
@@ -96,7 +97,12 @@ def _make_settings(**kwargs):
     return FakeSettings()
 
 
-def _make_action_catalog(*tool_names: str, handler_fn=None, read_tools: tuple[str, ...] = ()):
+def _make_action_catalog(
+    *tool_names: str,
+    handler_fn=None,
+    read_tools: tuple[str, ...] = (),
+    approval_mode: ApprovalMode = ApprovalMode.EXACT_REQUEST,
+):
     """Create a typed catalog for synthetic dispatch tools."""
 
     async def _stub_handler(data: dict):
@@ -109,6 +115,7 @@ def _make_action_catalog(*tool_names: str, handler_fn=None, read_tools: tuple[st
         *tool_names,
         handler=handler_fn or _stub_handler,
         read_tools=read_tools,
+        approval_mode=approval_mode,
     )
 
 
@@ -236,10 +243,23 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
     assert "Policy denied" in response["error"]
 
 
+@pytest.mark.parametrize(
+    ("approval_mode", "has_session_notice"),
+    [
+        (ApprovalMode.EXACT_REQUEST, False),
+        (ApprovalMode.SESSION_TOOL, True),
+    ],
+)
 @pytest.mark.asyncio
-async def test_dangerous_writes_requires_human(tmp_path, register_gate):
+async def test_dangerous_writes_requires_human(
+    tmp_path,
+    register_gate,
+    approval_mode: ApprovalMode,
+    *,
+    has_session_notice: bool,
+):
     """Test that dangerous_writes=True triggers human approval gate."""
-    catalog = _make_action_catalog("sensitive_tool")
+    catalog = _make_action_catalog("sensitive_tool", approval_mode=approval_mode)
 
     # Register a gate with dangerous_writes=True
     register_gate(
@@ -286,6 +306,10 @@ async def test_dangerous_writes_requires_human(tmp_path, register_gate):
     assert len(deps.broadcast_messages) == 1
     assert "Approval required" in deps.broadcast_messages[0][1]
     assert "sensitive_tool" in deps.broadcast_messages[0][1]
+    assert (
+        "Approving grants this tool for the rest of the active agent session"
+        in deps.broadcast_messages[0][1]
+    ) is has_session_notice
 
 
 @pytest.mark.asyncio

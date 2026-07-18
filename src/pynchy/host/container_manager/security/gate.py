@@ -14,7 +14,7 @@ from typing import Any
 
 import pynchy.config as pynchy_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.capabilities import HostActionAccess, HostActionDescriptor
+from pynchy.capabilities import ApprovalMode, HostActionAccess, HostActionDescriptor
 from pynchy.config import Settings  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
 from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     ResolvedWorkspaceConfig,
@@ -32,6 +32,7 @@ class SecurityGate:
 
     def __init__(self, security: WorkspaceSecurity) -> None:
         self._policy = SecurityPolicy(security)
+        self._session_tool_approvals: set[str] = set()
 
     @property
     def policy(self) -> SecurityPolicy:
@@ -54,6 +55,16 @@ class SecurityGate:
         """Forward file-access notification to the policy."""
         self._policy.notify_file_access()
 
+    def grant_session_tool_approval(self, tool_name: str) -> None:
+        """Approve one opted-in host tool for this gate's session lifetime."""
+        # Approval scope belongs to each tool: multi-step computer use should
+        # prompt once, while one-shot effects such as sending email stay exact.
+        self._session_tool_approvals.add(tool_name)
+
+    def has_session_tool_approval(self, tool_name: str) -> bool:
+        """Return whether this session already approved the opted-in tool."""
+        return tool_name in self._session_tool_approvals
+
 
 def evaluate_host_action_policy(
     action: HostActionDescriptor,
@@ -69,12 +80,20 @@ def evaluate_host_action_policy(
         if action.access is HostActionAccess.READ
         else gate.evaluate_write(action.service_name, data)
     )
+    tool_name = str(action.tool_name)
+    approval_granted = (
+        service.allowed
+        and action.approval.mode is ApprovalMode.SESSION_TOOL
+        and gate.has_session_tool_approval(tool_name)
+    )
     reasons = [reason for reason in (capability.reason, service.reason) if reason]
+    if approval_granted:
+        reasons.append(f"Session approval active for tool '{tool_name}'")
     return PolicyDecision(
         allowed=service.allowed,
         reason="; ".join(reasons) or None,
         needs_cop=service.needs_cop,
-        needs_human=capability.needs_human or service.needs_human,
+        needs_human=(capability.needs_human or service.needs_human) and not approval_granted,
     )
 
 
