@@ -150,6 +150,10 @@ class ComputerUseRequest(ComputerUseInput):
     source_group: ValidatedSourceGroup
     type: str | None = None
     request_id: str | None = None
+    # IpcRequestEnvelope.to_handler_data() adds these transport-owned fields to
+    # every handler call after validating their types at the IPC boundary.
+    reply_to: str | None = None
+    deadline: str | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> ComputerUseRequest:

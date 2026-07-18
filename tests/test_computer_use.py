@@ -120,6 +120,27 @@ async def test_router_uses_the_first_available_provider() -> None:
 
 
 @pytest.mark.asyncio
+async def test_router_accepts_canonical_ipc_transport_fields() -> None:
+    backend = _RecordingBackend("peekaboo")
+
+    result = await _handler(backend)(
+        {
+            "type": "service:computer_use",
+            "request_id": "request-123",
+            "source_group": "admin",
+            "reply_to": "responses",
+            "deadline": None,
+            "action": "list_apps",
+        }
+    )
+
+    assert result["result"]["backend"] == "peekaboo"
+    assert len(backend.requests) == 1
+    assert backend.requests[0].reply_to == "responses"
+    assert backend.requests[0].deadline is None
+
+
+@pytest.mark.asyncio
 async def test_router_honors_configured_provider_order() -> None:
     peekaboo = _RecordingBackend("peekaboo")
     cua = _RecordingBackend("cua-driver")
