@@ -286,6 +286,9 @@ def test_load_opus_uses_homebrew_fallback(monkeypatch):
 def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
     """RTP-size transport crypto authenticates only the extension preamble."""
 
+    # Voice crypto is optional in ordinary Pynchy installs. Keeping this import
+    # local lets the text-channel suite collect without the voice extra.
+    davey = pytest.importorskip("davey")
     nacl_secret = pytest.importorskip("nacl.secret")
 
     class _FakeDaveSession:
@@ -335,6 +338,7 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
         == dave_payload
     )
     assert dave_session.packets[0][0] == 42
+    assert dave_session.packets[0][1] is davey.MediaType.audio
     assert dave_session.packets[0][2] == dave_payload
 
 
