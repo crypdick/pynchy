@@ -176,74 +176,17 @@ aggressive automatic skill mutation would make that debt worse, not better.
 
 ## Capability gaps worth adapting
 
-### P0: Resolved capability snapshots and typed descriptors
+### Implemented foundation: typed host-action capability snapshots
 
-#### The gap
+Pynchy now owns immutable capability and host-action descriptors, validates
+their ActionSpec, approval, idempotency, and audit contracts at startup, and
+resolves workspace-specific status for operator diagnostics. The first Matrix
+slice exposes those results through `pynchy doctor`, `/capabilities`, and
+`/status` while keeping `SecurityPolicy` authoritative at dispatch time. See
+[Action coverage](../../docs/architecture/action-coverage.md#host-action-descriptors-and-capability-status).
 
-Hermes ToolEntry and PlatformEntry put the operational facts for an extension
-next to its handler: ownership, requirements check, configuration validation,
-setup hint, required environment, visibility, and transport limits. Hermes
-then uses that data for tool exposure, setup, status, and gateway behavior.
-
-Pynchy's plugin system has richer categories, but several hooks return loose
-dict objects. A service handler declares a dict of tool handlers, an MCP
-server spec is a dict or list of dicts, and an agent-core hook returns a dict.
-Availability, policy eligibility, required configuration, action coverage,
-operator help, and canary evidence are therefore assembled in separate places.
-The current system works, but it does not give an operator one authoritative
-answer to: What can workspace X do now, why is capability Y unavailable, and
-what must change to make it ready?
-
-The completion-audit Matrix migration makes the issue concrete. It improves
-the trust boundary by replacing a remote script MCP with native IPC tools,
-explicit profile selection, ActionSpec mappings, and an approval-gated send.
-Its service-plugin hook still returns a raw dict of handlers, while gateway
-binary readiness, profile selection, action evidence, setup requirements, and
-operator diagnostics remain distinct concerns.
-
-#### Pynchy-native design
-
-Introduce typed immutable descriptors at plugin boundaries:
-
-| Descriptor field | Purpose |
-| --- | --- |
-| Capability ID and semantic action IDs | Stable operator-facing identity; link to existing ActionSpec entries |
-| Owner and surface | Plugin, core, MCP service, channel, scheduler, or host action |
-| Availability probe | Read-only health/configuration check with a bounded diagnostic |
-| Required configuration and secret references | Explain requirements without serializing secret values |
-| Workspace policy requirement | Existing capability and trust-policy decision point |
-| Delivery or channel requirements | State the channel features needed for this action |
-| Setup and recovery hints | Let doctor show the next safe operator action |
-| Evidence requirement | Link to the existing hermetic test and optional canary scenario |
-
-At startup and on relevant configuration changes, compose descriptors into a
-WorkspaceCapabilitySnapshot. The snapshot should include status values such as
-ready, unconfigured, unavailable, denied_by_policy, degraded, and
-not_established. It is a presentation and planning object, not a new
-authorization system.
-
-SecurityPolicy remains the dispatch-time authority. An availability probe may
-be cached for a short status window, following Hermes's last-good availability
-idea, but a privileged action must always re-check authorization and real
-availability when it executes. A stale ready display must never become
-permission to invoke an unsafe service.
-
-#### First slice
-
-Start with the newly native Matrix capability family:
-
-1. Replace its loose service-handler registration shape with typed
-   descriptors for list chats, list messages, and send message.
-2. Resolve profile selection, Matrix gateway binary/configuration readiness,
-   policy decision, and action evidence into one snapshot.
-3. Expose a read-only doctor result and a JSON status view.
-4. Require every descriptor to name its ActionSpec entries.
-5. Add tests for ready, configuration missing, profile denied, backend
-   unavailable, canary not established where relevant, and stale health
-   display versus dispatch-time recheck.
-
-Do not add import-time source scanning or a second dynamic tool registry.
-Pynchy's explicit Pluggy discovery is easier to secure and test.
+The remaining cross-plugin descriptor and pre-import metadata work belongs to
+the [OpenClaw comparison](comparison-to-openclaw.md#p1-expand-descriptor-coverage-and-add-pre-import-plugin-metadata).
 
 ### P0: Host-owned media, attachment, and channel-capability contracts
 
@@ -267,22 +210,6 @@ event into live Discord voice playback, rather than adding a portable audio
 attachment to OutboundEvent. That is a sensible narrow product slice, but it
 cannot yet deliver a generated file, a voice note, or the same audio artifact
 through a normal Discord text channel, Slack, WhatsApp, or another plugin.
-
-#### Current optional-dependency defect exposed by the audit
-
-At the completion-audit commit, the default action-coverage command fails
-during collection because the new voice client imports davey unconditionally,
-while davey belongs to the optional Discord dependency group. This prevents
-unrelated Discord tests from importing in a base development environment.
-Running the identical gate with the declared Discord extra installed passes.
-
-This is a small but important example of the proposed capability contract:
-an unavailable optional backend must make the voice capability unavailable,
-not make the whole channel package unloadable. Correct the import boundary in
-separate implementation work by loading the voice-specific dependency only
-when the configured voice capability activates, or by making the development
-test environment explicitly install the Discord extra. Do not paper over it
-by silently skipping ordinary Discord tests.
 
 #### Pynchy-native design
 
