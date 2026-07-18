@@ -11,7 +11,14 @@ from conftest import make_settings
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 from pynchy.config.models import NotificationsConfig
 from pynchy.host.orchestrator.temporal import git_sync
-from pynchy.types import WorkspaceProfile
+from pynchy.state import (
+    claim_deployment,
+    complete_deployment,
+    init_test_database,
+    initialize_deployment_state,
+    set_router_state,
+)
+from pynchy.types import DeployRevision, WorkspaceProfile
 
 
 @dataclass
@@ -95,3 +102,45 @@ async def test_trigger_deploy_reports_workflow_start_failure_after_rolling_back(
     assert request.commit_sha == "new-sha"
     assert request.previous_sha == "old-sha"
     assert report_failure.await_args.kwargs["failure_result"] == "workflow_start_failed"
+
+
+async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """A stale poll snapshot cannot redeploy the revision that just booted."""
+    await init_test_database()
+    previous = DeployRevision("old-sha", "config-a")
+    deployed = DeployRevision("new-sha", "config-b")
+    await initialize_deployment_state(previous)
+    await claim_deployment(deployed)
+    await complete_deployment(deployed)
+    await set_router_state(
+        git_sync._HOST_STATE_KEY,
+        '{"last_origin_sha":"new-sha","deployed_sha":"old-sha",'
+        '"config_hash":"config-a","local_head":"new-sha"}',
+    )
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    monkeypatch.setattr(
+        git_sync,
+        "get_settings",
+        lambda: make_settings(project_root=tmp_path),
+    )
+    monkeypatch.setattr(git_sync, "get_local_head_sha", lambda _root: deployed.commit_sha)
+    monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: deployed.config_hash)
+    monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
+    monkeypatch.setattr(git_sync, "_check_origin_drift", AsyncMock(return_value=False))
+    runtime_deps = object()
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: runtime_deps)
+    trigger_deploy = AsyncMock()
+    monkeypatch.setattr(git_sync._TemporalGitSyncDeps, "trigger_deploy", trigger_deploy)
+    recorded: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        git_sync,
+        "_record_activity_result",
+        lambda task_id, result: recorded.append((task_id, result)),
+    )
+
+    assert await git_sync.run_host_git_sync() == "idle"
+    trigger_deploy.assert_not_awaited()
+    assert recorded == [(git_sync.HOST_GIT_SYNC_ID, "idle")]

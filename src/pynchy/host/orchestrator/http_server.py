@@ -16,6 +16,7 @@ from aiohttp import web
 
 from pynchy.canaries import canary_run_to_dict, get_canary_report
 from pynchy.config import get_settings
+from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import (
     files_changed_between,
     get_head_commit_message,
@@ -43,6 +44,7 @@ from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
 from pynchy.state import get_recent_canary_runs
 from pynchy.types import (
+    DeployClaimStatus,
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
 
@@ -170,19 +172,21 @@ async def _handle_deploy(request: web.Request) -> web.Response:
     # 5. Start deploy workflow. The activity owns rebuild, continuation, and restart.
     chat_jid = deps.admin_chat_jid()
     rebuild = has_new_code and files_changed_between(old_sha, new_sha, "src/pynchy/agent/")
-    await start_deploy_workflow(
+    claim = await start_deploy_workflow(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=new_sha,
+            config_hash=get_deploy_config_hash(),
             previous_sha=old_sha,
             rebuild=rebuild,
             reason="http",
         )
     )
 
+    restarting = claim.status is DeployClaimStatus.CLAIMED
     return web.json_response(
         {
-            "status": "restarting",
+            "status": "restarting" if restarting else claim.status.value,
             "sha": new_sha,
             "commit": get_head_commit_message(),
             "dirty": is_repo_dirty(),

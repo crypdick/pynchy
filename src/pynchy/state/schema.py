@@ -129,6 +129,13 @@ CREATE TABLE IF NOT EXISTS router_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS deployment_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    applied_sha TEXT,
+    applied_config_hash TEXT,
+    pending_sha TEXT,
+    pending_config_hash TEXT
+);
 CREATE TABLE IF NOT EXISTS sessions (
     group_folder TEXT PRIMARY KEY,
     session_id TEXT NOT NULL

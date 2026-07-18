@@ -18,11 +18,13 @@ from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters
 from pynchy.logger import logger
 from pynchy.state import (
+    clear_pending_deployment,
+    complete_deployment,
     get_active_task_for_group,
     get_messages_since,
     prepare_in_flight_turn_recovery,
 )
-from pynchy.types import InFlightTurn, WorkspaceProfile, WorkspaceSecurity
+from pynchy.types import DeployRevision, InFlightTurn, WorkspaceProfile, WorkspaceSecurity
 from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
@@ -166,6 +168,7 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
         f"ROLLBACK: Startup failed ({error_short}). Rolled back to {previous_sha[:8]}."
     )
     continuation["previous_commit_sha"] = ""
+    continuation["rolled_back"] = True
     write_json_atomic(continuation_path, continuation, indent=2)
 
     attempted_sha = str(continuation.get("commit_sha", "unknown"))
@@ -207,16 +210,20 @@ class InterruptedTurnRecovery:
     commit_sha: str
     resume_prompt: str
     had_deploy_continuation: bool
+    deploy_revision: DeployRevision | None
+    rolled_back: bool
+    continuation_path: Path | None
 
 
 async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
     """Clear stale claims before Temporal can redeliver interrupted activities."""
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     continuation: dict[str, object] = {}
+    loaded_continuation_path: Path | None = None
     if continuation_path.exists():
         try:
             continuation = _read_deploy_continuation(continuation_path)
-            continuation_path.unlink()
+            loaded_continuation_path = continuation_path
         except (json.JSONDecodeError, OSError) as exc:
             logger.error(
                 "Failed to read deploy continuation",
@@ -227,18 +234,39 @@ async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
     default_prompt = "Deploy complete." if continuation else "Continuing after host restart."
     resume_prompt = continuation.get("resume_prompt", default_prompt)
     commit_sha = continuation.get("commit_sha", "unknown")
+    config_hash = continuation.get("config_hash")
     if continuation:
         _prune_migration_backups(get_settings().data_dir)
     deploy_id = commit_sha if isinstance(commit_sha, str) and commit_sha != "unknown" else None
     interrupted_turns = await prepare_in_flight_turn_recovery(deploy_id)
     commit_text = commit_sha if isinstance(commit_sha, str) else "unknown"
     prompt_text = resume_prompt if isinstance(resume_prompt, str) else default_prompt
+    deploy_revision = (
+        DeployRevision(commit_text, config_hash)
+        if commit_text != "unknown" and isinstance(config_hash, str) and config_hash
+        else None
+    )
     return InterruptedTurnRecovery(
         turns=tuple(interrupted_turns),
         commit_sha=commit_text,
         resume_prompt=prompt_text,
         had_deploy_continuation=bool(continuation),
+        deploy_revision=deploy_revision,
+        rolled_back=continuation.get("rolled_back") is True,
+        continuation_path=loaded_continuation_path,
     )
+
+
+async def confirm_deploy_startup(recovery: InterruptedTurnRecovery) -> None:
+    """Resolve the durable deploy claim before host-sync polling can run."""
+    revision = recovery.deploy_revision
+    if revision is not None:
+        if recovery.rolled_back:
+            await clear_pending_deployment(revision)
+        else:
+            await complete_deployment(revision)
+    if recovery.continuation_path is not None:
+        recovery.continuation_path.unlink(missing_ok=True)
 
 
 async def dispatch_interrupted_turn_recovery(
@@ -288,6 +316,7 @@ async def dispatch_interrupted_turn_recovery(
 async def check_deploy_continuation(deps: StartupDeps) -> set[str]:
     """Prepare and dispatch recovery when startup ordering is managed by the caller."""
     recovery = await prepare_interrupted_turn_recovery()
+    await confirm_deploy_startup(recovery)
     return await dispatch_interrupted_turn_recovery(deps, recovery)
 
 

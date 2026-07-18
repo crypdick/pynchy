@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
+from pynchy.config.models import GatewayConfig
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.git_ops import host_notify_worktree_updates, sync_poll
 from pynchy.host.git_ops.repo import RepoContext
@@ -702,3 +703,38 @@ class TestHashConfigFiles:
         hash2 = sync_poll._hash_config_files()
 
         assert hash1 == hash2
+
+    def test_hash_uses_fresh_litellm_path_before_settings_reload(
+        self,
+        git_env: dict,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Changing the configured path must not invent drift after restart."""
+        project = git_env["project"]
+        old_litellm = project / "old-litellm.yaml"
+        new_litellm = project / "new-litellm.yaml"
+        old_litellm.write_text("model: old\n")
+        new_litellm.write_text("model: new\n")
+        (project / "config.toml").write_text(f'[gateway]\nlitellm_config = "{new_litellm}"\n')
+        stale_settings = make_settings(
+            project_root=project,
+            gateway=GatewayConfig(litellm_config=str(old_litellm)),
+        )
+        reloaded_settings = make_settings(
+            project_root=project,
+            gateway=GatewayConfig(litellm_config=str(new_litellm)),
+        )
+        monkeypatch.delenv("GATEWAY__LITELLM_CONFIG", raising=False)
+
+        with patch(
+            "pynchy.host.git_ops.sync_poll.get_settings",
+            return_value=stale_settings,
+        ):
+            before_restart = sync_poll.get_deploy_config_hash()
+        with patch(
+            "pynchy.host.git_ops.sync_poll.get_settings",
+            return_value=reloaded_settings,
+        ):
+            after_restart = sync_poll.get_deploy_config_hash()
+
+        assert before_restart == after_restart

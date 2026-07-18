@@ -17,9 +17,9 @@ from pynchy.host.git_ops.sync_poll import (
     _check_local_head_drift,
     _check_origin_drift,
     _find_pynchy_repo_ctx,
-    _hash_config_files,
     _host_get_origin_main_sha,
     _HostSyncState,
+    get_deploy_config_hash,
     get_local_head_sha,
     host_update_main,
 )
@@ -35,8 +35,14 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _require_scheduler_deps,
 )
 from pynchy.logger import logger
-from pynchy.state import get_router_state, set_router_state
+from pynchy.state import (
+    advance_deployment_baseline,
+    get_deployment_state,
+    get_router_state,
+    set_router_state,
+)
 from pynchy.types import (
+    DeployRevision,
     WorkspaceProfile,  # noqa: TC001, RUF100 - beartype resolves Temporal git-sync annotations at runtime.
 )
 
@@ -89,6 +95,7 @@ class _TemporalGitSyncDeps:
                 workspaces, get_settings().notifications.admin_workspace
             ),
             commit_sha=get_local_head_sha(get_settings().project_root),
+            config_hash=get_deploy_config_hash(),
             previous_sha=previous_sha,
             rebuild=rebuild,
             reason=self._reason,
@@ -111,10 +118,11 @@ class _TemporalGitSyncDeps:
 async def _load_host_state() -> _HostSyncState:
     settings = get_settings()
     raw = await get_router_state(_HOST_STATE_KEY)
+    state: _HostSyncState | None = None
     if raw:
         try:
             payload = json.loads(raw)
-            return _HostSyncState(
+            state = _HostSyncState(
                 last_origin_sha=payload.get("last_origin_sha"),
                 deployed_sha=str(payload.get("deployed_sha", "")),
                 config_hash=str(payload.get("config_hash", "")),
@@ -123,11 +131,20 @@ async def _load_host_state() -> _HostSyncState:
         except (json.JSONDecodeError, TypeError, ValueError):
             logger.warning("Corrupt Temporal host git-sync state, reinitializing")
 
-    return _HostSyncState(
-        last_origin_sha=await asyncio.to_thread(_host_get_origin_main_sha, settings.project_root),
-        deployed_sha=await asyncio.to_thread(get_local_head_sha, settings.project_root),
-        config_hash=await asyncio.to_thread(_hash_config_files),
-    )
+    if state is None:
+        state = _HostSyncState(
+            last_origin_sha=await asyncio.to_thread(
+                _host_get_origin_main_sha, settings.project_root
+            ),
+            deployed_sha=await asyncio.to_thread(get_local_head_sha, settings.project_root),
+            config_hash=await asyncio.to_thread(get_deploy_config_hash),
+        )
+
+    deployment = await get_deployment_state()
+    if deployment.applied is not None:
+        state.deployed_sha = deployment.applied.commit_sha
+        state.config_hash = deployment.applied.config_hash
+    return state
 
 
 async def _save_host_state(state: _HostSyncState) -> None:
@@ -135,12 +152,11 @@ async def _save_host_state(state: _HostSyncState) -> None:
 
 
 async def _config_drift_started_deploy(state: _HostSyncState, deps: _TemporalGitSyncDeps) -> bool:
-    current_config_hash = await asyncio.to_thread(_hash_config_files)
+    current_config_hash = await asyncio.to_thread(get_deploy_config_hash)
     if current_config_hash == state.config_hash:
         return False
     logger.info("Config files changed, starting Temporal deploy")
     await deps.trigger_deploy(state.deployed_sha, rebuild=False)
-    state.config_hash = current_config_hash
     return True
 
 
@@ -168,9 +184,8 @@ async def run_host_git_sync() -> str:
         ):
             result = "deploy_started"
     finally:
-        if result == "deploy_started":
-            state.deployed_sha = await asyncio.to_thread(get_local_head_sha, settings.project_root)
-            state.config_hash = await asyncio.to_thread(_hash_config_files)
+        if result == "idle" and state.deployed_sha and state.config_hash:
+            await advance_deployment_baseline(DeployRevision(state.deployed_sha, state.config_hash))
         await _save_host_state(state)
 
     _record_activity_result(HOST_GIT_SYNC_ID, result)

@@ -12,6 +12,7 @@ from pynchy.config.access import resolve_workspace_connection_name
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
+from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
@@ -185,9 +186,11 @@ async def trigger_manual_redeploy(
         DeployRequest(
             chat_jid=chat_jid,
             commit_sha=sha,
+            config_hash=get_deploy_config_hash(),
             previous_sha=sha,
             rebuild=False,
             reason="manual_redeploy",
+            force=True,
         )
     )
 
