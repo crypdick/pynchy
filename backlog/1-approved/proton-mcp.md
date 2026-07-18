@@ -1,8 +1,9 @@
 # Proton Mail (via pm-cli) + Proton Calendar (via Playwright) — Design
 
 > [!note]
-> **Superseded on 2026-07-15.** The implemented Mail integration uses direct,
-> read-only Proton Bridge IMAP rather than `pm-cli`; see
+> **Superseded on 2026-07-15.** The implemented Mail integration uses direct
+> Proton Bridge IMAP and SMTP rather than `pm-cli`. Its initial tools list and
+> read messages, send plain-text mail, and permanently delete messages; see
 > [the Proton Mail usage guide](../../docs/usage/proton-mail.md). This document remains as historical context for
 > the Calendar design and the original `pm-cli` security analysis. Do not
 > implement its Mail sections.
