@@ -6,7 +6,10 @@ MCP service tool handlers are pluggable. The built-in CalDAV plugin provides cal
 
 ## How Service Tools Work
 
-Unlike regular MCP servers (which run inside the container), service tool handlers run on the **host process**. The agent calls an MCP tool normally, but the request travels through IPC to reach the host:
+Unlike regular MCP servers (which Pynchy manages as Docker containers, host
+subprocesses, or remote URLs), service tool handlers run in the **host
+process**. The agent calls an MCP tool normally, but the request travels
+through IPC to reach the host:
 
 ```
 Agent → MCP tool call → IPC request → Host policy check → Plugin handler → IPC response → Agent

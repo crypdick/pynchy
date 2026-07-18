@@ -20,7 +20,7 @@ Install Pynchy on macOS or Linux — desktop or headless server.
 
 **macOS:**
 ```bash
-brew install libmagic              # Required by neonize (WhatsApp) for MIME detection
+brew install libmagic              # Needed only when using WhatsApp (neonize)
 brew install container             # Apple Container (recommended) — or install Docker Desktop
 brew install temporal              # Scheduler service for agent tasks
 brew services start container
@@ -33,14 +33,14 @@ uses Docker networking.
 
 **Linux (Debian/Ubuntu):**
 ```bash
-sudo apt-get install libmagic1     # Required by neonize (WhatsApp) for MIME detection
+sudo apt-get install libmagic1     # Needed only when using WhatsApp (neonize)
 # Install Docker + BuildKit - https://docs.docker.com/engine/install/
 sudo apt-get install docker-buildx # Required for container image builds
 ```
 
 **Linux (Fedora/RHEL):**
 ```bash
-sudo dnf install file-libs         # Required by neonize (WhatsApp) for MIME detection
+sudo dnf install file-libs         # Needed only when using WhatsApp (neonize)
 # Install Docker + BuildKit - https://docs.docker.com/engine/install/
 sudo dnf install docker-buildx-plugin  # Required for container image builds
 ```
@@ -68,11 +68,15 @@ cp config-examples/config.toml.EXAMPLE config.toml
 # Edit config.toml with your preferred settings
 ```
 
-Enable WhatsApp (requires optional dependency):
+If you use WhatsApp, install its optional dependency:
 
 ```bash
 uv sync --extra whatsapp
 ```
+
+For Slack, Discord, or the local TUI instead, configure that channel as
+described in [Channels](usage/channels.md). WhatsApp authentication below is
+not required for those setups.
 
 Common configurations:
 
@@ -209,7 +213,7 @@ uv run pynchy prune-migration-backups --keep 2 --apply
 The command only prunes direct child directories of `data/migration-backups/`;
 it ignores files and symlinks.
 
-### 5. Authenticate WhatsApp
+### 5. Authenticate WhatsApp (if using it)
 
 ```bash
 uv run pynchy-whatsapp-auth                 # Authenticate WhatsApp (scan QR code)
@@ -226,17 +230,16 @@ uv run pynchy-whatsapp-auth                 # Authenticate WhatsApp (scan QR cod
 uv run pynchy                                # Start Pynchy
 ```
 
-On first run, Pynchy will:
-
-- Create a private WhatsApp group for your admin channel (admin control)
-- Set up local directories for group isolation
-- Connect to WhatsApp and start listening for messages
+On first run, Pynchy creates and registers an admin workspace. It creates a
+group in the configured command-center channel when that channel supports
+group creation; otherwise it starts with a local TUI workspace. It then sets
+up the workspace directory and connects every configured channel.
 
 ---
 
 ## Headless Server Deployment
 
-Step-by-step guide to deploying Pynchy on a headless Linux server with systemd, accessible over Tailscale.
+Step-by-step guide to deploying Pynchy on a headless Linux server with systemd, accessible over Tailscale. The channel-specific steps below use WhatsApp; skip them and configure another channel if WhatsApp is not part of your deployment.
 
 For macOS desktop setup, see the [Installation Steps](#installation-steps) above.
 
@@ -247,7 +250,7 @@ On the server:
 - Ubuntu/Debian Linux (tested on Ubuntu 24.04)
 - [Tailscale](https://tailscale.com/download) connected to your tailnet
 - An OpenAI API key, or another provider API key configured through LiteLLM
-- A phone with WhatsApp (for QR code authentication)
+- A phone with WhatsApp, if you use WhatsApp (for QR code authentication)
 
 On your local machine (for remote setup):
 
@@ -282,6 +285,9 @@ cd ~/src/pynchy
 
 # Install Python dependencies
 uv sync
+
+# Only for the WhatsApp path below
+uv sync --extra whatsapp
 
 # Build the agent container image
 sg docker -c './src/pynchy/agent/build.sh'
@@ -328,7 +334,7 @@ uv run pynchy
 
 On first run, Pynchy will:
 
-- Create a private WhatsApp group for your admin channel
+- Create an admin workspace in the command-center channel when it can create groups, otherwise use a local TUI workspace
 - Install a systemd user service (`~/.config/systemd/user/pynchy.service`)
 - Enable the service for auto-start on boot
 - Enable user lingering (so the service runs without an active login session)
@@ -474,7 +480,7 @@ On first run, the systemd service is only created if you start Pynchy without th
 
 After installation:
 
-1. **Send a test message** - Message yourself in WhatsApp with `@Pynchy hello` to verify it's working
+1. **Send a test message** - Send `@Pynchy hello` in a configured channel, or use the local TUI, to verify it is working
 2. **Read the docs** - Understand the philosophy at [index.md](index.md) and architecture at [architecture/](architecture/index.md)
 3. **Customize** - Tell Pynchy to add channels, integrations, or change behavior directly in the codebase
 4. **Set up scheduled tasks** - Ask Pynchy to run recurring tasks: `@Pynchy send me a summary of Hacker News every morning at 9am`

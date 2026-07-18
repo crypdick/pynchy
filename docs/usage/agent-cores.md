@@ -9,13 +9,13 @@ Set the core in `config.toml`:
 ```toml
 [agent]
 default_core = "openai"    # or "claude", "claude-cli", "codex"
-model = "gpt-5.5"
+model = "openai/gpt-5.5"
 ```
 
 Or via environment variable (takes priority over config):
 
 ```bash
-PYNCHY_AGENT_CORE=codex
+AGENT__DEFAULT_CORE=codex
 ```
 
 Restart Pynchy after changing the core.
@@ -76,7 +76,19 @@ The default core using OpenAI's Agents SDK.
 
 - **Activation:** selected by default; make sure an OpenAI API key is available
 - **Model selection:** via the LiteLLM gateway
-- **Default model:** `gpt-5.5`
+- **Default model:** `openai/gpt-5.5`
+
+## Built-in: Claude Code CLI
+
+Drives the `claude` CLI through its stream-JSON interface instead of the
+Claude Agent SDK. Choose this core when you need Claude Code CLI session
+behavior while retaining Pynchy's gateway routing, MCP configuration, and
+shared tool-security hooks.
+
+- **Activation:** set `[agent] default_core = "claude-cli"`
+- **Model selection:** model settings route through LiteLLM; unlike the Claude
+  SDK core, this core can use an explicitly configured model
+- **Session management:** Pynchy resumes the CLI session between turns
 
 ## Built-in: OpenAI Codex CLI
 

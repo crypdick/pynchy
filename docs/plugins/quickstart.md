@@ -86,8 +86,11 @@ Restart pynchy. Check the logs for:
 
 ```
 Discovered third-party plugins  count=1
-Plugin manager ready  plugins=['builtin-agent_claude', 'builtin-agent_openai', 'builtin-mcp_caldav', 'builtin-slack', 'builtin-tailscale', 'hello']
+Plugin manager ready  plugins=[..., 'hello']
 ```
+
+The exact built-in inventory changes with Pynchy releases; confirm that your
+entry-point key (`hello`) appears in the final inventory.
 
 The agent now has a `hello` service tool available via IPC.
 

@@ -30,16 +30,7 @@ CHROME_PATH=/usr/bin/google-chrome-stable
 
 The script refuses to start without `CHROME_PATH` — Playwright provides the automation protocol (CDP), Chrome provides the genuine fingerprint X won't flag.
 
-## 1. Enable the plugin
-
-The X integration plugin is built-in but disabled by default. Enable it in `config.toml`:
-
-```toml
-[plugins.x-integration]
-enabled = true
-```
-
-## 2. Grant workspace access
+## 1. Grant workspace access
 
 Add the `x_integration` tool to a profile, then select that profile from the workspace:
 
@@ -59,7 +50,7 @@ tools = ["x_integration"]
 profiles = ["x-admin"]
 ```
 
-## 3. First-time authentication
+## 2. First-time authentication
 
 A human logs in to X once via a visible browser. The agent calls `setup_x_session()`, which opens Chromium at the X login page. The human completes the login flow (CAPTCHA, 2FA, etc.), and the session is saved for future automated use.
 
@@ -76,7 +67,7 @@ noVNC can't forward WebAuthn (YubiKey/FIDO2) challenges. If your X login require
 rsync -az data/playwright-profiles/x/ your-server:path/to/pynchy/data/playwright-profiles/x/
 ```
 
-## 4. Using X tools
+## 3. Using X tools
 
 Once authenticated, the agent can use these tools:
 

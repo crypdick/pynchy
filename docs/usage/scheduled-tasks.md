@@ -2,7 +2,9 @@
 
 Schedule recurring or one-time tasks: briefings, maintenance scripts, periodic code reviews, or anything else that runs on a timer.
 
-Two kinds: **agent tasks** (run a Claude agent in a container) and **host tasks** (run shell commands on the host). Both use the same MCP tools.
+Two kinds: **agent tasks** (run the workspace's selected agent core in a
+container) and **host tasks** (run shell commands on the host). Both use the
+same MCP tools.
 
 ## Agent Tasks
 

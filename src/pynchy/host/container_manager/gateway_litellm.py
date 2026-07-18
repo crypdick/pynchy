@@ -301,7 +301,7 @@ class LiteLLMGateway:
             resolved["PHOENIX_API_KEY"] = phoenix_api_key
         return resolved
 
-    # Docker helpers are in _docker.py — imported at module level.
+    # Docker helpers are in docker.py — imported at module level.
 
     # ------------------------------------------------------------------
     # PostgreSQL sidecar

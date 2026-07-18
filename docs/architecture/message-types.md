@@ -20,7 +20,7 @@ There are two distinct types of system context:
    - Recomputed on each agent run
    - Examples: git warnings, uncommitted changes, deployment state
    - Passed via `ContainerInput.system_notices`
-   - Container appends to SDK `system_prompt` parameter
+   - Passed separately to the selected agent core as ephemeral context
    - NOT stored in database
 
 2. **message_type='system'** (Persistent)
@@ -89,7 +89,7 @@ await store_message_direct(
 ### Retrieval & Filtering
 
 ```python
-from pynchy.router import format_messages_for_sdk
+from pynchy.host.orchestrator.messaging.formatter import format_messages_for_sdk
 
 # Retrieve messages from DB
 messages = await get_messages_since(chat_jid, since_timestamp)

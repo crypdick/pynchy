@@ -2,7 +2,8 @@
 
 Advertises the ``claude-cli`` agent core, which drives the ``claude`` binary as
 a subprocess over the stream-json protocol instead of the Claude Agent SDK.
-Select it with ``[agent] core = "claude-cli"`` (or ``PYNCHY_AGENT_CORE=claude-cli``).
+Select it with ``[agent] default_core = "claude-cli"`` (or
+``AGENT__DEFAULT_CORE=claude-cli``).
 The implementation lives in
 src/pynchy/agent/agent_runner/src/agent_runner/cores/claude_cli.py and is
 already baked into the container image (the ``claude`` CLI is installed there).

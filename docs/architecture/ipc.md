@@ -82,7 +82,7 @@ Outbound chat messages. The agent sends messages mid-run without ending its turn
 }
 ```
 
-`sender` — optional, used for multi-bot display in Telegram.
+`sender` — optional assistant display name for channels that support it.
 
 #### Requests (`requests/`)
 

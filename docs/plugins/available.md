@@ -1,48 +1,58 @@
 # Available Plugins
 
-This page tracks plugins that work with pynchy.
+This page is the catalog of plugins registered with Pynchy itself. The keys in
+the first column are the names used in `[plugins.<key>]` to disable a built-in
+plugin. A registered plugin can still require its own channel, tool, or profile
+configuration before it is useful.
 
 ## Built-in Plugins
 
-These ship with pynchy and are always available. Some require optional dependencies (`uv sync --extra <name>`) and activate only when their config section is present:
+Pynchy loads these plugins from its static built-in registry. They are enabled
+by default, but you can disable one with `[plugins.<key>] enabled = false`.
+Plugins with an optional dependency are skipped when that dependency is not
+installed; install the named extra with `uv sync --extra <name>`.
 
-| Plugin | Type | Purpose | Config | Docs |
-|--------|------|---------|--------|------|
-| `agent_claude` | Agent Core | Default Claude SDK agent core. | Always active | [Agent cores](../usage/agent-cores.md) |
-| `agent_openai` | Agent Core | OpenAI Agents SDK alternative. | `PYNCHY_AGENT_CORE=openai` | [Agent cores](../usage/agent-cores.md) |
-| `agent_codex` | Agent Core | OpenAI Codex CLI core routed through the LLM gateway. | `PYNCHY_AGENT_CORE=codex` | [Agent cores](../usage/agent-cores.md) |
-| `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth | [Channels](../usage/channels.md) |
-| `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[connections.<name>] type = "slack"` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
-| `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active | [Channels](../usage/channels.md) |
-| `pocket-tts` | Speech Synthesis | Local neural speech synthesis for final spoken replies. | Pocket TTS loopback service | [Local speech synthesis](../usage/local-speech.md) |
-| `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active | [Memory](../usage/memory.md) |
-| `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[tools.caldav]` server config + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
-| `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) | [Container isolation](../architecture/container-isolation.md) |
-| `apple-runtime` | Container Runtime | Apple Container runtime for macOS hosts. | macOS only (auto-detected) | [Container isolation](../architecture/container-isolation.md) |
-| `google-setup` | Service Handler + MCP Server | Google Drive and Calendar setup — GCP project creation, API enablement, OAuth authorization. Provides base MCP server specs for `gdrive` and `gcal`. | Always active | [Google Drive](../usage/gdrive.md) |
-| `desktop-screenshot` | Service Handler | Capture the macOS host desktop with `screencapture` and return host/container paths. | macOS Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
-| `computer-use` | Service Handler + Skill | Drive the macOS host desktop through Cua Driver for screenshot, mouse, keyboard, and app/window actions. | Cua Driver + Accessibility and Screen Recording permission | [Computer use](../usage/computer-use.md) |
-| `playwright-browser` | MCP Server | General browser-control tools backed by `@playwright/mcp`; runs headed by default on the host. | `PYNCHY_BROWSER_HEADLESS=true` for headless hosts | [MCP servers](../usage/mcp.md) |
-| `slack-token-extractor` | Service Handler | Extracts fresh Slack browser tokens (xoxc/xoxd) from persistent browser sessions. | Always active | — |
-| `x-integration` | Service Handler | Post tweets, like, reply, retweet, and quote on X (Twitter) via browser automation. | Always active | — |
-| `linear` | MCP Server | Linear task-tracking tools for listing teams/issues and creating issues. | `LINEAR_API_KEY` | [Linear](../usage/linear.md) |
-| `notebook-server` | MCP Server | JupyterLab notebook execution server for running Python notebooks in agent containers. | Always active | [Notebooks](../usage/notebooks.md) |
-| `sqlite-observer` | Observer | Persists operational EventBus summaries to a dedicated `events` table. | Always active | [Observers](../architecture/observers.md) |
-| `tailscale` | Tunnel | Tailscale connectivity detection. Warns at startup if tunnel is down. | Always active (requires `tailscale` CLI) | [Tunnels](../architecture/tunnels.md) |
+| Key | Type | Purpose | Requirements / configuration | Docs |
+|-----|------|---------|------------------------------|------|
+| `claude` | Agent core | Claude Agent SDK core | Select with `[agent].default_core = "claude"` | [Agent cores](../usage/agent-cores.md) |
+| `claude-cli` | Agent core | Claude Code CLI core | Select with `[agent].default_core = "claude-cli"` | [Agent cores](../usage/agent-cores.md) |
+| `openai` | Agent core | OpenAI Agents SDK core | Select with `[agent].default_core = "openai"` | [Agent cores](../usage/agent-cores.md) |
+| `codex` | Agent core | OpenAI Codex CLI core | Select with `[agent].default_core = "codex"` | [Agent cores](../usage/agent-cores.md) |
+| `discord` | Channel | Discord channel, including text and voice input | `uv sync --extra discord` and `[connections]` configuration | [Channels](../usage/channels.md) |
+| `slack` | Channel | Slack Socket Mode channel | `uv sync --extra slack` and `[connections]` configuration | [Channels](../usage/channels.md) |
+| `tui` | Channel | Local terminal UI over HTTP/SSE | No external credential | [Channels](../usage/channels.md) |
+| `whatsapp` | Channel | WhatsApp channel through Neonize | `uv sync --extra whatsapp` and QR authentication | [Channels](../usage/channels.md) |
+| `pocket-tts` | Speech synthesizer | Local neural speech synthesis for spoken replies | Loopback Pocket TTS service | [Local speech synthesis](../usage/local-speech.md) |
+| `tailscale` | Tunnel | Tailscale connectivity detection | `tailscale` CLI on the host | [Tunnels](../architecture/tunnels.md) |
+| `docker-runtime` | Container runtime | Docker agent-container runtime | Docker CLI and daemon | [Container isolation](../architecture/container-isolation.md) |
+| `apple-runtime` | Container runtime | Apple Container agent-container runtime | macOS with Apple Container | [Container isolation](../architecture/container-isolation.md) |
+| `caldav` | Service handler | CalDAV calendar actions | `uv sync --extra caldav` and calendar configuration | [MCP service tools](../architecture/mcp-service-tools.md) |
+| `slack-token-extractor` | Service handler | Refreshes Slack browser tokens from persistent sessions | Slack browser session | [Slack MCP](../usage/slack-mcp.md) |
+| `x-integration` | Service handler | Browser-driven X actions | X tool/profile configuration | [X integration](../usage/x-integration.md) |
+| `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google Drive](../usage/gdrive.md) |
+| `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google Drive](../usage/gdrive.md) |
+| `playwright-browser` | MCP server specification + skill | Browser-control server and usage skill | `uv sync --extra browser` when Playwright is needed | [MCP servers](../usage/mcp.md) |
+| `desktop-screenshot` | Service handler | Captures the macOS host desktop | Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
+| `computer-use` | Service handler + skill | Drives the macOS host desktop | Cua Driver plus Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md) |
+| `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../usage/linear.md) |
+| `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../usage/proton-mail.md) |
+| `matrix-gateway` | Service handler | Matrix gateway actions | Matrix gateway configuration | [Matrix gateway](../usage/matrix-gateway.md) |
+| `notebook` | MCP server specification | Jupyter notebook execution server | `uv sync --extra notebook` | [Notebooks](../usage/notebooks.md) |
+| `sqlite-observer` | Observer | Persists operational event summaries | No external dependency | [Observers](../architecture/observers.md) |
+| `sqlite-memory` | Memory backend | Per-workspace memory with FTS5 search | No external dependency | [Memory](../usage/memory.md) |
 
-Plugins with optional dependencies are gracefully skipped at startup if their dependencies aren't installed. Install all optional dependencies at once with `uv sync --extra all`.
+Install every optional extra with `uv sync --extra all` when you want the full
+built-in set available.
 
 ## Third-Party Plugins
 
-Third-party plugins are discovered automatically via Python entry points. Install a plugin package and restart pynchy — no config needed.
+Third-party packages are discovered through Python entry points. Install the
+package, configure it if its documentation requires configuration, and restart
+Pynchy.
 
-To add your plugin to this registry:
+To add a plugin to this catalog:
 
-1. Build your plugin using the [plugin creation guide](quickstart.md).
-2. Open a PR that updates this page with your plugin entry.
-
-Include:
-
-- Plugin name (entry-point key)
-- Short description
-- Public repository URL
+1. Build it with the [plugin creation guide](quickstart.md).
+2. Publish an installable package with a `pynchy` entry point.
+3. Open a PR that adds its key, purpose, requirements, and public repository
+   link to this page.

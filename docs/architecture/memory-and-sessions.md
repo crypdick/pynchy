@@ -48,7 +48,9 @@ V1 learning deliberately mounts the configured vault root as a broad namespace. 
 
 - Each group maintains a conversation session via the agent core SDK
 - Sessions auto-compact when context grows too long (an SDK feature, not Pynchy's)
-- Session data lives at `data/sessions/{group}/.claude/` on the host, mounted into containers at `/home/agent/.claude`
+- Session data lives under `data/sessions/{group}/` on the host. Pynchy mounts
+  its scoped `.claude/` and `.codex/` homes at `/home/agent/.claude` and
+  `/home/agent/.codex` respectively.
 - Direct-host Codex workspaces use `data/sessions/{group}/.codex/` as their scoped Codex home. This gives them the same injected skill registry and Pynchy MCP tools as container sessions, while preserving host execution.
 - The PreCompact hook archives conversation transcripts before compaction (see [Usage — Memory § Conversation Archives](../usage/memory.md#conversation-archives))
 

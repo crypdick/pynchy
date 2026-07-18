@@ -52,7 +52,8 @@ private_key, .secret
 
 ### 3. Session Isolation
 
-Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
+Each group has isolated per-core session homes at
+`data/sessions/{group}/.claude/` and `data/sessions/{group}/.codex/`:
 
 - Groups cannot see other groups' conversation history
 - Session data includes full message history and file contents read
@@ -110,7 +111,7 @@ Admin workspaces use the same tool trust declarations at runtime. They are addit
 
 The service trust policy (above) gates MCP service tools, but agents also have a general-purpose Bash tool. Without extra controls, a corruption-tainted agent could run `curl`, `python`, or `ssh` to exfiltrate data — bypassing the service trust layer entirely.
 
-The bash security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook inside the container, intercepting every Bash tool call before execution. Both the Claude SDK and OpenAI Agents SDK cores wire in the same hook, so the gate applies regardless of which agent framework is active.
+The bash security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook inside the container, intercepting every Bash tool call before execution. The Claude and OpenAI SDK cores and both CLI cores compose the same hook roster, so the gate applies regardless of the selected built-in core.
 
 **Classification cascade.** The container classifies each command locally using a three-tier system:
 
