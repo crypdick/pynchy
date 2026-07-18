@@ -337,6 +337,53 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
     assert dave_session.packets[0][2] == dave_payload
 
 
+def test_decrypt_voice_payload_retries_dave_transition_frame():
+    class _FakeDaveSession:
+        def __init__(self) -> None:
+            self.decrypt_attempts = 0
+            self.passthrough: list[tuple[bool, int]] = []
+
+        def decrypt(self, _user_id: int, _media_type: object, packet: bytes) -> bytes:
+            self.decrypt_attempts += 1
+            if self.decrypt_attempts == 1:
+                raise ValueError(
+                    "Failed to decrypt: DecryptionFailed(UnencryptedWhenPassthroughDisabled)"
+                )
+            return packet
+
+        def set_passthrough_mode(self, enabled: bool, seconds: int) -> None:
+            self.passthrough.append((enabled, seconds))
+
+    secret_key = bytes(range(32))
+    header = struct.pack(">BBHII", 0x80, 0x78, 1, 2, 3)
+    dave_payload = b"transition-opus-frame"
+    nonce = b"\x00\x00\x00\x01" + bytes(nacl.secret.Aead.NONCE_SIZE - 4)
+    encrypted_payload = (
+        nacl.secret.Aead(secret_key).encrypt(dave_payload, header, nonce).ciphertext + nonce[:4]
+    )
+    dave_session = _FakeDaveSession()
+    voice_client = cast(
+        "PynchyVoiceClient",
+        _VoiceClientDecryptHarness(
+            mode="aead_xchacha20_poly1305_rtpsize",
+            secret_key=secret_key,
+            _connection=_VoiceConnectionDecryptHarness(dave_session=dave_session, can_encrypt=True),
+        ),
+    )
+
+    assert (
+        PynchyVoiceClient._decrypt_voice_payload(
+            voice_client,
+            header,
+            encrypted_payload,
+            "42",
+            0,
+        )
+        == dave_payload
+    )
+    assert dave_session.passthrough == [(True, 10)]
+
+
 @pytest.mark.asyncio
 async def test_voice_manager_serializes_duplicate_connect_attempts(monkeypatch):
     channel = _channel()

@@ -23,6 +23,8 @@ else:
 _SPEAKING_OPCODE = 5
 _RTP_VERSION = 2
 _AEAD_MODE = "aead_xchacha20_poly1305_rtpsize"
+_DAVE_PASSTHROUGH_SECONDS = 10
+_DAVE_UNENCRYPTED_FRAME_ERROR = "UnencryptedWhenPassthroughDisabled"
 
 VoicePacketListener = Callable[[str, bytes], None]
 
@@ -118,9 +120,32 @@ class PynchyVoiceClient(discord.VoiceClient):
         if len(transport_payload) < extension_payload_length:
             return None
         dave_payload = transport_payload[extension_payload_length:]
+        return _decrypt_dave_payload(session, davey, speaker_id, dave_payload)
 
-        decrypted = session.decrypt(int(speaker_id), davey.MediaType.audio, dave_payload)
-        return decrypted if isinstance(decrypted, bytes) else None
+
+def _decrypt_dave_payload(
+    session: object,
+    davey: object,
+    speaker_id: str,
+    payload: bytes,
+) -> bytes | None:
+    try:
+        decrypted = session.decrypt(int(speaker_id), davey.MediaType.audio, payload)
+    except ValueError as exc:
+        if _DAVE_UNENCRYPTED_FRAME_ERROR not in str(exc):
+            logger.debug("Discarded Discord voice packet that failed DAVE decryption", err=str(exc))
+            return None
+        passthrough_enabled = True
+        session.set_passthrough_mode(passthrough_enabled, _DAVE_PASSTHROUGH_SECONDS)
+        try:
+            decrypted = session.decrypt(int(speaker_id), davey.MediaType.audio, payload)
+        except ValueError as retry_error:
+            logger.debug(
+                "Discarded Discord voice packet after enabling DAVE passthrough",
+                err=str(retry_error),
+            )
+            return None
+    return decrypted if isinstance(decrypted, bytes) else None
 
 
 def _parse_rtp_packet(packet: bytes) -> tuple[bytes, int, bytes, int] | None:
