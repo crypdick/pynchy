@@ -42,7 +42,8 @@ from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
 from pynchy.logger import logger
-from pynchy.state import get_recent_canary_runs
+from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
+from pynchy.state import get_recent_canary_runs, list_work_item_executions
 from pynchy.types import (
     DeployClaimStatus,
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
@@ -200,6 +201,21 @@ async def _handle_status(request: web.Request) -> web.Response:
     status_deps: StatusDeps = request.app[status_deps_key]
     data = await collect_status(status_deps, _start_time)
     return web.json_response(data)
+
+
+async def _handle_work_items(request: web.Request) -> web.Response:
+    """Return bounded, read-only execution records for operator diagnosis."""
+    raw_limit = request.query.get("limit", "100")
+    if not raw_limit.isdecimal() or not 1 <= int(raw_limit) <= 200:
+        return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
+    workspace = request.query.get("workspace") or None
+    executions = await list_work_item_executions(workspace=workspace, limit=int(raw_limit))
+    return web.json_response(
+        {
+            "workspace": workspace,
+            "work_items": [work_item_execution_to_dict(item) for item in executions],
+        }
+    )
 
 
 async def _handle_capabilities(request: web.Request) -> web.Response:
@@ -396,6 +412,7 @@ def create_http_app(
         app[status_deps_key] = status_deps
     app.router.add_get("/health", _handle_health)
     app.router.add_get("/status", _handle_status)
+    app.router.add_get("/work-items", _handle_work_items)
     app.router.add_get("/capabilities", _handle_capabilities)
     app.router.add_get("/canaries/report", _handle_canary_report)
     app.router.add_get("/canaries/runs", _handle_canary_runs)

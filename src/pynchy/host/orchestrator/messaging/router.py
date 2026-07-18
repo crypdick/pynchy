@@ -35,7 +35,7 @@ from pynchy.host.orchestrator.messaging.streaming import (
     stream_text_to_channels,
 )
 from pynchy.logger import logger
-from pynchy.state import store_message_direct
+from pynchy.state import mark_work_item_delivery_delivered_for_turn, store_message_direct
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves router annotations at runtime.
     ContainerOutput,
     OutboundEvent,
@@ -470,7 +470,8 @@ async def handle_streamed_output(
     if batcher is not None:
         await batcher.flush(chat_jid)
 
-    return await _handle_final_result(
+    resolved_turn_id = turn_id or new_turn_id()
+    sent = await _handle_final_result(
         _FinalResultRequest(
             deps=deps,
             chat_jid=chat_jid,
@@ -478,6 +479,12 @@ async def handle_streamed_output(
             result=result,
             ts=ts,
             stream_state=stream_state,
-            turn_id=turn_id or new_turn_id(),
+            turn_id=resolved_turn_id,
         )
     )
+    if sent:
+        try:
+            await mark_work_item_delivery_delivered_for_turn(resolved_turn_id)
+        except RuntimeError:
+            logger.debug("Work-item delivery ledger unavailable after final result")
+    return sent

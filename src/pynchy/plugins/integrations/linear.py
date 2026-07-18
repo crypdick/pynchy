@@ -26,10 +26,10 @@ from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_boards import (
     create_workspace_todo,
     list_workspace_todos,
-    move_workspace_todo,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_tools import tool_specs
+from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -81,6 +81,12 @@ class LinearMcpPlugin:
                 "dangerous_writes": False,
             },
         }
+
+    @hookimpl
+    def pynchy_service_handler(self, computer_use_backends: tuple[object, ...]) -> object:
+        """Keep durable work-item lifecycle writes in the host process."""
+        del computer_use_backends
+        return host_action_registration()
 
 
 def build_app(*, workspace: str | None = None) -> object:
@@ -151,7 +157,6 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
             "linear_create_issue": _tool_create_issue,
             "linear_list_todos": _tool_list_todos,
             "linear_create_todo": _tool_create_todo,
-            "linear_move_todo": _tool_move_todo,
         }
         handler = handlers.get(str(name))
         if handler is None:
@@ -229,20 +234,6 @@ async def _tool_create_todo(
         _required_str(arguments, "title"),
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
         status=str(arguments.get("status", "backlog")),
-    )
-
-
-async def _tool_move_todo(
-    client: LinearClient,
-    arguments: dict[str, Any],
-    workspace: str | None,
-) -> dict[str, Any]:
-    return await move_workspace_todo(
-        client,
-        _workspace_context(workspace),
-        issue_id=_required_str(arguments, "issue_id"),
-        status=_required_str(arguments, "status"),
-        team_key=os.environ.get("LINEAR_TEAM_KEY"),
     )
 
 

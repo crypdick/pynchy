@@ -241,6 +241,86 @@ class InFlightWorkKind(StrEnum):
     SCHEDULED = "scheduled"
 
 
+class WorkItemExecutionStatus(StrEnum):
+    """Pynchy's durable lifecycle for one linked Linear work item."""
+
+    CLAIMING = "claiming"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    UNKNOWN = "unknown"
+    COMPLETED = "completed"
+    HANDED_OFF = "handed_off"
+    FAILED = "failed"
+
+    @property
+    def is_active(self) -> bool:
+        """Return whether this status must continue to exclude a second claim."""
+        return self in {
+            self.CLAIMING,
+            self.IN_PROGRESS,
+            self.BLOCKED,
+            self.UNKNOWN,
+        }
+
+
+@dataclass(frozen=True)
+class WorkItemExecution:
+    """Durable link between a Linear issue and one Pynchy execution attempt."""
+
+    id: str
+    workspace: str
+    linear_issue_id: str
+    linear_issue_identifier: str
+    linear_issue_url: str
+    turn_id: str | None
+    task_id: str | None
+    attempt: int
+    flow_id: str | None
+    temporal_workflow_id: str | None
+    initiated_by: str
+    observed_state_id: str
+    observed_state_name: str
+    observed_updated_at: str | None
+    status: WorkItemExecutionStatus
+    summary: str | None
+    blocker: str | None
+    handoff_to: str | None
+    evidence_refs: tuple[str, ...]
+    requester_delivery_status: str
+    requester_delivery_error: str | None
+    requester_delivered_at: str | None
+    created_at: str
+    updated_at: str
+    completed_at: str | None
+
+
+class WorkItemTransitionStatus(StrEnum):
+    """Evidence status for a provider transition requested by an execution."""
+
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    UNKNOWN = "unknown"
+    CONFLICT = "conflict"
+
+
+@dataclass(frozen=True)
+class WorkItemTransition:
+    """Intended Linear state change and its provider receipt or uncertainty."""
+
+    id: int
+    execution_id: str
+    request_id: str
+    operation: str
+    target_status: str
+    result_execution_status: WorkItemExecutionStatus
+    evidence_refs: tuple[str, ...]
+    status: WorkItemTransitionStatus
+    receipt: dict[str, Any] | None
+    error: str | None
+    created_at: str
+    resolved_at: str | None
+
+
 @dataclass(frozen=True)
 class InFlightTurn:
     """Durable checkpoint for one agent invocation that has not finalized."""

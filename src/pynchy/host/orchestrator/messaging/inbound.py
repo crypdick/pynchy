@@ -235,9 +235,9 @@ class _TaskDuringScheduleRequest:
 async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> None:
     """Handle an incoming message when a scheduled task is running.
 
-    "btw" messages are forwarded non-interruptingly via IPC.  Todo items
-    are written directly to the group's todo list.  All other messages
-    interrupt the running task.
+    "btw" messages are forwarded non-interruptingly via IPC. Todo items use
+    the configured canonical board. All other messages interrupt the running
+    task.
     """
     if request.is_btw:
         # Preserve the fast IPC handoff for persistent containers, but also
@@ -251,24 +251,37 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
         )
         request.deps.queue.enqueue_message_check(request.group_jid)
     elif request.last_content.lower().startswith("todo "):
-        # Non-interrupting — host writes directly to todos.json, then
-        # notifies agent via IPC.
+        # Non-interrupting — host writes the workspace's canonical todo board,
+        # then notifies the active agent via IPC.
         #
         # Tightly coupled to the Claude SDK: the SDK does not expose
         # APIs to inject true system messages or invoke MCP tools from
-        # outside the agent's query loop.  So we edit todos.json
-        # directly (bypassing the list_todos / complete_todo MCP tools)
-        # and use a "[System notice]" prefix convention on the IPC
-        # notification so the agent treats it as informational rather
-        # than a user request.  If the SDK adds external tool invocation
-        # or system message injection, this workaround becomes unnecessary.
+        # outside the agent's query loop. Non-Linear workspaces therefore edit
+        # todos.json directly (bypassing list_todos / complete_todo), while a
+        # Linear workspace writes only its canonical board. Both use a system
+        # notice so the agent treats this as informational rather than a request.
         item = request.last_content[5:]  # strip "todo " prefix
-        todos.add_todo(request.group.folder, item)
-        await linear_boot.create_linear_workspace_todo(request.group, item)
+        linear_enabled = linear_boot.linear_workspace_enabled(request.group)
+        issue = (
+            await linear_boot.create_linear_workspace_todo(request.group, item)
+            if linear_enabled
+            else None
+        )
+        if not linear_enabled:
+            todos.add_todo(request.group.folder, item)
+        elif issue is None:
+            await request.deps.broadcast_to_channels(
+                request.group_jid,
+                OutboundEvent(
+                    type=OutboundEventType.TEXT,
+                    content="⚠️ Pynchy could not create the Linear todo. Please retry.",
+                ),
+            )
+        board_label = "Linear" if linear_enabled else "your local"
         request.deps.queue.send_message(
             request.group_jid,
             "[System notice \u2014 no response needed] "
-            f"User added a todo item to your list: {item}",
+            f"User added a todo item to {board_label} list: {item}",
         )
         # Same as "btw ": don't advance cursor, mark pending so drain
         # reprocesses.

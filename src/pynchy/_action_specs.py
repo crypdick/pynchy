@@ -128,12 +128,48 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "linear_create_todo",
         canary="linear.workspace.round.trip",
     ),
-    mcp_action(
+    agent_action(
         "linear.todo.move",
         "linear",
-        "Move a Linear todo issue to a Pynchy todo status.",
+        "Move an unlinked Linear todo issue to a Pynchy todo status.",
         "linear_move_todo",
         canary="linear.workspace.round.trip",
+    ),
+    agent_action(
+        "linear.workitem.list",
+        "linear",
+        "List durable Pynchy executions linked to Linear work items.",
+        "linear_list_work_items",
+    ),
+    agent_action(
+        "linear.workitem.claim",
+        "linear",
+        "Claim a Ready Linear work item for the current Pynchy execution.",
+        "linear_claim_work_item",
+    ),
+    agent_action(
+        "linear.workitem.complete",
+        "linear",
+        "Complete a Pynchy-linked Linear work item.",
+        "linear_complete_work_item",
+    ),
+    agent_action(
+        "linear.workitem.block",
+        "linear",
+        "Mark a Pynchy-linked Linear work item blocked with a reason.",
+        "linear_block_work_item",
+    ),
+    agent_action(
+        "linear.workitem.handoff",
+        "linear",
+        "Hand off a Pynchy-linked Linear work item to another owner.",
+        "linear_handoff_work_item",
+    ),
+    agent_action(
+        "linear.workitem.reconcile",
+        "linear",
+        "Reconcile an uncertain Linear work-item transition from provider state.",
+        "linear_reconcile_work_item",
     ),
     mcp_action(
         "mail.proton.mailbox.list",

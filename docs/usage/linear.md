@@ -4,7 +4,7 @@ The built-in Linear integration gives every Pynchy workspace a durable Linear
 todo board. Each workspace maps to a Linear Project named from the workspace
 label, using the folder title for repo-slug labels (`Code Improver` for
 `code-improver`), and todos move through shared Linear workflow states: Backlog,
-Planning, Ready, In Progress, and Done.
+Planning, Ready, In Progress, Blocked, and Done.
 
 ## Configure access
 
@@ -71,11 +71,13 @@ and renames older Pynchy-managed projects when their description contains the
 matching `pynchy.workspace=...` marker. It does not delete, archive, assign, or
 otherwise clean up Linear objects automatically.
 
-When a user sends `todo ...` while a workspace task is running, Pynchy still
-writes the local todo cache and also creates a Linear issue in the workspace
-project when Linear is configured.
+When a user sends `todo ...` while a workspace task is running, a Linear-enabled
+workspace creates the issue in its workspace project without writing a second
+local todo. Workspaces without Linear keep the local todo path.
 
 ## Available tools
+
+The built-in MCP server provides planning and browsing tools:
 
 | Tool | Purpose |
 |------|---------|
@@ -84,7 +86,54 @@ project when Linear is configured.
 | `linear_create_issue` | Creates an issue with `team_id`, `title`, and optional `description`, `project_id`, `state_id`, and `label_ids`. |
 | `linear_list_todos` | Lists open Linear todo issues for the current Pynchy workspace. |
 | `linear_create_todo` | Creates a workspace todo issue, defaulting to Backlog. |
-| `linear_move_todo` | Moves a workspace todo through `backlog`, `planning`, `ready`, `in_progress`, or `done`. |
+
+Pynchy exposes lifecycle tools through its built-in agent tools MCP server. Use
+them when an agent starts or finishes work from a workspace board:
+
+| Tool | Purpose |
+|------|---------|
+| `linear_claim_work_item` | Claims a Ready issue for the current Pynchy execution and moves it to In Progress. |
+| `linear_complete_work_item` | Completes a claimed item and records a completion summary. |
+| `linear_block_work_item` | Moves a claimed item to Blocked and records the blocker. |
+| `linear_handoff_work_item` | Moves a claimed item to Blocked, records the next owner, and releases Pynchy's claim. |
+| `linear_reconcile_work_item` | Resolves an uncertain provider outcome by checking Linear instead of retrying the mutation blindly. |
+| `linear_list_work_items` | Lists durable Pynchy execution records for the current workspace. |
+| `linear_move_todo` | Moves an unlinked workspace todo through `backlog`, `planning`, `ready`, `in_progress`, `blocked`, or `done`. It rejects items with an active Pynchy claim. |
+
+## Execute a work item
+
+Use a Ready issue as a human planning item until Pynchy starts work. An agent
+claims the issue before it performs the work. Pynchy stores the workspace,
+Linear issue link, current turn, scheduled-task ID when applicable, observed
+Linear state, attempt number, evidence references, and the requested transition
+before writing to Linear.
+
+One active Pynchy execution can own an issue. A second claim fails with the
+existing execution record instead of creating duplicate work. Completion,
+blocking, and handoff act only on that linked execution. A handoff releases the
+claim so another owner can pick the item up deliberately.
+
+If a network failure happens after Pynchy sends a Linear mutation, Pynchy marks
+the transition unknown. Use `linear_reconcile_work_item` to inspect provider
+state. Do not repeat the original lifecycle command until reconciliation shows
+that Linear did not receive it.
+
+Managed flows remain separate from this lifecycle. A future managed flow can
+link its flow ID to a work-item execution without turning every Linear issue
+into a scheduler workflow.
+
+## Inspect work-item executions
+
+Operators can inspect the same read-only projection through the control plane:
+
+```text
+GET /work-items?workspace=<workspace>&limit=100
+```
+
+The response includes the Linear URL and identifier, workspace, turn and task
+links, lifecycle state, transition-relevant observed state, blocker or handoff
+owner, requester-delivery outcome, and timestamps. It does not fetch or expose
+issue descriptions.
 
 The integration marks Linear as a public sink because issue creation sends data
 to Linear. Workspace security policy can still require approval before agents
