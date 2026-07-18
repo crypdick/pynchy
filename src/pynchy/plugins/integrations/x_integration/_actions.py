@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import re
 import subprocess  # noqa: S404, TC003, RUF100 - trusted display helper handles and beartype runtime annotation binding.
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations._service import service_tool
@@ -25,18 +25,10 @@ from pynchy.plugins.integrations.x_integration._browser import (
     validate_content,
     with_browser,
 )
+from pynchy.plugins.integrations.x_integration._contracts import (  # noqa: TC001, RUF100 - beartype validates nested action contracts at runtime.
+    XPage,
+)
 from pynchy.plugins.integrations.x_integration._display import ensure_xvfb, start_vnc_layer
-
-if TYPE_CHECKING:
-    from playwright.async_api import Page
-else:
-    # See _browser.py for why this falls back to Any instead of staying
-    # TYPE_CHECKING-only: beartype needs a real runtime binding to resolve
-    # the ``page: Page`` forward ref in the nested ``action`` closures below.
-    try:
-        from playwright.async_api import Page
-    except ImportError:
-        Page = Any
 
 
 async def handle_setup_x_session(data: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +115,7 @@ async def handle_x_post(data: dict[str, Any]) -> dict[str, Any]:
     if error:
         return {"error": error}
 
-    async def action(page: Page) -> dict[str, Any]:
+    async def action(page: XPage) -> dict[str, Any]:
         await page.goto(
             "https://x.com/home",
             timeout=TIMEOUTS["navigation"],
@@ -163,7 +155,7 @@ async def handle_x_like(data: dict[str, Any]) -> dict[str, Any]:
     if not tweet_url:
         return {"error": "Please provide a tweet URL"}
 
-    async def action(page: Page) -> dict[str, Any]:
+    async def action(page: XPage) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
@@ -202,7 +194,7 @@ async def handle_x_reply(data: dict[str, Any]) -> dict[str, Any]:
     if error:
         return {"error": error}
 
-    async def action(page: Page) -> dict[str, Any]:
+    async def action(page: XPage) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
@@ -244,7 +236,7 @@ async def handle_x_retweet(data: dict[str, Any]) -> dict[str, Any]:
     if not tweet_url:
         return {"error": "Please provide a tweet URL"}
 
-    async def action(page: Page) -> dict[str, Any]:
+    async def action(page: XPage) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
@@ -288,7 +280,7 @@ async def handle_x_quote(data: dict[str, Any]) -> dict[str, Any]:
     if error:
         return {"error": error}
 
-    async def action(page: Page) -> dict[str, Any]:
+    async def action(page: XPage) -> dict[str, Any]:
         nav_err = await navigate_to_tweet(page, tweet_url)
         if nav_err:
             return {"error": nav_err}
