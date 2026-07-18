@@ -159,14 +159,22 @@ class _VoiceConnectionDecryptHarness:
         self.listeners.remove(listener)
 
 
-@dataclass
-class _VoiceClientDecryptHarness:
-    mode: str
-    secret_key: bytes
+@dataclass(kw_only=True)
+class _VoiceClientDecryptHarness(PynchyVoiceClient):
+    _mode: str
+    _secret_key: bytes
     _connection: _VoiceConnectionDecryptHarness
     _packet_listener: object | None = None
     _speaker_ids: dict[int, str] = field(default_factory=dict)
     _loop: asyncio.AbstractEventLoop = field(default_factory=asyncio.get_running_loop)
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def secret_key(self) -> bytes:
+        return self._secret_key
 
 
 async def _activate_voice_session(
@@ -385,8 +393,8 @@ async def test_receive_voice_packet_preserves_rtp_extension_boundary():
     voice_client = cast(
         "PynchyVoiceClient",
         _VoiceClientDecryptHarness(
-            mode="aead_xchacha20_poly1305_rtpsize",
-            secret_key=secret_key,
+            _mode="aead_xchacha20_poly1305_rtpsize",
+            _secret_key=secret_key,
             _connection=_VoiceConnectionDecryptHarness(dave_session=dave_session, can_encrypt=True),
         ),
     )
@@ -440,8 +448,8 @@ async def test_receive_voice_packet_retries_dave_transition_frame():
     voice_client = cast(
         "PynchyVoiceClient",
         _VoiceClientDecryptHarness(
-            mode="aead_xchacha20_poly1305_rtpsize",
-            secret_key=secret_key,
+            _mode="aead_xchacha20_poly1305_rtpsize",
+            _secret_key=secret_key,
             _connection=_VoiceConnectionDecryptHarness(dave_session=dave_session, can_encrypt=True),
         ),
     )
