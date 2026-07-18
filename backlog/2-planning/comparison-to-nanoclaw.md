@@ -147,50 +147,14 @@ not a replacement delivery poller.
 
 ## High-value gaps and patterns to adopt
 
-### P0: Define a typed host-action catalog and enforce its completeness
+### Implemented foundation: typed host-action catalog
 
-NanoClaw makes privileged host actions values produced by
-`defineGuardedAction()`. A call site cannot accidentally consult an undefined
-string action: the guard accepts a minted value, re-runs structural checks on
-approved replay, and its conformance test pairs every holding action with an
-approval handler. Its delivery actions also carry the domain precheck, hold
-renderer, deny handling, and eventual handler as one declared unit.
-
-Pynchy already has the stronger *decision policy* but its plugin hooks and IPC
-handler registry remain largely `dict[str, object]` / string-keyed contracts.
-That makes it harder to answer, mechanically, which host-mutating capability
-has a policy, approval renderer, idempotency key, expiration rule, audit event,
-and semantic action test.
-
-Adapt the pattern as a Pynchy `HostActionDescriptor`, not a NanoClaw port:
-
-```python
-@dataclass(frozen=True)
-class HostActionDescriptor:
-    id: ActionId
-    handler: HostActionHandler
-    trust: ServiceTrustConfig
-    approval: ApprovalContract | None
-    idempotency: IdempotencyPolicy
-    audit: AuditContract
-```
-
-Plugins would supply descriptors, the registry would reject duplicate IDs, and
-startup/CI would prove that every descriptor has a valid security path. The
-descriptor should compose with `SecurityPolicy` and the existing
-`ACTION_SPECS`; it should not create a second, divergent permission system.
-
-The initial completeness gate should fail when a dangerous or public-sink host
-action lacks any of:
-
-- a live policy decision and a stable idempotency key;
-- an approval request/replay/expiry path when the policy can require approval;
-- an audit record carrying the action ID and terminal outcome; or
-- a marked behavioral test, and a canary requirement where the action changes
-  an external service.
-
-This is the most broadly valuable NanoClaw lesson because it makes Pynchy's
-already strong policy inspectable and hard to bypass as plugins grow.
+Pynchy now parses service-handler contributions into immutable
+`HostActionDescriptor` values and rejects duplicate identities, missing
+ActionSpecs, unsafe write idempotency, and incomplete terminal-audit contracts
+at startup. Dispatch, approval replay, capability status, and security audit
+all consume the same catalog. See
+[Action coverage](../../docs/architecture/action-coverage.md#host-action-descriptors-and-capability-status).
 
 ### P0: Add a generic attachment and outbox protocol
 

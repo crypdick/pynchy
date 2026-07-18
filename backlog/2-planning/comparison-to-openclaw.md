@@ -92,57 +92,28 @@ delivery is therefore not an open gap.
 
 ## High-value gaps and patterns to adopt
 
-### P0: Runtime capability contract and plugin metadata
+### P1: Expand descriptor coverage and add pre-import plugin metadata
 
-**OpenClaw pattern.** A native plugin ships an inspectable manifest with
-identity, configuration schema, setup metadata, ownership, and capability
-hints, all readable before plugin code executes. Runtime registration creates
-a typed capability registry. Configuration validation, `plugins inspect`,
-doctor, and the UI consume that shared model.
+**Implemented foundation.** Pynchy now owns immutable `CapabilityDescriptor`
+and `HostActionDescriptor` types, validates host-action completeness at
+startup, resolves workspace status, and exposes it through `pynchy doctor`,
+`/capabilities`, and `/status`. Matrix supplies explicit descriptors; a strict
+legacy adapter keeps existing service handlers on the same catalog.
 
-**Pynchy state.** Pynchy has good fragments:
+**Remaining gap.** Agent-core, MCP-server, workspace, and channel hooks still
+need owned boundary types. Pynchy also cannot inspect a third-party plugin's
+identity, compatibility, configuration prerequisites, or optional dependencies
+before importing its code.
 
-- pluggy hooks for channels, cores, skills, MCP servers, workspaces, and
-  observers;
-- profile rules for semantic capabilities such as `mcp.email.send`;
-- action specs that identify user-meaningful effects and required evidence;
-- `search_skills` and `request_skill_access` for skill discovery.
+**Adopt.** Extend the existing descriptor model to those plugin surfaces with
+legacy adapters during migration. Add a small `pynchy_plugin.toml` or
+`pynchy.plugin.json` only for pre-import package metadata. Runtime registration
+remains authoritative, and the manifest must feed the existing capability
+inventory rather than create a second registry.
 
-No single core-aware source can report whether something is installed,
-configured, healthy, available to this workspace, denied by policy, gated by
-approval, or unsupported by the selected core. Raw hook dictionaries make the
-answer difficult to compose. That leads to stale plans and skills that claim a
-tool exists when it is merely documented, unavailable in this core, or blocked
-by a failed MCP startup.
-
-**Adopt.** Add parse-at-boundary descriptors and pre-import metadata:
-
-```text
-CapabilityDescriptor
-  id                 # e.g. calendar.event.create
-  kind               # channel, action, tool, skill, agent_core, device
-  owner              # plugin, core, or host workflow
-  action_ids         # links to ACTION_SPECS where applicable
-  requirements       # core, config, credential, runtime, permission
-  availability       # available, degraded, unavailable, denied, approval
-  evidence           # probe, canary, last error, documentation
-```
-
-Add `pynchy_plugin.toml` or `pynchy.plugin.json` for third-party metadata
-that Pynchy can parse before import. It should declare identity, config schema,
-setup/credential needs, provided descriptors, supported cores, documentation,
-and test/canary ownership. The manifest does not replace pluggy runtime
-registration; it is the pre-import validation and diagnostic layer.
-
-Expose one effective inventory through `list_capabilities`, `/status`, and
-`pynchy doctor`. Skill selection must use it and warn or refuse unavailable
-prerequisites. Reuse the existing action catalog instead of inventing a second
-taxonomy.
-
-**Proof of completion.** Disabled plugin, missing credential, failed MCP
-probe, policy denial, and core-incompatible skill each have a distinct
-inventory state and remediation. A new agent tool cannot bypass capability
-declaration or action coverage.
+**Proof of completion.** A disabled plugin, missing credential, failed MCP
+probe, policy denial, and core-incompatible skill each produce a distinct
+inventory state and remediation before an agent attempts the capability.
 
 ### P0: Transactional external actions, not approval prompts alone
 

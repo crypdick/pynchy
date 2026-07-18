@@ -56,9 +56,7 @@ provide independent semantic evidence.
 
 ## Priority roadmap
 
-### P0: control-plane and capability truth
-
-#### Fail closed at the control plane
+### P0: Fail closed at the HTTP control plane
 
 The HTTP surface includes messages, events, canaries, periodic jobs, and
 deployment. A network perimeter alone must not be its only protection.
@@ -76,28 +74,23 @@ deployment. A network perimeter alone must not be its only protection.
 
 This is an immediate security correction, not merely a product improvement.
 
-#### Replace raw plugin dictionaries with typed descriptors
+### Implemented foundation: host-action capability truth
 
-Parse third-party registration data once into frozen owned types such as
-`AgentCoreSpec`, `ServiceHandlerSpec`, `McpServerPluginSpec`, and
-`WorkspacePluginSpec`. Reject duplicate names, missing ownership, incompatible
-runtime requirements, and unclassified trust at that boundary.
+Pynchy now parses service handlers into owned descriptors, validates their
+security and evidence contracts, resolves workspace-specific capability
+status, and exposes the result through `pynchy doctor`, `/capabilities`, and
+`/status`. See
+[Action coverage](../../docs/architecture/action-coverage.md#host-action-descriptors-and-capability-status).
+The [OpenClaw comparison](comparison-to-openclaw.md#p1-expand-descriptor-coverage-and-add-pre-import-plugin-metadata)
+tracks the remaining non-service plugin descriptors and pre-import metadata.
 
-Add a manifest and resolved capability view that express identity, version,
-ownership, compatibility, declared hooks, optional dependencies, configuration
-prerequisites, runtime location, trust, approval policy, ActionSpec/canary
-evidence, health, and remediation. One `ResolvedCapability` should answer
-whether a feature is installed, configured, healthy, policy-allowed,
-approval-gated, core-compatible, and evidenced. This subsumes the repeated
-OpenClaw, NanoClaw, and Hermes recommendation.
+### P1: Expand operator diagnostics and configuration tooling
 
-#### Generate operator truth and add `pynchy doctor`
+Generate configuration references from Pydantic schemas rather than
+maintaining parallel lists. Expand `pynchy doctor` beyond host actions to cover
+runtime, container, Temporal, LiteLLM, tunnel, channel, credential-presence,
+plugin, and migration checks with remediation. Add:
 
-Generate capability tables and configuration references from descriptors and
-Pydantic schemas rather than maintaining parallel lists. Add:
-
-- `pynchy doctor [--json]` for runtime, container, Temporal, LiteLLM, tunnel,
-  channel, credential-presence, plugin, and migration checks with remediation;
 - `pynchy config validate [--json]` to parse desired state without starting
   services;
 - `pynchy init` that never echoes or persists secret values into tracked files;
