@@ -8,11 +8,13 @@ history catch-up filtering) rather than the gateway glue in _lifecycle.
 from __future__ import annotations
 
 import asyncio
+import struct
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nacl.secret
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
@@ -22,7 +24,10 @@ from pynchy.plugins.channels.discord._voice import (  # noqa: PLC2701
     _load_opus,  # allow: private-test-imports - platform Opus loader.
     _VoiceSession,  # allow: private-test-imports - voice playback boundary.
 )
-from pynchy.plugins.channels.discord._voice_client import PynchyVoiceClient  # noqa: PLC2701
+from pynchy.plugins.channels.discord._voice_client import (  # noqa: PLC2701
+    PynchyVoiceClient,
+    _parse_rtp_packet,  # allow: private-test-imports - exercises RTP crypto boundary.
+)
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
@@ -93,6 +98,19 @@ class _FakePynchyVoiceClient(PynchyVoiceClient):
 
     def is_connected(self) -> bool:
         return True
+
+
+@dataclass
+class _VoiceConnectionDecryptHarness:
+    dave_session: object
+    can_encrypt: bool
+
+
+@dataclass
+class _VoiceClientDecryptHarness:
+    mode: str
+    secret_key: bytes
+    _connection: _VoiceConnectionDecryptHarness
 
 
 class _FakeUser:
@@ -240,6 +258,59 @@ def test_load_opus_uses_homebrew_fallback(monkeypatch):
         assert _load_opus() is True
 
     assert loaded == ["/opt/homebrew/opt/opus/lib/libopus.0.dylib"]
+
+
+def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
+    """RTP-size transport crypto authenticates only the extension preamble."""
+
+    class _FakeDaveSession:
+        def __init__(self) -> None:
+            self.packets: list[tuple[int, object, bytes]] = []
+
+        def decrypt(self, user_id: int, media_type: object, packet: bytes) -> bytes:
+            self.packets.append((user_id, media_type, packet))
+            return packet
+
+    secret_key = bytes(range(32))
+    ssrc = 123
+    header = struct.pack(">BBHII", 0x90, 0x78, 1, 2, ssrc) + b"\xbe\xde\x00\x01"
+    extension_payload = b"\x10abc"
+    dave_payload = b"encrypted-opus-frame"
+    nonce = b"\x00\x00\x00\x01" + bytes(nacl.secret.Aead.NONCE_SIZE - 4)
+    encrypted_payload = (
+        nacl.secret.Aead(secret_key)
+        .encrypt(extension_payload + dave_payload, header, nonce)
+        .ciphertext
+        + nonce[:4]
+    )
+    parsed = _parse_rtp_packet(header + encrypted_payload)
+
+    assert parsed is not None
+    parsed_header, parsed_ssrc, payload, extension_length = parsed
+    dave_session = _FakeDaveSession()
+    voice_client = cast(
+        "PynchyVoiceClient",
+        _VoiceClientDecryptHarness(
+            mode="aead_xchacha20_poly1305_rtpsize",
+            secret_key=secret_key,
+            _connection=_VoiceConnectionDecryptHarness(dave_session=dave_session, can_encrypt=True),
+        ),
+    )
+
+    assert parsed_ssrc == ssrc
+    assert extension_length == len(extension_payload)
+    assert (
+        PynchyVoiceClient._decrypt_voice_payload(
+            voice_client,
+            parsed_header,
+            payload,
+            "42",
+            extension_length,
+        )
+        == dave_payload
+    )
+    assert dave_session.packets[0][0] == 42
+    assert dave_session.packets[0][2] == dave_payload
 
 
 @pytest.mark.asyncio

@@ -71,17 +71,26 @@ class PynchyVoiceClient(discord.VoiceClient):
         parsed = _parse_rtp_packet(packet)
         if listener is None or parsed is None:
             return
-        header, ssrc, encrypted_payload = parsed
+        header, ssrc, encrypted_payload, extension_payload_length = parsed
         speaker_id = self._speaker_ids.get(ssrc)
         if speaker_id is None:
             return
-        opus_packet = self._decrypt_voice_payload(header, encrypted_payload, speaker_id)
+        opus_packet = self._decrypt_voice_payload(
+            header,
+            encrypted_payload,
+            speaker_id,
+            extension_payload_length,
+        )
         if opus_packet is None:
             return
         self._loop.call_soon_threadsafe(listener, speaker_id, opus_packet)
 
     def _decrypt_voice_payload(
-        self, header: bytes, encrypted_payload: bytes, speaker_id: str
+        self,
+        header: bytes,
+        encrypted_payload: bytes,
+        speaker_id: str,
+        extension_payload_length: int,
     ) -> bytes | None:
         if self.mode != _AEAD_MODE or len(encrypted_payload) <= 4:
             return None
@@ -106,20 +115,35 @@ class PynchyVoiceClient(discord.VoiceClient):
             logger.debug("Discarded Discord voice packet that failed transport decryption")
             return None
 
-        decrypted = session.decrypt(int(speaker_id), davey.MediaType.audio, transport_payload)
+        if len(transport_payload) < extension_payload_length:
+            return None
+        dave_payload = transport_payload[extension_payload_length:]
+
+        decrypted = session.decrypt(int(speaker_id), davey.MediaType.audio, dave_payload)
         return decrypted if isinstance(decrypted, bytes) else None
 
 
-def _parse_rtp_packet(packet: bytes) -> tuple[bytes, int, bytes] | None:
-    """Return the variable-length RTP header, sender SSRC, and encrypted payload."""
+def _parse_rtp_packet(packet: bytes) -> tuple[bytes, int, bytes, int] | None:
+    """Return the authenticated RTP header and encrypted packet fields.
+
+    RTP-size encryption authenticates the fixed header, CSRCs, and extension
+    preamble. The extension body remains transport-encrypted ahead of the Opus
+    frame, so the DAVE payload begins after it.
+    """
     if len(packet) < 12 or packet[0] >> 6 != _RTP_VERSION:
         return None
     header_length = 12 + (packet[0] & 0x0F) * 4
+    extension_payload_length = 0
     if packet[0] & 0x10:
         if len(packet) < header_length + 4:
             return None
-        extension_words = struct.unpack_from(">H", packet, header_length + 2)[0]
-        header_length += 4 + extension_words * 4
+        extension_payload_length = struct.unpack_from(">H", packet, header_length + 2)[0] * 4
+        header_length += 4
     if len(packet) <= header_length:
         return None
-    return packet[:header_length], struct.unpack_from(">I", packet, 8)[0], packet[header_length:]
+    return (
+        packet[:header_length],
+        struct.unpack_from(">I", packet, 8)[0],
+        packet[header_length:],
+        extension_payload_length,
+    )
