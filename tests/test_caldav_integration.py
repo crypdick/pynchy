@@ -16,6 +16,7 @@ from pynchy.config.models import CalDAVTool
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
+from pynchy.plugins.host_actions import get_host_action_catalog
 from pynchy.plugins.integrations.caldav import (
     CalDAVMcpServerPlugin,
     clear_caldav_client_cache,
@@ -806,11 +807,7 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
-    # Mock the plugin manager to return our CalDAV handlers
-    fake_pm = MagicMock()
-    fake_pm.hook.pynchy_service_handler.return_value = [
-        CalDAVMcpServerPlugin().pynchy_service_handler(),
-    ]
+    catalog = get_host_action_catalog()
 
     with (
         patch(
@@ -818,8 +815,8 @@ async def test_calendar_tool_dispatches_to_plugin_handler(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch("pynchy.plugins.integrations.caldav.get_settings", return_value=settings),
         patch("pynchy.plugins.integrations.caldav._get_caldav_client", return_value=fake_client),

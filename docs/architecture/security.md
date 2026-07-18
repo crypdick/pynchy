@@ -105,6 +105,26 @@ Values are `false` (safe), `true` (risky — triggers gating), or `"forbidden"` 
 
 A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it detects credential patterns (API keys, tokens), the write escalates to human approval regardless of taint state.
 
+**Typed host-action boundary.** Service plugins register immutable
+`HostActionDescriptor` values. Startup rejects duplicate capability or tool
+IDs, missing semantic `ActionSpec` links, and write descriptors without the
+existing IPC idempotency and terminal-audit contracts. Legacy handler
+dictionaries are accepted only when an effective `ActionSpec` already exposes
+the tool; unknown tools fail startup.
+
+Descriptors do not define a second permission system. The capability snapshot
+shown by `/capabilities` and `/status` is read-only diagnostic state.
+`SecurityPolicy` evaluates current semantic capability rules and service trust
+again at each dispatch. Approved replay also rechecks denial and descriptor
+availability; the human decision satisfies the approval requirement but cannot
+override a policy change made while the request waited.
+
+Policy, approval, and terminal execution events use the existing security
+audit sink. Descriptor-backed events include `capability_id`, `action_ids`,
+the IPC request ID, decision, safe reason, and taint state. Handler exceptions
+and `{"error": ...}` responses both record terminal failure without copying
+provider error bodies into capability status.
+
 Admin workspaces use the same tool trust declarations at runtime. They are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)), which prevents admin workspaces from selecting public-source tools. See [Tool Trust](../usage/security.md) for configuration.
 
 ### 5b. Bash Security Gate

@@ -6,7 +6,9 @@ When a decision file appears in approval_decisions/, this handler:
 - Writes the IPC response file so the container unblocks
 - Cleans up pending and decision files
 
-The policy check is skipped on execution since the human already approved.
+Approved service actions re-check current policy before execution; the human
+human decision satisfies only the approval requirement, not later policy
+denial or descriptor removal.
 
 Two handler types are supported:
 - "service" (default): dispatches through plugin handlers (MCP service requests)
@@ -18,21 +20,43 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
 from typing import TYPE_CHECKING, Any, cast
 
-from pynchy.config import get_settings
+from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    HostActionDescriptor,
+)
+from pynchy.config import Settings, get_settings
 from pynchy.host.container_manager.ipc import registry
-from pynchy.host.container_manager.ipc.handlers_service import _get_plugin_handlers
+from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    build_workspace_security,
+    evaluate_host_action_policy,
+    get_gate_for_group,
+)
 from pynchy.logger import logger
+from pynchy.types import WorkspaceSecurity
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc.deps import IpcDeps
+
+
+@dataclass(frozen=True)
+class _ApprovedServiceContext:
+    request_data: dict[str, Any]
+    source_group: str
+    request_id: str
+    tool_name: str
+    chat_jid: str
+    action: HostActionDescriptor | None
+    gate: SecurityGate
 
 
 def _read_json_file(path: Path) -> dict[str, Any]:
@@ -90,6 +114,14 @@ async def process_approval_decision(
     request_data = pending.get("request_data", {})
     approved = decision.get("approved", False)
     handler_type = pending.get("handler_type", "service")
+    action = _get_action_catalog().action_for(tool_name) if handler_type == "service" else None
+    gate = _approval_replay_gate(s, source_group)
+    capability_id = str(action.capability.id) if action is not None else None
+    action_ids = (
+        tuple(str(action_id) for action_id in action.capability.action_ids)
+        if action is not None
+        else ()
+    )
 
     # MCP proxy approvals: resolve the awaiting Future, don't execute here.
     # The proxy handler holds the HTTP connection open and handles execution.
@@ -107,6 +139,8 @@ async def process_approval_decision(
             tool_name=tool_name,
             decision="approved_by_user" if approved else "denied_by_user",
             request_id=request_id,
+            capability_id=capability_id,
+            action_ids=action_ids,
         )
         logger.info(
             "MCP proxy approval resolved",
@@ -123,7 +157,17 @@ async def process_approval_decision(
         if handler_type == "ipc":
             await _execute_ipc_approval(request_data, source_group, request_id, deps)
         else:
-            await _execute_service_approval(request_data, source_group, request_id, tool_name)
+            await _execute_service_approval(
+                _ApprovedServiceContext(
+                    request_data=request_data,
+                    source_group=source_group,
+                    request_id=request_id,
+                    tool_name=tool_name,
+                    chat_jid=chat_jid,
+                    action=action,
+                    gate=gate,
+                )
+            )
 
         await record_security_event(
             chat_jid=chat_jid,
@@ -131,6 +175,8 @@ async def process_approval_decision(
             tool_name=tool_name,
             decision="approved_by_user",
             request_id=request_id,
+            capability_id=capability_id,
+            action_ids=action_ids,
         )
     else:
         await asyncio.to_thread(
@@ -144,6 +190,8 @@ async def process_approval_decision(
             tool_name=tool_name,
             decision="denied_by_user",
             request_id=request_id,
+            capability_id=capability_id,
+            action_ids=action_ids,
         )
         logger.info("Denied request", request_id=request_id, tool_name=tool_name)
 
@@ -152,45 +200,102 @@ async def process_approval_decision(
 
 
 async def _execute_service_approval(
-    request_data: dict[str, Any],
-    source_group: str,
-    request_id: str,
-    tool_name: str,
+    context: _ApprovedServiceContext,
 ) -> None:
     """Dispatch an approved service request through plugin handlers."""
-    handlers = _get_plugin_handlers()
-    handler = handlers.get(tool_name)
-
-    if handler is None:
-        logger.warning("Approved tool no longer available", tool_name=tool_name)
+    action = context.action
+    if action is None:
+        logger.warning("Approved tool no longer available", tool_name=context.tool_name)
         await asyncio.to_thread(
             write_ipc_response,
-            ipc_response_path(source_group, request_id),
-            {"error": f"Approved but tool '{tool_name}' is no longer available"},
+            ipc_response_path(context.source_group, context.request_id),
+            {"error": f"Approved but tool '{context.tool_name}' is no longer available"},
+        )
+        await record_security_event(
+            chat_jid=context.chat_jid,
+            workspace=context.source_group,
+            tool_name=context.tool_name,
+            decision="execution_failed",
+            reason="Host action descriptor is unavailable",
+            request_id=context.request_id,
         )
     else:
-        try:
-            request_data["source_group"] = source_group
-            response = await handler(request_data)
+        decision = evaluate_host_action_policy(action, context.gate, context.request_data)
+        if not decision.allowed:
             await asyncio.to_thread(
-                write_ipc_response, ipc_response_path(source_group, request_id), response
+                write_ipc_response,
+                ipc_response_path(context.source_group, context.request_id),
+                {"error": f"Approved request blocked by current policy: {decision.reason}"},
+            )
+            await record_security_event(
+                chat_jid=context.chat_jid,
+                workspace=context.source_group,
+                tool_name=context.tool_name,
+                decision="execution_failed",
+                reason=f"Policy changed before approved replay: {decision.reason}",
+                request_id=context.request_id,
+                capability_id=str(action.capability.id),
+                action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
+            )
+            return
+        try:
+            context.request_data["source_group"] = context.source_group
+            response = await action.handler(context.request_data)
+            await asyncio.to_thread(
+                write_ipc_response,
+                ipc_response_path(context.source_group, context.request_id),
+                response,
+            )
+            await record_security_event(
+                chat_jid=context.chat_jid,
+                workspace=context.source_group,
+                tool_name=context.tool_name,
+                decision="execution_failed" if "error" in response else "execution_succeeded",
+                reason="handler returned an error" if "error" in response else None,
+                request_id=context.request_id,
+                capability_id=str(action.capability.id),
+                action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
             )
             logger.info(
                 "Approved request executed",
-                request_id=request_id,
-                tool_name=tool_name,
+                request_id=context.request_id,
+                tool_name=context.tool_name,
             )
         except Exception as exc:  # noqa: BLE001, RUF100 - approved handler execution is an IPC boundary.
             logger.error(
                 "Approved request failed",
-                request_id=request_id,
+                request_id=context.request_id,
                 err=str(exc),
             )
             await asyncio.to_thread(
                 write_ipc_response,
-                ipc_response_path(source_group, request_id),
+                ipc_response_path(context.source_group, context.request_id),
                 {"error": f"Execution failed: {exc}"},
             )
+            await record_security_event(
+                chat_jid=context.chat_jid,
+                workspace=context.source_group,
+                tool_name=context.tool_name,
+                decision="execution_failed",
+                reason=type(exc).__name__,
+                request_id=context.request_id,
+                capability_id=str(action.capability.id),
+                action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
+            )
+
+
+def _approval_replay_gate(settings: Settings, source_group: str) -> SecurityGate:
+    """Rebuild current policy when the request-time invocation gate is gone."""
+    gate = get_gate_for_group(source_group)
+    if gate is not None:
+        return gate
+    resolved = settings.resolved_workspace_config(source_group)
+    security = (
+        build_workspace_security(settings, resolved)
+        if resolved is not None
+        else WorkspaceSecurity()
+    )
+    return SecurityGate(security)
 
 
 async def _execute_ipc_approval(

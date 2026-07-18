@@ -165,6 +165,7 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
     chat_jid: str,
     request_data: dict[str, Any],
     handler_type: str = "service",
+    expires_after_seconds: int = APPROVAL_TIMEOUT_SECONDS,
 ) -> str:
     """Write a pending approval file (PENDING state).
 
@@ -191,6 +192,7 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
         "request_data": request_data,
         "handler_type": handler_type,
         "timestamp": datetime.now(UTC).isoformat(),
+        "expires_after_seconds": expires_after_seconds,
     }
 
     write_json_atomic(pending_dir / f"{request_id}.json", data, indent=2)
@@ -329,7 +331,9 @@ async def _expired_pending_approval(
         )
         return None
 
-    if age_seconds <= APPROVAL_TIMEOUT_SECONDS:
+    raw_timeout = data.get("expires_after_seconds", APPROVAL_TIMEOUT_SECONDS)
+    timeout = raw_timeout if isinstance(raw_timeout, int) and raw_timeout > 0 else 0
+    if age_seconds <= timeout:
         return None
 
     await _auto_deny_expired_approval(group, filepath, data, age_seconds)

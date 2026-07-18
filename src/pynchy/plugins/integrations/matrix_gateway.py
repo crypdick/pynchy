@@ -8,14 +8,37 @@ the normal IPC approval boundary intercept every external send.
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any, cast
 
 import pluggy
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    CapabilityProbeContext,
+    CapabilityProbeResult,
+    CapabilityRequirement,
+    CapabilityRequirementKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+    ProbeStatus,
+)
 from pynchy.config import get_settings
 from pynchy.plugins.integrations.matrix_gateway_client import (
+    DEFAULT_GATEWAY_COMMAND,
     MatrixGatewayError,
     create_matrix_gateway_client,
     json_result,
@@ -140,22 +163,100 @@ async def _handle_send_message(data: dict[str, Any]) -> dict[str, object]:
     return {"result": json_result(result)}
 
 
+def _gateway_executable_exists(command: str) -> bool:
+    path = Path(command).expanduser()
+    if path.parent != Path():
+        return path.is_file() and os.access(path, os.X_OK)
+    return shutil.which(command) is not None
+
+
+async def _probe_matrix_gateway(_context: CapabilityProbeContext) -> CapabilityProbeResult:
+    """Check only local executable readiness; never contact Matrix from status."""
+    command = os.environ.get("PYNCHY_MATRIX_GATEWAY", DEFAULT_GATEWAY_COMMAND)
+    available = await asyncio.to_thread(_gateway_executable_exists, command)
+    if available:
+        return CapabilityProbeResult(ProbeStatus.READY)
+    return CapabilityProbeResult(
+        ProbeStatus.UNAVAILABLE,
+        "Matrix gateway binary is unavailable; configure PYNCHY_MATRIX_GATEWAY",
+    )
+
+
+def _matrix_action(
+    action_id: str,
+    tool_name: str,
+    summary: str,
+    handler: MatrixHandler,
+    *,
+    access: HostActionAccess,
+) -> HostActionDescriptor:
+    return HostActionDescriptor(
+        capability=CapabilityDescriptor(
+            id=CapabilityId(action_id),
+            kind=CapabilityKind.HOST_ACTION,
+            owner="matrix-gateway",
+            summary=summary,
+            action_ids=(ActionId(action_id),),
+            requirements=(
+                CapabilityRequirement(
+                    kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                    name=tool_name,
+                    description=f"Enable the {tool_name} tool for this workspace.",
+                ),
+                CapabilityRequirement(
+                    kind=CapabilityRequirementKind.HOST_BINARY,
+                    name="PYNCHY_MATRIX_GATEWAY",
+                    description="Install the Matrix gateway or configure its executable path.",
+                ),
+            ),
+            setup_hint="Follow the Matrix gateway setup guide and enable this tool in a profile.",
+            recovery_hint="Verify the gateway executable and Matrix device session.",
+            documentation="docs/usage/matrix-gateway.md",
+            probe=_probe_matrix_gateway,
+        ),
+        tool_name=HostToolName(tool_name),
+        handler=_only_in_enabled_workspace(tool_name, handler),
+        access=access,
+        approval=ApprovalContract(),
+        idempotency=IdempotencyContract(
+            IdempotencyMode.NOT_REQUIRED
+            if access is HostActionAccess.READ
+            else IdempotencyMode.IPC_REQUEST_ID
+        ),
+        audit=AuditContract(),
+    )
+
+
+MATRIX_HOST_ACTIONS = HostActionRegistration(
+    actions=(
+        _matrix_action(
+            "chat.matrix.list",
+            "matrix_list_chats",
+            "List chats through the host-only Matrix communications gateway.",
+            _handle_list_chats,
+            access=HostActionAccess.READ,
+        ),
+        _matrix_action(
+            "chat.matrix.message.list",
+            "matrix_list_messages",
+            "Read recent messages from one Matrix chat.",
+            _handle_list_messages,
+            access=HostActionAccess.READ,
+        ),
+        _matrix_action(
+            "chat.matrix.message.send",
+            "matrix_send_message",
+            "Send an approved message as the Matrix gateway owner.",
+            _handle_send_message,
+            access=HostActionAccess.WRITE,
+        ),
+    )
+)
+
+
 class MatrixGatewayPlugin:
     """Expose host-only Matrix operations through Pynchy's IPC service boundary."""
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, object]:
-        return {
-            "tools": {
-                "matrix_list_chats": _only_in_enabled_workspace(
-                    "matrix_list_chats", _handle_list_chats
-                ),
-                "matrix_list_messages": _only_in_enabled_workspace(
-                    "matrix_list_messages", _handle_list_messages
-                ),
-                "matrix_send_message": _only_in_enabled_workspace(
-                    "matrix_send_message", _handle_send_message
-                ),
-            },
-            "read_tools": frozenset({"matrix_list_chats", "matrix_list_messages"}),
-        }
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return MATRIX_HOST_ACTIONS

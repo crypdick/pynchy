@@ -217,12 +217,19 @@ class TestSweepExpiredApprovals:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         ):
-            create_pending_approval("req-old", "tool_a", "grp", "j@g.us", {})
+            create_pending_approval(
+                "req-old",
+                "tool_a",
+                "grp",
+                "j@g.us",
+                {},
+                expires_after_seconds=1,
+            )
 
             # Backdate the file
             pending_file = ipc_dir / "grp" / "pending_approvals" / "req-old.json"
             data = json.loads(pending_file.read_text())
-            data["timestamp"] = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+            data["timestamp"] = (datetime.now(UTC) - timedelta(seconds=2)).isoformat()
             pending_file.write_text(json.dumps(data))
 
             expired = await sweep_expired_approvals()

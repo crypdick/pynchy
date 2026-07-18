@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import init_test_database, make_settings
+from conftest import init_test_database, make_host_action_catalog, make_settings
 
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
+from pynchy.host.container_manager.security.gate import SecurityGate
+from pynchy.types import CapabilityRule, WorkspaceSecurity
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -86,6 +88,7 @@ class TestProcessApprovalDecision:
         decision_file = _write_decision(ipc_dir, "grp", "req123", approved=True)
 
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
+        catalog = make_host_action_catalog("my_tool", handler=mock_handler)
 
         with (
             patch(
@@ -94,8 +97,8 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
-                return_value={"my_tool": mock_handler},
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=catalog,
             ),
         ):
             await process_approval_decision(decision_file, "grp")
@@ -156,6 +159,7 @@ class TestProcessApprovalDecision:
         """Approved request for unknown tool should write error response."""
         _write_pending(ipc_dir, "grp", "req789", "nonexistent_tool", {})
         decision_file = _write_decision(ipc_dir, "grp", "req789", approved=True)
+        record_event = AsyncMock()
 
         with (
             patch(
@@ -164,8 +168,12 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
-                return_value={},
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=make_host_action_catalog(handler=AsyncMock()),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.record_security_event",
+                record_event,
             ),
         ):
             await process_approval_decision(decision_file, "grp")
@@ -173,6 +181,15 @@ class TestProcessApprovalDecision:
         response_file = ipc_dir / "grp" / "responses" / "req789.json"
         response = json.loads(response_file.read_text())
         assert "error" in response
+        assert record_event.await_count == 2
+        record_event.assert_any_await(
+            chat_jid="j@g.us",
+            workspace="grp",
+            tool_name="nonexistent_tool",
+            decision="execution_failed",
+            reason="Host action descriptor is unavailable",
+            request_id="req789",
+        )
 
     @pytest.mark.asyncio
     async def test_handler_exception_writes_error(self, ipc_dir: Path, settings):
@@ -181,6 +198,7 @@ class TestProcessApprovalDecision:
         decision_file = _write_decision(ipc_dir, "grp", "reqfail", approved=True)
 
         mock_handler = AsyncMock(side_effect=RuntimeError("boom"))
+        catalog = make_host_action_catalog("bad_tool", handler=mock_handler)
 
         with (
             patch(
@@ -189,8 +207,8 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
-                return_value={"bad_tool": mock_handler},
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=catalog,
             ),
         ):
             await process_approval_decision(decision_file, "grp")
@@ -199,6 +217,47 @@ class TestProcessApprovalDecision:
         response = json.loads(response_file.read_text())
         assert "error" in response
         assert "boom" in response["error"]
+
+    @pytest.mark.asyncio
+    async def test_approved_replay_rechecks_current_policy(self, ipc_dir: Path, settings):
+        """Human approval cannot override a policy denial added while waiting."""
+        _write_pending(ipc_dir, "grp", "policy-changed", "my_tool", {})
+        decision_file = _write_decision(
+            ipc_dir,
+            "grp",
+            "policy-changed",
+            approved=True,
+        )
+        mock_handler = AsyncMock(return_value={"result": "unsafe"})
+        catalog = make_host_action_catalog("my_tool", handler=mock_handler)
+        current_gate = SecurityGate(
+            WorkspaceSecurity(
+                capabilities={
+                    "test.my.tool": CapabilityRule(decision="deny"),
+                }
+            )
+        )
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=catalog,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval._approval_replay_gate",
+                return_value=current_gate,
+            ),
+        ):
+            await process_approval_decision(decision_file, "grp")
+
+        mock_handler.assert_not_awaited()
+        response = json.loads((ipc_dir / "grp/responses/policy-changed.json").read_text())
+        assert "blocked by current policy" in response["error"]
 
 
 class TestIpcApprovalDispatch:

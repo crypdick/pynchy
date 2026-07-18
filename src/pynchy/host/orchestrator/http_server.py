@@ -28,6 +28,11 @@ from pynchy.host.git_ops.utils import (
     push_local_commits,
     run_git,
 )
+from pynchy.host.orchestrator.capability_status import (
+    canary_outcomes_from_report,
+    collect_capability_status,
+    resolve_workspace_capabilities,
+)
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
@@ -198,6 +203,19 @@ async def _handle_status(request: web.Request) -> web.Response:
     return web.json_response(data)
 
 
+async def _handle_capabilities(request: web.Request) -> web.Response:
+    """Return effective host-action capabilities for one or every workspace."""
+    report = await get_canary_report(history_limit=10)
+    workspace = request.query.get("workspace")
+    if workspace:
+        snapshot = await resolve_workspace_capabilities(
+            workspace,
+            canary_outcomes=canary_outcomes_from_report(report),
+        )
+        return web.json_response(snapshot.to_dict())
+    return web.json_response(await collect_capability_status(report))
+
+
 def _canary_history_limit(request: web.Request) -> int | None:
     raw_limit = request.query.get("limit", "50")
     if not raw_limit.isdecimal():
@@ -351,6 +369,7 @@ def create_http_app(deps: HttpDeps, *, status_deps: StatusDeps | None = None) ->
         app[status_deps_key] = status_deps
     app.router.add_get("/health", _handle_health)
     app.router.add_get("/status", _handle_status)
+    app.router.add_get("/capabilities", _handle_capabilities)
     app.router.add_get("/canaries/report", _handle_canary_report)
     app.router.add_get("/canaries/runs", _handle_canary_runs)
     app.router.add_post("/deploy", _handle_deploy)

@@ -11,7 +11,8 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 | Category | Hook | What it provides | Runs where |
 |----------|------|-----------------|------------|
 | **Agent Core** | `pynchy_agent_core_info()` | LLM framework (Claude SDK, OpenAI, Ollama) | Container |
-| **Service Handler** | `pynchy_service_handler()` | Host-side service tool handlers dispatched via IPC | Host |
+| **Service Handler** | `pynchy_service_handler()` | Typed host-action descriptors and handlers dispatched via IPC | Host |
+| **Semantic Actions** | `pynchy_action_specs()` | Plugin-owned action IDs, surfaces, and evidence requirements | Host |
 | **Skill** | `pynchy_skill_paths()` | Agent instructions and capabilities (markdown) | Container |
 | **Channel** | `pynchy_create_channel()` | Communication platform (Telegram, Slack, Discord) | Host |
 | **Speech Synthesis** | `pynchy_speech_synthesizer()` | Final spoken replies for channels | Host |

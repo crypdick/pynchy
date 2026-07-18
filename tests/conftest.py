@@ -9,7 +9,19 @@ import pytest
 from pydantic import BaseModel, SecretStr
 
 import pynchy.state.connection as db_conn
-from pynchy.actions import ACTION_SPECS, assess_hermetic_coverage
+from pynchy.actions import ACTION_SPECS, ActionId, assess_hermetic_coverage
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
 from pynchy.config import (
     AgentConfig,
     CanaryConfig,
@@ -26,10 +38,16 @@ from pynchy.config import (
     ServerConfig,
     Settings,
 )
+from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.state import init_test_database
 from pynchy.types import InboundFetchResult, NewMessage
 
-__all__ = ["NullChannel", "NullIpcDeps", "init_test_database"]
+__all__ = [
+    "NullChannel",
+    "NullIpcDeps",
+    "init_test_database",
+    "make_host_action_catalog",
+]
 
 
 def pytest_addoption(parser):
@@ -120,6 +138,43 @@ def make_settings(**overrides):
         s.__dict__[key] = value
 
     return s
+
+
+def make_host_action_catalog(
+    *tool_names: str,
+    handler,
+    read_tools: tuple[str, ...] = (),
+) -> HostActionCatalog:
+    """Build a typed catalog for dispatch-focused tests.
+
+    Catalog validation is covered separately. These tests intentionally use
+    synthetic tool names so they can isolate dispatch and approval behavior.
+    """
+    actions = []
+    for tool_name in tool_names:
+        access = HostActionAccess.READ if tool_name in read_tools else HostActionAccess.WRITE
+        actions.append(
+            HostActionDescriptor(
+                capability=CapabilityDescriptor(
+                    id=CapabilityId(f"test.{tool_name.replace('_', '.')}"),
+                    kind=CapabilityKind.HOST_ACTION,
+                    owner="tests",
+                    summary=f"Exercise the {tool_name} test action.",
+                    action_ids=(ActionId(f"test.{tool_name.replace('_', '.')}"),),
+                ),
+                tool_name=HostToolName(tool_name),
+                handler=handler,
+                access=access,
+                approval=ApprovalContract(),
+                idempotency=IdempotencyContract(
+                    IdempotencyMode.NOT_REQUIRED
+                    if access is HostActionAccess.READ
+                    else IdempotencyMode.IPC_REQUEST_ID
+                ),
+                audit=AuditContract(),
+            )
+        )
+    return HostActionCatalog(actions=tuple(actions))
 
 
 class NullIpcDeps:
