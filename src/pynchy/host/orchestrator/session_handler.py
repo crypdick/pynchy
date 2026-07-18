@@ -195,7 +195,7 @@ async def trigger_manual_redeploy(
 async def ingest_user_message(
     deps: SessionDeps, msg: NewMessage, *, source_channel: str | None = None
 ) -> None:
-    """Unified user message ingestion — stores, emits, and broadcasts to all channels.
+    """Unified user message ingestion — stores, emits, and relays channel input.
 
     This is the common code path for ALL user inputs from ANY UI:
     - Channel messages
@@ -205,8 +205,9 @@ async def ingest_user_message(
     Args:
         deps: Session dependencies
         msg: The user message to ingest
-        source_channel: Optional name of the originating channel (e.g., "tui").
-                       If provided, we skip broadcasting back to that channel.
+        source_channel: Optional name of the originating channel.  Physical
+            channel input is relayed to other channels, while ``"tui"`` is a
+            local controller input and is never relayed externally.
     """
     # 1. Store full chat body in SQLite. Phoenix remains an observability trace store.
     metadata = {"source": source_channel or "channel", **(msg.metadata or {})}
@@ -236,7 +237,14 @@ async def ingest_user_message(
         )
     )
 
-    # 3. Broadcast to all connected channels (except source)
+    # 3. The TUI is an internal control surface, not a physical chat channel.
+    # Relaying its synthetic ``You`` message would impersonate the user in a
+    # connected channel (for example, Discord).  The message remains stored
+    # and emitted above so the TUI still displays it and the agent can act on it.
+    if source_channel == "tui":
+        return
+
+    # 4. Broadcast physical-channel input to all connected channels except source.
     # This ensures messages from one UI appear in all other UIs.
     # Include sender attribution so the message isn't mistaken for bot
     # output (e.g. Slack posts as the bot user).  The source channel is

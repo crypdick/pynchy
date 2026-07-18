@@ -532,10 +532,10 @@ class TestBroadcastConsistency:
 
 
 class TestUserMessageBroadcast:
-    """Verify that user messages from any UI are broadcast to all channels."""
+    """Verify the relay boundary for user messages from each input surface."""
 
-    async def test_tui_message_broadcasts_to_channels(self, app: PynchyApp):
-        """TUI user messages should be stored, emitted to event bus, AND broadcast to channels."""
+    async def test_tui_message_stays_local_to_the_tui_controller(self, app: PynchyApp):
+        """TUI input should not be re-posted to a physical chat channel as ``[You]``."""
         channel = FakeChannel()
         app.channels = [channel]
         capture = EventCapture(app.event_bus)
@@ -543,7 +543,7 @@ class TestUserMessageBroadcast:
         # Get the HTTP deps (which includes send_user_message)
         http_deps = make_http_deps(app)
 
-        # Simulate a TUI user sending a message
+        # Simulate a TUI user sending a message into a Discord-backed chat.
         await http_deps.send_user_message("group@g.us", "Hello from TUI")
         await capture.drain()
 
@@ -554,11 +554,8 @@ class TestUserMessageBroadcast:
         assert capture.messages[0].sender_name == "You"
         assert capture.messages[0].is_bot is False
 
-        # 3. Message should be broadcast to channel
-        assert len(channel.sent_messages) == 1
-        sent_jid, sent_text = channel.sent_messages[0]
-        assert sent_jid == "group@g.us"
-        assert "Hello from TUI" in sent_text
+        # 3. The TUI's synthetic "You" message must not be cross-posted.
+        assert channel.sent_messages == []
 
     async def test_inbound_message_broadcasts_to_other_channels(self, app: PynchyApp):
         """Inbound messages from one channel should be broadcast to other channels."""
