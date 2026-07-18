@@ -7,7 +7,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import pynchy.config as pynchy_config
 from pynchy.logger import logger
@@ -49,6 +49,10 @@ from pynchy.plugins.integrations.google_setup._rest_api import (
 
 if TYPE_CHECKING:
     import subprocess
+
+    from playwright.async_api import Page
+
+    from pynchy.plugins.integrations.google_setup._oauth import OAuthPage
 
 
 @runtime_checkable
@@ -153,8 +157,11 @@ async def _ensure_oauth_credentials(
     if await asyncio.to_thread(kp.exists):
         return "OAuth credentials already exist"
 
-    await ensure_consent_screen(page, project_id)
-    creds_path = await create_oauth_credentials(page, project_id)
+    # Playwright's concrete Page narrows several keyword parameters, so the
+    # focused runtime protocol and the SDK type need an explicit boundary cast.
+    console_page = cast("Page", page)
+    await ensure_consent_screen(console_page, project_id)
+    creds_path = await create_oauth_credentials(console_page, project_id)
 
     dest = keys_path(profile_name)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -234,11 +241,20 @@ async def _run_interactive_setup_body(
 
         # 3. Ensure OAuth consent + credentials
         steps_done.append(
-            await _ensure_oauth_credentials(page, setup.project_id, kp, setup.profile_name)
+            await _ensure_oauth_credentials(
+                cast("_BrowserPage", page),
+                setup.project_id,
+                kp,
+                setup.profile_name,
+            )
         )
 
         # 4. Run OAuth flow
-        tokens = await run_oauth_flow(page, keys_path(setup.profile_name), setup.scopes)
+        tokens = await run_oauth_flow(
+            cast("OAuthPage", page),
+            keys_path(setup.profile_name),
+            setup.scopes,
+        )
         save_credentials_to_profile(tokens, setup.profile_name)
         steps_done.append("OAuth tokens obtained")
         await context.close()

@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
-    from ._channel import SlackChannel
+    from ._channel import SlackChannel, _SlackApp
 else:
     # beartype resolves the ``channel: SlackChannel`` forward ref at call time
     # from this module's globals. ``_channel`` imports this module, so a real
@@ -41,7 +41,11 @@ class SlackLifecycle:
         )
 
         ch = self._channel
-        ch.slack_app = AsyncApp(token=ch.bot_token)
+        app = AsyncApp(token=ch.bot_token)
+        # The local protocol deliberately exposes only the Slack surface that
+        # collaborators consume; the SDK's wider client signature is not
+        # structurally assignable to that narrowed protocol.
+        ch.slack_app = cast("_SlackApp", app)
 
         # Cache bot user ID so we can strip self-mentions from inbound text
         try:
@@ -53,7 +57,7 @@ class SlackLifecycle:
         await ch.sync_allowed_channels()
         ch.events.register_handlers()
 
-        ch.handler = AsyncSocketModeHandler(ch.slack_app, ch.app_token)
+        ch.handler = AsyncSocketModeHandler(app, ch.app_token)
         ch.handler_task = asyncio.create_task(ch.handler.start_async(), name="slack-socket-mode")
         ch.handler_task.add_done_callback(self._on_handler_done)
         ch.connected = True
