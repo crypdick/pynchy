@@ -24,6 +24,8 @@ from pynchy.capabilities import (
     CapabilityId,
     CapabilityKind,
     CapabilityProbeResult,
+    CapabilityRequirement,
+    CapabilityRequirementKind,
     CapabilityStatus,
     HostActionAccess,
     HostActionDescriptor,
@@ -55,6 +57,7 @@ def _action(
     *,
     action_id: str = _ACTION_ID,
     probe_status: ProbeStatus | None = None,
+    required_workspace_tool: str | None = None,
 ) -> HostActionDescriptor:
     async def probe(_context) -> CapabilityProbeResult:
         assert probe_status is not None
@@ -70,6 +73,15 @@ def _action(
             owner="tests",
             summary="List Matrix chats.",
             action_ids=(ActionId(action_id),),
+            requirements=(
+                CapabilityRequirement(
+                    kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                    name=required_workspace_tool,
+                    description=f"Enable the {required_workspace_tool} integration.",
+                ),
+            )
+            if required_workspace_tool is not None
+            else (),
             probe=probe if probe_status is not None else None,
         ),
         tool_name=HostToolName(_TOOL_NAME),
@@ -81,14 +93,19 @@ def _action(
     )
 
 
-def _settings(*, enabled: bool = True, decision: str | None = None):
+def _settings(
+    *,
+    enabled: bool = True,
+    decision: str | None = None,
+    tools: list[str] | None = None,
+):
     capabilities = (
         {_ACTION_ID: CapabilityTomlConfig(decision=decision)} if decision is not None else {}
     )
     return make_settings(
         profiles={
             "matrix": ProfileConfig(
-                tools=[_TOOL_NAME] if enabled else [],
+                tools=tools if tools is not None else [_TOOL_NAME] if enabled else [],
                 capabilities=capabilities,
             )
         },
@@ -143,6 +160,18 @@ async def test_missing_workspace_or_tool_is_unconfigured():
 
     assert missing_workspace.capabilities[0].status is CapabilityStatus.UNCONFIGURED
     assert missing_tool.status is CapabilityStatus.UNCONFIGURED
+
+
+@pytest.mark.asyncio
+async def test_declared_workspace_requirement_controls_action_readiness():
+    action = _action(required_workspace_tool="linear")
+
+    ready = await _resolved_status(action=action, settings=_settings(tools=["linear"]))
+    missing = await _resolved_status(action=action, settings=_settings(tools=[]))
+
+    assert ready.status is CapabilityStatus.READY
+    assert missing.status is CapabilityStatus.UNCONFIGURED
+    assert missing.reason == "Tool linear is not enabled for this workspace"
 
 
 @pytest.mark.asyncio

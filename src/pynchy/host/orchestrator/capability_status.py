@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pynchy.actions import ActionId, ActionSpec, EvidenceRequirement
 from pynchy.capabilities import (
     CapabilityProbeContext,
+    CapabilityRequirementKind,
     CapabilityStatus,
     HostActionDescriptor,
     ProbeStatus,
@@ -141,11 +142,12 @@ async def _resolve_action(
     action: HostActionDescriptor,
     context: _ResolutionContext,
 ) -> ResolvedCapability:
-    if str(action.tool_name) not in context.enabled_tools:
+    missing_tool = _missing_workspace_tool(action, context.enabled_tools)
+    if missing_tool is not None:
         return ResolvedCapability(
             descriptor=action.capability,
             status=CapabilityStatus.UNCONFIGURED,
-            reason=f"Tool {action.tool_name} is not enabled for this workspace",
+            reason=f"Tool {missing_tool} is not enabled for this workspace",
         )
 
     decision = evaluate_host_action_policy(action, SecurityGate(context.security), {})
@@ -207,6 +209,19 @@ async def _resolve_action(
         cop_review_required=decision.needs_cop,
         canary_scenarios=scenarios,
     )
+
+
+def _missing_workspace_tool(
+    action: HostActionDescriptor,
+    enabled_tools: frozenset[str],
+) -> str | None:
+    """Return the first declared workspace-tool prerequisite missing from a profile."""
+    required_tools = tuple(
+        requirement.name
+        for requirement in action.capability.requirements
+        if requirement.kind is CapabilityRequirementKind.WORKSPACE_TOOL
+    ) or (str(action.tool_name),)
+    return next((tool for tool in required_tools if tool not in enabled_tools), None)
 
 
 def _required_canary_scenarios(
