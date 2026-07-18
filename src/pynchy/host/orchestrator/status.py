@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 from temporalio.client import Client
 
@@ -31,6 +31,7 @@ from pynchy.host.git_ops.utils import (
     is_repo_dirty,
     run_git,
 )
+from pynchy.host.orchestrator.capability_status import collect_capability_status
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
@@ -134,6 +135,8 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         get_canary_report(history_limit=10),
         _collect_speech(deps.get_speech_synthesizer()),
     )
+    canary_report = cast("dict[str, object]", canaries)
+    capabilities = await collect_capability_status(canary_report)
 
     return {
         "service": service,
@@ -148,6 +151,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "host_jobs": host_jobs,
         "temporal": temporal,
         "canaries": canaries,
+        "capabilities": capabilities,
         "speech": speech,
         "groups": groups,
     }

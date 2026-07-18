@@ -4,14 +4,19 @@ Subcommands:
     pynchy              Run the service (default)
     pynchy --tui        Attach TUI client to a running instance
     pynchy build        Build the container image
+    pynchy doctor       Explain effective workspace host-action capabilities
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import subprocess  # noqa: S404, RUF100 - fixed no-shell container runtime argv below.
 import sys
+import urllib.parse
+import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 
 _DEFAULT_PORT = "8484"
@@ -105,6 +110,66 @@ def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> Non
         sys.stdout.write(f"{action}: {removed_path}\n")
 
 
+def _doctor_url(host: str, workspace: str | None) -> str:
+    base = host if "://" in host else f"http://{host}"
+    url = f"{base.rstrip('/')}/capabilities"
+    return f"{url}?{urllib.parse.urlencode({'workspace': workspace})}" if workspace else url
+
+
+def _render_capability_doctor(payload: object) -> str:
+    if not isinstance(payload, Mapping):
+        raise TypeError("Capability endpoint returned a non-object response")
+    raw_workspaces = (
+        [payload] if isinstance(payload.get("workspace"), str) else payload.get("workspaces", [])
+    )
+    if not isinstance(raw_workspaces, list):
+        raise TypeError("Capability endpoint returned an invalid workspace list")
+    if not raw_workspaces:
+        return "No configured workspace capability snapshots."
+
+    lines: list[str] = []
+    for raw_workspace in raw_workspaces:
+        if not isinstance(raw_workspace, Mapping):
+            raise TypeError("Capability endpoint returned an invalid workspace snapshot")
+        workspace = raw_workspace.get("workspace", "unknown")
+        lines.append(f"Capabilities for {workspace}:")
+        raw_capabilities = raw_workspace.get("capabilities", [])
+        if not isinstance(raw_capabilities, list):
+            raise TypeError("Capability endpoint returned an invalid capability list")
+        for raw_capability in raw_capabilities:
+            if not isinstance(raw_capability, Mapping):
+                raise TypeError("Capability endpoint returned an invalid capability")
+            capability_id = raw_capability.get("id", "unknown")
+            status = raw_capability.get("status", "unknown")
+            reason = raw_capability.get("reason")
+            lines.append(
+                f"  [{status}] {capability_id}"
+                + (f" - {reason}" if isinstance(reason, str) and reason else "")
+            )
+            for field, label in (("setup_hint", "setup"), ("recovery_hint", "recover")):
+                hint = raw_capability.get(field)
+                if isinstance(hint, str) and hint:
+                    lines.append(f"    {label}: {hint}")
+    return "\n".join(lines)
+
+
+def _doctor(host: str, workspace: str | None, *, json_output: bool) -> int:
+    url = _doctor_url(host, workspace)
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310, RUF100 - operator-selected Pynchy status endpoint is intentionally queried.
+            payload = json.loads(response.read())
+        output = (
+            json.dumps(payload, indent=2, sort_keys=True)
+            if json_output
+            else _render_capability_doctor(payload)
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        _stderr_line(f"Capability doctor failed: {exc}")
+        return 1
+    _stdout_line(output)
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pynchy",
@@ -140,6 +205,19 @@ def main() -> None:
         action="store_true",
         help="Delete old backup directories. Without this flag, only report what would be removed.",
     )
+    doctor = sub.add_parser(
+        "doctor",
+        help="Explain effective workspace host-action capabilities",
+    )
+    doctor.add_argument(
+        "--workspace",
+        help="Show one workspace instead of every configured workspace",
+    )
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the raw capability snapshot as JSON",
+    )
 
     args = parser.parse_args()
 
@@ -148,6 +226,8 @@ def main() -> None:
             _build()
         case "prune-migration-backups":
             _prune_migration_backups(args.path, keep=args.keep, apply=args.apply)
+        case "doctor":
+            sys.exit(_doctor(args.host, args.workspace, json_output=args.json))
         case _:
             if args.tui:
                 host = args.host

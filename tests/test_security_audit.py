@@ -28,6 +28,8 @@ async def test_record_security_event():
         secret_tainted=False,
         reason="cop (corruption taint)",
         request_id="req-123",
+        capability_id="mail.message.read",
+        action_ids=("mail.message.list", "mail.message.read"),
     )
 
     db = connection._get_db()
@@ -42,6 +44,8 @@ async def test_record_security_event():
     assert metadata["corruption_tainted"] is True
     assert metadata["secret_tainted"] is False
     assert metadata["request_id"] == "req-123"
+    assert metadata["capability_id"] == "mail.message.read"
+    assert metadata["action_ids"] == ["mail.message.list", "mail.message.read"]
 
 
 @pytest.mark.asyncio

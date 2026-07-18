@@ -27,6 +27,8 @@ async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror th
     secret_tainted: bool = False,
     reason: str | None = None,
     request_id: str | None = None,
+    capability_id: str | None = None,
+    action_ids: tuple[str, ...] = (),
 ) -> None:
     """Record a policy evaluation in the messages table."""
     metadata = {
@@ -37,11 +39,13 @@ async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror th
         "secret_tainted": secret_tainted,
         "reason": reason,
         "request_id": request_id,
+        "capability_id": capability_id,
+        "action_ids": action_ids or None,
     }
     metadata = {k: v for k, v in metadata.items() if v is not None}
 
     await store_message_direct(
-        message_id=f"audit-{request_id or int(time.time() * 1000)}",
+        message_id=f"audit-{request_id or int(time.time() * 1000)}-{decision}",
         chat_jid=chat_jid,
         sender="security",
         sender_name="security",

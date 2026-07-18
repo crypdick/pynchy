@@ -1,6 +1,8 @@
 # Quickstart: Build Your First Plugin
 
-This guide walks through creating, installing, and testing a pynchy plugin. You'll build a service handler plugin that exposes a host-side tool to the agent.
+This guide walks through creating, installing, and testing a Pynchy plugin.
+You'll build a small skill plugin, the shortest complete extension that works
+with every agent core.
 
 ## Prerequisites
 
@@ -22,7 +24,7 @@ Create `pyproject.toml`:
 [project]
 name = "pynchy-plugin-hello"
 version = "0.1.0"
-description = "Hello world service tool for pynchy"
+description = "Hello world skill for Pynchy"
 requires-python = ">=3.12"
 dependencies = []
 
@@ -42,31 +44,36 @@ build-backend = "hatchling.build"
 Create `src/pynchy_plugin_hello/__init__.py`:
 
 ```python
+from pathlib import Path
+
 import pluggy
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
 class HelloPlugin:
-    """Service handler plugin that provides a 'hello' tool."""
+    """Skill plugin that teaches agents a repeatable greeting workflow."""
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict:
-        return {
-            "tools": {
-                "hello": _handle_hello,
-            },
-        }
-
-
-async def _handle_hello(data: dict) -> dict:
-    name = data.get("name", "World")
-    return {"result": f"Hello, {name}! This is a pynchy plugin tool."}
+    def pynchy_skill_paths(self) -> list[str]:
+        return [str(Path(__file__).parent / "skills" / "hello")]
 ```
 
-That's the whole plugin. The `@hookimpl` decorator tells pluggy this class implements the `pynchy_service_handler` hook. No base classes, no registration boilerplate.
+Create `src/pynchy_plugin_hello/skills/hello/SKILL.md`:
 
-The handler function runs in the **host process** and is dispatched via IPC when an agent invokes the `hello` service tool. Policy middleware (risk tiers, rate limits) runs before your handler.
+```markdown
+---
+name: hello
+description: Write a warm, concise greeting for a named person.
+tier: community
+---
+
+Ask who the greeting is for if no name was supplied. Return one sentence,
+using the person's name and no generic preamble.
+```
+
+That's the whole plugin. The `@hookimpl` decorator tells pluggy that the class
+implements `pynchy_skill_paths`; no base class or manual registry is needed.
 
 ## 3. Install and Test
 
@@ -92,7 +99,8 @@ Plugin manager ready  plugins=[..., 'hello']
 The exact built-in inventory changes with Pynchy releases; confirm that your
 entry-point key (`hello`) appears in the final inventory.
 
-The agent now has a `hello` service tool available via IPC.
+Add `hello` to a profile's `skills` list and restart Pynchy. Workspaces using
+that profile now receive the skill.
 
 ## 4. Uninstall
 
@@ -114,5 +122,14 @@ pynchy-plugin-hello/
 ├── pyproject.toml
 └── src/
     └── pynchy_plugin_hello/
-        └── __init__.py     # Plugin class with @hookimpl + handler
+        ├── __init__.py
+        └── skills/
+            └── hello/
+                └── SKILL.md
 ```
+
+To add a privileged host action, read
+[`pynchy_service_handler`](hooks.md#pynchy_service_handler) next. Host actions
+need a typed descriptor, a semantic `ActionSpec`, an agent-container tool
+surface, policy and idempotency contracts, and behavioral coverage; a raw
+handler dictionary is not a complete agent tool.

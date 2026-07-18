@@ -52,6 +52,7 @@ from pynchy.plugins.channel_runtime import (
     load_channels,
     resolve_default_channel,
 )
+from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state import init_database, store_chat_metadata
@@ -155,6 +156,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     service_installer.install_service()
 
     app.plugin_manager = get_plugin_manager()
+    initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     system_checks.ensure_container_system_running()

@@ -59,6 +59,7 @@ class TestPluginManager:
         assert hasattr(pm.hook, "pynchy_skill_paths")
         assert hasattr(pm.hook, "pynchy_create_channel")
         assert hasattr(pm.hook, "pynchy_workspace_spec")
+        assert hasattr(pm.hook, "pynchy_action_specs")
 
     def test_multiple_plugin_manager_calls(self):
         """Multiple calls to get_plugin_manager work correctly."""

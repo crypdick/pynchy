@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 import pluggy
 
 if TYPE_CHECKING:
+    from pynchy.actions import ActionSpec
+    from pynchy.capabilities import HostActionRegistration
     from pynchy.plugins.channel_runtime import ChannelPluginContext
     from pynchy.plugins.memory import MemoryProvider
     from pynchy.plugins.observers import ObserverProvider
@@ -120,16 +122,25 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_service_handler(self) -> dict[str, object]:
+    def pynchy_service_handler(self) -> HostActionRegistration | dict[str, object]:
         """Provide host-side service tool handlers.
 
         Host-side handlers process IPC service requests from container MCP tools.
         Each handler receives the request data dict and returns a result or error.
 
         Returns:
-            Dict with keys:
-                - tools: dict mapping tool_name → async handler function
-                  Each handler takes (data: dict) and returns dict with "result" or "error"
+            A typed HostActionRegistration. Raw ``{"tools": ...}`` mappings
+            are parsed only when ActionSpec entries cover every tool.
+        """
+        raise NotImplementedError
+
+    @hookspec
+    def pynchy_action_specs(self) -> tuple[ActionSpec, ...]:
+        """Provide semantic action contracts owned by this plugin.
+
+        Every host-action descriptor must name an ActionSpec whose agent-tool
+        surface exposes the registered tool. Built-in and plugin specifications
+        are validated together, so duplicate action IDs fail startup.
         """
         raise NotImplementedError
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import NullIpcDeps
+from conftest import NullIpcDeps, make_host_action_catalog
 
 from pynchy import state
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
@@ -15,6 +15,7 @@ from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security import gate
 from pynchy.host.container_manager.security.gate import create_gate
+from pynchy.state import connection
 from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
@@ -95,27 +96,27 @@ def _make_settings(**kwargs):
     return FakeSettings()
 
 
-def _make_fake_plugin_manager(*tool_names: str, handler_fn=None, read_tools: tuple[str, ...] = ()):
-    """Create a fake plugin manager that provides handlers for the given tool names."""
+def _make_action_catalog(*tool_names: str, handler_fn=None, read_tools: tuple[str, ...] = ()):
+    """Create a typed catalog for synthetic dispatch tools."""
 
-    def _stub_handler(data: dict):
-        return asyncio.sleep(
-            0, result={"error": f"Service '{data.get('type', '')}' is not implemented yet."}
+    async def _stub_handler(data: dict):
+        return await asyncio.sleep(
+            0,
+            result={"error": f"Service '{data.get('type', '')}' is not implemented yet."},
         )
 
-    fn = handler_fn or _stub_handler
-    fake_pm = MagicMock()
-    fake_pm.hook.pynchy_service_handler.return_value = [
-        {"tools": dict.fromkeys(tool_names, fn), "read_tools": read_tools},
-    ]
-    return fake_pm
+    return make_host_action_catalog(
+        *tool_names,
+        handler=handler_fn or _stub_handler,
+        read_tools=read_tools,
+    )
 
 
 @pytest.mark.asyncio
 async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
     """Test that a plugin-provided handler is called after policy allows."""
     mock_handler = AsyncMock(return_value={"result": {"status": "ok"}})
-    fake_pm = _make_fake_plugin_manager("my_tool", handler_fn=mock_handler)
+    catalog = _make_action_catalog("my_tool", handler_fn=mock_handler)
 
     # Register a gate with all-safe service: no gating
     register_gate(
@@ -138,8 +139,8 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
     ):
         data = _make_request("my_tool", some_param="value")
@@ -151,12 +152,21 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
     response = json.loads(response_file.read_text())
     assert response == {"result": {"status": "ok"}}
 
+    db = connection._get_db()
+    cursor = await db.execute(
+        "SELECT metadata FROM messages WHERE sender = 'security' ORDER BY timestamp"
+    )
+    events = [json.loads(row["metadata"]) for row in await cursor.fetchall()]
+    assert [event["decision"] for event in events] == ["allowed", "execution_succeeded"]
+    assert all(event["capability_id"] == "test.my.tool" for event in events)
+    assert all(event["action_ids"] == ["test.my.tool"] for event in events)
+
 
 @pytest.mark.asyncio
 async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, register_gate):
     """A Matrix read must taint the turn before later actions can use its text."""
     mock_handler = AsyncMock(return_value={"result": {"messages": ["untrusted text"]}})
-    fake_pm = _make_fake_plugin_manager(
+    catalog = _make_action_catalog(
         "matrix_list_messages",
         handler_fn=mock_handler,
         read_tools=("matrix_list_messages",),
@@ -180,8 +190,8 @@ async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, reg
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
     ):
         await registry.dispatch(_make_request("matrix_list_messages"), "test-ws", False, deps)
@@ -194,7 +204,7 @@ async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, reg
 @pytest.mark.asyncio
 async def test_forbidden_tool_denied(tmp_path, register_gate):
     """Test that a forbidden tool is denied."""
-    fake_pm = _make_fake_plugin_manager("forbidden_tool")
+    catalog = _make_action_catalog("forbidden_tool")
 
     # Register a gate with forbidden dangerous_writes
     register_gate(
@@ -212,8 +222,8 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
     ):
         data = _make_request("forbidden_tool", param="value")
@@ -229,7 +239,7 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
 @pytest.mark.asyncio
 async def test_dangerous_writes_requires_human(tmp_path, register_gate):
     """Test that dangerous_writes=True triggers human approval gate."""
-    fake_pm = _make_fake_plugin_manager("sensitive_tool")
+    catalog = _make_action_catalog("sensitive_tool")
 
     # Register a gate with dangerous_writes=True
     register_gate(
@@ -251,8 +261,8 @@ async def test_dangerous_writes_requires_human(tmp_path, register_gate):
             "pynchy.host.container_manager.ipc.handlers_service.get_settings", return_value=settings
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
@@ -281,7 +291,7 @@ async def test_dangerous_writes_requires_human(tmp_path, register_gate):
 @pytest.mark.asyncio
 async def test_unknown_tool_type(tmp_path):
     """Test that unknown tool types get an error response."""
-    fake_pm = _make_fake_plugin_manager()  # empty plugin
+    catalog = _make_action_catalog(handler_fn=AsyncMock())
     settings = _make_settings()
     settings.data_dir = tmp_path
 
@@ -293,8 +303,8 @@ async def test_unknown_tool_type(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
     ):
         data = {
@@ -336,7 +346,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
     resolve_security creates a default WorkspaceSecurity, and an ephemeral
     SecurityGate is created for the request.
     """
-    fake_pm = _make_fake_plugin_manager("some_tool")
+    catalog = _make_action_catalog("some_tool")
 
     class FakeSettings:
         def __init__(self):
@@ -354,8 +364,8 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
         ),
         patch("pynchy.config.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
@@ -378,7 +388,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
 async def test_safe_service_allowed(tmp_path, register_gate):
     """A fully safe service (all False) passes without gating."""
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager("safe_tool", handler_fn=mock_handler)
+    catalog = _make_action_catalog("safe_tool", handler_fn=mock_handler)
 
     # Register a gate with all-safe service
     register_gate(
@@ -401,8 +411,8 @@ async def test_safe_service_allowed(tmp_path, register_gate):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
     ):
         data = _make_request("safe_tool")

@@ -14,6 +14,11 @@ from typing import Any
 
 import pynchy.config as pynchy_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
+from pynchy.capabilities import HostActionAccess, HostActionDescriptor
+from pynchy.config import Settings  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
+    ResolvedWorkspaceConfig,
+)
 from pynchy.host.container_manager.security.middleware import PolicyDecision, SecurityPolicy
 from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
 
@@ -48,6 +53,29 @@ class SecurityGate:
     def notify_file_access(self) -> None:
         """Forward file-access notification to the policy."""
         self._policy.notify_file_access()
+
+
+def evaluate_host_action_policy(
+    action: HostActionDescriptor,
+    gate: SecurityGate,
+    data: dict[str, Any],
+) -> PolicyDecision:
+    """Compose semantic capability policy with the service-trust decision."""
+    capability = gate.evaluate_capability(str(action.capability.id))
+    if not capability.allowed:
+        return capability
+    service = (
+        gate.evaluate_read(action.service_name)
+        if action.access is HostActionAccess.READ
+        else gate.evaluate_write(action.service_name, data)
+    )
+    reasons = [reason for reason in (capability.reason, service.reason) if reason]
+    return PolicyDecision(
+        allowed=service.allowed,
+        reason="; ".join(reasons) or None,
+        needs_cop=service.needs_cop,
+        needs_human=capability.needs_human or service.needs_human,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +136,17 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
     if resolved is None:
         return WorkspaceSecurity(contains_secrets=contains_secrets)
 
+    return build_workspace_security(s, resolved)
+
+
+def build_workspace_security(
+    settings: Settings,
+    resolved: ResolvedWorkspaceConfig,
+) -> WorkspaceSecurity:
+    """Build dispatch-equivalent security from an already resolved workspace."""
+
     services: dict[str, ServiceTrustConfig] = {}
-    tools = getattr(s, "tools", {})
+    tools = settings.tools
     for tool_name in resolved.tools:
         tool = tools.get(tool_name)
         if tool is None:
@@ -123,6 +160,6 @@ def resolve_security(source_group: str, *, is_admin: bool = False) -> WorkspaceS
 
     return WorkspaceSecurity(
         services=services,
-        contains_secrets=contains_secrets,
+        contains_secrets=resolved.contains_secrets,
         capabilities=dict(resolved.capabilities),
     )

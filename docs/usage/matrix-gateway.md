@@ -108,3 +108,25 @@ Pynchy's human-approval boundary before the host gateway transmits it.
 Matrix chat text is treated as an untrusted source. Reading it taints the agent turn
 before any later external operation, so the existing approval boundary remains in
 effect even if a bridged message tries to steer the agent.
+
+## Diagnose capability readiness
+
+Matrix is the first typed host-action capability family. Inspect its effective
+state for the workspace that selects the communications profile:
+
+```sh
+pynchy doctor --workspace my-workspace
+```
+
+Use `pynchy doctor --workspace my-workspace --json` and filter
+`.capabilities[] | select(.owner == "matrix-gateway")` when another operator
+tool needs the machine-readable form. Pass the global `--host` option before
+`doctor` when Pynchy is not listening on `localhost:8484`.
+
+Each of the three actions reports `ready`, `unconfigured`, `unavailable`,
+`denied_by_policy`, `degraded`, or `not_established`, plus safe setup and
+recovery guidance. For Matrix, the bounded status probe checks only whether the
+configured gateway executable exists; it never contacts Matrix or serializes
+the session credential. Pynchy still checks workspace selection, current
+policy, and the actual gateway operation at dispatch time, so an earlier
+`ready` result cannot authorize a later send.

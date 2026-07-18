@@ -96,9 +96,43 @@ Use these HTTP surfaces to inspect the current report and durable history:
 - `GET /canaries/runs?scenario_id=<id>&limit=<1-200>` returns filtered run
   history. Omit `scenario_id` to list every scenario.
 
+## Host-action descriptors and capability status
+
+`HostActionDescriptor` is the executable companion to `ActionSpec`. It binds a
+host handler to its stable capability ID, semantic action IDs, read/write
+classification, approval expiry, idempotency rule, terminal audit contract,
+requirements, setup guidance, and optional bounded probe. Plugins contribute
+new semantic actions through `pynchy_action_specs`; built-in and plugin action
+IDs are validated together at startup.
+
+Pynchy resolves these descriptors per workspace into one of six states:
+
+| State | Meaning |
+| --- | --- |
+| `ready` | Config, policy, probe, and required evidence currently pass |
+| `unconfigured` | The workspace or required tool selection is missing |
+| `unavailable` | A bounded provider or host prerequisite probe failed |
+| `denied_by_policy` | Current semantic capability or tool-trust policy forbids it |
+| `degraded` | The provider probe is degraded or established canary evidence regressed |
+| `not_established` | Required real-service evidence has never passed for the target |
+
+`GET /capabilities` returns every configured workspace snapshot.
+`GET /capabilities?workspace=<name>` returns one workspace, and `/status`
+includes the aggregate under `capabilities`. Reasons and remediation metadata
+are safe to display; secret values and provider error bodies are not included.
+`pynchy doctor [--workspace <name>]` renders the same endpoint for a person;
+add `--json` for the unmodified snapshot. The CLI is a client of the running
+service and does not resolve a second local view.
+
+The snapshot is not an authorization token. Dispatch and approved replay look
+up the current descriptor and re-run `SecurityPolicy`; provider handlers still
+perform their real operation-time checks. A stale `ready` result cannot grant
+access.
+
 ## Built-in catalog and CI gate
 
-`src/pynchy/actions.py` provides the built-in `ACTION_SPECS` catalog. Each
+`src/pynchy/actions.py` provides the built-in `ACTION_SPECS` catalog. Plugins
+may add owned specifications with `pynchy_action_specs`. Each
 `ActionSpec` names an action ID, owner, summary, evidence requirement,
 optional canary scenario, and the Pynchy tool or host workflow that exposes
 it. The catalog check compares built-in agent tools with those mappings, so a
@@ -118,9 +152,11 @@ Run the complete hermetic contract with:
 uv run pytest --action-coverage
 ```
 
-The gate fails when a registered action has no marked test or when a test uses
-an unknown action ID. Pre-commit runs the same command. Mark tests that prove
-the action's behavior; do not add a marker to a test that only checks tool
+The repository gate fails when a built-in action has no marked test or when a
+test uses an unknown built-in action ID. Pre-commit runs the same command.
+Third-party packages must apply the same `assess_hermetic_coverage` contract to
+their contributed specifications in their own CI. Mark tests that prove the
+action's behavior; do not add a marker to a test that only checks tool
 visibility or a data class.
 
 ## Adding an action

@@ -11,10 +11,10 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import NullIpcDeps, make_settings
+from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 from pynchy import state
 from pynchy.host.container_manager.ipc import registry
@@ -95,18 +95,16 @@ def _make_ws_settings(tmp_path: Path):
     return FakeSettings()
 
 
-def _make_pm(*tool_names: str, handler_fn=None):
-    """Create a fake plugin manager providing handlers for given tools."""
+def _make_catalog(*tool_names: str, handler_fn=None):
+    """Create a typed catalog for synthetic approval tools."""
 
-    def _default(data: dict):
-        return asyncio.sleep(0, result={"result": {"status": "done", "tool": data.get("type")}})
+    async def _default(data: dict):
+        return await asyncio.sleep(
+            0,
+            result={"result": {"status": "done", "tool": data.get("type")}},
+        )
 
-    fn = handler_fn or _default
-    pm = MagicMock()
-    pm.hook.pynchy_service_handler.return_value = [
-        {"tools": dict.fromkeys(tool_names, fn)},
-    ]
-    return pm
+    return make_host_action_catalog(*tool_names, handler=handler_fn or _default)
 
 
 def _response_path(tmp_path: Path, request_id: str) -> Path:
@@ -162,7 +160,7 @@ class TestApprovalE2E:
         *,
         deps: FakeDeps,
         data: dict[str, str],
-        pm,
+        catalog,
         ws_settings,
         approval_settings,
     ) -> None:
@@ -172,8 +170,8 @@ class TestApprovalE2E:
                 return_value=ws_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-                return_value=pm,
+                "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+                return_value=catalog,
             ),
             patch(
                 "pynchy.host.container_manager.security.approval.get_settings",
@@ -213,8 +211,8 @@ class TestApprovalE2E:
                 return_value=approval_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_plugin_handlers",
-                return_value={"x_post": mock_handler},
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=make_host_action_catalog("x_post", handler=mock_handler),
             ),
         ):
             await process_approval_decision(decision_file, "mygroup")
@@ -223,7 +221,7 @@ class TestApprovalE2E:
     async def test_approve_happy_path(self, tmp_path: Path):
         """Service request with needs_human → approve → handler executes → response."""
         mock_handler = AsyncMock(return_value={"result": {"status": "posted"}})
-        pm = _make_pm("x_post", handler_fn=mock_handler)
+        catalog = _make_catalog("x_post", handler_fn=mock_handler)
 
         _register_gate(
             "mygroup",
@@ -252,7 +250,7 @@ class TestApprovalE2E:
         await self._dispatch_service_request(
             deps=deps,
             data=data,
-            pm=pm,
+            catalog=catalog,
             ws_settings=ws_settings,
             approval_settings=approval_settings,
         )
@@ -304,7 +302,7 @@ class TestApprovalE2E:
     @pytest.mark.asyncio
     async def test_deny_writes_error_response(self, tmp_path: Path):
         """Service request with needs_human → deny → error response → container unblocked."""
-        pm = _make_pm("x_post")
+        catalog = _make_catalog("x_post")
 
         _register_gate(
             "mygroup",
@@ -323,8 +321,8 @@ class TestApprovalE2E:
                 return_value=ws_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-                return_value=pm,
+                "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+                return_value=catalog,
             ),
             patch(
                 "pynchy.host.container_manager.security.approval.get_settings",
@@ -377,7 +375,7 @@ class TestApprovalE2E:
     async def test_safe_service_bypasses_approval(self, tmp_path: Path):
         """A fully safe service (all bools False) executes immediately without approval."""
         mock_handler = AsyncMock(return_value={"result": "ok"})
-        pm = _make_pm("safe_tool", handler_fn=mock_handler)
+        catalog = _make_catalog("safe_tool", handler_fn=mock_handler)
 
         _register_gate(
             "mygroup",
@@ -400,8 +398,8 @@ class TestApprovalE2E:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=ws_settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-                return_value=pm,
+                "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+                return_value=catalog,
             ),
         ):
             data = {

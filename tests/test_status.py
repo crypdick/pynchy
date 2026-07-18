@@ -79,6 +79,11 @@ def _inert_status():
             new_callable=AsyncMock,
             return_value={"summary": {"unresolved_regressions": 0}},
         )
+        p(
+            "collect_capability_status",
+            new_callable=AsyncMock,
+            return_value={"summary": {}, "workspaces": []},
+        )
         p("get_all_tasks", new_callable=AsyncMock, return_value=[])
         p("get_task_run_logs", new_callable=AsyncMock, return_value=[])
         p("get_all_host_jobs", new_callable=AsyncMock, return_value=[])
@@ -981,6 +986,7 @@ class TestCollectStatus:
             "host_jobs",
             "temporal",
             "canaries",
+            "capabilities",
             "speech",
             "groups",
         }
@@ -994,6 +1000,7 @@ class TestCollectStatus:
         assert result["service"]["uptime_seconds"] >= 120
         assert result["messages"]["total_inbound"] == 100
         assert result["canaries"] == {"summary": {"unresolved_regressions": 0}}
+        assert result["capabilities"] == {"summary": {}, "workspaces": []}
 
     @pytest.mark.asyncio
     async def test_includes_onecli_status(self):
@@ -1055,3 +1062,38 @@ class TestStatusEndpoint(AioHTTPTestCase):
         assert history_response.status == 200
         assert history == {"runs": []}
         assert invalid_response.status == 400
+
+    async def test_capabilities_endpoint_returns_all_or_one_workspace(self):
+        all_payload = {"summary": {"ready": 1}, "workspaces": []}
+        workspace_payload = {
+            "workspace": "matrix",
+            "summary": {"ready": 1},
+            "capabilities": [],
+        }
+        snapshot = Mock()
+        snapshot.to_dict.return_value = workspace_payload
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.http_server.get_canary_report",
+                new_callable=AsyncMock,
+                return_value={"scenarios": []},
+            ),
+            patch(
+                "pynchy.host.orchestrator.http_server.collect_capability_status",
+                new_callable=AsyncMock,
+                return_value=all_payload,
+            ),
+            patch(
+                "pynchy.host.orchestrator.http_server.resolve_workspace_capabilities",
+                new_callable=AsyncMock,
+                return_value=snapshot,
+            ),
+        ):
+            all_response = await self.client.get("/capabilities")
+            workspace_response = await self.client.get("/capabilities?workspace=matrix")
+
+        assert all_response.status == 200
+        assert await all_response.json() == all_payload
+        assert workspace_response.status == 200
+        assert await workspace_response.json() == workspace_payload

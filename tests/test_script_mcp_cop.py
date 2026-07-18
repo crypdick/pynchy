@@ -11,7 +11,7 @@ from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import NullIpcDeps
+from conftest import NullIpcDeps, make_host_action_catalog
 
 from pynchy.config.models import McpTool, McpToolConfig
 from pynchy.host.container_manager.ipc import dispatch
@@ -102,18 +102,13 @@ def _make_settings_with_mcp(
     return mock_s
 
 
-def _make_fake_plugin_manager(*tool_names: str, handler_fn=None):
-    """Create a fake plugin manager that provides handlers for the given tools."""
+def _make_action_catalog(*tool_names: str, handler_fn=None):
+    """Create a typed catalog for synthetic script-MCP tools."""
 
-    def _stub_handler(data: dict):
-        return asyncio.sleep(0, result={"result": "ok"})
+    async def _stub_handler(_data: dict):
+        return await asyncio.sleep(0, result={"result": "ok"})
 
-    fn = handler_fn or _stub_handler
-    fake_pm = MagicMock()
-    fake_pm.hook.pynchy_service_handler.return_value = [
-        {"tools": dict.fromkeys(tool_names, fn)},
-    ]
-    return fake_pm
+    return make_host_action_catalog(*tool_names, handler=handler_fn or _stub_handler)
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +122,7 @@ async def test_script_mcp_triggers_cop_gate(tmp_path):
     tool = "my_script"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager(tool, handler_fn=mock_handler)
+    catalog = _make_action_catalog(tool, handler_fn=mock_handler)
     settings = _make_settings_with_mcp(tool, "script", tmp_path=tmp_path)
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
@@ -137,8 +132,8 @@ async def test_script_mcp_triggers_cop_gate(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -160,7 +155,7 @@ async def test_non_script_mcp_skips_cop_gate(tmp_path):
     tool = "my_docker"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager(tool, handler_fn=mock_handler)
+    catalog = _make_action_catalog(tool, handler_fn=mock_handler)
     settings = _make_settings_with_mcp(tool, "docker", tmp_path=tmp_path)
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
@@ -170,8 +165,8 @@ async def test_non_script_mcp_skips_cop_gate(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -193,7 +188,7 @@ async def test_script_mcp_blocked_by_cop(tmp_path):
     tool = "my_script"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager(tool, handler_fn=mock_handler)
+    catalog = _make_action_catalog(tool, handler_fn=mock_handler)
     settings = _make_settings_with_mcp(tool, "script", tmp_path=tmp_path)
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
@@ -203,8 +198,8 @@ async def test_script_mcp_blocked_by_cop(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -228,7 +223,7 @@ async def test_script_mcp_allowed_by_cop(tmp_path):
     tool = "my_script"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "dispatched"})
-    fake_pm = _make_fake_plugin_manager(tool, handler_fn=mock_handler)
+    catalog = _make_action_catalog(tool, handler_fn=mock_handler)
     settings = _make_settings_with_mcp(tool, "script", tmp_path=tmp_path)
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
@@ -238,8 +233,8 @@ async def test_script_mcp_allowed_by_cop(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -259,7 +254,7 @@ async def test_cop_approved_skips_gate(tmp_path):
     tool = "my_script"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "ok"})
-    fake_pm = _make_fake_plugin_manager(tool, handler_fn=mock_handler)
+    catalog = _make_action_catalog(tool, handler_fn=mock_handler)
     settings = _make_settings_with_mcp(tool, "script", tmp_path=tmp_path)
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 
@@ -269,8 +264,8 @@ async def test_cop_approved_skips_gate(tmp_path):
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_service.get_plugin_manager",
-            return_value=fake_pm,
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
         ),
         patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",

@@ -8,13 +8,13 @@ plugin-provided handlers discovered via the ``pynchy_service_handler`` hook.
 from __future__ import annotations
 
 import json as json_mod
-from collections.abc import (
-    Awaitable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
-    Callable,  # noqa: TC003, RUF100 - beartype resolves plugin handler signatures at runtime.
-)
 from dataclasses import dataclass
 from typing import Any
 
+from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    HostActionDescriptor,
+    HostActionHandler,
+)
 from pynchy.config import get_settings
 from pynchy.config.models import McpTool
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
@@ -24,24 +24,16 @@ from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
+    evaluate_host_action_policy,
     get_gate_for_group,
     resolve_security,
 )
 from pynchy.logger import logger
-from pynchy.plugins import get_plugin_manager
-
-# Lazily populated mapping of tool_name -> async handler from plugins.
-PluginHandlers = dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]
-ReadOnlyServiceTools = frozenset[str]
-
-
-@dataclass
-class _PluginHandlerState:
-    plugin_handlers: PluginHandlers | None = None
-    read_only_tools: ReadOnlyServiceTools = frozenset()
-
-
-_state = _PluginHandlerState()
+from pynchy.plugins.host_actions import (
+    HostActionCatalog,
+    clear_host_action_catalog_cache,
+    get_host_action_catalog,
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +46,7 @@ class _ServiceRequest:
 @dataclass(frozen=True)
 class _ApprovalRequestContext:
     request: _ServiceRequest
+    action: HostActionDescriptor
     data: dict[str, Any]
     source_group: str
     chat_jid: str
@@ -62,31 +55,19 @@ class _ApprovalRequestContext:
     reason: str | None
 
 
-def _get_plugin_handlers() -> tuple[PluginHandlers, ReadOnlyServiceTools]:
-    """Collect and cache tool handlers from all MCP server plugins."""
-    handlers = _state.plugin_handlers
-    if handlers is not None:
-        return handlers, _state.read_only_tools
+def _get_plugin_handlers() -> dict[str, HostActionHandler]:
+    """Return handlers keyed by tool name from the typed catalog."""
+    return get_host_action_catalog().handlers
 
-    pm = get_plugin_manager()
-    merged: PluginHandlers = {}
-    read_only_tools: set[str] = set()
-    for result in pm.hook.pynchy_service_handler():
-        tools = result.get("tools", {})
-        merged.update(tools)
-        declared_reads = result.get("read_tools", ())
-        if isinstance(declared_reads, (list, tuple, set, frozenset)):
-            read_only_tools.update(name for name in declared_reads if isinstance(name, str))
 
-    _state.plugin_handlers = merged
-    _state.read_only_tools = frozenset(read_only_tools)
-    return merged, _state.read_only_tools
+def _get_action_catalog() -> HostActionCatalog:
+    """Return the single catalog shared by policy, dispatch, and status."""
+    return get_host_action_catalog()
 
 
 def clear_plugin_handler_cache() -> None:
     """Clear the cached plugin handler mapping (for tests or config reload)."""
-    _state.plugin_handlers = None
-    _state.read_only_tools = frozenset()
+    clear_host_action_catalog_cache()
 
 
 def _write_response(source_group: str, request_id: str, response: dict[str, Any]) -> None:
@@ -139,6 +120,7 @@ async def _request_human_approval(
         source_group=context.source_group,
         chat_jid=context.chat_jid,
         request_data=context.data,
+        expires_after_seconds=context.action.approval.expires_after_seconds,
     )
 
     await context.deps.broadcast_to_channels(
@@ -155,6 +137,8 @@ async def _request_human_approval(
         secret_tainted=context.gate.policy.secret_tainted,
         reason=context.reason,
         request_id=context.request.request_id,
+        capability_id=str(context.action.capability.id),
+        action_ids=tuple(str(action_id) for action_id in context.action.capability.action_ids),
     )
     logger.info(
         "Service request needs human approval",
@@ -207,11 +191,9 @@ async def _handle_service_request(
     if request is None:
         return
 
-    # Look up handler from plugins
-    handlers, read_only_tools = _get_plugin_handlers()
-    handler = handlers.get(request.tool_name)
+    action = _get_action_catalog().action_for(request.tool_name)
 
-    if handler is None:
+    if action is None:
         logger.warning(
             "Unknown service tool type",
             tool_name=request.tool_name,
@@ -232,11 +214,7 @@ async def _handle_service_request(
     # Host-side integrations declare their non-mutating operations explicitly.
     # Reading an untrusted source must taint the turn before an agent can use
     # that content to influence a later external action.
-    decision = (
-        gate.evaluate_read(request.tool_name)
-        if request.tool_name in read_only_tools
-        else gate.evaluate_write(request.tool_name, data)
-    )
+    decision = evaluate_host_action_policy(action, gate, data)
 
     if not decision.allowed:
         await record_security_event(
@@ -248,6 +226,8 @@ async def _handle_service_request(
             secret_tainted=gate.policy.secret_tainted,
             reason=decision.reason,
             request_id=request.request_id,
+            capability_id=str(action.capability.id),
+            action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
         )
         _write_response(
             source_group,
@@ -266,6 +246,7 @@ async def _handle_service_request(
         await _request_human_approval(
             _ApprovalRequestContext(
                 request=request,
+                action=action,
                 data=data,
                 source_group=source_group,
                 chat_jid=chat_jid,
@@ -295,6 +276,8 @@ async def _handle_service_request(
         secret_tainted=gate.policy.secret_tainted,
         reason=decision.reason,
         request_id=request.request_id,
+        capability_id=str(action.capability.id),
+        action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
     )
 
     logger.info(
@@ -304,7 +287,34 @@ async def _handle_service_request(
     )
 
     data["source_group"] = source_group
-    response = await handler(data)
+    try:
+        response = await action.handler(data)
+    except Exception as exc:  # noqa: BLE001, RUF100 - host action boundary must audit terminal failure before watcher recovery.
+        await record_security_event(
+            chat_jid=chat_jid,
+            workspace=source_group,
+            tool_name=request.tool_name,
+            decision="execution_failed",
+            corruption_tainted=gate.policy.corruption_tainted,
+            secret_tainted=gate.policy.secret_tainted,
+            reason=type(exc).__name__,
+            request_id=request.request_id,
+            capability_id=str(action.capability.id),
+            action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
+        )
+        raise
+    await record_security_event(
+        chat_jid=chat_jid,
+        workspace=source_group,
+        tool_name=request.tool_name,
+        decision="execution_failed" if "error" in response else "execution_succeeded",
+        corruption_tainted=gate.policy.corruption_tainted,
+        secret_tainted=gate.policy.secret_tainted,
+        reason="handler returned an error" if "error" in response else None,
+        request_id=request.request_id,
+        capability_id=str(action.capability.id),
+        action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
+    )
     _write_response(source_group, request.request_id, response)
 
 

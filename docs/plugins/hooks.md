@@ -42,25 +42,56 @@ def pynchy_agent_core_info(self) -> dict[str, str | list[str] | None]:
 
 Provide host-side handlers for service tools. The handler functions run in the **host process** and are dispatched via IPC when container agents invoke service tools.
 
-**Calling strategy:** All results collected; tool mappings are merged (last-write-wins on conflict).
+**Calling strategy:** All results are parsed into one immutable host-action
+catalog. Duplicate capability IDs or tool names fail startup. Each descriptor
+must name an effective `ActionSpec` whose agent-tool surface has the same tool
+name.
 
 ```python
 @hookimpl
-def pynchy_service_handler(self) -> dict[str, Any]:
-    return {
-        "tools": {
-            "list_calendar": _handle_list_calendar,
-            "create_event": _handle_create_event,
-            "delete_event": _handle_delete_event,
-        },
-    }
+def pynchy_service_handler(self) -> HostActionRegistration:
+    capability = CapabilityDescriptor(
+        id=CapabilityId("weather.forecast.read"),
+        kind=CapabilityKind.HOST_ACTION,
+        owner="weather-plugin",
+        summary="Read the current weather forecast.",
+        action_ids=(ActionId("weather.forecast.read"),),
+        requirements=(
+            CapabilityRequirement(
+                kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                name="weather_get_forecast",
+                description="Enable the weather tool in this workspace.",
+            ),
+        ),
+        setup_hint="Configure the weather provider, then enable the tool.",
+        documentation="https://example.com/pynchy-weather/setup",
+        probe=_probe_weather,
+    )
+    return HostActionRegistration(
+        actions=(
+            HostActionDescriptor(
+                capability=capability,
+                tool_name=HostToolName("weather_get_forecast"),
+                handler=_handle_forecast,
+                access=HostActionAccess.READ,
+                approval=ApprovalContract(),
+                idempotency=IdempotencyContract(IdempotencyMode.NOT_REQUIRED),
+                audit=AuditContract(),
+            ),
+        ),
+    )
 ```
 
-**Return keys:**
+`CapabilityDescriptor` owns the operator-facing identity, requirements,
+read-only probe, setup and recovery guidance, documentation, and semantic
+action links. `HostActionDescriptor` owns dispatch metadata: tool name,
+handler, read/write access, approval expiry, idempotency, and terminal audit
+contract.
 
-| Key | Type | Description |
-|-----|------|-------------|
-| `tools` | `dict[str, Callable]` | Mapping of tool_name to async handler function |
+For a new semantic action, the same plugin also implements
+[`pynchy_action_specs`](#pynchy_action_specs). A plugin may use a built-in
+action ID only when it implements that existing action and exposes the exact
+registered surface.
 
 **Handler function signature:**
 
@@ -79,7 +110,44 @@ async def handler(data: dict) -> dict:
 **Request flow:** Container MCP tool → IPC request → host policy check → plugin handler → IPC response
 
 !!! warning
-    Host-side handlers run **in the host process** with full access to host resources. Policy middleware (risk tiers, rate limits, human-approval) is enforced by the service handler before dispatching to the plugin.
+    Host-side handlers run **in the host process** with full access to host resources. Pynchy re-checks current capability policy and tool trust at dispatch, records terminal outcomes, and uses the IPC request ledger for writes. A status snapshot is diagnostic and never authorizes execution.
+
+!!! note "Legacy adapter"
+    `{"tools": {name: handler}, "read_tools": (...)}` remains supported for
+    existing plugins. Startup converts each entry to a typed descriptor only
+    when an effective `ActionSpec` already exposes that tool. Unknown legacy
+    tools fail closed. New plugins should return `HostActionRegistration`.
+
+The in-container IPC proxy tool must also exist in the selected agent image.
+`pynchy_service_handler` registers the privileged host half; it does not inject
+Python code into a running agent container.
+
+## pynchy_action_specs
+
+Provide semantic action contracts owned by a plugin.
+
+```python
+@hookimpl
+def pynchy_action_specs(self) -> tuple[ActionSpec, ...]:
+    return (
+        ActionSpec(
+            id=ActionId("weather.forecast.read"),
+            owner="weather-plugin",
+            summary="Read the current weather forecast.",
+            surfaces=(
+                ActionSurface(
+                    transport=ActionTransport.AGENT_TOOL,
+                    name="weather_get_forecast",
+                ),
+            ),
+        ),
+    )
+```
+
+Built-in and plugin-owned specifications are validated together. Duplicate or
+invalid action IDs fail startup. Provider-changing actions should request
+agentic evidence and name a canary scenario; every plugin should run its own
+hermetic action-coverage gate in CI. See [Action coverage](../architecture/action-coverage.md).
 
 ## pynchy_skill_paths
 
@@ -442,13 +510,12 @@ class CalendarPlugin:
     """Provides calendar service handlers AND calendar skills."""
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict:
-        return {
-            "tools": {
-                "list_calendar": _handle_list_calendar,
-                "create_event": _handle_create_event,
-            },
-        }
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return CALENDAR_HOST_ACTIONS
+
+    @hookimpl
+    def pynchy_action_specs(self) -> tuple[ActionSpec, ...]:
+        return CALENDAR_ACTION_SPECS
 
     @hookimpl
     def pynchy_skill_paths(self) -> list[str]:

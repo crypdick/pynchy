@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from pynchy.capabilities import CapabilityProbeContext, HostActionAccess, ProbeStatus
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations import matrix_gateway
 from pynchy.plugins.integrations.matrix_gateway_client import (
@@ -61,26 +62,44 @@ class StubSettings:
 
 
 def _handlers() -> dict[str, object]:
-    return matrix_gateway.MatrixGatewayPlugin().pynchy_service_handler()["tools"]
+    registration = matrix_gateway.MatrixGatewayPlugin().pynchy_service_handler()
+    return {str(action.tool_name): action.handler for action in registration.actions}
 
 
 class TestMatrixGatewayPlugin:
     def test_plugin_provides_native_ipc_handlers(self):
-        plugin_config = matrix_gateway.MatrixGatewayPlugin().pynchy_service_handler()
+        registration = matrix_gateway.MatrixGatewayPlugin().pynchy_service_handler()
 
-        assert set(plugin_config["tools"]) == {
+        assert {str(action.tool_name) for action in registration.actions} == {
             "matrix_list_chats",
             "matrix_list_messages",
             "matrix_send_message",
         }
-        assert plugin_config["read_tools"] == frozenset(
-            {"matrix_list_chats", "matrix_list_messages"}
-        )
+        assert {
+            str(action.tool_name)
+            for action in registration.actions
+            if action.access is HostActionAccess.READ
+        } == {"matrix_list_chats", "matrix_list_messages"}
 
     def test_plugin_is_registered(self):
         plugin = get_plugin_manager().get_plugin("builtin-matrix-gateway")
 
         assert isinstance(plugin, matrix_gateway.MatrixGatewayPlugin)
+
+    @pytest.mark.asyncio
+    async def test_descriptor_probe_reports_missing_gateway_without_network_access(self):
+        action = matrix_gateway.MATRIX_HOST_ACTIONS.action_for("matrix_list_chats")
+        assert action is not None
+        probe = action.capability.probe
+        assert probe is not None
+
+        with patch.object(matrix_gateway, "_gateway_executable_exists", return_value=False):
+            result = await probe(CapabilityProbeContext("all-my-chats"))
+
+        assert result.status is ProbeStatus.UNAVAILABLE
+        assert result.reason == (
+            "Matrix gateway binary is unavailable; configure PYNCHY_MATRIX_GATEWAY"
+        )
 
 
 class TestMatrixGatewayOperations:
