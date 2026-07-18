@@ -24,6 +24,29 @@ async def test_computer_use_tool_is_advertised() -> None:
         "type",
         "key",
         "scroll",
+        "set_value",
+        "perform_action",
+        "menu_list",
+        "menu_click",
+        "dialog_list",
+        "dialog_click",
+        "dialog_input",
+        "dialog_file",
+        "dialog_dismiss",
+        "clipboard_get",
+        "clipboard_set",
+        "clipboard_clear",
+        "clipboard_save",
+        "clipboard_restore",
+        "space_list",
+        "space_switch",
+        "space_move_window",
         "wait",
         "check_permissions",
     ]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["element"]["oneOf"] == [
+        {"type": "string", "minLength": 1},
+        {"type": "integer", "minimum": 1},
+    ]
+    assert schema["properties"]["keys"]["oneOf"][1]["minItems"] == 1

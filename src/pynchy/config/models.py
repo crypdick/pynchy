@@ -551,6 +551,8 @@ ConnectionConfig = Annotated[
 
 class PluginConfig(_StrictModel):
     enabled: bool = True
+    # Plugin-specific models parse this untyped transport at plugin registration.
+    options: dict[str, object] = Field(default_factory=dict)
 
 
 class SecurityConfig(_StrictModel):

@@ -98,6 +98,16 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "computer-use",
     ),
     (
+        "pynchy.plugins.integrations.peekaboo",
+        "PeekabooComputerUsePlugin",
+        "peekaboo",
+    ),
+    (
+        "pynchy.plugins.integrations.cua_driver",
+        "CuaDriverComputerUsePlugin",
+        "cua-driver",
+    ),
+    (
         "pynchy.plugins.integrations.linear",
         "LinearMcpPlugin",
         "linear",

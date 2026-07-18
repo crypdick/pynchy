@@ -65,7 +65,7 @@ For example, you can ask Pynchy to help you:
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
 | [Prompts](prompts.md) | System prompt extensions via profiles and workspaces |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
-| [Computer use](computer-use.md) | Drive the macOS host desktop through Cua Driver for real-browser/native-app workflows |
+| [Computer use](computer-use.md) | Drive a host desktop through replaceable provider plugins for real-browser and native-app workflows |
 | [Matrix communications](matrix-gateway.md) | Read bridged chats and send approval-gated replies as the account owner |
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
 | [Proton Mail](proton-mail.md) | Read, send, and delete Proton Mail through a host-side MCP server |

@@ -76,8 +76,11 @@ def get_host_action_catalog(
     effective_action_specs = (
         action_specs if action_specs is not None else get_effective_action_specs(plugin_manager)
     )
+    computer_use_backends = tuple(plugin_manager.hook.pynchy_computer_use_backend())
     actions: list[HostActionDescriptor] = []
-    for contribution in plugin_manager.hook.pynchy_service_handler():
+    for contribution in plugin_manager.hook.pynchy_service_handler(
+        computer_use_backends=computer_use_backends
+    ):
         if isinstance(contribution, HostActionRegistration):
             actions.extend(contribution.actions)
             continue
