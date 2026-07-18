@@ -49,6 +49,7 @@ class _ProxyState:
 
     instance_urls: dict[str, str] = field(default_factory=dict)
     trust_map: dict[str, dict[str, Any]] = field(default_factory=dict)
+    service_names: dict[str, str] = field(default_factory=dict)
     http_session: aiohttp.ClientSession | None = None
     approval_fn: ApprovalRequestFn | None = None
 
@@ -85,6 +86,7 @@ def create_proxy_app(
     instance_urls: dict[str, str],
     *,
     trust_map: dict[str, dict[str, Any]] | None = None,
+    service_names: dict[str, str] | None = None,
     approval_fn: ApprovalRequestFn | None = None,
 ) -> object:
     """Create the aiohttp proxy application.
@@ -93,6 +95,8 @@ def create_proxy_app(
         instance_urls: Mapping of instance_id -> backend URL.
         trust_map: Mapping of instance_id -> trust properties dict.
             Determines whether to apply fencing (public_source=True).
+        service_names: Mapping of instance_id -> configured service name for
+            policy and capability evaluation.
         approval_fn: Callback for human approval requests.  When a tools/call
             triggers needs_human, the proxy calls this to write the pending
             file and broadcast to chat, then blocks until the human responds.
@@ -101,6 +105,7 @@ def create_proxy_app(
     app[_STATE_KEY] = _ProxyState(
         instance_urls=instance_urls,
         trust_map=trust_map or {},
+        service_names=service_names or {},
         approval_fn=approval_fn,
     )
     app.router.add_route(
@@ -183,11 +188,12 @@ async def _maybe_gate_outbound_call(
     proxy_request: _ProxyRequest,
     gate: SecurityGate,
     rpc: dict[str, Any],
+    service_name: str,
 ) -> web.Response | None:
     if rpc.get("method") != "tools/call":
         return None
 
-    capability = _mcp_capability_id(proxy_request.instance_id, rpc)
+    capability = _mcp_capability_id(service_name, rpc)
     capability_decision = gate.evaluate_capability(capability)
     if not capability_decision.allowed:
         return web.json_response(
@@ -205,7 +211,7 @@ async def _maybe_gate_outbound_call(
         if approval_response is not None:
             return approval_response
 
-    decision = gate.evaluate_write(proxy_request.instance_id, rpc.get("params", {}))
+    decision = gate.evaluate_write(service_name, rpc.get("params", {}))
     if not decision.allowed:
         return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
     if not decision.needs_human or capability_decision.overrides_human_approval:
@@ -300,7 +306,14 @@ async def _proxy_handler(request: web.Request) -> web.Response:
 
     body = await request.read()
     rpc = _rpc_payload(body)
-    outbound_decision = await _maybe_gate_outbound_call(state, proxy_request, gate, rpc)
+    service_name = state.service_names.get(proxy_request.instance_id, proxy_request.instance_id)
+    outbound_decision = await _maybe_gate_outbound_call(
+        state,
+        proxy_request,
+        gate,
+        rpc,
+        service_name,
+    )
     if outbound_decision is not None:
         return outbound_decision
 
@@ -458,6 +471,7 @@ class McpProxy:
         instance_urls: dict[str, str],
         *,
         trust_map: dict[str, dict[str, Any]] | None = None,
+        service_names: dict[str, str] | None = None,
         approval_fn: ApprovalRequestFn | None = None,
         port: int = 0,
     ) -> int:
@@ -466,12 +480,18 @@ class McpProxy:
         Args:
             instance_urls: Mapping of instance_id -> backend URL.
             trust_map: Mapping of instance_id -> trust properties.
+            service_names: Mapping of instance_id -> configured service name.
             approval_fn: Callback for human approval requests.
             port: Port to bind to. 0 = OS-assigned dynamic port.
         """
         app = cast(
             "web.Application",
-            create_proxy_app(instance_urls, trust_map=trust_map, approval_fn=approval_fn),
+            create_proxy_app(
+                instance_urls,
+                trust_map=trust_map,
+                service_names=service_names,
+                approval_fn=approval_fn,
+            ),
         )
         self._runner = web.AppRunner(app)
         await self._runner.setup()
