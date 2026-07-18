@@ -45,6 +45,7 @@ from pynchy.logger import logger
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins import memory as memory_plugins
 from pynchy.plugins import observers as observer_plugins
+from pynchy.plugins import speech as speech_plugins
 from pynchy.plugins import tunnels as tunnel_plugins
 from pynchy.plugins.channel_runtime import (
     ChannelPluginContext,
@@ -154,6 +155,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     service_installer.install_service()
 
     app.plugin_manager = get_plugin_manager()
+    app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     system_checks.ensure_container_system_running()
 
@@ -212,6 +214,7 @@ async def _setup_channels(app: PynchyApp) -> None:
         on_reaction_callback=dispatch_reaction,
         on_ask_user_answer_callback=dispatch_ask_user_answer,
         on_approval_decision_callback=dispatch_approval_decision,
+        speech_synthesizer=app.get_speech_synthesizer(),
     )
     plugin_manager = _require_plugin_manager(app, "_setup_channels")
     app.channels = load_channels(plugin_manager, context)

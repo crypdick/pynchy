@@ -18,7 +18,7 @@ import discord
 from discord import opus
 
 from pynchy.config.discord_refs import DiscordChatTarget
-from pynchy.host.audio import synthesize_speech_to_file, transcribe_audio_file
+from pynchy.host.audio import transcribe_audio_file
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 from pynchy.utils import create_background_task
@@ -29,9 +29,12 @@ from ._lookup import discord_user_names, same_name
 from ._voice_client import PynchyVoiceClient
 
 if TYPE_CHECKING:
+    from pynchy.plugins.speech import SpeechSynthesizer
+
     from ._channel import DiscordChannel
 else:
     DiscordChannel = object
+    SpeechSynthesizer = object
 
 _PCM_SAMPLE_RATE = 48_000
 _PCM_CHANNELS = 2
@@ -96,8 +99,13 @@ def _pcm_rms(frame: bytes) -> int:
 class DiscordVoiceManager:
     """Join the single configured voice workspace while an allowed user is present."""
 
-    def __init__(self, channel: DiscordChannel) -> None:
+    def __init__(
+        self,
+        channel: DiscordChannel,
+        speech_synthesizer: SpeechSynthesizer | None = None,
+    ) -> None:
         self._channel = channel
+        self._speech_synthesizer = speech_synthesizer
         self._session: _VoiceSession | None = None
         self._refresh_lock = asyncio.Lock()
 
@@ -173,6 +181,7 @@ class DiscordVoiceManager:
             jid,
             cast("PynchyVoiceClient", voice_client),
             members,
+            self._speech_synthesizer,
         )
         self._session = session
         session.start()
@@ -232,11 +241,13 @@ class _VoiceSession:
         jid: str,
         voice_client: PynchyVoiceClient,
         allowed_members: dict[str, str],
+        speech_synthesizer: SpeechSynthesizer | None,
     ) -> None:
         self.jid = jid
         self._channel = channel
         self._voice_client = voice_client
         self._allowed_members = allowed_members
+        self._speech_synthesizer = speech_synthesizer
         self._decoders: dict[str, opus.Decoder] = {}
         self._turns: dict[str, _TurnBuffer] = {}
         self._speaking_lock = asyncio.Lock()
@@ -268,10 +279,13 @@ class _VoiceSession:
         if not self._voice_client.is_connected():
             logger.warning("Skipped Discord voice reply; client disconnected", jid=self.jid)
             return
+        if self._speech_synthesizer is None:
+            logger.warning("Skipped Discord voice reply; no synthesis provider", jid=self.jid)
+            return
         async with self._speaking_lock:
             with tempfile.TemporaryDirectory(prefix="pynchy-discord-tts-") as temp_dir:
                 output_path = Path(temp_dir) / "reply.wav"
-                result = await synthesize_speech_to_file(text, output_path)
+                result = await self._speech_synthesizer.synthesize(text, output_path)
                 if not result.success or result.output_path is None:
                     logger.warning(
                         "Discord voice synthesis failed",

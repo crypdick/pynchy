@@ -14,6 +14,7 @@ These ship with pynchy and are always available. Some require optional dependenc
 | `whatsapp` | Channel | WhatsApp channel via neonize. | `uv sync --extra whatsapp` + QR auth | [Channels](../usage/channels.md) |
 | `slack` | Channel | Slack channel via Socket Mode (bolt). Maps Slack channels/DMs to workspaces. | `[connections.<name>] type = "slack"` + `uv sync --extra slack` | [Channels](../usage/channels.md) |
 | `tui` | Channel | TUI client (Textual). Standalone terminal UI connecting via HTTP/SSE. | Always active | [Channels](../usage/channels.md) |
+| `pocket-tts` | Speech Synthesis | Local neural speech synthesis for final spoken replies. | Pocket TTS loopback service | [Local speech synthesis](../usage/local-speech.md) |
 | `sqlite-memory` | Memory Backend | Persistent per-group memory with BM25-ranked full-text search (save, recall, forget, list). | Always active | [Memory](../usage/memory.md) |
 | `caldav` | MCP Server Handler | CalDAV calendar tools (list, create, delete events). Works with Nextcloud and other CalDAV servers. | `[tools.caldav]` server config + `uv sync --extra caldav` | [MCP service tools](../architecture/mcp-service-tools.md) |
 | `docker-runtime` | Container Runtime | Docker container runtime. Default on Linux, fallback on macOS. | Always active (requires `docker` CLI) | [Container isolation](../architecture/container-isolation.md) |

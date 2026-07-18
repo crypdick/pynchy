@@ -32,6 +32,9 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.logger import logger
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
+    SpeechSynthesizer,
+)
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
@@ -81,6 +84,7 @@ class StatusDeps(Protocol):
     def get_gateway_info(self) -> dict[str, Any]: ...
     def get_active_sessions_count(self) -> int: ...
     def get_workspace_count(self) -> int: ...
+    def get_speech_synthesizer(self) -> SpeechSynthesizer | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +121,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         onecli,
         temporal,
         canaries,
+        speech,
     ) = await asyncio.gather(
         _collect_deploy(),
         asyncio.to_thread(_collect_repos),
@@ -127,6 +132,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         asyncio.to_thread(collect_onecli_status),
         _collect_temporal(),
         get_canary_report(history_limit=10),
+        _collect_speech(deps.get_speech_synthesizer()),
     )
 
     return {
@@ -142,6 +148,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "host_jobs": host_jobs,
         "temporal": temporal,
         "canaries": canaries,
+        "speech": speech,
         "groups": groups,
     }
 
@@ -158,6 +165,37 @@ def _collect_service(deps: StatusDeps, start_time_monotonic: float) -> dict[str,
         "status": status,
         "started_at": _state.started_at.isoformat() if _state.started_at else None,
         "uptime_seconds": round(time.monotonic() - start_time_monotonic),
+    }
+
+
+async def _collect_speech(synthesizer: SpeechSynthesizer | None) -> dict[str, Any]:
+    """Report the configured speech provider without breaking /status on failure."""
+    if synthesizer is None:
+        return {
+            "provider": None,
+            "ready": False,
+            "endpoint": None,
+            "error": "No speech synthesis provider is configured",
+        }
+    try:
+        health = await synthesizer.health()
+    except Exception as exc:  # noqa: BLE001, RUF100 - status must report plugin failures without failing /status.
+        logger.warning(
+            "Speech synthesis health check failed",
+            provider=synthesizer.name,
+            err=str(exc),
+        )
+        return {
+            "provider": synthesizer.name,
+            "ready": False,
+            "endpoint": None,
+            "error": f"Speech synthesis health check failed: {exc}",
+        }
+    return {
+        "provider": synthesizer.name,
+        "ready": health.ready,
+        "endpoint": health.endpoint,
+        "error": health.error,
     }
 
 

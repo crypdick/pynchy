@@ -15,6 +15,9 @@ import pluggy  # noqa: TC002, RUF100 - beartype resolves the plugin-manager anno
 
 from pynchy.config import get_settings
 from pynchy.logger import logger
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    SpeechSynthesizer,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     Channel,
     NewMessage,
@@ -37,6 +40,7 @@ class ChannelPluginContext:
     on_reaction_callback: Callable[[str, str, str, str], None] | None = None
     on_ask_user_answer_callback: Callable[[str, dict[str, Any]], None] | None = None
     on_approval_decision_callback: Callable[[str, str, str, str], None] | None = None
+    speech_synthesizer: SpeechSynthesizer | None = None
 
 
 def default_channel_name() -> str:

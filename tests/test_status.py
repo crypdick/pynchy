@@ -23,6 +23,7 @@ from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
+from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.state import init_test_database
 from pynchy.types import HostJob, ScheduledTask, TaskRunLog
 
@@ -122,6 +123,7 @@ class MockStatusDeps:
         gateway: dict[str, Any] | None = None,
         active_sessions: int = 0,
         workspace_count: int = 0,
+        speech_synthesizer: Any | None = None,
     ):
         self._shutting_down = shutting_down
         self._channels = channels or {"whatsapp": True}
@@ -134,6 +136,7 @@ class MockStatusDeps:
         self._gateway = gateway or {"mode": "litellm", "port": 4000, "key": "sk-test"}
         self._active_sessions = active_sessions
         self._workspace_count = workspace_count
+        self._speech_synthesizer = speech_synthesizer
 
     def is_shutting_down(self) -> bool:
         return self._shutting_down
@@ -152,6 +155,9 @@ class MockStatusDeps:
 
     def get_workspace_count(self) -> int:
         return self._workspace_count
+
+    def get_speech_synthesizer(self) -> Any | None:
+        return self._speech_synthesizer
 
 
 class MockHttpDeps:
@@ -218,6 +224,31 @@ class TestCollectService:
         with _inert_status():
             result = await collect_status(deps, time.monotonic())
         assert result["service"]["started_at"] is not None
+
+
+class TestCollectSpeech:
+    @pytest.mark.asyncio
+    async def test_reports_provider_health(self):
+        class ReadySynthesizer:
+            name = "test-speech"
+
+            async def synthesize(self, _text: str, _output_path: object) -> SpeechSynthesisResult:
+                return SpeechSynthesisResult(success=False)
+
+            async def health(self) -> SpeechSynthesizerHealth:
+                return SpeechSynthesizerHealth(ready=True, endpoint="http://127.0.0.1:8000/")
+
+        with _inert_status():
+            result = await collect_status(
+                MockStatusDeps(speech_synthesizer=ReadySynthesizer()), time.monotonic()
+            )
+
+        assert result["speech"] == {
+            "provider": "test-speech",
+            "ready": True,
+            "endpoint": "http://127.0.0.1:8000/",
+            "error": None,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -950,6 +981,7 @@ class TestCollectStatus:
             "host_jobs",
             "temporal",
             "canaries",
+            "speech",
             "groups",
         }
         assert set(result.keys()) == expected_keys

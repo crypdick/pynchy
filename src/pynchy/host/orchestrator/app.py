@@ -45,6 +45,9 @@ from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves a
 from pynchy.plugins.observers import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     ObserverProvider,
 )
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
+    SpeechSynthesizer,
+)
 from pynchy.state import (
     delete_workspace_profile,
     get_all_chats,
@@ -86,6 +89,7 @@ class PynchyApp:
         self._http_runner: object | None = None
         self._observers: list[ObserverProvider] = []
         self._memory: MemoryProvider | None = None
+        self._speech_synthesizer: SpeechSynthesizer | None = None
         self._subsystem_tasks: list[object] = []
         self.plugin_manager: pluggy.PluginManager | None = None
 
@@ -148,6 +152,14 @@ class PynchyApp:
     async def close_memory_provider(self) -> None:
         if self._memory:
             await self._memory.close()
+
+    def set_speech_synthesizer(self, speech_synthesizer: SpeechSynthesizer | None) -> None:
+        """Set the host-side provider used for spoken channel replies."""
+        self._speech_synthesizer = speech_synthesizer
+
+    def get_speech_synthesizer(self) -> SpeechSynthesizer | None:
+        """Return the host-side provider used for spoken channel replies."""
+        return self._speech_synthesizer
 
     def routing_cursor(self, chat_jid: str) -> str:
         """Return the cursor for fetching messages during routing."""

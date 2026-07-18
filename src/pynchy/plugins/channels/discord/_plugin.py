@@ -18,6 +18,9 @@ from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 from pynchy.logger import logger
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves plugin annotations at runtime.
+    SpeechSynthesizer,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     NewMessage,
     WorkspaceProfile,
@@ -44,6 +47,7 @@ def _channel_context(
         Callable[[str, dict[str, object]], None] | None,
         Callable[[str, str, str, str], None] | None,
         Callable[[], dict[str, WorkspaceProfile]] | None,
+        SpeechSynthesizer | None,
     ]
     | None
 ):
@@ -61,6 +65,7 @@ def _channel_context(
         getattr(context, "on_ask_user_answer_callback", None),
         getattr(context, "on_approval_decision_callback", None),
         getattr(context, "workspaces", None),
+        getattr(context, "speech_synthesizer", None),
     )
 
 
@@ -74,6 +79,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
     on_ask_user_answer: Callable[[str, dict[str, object]], None] | None,
     on_approval_decision: Callable[[str, str, str, str], None] | None,
     workspaces: Callable[[], dict[str, WorkspaceProfile]] | None,
+    speech_synthesizer: SpeechSynthesizer | None,
 ) -> DiscordChannel | None:
     """Build one DiscordChannel or log why that connection was skipped."""
     connection_name = name
@@ -104,6 +110,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
         on_ask_user_answer=on_ask_user_answer,
         on_approval_decision=on_approval_decision,
         workspaces=workspaces,
+        speech_synthesizer=speech_synthesizer,
     )
 
 
@@ -130,6 +137,7 @@ class DiscordChannelPlugin:
             on_ask_user_answer,
             on_approval_decision,
             workspaces,
+            speech_synthesizer,
         ) = callbacks
 
         channels: list[DiscordChannel] = []
@@ -143,6 +151,7 @@ class DiscordChannelPlugin:
                 on_ask_user_answer=on_ask_user_answer,
                 on_approval_decision=on_approval_decision,
                 workspaces=workspaces,
+                speech_synthesizer=speech_synthesizer,
             )
             if channel is not None:
                 channels.append(channel)

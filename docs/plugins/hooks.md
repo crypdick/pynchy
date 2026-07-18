@@ -196,6 +196,36 @@ Optional attributes (check with `hasattr`/`getattr`): `prefix_assistant_name` (b
 !!! warning
     Channel plugins run **persistently on the host** with full filesystem and network access. This is the highest-risk plugin category. See [Security Model](../architecture/security.md).
 
+## pynchy_speech_synthesizer
+
+Provide a host-side synthesizer for final spoken channel replies.
+
+**Calling strategy:** All valid results are collected; the first provider wins.
+
+```python
+@hookimpl
+def pynchy_speech_synthesizer(self) -> Any | None:
+    return MySpeechSynthesizer()
+```
+
+**Speech synthesizer contract:**
+
+| Attribute / Method | Type | Description |
+|--------------------|------|-------------|
+| `name` | `str` | Provider identifier, for example `"pocket-tts"` |
+| `synthesize(text, output_path)` | `async (str, Path) -> SpeechSynthesisResult` | Write synthesized audio to the requested local path |
+| `health()` | `async () -> SpeechSynthesizerHealth` | Return provider readiness, endpoint, and an optional error |
+
+Channel plugins receive the selected provider in
+`ChannelPluginContext.speech_synthesizer`. A channel must tolerate `None` and
+skip playback rather than choosing a fallback provider itself. The `/status`
+endpoint calls `health()` and exposes the result in its `speech` section.
+
+!!! warning
+    Speech synthesis plugins run in the host process. Treat remote endpoints,
+    model files, and provider credentials as host infrastructure, not container
+    resources.
+
 ## pynchy_container_runtime
 
 Provide a host container runtime implementation (for example Apple Container).

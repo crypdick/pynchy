@@ -1,0 +1,109 @@
+"""Tests for the host-side speech synthesis plugin boundary."""
+
+from __future__ import annotations
+
+import pluggy
+import pytest
+from aiohttp import web
+
+from pynchy.plugins.hookspecs import PynchySpec
+from pynchy.plugins.speech import get_speech_synthesizer
+from pynchy.plugins.speech.pocket_tts import PocketTtsPlugin, PocketTtsProvider
+
+
+async def _start_server(app: web.Application) -> tuple[web.AppRunner, str]:
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    server = site._server
+    assert server is not None
+    port = server.sockets[0].getsockname()[1]
+    return runner, f"http://127.0.0.1:{port}"
+
+
+@pytest.mark.asyncio
+async def test_pocket_tts_posts_text_and_writes_wav(tmp_path):
+    received: dict[str, str] = {}
+
+    async def synthesize(request: web.Request) -> web.Response:
+        form = await request.post()
+        received["text"] = str(form["text"])
+        return web.Response(body=b"audio", content_type="audio/wav")
+
+    app = web.Application()
+    app.router.add_post("/tts", synthesize)
+    runner, endpoint = await _start_server(app)
+    try:
+        output_path = tmp_path / "reply.wav"
+        result = await PocketTtsProvider(f"{endpoint}/tts").synthesize("Hello", output_path)
+    finally:
+        await runner.cleanup()
+
+    assert received == {"text": "Hello"}
+    assert result.success is True
+    assert result.output_path == output_path
+    assert result.provider == "pocket-tts"
+    assert output_path.read_bytes() == b"audio"
+
+
+@pytest.mark.asyncio
+async def test_pocket_tts_reports_non_success_response(tmp_path):
+    async def unavailable(request: web.Request) -> web.Response:
+        await request.read()
+        return web.Response(status=503)
+
+    app = web.Application()
+    app.router.add_post("/tts", unavailable)
+    runner, endpoint = await _start_server(app)
+    try:
+        result = await PocketTtsProvider(f"{endpoint}/tts").synthesize(
+            "Hello", tmp_path / "reply.wav"
+        )
+    finally:
+        await runner.cleanup()
+
+    assert result.success is False
+    assert result.provider == "pocket-tts"
+    assert result.error is not None
+
+
+@pytest.mark.asyncio
+async def test_pocket_tts_rejects_empty_text(tmp_path):
+    result = await PocketTtsProvider().synthesize("  ", tmp_path / "reply.wav")
+
+    assert result.success is False
+    assert result.error == "Cannot synthesize empty text"
+
+
+@pytest.mark.asyncio
+async def test_pocket_tts_health_reports_ready_and_unavailable():
+    async def ready_handler(request: web.Request) -> web.Response:
+        await request.read()
+        return web.Response(text="ready")
+
+    app = web.Application()
+    app.router.add_get("/", ready_handler)
+    runner, endpoint = await _start_server(app)
+    try:
+        ready = await PocketTtsProvider(f"{endpoint}/tts").health()
+    finally:
+        await runner.cleanup()
+
+    unavailable = await PocketTtsProvider("http://127.0.0.1:1/tts").health()
+
+    assert ready.ready is True
+    assert ready.endpoint == f"{endpoint}/"
+    assert unavailable.ready is False
+    assert unavailable.error is not None
+
+
+def test_pocket_tts_is_discovered_through_the_speech_plugin_hook():
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    manager.register(PocketTtsPlugin())
+
+    provider = get_speech_synthesizer(manager)
+
+    assert provider is not None
+    assert provider.name == "pocket-tts"

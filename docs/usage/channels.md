@@ -169,19 +169,14 @@ tool traces, and status messages remain silent.
 
 Discord voice needs the `discord` extra, `ffmpeg`, and a system `libopus`
 library. It also needs the normal host STT provider described below and the
-local Pocket TTS service. On macOS, install Pocket TTS and its launchd service:
+local Pocket TTS service. Follow [Local speech synthesis](local-speech.md) to
+install, operate, update, and remove that service. Pynchy reports its readiness
+in the `speech` section of `/status`.
 
-```bash
-uv tool install pocket-tts
-sed "s|\\$HOME|$HOME|g" launchd/com.pynchy.pocket-tts.plist \
-  > "$HOME/Library/LaunchAgents/com.pynchy.pocket-tts.plist"
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.pynchy.pocket-tts.plist"
-```
-
-Pocket TTS binds only to `127.0.0.1:8000`. Pynchy sends the final reply to that
-service and writes its WAV response to a temporary file before FFmpeg re-encodes
-it to Discord Opus. If the service is unavailable, Pynchy logs the failure and
-does not create a room or fall back to a system voice.
+Pocket TTS binds only to `127.0.0.1:8000`. The Discord channel sends final
+responses through the configured synthesis provider and writes its WAV response
+to a temporary file before FFmpeg re-encodes it to Discord Opus. If synthesis is
+unavailable, Pynchy logs the failure and does not fall back to a system voice.
 
 Pynchy loads `libopus` through the system resolver and also checks the usual
 Homebrew locations. Set `PYNCHY_DISCORD_OPUS_LIBRARY` to an absolute library

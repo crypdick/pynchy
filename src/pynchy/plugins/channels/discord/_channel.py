@@ -16,6 +16,9 @@ import discord
 from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    SpeechSynthesizer,
+)
 from pynchy.state import get_chat_jids_by_name
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     InboundFetchResult,
@@ -85,6 +88,7 @@ class DiscordChannel:
         on_ask_user_answer: Callable[[str, dict[str, object]], None] | None = None,
         on_approval_decision: Callable[[str, str, str, str], None] | None = None,
         workspaces: Callable[[], dict[str, WorkspaceProfile]] | None = None,
+        speech_synthesizer: SpeechSynthesizer | None = None,
     ) -> None:
         self.name = connection_name
         self.formatter = TextFormatter()
@@ -106,7 +110,7 @@ class DiscordChannel:
         self._ask_user_views: dict[str, discord.ui.View] = {}
 
         self.access = DiscordAccess(config)
-        self.voice = DiscordVoiceManager(self)
+        self.voice = DiscordVoiceManager(self, speech_synthesizer)
         self.events = DiscordEvents(self)
         self.lifecycle = DiscordLifecycle(self)
 

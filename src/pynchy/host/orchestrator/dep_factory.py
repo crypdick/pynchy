@@ -44,6 +44,9 @@ from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001, RUF100 - b
 )
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
+    SpeechSynthesizer,
+)
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -268,6 +271,9 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
 
         def get_workspace_count(self) -> int:
             return len(app.workspaces)
+
+        def get_speech_synthesizer(self) -> SpeechSynthesizer | None:
+            return app.get_speech_synthesizer()
 
     return _StatusDeps()
 

@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
-from pynchy.host.audio import AudioSynthesisResult
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.discord._voice import (  # noqa: PLC2701
     DiscordVoiceManager,
@@ -28,6 +27,7 @@ from pynchy.plugins.channels.discord._voice_client import (  # noqa: PLC2701
     PynchyVoiceClient,
     _parse_rtp_packet,  # allow: private-test-imports - exercises RTP crypto boundary.
 )
+from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType, WorkspaceProfile
 
@@ -38,13 +38,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _channel() -> DiscordChannel:
+def _channel(speech_synthesizer: object | None = None) -> DiscordChannel:
     return DiscordChannel(
         connection_name="connection.discord.test",
         config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        speech_synthesizer=speech_synthesizer,
     )
 
 
@@ -417,23 +418,49 @@ async def test_voice_manager_serializes_duplicate_connect_attempts(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_voice_session_uses_wav_from_pocket_tts():
-    session = _VoiceSession(_channel(), "discord:voice:1", _FakePynchyVoiceClient(), {})
     captured_suffixes: list[str] = []
 
-    def synthesize(_text: str, output_path: Path) -> AudioSynthesisResult:
-        captured_suffixes.append(output_path.suffix)
-        return AudioSynthesisResult(success=True, output_path=output_path)
+    class FakeSpeechSynthesizer:
+        name = "test"
+
+        async def synthesize(self, _text: str, output_path: Path) -> SpeechSynthesisResult:
+            captured_suffixes.append(output_path.suffix)
+            return SpeechSynthesisResult(success=True, output_path=output_path, provider=self.name)
+
+        async def health(self) -> SpeechSynthesizerHealth:
+            return SpeechSynthesizerHealth(ready=True)
+
+    synthesizer = FakeSpeechSynthesizer()
+    session = _VoiceSession(
+        _channel(synthesizer),
+        "discord:voice:1",
+        _FakePynchyVoiceClient(),
+        {},
+        synthesizer,
+    )
 
     with (
-        patch(
-            "pynchy.plugins.channels.discord._voice.synthesize_speech_to_file",
-            new=AsyncMock(side_effect=synthesize),
-        ),
         patch.object(session, "_play_audio", new_callable=AsyncMock),
     ):
         await session.speak("Hello")
 
     assert captured_suffixes == [".wav"]
+
+
+@pytest.mark.asyncio
+async def test_voice_session_skips_playback_without_speech_provider():
+    session = _VoiceSession(
+        _channel(),
+        "discord:voice:1",
+        _FakePynchyVoiceClient(),
+        {},
+        None,
+    )
+
+    with patch.object(session, "_play_audio", new_callable=AsyncMock) as play_audio:
+        await session.speak("Hello")
+
+    play_audio.assert_not_awaited()
 
 
 @pytest.mark.asyncio

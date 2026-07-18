@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from conftest import make_settings
@@ -16,6 +17,7 @@ from pynchy.config.models import (
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.slack import SlackChannel, SlackChannelPlugin
+from pynchy.plugins.speech.pocket_tts import PocketTtsProvider
 
 SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
@@ -42,7 +44,7 @@ for _mod_name in _NEONIZE_MODULES:
 from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
 
 
-def _context() -> ChannelPluginContext:
+def _context(*, speech_synthesizer: Any | None = None) -> ChannelPluginContext:
     return ChannelPluginContext(
         on_message_callback=MagicMock(),
         on_chat_metadata_callback=MagicMock(),
@@ -51,6 +53,7 @@ def _context() -> ChannelPluginContext:
         on_approval_decision_callback=MagicMock(),
         workspaces=MagicMock(return_value={}),
         send_message=MagicMock(),
+        speech_synthesizer=speech_synthesizer,
     )
 
 
@@ -94,7 +97,8 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
         }
     )
 
-    context = _context()
+    speech_synthesizer = PocketTtsProvider()
+    context = _context(speech_synthesizer=speech_synthesizer)
     with (
         patch("pynchy.plugins.channels.discord.get_settings", return_value=settings),
         patch.dict("os.environ", {"DISCORD": "discord-token"}, clear=False),
@@ -106,6 +110,7 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
     assert isinstance(channels[0], DiscordChannel)
     assert channels[0].name == "synapse"
     assert channels[0].on_approval_decision is context.on_approval_decision_callback
+    assert channels[0].voice._speech_synthesizer is speech_synthesizer
 
 
 def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:

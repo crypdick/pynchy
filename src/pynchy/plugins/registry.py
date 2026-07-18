@@ -57,6 +57,7 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.plugins.channels.slack", "SlackChannelPlugin", "slack"),
     ("pynchy.plugins.channels.tui", "TuiChannelPlugin", "tui"),
     ("pynchy.plugins.channels.whatsapp", "WhatsAppPlugin", "whatsapp"),
+    ("pynchy.plugins.speech.pocket_tts", "PocketTtsPlugin", "pocket-tts"),
     ("pynchy.plugins.tunnels.tailscale", "TailscaleTunnelPlugin", "tailscale"),
     ("pynchy.plugins.runtimes.docker_runtime", "DockerRuntimePlugin", "docker-runtime"),
     ("pynchy.plugins.runtimes.apple_runtime", "AppleRuntimePlugin", "apple-runtime"),

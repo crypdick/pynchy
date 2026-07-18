@@ -81,6 +81,7 @@ Common configurations:
 - **Temporal scheduler:** Run a Temporal service and set `[scheduler].temporal_address` if it does not listen on `localhost:7233`. For a single-host macOS service, use the `launchd/com.pynchy.temporal.plist` template and back up `data/temporal.db` with `scripts/backup_runtime_dbs.sh`; see [Scheduled Tasks](usage/scheduled-tasks.md#single-host-macos-service).
 - **Claude SDK core:** Set `[agent] default_core = "claude"` and provide a valid Anthropic API key; model selection currently stays fixed to `opus`, and Claude Code OAuth tokens are not supported as provider credentials.
 - **Codex CLI core:** Configure a Codex-capable model in `litellm_config.yaml`, then set `[agent] default_core = "codex"` and configure its LiteLLM `model_name` globally, in a profile, or in a workspace. Codex model traffic routes through the same gateway as the OpenAI core.
+- **Discord voice:** Install the Discord extra and its system dependencies, then follow [Local speech synthesis](usage/local-speech.md) to install Pocket TTS.
 
 #### LiteLLM Gateway (recommended)
 

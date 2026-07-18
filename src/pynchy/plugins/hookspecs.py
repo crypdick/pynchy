@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from pynchy.plugins.memory import MemoryProvider
     from pynchy.plugins.observers import ObserverProvider
     from pynchy.plugins.runtimes.detection import RuntimeProvider
+    from pynchy.plugins.speech import SpeechSynthesizer
     from pynchy.plugins.tunnels import TunnelProvider
     from pynchy.types import Channel
 
@@ -107,6 +108,15 @@ class PynchySpec:
         Returns:
             Channel instance implementing the Channel protocol, or None if this
             plugin doesn't provide channels
+        """
+
+    @hookspec
+    def pynchy_speech_synthesizer(self) -> SpeechSynthesizer | None:
+        """Provide host-side synthesis for final spoken channel replies.
+
+        Returns:
+            Speech synthesizer with ``name``, ``synthesize()``, and ``health()``
+            methods, or None if this plugin does not provide one.
         """
 
     @hookspec
