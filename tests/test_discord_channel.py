@@ -10,20 +10,27 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
+from pynchy.host.audio import AudioSynthesisResult
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.discord._voice import (  # noqa: PLC2701
     _load_opus,  # allow: private-test-imports - platform Opus loader.
+    _VoiceSession,  # allow: private-test-imports - voice playback boundary.
 )
+from pynchy.plugins.channels.discord._voice_client import PynchyVoiceClient  # noqa: PLC2701
 from pynchy.state import init_test_database, store_chat_metadata
 from pynchy.types import Channel, OutboundEvent, OutboundEventType
 
 DISCORD_BOT_ENV = "X"
 DISCORD_BOT_VALUE = "token"
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _channel() -> DiscordChannel:
@@ -78,6 +85,14 @@ class _FakeTypingChannel:
 
     async def typing(self) -> None:
         self.typing_calls += 1
+
+
+class _FakePynchyVoiceClient(PynchyVoiceClient):
+    def __init__(self) -> None:
+        pass
+
+    def is_connected(self) -> bool:
+        return True
 
 
 class _FakeUser:
@@ -225,6 +240,27 @@ def test_load_opus_uses_homebrew_fallback(monkeypatch):
         assert _load_opus() is True
 
     assert loaded == ["/opt/homebrew/opt/opus/lib/libopus.0.dylib"]
+
+
+@pytest.mark.asyncio
+async def test_voice_session_uses_aiff_for_macos_say():
+    session = _VoiceSession(_channel(), "discord:voice:1", _FakePynchyVoiceClient(), {})
+    captured_suffixes: list[str] = []
+
+    def synthesize(_text: str, output_path: Path) -> AudioSynthesisResult:
+        captured_suffixes.append(output_path.suffix)
+        return AudioSynthesisResult(success=True, output_path=output_path)
+
+    with (
+        patch(
+            "pynchy.plugins.channels.discord._voice.synthesize_speech_to_file",
+            new=AsyncMock(side_effect=synthesize),
+        ),
+        patch.object(session, "_play_audio", new_callable=AsyncMock),
+    ):
+        await session.speak("Hello")
+
+    assert captured_suffixes == [".aiff"]
 
 
 @pytest.mark.asyncio
