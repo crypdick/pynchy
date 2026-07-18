@@ -1,0 +1,339 @@
+"""Behavioral tests for the fail-closed HTTP control-plane policy."""
+
+from __future__ import annotations
+
+import stat
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import aiohttp
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import AioHTTPTestCase
+
+from pynchy.config import ServerConfig
+from pynchy.host.orchestrator.http_control import (
+    ClientAddress,
+    ControlPlaneConfigurationError,
+    ControlPlaneRuntime,
+    ControlPlaneToken,
+    RequestRateLimiter,
+    bootstrap_control_plane_token,
+    build_control_plane_middleware,
+    register_unix_socket_cleanup,
+    resolve_control_plane_runtime,
+    start_control_plane_sites,
+)
+
+TEST_TOKEN = "control-plane-test-token-value-000000"  # noqa: S105, RUF100 - synthetic bearer fixture, not a credential.
+PUBLIC_BIND_TEST_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test data for explicit public-bind policy.
+
+
+def test_default_runtime_binds_loopback_and_enables_unix_socket(tmp_path: Path) -> None:
+    runtime = resolve_control_plane_runtime(ServerConfig(), project_root=tmp_path)
+
+    assert runtime.bind_host == "127.0.0.1"
+    assert runtime.public_bind is False
+    assert runtime.remote_auth_required is False
+    assert runtime.unix_socket == tmp_path / "data" / "pynchy.sock"
+
+
+def test_non_loopback_bind_requires_explicit_public_opt_in(tmp_path: Path) -> None:
+    server = ServerConfig(host=PUBLIC_BIND_TEST_HOST)
+
+    with pytest.raises(ControlPlaneConfigurationError, match="allow_public_bind"):
+        resolve_control_plane_runtime(server, project_root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("allow_public_bind", "allow_remote_deploy"),
+    [(True, False), (False, True)],
+)
+def test_each_remote_posture_requires_authentication(
+    tmp_path: Path,
+    *,
+    allow_public_bind: bool,
+    allow_remote_deploy: bool,
+) -> None:
+    server = ServerConfig(
+        allow_public_bind=allow_public_bind,
+        allow_remote_deploy=allow_remote_deploy,
+    )
+
+    with pytest.raises(ControlPlaneConfigurationError, match="requires a bearer token"):
+        resolve_control_plane_runtime(server, project_root=tmp_path)
+
+
+def test_public_runtime_accepts_strong_environment_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_CONTROL_TOKEN", TEST_TOKEN)
+    server = ServerConfig(host=PUBLIC_BIND_TEST_HOST, allow_public_bind=True)
+
+    runtime = resolve_control_plane_runtime(server, project_root=tmp_path)
+
+    assert runtime.public_bind is True
+    assert runtime.remote_auth_required is True
+
+
+def test_remote_posture_rejects_short_bearer_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_CONTROL_TOKEN", "too-short")
+
+    with pytest.raises(ControlPlaneConfigurationError, match="at least 32 bytes"):
+        resolve_control_plane_runtime(
+            ServerConfig(allow_remote_deploy=True),
+            project_root=tmp_path,
+        )
+
+
+def test_token_file_must_be_permission_restricted(tmp_path: Path) -> None:
+    token_path = tmp_path / "token"
+    token_path.write_text(TEST_TOKEN)
+    token_path.chmod(0o644)
+    server = ServerConfig(
+        allow_remote_deploy=True,
+        auth_token_file=token_path,
+    )
+
+    with pytest.raises(ControlPlaneConfigurationError, match="mode 0600"):
+        resolve_control_plane_runtime(server, project_root=tmp_path)
+
+
+def test_bootstrap_creates_and_rotates_mode_0600_token(tmp_path: Path) -> None:
+    server = ServerConfig(auth_token_file=Path("secrets/control.token"))
+
+    token_path = bootstrap_control_plane_token(server, project_root=tmp_path, rotate=False)
+    first_token = token_path.read_text()
+
+    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+    assert len(first_token.strip()) >= 32
+    with pytest.raises(FileExistsError, match="already exists"):
+        bootstrap_control_plane_token(server, project_root=tmp_path, rotate=False)
+
+    bootstrap_control_plane_token(server, project_root=tmp_path, rotate=True)
+    assert token_path.read_text() != first_token
+    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+
+
+def test_rate_limiter_resets_after_its_window() -> None:
+    limiter = RequestRateLimiter(request_limit=1, window_seconds=10)
+    client = ClientAddress("203.0.113.7")
+
+    assert limiter.consume(client, now=1.0).allowed is True
+    denied = limiter.consume(client, now=2.0)
+    assert denied.allowed is False
+    assert denied.retry_after_seconds == 10
+    assert limiter.consume(client, now=11.0).allowed is True
+
+
+class TestRemoteControlPlanePolicy(AioHTTPTestCase):
+    """Exercise policy middleware over a real TCP test listener."""
+
+    async def get_application(self) -> web.Application:
+        runtime = ControlPlaneRuntime(
+            bind_host=PUBLIC_BIND_TEST_HOST,
+            port=8484,
+            unix_socket=None,
+            public_bind=True,
+            remote_auth_required=True,
+            allow_remote_deploy=False,
+            auth_token=ControlPlaneToken(TEST_TOKEN),
+            rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        )
+        app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
+        app.router.add_get("/health", self._ok)
+        app.router.add_get("/api/groups", self._ok)
+        app.router.add_post("/deploy", self._ok)
+        return app
+
+    async def asyncSetUp(self) -> None:
+        self.audit = AsyncMock()
+        self.audit_patch = patch(
+            "pynchy.host.orchestrator.http_control.record_security_event",
+            self.audit,
+        )
+        self.audit_patch.start()
+        await super().asyncSetUp()
+
+    async def asyncTearDown(self) -> None:
+        await super().asyncTearDown()
+        self.audit_patch.stop()
+
+    @staticmethod
+    async def _ok(_request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"})
+
+    async def test_readiness_stays_public_and_unaudited(self) -> None:
+        response = await self.client.get("/health")
+
+        assert response.status == 200
+        assert await response.json() == {"status": "ok"}
+        self.audit.assert_not_awaited()
+
+    async def test_remote_api_rejects_missing_or_invalid_bearer(self) -> None:
+        missing = await self.client.get("/api/groups")
+        invalid = await self.client.get(
+            "/api/groups",
+            headers={"Authorization": "Bearer invalid"},
+        )
+
+        assert missing.status == 401
+        assert missing.headers["WWW-Authenticate"] == "Bearer"
+        assert invalid.status == 401
+        assert [call.kwargs["decision"] for call in self.audit.await_args_list] == [
+            "denied",
+            "denied",
+        ]
+
+    async def test_remote_api_accepts_and_audits_valid_bearer(self) -> None:
+        response = await self.client.get(
+            "/api/groups",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        assert response.status == 200
+        self.audit.assert_awaited_once()
+        assert self.audit.await_args.kwargs["decision"] == "allowed"
+        assert self.audit.await_args.kwargs["tool_name"] == "http:GET:/api/groups"
+
+    async def test_public_bind_does_not_implicitly_enable_remote_deploy(self) -> None:
+        response = await self.client.post(
+            "/deploy",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        assert response.status == 403
+        assert await response.json() == {"error": "remote deploy is disabled"}
+        assert self.audit.await_args.kwargs["decision"] == "denied"
+
+
+class TestLoopbackDeployPolicy(AioHTTPTestCase):
+    """Prove loopback TCP cannot masquerade as the local Unix control path."""
+
+    async def get_application(self) -> web.Application:
+        runtime = ControlPlaneRuntime(
+            bind_host="127.0.0.1",
+            port=8484,
+            unix_socket=None,
+            public_bind=False,
+            remote_auth_required=False,
+            allow_remote_deploy=False,
+            auth_token=None,
+            rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+        )
+        app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
+        app.router.add_post("/deploy", self._ok)
+        return app
+
+    async def asyncSetUp(self) -> None:
+        self.audit_patch = patch(
+            "pynchy.host.orchestrator.http_control.record_security_event",
+            AsyncMock(),
+        )
+        self.audit_patch.start()
+        await super().asyncSetUp()
+
+    async def asyncTearDown(self) -> None:
+        await super().asyncTearDown()
+        self.audit_patch.stop()
+
+    @staticmethod
+    async def _ok(_request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"})
+
+    async def test_loopback_tcp_deploy_requires_explicit_opt_in(self) -> None:
+        response = await self.client.post("/deploy")
+
+        assert response.status == 403
+
+
+class TestRemoteRateLimit(AioHTTPTestCase):
+    """Prove unauthorized requests consume the remote request budget."""
+
+    async def get_application(self) -> web.Application:
+        runtime = ControlPlaneRuntime(
+            bind_host=PUBLIC_BIND_TEST_HOST,
+            port=8484,
+            unix_socket=None,
+            public_bind=True,
+            remote_auth_required=True,
+            allow_remote_deploy=True,
+            auth_token=ControlPlaneToken(TEST_TOKEN),
+            rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+        )
+        app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
+        app.router.add_get("/api/groups", self._ok)
+        return app
+
+    async def asyncSetUp(self) -> None:
+        self.audit_patch = patch(
+            "pynchy.host.orchestrator.http_control.record_security_event",
+            AsyncMock(),
+        )
+        self.audit_patch.start()
+        await super().asyncSetUp()
+
+    async def asyncTearDown(self) -> None:
+        await super().asyncTearDown()
+        self.audit_patch.stop()
+
+    @staticmethod
+    async def _ok(_request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"})
+
+    async def test_rate_limit_runs_before_bearer_acceptance(self) -> None:
+        unauthorized = await self.client.get("/api/groups")
+        limited = await self.client.get(
+            "/api/groups",
+            headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+        )
+
+        assert unauthorized.status == 401
+        assert limited.status == 429
+        assert int(limited.headers["Retry-After"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
+    tmp_path: Path,
+) -> None:
+    socket_path = tmp_path / "control.sock"
+    runtime = ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=0,
+        unix_socket=socket_path,
+        public_bind=False,
+        remote_auth_required=True,
+        allow_remote_deploy=True,
+        auth_token=ControlPlaneToken(TEST_TOKEN),
+        rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
+    )
+    audit = AsyncMock()
+
+    async def ok(_request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
+        return web.json_response({"status": "ok"})
+
+    with patch("pynchy.host.orchestrator.http_control.record_security_event", audit):
+        app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
+        app.router.add_get("/api/groups", ok)
+        register_unix_socket_cleanup(app, runtime)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        await start_control_plane_sites(runner, runtime)
+        try:
+            connector = aiohttp.UnixConnector(path=str(socket_path))
+            async with (
+                aiohttp.ClientSession(connector=connector) as session,
+                session.get("http://localhost/api/groups") as response,
+            ):
+                assert response.status == 200
+            assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
+            audit.assert_not_awaited()
+        finally:
+            await runner.cleanup()
+
+    assert not socket_path.exists()

@@ -56,7 +56,7 @@ provide independent semantic evidence.
 
 ## Priority roadmap
 
-### P0: Fail closed at the HTTP control plane
+### Implemented foundation: fail closed at the HTTP control plane
 
 The HTTP surface includes messages, events, canaries, periodic jobs, and
 deployment. A network perimeter alone must not be its only protection.
@@ -73,6 +73,12 @@ deployment. A network perimeter alone must not be its only protection.
 - Keep readiness endpoints separately scoped and free of sensitive config.
 
 This is an immediate security correction, not merely a product improvement.
+
+Pynchy now ships the complete foundation above: loopback TCP and a mode-`0600`
+Unix socket by default, explicit public-bind and remote-deploy gates, bootstrap-derived
+bearer credentials, fail-closed startup, per-client rate limiting, durable security
+audit events, and a separately scoped non-sensitive readiness response. See
+[Control Plane Access](../../docs/usage/control-plane.md).
 
 ### Implemented foundation: host-action capability truth
 

@@ -21,6 +21,9 @@ from pathlib import Path
 
 _DEFAULT_PORT = "8484"
 _DEFAULT_HOST = f"localhost:{_DEFAULT_PORT}"
+_DEFAULT_CONTROL_SOCKET = Path("data/pynchy.sock")
+_DEFAULT_CONTROL_TOKEN_FILE = Path("data/control-plane.token")
+_DEFAULT_CONTROL_TOKEN_ENV = "PYNCHY_CONTROL_TOKEN"  # noqa: S105, RUF100 - environment variable name, not a credential value.
 
 
 def _stdout_line(message: str) -> None:
@@ -48,12 +51,40 @@ def _run() -> None:
     asyncio.run(app.run())
 
 
-def _tui(host: str) -> None:
+def _control_client_target(
+    host: str | None,
+    socket_path: Path | None,
+) -> tuple[str | None, Path | None]:
+    if host is not None:
+        return host, None
+    candidate = socket_path or _DEFAULT_CONTROL_SOCKET
+    if socket_path is not None or candidate.exists():
+        return None, candidate
+    return _DEFAULT_HOST, None
+
+
+def _control_client_token(token_file: Path | None) -> str | None:
+    from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415, RUF100 - client auth is only needed for control-plane commands.
+        load_control_plane_client_token,
+    )
+
+    return load_control_plane_client_token(
+        token_env=_DEFAULT_CONTROL_TOKEN_ENV,
+        token_file=token_file or _DEFAULT_CONTROL_TOKEN_FILE,
+    )
+
+
+def _tui(host: str | None, socket_path: Path | None, token_file: Path | None) -> None:
     from pynchy.plugins.channels.tui.client import (  # noqa: PLC0415, RUF100 - TUI dependencies are only needed for --tui.
         run_tui,
     )
 
-    run_tui(host)
+    selected_host, selected_socket = _control_client_target(host, socket_path)
+    run_tui(
+        selected_host,
+        socket_path=selected_socket,
+        bearer_token=_control_client_token(token_file),
+    )
 
 
 def _build() -> None:
@@ -85,6 +116,30 @@ def _build() -> None:
     finally:
         cleanup_runtime_builder(runtime)
     sys.exit(result.returncode)
+
+
+def _bootstrap_control_plane_token(*, rotate: bool) -> int:
+    from pynchy.config import (  # noqa: PLC0415, RUF100 - bootstrap reads settings only for this subcommand.
+        get_settings,
+    )
+    from pynchy.host.orchestrator.http_control import (  # noqa: PLC0415, RUF100 - token creation is isolated to the control-plane command.
+        ControlPlaneConfigurationError,
+        bootstrap_control_plane_token,
+    )
+
+    settings = get_settings()
+    try:
+        path = bootstrap_control_plane_token(
+            settings.server,
+            project_root=settings.project_root,
+            rotate=rotate,
+        )
+    except (ControlPlaneConfigurationError, OSError) as exc:
+        _stderr_line(f"Control-plane bootstrap failed: {exc}")
+        return 1
+    action = "Rotated" if rotate else "Created"
+    _stdout_line(f"{action} permission-restricted control-plane token: {path}")
+    return 0
 
 
 def _prune_migration_backups(path: str | None, keep: int, *, apply: bool) -> None:
@@ -153,11 +208,39 @@ def _render_capability_doctor(payload: object) -> str:
     return "\n".join(lines)
 
 
-def _doctor(host: str, workspace: str | None, *, json_output: bool) -> int:
-    url = _doctor_url(host, workspace)
+async def _read_unix_json(
+    socket_path: Path,
+    relative_url: str,
+    *,
+    bearer_token: str | None,
+) -> object:
+    import aiohttp  # noqa: PLC0415, RUF100 - Unix HTTP client is only needed by local CLI control.
+
+    headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else None
+    connector = aiohttp.UnixConnector(path=str(socket_path))
+    async with (
+        aiohttp.ClientSession(connector=connector, headers=headers) as session,
+        session.get(f"http://localhost{relative_url}") as response,
+    ):
+        response.raise_for_status()
+        return await response.json()
+
+
+def _doctor(
+    host: str | None,
+    workspace: str | None,
+    *,
+    json_output: bool,
+    socket_path: Path | None = None,
+    token_file: Path | None = None,
+) -> int:
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310, RUF100 - operator-selected Pynchy status endpoint is intentionally queried.
-            payload = json.loads(response.read())
+        payload = _fetch_doctor_payload(
+            host,
+            workspace,
+            socket_path=socket_path,
+            token_file=token_file,
+        )
         output = (
             json.dumps(payload, indent=2, sort_keys=True)
             if json_output
@@ -170,6 +253,32 @@ def _doctor(host: str, workspace: str | None, *, json_output: bool) -> int:
     return 0
 
 
+def _fetch_doctor_payload(
+    host: str | None,
+    workspace: str | None,
+    *,
+    socket_path: Path | None,
+    token_file: Path | None,
+) -> object:
+    selected_host, selected_socket = _control_client_target(host, socket_path)
+    token = _control_client_token(token_file)
+    if selected_socket is not None:
+        relative_url = _doctor_url("localhost", workspace).removeprefix("http://localhost")
+        return asyncio.run(_read_unix_json(selected_socket, relative_url, bearer_token=token))
+    if selected_host is None:
+        raise ValueError("No TCP host or Unix socket selected for the control-plane client")
+
+    url = _doctor_url(selected_host, workspace)
+    request: str | urllib.request.Request = url
+    if token:
+        request = urllib.request.Request(  # noqa: S310, RUF100 - operator-selected endpoint with bearer auth.
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    with urllib.request.urlopen(request, timeout=10) as response:  # noqa: S310, RUF100 - operator-selected Pynchy status endpoint is intentionally queried.
+        return json.loads(response.read())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pynchy",
@@ -178,13 +287,43 @@ def main() -> None:
     parser.add_argument(
         "--tui", action="store_true", help="Attach TUI client to a running pynchy instance"
     )
-    parser.add_argument(
+    control_target = parser.add_mutually_exclusive_group()
+    control_target.add_argument(
         "--host",
-        default=_DEFAULT_HOST,
-        help=f"Host:port of the pynchy server (default: {_DEFAULT_HOST})",
+        help=f"Host:port of the Pynchy server (local default: Unix socket, then {_DEFAULT_HOST})",
+    )
+    control_target.add_argument(
+        "--socket",
+        type=Path,
+        help=f"Unix control socket (default when present: {_DEFAULT_CONTROL_SOCKET})",
+    )
+    parser.add_argument(
+        "--token-file",
+        type=Path,
+        help=(
+            "Bearer token file for remote control (default: PYNCHY_CONTROL_TOKEN, then "
+            f"{_DEFAULT_CONTROL_TOKEN_FILE})"
+        ),
     )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("build", help="Build the container image")
+    control_plane = sub.add_parser(
+        "control-plane",
+        help="Bootstrap local credentials for authenticated control-plane access",
+    )
+    control_plane_subcommands = control_plane.add_subparsers(
+        dest="control_plane_command",
+        required=True,
+    )
+    bootstrap = control_plane_subcommands.add_parser(
+        "bootstrap",
+        help="Create a mode-0600 bearer token without printing it",
+    )
+    bootstrap.add_argument(
+        "--rotate",
+        action="store_true",
+        help="Replace an existing token and invalidate clients that still use it",
+    )
     prune = sub.add_parser(
         "prune-migration-backups",
         help="Prune old data/migration-backups directories",
@@ -224,16 +363,27 @@ def main() -> None:
     match args.command:
         case "build":
             _build()
+        case "control-plane":
+            if args.control_plane_command == "bootstrap":
+                sys.exit(_bootstrap_control_plane_token(rotate=args.rotate))
         case "prune-migration-backups":
             _prune_migration_backups(args.path, keep=args.keep, apply=args.apply)
         case "doctor":
-            sys.exit(_doctor(args.host, args.workspace, json_output=args.json))
+            sys.exit(
+                _doctor(
+                    args.host,
+                    args.workspace,
+                    json_output=args.json,
+                    socket_path=args.socket,
+                    token_file=args.token_file,
+                )
+            )
         case _:
             if args.tui:
                 host = args.host
-                if ":" not in host.split("//")[-1]:
+                if host is not None and ":" not in host.split("//")[-1]:
                     host = f"{host}:{_DEFAULT_PORT}"
-                _tui(host=host)
+                _tui(host=host, socket_path=args.socket, token_file=args.token_file)
             else:
                 _run()
 

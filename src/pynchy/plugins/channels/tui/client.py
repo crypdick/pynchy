@@ -10,6 +10,9 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves TUI transport annotations at runtime.
+)
 from typing import Any, ClassVar, cast
 
 import aiohttp
@@ -75,9 +78,17 @@ class PynchyTUI(App[None]):
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        unix_socket: Path | None = None,
+        bearer_token: str | None = None,
+    ) -> None:
         super().__init__()
         self._base_url = base_url.rstrip("/")
+        self._unix_socket = unix_socket
+        self._bearer_token = bearer_token
         self._session: aiohttp.ClientSession | None = None
         self._groups: list[dict[str, Any]] = []
         self._active_jid: str | None = None
@@ -94,7 +105,11 @@ class PynchyTUI(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        self._session = aiohttp.ClientSession()
+        connector = (
+            aiohttp.UnixConnector(path=str(self._unix_socket)) if self._unix_socket else None
+        )
+        headers = {"Authorization": f"Bearer {self._bearer_token}"} if self._bearer_token else None
+        self._session = aiohttp.ClientSession(connector=connector, headers=headers)
         try:
             await self._load_groups()
             self._sse_task = asyncio.create_task(self._listen_sse())
@@ -123,10 +138,11 @@ class PynchyTUI(App[None]):
             return cast("dict[str, Any]", await resp.json())
 
     async def _update_status(self) -> None:
-        """Fetch /health and show connection status in the sub-title."""
+        """Fetch authenticated status and show channel connectivity in the sub-title."""
         try:
-            health = await self._get("/health")
-            connected = health.get("channels_connected", False)
+            status_payload = await self._get("/status")
+            channels = status_payload.get("channels", {})
+            connected = isinstance(channels, dict) and any(channels.values())
             status = "Connected" if connected else "Disconnected"
             self.sub_title = status
         except aiohttp.ClientError:
@@ -356,8 +372,16 @@ def _render_message(log: ChatLog, sender: str, content: str, timestamp: str) -> 
     log.write(f"[dim]{time_str}[/dim] [bold]{sender}[/bold]: {display}")
 
 
-def run_tui(host: str) -> None:
+def run_tui(
+    host: str | None,
+    *,
+    socket_path: Path | None = None,
+    bearer_token: str | None = None,
+) -> None:
     """Entry point for the standalone TUI client."""
-    url = host if host.startswith("http") else f"http://{host}"
-    app = PynchyTUI(base_url=url)
+    if host is None:
+        url = "http://localhost"
+    else:
+        url = host if host.startswith("http") else f"http://{host}"
+    app = PynchyTUI(base_url=url, unix_socket=socket_path, bearer_token=bearer_token)
     app.run()

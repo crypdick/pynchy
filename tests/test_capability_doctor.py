@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 import sys
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
 
 from pynchy import __main__ as cli
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _Response:
@@ -62,7 +66,8 @@ def test_doctor_renders_status_reason_and_remediation():
     assert "recover: Check PYNCHY_MATRIX_GATEWAY." in output
 
 
-def test_doctor_fetches_json_snapshot(monkeypatch, capsys):
+def test_doctor_fetches_json_snapshot(monkeypatch, capsys, tmp_path: Path):
+    monkeypatch.delenv("PYNCHY_CONTROL_TOKEN", raising=False)
     opened = Mock(return_value=_Response(_payload()))
     monkeypatch.setattr(cli.urllib.request, "urlopen", opened)
 
@@ -70,6 +75,7 @@ def test_doctor_fetches_json_snapshot(monkeypatch, capsys):
         "localhost:8484",
         "personal",
         json_output=True,
+        token_file=tmp_path / "missing-token",
     )
 
     assert result == 0
@@ -78,6 +84,29 @@ def test_doctor_fetches_json_snapshot(monkeypatch, capsys):
         "http://localhost:8484/capabilities?workspace=personal",
         timeout=10,
     )
+
+
+def test_local_control_client_prefers_existing_unix_socket(tmp_path: Path):
+    socket_path = tmp_path / "pynchy.sock"
+    socket_path.touch()
+
+    target = cli._control_client_target(  # allow: private-test-imports - client transport contract.
+        None,
+        socket_path,
+    )
+
+    assert target == (None, socket_path)
+
+
+def test_local_control_client_falls_back_to_loopback_tcp(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+
+    target = cli._control_client_target(  # allow: private-test-imports - client transport contract.
+        None,
+        None,
+    )
+
+    assert target == ("localhost:8484", None)
 
 
 def test_main_dispatches_doctor_options(monkeypatch):
@@ -104,4 +133,6 @@ def test_main_dispatches_doctor_options(monkeypatch):
         "status.internal:9999",
         "personal",
         json_output=True,
+        socket_path=None,
+        token_file=None,
     )

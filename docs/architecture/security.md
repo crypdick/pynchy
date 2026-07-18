@@ -72,6 +72,25 @@ The host verifies messages and task operations against group identity:
 | View all tasks | ✓ | Own only |
 | Manage other groups | ✓ | ✗ |
 
+### HTTP Control Plane
+
+The HTTP surface carries chat history, real-time events, capability and canary
+evidence, operational status, and deployment actions. Pynchy treats the application
+listener as a security boundary instead of delegating authorization to Tailscale or a
+host firewall.
+
+The server binds TCP to loopback and creates a mode-`0600` Unix socket by default. A
+non-loopback bind requires `allow_public_bind`; remote deployment requires the
+separate `allow_remote_deploy` capability. Either remote posture requires a strong
+bearer token from an environment variable or permission-restricted file. Middleware
+authenticates every non-readiness TCP route, rate-limits requests by transport peer,
+compares credentials in constant time, and records policy decisions in the security
+audit sink. Unix-socket requests rely on filesystem permissions.
+
+`/health` deliberately exposes only a static readiness state. Detailed `/status`,
+`/capabilities`, `/canaries/*`, and `/api/*` responses remain behind the control-plane
+policy. See [Control Plane Access](../usage/control-plane.md) for operator setup.
+
 ### 5. Service Trust Policy (Lethal Trifecta Defenses)
 
 Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityPolicy`, which prevents the *lethal trifecta*: an agent with simultaneous access to **untrusted input**, **sensitive data**, and **untrusted output channels**.

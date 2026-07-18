@@ -141,12 +141,6 @@ class ContainerConfig(_StrictModel):
         return max(1, v)
 
 
-class ServerConfig(_StrictModel):
-    # NOTE: Update docs/install.md (§ Headless Server Deployment — the 8484
-    # references and "Port 8484 not reachable" troubleshooting) if you change this default.
-    port: int = 8484
-
-
 class LoggingConfig(_StrictModel):
     level: str = "INFO"
 

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 from textual.widgets import Static
 
 from pynchy.plugins.channels.tui import client as tui_client
 from pynchy.plugins.channels.tui.client import ChatLog, PynchyTUI
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+TEST_BEARER_TOKEN = "synthetic-test-token"  # noqa: S105, RUF100 - non-secret test fixture.
 
 
 def _make_app():
@@ -93,3 +99,23 @@ def test_updates_header_for_active_agent_activity() -> None:
     )
 
     header.update.assert_called_once_with("Chat: Test Group [dim][thinking...][/dim]")
+
+
+def test_run_tui_passes_local_socket_and_bearer_to_client(monkeypatch, tmp_path: Path) -> None:
+    tui = Mock()
+    tui_type = Mock(return_value=tui)
+    monkeypatch.setattr(tui_client, "PynchyTUI", tui_type)
+    socket_path = tmp_path / "pynchy.sock"
+
+    tui_client.run_tui(
+        None,
+        socket_path=socket_path,
+        bearer_token=TEST_BEARER_TOKEN,
+    )
+
+    tui_type.assert_called_once_with(
+        base_url="http://localhost",
+        unix_socket=socket_path,
+        bearer_token=TEST_BEARER_TOKEN,
+    )
+    tui.run.assert_called_once_with()
