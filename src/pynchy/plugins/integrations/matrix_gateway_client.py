@@ -82,6 +82,11 @@ class MatrixGatewayClient:
         except subprocess.TimeoutExpired as exc:
             raise MatrixGatewayError("Matrix gateway command timed out") from exc
         if result.returncode:
+            if "MATRIX_GATEWAY_E2EE_KEYS_UNAVAILABLE" in result.stderr:
+                raise MatrixGatewayError(
+                    "Matrix room history is encrypted and the gateway does not have usable room "
+                    "keys. Complete gateway device verification, then retry."
+                )
             raise MatrixGatewayError("Matrix gateway command failed")
         if not result.stdout.strip():
             raise MatrixGatewayError("Matrix gateway command returned no data")
