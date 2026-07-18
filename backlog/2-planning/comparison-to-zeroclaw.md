@@ -1,90 +1,208 @@
-Here's an analysis of the zeroclaw design decisions that would most benefit pynchy, ordered by impact:
+# Comparison to ZeroClaw
 
----
+## Conclusion
 
-## 1. Unified Observability Trait (High Impact)
+ZeroClaw is a broad standalone agent runtime. Pynchy is a messaging,
+workspace, plugin, security-semantics, and durable-work product that delegates
+model execution to mature cores behind LiteLLM. Pynchy should not pursue
+feature parity or import ZeroClaw's agent loop, provider stack, SOP scheduler,
+or monolithic control plane.
 
-Zeroclaw has an `Observer` trait with pluggable backends (noop, log, OTel, multi-observer). Events like `AgentStart`, `AgentEnd`, `ToolCall`, and metrics like `RequestLatency`, `TokensUsed` are recorded throughout the agent loop.
+The high-value adaptations are contracts rather than adapter count:
 
-**Pynchy today:** Has structlog and the `EventBus`, but they serve different purposes — structlog is for human-readable logs, and EventBus is for internal wiring (triggering side-effects). There's no structured telemetry layer that could answer "how long did agent turns take this week?" or "which tools are slowest?"
+1. Fail-closed control-plane networking and authenticated remote
+   administration.
+2. Typed, machine-readable plugin and capability descriptors that generate
+   operational truth and documentation.
+3. A read-only operator CLI for diagnostics, validation, initialization, and
+   stable status output.
+4. Composable channel capabilities and a durable media/attachment outbox.
+5. Context-propagated execution attribution and deterministic replay.
 
-**What to adopt:** A lightweight `Observer` protocol that sits between the EventBus and structlog. Record durations and outcomes at key points (container spawn, agent turn, IPC round-trip, tool execution). Start with a log-based backend; the abstraction makes OTel a later drop-in. This would give you real operational visibility without changing the existing logging or event bus.
+Event-triggered workflows and core-neutral delegation are also useful, but
+both belong on Temporal rather than a parallel ZeroClaw-style scheduler.
 
----
+## Scope and evidence
 
-## 2. Component Health Registry (High Impact)
+This source-level assessment compares Pynchy `main` at
+`682cef573137d053e5ffe13fe75a1fc89d6855b1` with ZeroClaw at
+[`e592a555d69c6a701c0fa0fa3f94a4bbcffbb2c2`](https://github.com/zeroclaw-labs/zeroclaw/tree/e592a555d69c6a701c0fa0fa3f94a4bbcffbb2c2).
+It distinguishes shipped defaults from optional features, partial scaffolding,
+and roadmap claims.
 
-Zeroclaw tracks every subsystem (gateway, channels, scheduler, heartbeat) in a `HealthRegistry` singleton with `mark_component_ok()` / `mark_component_error()` / `bump_component_restart()`. The `/health` endpoint returns a structured snapshot.
+Pynchy's baseline remains intentional: full agent cores run in per-workspace
+Docker or Apple Container boundaries; LiteLLM owns provider breadth and
+credential isolation; host-mediated tools receive semantic trust and approval
+policy; Temporal owns durable schedules and recovery; ActionSpecs and canaries
+provide independent semantic evidence.
 
-**Pynchy today:** The `/health` endpoint returns uptime and git SHA, plus channel connection status. There's no tracking of whether IPC is healthy, containers are responsive, the DB is reachable, or the queue is draining.
+## Architecture and capability comparison
 
-**What to adopt:** A `HealthRegistry` that each subsystem reports into. The existing `/health` endpoint would return component-level status, making it trivial to spot "IPC watcher died 5 minutes ago" vs. "everything is fine." This is especially valuable since pynchy runs as a long-lived daemon where silent subsystem failures are the hardest bugs to diagnose.
+| Area | Pynchy today | ZeroClaw today | Direction |
+| --- | --- | --- | --- |
+| Agent execution | Pluggable mature cores in per-workspace containers | Rust agent loop, named agents, subagents, runtime model switching | Preserve Pynchy's core boundary; add core-neutral delegation records, not another loop. |
+| Providers | LiteLLM routing, budgets, rate limits, credential isolation | Direct provider slots and runtime routing | Do not duplicate LiteLLM with direct provider ownership. |
+| Channels | Channel plugins, shared inbound audio transcription, text-centric outbound events | Thirty-plus adapters with uneven shipped support | Do not chase count. Build media/attachment primitives and add channels for real workflows. |
+| Control plane | HTTP/SSE and TUI; complete API binds to `0.0.0.0` behind network perimeter controls | Loopback default, public-bind and remote-admin opt-ins, pairing-derived auth, local IPC | Immediate Pynchy security gap. Add application-layer authentication and fail-closed posture. |
+| Plugins | Pluggy hooks; trusted Python entry points import into the host; several hooks return raw dictionaries | Permission manifests and WASM contracts, though disabled by default and not in release binaries | Add typed manifests and out-of-process execution for untrusted extensions; retain in-process Pluggy only for trusted code. |
+| Tools and MCP | Host-owned IPC, on-demand MCP containers, workspace grants, action coverage, canaries | Native tools, MCP, feature gates, deferred tool loading | Pynchy already has stronger semantic evidence. Consider deferred schemas only after prompt-budget measurement. |
+| Security | Container isolation, host-held credentials, source/secret/sink taint policy, clean-room admin policy | Command and path policy, pairing, OS sandboxing, OTP/estop, receipts | Preserve semantic policy; add control-plane authentication and durable action receipts. |
+| Scheduling | Temporal schedules, interrupted-turn recovery, host jobs, managed worktree merges | Cron, heartbeat, routines, SOP steps | Keep Temporal as the only durable scheduler. Adapt event fan-in and typed step contracts. |
+| Delegation | Isolated scheduled workspaces but no generic agent-callable handoff | Same-identity subagents, cross-agent delegation, fan-out | Add bounded same-profile delegation with immutable capability snapshots and Temporal cancellation/results. |
+| Memory and history | SQLite FTS/BM25, explicit Obsidian learning, selective skills | Multiple stores, embeddings, graph/decay/dedup/export | Add provenance, budgets, conflicts, export, and audit before evaluating embeddings. |
+| Observability | Structlog, EventBus, SQLite summaries, Phoenix, status, canaries | Typed logs, inherited context, rolling JSONL, dashboard bridge | Add a typed execution-attribution envelope; do not duplicate sensitive Phoenix bodies. |
+| Evaluation | Hermetic tests, `pytest --action-coverage`, live canaries | Replay crate; live mode remains unfinished | Borrow replay fixtures while retaining canaries as independent production evidence. |
+| Operator UX | Minimal CLI and hand-maintained configuration docs | Doctor, config operations, schema surfaces, stable errors | Build read-only diagnostics and generated truth before a dashboard. |
 
----
+## Priority roadmap
 
-## 3. Resilient Provider Wrapper (Medium-High Impact)
+### P0: control-plane and capability truth
 
-Zeroclaw's `ReliableProvider` wraps any provider with retry + exponential backoff + failover to the next provider. It distinguishes retryable errors (429, 5xx, timeouts) from non-retryable ones (400, 401, 403). There's also a `RouterProvider` that routes `hint:reasoning` to one provider and `hint:fast` to another.
+#### Fail closed at the control plane
 
-**Pynchy today:** Provider logic lives inside the container. The host has no visibility into or control over LLM failures. If Claude returns a 500, the container process fails, the host sees an error exit code, and the queue retry kicks in — restarting the entire container for what might have been a transient API blip.
+The HTTP surface includes messages, events, canaries, periodic jobs, and
+deployment. A network perimeter alone must not be its only protection.
 
-**What to adopt:** At minimum, the container-side `AgentCore` implementations should have built-in retry with backoff for transient API errors, so a single 429 doesn't kill a 10-minute agent session. The hint-based routing pattern is also worth considering — it would let workspace configs specify `model: hint:fast` or `model: hint:reasoning` and resolve to actual provider+model combinations centrally.
+- Bind HTTP to loopback by default.
+- Prefer a permission-restricted Unix socket for local TUI and CLI control,
+  while retaining TCP loopback as the portable fallback.
+- Require pairing/bootstrap-derived bearer authentication for every remote
+  `/api/*` call.
+- Separate `allow_public_bind` from `allow_remote_deploy`; require
+  authentication for either remote posture.
+- Refuse public startup without authentication, rate-limit requests, and emit
+  audit events.
+- Keep readiness endpoints separately scoped and free of sensitive config.
 
----
+This is an immediate security correction, not merely a product improvement.
 
-## 4. Formalized Security Policy Engine (Medium Impact)
+#### Replace raw plugin dictionaries with typed descriptors
 
-Zeroclaw has a single `SecurityPolicy` struct that owns autonomy levels, command allowlists, path validation, rate limiting, and risk classification. Every tool execution runs through `policy.check_command()`.
+Parse third-party registration data once into frozen owned types such as
+`AgentCoreSpec`, `ServiceHandlerSpec`, `McpServerPluginSpec`, and
+`WorkspacePluginSpec`. Reject duplicate names, missing ownership, incompatible
+runtime requirements, and unclassified trust at that boundary.
 
-**Pynchy today:** Security is effective but scattered — `mount_security.py` handles mount validation, workspace profiles have `pynchy_repo_access` levels, IPC handlers check authorization, and you have planned-but-not-started security hardening in the backlog. The logic works, but there's no single place to answer "what can this group do?"
+Add a manifest and resolved capability view that express identity, version,
+ownership, compatibility, declared hooks, optional dependencies, configuration
+prerequisites, runtime location, trust, approval policy, ActionSpec/canary
+evidence, health, and remediation. One `ResolvedCapability` should answer
+whether a feature is installed, configured, healthy, policy-allowed,
+approval-gated, core-compatible, and evidenced. This subsumes the repeated
+OpenClaw, NanoClaw, and Hermes recommendation.
 
-**What to adopt:** A `SecurityPolicy` dataclass per workspace/group that consolidates the rules. Instead of checking mounts in one place and IPC authorization in another, the policy object is the single source of truth. This would also make the planned security profiles (`backlog/2-planning/security-hardening-1-profiles.md`) much easier to implement — each profile is just a named policy preset.
+#### Generate operator truth and add `pynchy doctor`
 
----
+Generate capability tables and configuration references from descriptors and
+Pydantic schemas rather than maintaining parallel lists. Add:
 
-## 5. Component Supervision with Backoff (Medium Impact)
+- `pynchy doctor [--json]` for runtime, container, Temporal, LiteLLM, tunnel,
+  channel, credential-presence, plugin, and migration checks with remediation;
+- `pynchy config validate [--json]` to parse desired state without starting
+  services;
+- `pynchy init` that never echoes or persists secret values into tracked files;
+- a stable `pynchy status --json` schema over the existing collector; and
+- generated JSON Schema/OpenAPI plus stable machine-readable errors.
 
-Zeroclaw's `spawn_component_supervisor()` wraps each subsystem in a loop with exponential backoff. If a channel crashes, it restarts automatically. If it keeps crashing, backoff grows. Health is updated at each transition.
+Do not copy ZeroClaw's configuration monolith to obtain these outcomes.
 
-**Pynchy today:** Relies on systemd/launchd for process-level restarts and has graceful shutdown logic. But if, say, the IPC watcher task panics or the WhatsApp channel disconnects, there's no internal mechanism to restart just that component. The whole process stays up but is partially broken.
+### P1: portable capabilities and orchestration
 
-**What to adopt:** A `supervise()` async utility that wraps `asyncio.create_task()` calls. Something like:
+#### Compose channel capabilities and add a media/outbox contract
 
-```python
-async def supervise(name: str, coro_factory, *, base_backoff=1.0, max_backoff=60.0):
-    backoff = base_backoff
-    while True:
-        health.mark_ok(name)
-        try:
-            await coro_factory()
-        except Exception as e:
-            health.mark_error(name, str(e))
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, max_backoff)
-        else:
-            backoff = base_backoff
-```
+Replace optional behaviour discovered through `hasattr` with small,
+runtime-checkable protocols such as `TypingChannel`, `StreamingChannel`,
+`ReactionChannel`, `HistoryChannel`, `ProvisioningChannel`, and `MediaChannel`.
+Do not create a giant default-heavy channel trait.
 
-Wire this into `PynchyApp` for the IPC watcher, message loop, scheduler, and channel connections. Pairs naturally with the health registry above.
+Add typed `Attachment`, `MediaKind`, `DeliveryIntent`, `ProviderReceipt`, and
+delivery-state records. Enforce staging-path containment, size and type limits,
+channel acceptance, redaction, retry/expiry, durable cleanup, and unknown
+outcomes. Outbound TTS, generated images, files, and richer questions become
+consumers of this contract rather than channel-specific branches.
 
----
+#### Build event-triggered flows on Temporal
 
-## 6. Gateway Idempotency + Rate Limiting (Lower Impact, but Easy Win)
+Adapt declarative steps, approvals, retry, conditions, and event fan-in as
+typed Temporal workflow inputs and activities. Use deterministic event IDs,
+source authentication, idempotency, and immutable policy snapshots. Start with
+authenticated webhooks and filesystem/channel events; do not add a competing
+SOP scheduler.
 
-Zeroclaw's gateway has per-client sliding-window rate limiting and an idempotency store that deduplicates requests by key with TTL.
+#### Add bounded core-neutral delegation
 
-**Pynchy today:** The HTTP server has no rate limiting or idempotency. It relies on Tailscale ACLs for access control, which is fine for authentication, but doesn't prevent duplicate deploy webhooks or runaway API calls.
+Expose an agent-callable delegation/handoff action that creates an isolated
+child session and result artifact with cancellation and parent delivery. The
+first release stays within one workspace/profile, inherits the intersection of
+caller and target capabilities, and shares cost/action budgets. Cross-workspace
+delegation waits for explicit approval forwarding and data-release policy.
 
-**What to adopt:** A simple idempotency decorator for the `/deploy` and `/api/send` endpoints — store request hashes with a 60-second TTL, return early on duplicates. Sliding-window rate limiting is also straightforward with `aiohttp` middleware. Low effort, prevents a class of operational issues.
+### P2: evidence, memory, and UI
 
----
+#### Carry execution attribution and support deterministic replay
 
-## Things Zeroclaw Does That Pynchy Already Does Better
+Add an `ExecutionContext` through `contextvars` for turn, workspace, channel,
+core, tool/action, Temporal workflow/activity, task, trace, and delivery IDs.
+Background tasks must inherit attribution, cancellation, and exception
+reporting. Deterministic replay fixtures should exercise routing, permission
+decisions, tool contracts, and rendered delivery without network or cost; live
+canaries remain independent evidence.
 
-To be fair, there are areas where pynchy's architecture is already stronger:
+#### Evolve memory conservatively
 
-- **Plugin system**: Pynchy's pluggy-based hooks are far more extensible than zeroclaw's compile-time trait implementations. Zeroclaw has no runtime plugin loading.
-- **Container isolation**: Pynchy's per-group container model with file-based IPC is more sophisticated than zeroclaw's optional Docker sandboxing.
-- **Event bus**: Pynchy's typed `EventBus` is a cleaner internal coordination mechanism than zeroclaw's direct function calls.
-- **Queue system**: `GroupQueue` with priority, global concurrency limits, and per-group state is more mature than zeroclaw's single mpsc channel.
-- **Multi-channel architecture**: Pynchy's channel plugin system is more extensible than zeroclaw's hardcoded channel implementations.
+Define typed memory entries and recall results with provenance, timestamps,
+sensitivity, conflict/dedup state, retrieval reason/score, and a token/result
+budget. Provide export, purge, and audit. Benchmark BM25 against optional
+hybrid embeddings on Pynchy's corpus before adopting vectors, and ask each core
+to surface compaction/context-loss events instead of hiding them in the host.
+
+#### Defer schema loading and dashboards until justified
+
+If MCP schemas measurably consume prompt budget, expose compact capability
+summaries plus an authorized tool-search/load action while keeping host policy
+and grants authoritative. Build a browser dashboard only after authentication
+and stable operator schemas exist; it must render those records rather than
+introduce a second source of truth.
+
+## Patterns to preserve and ideas to reject
+
+Preserve container isolation, data-flow trust, credential boundaries, Temporal
+durability, ActionSpec coverage, live canaries, and worktree ownership.
+
+Do not copy direct provider proliferation, a second agent loop, channel-count
+roadmaps, a separate SOP scheduler, a giant channel trait, a full WASM host,
+hardware/localization without a concrete use case, ZeroClaw's very large
+modules, or feature claims with only partial wiring. Count verified behaviour,
+not names.
+
+## Recommended sequence
+
+1. Fail-close and authenticate the control plane.
+2. Introduce typed manifests and one resolved-capability view.
+3. Generate operator truth and ship read-only doctor/validation/status.
+4. Establish the attachment/outbox and external action lifecycle.
+5. Add event-triggered Temporal flows and bounded delegation.
+6. Add attribution/replay and conservative memory contracts.
+7. Consider deferred schemas and a dashboard after the underlying records
+   exist.
+
+## Evidence pointers
+
+### Pynchy
+
+- `src/pynchy/plugins/hookspecs.py` and `src/pynchy/plugins/registry.py` —
+  plugin registration and raw metadata boundaries.
+- `src/pynchy/actions.py` and `docs/architecture/action-coverage.md` —
+  semantic action and canary evidence.
+- `src/pynchy/host/orchestrator/temporal/` — durable schedules and workflows.
+- `src/pynchy/host/container_manager/security/` — trust and taint policy.
+- `src/pynchy/state/outbound.py` and
+  `src/pynchy/host/orchestrator/messaging/` — delivery state and reconciliation.
+
+### ZeroClaw
+
+- `docs/book/src/ops/network-deployment.md` — two-key remote posture.
+- `docs/book/src/architecture/logging.md` — inherited attribution.
+- `crates/zeroclaw-eval/src/lib.rs` — replay runner pattern.
+- Plugin, channel, SOP, and deployment documents at the recorded revision —
+  capability declarations, partial wiring, and operational contracts.

@@ -64,6 +64,12 @@ Single source of truth for all pynchy work items.
   - [Hook Step 4: Agent Runner](2-planning/plugin-hook-4-agent-runner.md) — Load and register hooks in container
   - [Hook Step 5: Polish](2-planning/plugin-hook-5-polish.md) — Error handling, docs, and example plugin
 - [Reliable bidirectional channel messaging](2-planning/reliable-channel-messaging.md) — Per-channel bidirectional cursors, standardized `Reconcilable` protocol on all channels, outbound ledger with retry, atomic cursor persistence
+- [OpenClaw comparison](2-planning/comparison-to-openclaw.md) — Capability, external-action, delegation, and operator-control-plane contracts worth adapting without copying a host-first gateway.
+- [NanoClaw comparison](2-planning/comparison-to-nanoclaw.md) — Host-action, attachment/outbox, session-topology, handoff, and setup-plan contracts for Pynchy's container-first architecture.
+- [Hermes Agent comparison](2-planning/comparison-to-hermes-agent.md) — Resolved capabilities, channel/media contracts, durable handoffs, conversation navigation, and correlated operational evidence.
+- [ZeroClaw comparison](2-planning/comparison-to-zeroclaw.md) — Fail-closed control-plane access, capability truth, operator diagnostics, media, attribution, and replay priorities.
+- [NemoClaw comparison](2-planning/comparison-to-nemoclaw.md) — Execution-substrate policy, reproducible image, capability manifests, and evidence-backed diagnostics.
+- [ClawHub self-improvement comparison](2-planning/comparison-to-clawhub-self-improvement.md) — Candidate ledger, promotion governance, immutable skills, and host-verified code-improver publication.
 
 ### 3 - Ready
 *Plan approved or not needed. Ready for an agent to pick up.*
