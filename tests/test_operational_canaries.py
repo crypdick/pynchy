@@ -10,6 +10,7 @@ from conftest import make_settings
 
 from pynchy.canaries import CanaryRunContext, registered_canary_scenarios
 from pynchy.config import CanaryConfig
+from pynchy.config.models import McpTool, McpToolConfig
 from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
 from pynchy.host.container_manager.mcp.canary_client import McpCanaryToolError
 from pynchy.operational_canaries import (
@@ -25,6 +26,8 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMessage,
     ProtonMessageEnvelope,
 )
+
+_TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
 
 
 def _context(scenario_id: str) -> CanaryRunContext:
@@ -331,6 +334,43 @@ async def test_proton_canary_sends_receives_reads_and_cleans_without_persisting_
         "message_exists",
         {"mailbox": "INBOX", "message_id": "<canary@example.test>"},
     ) in client.calls
+
+
+def test_proton_canary_uses_the_configured_mcp_environment(monkeypatch):
+    settings = make_settings(
+        tools={
+            "proton-mail": McpTool(
+                type="mcp",
+                mcp=McpToolConfig(
+                    runtime="script",
+                    command="uv",
+                    port=8475,
+                    env={
+                        "PYNCHY_PROTON_BRIDGE_USERNAME": "mail@example.test",
+                        "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND": _TEST_PASSWORD_COMMAND,
+                    },
+                    env_forward={"PYNCHY_PROTON_BRIDGE_IMAP_PORT": "TEST_IMAP_PORT"},
+                ),
+            )
+        }
+    )
+    captured_environment: dict[str, str] | None = None
+
+    def create_client(*, environment: dict[str, str]):
+        nonlocal captured_environment
+        captured_environment = environment
+        return _FakeProtonClient()
+
+    monkeypatch.setenv("TEST_IMAP_PORT", "2143")
+    monkeypatch.setattr("pynchy.operational_canaries.get_settings", lambda: settings)
+    monkeypatch.setattr("pynchy.operational_canaries.create_proton_mail_client", create_client)
+
+    ProtonMailRoundTripCanary()._client_factory()
+
+    assert captured_environment is not None
+    assert captured_environment["PYNCHY_PROTON_BRIDGE_USERNAME"] == "mail@example.test"
+    assert captured_environment["PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND"] == _TEST_PASSWORD_COMMAND
+    assert captured_environment["PYNCHY_PROTON_BRIDGE_IMAP_PORT"] == "2143"
 
 
 def test_built_in_operational_canaries_register_only_safe_supported_services():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping  # noqa: TC003 - beartype resolves this annotation at runtime.
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -37,17 +38,20 @@ class ProtonBridgeConfiguration(BaseModel):
         return normalized
 
     @classmethod
-    def from_environment(cls) -> ProtonBridgeConfiguration:
-        """Load the deliberately narrow Bridge configuration from the MCP environment."""
+    def from_environment(
+        cls, environment: Mapping[str, str] | None = None
+    ) -> ProtonBridgeConfiguration:
+        """Load the deliberately narrow Bridge configuration from an MCP environment."""
+        source = os.environ if environment is None else environment
         values: dict[str, str | None] = {
-            "username": os.environ.get(_USERNAME_ENV),
-            "password_command": os.environ.get(_PASSWORD_COMMAND_ENV),
+            "username": source.get(_USERNAME_ENV),
+            "password_command": source.get(_PASSWORD_COMMAND_ENV),
         }
         for field_name, environment_name in (
             ("imap_port", _IMAP_PORT_ENV),
             ("smtp_port", _SMTP_PORT_ENV),
         ):
-            value = os.environ.get(environment_name)
+            value = source.get(environment_name)
             if value is not None:
                 values[field_name] = value
         try:

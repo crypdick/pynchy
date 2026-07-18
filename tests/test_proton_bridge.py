@@ -19,6 +19,8 @@ from pynchy.plugins.integrations.proton_bridge import (
 if TYPE_CHECKING:
     from email.message import EmailMessage
 
+_TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
+
 
 def _password_reader() -> SecretStr:
     """Deterministic credential reader for direct-IMAP tests."""
@@ -105,6 +107,20 @@ def _client(
 
 
 class TestProtonBridgeImapClient:
+    def test_reads_bridge_settings_from_an_explicit_mcp_environment(self):
+        configuration = ProtonBridgeConfiguration.from_environment(
+            {
+                "PYNCHY_PROTON_BRIDGE_USERNAME": "mail@example.test",
+                "PYNCHY_PROTON_BRIDGE_PASSWORD_COMMAND": _TEST_PASSWORD_COMMAND,
+                "PYNCHY_PROTON_BRIDGE_IMAP_PORT": "2143",
+                "PYNCHY_PROTON_BRIDGE_SMTP_PORT": "2025",
+            }
+        )
+
+        assert configuration.username == "mail@example.test"
+        assert configuration.imap_port == 2143
+        assert configuration.smtp_port == 2025
+
     def test_rejects_a_non_callable_password_reader(self):
         configuration = ProtonBridgeConfiguration(
             username="hi@example.com",

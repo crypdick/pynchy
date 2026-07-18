@@ -15,6 +15,7 @@ import aiohttp
 
 from pynchy.canaries import CanaryExercise, CanaryRunContext, CanaryScenario
 from pynchy.config import get_settings
+from pynchy.config.models import McpTool
 from pynchy.google_mcp_canaries import GoogleCalendarRoundTripCanary, GoogleDriveRoundTripCanary
 from pynchy.plugins.integrations.caldav import (
     _handle_create_event,
@@ -269,8 +270,8 @@ class LinearWorkspaceRoundTripCanary:
 class ProtonMailRoundTripCanary:
     """Send, list, read, and permanently remove a tagged Bridge message."""
 
-    def __init__(self, *, client_factory: ProtonClientFactory = create_proton_mail_client) -> None:
-        self._client_factory = client_factory
+    def __init__(self, *, client_factory: ProtonClientFactory | None = None) -> None:
+        self._client_factory = client_factory or _configured_proton_mail_client
 
     async def exercise(self, context: CanaryRunContext) -> CanaryExercise:
         settings = get_settings().canary
@@ -344,6 +345,22 @@ class ProtonMailRoundTripCanary:
         if message.message_id != artifact.message_id:
             raise CanaryServiceError("Proton Bridge read a different message than it listed")
         return True
+
+
+def _configured_proton_mail_client() -> ProtonMailClient:
+    """Create a canary client with the same environment as the Proton MCP server."""
+    tool = get_settings().tools.get("proton-mail")
+    if not isinstance(tool, McpTool):
+        raise CanaryServiceError("Proton mail canary requires an MCP tool configuration")
+    environment = {**os.environ, **tool.mcp.env}
+    environment.update(
+        {
+            target_name: source_value
+            for target_name, source_name in tool.mcp.env_forward.items()
+            if (source_value := os.environ.get(source_name)) is not None
+        }
+    )
+    return create_proton_mail_client(environment=environment)
 
 
 @asynccontextmanager
