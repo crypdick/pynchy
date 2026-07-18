@@ -25,6 +25,7 @@ Single source of truth for all pynchy work items.
 ### 1 - Approved
 *Approved ideas. No plan yet.*
 
+- [Cop-gated learned skill vetting](1-approved/cop-skill-vetting.md) — Quarantine, inspect, and hash-pin learned skills before activation; preserve the Cop and workspace policy as separate security boundaries.
 - [Voice transcription](1-approved/voice-transcription.md) — Transcribe inbound voice notes (WhatsApp, Slack) via Whisper API so agents can read audio messages
 - [X integration port](1-approved/x-integration-port.md) — Port the archived TypeScript X/Twitter skill from Nanoclaw to Python plugins
 - [Periodic agents ideas](1-approved/periodic-agents-ideas.md) — More periodic agent ideas beyond code-improver (security sweeps, SDK updates, etc.)
