@@ -220,6 +220,16 @@
 # [profiles.pynchy-admin.capabilities."mcp.email.send"]
 # decision = "needs_human"  # "allow", "deny", or "needs_human"
 
+# Reuse an explicit no-prompt computer-use grant across profiles.
+# [profiles.unrestricted-computer-use]
+# tools = ["computer_use"]
+#
+# [profiles.unrestricted-computer-use.capabilities."desktop.computer.use"]
+# decision = "allow"
+#
+# [profiles.desktop-worker]
+# includes = ["pynchy-worker", "unrestricted-computer-use"]
+
 # [profiles.pynchy-worker]
 # prompts = ["pynchy-code-improver"]
 # skills = ["core"]

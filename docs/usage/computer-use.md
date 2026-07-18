@@ -113,6 +113,32 @@ launch, numeric-element or coordinate clicks, text, shortcuts, scrolling, and
 permission checks. Stable element references, menus, dialogs, clipboard, and
 Spaces require a richer provider such as Peekaboo.
 
+## Compose unrestricted computer use into profiles
+
+Define one reusable profile when multiple workspaces should operate the host
+desktop without runtime approval:
+
+```toml
+[profiles.unrestricted-computer-use]
+tools = ["computer_use"]
+
+[profiles.unrestricted-computer-use.capabilities."desktop.computer.use"]
+decision = "allow"
+
+[profiles.desktop-worker]
+includes = ["base", "unrestricted-computer-use"]
+```
+
+The tool selection makes `computer_use` available. The explicit capability
+rule authorizes it without the normal session prompt. The built-in
+computer-use plugin supplies its core instructional skill automatically, so
+the profile does not need a separate `skills` entry.
+
+Compose this profile only into workspaces intended to control the real host
+without confirmation. A service property set to `"forbidden"` still blocks
+the action. See [Capability Rules](security.md#capability-rules) for the full
+policy precedence.
+
 ## Artifacts and safety
 
 Screenshots are saved under the workspace IPC directory and exposed inside the

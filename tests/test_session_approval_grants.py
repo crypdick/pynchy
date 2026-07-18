@@ -73,6 +73,44 @@ def test_exact_request_tool_ignores_session_grant() -> None:
     assert evaluate_host_action_policy(action, gate, {}).needs_human
 
 
+def test_explicit_capability_allow_skips_service_human_gate() -> None:
+    action = _action("computer_use", approval_mode=ApprovalMode.SESSION_TOOL)
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            services={"computer_use": ServiceTrustConfig(dangerous_writes=True)},
+            capabilities={
+                "test.computer.use": CapabilityRule(decision="allow"),
+            },
+        )
+    )
+
+    decision = evaluate_host_action_policy(action, gate, {})
+
+    assert decision.allowed
+    assert not decision.needs_human
+    assert "explicitly allowed" in (decision.reason or "")
+    assert "Human approval suppressed" in (decision.reason or "")
+
+
+def test_explicit_capability_allow_cannot_override_service_forbidden() -> None:
+    action = _action("computer_use", approval_mode=ApprovalMode.SESSION_TOOL)
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            services={
+                "computer_use": ServiceTrustConfig(dangerous_writes="forbidden"),
+            },
+            capabilities={
+                "test.computer.use": CapabilityRule(decision="allow"),
+            },
+        )
+    )
+
+    decision = evaluate_host_action_policy(action, gate, {})
+
+    assert not decision.allowed
+    assert not decision.needs_human
+
+
 def test_session_grant_cannot_override_a_later_policy_denial() -> None:
     action = _action("computer_use")
     gate = SecurityGate(

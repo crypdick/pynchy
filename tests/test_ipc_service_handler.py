@@ -15,7 +15,7 @@ from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
 @pytest.fixture(autouse=True)
@@ -318,6 +318,47 @@ async def test_dangerous_writes_requires_human(
         "Approving grants this tool for the rest of the active agent session"
         in deps.broadcast_messages[0][1]
     ) is has_session_notice
+
+
+@pytest.mark.asyncio
+async def test_explicit_profile_allow_executes_dangerous_write_without_approval(tmp_path):
+    """An explicit capability allow is authoritative over the routine write gate."""
+    mock_handler = AsyncMock(return_value={"result": "ok"})
+    catalog = _make_action_catalog("sensitive_tool", handler_fn=mock_handler)
+    create_gate(
+        "test-ws",
+        1000.0,
+        WorkspaceSecurity(
+            services={
+                "sensitive_tool": ServiceTrustConfig(dangerous_writes=True),
+            },
+            capabilities={
+                "test.sensitive.tool": CapabilityRule(decision="allow"),
+            },
+        ),
+    )
+    settings = _make_settings()
+    settings.data_dir = tmp_path
+    deps = FakeDeps({"test@g.us": TEST_GROUP})
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings",
+            return_value=settings,
+        ),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
+        ),
+    ):
+        await registry.dispatch(_make_request("sensitive_tool"), "test-ws", False, deps)
+
+    response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
+    assert json.loads(response_file.read_text()) == {"result": "ok"}
+    assert not (tmp_path / "ipc" / "test-ws" / "pending_approvals").exists()
+    assert deps.broadcast_messages == []
+    mock_handler.assert_awaited_once()
 
 
 @pytest.mark.asyncio
