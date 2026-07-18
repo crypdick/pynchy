@@ -21,6 +21,7 @@ from pynchy.config.models import DiscordConnectionConfig
 from pynchy.host.audio import AudioSynthesisResult
 from pynchy.plugins.channels.discord import DiscordChannel, DiscordChannelPlugin
 from pynchy.plugins.channels.discord._voice import (  # noqa: PLC2701
+    DiscordVoiceManager,
     _load_opus,  # allow: private-test-imports - platform Opus loader.
     _VoiceSession,  # allow: private-test-imports - voice playback boundary.
 )
@@ -29,7 +30,7 @@ from pynchy.plugins.channels.discord._voice_client import (  # noqa: PLC2701
     _parse_rtp_packet,  # allow: private-test-imports - exercises RTP crypto boundary.
 )
 from pynchy.state import init_test_database, store_chat_metadata
-from pynchy.types import Channel, OutboundEvent, OutboundEventType
+from pynchy.types import Channel, OutboundEvent, OutboundEventType, WorkspaceProfile
 
 DISCORD_BOT_ENV = "X"
 DISCORD_BOT_VALUE = "token"
@@ -98,6 +99,29 @@ class _FakePynchyVoiceClient(PynchyVoiceClient):
 
     def is_connected(self) -> bool:
         return True
+
+
+class _FakeReceivingVoiceClient(PynchyVoiceClient):
+    def __init__(self) -> None:
+        pass
+
+    def start_receiving(self, _listener: object) -> None:
+        pass
+
+
+class _FakeVoiceChannel:
+    id = 2
+
+    def __init__(self, connected: asyncio.Event, release: asyncio.Event) -> None:
+        self.connected = connected
+        self.release = release
+        self.connect_calls = 0
+
+    async def connect(self, **_kwargs: object) -> _FakeReceivingVoiceClient:
+        self.connect_calls += 1
+        self.connected.set()
+        await self.release.wait()
+        return _FakeReceivingVoiceClient()
 
 
 @dataclass
@@ -311,6 +335,30 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
     )
     assert dave_session.packets[0][0] == 42
     assert dave_session.packets[0][2] == dave_payload
+
+
+@pytest.mark.asyncio
+async def test_voice_manager_serializes_duplicate_connect_attempts(monkeypatch):
+    channel = _channel()
+    channel.workspaces = lambda: {"discord:voice:2": cast("WorkspaceProfile", object())}
+    manager = DiscordVoiceManager(channel)
+    connected = asyncio.Event()
+    release = asyncio.Event()
+    voice_channel = _FakeVoiceChannel(connected, release)
+    monkeypatch.setattr(manager, "_allowed_members", lambda _voice_channel: {"42": "Alice"})
+    monkeypatch.setattr("pynchy.plugins.channels.discord._voice._load_opus", lambda: True)
+
+    first = asyncio.create_task(manager._refresh(voice_channel))
+    await connected.wait()
+    second = asyncio.create_task(manager._refresh(voice_channel))
+    await asyncio.sleep(0)
+
+    assert voice_channel.connect_calls == 1
+
+    release.set()
+    await asyncio.gather(first, second)
+
+    assert voice_channel.connect_calls == 1
 
 
 @pytest.mark.asyncio

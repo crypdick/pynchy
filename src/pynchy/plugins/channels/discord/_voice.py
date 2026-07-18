@@ -99,6 +99,7 @@ class DiscordVoiceManager:
     def __init__(self, channel: DiscordChannel) -> None:
         self._channel = channel
         self._session: _VoiceSession | None = None
+        self._refresh_lock = asyncio.Lock()
 
     async def on_ready(self) -> None:
         """Join an already occupied configured room after a gateway reconnect."""
@@ -136,6 +137,11 @@ class DiscordVoiceManager:
             await session.close()
 
     async def _refresh(self, voice_channel: object) -> None:
+        """Apply one voice-state update after any in-progress connection finishes."""
+        async with self._refresh_lock:
+            await self._refresh_locked(voice_channel)
+
+    async def _refresh_locked(self, voice_channel: object) -> None:
         jid = voice_jid(str(getattr(voice_channel, "id", "")))
         if not self._workspace_exists(jid):
             return
