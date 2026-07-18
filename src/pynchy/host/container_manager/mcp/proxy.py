@@ -208,7 +208,7 @@ async def _maybe_gate_outbound_call(
     decision = gate.evaluate_write(proxy_request.instance_id, rpc.get("params", {}))
     if not decision.allowed:
         return web.json_response({"error": f"Policy denied: {decision.reason}"}, status=403)
-    if not decision.needs_human:
+    if not decision.needs_human or capability_decision.overrides_human_approval:
         return None
 
     return await _await_human_approval(

@@ -24,6 +24,7 @@ def test_policy_decision_defaults():
     assert d.reason is None
     assert d.needs_cop is False
     assert d.needs_human is False
+    assert d.overrides_human_approval is False
 
 
 def test_capability_deny_blocks_exact_match():
@@ -62,6 +63,14 @@ def test_capability_exact_rule_beats_wildcard():
 
     assert decision.allowed
     assert not decision.needs_human
+    assert decision.overrides_human_approval
+
+
+def test_missing_capability_rule_is_neutral_not_an_approval_override():
+    decision = SecurityPolicy(WorkspaceSecurity()).evaluate_capability("mcp.email.send")
+
+    assert decision.allowed
+    assert not decision.overrides_human_approval
 
 
 # --- Forbidden blocks unconditionally ---

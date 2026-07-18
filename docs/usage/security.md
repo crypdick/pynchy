@@ -70,7 +70,9 @@ Text-only channels show the command fallback in the prompt, for example `approve
 
 ## Capability Rules
 
-Use tool trust fields for broad service risk. Use profile capability rules when a specific MCP tool call needs a sharper policy than the rest of the service.
+Use tool trust fields for broad service risk. Use profile capability rules when
+a specific host action or MCP tool call needs a sharper policy than the rest
+of the service.
 
 ```toml
 [profiles.finance-assistant]
@@ -83,7 +85,22 @@ decision = "needs_human"
 decision = "deny"
 ```
 
-Capability IDs use dotted segments. MCP tool calls use `mcp.<tool-name>.<call-name>`. A trailing `.*` applies to all matching calls, such as `mcp.email.*`. Valid decisions are `allow`, `deny`, and `needs_human`.
+Capability IDs use dotted segments. Host actions publish their IDs through the
+capability status surface; MCP tool calls use
+`mcp.<tool-name>.<call-name>`. A trailing `.*` applies to all matching calls,
+such as `mcp.email.*`.
+
+Each decision has authoritative semantics:
+
+- `allow` permits the matching capability without human approval, including
+  approval that service trust or outbound payload scanning would otherwise
+  request. It does not override a service property set to `"forbidden"` or
+  disable Cop review.
+- `deny` blocks the matching capability.
+- `needs_human` requires approval. The tool's approval contract determines
+  whether that approval covers one exact request or the active session.
+
+An unspecified capability rule remains neutral and falls back to service trust.
 
 ## Configuration Examples
 

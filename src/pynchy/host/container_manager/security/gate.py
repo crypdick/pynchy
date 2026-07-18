@@ -81,19 +81,25 @@ def evaluate_host_action_policy(
         else gate.evaluate_write(action.service_name, data)
     )
     tool_name = str(action.tool_name)
+    needs_human = capability.needs_human or (
+        service.needs_human and not capability.overrides_human_approval
+    )
     approval_granted = (
         service.allowed
+        and needs_human
         and action.approval.mode is ApprovalMode.SESSION_TOOL
         and gate.has_session_tool_approval(tool_name)
     )
     reasons = [reason for reason in (capability.reason, service.reason) if reason]
+    if capability.overrides_human_approval and service.needs_human:
+        reasons.append("Human approval suppressed by explicit capability allow")
     if approval_granted:
         reasons.append(f"Session approval active for tool '{tool_name}'")
     return PolicyDecision(
         allowed=service.allowed,
         reason="; ".join(reasons) or None,
         needs_cop=service.needs_cop,
-        needs_human=(capability.needs_human or service.needs_human) and not approval_granted,
+        needs_human=needs_human and not approval_granted,
     )
 
 

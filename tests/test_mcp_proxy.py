@@ -372,6 +372,36 @@ class TestMcpProxyOutboundGating:
         finally:
             await client.close()
 
+    async def test_capability_allow_skips_service_human_gate(self, mock_backend):
+        """An explicit profile allow should not prompt for a dangerous service write."""
+        security = WorkspaceSecurity(
+            services={"email": ServiceTrustConfig(dangerous_writes=True)},
+            capabilities={"mcp.email.send": CapabilityRule(decision="allow")},
+        )
+        create_gate("test-ws", 1000.0, security)
+        approval_fn = AsyncMock()
+
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        app = create_proxy_app({"email": backend_url}, approval_fn=approval_fn)
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/email",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "id": 1,
+                    "params": {"name": "send", "arguments": {"to": "a@example.com"}},
+                },
+            )
+
+            assert resp.status == 200
+            approval_fn.assert_not_awaited()
+        finally:
+            await client.close()
+
     async def test_capability_wildcard_needs_human_can_be_approved(self, mock_backend):
         """A wildcard MCP capability can require human approval."""
         security = WorkspaceSecurity(

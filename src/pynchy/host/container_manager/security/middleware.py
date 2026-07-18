@@ -33,6 +33,8 @@ class PolicyDecision:
     reason: str | None = None
     needs_cop: bool = False
     needs_human: bool = False
+    # NOTE: Update docs/usage/security.md § Capability Rules if this override changes.
+    overrides_human_approval: bool = False
 
 
 class SecurityPolicy:
@@ -106,8 +108,17 @@ class SecurityPolicy:
         Missing rules are neutral: the service-trust policy still applies.
         """
         rule = self._matching_capability_rule(capability)
-        if rule is None or rule.decision == "allow":
+        if rule is None:
             return PolicyDecision(allowed=True)
+        if rule.decision == "allow":
+            # A profile's explicit allow is the durable authorization boundary.
+            # Profile composition can then opt many workspaces in without
+            # repeating the same approval at runtime.
+            return PolicyDecision(
+                allowed=True,
+                reason=f"Capability '{capability}' explicitly allowed by profile",
+                overrides_human_approval=True,
+            )
         if rule.decision == "deny":
             return PolicyDecision(
                 allowed=False,
