@@ -7,8 +7,8 @@ Why this exists: the Agent SDK hands you already-parsed message objects and a
 fixed menu of hooks. This core owns the subprocess and the stdout parse loop,
 so every raw stream-json line passes through Python before it becomes an
 ``AgentEvent`` -- the seam for turn-by-turn control and arbitrary stream
-injection. Select it with ``[agent] core = "claude-cli"`` (or
-``PYNCHY_AGENT_CORE=claude-cli``).
+injection. Select it with ``[agent] default_core = "claude-cli"`` (or
+``AGENT__DEFAULT_CORE=claude-cli``).
 
 Everything else reuses pynchy's existing wiring: the LiteLLM gateway via the
 inherited ``ANTHROPIC_*`` env, the file-IPC ``AgentEvent`` stream, MCP config,

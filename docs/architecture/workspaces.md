@@ -2,7 +2,7 @@
 
 How managed workspace definitions work under the hood. Use this page to build plugins that ship preconfigured agents — periodic code reviewers, monitoring bots, or anything that should "just work" after installation.
 
-Workspaces are configured chat roots. A workspace binds one Discord/Slack channel to profiles. Dynamic conversations under that root, such as Discord threads, get their own isolated runtime folders and always inherit the parent channel's complete resolved configuration. Pynchy resolves a generated thread folder back to its parent before selecting profiles, so a thread-local workspace entry cannot override the parent.
+Workspaces are configured chat roots. A workspace binds a channel chat to profiles. Dynamic conversations under that root, such as Discord threads, get their own isolated runtime folders and always inherit the parent chat's complete resolved configuration. Pynchy resolves a generated thread folder back to its parent before selecting profiles, so a thread-local workspace entry cannot override the parent.
 
 ## What Workspace Specs Do
 

@@ -14,7 +14,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 
 Provide an alternative LLM agent framework.
 
-**Calling strategy:** All results collected (multiple cores can coexist; selected via `PYNCHY_AGENT_CORE` env var).
+**Calling strategy:** All results collected. Multiple cores can coexist; select one with `[agent].default_core` (or `AGENT__DEFAULT_CORE`).
 
 ```python
 @hookimpl
@@ -85,7 +85,7 @@ async def handler(data: dict) -> dict:
 
 Provide agent skills (markdown instruction files) that get mounted into the container.
 
-**Calling strategy:** All results collected and flattened. Skills are filtered per-workspace based on the `skills` config field before being copied into the session directory.
+**Calling strategy:** All results collected and flattened. Skills are filtered by the selected profile's `skills` field before being copied into each core's session directory.
 
 ```python
 @hookimpl
@@ -93,7 +93,7 @@ def pynchy_skill_paths(self) -> list[str]:
     return [str(Path(__file__).parent / "skills" / "code-review")]
 ```
 
-**Return value:** List of absolute paths to skill directories. Each directory should contain a `SKILL.md` file following the Claude Agent SDK skill format.
+**Return value:** List of absolute paths to skill directories. Each directory must contain a `SKILL.md` file with Pynchy's supported YAML frontmatter.
 
 **Skill directory structure:**
 
@@ -119,22 +119,22 @@ tier: community
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | No | Skill identifier (defaults to directory name) |
-| `description` | Yes | What the skill does (used by the agent to decide when to invoke it) |
-| `tier` | No | `core`, `community`, or `dev` (defaults to `community`) |
+| `description` | No | Human- and agent-facing summary of what the skill does |
+| `tier` | No | Selection label (defaults to `community`) |
 | `allowed-tools` | No | Tool permissions (e.g., `Bash(my-tool:*)`) |
 
 **Skill tiers:**
 
 | Tier | Purpose | Filtering behavior |
 |------|---------|-------------------|
-| `core` | Essential skills useful in all workspaces | Always included when any filtering is active |
+| `core` | Essential skills useful in all workspaces | Always included |
 | `community` | General-purpose skills (default) | Included only when explicitly listed |
-| `dev` | Skills for developing pynchy itself | Included only when explicitly listed |
+| Any other label | A project-defined category such as `dev`, `ops`, or `social` | Included only when explicitly listed |
 
-Workspaces opt into skills via the `skills` config field:
+Profiles opt into skills via the `skills` config field; workspaces receive that selection through their profile:
 
 ```toml
-[workspaces.my-workspace]
+[profiles.my-profile]
 skills = ["core", "dev"]           # tier names and/or individual skill names
 ```
 
@@ -156,7 +156,7 @@ def pynchy_create_channel(self, context: Any) -> Any | None:
         bot_token=bot_token,
         on_message=context.on_message_callback,
         on_chat_metadata=context.on_chat_metadata_callback,
-        registered_groups=context.registered_groups,
+        workspaces=context.workspaces,
     )
 ```
 
@@ -172,9 +172,11 @@ def pynchy_create_channel(self, context: Any) -> Any | None:
 |-------|------|-------------|
 | `on_message_callback` | `Callable[[str, NewMessage], None]` | Ingest a message for a JID |
 | `on_chat_metadata_callback` | `Callable[[str, str, str \| None], None]` | Update chat metadata (JID, timestamp, display name) |
-| `registered_groups` | `Callable[[], dict[str, RegisteredGroup]]` | Get all registered workspaces |
+| `workspaces` | `Callable[[], dict[str, WorkspaceProfile]]` | Get the configured workspace profiles |
 | `send_message` | `Callable[[str, str], Any]` | Send outbound text to a JID |
 | `on_reaction_callback` | `Callable[..., None] \| None` | Optional reaction handler |
+| `on_ask_user_answer_callback` | `Callable[[str, dict[str, Any]], None] \| None` | Optional structured-answer handler |
+| `on_approval_decision_callback` | `Callable[[str, str, str, str], None] \| None` | Optional approval-decision handler |
 
 **Return value:** A `Channel` instance implementing the channel protocol, or `None` to pass.
 
@@ -183,12 +185,16 @@ def pynchy_create_channel(self, context: Any) -> Any | None:
 ```python
 class Channel(Protocol):
     name: str
+    formatter: Formatter
 
     async def connect(self) -> None: ...
-    async def send_message(self, jid: str, text: str) -> None: ...
+    async def send_event(self, jid: str, event: OutboundEvent) -> None: ...
     def is_connected(self) -> bool: ...
     def owns_jid(self, jid: str) -> bool: ...
     async def disconnect(self) -> None: ...
+    async def reconnect(self) -> None: ...
+    def prepare_shutdown(self) -> None: ...
+    async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult: ...
 ```
 
 Optional attributes (check with `hasattr`/`getattr`): `prefix_assistant_name` (bool, default `True`), `set_typing`, `create_group`.
@@ -269,7 +275,7 @@ def pynchy_tunnel(self) -> Any | None:
 | `is_connected()` | `() -> bool` | Returns whether the tunnel is currently connected |
 | `status_summary()` | `() -> str` | Human-readable status string for logging |
 
-**Built-in:** Tailscale ships as a built-in plugin (`src/pynchy/tunnels/plugins/tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
+**Built-in:** Tailscale ships as a built-in plugin (`src/pynchy/plugins/tunnels/tailscale.py`). It shells out to `tailscale status --json` and checks `BackendState`.
 
 ## pynchy_observer
 
@@ -298,10 +304,10 @@ def pynchy_observer(self) -> Any | None:
 | `MessageEvent` | `chat_jid`, `sender_name`, `content`, `timestamp`, `is_bot` | New message stored |
 | `AgentActivityEvent` | `chat_jid`, `active` | Agent started/stopped processing |
 | `AgentTraceEvent` | `chat_jid`, `trace_type`, `data` | Ephemeral trace (thinking, tool use, text) |
+| `ChatClearedEvent` | `chat_jid` | Chat history cleared |
 
 The built-in SQLite observer subscribes only to operational events. Durable LLM
 trace history is exported by LiteLLM to Phoenix.
-| `ChatClearedEvent` | `chat_jid` | Chat history cleared |
 
 **Built-in:** The SQLite observer (`src/pynchy/plugins/observers/sqlite_observer/`)
 stores operational event summaries to a dedicated `events` table in the main
@@ -346,7 +352,7 @@ def pynchy_memory(self) -> Any | None:
 | `query` | `str` | Search keywords for recall |
 | `limit` | `int` | Maximum results to return |
 
-**Built-in:** The SQLite memory plugin (`src/pynchy/memory/plugins/sqlite_memory/`) stores memories in the main database with FTS5 full-text search.
+**Built-in:** The SQLite memory plugin (`src/pynchy/plugins/memory/sqlite_memory/`) stores memories in its dedicated `data/memories.db` database with FTS5 full-text search.
 
 ## pynchy_mcp_server_spec
 

@@ -17,7 +17,7 @@ The sender vocabulary in the database:
 | `sender` value | Visible to LLM? | Description |
 |----------------|-----------------|-------------|
 | `host` | No | Pynchy process notifications (boot, deploy, errors) — user-only |
-| `bot` | Yes | Claude's responses (`AssistantMessage`) |
+| `bot` | Yes | Agent-core responses (`AssistantMessage`) |
 | `tui-user` | Yes | Messages from the TUI client (`UserMessage`) |
 | `command_output` | Yes | Tool/command results stored in DB |
 | `system_notice` | No | Ephemeral system notices (not stored in DB) |
@@ -28,7 +28,11 @@ reconstruct model/provider traces.
 
 ## Trigger Pattern
 
-Messages must start with the trigger prefix (default `@Pynchy`, case insensitive, configurable via `ASSISTANT_NAME`). The `TRIGGER_ALIASES` setting also triggers the bot. The prefix is stripped before the message reaches the agent.
+Messages must start with the trigger prefix (default `@pynchy`, case
+insensitive). Configure the primary name with `[agent].name` and aliases with
+`[agent].trigger_aliases`; environment overrides use
+`AGENT__NAME` and `AGENT__TRIGGER_ALIASES`. The prefix is stripped before the
+message reaches the agent.
 
 ## Routing Behavior
 

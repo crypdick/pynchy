@@ -53,9 +53,15 @@ Prompt files live under `prompts/` in the project root. Plain markdown works bes
 
 Files ending in `.EXAMPLE` are ignored because they are repo templates.
 
-## Relationship to CLAUDE.md
+## Relationship to Project Instructions
 
-Prompts stack on top of the project's `CLAUDE.md`. Admin and repo workspaces set `cwd` to the mounted project, so Claude Code finds the project-root `CLAUDE.md` natively. Prompts carry the instructions that do not belong in the project `CLAUDE.md`, such as persona, communication style, and operational procedures.
+Prompts provide core-independent instructions. Keep project-specific agent
+instructions in the instruction file your selected core understands (for
+example, `CLAUDE.md` for Claude Code or `AGENTS.md` for Codex) and use Pynchy
+prompts for workspace persona, communication style, and operational
+procedures. A repo-backed workspace gives the core that repository as its
+working directory, so its project instructions remain available alongside the
+configured prompts.
 
 ## KV Cache Considerations
 

@@ -31,6 +31,7 @@ Pynchy labels agent containers and removes stopped agent containers when it obse
 |-----------|---------------|---------|--------|
 | `groups/{name}/` | `/workspace/group` | Read-write | All |
 | `data/sessions/{group}/.claude/` | `/home/agent/.claude` | Read-write | All (isolated per-group) |
+| `data/sessions/{group}/.codex/` | `/home/agent/.codex` | Read-write | All (isolated per-group) |
 | `src/pynchy/agent/scripts/` | `/workspace/scripts` | Readonly | All |
 | `src/pynchy/agent/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |

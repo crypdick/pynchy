@@ -1,6 +1,8 @@
 # Channels
 
-Channels are how you talk to your assistant — WhatsApp, Slack, or a terminal UI. They're pluggable; built-ins cover the common platforms, and you can add more (Telegram, Discord, etc.) via plugins.
+Channels are how you talk to your assistant — WhatsApp, Slack, Discord, or a
+terminal UI. They're pluggable; built-ins cover those platforms, and you can
+add more through plugins.
 
 ## Multi-Channel Sync
 

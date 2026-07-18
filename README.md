@@ -30,7 +30,7 @@ Everyone is writing their own AI assistant. Why write another one? Mainly becaus
   - Rate limiting
   - MCP gateway — manages external MCP tool servers with per-workspace access control and on-demand Docker lifecycle.
   - (see the [LiteLLM docs](https://docs.litellm.ai/docs/) for more details)
-- [Eight types of plugins](docs/plugins/index.md) — agent cores, skills, channels, service handlers, container runtimes, workspaces, observers, and tunnels.
+- [Ten plugin hook types](docs/plugins/index.md) — agent cores, skills, channels, service handlers, container runtimes, tunnels, observers, memory backends, MCP servers, and workspaces.
 - Persistent memory with BM25-ranked full-text search — agents save and recall facts across sessions.
 - Recurring tasks scheduled at specific times or intervals.
 - Policy groups to prevent [lethal trifecta prompt injection attacks](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/).
@@ -43,6 +43,7 @@ Built-in plugins provide integrations with external services, and they're all pl
 |-------------|-------------|
 | **WhatsApp** | Messaging channel via linked device |
 | **Slack** | Messaging channel with browser-based token extraction |
+| **Discord** | Bot channel for guilds, threads, DMs, and an optional voice workspace |
 | **X (Twitter)** | Post, like, reply, retweet, and quote via browser automation |
 | **CalDAV** | Calendar access (Nextcloud, etc.) — list, create, delete events |
 | **Jupyter Notebooks** | Per-workspace notebook server with MCP tools |
@@ -54,7 +55,7 @@ See the **[installation guide](docs/install.md)**.
 
 ## Documentation
 
-Full documentation lives in [docs/](docs/).
+Full documentation lives in the [documentation site](docs/index.md).
 
 | Section | What it covers |
 |---------|---------------|
@@ -66,7 +67,7 @@ Full documentation lives in [docs/](docs/).
 ## FAQ
 
 **What messaging channels are supported?**
-WhatsApp and Slack have first-party plugins. Channels are pluggable — write a [plugin](docs/plugins/index.md) to add new ones.
+WhatsApp, Slack, Discord, and the local TUI have first-party plugins. Channels are pluggable — write a [plugin](docs/plugins/index.md) to add another one.
 
 **Why Apple Container instead of Docker?**
 On macOS, Apple Container is lightweight and optimized for Apple silicon. Docker works too and is used as a fallback. On Linux, Docker is the only option.

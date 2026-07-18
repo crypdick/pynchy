@@ -10,7 +10,7 @@ Adding an MCP is done through a ``[tools.<name>]`` declaration with
 ``pynchy_mcp_server_spec()`` hook.
 
 Instance resolution (config expansion, kwargs, trust map) lives in
-:mod:`_mcp_resolution`.  LiteLLM endpoint registration and team management
+:mod:`resolution`. LiteLLM endpoint registration and team management
 are in :mod:`_mcp_litellm`.
 """
 
@@ -71,13 +71,15 @@ _MCP_FAILURE_RETRY_SECONDS = 300.0
 
 
 class McpManager:
-    """Manages MCP servers: LiteLLM sync, Docker lifecycle, team provisioning.
+    """Manages MCP servers: LiteLLM sync, runtime lifecycle, team provisioning.
 
     ``config.toml`` is the source of truth. At boot, this class syncs state to
-    LiteLLM via HTTP API. Docker containers start on-demand and stop on idle.
+    LiteLLM via HTTP API. Docker containers and script subprocesses start
+    on-demand and stop on idle; URL servers are registered without a local
+    lifecycle.
 
     Instance resolution (what instances exist, for which workspaces) is
-    delegated to :mod:`_mcp_resolution`.
+    delegated to :mod:`resolution`.
     """
 
     def __init__(

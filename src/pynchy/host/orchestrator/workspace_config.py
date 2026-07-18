@@ -112,8 +112,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
 def _workspace_specs() -> dict[str, WorkspaceSpec]:
     """Return merged workspace specs from plugins and config.toml.
 
-    User config always wins for config fields. Plugin `claude_md` remains attached
-    so startup can seed missing files even when config is overridden by the user.
+    User config always wins when both sources define the same workspace folder.
     """
     s = get_settings()
     merged = dict(_state.plugin_workspace_specs)

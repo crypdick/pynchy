@@ -3,7 +3,7 @@
 This plugin provides the OpenAI Agents SDK agent core as an alternative to
 Claude SDK. It's registered automatically during plugin auto-discovery.
 
-Activate with: PYNCHY_AGENT_CORE=openai
+Activate with: [agent] default_core = "openai" (or AGENT__DEFAULT_CORE=openai)
 Requires: OPENAI_API_KEY environment variable in the container.
 """
 

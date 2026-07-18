@@ -1,8 +1,8 @@
 """Built-in OpenAI Codex CLI agent core plugin.
 
 Advertises the ``codex`` agent core, which drives the OpenAI Codex CLI via
-``codex exec --json``. Select it with ``[agent] core = "codex"`` (or
-``PYNCHY_AGENT_CORE=codex``). This core routes Codex model traffic through
+``codex exec --json``. Select it with ``[agent] default_core = "codex"`` (or
+``AGENT__DEFAULT_CORE=codex``). This core routes Codex model traffic through
 Pynchy's OpenAI API gateway.
 """
 
