@@ -425,7 +425,8 @@ class UserMessageHandler:
             timestamp=datetime.now(UTC).isoformat(),
             is_from_me=False,
         )
-        # Use unified ingestion to store, emit, AND broadcast to all channels
+        # Store and emit TUI input through unified ingestion.  Its "tui" source
+        # keeps the synthetic local user message out of physical chat channels.
         await self._ingest_message(msg, source_channel="tui")
         self._enqueue_check(jid)
 
