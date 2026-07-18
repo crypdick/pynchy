@@ -33,7 +33,9 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google Drive](../usage/gdrive.md) |
 | `playwright-browser` | MCP server specification + skill | Browser-control server and usage skill | `uv sync --extra browser` when Playwright is needed | [MCP servers](../usage/mcp.md) |
 | `desktop-screenshot` | Service handler | Captures the macOS host desktop | Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
-| `computer-use` | Service handler + skill | Drives the macOS host desktop | Cua Driver plus Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md) |
+| `computer-use` | Service-handler router + skill | Policy-mediated desktop automation through provider plugins | Enable at least one provider supported by the host | [Computer use](../usage/computer-use.md) |
+| `peekaboo` | Computer-use provider | Semantic macOS automation with stable accessibility references | Peekaboo plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md#built-in-peekaboo) |
+| `cua-driver` | Computer-use provider | Compatibility backend for the original macOS action set | Cua Driver plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md#built-in-cua-driver) |
 | `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../usage/linear.md) |
 | `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../usage/proton-mail.md) |
 | `matrix-gateway` | Service handler | Matrix gateway actions | Matrix gateway configuration | [Matrix gateway](../usage/matrix-gateway.md) |

@@ -43,7 +43,6 @@ Single source of truth for all pynchy work items.
     - Runtime (container runtimes)
 - enforce `"forbidden"` trust level — `TrustLevel = "forbidden"` is declared in `ServiceTrustConfig` but doesn't block anything yet. Needs: (1) SecurityPolicy.evaluate_read/evaluate_write to reject forbidden operations, (2) plugin hook so plugins can declare forbidden operations in their trust config, (3) expose as first-class plugin API so marking a service property as `"forbidden"` actually changes behavior at the plugin level.
 - [Google Workspace integration via gog](1-approved/gog-google-workspace-integration.md) — Gmail, Contacts, Docs, and Sheets through typed host-side tools; do not expose unrestricted gog access.
-- [Peekaboo computer-use plugin](1-approved/peekaboo-computer-use-plugin.md) — Semantic macOS accessibility automation behind Pynchy's host policy boundary, with Cua Driver fallback.
 - [Sherpa ONNX text-to-speech plugin](1-approved/sherpa-onnx-tts-plugin.md) — Local speech synthesis plus the outbound-media path needed to deliver audio to channels.
 - [Managed flow model on Temporal](1-approved/managed-flow-model.md) — Product-level, durable wait/resume/child-flow state layered on Temporal rather than a Temporal replacement.
 - [Document attachment extraction](1-approved/document-attachment-extraction.md) — Safely extract bounded text and fallback page images from inbound document attachments.

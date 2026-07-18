@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from pynchy._action_contract import ActionSpec, ActionSurface, ActionTransport
-from pynchy._action_spec_helpers import agent_action, build_action, mcp_action
+from typing import TYPE_CHECKING
+
+from pynchy._action_spec_helpers import agent_action, mcp_action
+from pynchy._action_specs_computer_use import COMPUTER_USE_ACTION_SPECS
 from pynchy._action_specs_core import CORE_ACTION_SPECS
+
+if TYPE_CHECKING:
+    from pynchy._action_contract import ActionSpec
 
 # NOTE: Update docs/architecture/action-coverage.md when changing action
 # evidence requirements or the canary contract.
@@ -24,90 +29,7 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "analyze_screenshot",
         canary="desktop.screenshot.round.trip",
     ),
-    build_action(
-        "desktop.computer.capture",
-        "computer-use",
-        "Capture an application window and its accessibility state.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "capture"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.app.list",
-        "computer-use",
-        "List desktop applications.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "list_apps"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.window.list",
-        "computer-use",
-        "List desktop windows.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "list_windows"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.app.launch",
-        "computer-use",
-        "Launch a desktop application.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "launch_app"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.click",
-        "computer-use",
-        "Click a desktop element or coordinate.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "click"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.double.click",
-        "computer-use",
-        "Double-click a desktop element or coordinate.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "double_click"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.right.click",
-        "computer-use",
-        "Right-click a desktop element or coordinate.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "right_click"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.text.type",
-        "computer-use",
-        "Type text into a desktop application.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "type"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.key.send",
-        "computer-use",
-        "Send a keyboard shortcut to a desktop application.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "key"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.scroll",
-        "computer-use",
-        "Scroll a desktop application.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "scroll"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.wait",
-        "computer-use",
-        "Wait for a desktop application to settle.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "wait"),
-        canary="desktop.computer.round.trip",
-    ),
-    build_action(
-        "desktop.computer.permissions.check",
-        "computer-use",
-        "Check host accessibility permissions for computer use.",
-        ActionSurface(ActionTransport.AGENT_TOOL, "computer_use", "check_permissions"),
-        canary="desktop.computer.round.trip",
-    ),
+    *COMPUTER_USE_ACTION_SPECS,
     agent_action(
         "integration.google.profile.setup",
         "google-setup",

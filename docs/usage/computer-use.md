@@ -1,61 +1,130 @@
 # Computer Use
 
-`computer_use` lets agents drive the macOS host desktop through
-[Cua Driver](https://cua.ai/cua-driver). It is for workflows where browser/CDP
-automation is the wrong shape: sensitive logged-in sites, anti-bot-prone
-consumer sites, native apps, and permission/login flows that need a real local
-desktop.
+`computer_use` lets agents inspect and operate a host desktop when browser
+automation is the wrong shape: native apps, sensitive logged-in sites, and
+permission or login flows that need the real local desktop.
 
-The agent container does not get raw desktop access. It sends an IPC service
-request to Pynchy; the host-side plugin runs `cua-driver call ...` and returns
-structured output plus screenshot artifacts.
+The agent container never receives raw desktop access. A backend-neutral router
+accepts the request through Pynchy's policy-enforced IPC boundary, preserves the
+workspace attribution, and sends it to an available provider plugin on the
+host. This makes computer use optional and replaceable on every platform.
 
-## Requirements
+## Configure provider order
 
-Install Cua Driver on the macOS host:
+The built-in router tries providers in the configured order. Its defaults are
+Peekaboo followed by Cua Driver:
+
+```toml
+[plugins.computer-use.options]
+providers = ["peekaboo", "cua-driver"]
+```
+
+Provider fallback happens only when a provider is unavailable. Pynchy does not
+retry a failed action through another provider because doing so could repeat a
+partially completed click, keystroke, or other mutation.
+
+Both built-in providers require macOS. On Linux or another host platform,
+disable them and install a provider plugin for that platform; the
+`computer_use` tool and its policy contract do not change.
+
+```toml
+[plugins.peekaboo]
+enabled = false
+
+[plugins.cua-driver]
+enabled = false
+
+[plugins.computer-use.options]
+providers = ["my-linux-provider"]
+```
+
+## Built-in: Peekaboo
+
+[Peekaboo](https://github.com/steipete/Peekaboo) is the preferred macOS
+provider. It offers semantic accessibility snapshots, stable element
+references, application and window targeting, menus, dialogs, clipboard
+operations, and Spaces management.
+
+Install it on the macOS host and inspect its permissions:
+
+```bash
+brew install steipete/tap/peekaboo
+peekaboo permissions status
+```
+
+Grant Screen Recording and Accessibility in macOS System Settings. Coordinate
+clicks, keyboard input, and synthetic click fallback can also require Event
+Synthesizing permission.
+
+Override its executable or timeout when necessary:
+
+```toml
+[plugins.peekaboo.options]
+binary = "/opt/homebrew/bin/peekaboo"
+timeout_seconds = 30
+```
+
+Start by listing applications, then target an application or PID when listing
+windows:
+
+```text
+computer_use(action="list_apps")
+computer_use(action="list_windows", app="TextEdit")
+computer_use(action="capture", app="TextEdit", label="editor")
+```
+
+A capture returns a semantic snapshot ID, stable element references such as
+`B1` or `T2`, and a PNG artifact. Reuse the snapshot ID and element reference
+for the next action:
+
+```text
+computer_use(action="click", app="TextEdit", snapshot_id="SNAPSHOT", element="B1")
+computer_use(action="set_value", snapshot_id="SNAPSHOT", element="T2", value="hello")
+```
+
+The provider also supports:
+
+- clicks, text, shortcuts, scrolling, accessibility actions, and value changes
+- application launch and application/window discovery
+- menu discovery and selection
+- dialog discovery, buttons, text input, file selection, and dismissal
+- clipboard get, set, clear, save, and restore
+- Space discovery, switching, and moving windows between Spaces
+
+## Built-in: Cua Driver
+
+[Cua Driver](https://cua.ai/cua-driver) remains available as a compatibility
+provider. Install it on the macOS host and verify its daemon and permissions:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"
-```
-
-Grant `CuaDriver.app` Accessibility and Screen Recording in macOS System
-Settings. Cua's daemon normally starts on demand, but you can verify the install
-with:
-
-```bash
 cua-driver call check_permissions
 cua-driver status
 ```
 
-## Workflow
-
-Launch or locate an app:
-
-```text
-computer_use(action="launch_app", bundle_id="com.google.Chrome", urls=["https://example.com"])
-computer_use(action="list_windows")
+```toml
+[plugins.cua-driver.options]
+binary = "cua-driver"
+timeout_seconds = 30
 ```
 
-Capture a target window:
+Cua Driver supports captures, application/window discovery, application
+launch, numeric-element or coordinate clicks, text, shortcuts, scrolling, and
+permission checks. Stable element references, menus, dialogs, clipboard, and
+Spaces require a richer provider such as Peekaboo.
 
-```text
-computer_use(action="capture", pid=844, window_id=10725, label="chrome")
-```
+## Artifacts and safety
 
-Act and verify:
+Screenshots are saved under the workspace IPC directory and exposed inside the
+agent container at `/workspace/ipc/computer-use/<file>.png`.
 
-```text
-computer_use(action="click", pid=844, window_id=10725, element=14, capture_after=true)
-computer_use(action="type", pid=844, text="hello")
-computer_use(action="key", pid=844, keys="cmd+s")
-```
-
-Screenshots are saved under the workspace IPC directory and are readable inside
-the agent container at `/workspace/ipc/computer-use/<file>.png`.
-
-## Safety
-
-This tool controls the real host desktop. Use the workspace security policy to
-gate it for non-admin workspaces. Agents should not enter secrets, payment
+This tool controls the real host desktop. Gate it with workspace security
+policy for non-admin workspaces. Agents should not enter secrets, payment
 details, 2FA codes, or destructive confirmations unless the user explicitly
 authorized that exact action.
+
+---
+
+**Want to customize this?** Write your own provider plugin using the
+[`pynchy_computer_use_backend` hook](../plugins/hooks.md#pynchy_computer_use_backend),
+or [open a feature request](https://github.com/crypdick/pynchy/issues).

@@ -1,65 +1,81 @@
-"""Host-side computer_use tool backed by Cua Driver."""
+"""Backend-neutral, policy-mediated computer-use host action."""
 
 from __future__ import annotations
 
 import asyncio
-import json
-import platform
 import re
-import shutil
-import subprocess  # noqa: S404, RUF100 - uses PIPE constants with resolved cua-driver argv.
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pluggy
+from pydantic import ValidationError
 
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    CapabilityProbeContext,
+    CapabilityProbeResult,
+    CapabilityRequirement,
+    CapabilityRequirementKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionHandler,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+    ProbeStatus,
+)
 from pynchy.config import get_settings
+from pynchy.plugins.computer_use import (
+    ComputerUseAction,
+    ComputerUseBackend,
+    ComputerUseRequest,
+    ComputerUseRouterConfig,
+    SourceGroup,
+)
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
-_CONTAINER_ARTIFACT_DIR = "/workspace/ipc/computer-use"
-_POSITIVE_INT_ERROR = "{field} must be a positive integer"
-_INVALID_SOURCE_GROUP_ERROR = "Missing or invalid source group for computer_use request."
-_QUERY_ERROR = "query must be a non-empty string"
-_COORDINATE_ERROR = "coordinate must be [x, y] with non-negative integer values"
-_KEYS_ERROR = "keys must be a shortcut string or a list of key names"
-_KEYS_MINIMUM_ERROR = "keys must include at least one key"
-_TEXT_ERROR = "text must be a string"
-_CLICK_COORDINATE_ERROR = "click actions require element or coordinate"
-_SECONDS_ERROR = "seconds must be a non-negative number"
-_CUA_DRIVER_FAILED_ERROR = "cua-driver {action} failed: {error}"
-_CUA_DRIVER_SCREENSHOT_ERROR = "cua-driver {action} did not create the screenshot file"
-_NON_MACOS_ERROR = "computer_use is only supported on macOS hosts."
-_MISSING_CUA_DRIVER_ERROR = (
-    "cua-driver is not installed on the host; install Cua Driver before using computer_use."
+_ACTION_IDS = tuple(
+    ActionId(action_id)
+    for action_id in (
+        "desktop.computer.capture",
+        "desktop.computer.app.list",
+        "desktop.computer.window.list",
+        "desktop.computer.app.launch",
+        "desktop.computer.click",
+        "desktop.computer.double.click",
+        "desktop.computer.right.click",
+        "desktop.computer.text.type",
+        "desktop.computer.key.send",
+        "desktop.computer.scroll",
+        "desktop.computer.element.value.set",
+        "desktop.computer.element.action.perform",
+        "desktop.computer.menu.list",
+        "desktop.computer.menu.click",
+        "desktop.computer.dialog.list",
+        "desktop.computer.dialog.click",
+        "desktop.computer.dialog.input",
+        "desktop.computer.dialog.file",
+        "desktop.computer.dialog.dismiss",
+        "desktop.computer.clipboard.get",
+        "desktop.computer.clipboard.set",
+        "desktop.computer.clipboard.clear",
+        "desktop.computer.clipboard.save",
+        "desktop.computer.clipboard.restore",
+        "desktop.computer.space.list",
+        "desktop.computer.space.switch",
+        "desktop.computer.space.window.move",
+        "desktop.computer.wait",
+        "desktop.computer.permissions.check",
+    )
 )
-_PASSTHROUGH_CONTROL_KEYS = {
-    "type",
-    "request_id",
-    "source_group",
-    "action",
-    "capture_after",
-    "label",
-    "element",
-    "coordinate",
-    "keys",
-}
-_VALID_ACTIONS = {
-    "capture",
-    "list_apps",
-    "list_windows",
-    "launch_app",
-    "click",
-    "double_click",
-    "right_click",
-    "type",
-    "key",
-    "scroll",
-    "wait",
-    "check_permissions",
-}
-_VALID_ACTION_ERROR = f"action must be one of {', '.join(sorted(_VALID_ACTIONS))}"
 
 
 def _timestamp() -> str:
@@ -73,225 +89,173 @@ def _slug(value: object) -> str:
     return slug[:48] or "computer-use"
 
 
-def _source_group(data: dict[str, Any]) -> str | None:
-    source_group = data.get("source_group")
-    if not isinstance(source_group, str) or not source_group:
-        return None
-    parts = Path(source_group).parts
-    if len(parts) != 1 or parts[0] in {".", ".."}:
-        return None
-    return source_group
-
-
-def _positive_int(value: object, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ValueError(_POSITIVE_INT_ERROR.format(field=field))
-    return value
-
-
-def _optional_positive_int(value: object, field: str) -> int | None:
-    if value is None:
-        return None
-    return _positive_int(value, field)
-
-
-async def _run_computer_use_action(
-    binary: str,
-    source_group: str | None,
-    data: dict[str, Any],
-) -> dict[str, Any]:
-    if source_group is None:
-        raise RuntimeError(_INVALID_SOURCE_GROUP_ERROR)
-
-    action = _action(data)
-    if action == "wait":
-        seconds = _cua_action_and_payload(action, data)[1]["seconds"]
-        await asyncio.sleep(seconds)
-        return {"result": {"action": action, "output": f"waited {seconds:g}s"}}
-
-    cua_action, payload = _cua_action_and_payload(action, data)
-    screenshot_path = None
-    if action == "capture":
-        screenshot_path = _artifact_path(source_group=source_group, label=data.get("label"))
-
-    result = await _run_cua(
-        binary=binary,
-        action=cua_action,
-        payload=payload,
-        screenshot_path=screenshot_path,
-    )
-    result["action"] = action
-
-    if data.get("capture_after") is True and {"pid", "window_id"} <= payload.keys():
-        after_path = _artifact_path(source_group=source_group, label=f"after-{action}")
-        after = await _run_cua(
-            binary=binary,
-            action="get_window_state",
-            payload={"pid": payload["pid"], "window_id": payload["window_id"]},
-            screenshot_path=after_path,
-        )
-        result["after"] = after
-
-    return {"result": result}
-
-
-def _action(data: dict[str, Any]) -> str:
-    action = data.get("action")
-    if not isinstance(action, str) or action not in _VALID_ACTIONS:
-        raise ValueError(_VALID_ACTION_ERROR)
-    return action
-
-
-def _artifact_path(*, source_group: str, label: object) -> Path:
+def _artifact_path(*, source_group: SourceGroup, label: object) -> Path:
     filename = f"{_timestamp()}-{_slug(label)}.png"
     return get_settings().data_dir / "ipc" / source_group / "computer-use" / filename
 
 
-def _window_payload(data: dict[str, Any]) -> dict[str, Any]:
-    payload: dict[str, Any] = {"pid": _positive_int(data.get("pid"), "pid")}
-    window_id = _optional_positive_int(data.get("window_id"), "window_id")
-    if window_id is not None:
-        payload["window_id"] = window_id
-    query = data.get("query")
-    if query is not None:
-        if not isinstance(query, str) or not query:
-            raise ValueError(_QUERY_ERROR)
-        payload["query"] = query
-    return payload
+def _plugin_config() -> ComputerUseRouterConfig:
+    plugin = get_settings().plugins.get("computer-use")
+    options = plugin.options if plugin is not None else {}
+    return ComputerUseRouterConfig.model_validate(options)
 
 
-def _base_payload(data: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in data.items()
-        if key not in _PASSTHROUGH_CONTROL_KEYS and value is not None
-    }
+def _backend_catalog(candidates: tuple[object, ...]) -> dict[str, ComputerUseBackend]:
+    catalog: dict[str, ComputerUseBackend] = {}
+    for candidate in candidates:
+        if not isinstance(candidate, ComputerUseBackend):
+            raise TypeError("pynchy_computer_use_backend returned an invalid provider")
+        if candidate.name in catalog:
+            raise ValueError(f"duplicate computer-use provider: {candidate.name}")
+        catalog[candidate.name] = candidate
+    return catalog
 
 
-def _coordinate(data: dict[str, Any]) -> tuple[int, int] | None:
-    raw = data.get("coordinate")
-    if raw is None:
-        return None
-    if (
-        not isinstance(raw, list)
-        or len(raw) != 2
-        or any(isinstance(part, bool) or not isinstance(part, int) or part < 0 for part in raw)
-    ):
-        raise ValueError(_COORDINATE_ERROR)
-    return raw[0], raw[1]
-
-
-def _keys(data: dict[str, Any]) -> list[str]:
-    raw = data.get("keys")
-    if isinstance(raw, str):
-        keys = [part.strip().lower() for part in raw.split("+") if part.strip()]
-    elif isinstance(raw, list) and all(isinstance(part, str) and part for part in raw):
-        keys = [part.lower() for part in raw]
-    else:
-        raise ValueError(_KEYS_ERROR)
-    if not keys:
-        raise ValueError(_KEYS_MINIMUM_ERROR)
-    return keys
-
-
-def _cua_action_and_payload(action: str, data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    if action == "capture":
-        return "get_window_state", _window_payload(data)
-    if action == "type":
-        text = data.get("text")
-        if not isinstance(text, str):
-            raise ValueError(_TEXT_ERROR)
-        payload = _base_payload(data)
-        payload["text"] = text
-        return "type_text", payload
-    if action == "key":
-        payload = _base_payload(data)
-        payload["keys"] = _keys(data)
-        return "hotkey", payload
-    if action in {"click", "double_click", "right_click"}:
-        payload = _base_payload(data)
-        element = data.get("element")
-        if element is not None:
-            payload["element_index"] = _positive_int(element, "element")
-        if coord := _coordinate(data):
-            payload["x"], payload["y"] = coord
-        if "element_index" not in payload and ("x" not in payload or "y" not in payload):
-            raise ValueError(_CLICK_COORDINATE_ERROR)
-        return action, payload
-    if action == "wait":
-        seconds = data.get("seconds", 1.0)
-        if isinstance(seconds, bool) or not isinstance(seconds, int | float) or seconds < 0:
-            raise ValueError(_SECONDS_ERROR)
-        return action, {"seconds": seconds}
-    return action, _base_payload(data)
-
-
-async def _run_cua(
-    *,
-    binary: str,
-    action: str,
-    payload: dict[str, Any],
-    screenshot_path: Path | None = None,
-) -> dict[str, Any]:
-    command = [binary, "call", action]
-    if payload:
-        command.append(json.dumps(payload, separators=(",", ":")))
-    if screenshot_path is not None:
-        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
-        command.extend(["--screenshot-out-file", str(screenshot_path)])
-
-    proc = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+async def _select_backend(
+    config: ComputerUseRouterConfig,
+    backends: dict[str, ComputerUseBackend],
+) -> tuple[ComputerUseBackend, int, tuple[str, ...]]:
+    configured = [(name, backends.get(name)) for name in config.providers]
+    available = [(name, backend) for name, backend in configured if backend is not None]
+    statuses = await asyncio.gather(
+        *(asyncio.to_thread(backend.availability) for _, backend in available)
     )
-    stdout, stderr = await proc.communicate()
-    output = stdout.decode(errors="replace").strip()
-    if proc.returncode != 0:
-        error = stderr.decode(errors="replace").strip() or output or f"exit code {proc.returncode}"
-        raise RuntimeError(_CUA_DRIVER_FAILED_ERROR.format(action=action, error=error))
-
-    result: dict[str, Any] = {
-        "cua_action": action,
-        "output": output,
-    }
-    if screenshot_path is not None:
-        if not await asyncio.to_thread(screenshot_path.exists):
-            raise RuntimeError(_CUA_DRIVER_SCREENSHOT_ERROR.format(action=action))
-        screenshot_stat = await asyncio.to_thread(screenshot_path.stat)
-        result["screenshot"] = {
-            "host_path": str(screenshot_path),
-            "container_path": f"{_CONTAINER_ARTIFACT_DIR}/{screenshot_path.name}",
-            "format": "png",
-            "bytes": screenshot_stat.st_size,
-        }
-    return result
+    by_name = {name: status for (name, _), status in zip(available, statuses, strict=True)}
+    reasons: list[str] = []
+    for index, (name, backend) in enumerate(configured):
+        if backend is None:
+            reasons.append(f"{name}: plugin is not loaded")
+            continue
+        status = by_name[name]
+        if status.available:
+            return backend, index, tuple(reasons)
+        reasons.append(f"{name}: {status.reason or 'unavailable'}")
+    detail = "; ".join(reasons) or "no providers configured"
+    raise RuntimeError(f"No configured computer-use provider is available: {detail}")
 
 
-async def _handle_computer_use(data: dict[str, Any]) -> dict[str, Any]:
-    if platform.system() != "Darwin":
-        return {"error": _NON_MACOS_ERROR}
-
-    source_group = _source_group(data)
-    if source_group is None:
-        return {"error": "Missing or invalid source group for computer_use request."}
-
-    binary = shutil.which("cua-driver")
-    if binary is None:
-        return {"error": _MISSING_CUA_DRIVER_ERROR}
-
+async def _probe_backend(
+    _context: CapabilityProbeContext,
+    config: ComputerUseRouterConfig,
+    backends: dict[str, ComputerUseBackend],
+) -> CapabilityProbeResult:
     try:
-        return await _run_computer_use_action(binary, source_group, data)
-    except (RuntimeError, ValueError) as exc:
-        return {"error": str(exc)}
+        backend, index, reasons = await _select_backend(config, backends)
+    except RuntimeError as exc:
+        return CapabilityProbeResult(ProbeStatus.UNAVAILABLE, str(exc))
+    if index:
+        return CapabilityProbeResult(
+            ProbeStatus.DEGRADED,
+            f"Using fallback provider {backend.name}: {'; '.join(reasons)}",
+        )
+    return CapabilityProbeResult(ProbeStatus.READY)
+
+
+def _capability(
+    config: ComputerUseRouterConfig,
+    backends: dict[str, ComputerUseBackend],
+) -> CapabilityDescriptor:
+    async def probe(context: CapabilityProbeContext) -> CapabilityProbeResult:
+        return await _probe_backend(context, config, backends)
+
+    return CapabilityDescriptor(
+        id=CapabilityId("desktop.computer.use"),
+        kind=CapabilityKind.HOST_ACTION,
+        owner="computer-use",
+        summary="Inspect and operate a desktop through a policy-mediated provider plugin.",
+        action_ids=_ACTION_IDS,
+        requirements=(
+            CapabilityRequirement(
+                kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                name="computer_use",
+                description="Enable the computer_use tool for this workspace.",
+            ),
+            CapabilityRequirement(
+                kind=CapabilityRequirementKind.HOST_BINARY,
+                name="computer-use-provider",
+                description=(
+                    "Load and configure one of these provider plugins: "
+                    f"{', '.join(config.providers) or '(none)'}"
+                ),
+            ),
+        ),
+        setup_hint="Enable a computer-use provider plugin supported by this host platform.",
+        recovery_hint="Check the selected provider's installation and platform permissions.",
+        documentation="docs/usage/computer-use.md",
+        probe=probe,
+    )
+
+
+async def _execute_request(
+    request: ComputerUseRequest,
+    config: ComputerUseRouterConfig,
+    backends: dict[str, ComputerUseBackend],
+) -> dict[str, Any]:
+    if request.action is ComputerUseAction.WAIT:
+        await asyncio.sleep(request.seconds)
+        return {
+            "result": {
+                "action": request.action.value,
+                "backend": "host",
+                "output": f"waited {request.seconds:g}s",
+            }
+        }
+    backend, _, _ = await _select_backend(config, backends)
+    screenshot_path = None
+    if request.action is ComputerUseAction.CAPTURE:
+        screenshot_path = _artifact_path(source_group=request.source_group, label=request.label)
+    result = await backend.execute(request, screenshot_path=screenshot_path)
+    result["action"] = request.action.value
+    if request.capture_after and request.action is not ComputerUseAction.CAPTURE:
+        capture = request.model_copy(
+            update={
+                "action": ComputerUseAction.CAPTURE,
+                "capture_after": False,
+                "label": f"after-{request.action.value}",
+            }
+        )
+        after_path = _artifact_path(source_group=request.source_group, label=capture.label)
+        result["after"] = await backend.execute(capture, screenshot_path=after_path)
+    return {"result": result}
+
+
+def _handler(
+    config: ComputerUseRouterConfig,
+    backends: dict[str, ComputerUseBackend],
+) -> HostActionHandler:
+    async def handle(data: dict[str, Any]) -> dict[str, Any]:
+        try:
+            request = ComputerUseRequest.parse(data)
+            return await _execute_request(request, config, backends)
+        except (RuntimeError, TypeError, ValidationError, ValueError) as exc:
+            return {"error": str(exc)}
+
+    return handle
 
 
 class ComputerUsePlugin:
-    """Expose host-mediated computer-use actions through Cua Driver."""
+    """Route one neutral host action through optional platform provider plugins."""
+
+    def __init__(self, config: ComputerUseRouterConfig | None = None) -> None:
+        self._config = config
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, Any]:
-        return {"tools": {"computer_use": _handle_computer_use}}
+    def pynchy_service_handler(
+        self,
+        computer_use_backends: tuple[object, ...],
+    ) -> HostActionRegistration:
+        config = self._config or _plugin_config()
+        backends = _backend_catalog(computer_use_backends)
+        descriptor = HostActionDescriptor(
+            capability=_capability(config, backends),
+            tool_name=HostToolName("computer_use"),
+            handler=_handler(config, backends),
+            access=HostActionAccess.WRITE,
+            approval=ApprovalContract(),
+            idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),
+            audit=AuditContract(),
+        )
+        return HostActionRegistration(actions=(descriptor,))
 
     @hookimpl
     def pynchy_skill_paths(self) -> list[str]:

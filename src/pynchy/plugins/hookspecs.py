@@ -122,15 +122,35 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_service_handler(self) -> HostActionRegistration | dict[str, object]:
+    def pynchy_service_handler(
+        self,
+        computer_use_backends: tuple[object, ...],
+    ) -> HostActionRegistration | dict[str, object]:
         """Provide host-side service tool handlers.
 
         Host-side handlers process IPC service requests from container MCP tools.
         Each handler receives the request data dict and returns a result or error.
 
+        Args:
+            computer_use_backends: Provider objects contributed through
+                ``pynchy_computer_use_backend``. Implementations that do not
+                compose computer-use providers omit this argument.
+
         Returns:
             A typed HostActionRegistration. Raw ``{"tools": ...}`` mappings
             are parsed only when ActionSpec entries cover every tool.
+        """
+        raise NotImplementedError
+
+    # Provider selection stays separate from the policy surface so every host
+    # platform can retain one policy contract with its own backend.
+    @hookspec
+    def pynchy_computer_use_backend(self) -> object:
+        """Provide a platform-specific implementation of the computer-use contract.
+
+        The backend-neutral ``computer_use`` service owns policy and audit dispatch.
+        Provider plugins contribute implementations here instead of registering
+        competing host tools.
         """
         raise NotImplementedError
 

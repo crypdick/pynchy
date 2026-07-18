@@ -122,6 +122,66 @@ The in-container IPC proxy tool must also exist in the selected agent image.
 `pynchy_service_handler` registers the privileged host half; it does not inject
 Python code into a running agent container.
 
+The hook can receive arguments contributed by other plugin categories. A plugin
+only declares the arguments it consumes; pluggy permits implementations to omit
+the rest. The built-in computer-use router, for example, declares
+`computer_use_backends: tuple[object, ...]` to compose provider contributions.
+
+## pynchy_computer_use_backend
+
+Provide a platform-specific implementation for the backend-neutral
+`computer_use` host action.
+
+**Calling strategy:** All results are collected. The computer-use router chooses
+the first available provider named in `[plugins.computer-use.options].providers`.
+Unavailable providers can fall through; execution failures do not retry through
+another provider because a mutating action may have partially completed.
+
+```python
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import pluggy
+
+from pynchy.plugins.computer_use import (
+    ComputerUseBackendAvailability,
+    ComputerUseRequest,
+)
+
+hookimpl = pluggy.HookimplMarker("pynchy")
+
+
+@dataclass(frozen=True)
+class MyDesktopBackend:
+    @property
+    def name(self) -> str:
+        return "my-desktop"
+
+    def availability(self) -> ComputerUseBackendAvailability:
+        return ComputerUseBackendAvailability(available=True)
+
+    async def execute(
+        self,
+        request: ComputerUseRequest,
+        *,
+        screenshot_path: Path | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+
+class MyDesktopPlugin:
+    @hookimpl
+    def pynchy_computer_use_backend(self) -> MyDesktopBackend:
+        return MyDesktopBackend()
+```
+
+Provider names must be unique. Implementations receive a validated, closed
+`ComputerUseRequest`; they should translate it to an allowlisted native API or
+subprocess invocation rather than accepting arbitrary command arguments. The
+router retains ownership of host-action policy, audit, idempotency, source-group
+attribution, and screenshot paths.
+
 ## pynchy_action_specs
 
 Provide semantic action contracts owned by a plugin.

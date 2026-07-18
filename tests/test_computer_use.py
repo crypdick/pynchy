@@ -1,355 +1,203 @@
-"""Tests for the host-side computer_use service tool."""
+"""Tests for the backend-neutral computer-use router plugin."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import pytest
 from conftest import make_settings
+from pydantic import ValidationError
 
+from pynchy.capabilities import CapabilityProbeContext, HostActionHandler, ProbeStatus
+from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.computer_use import (
+    ComputerUseBackendAvailability,
+    ComputerUseRequest,
+    ComputerUseRouterConfig,
+)
+from pynchy.plugins.host_actions import get_host_action_catalog
 from pynchy.plugins.integrations.computer_use import ComputerUsePlugin
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-class _FakeProcess:
-    def __init__(
+
+@dataclass
+class _RecordingBackend:
+    backend_name: str
+    is_available: bool = True
+    reason: str | None = None
+    requests: list[ComputerUseRequest] = field(default_factory=list)
+
+    @property
+    def name(self) -> str:
+        return self.backend_name
+
+    def availability(self) -> ComputerUseBackendAvailability:
+        return ComputerUseBackendAvailability(
+            available=self.is_available,
+            reason=self.reason,
+        )
+
+    async def execute(
         self,
+        request: ComputerUseRequest,
         *,
-        returncode: int = 0,
-        stdout: bytes = b"ok",
-        stderr: bytes = b"",
-    ) -> None:
-        self.returncode = returncode
-        self._stdout = stdout
-        self._stderr = stderr
-
-    async def communicate(self) -> tuple[bytes, bytes]:
-        return self._stdout, self._stderr
+        screenshot_path: Path | None = None,
+    ) -> dict[str, Any]:
+        self.requests.append(request)
+        return {
+            "backend": self.name,
+            "output": {"screenshot_path": str(screenshot_path) if screenshot_path else None},
+        }
 
 
-def _handler():
-    return ComputerUsePlugin().pynchy_service_handler()["tools"]["computer_use"]
+@dataclass
+class _FailingBackend(_RecordingBackend):
+    async def execute(
+        self,
+        request: ComputerUseRequest,
+        *,
+        screenshot_path: Path | None = None,
+    ) -> dict[str, Any]:
+        self.requests.append(request)
+        raise RuntimeError("provider failed after starting the action")
 
 
-def test_computer_use_plugin_is_registered() -> None:
+def _handler(
+    *backends: _RecordingBackend,
+    config: ComputerUseRouterConfig | None = None,
+) -> HostActionHandler:
+    registration = ComputerUsePlugin(config or ComputerUseRouterConfig()).pynchy_service_handler(
+        tuple(backends)
+    )
+    return registration.actions[0].handler
+
+
+def test_computer_use_surface_and_provider_plugins_are_registered() -> None:
     with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
         pm = get_plugin_manager()
 
-    assert "builtin-computer-use" in [pm.get_name(p) for p in pm.get_plugins()]
-    handlers = pm.get_plugin("builtin-computer-use").pynchy_service_handler()
-    assert "computer_use" in handlers["tools"]
+    names = {pm.get_name(plugin) for plugin in pm.get_plugins()}
+    assert {
+        "builtin-computer-use",
+        "builtin-peekaboo",
+        "builtin-cua-driver",
+    } <= names
+    descriptor = get_host_action_catalog(pm).action_for("computer_use")
+    assert descriptor is not None
+    assert descriptor.capability.id == "desktop.computer.use"
+    assert descriptor.capability.owner == "computer-use"
+    assert len(descriptor.capability.action_ids) == 29
 
 
-@pytest.mark.action("desktop.computer.capture")
-@pytest.mark.action("desktop.computer.app.list")
-@pytest.mark.action("desktop.computer.window.list")
-@pytest.mark.action("desktop.computer.app.launch")
-@pytest.mark.action("desktop.computer.click")
-@pytest.mark.action("desktop.computer.double.click")
-@pytest.mark.action("desktop.computer.right.click")
-@pytest.mark.action("desktop.computer.text.type")
-@pytest.mark.action("desktop.computer.key.send")
-@pytest.mark.action("desktop.computer.scroll")
-@pytest.mark.action("desktop.computer.wait")
-@pytest.mark.action("desktop.computer.permissions.check")
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("action", "arguments", "expected_cua_action"),
-    [
-        ("capture", {"pid": 844}, "get_window_state"),
-        ("list_apps", {}, "list_apps"),
-        ("list_windows", {}, "list_windows"),
-        ("launch_app", {"bundle_id": "com.apple.TextEdit"}, "launch_app"),
-        ("click", {"element": 14}, "click"),
-        ("double_click", {"coordinate": [12, 34]}, "double_click"),
-        ("right_click", {"coordinate": [12, 34]}, "right_click"),
-        ("type", {"pid": 844, "text": "hello"}, "type_text"),
-        ("key", {"pid": 844, "keys": "cmd+s"}, "hotkey"),
-        ("scroll", {"pid": 844, "delta_y": -240}, "scroll"),
-        ("wait", {"seconds": 0}, None),
-        ("check_permissions", {}, "check_permissions"),
-    ],
-)
-async def test_each_computer_action_reaches_its_cua_driver_operation(
-    action: str,
-    arguments: dict[str, object],
-    expected_cua_action: str | None,
-    tmp_path: Path,
-) -> None:
-    """Exercise every public computer action through the host service boundary."""
-    handler = _handler()
-    captured_calls: list[tuple[str, ...]] = []
-
-    def fake_exec(*args: str, **_kwargs: object) -> _FakeProcess:
-        captured_calls.append(args)
-        if "--screenshot-out-file" in args:
-            Path(args[-1]).write_bytes(b"png bytes")
-        return _FakeProcess(stdout=b"action completed")
-
+def test_provider_plugins_can_be_disabled_independently() -> None:
+    settings = make_settings(plugins={"peekaboo": PluginConfig(enabled=False)})
     with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Darwin",
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.shutil.which", return_value="/bin/cua-driver"
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
-            new=AsyncMock(side_effect=fake_exec),
-        ),
+        patch("pynchy.plugins.registry.get_settings", return_value=settings),
+        patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
     ):
-        result = await handler({"source_group": "admin", "action": action, **arguments})
+        pm = get_plugin_manager()
 
-    assert result["result"]["action"] == action
-    if expected_cua_action is None:
-        assert captured_calls == []
-    else:
-        assert captured_calls[0][2] == expected_cua_action
+    names = {pm.get_name(plugin) for plugin in pm.get_plugins()}
+    assert "builtin-computer-use" in names
+    assert "builtin-peekaboo" not in names
+    assert "builtin-cua-driver" in names
 
 
 @pytest.mark.asyncio
-async def test_computer_use_rejects_non_macos(tmp_path: Path) -> None:
-    handler = _handler()
+async def test_router_uses_the_first_available_provider() -> None:
+    unavailable = _RecordingBackend("peekaboo", False, "not installed")
+    fallback = _RecordingBackend("cua-driver")
+    result = await _handler(unavailable, fallback)({"source_group": "admin", "action": "list_apps"})
 
-    with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Linux",
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-    ):
-        result = await handler({"source_group": "admin", "action": "list_apps"})
-
-    assert result == {"error": "computer_use is only supported on macOS hosts."}
+    assert result["result"]["backend"] == "cua-driver"
+    assert unavailable.requests == []
+    assert [request.action.value for request in fallback.requests] == ["list_apps"]
 
 
 @pytest.mark.asyncio
-async def test_computer_use_reports_missing_cua_driver(tmp_path: Path) -> None:
-    handler = _handler()
+async def test_router_honors_configured_provider_order() -> None:
+    peekaboo = _RecordingBackend("peekaboo")
+    cua = _RecordingBackend("cua-driver")
+    config = ComputerUseRouterConfig(providers=("cua-driver", "peekaboo"))
+    result = await _handler(peekaboo, cua, config=config)(
+        {"source_group": "admin", "action": "list_apps"}
+    )
 
-    with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Darwin",
-        ),
-        patch("pynchy.plugins.integrations.computer_use.shutil.which", return_value=None),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-    ):
-        result = await handler({"source_group": "admin", "action": "list_apps"})
+    assert result["result"]["backend"] == "cua-driver"
+    assert peekaboo.requests == []
+
+
+@pytest.mark.asyncio
+async def test_router_does_not_retry_a_failed_mutation_through_another_provider() -> None:
+    selected = _FailingBackend("peekaboo")
+    fallback = _RecordingBackend("cua-driver")
+
+    result = await _handler(selected, fallback)(
+        {"source_group": "admin", "action": "click", "coordinate": [10, 20]}
+    )
+
+    assert result == {"error": "provider failed after starting the action"}
+    assert [request.action.value for request in selected.requests] == ["click"]
+    assert fallback.requests == []
+
+
+@pytest.mark.asyncio
+async def test_router_reports_all_unavailable_provider_reasons() -> None:
+    peekaboo = _RecordingBackend("peekaboo", False, "requires macOS")
+    result = await _handler(peekaboo)({"source_group": "admin", "action": "list_apps"})
 
     assert result == {
         "error": (
-            "cua-driver is not installed on the host; install Cua Driver before using computer_use."
+            "No configured computer-use provider is available: "
+            "peekaboo: requires macOS; cua-driver: plugin is not loaded"
         )
     }
 
 
+@pytest.mark.action("desktop.computer.wait")
 @pytest.mark.asyncio
-async def test_capture_runs_get_window_state_with_screenshot_artifact(tmp_path: Path) -> None:
-    handler = _handler()
-    captured_args: tuple[str, ...] | None = None
+async def test_wait_does_not_require_a_platform_provider() -> None:
+    result = await _handler()({"source_group": "admin", "action": "wait", "seconds": 0})
 
-    def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
-        nonlocal captured_args
-        captured_args = args
-        screenshot_path = Path(args[-1])
-        screenshot_path.write_bytes(b"png bytes")
-        return _FakeProcess(stdout=b"window state")
+    assert result == {"result": {"action": "wait", "backend": "host", "output": "waited 0s"}}
 
-    with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Darwin",
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.shutil.which", return_value="/bin/cua-driver"
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
-            new=AsyncMock(side_effect=fake_exec),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use._timestamp",
-            return_value="20260709T120000Z",
-        ),
-    ):
-        result = await handler(
-            {
-                "source_group": "admin",
-                "action": "capture",
-                "pid": 844,
-                "window_id": 10725,
-                "label": "Calculator",
-            }
-        )
 
-    host_path = tmp_path / "ipc" / "admin" / "computer-use" / "20260709T120000Z-calculator.png"
-    assert captured_args == (
-        "/bin/cua-driver",
-        "call",
-        "get_window_state",
-        '{"pid":844,"window_id":10725}',
-        "--screenshot-out-file",
-        str(host_path),
+@pytest.mark.asyncio
+async def test_router_rejects_fields_outside_the_closed_contract() -> None:
+    result = await _handler()(
+        {"source_group": "admin", "action": "list_apps", "raw_cli_args": ["--dangerous"]}
     )
-    assert result == {
-        "result": {
-            "action": "capture",
-            "cua_action": "get_window_state",
-            "output": "window state",
-            "screenshot": {
-                "host_path": str(host_path),
-                "container_path": "/workspace/ipc/computer-use/20260709T120000Z-calculator.png",
-                "format": "png",
-                "bytes": len(b"png bytes"),
-            },
-        }
-    }
+
+    assert "Extra inputs are not permitted" in result["error"]
+
+
+@pytest.mark.parametrize("keys", [[], "+"])
+@pytest.mark.asyncio
+async def test_router_rejects_empty_shortcuts(keys: object) -> None:
+    result = await _handler()({"source_group": "admin", "action": "key", "keys": keys})
+
+    assert "key requires keys" in result["error"]
+
+
+def test_router_config_rejects_duplicate_providers() -> None:
+    with pytest.raises(ValidationError, match="computer-use providers must be unique"):
+        ComputerUseRouterConfig(providers=("peekaboo", "peekaboo"))
 
 
 @pytest.mark.asyncio
-async def test_click_maps_element_index_and_capture_after(tmp_path: Path) -> None:
-    handler = _handler()
-    captured_calls: list[tuple[str, ...]] = []
+async def test_capability_probe_reports_fallback_degradation() -> None:
+    unavailable = _RecordingBackend("peekaboo", False, "not installed")
+    fallback = _RecordingBackend("cua-driver")
+    registration = ComputerUsePlugin().pynchy_service_handler((unavailable, fallback))
+    probe = registration.actions[0].capability.probe
+    assert probe is not None
 
-    def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
-        captured_calls.append(args)
-        if "--screenshot-out-file" in args:
-            Path(args[-1]).write_bytes(b"after png")
-            return _FakeProcess(stdout=b"after state")
-        return _FakeProcess(stdout=b"clicked")
+    result = await probe(CapabilityProbeContext(workspace="admin"))
 
-    with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Darwin",
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.shutil.which", return_value="/bin/cua-driver"
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
-            new=AsyncMock(side_effect=fake_exec),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use._timestamp",
-            return_value="20260709T120000Z",
-        ),
-    ):
-        result = await handler(
-            {
-                "source_group": "admin",
-                "action": "click",
-                "pid": 844,
-                "window_id": 10725,
-                "element": 14,
-                "capture_after": True,
-            }
-        )
-
-    host_path = tmp_path / "ipc" / "admin" / "computer-use" / "20260709T120000Z-after-click.png"
-    assert captured_calls == [
-        (
-            "/bin/cua-driver",
-            "call",
-            "click",
-            '{"pid":844,"window_id":10725,"element_index":14}',
-        ),
-        (
-            "/bin/cua-driver",
-            "call",
-            "get_window_state",
-            '{"pid":844,"window_id":10725}',
-            "--screenshot-out-file",
-            str(host_path),
-        ),
-    ]
-    assert result["result"]["output"] == "clicked"
-    assert result["result"]["after"]["output"] == "after state"
-    assert result["result"]["after"]["screenshot"]["bytes"] == len(b"after png")
-
-
-@pytest.mark.asyncio
-async def test_key_splits_shortcut_into_hotkey_payload(tmp_path: Path) -> None:
-    handler = _handler()
-    captured_args: tuple[str, ...] | None = None
-
-    def fake_exec(*args: str, **kwargs: object) -> _FakeProcess:
-        nonlocal captured_args
-        captured_args = args
-        return _FakeProcess(stdout=b"sent")
-
-    with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Darwin",
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.shutil.which", return_value="/bin/cua-driver"
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
-            new=AsyncMock(side_effect=fake_exec),
-        ),
-    ):
-        result = await handler(
-            {"source_group": "admin", "action": "key", "pid": 844, "keys": "cmd+s"}
-        )
-
-    assert captured_args == (
-        "/bin/cua-driver",
-        "call",
-        "hotkey",
-        '{"pid":844,"keys":["cmd","s"]}',
-    )
-    assert result["result"]["output"] == "sent"
-
-
-@pytest.mark.asyncio
-async def test_command_failure_is_returned(tmp_path: Path) -> None:
-    handler = _handler()
-
-    with (
-        patch(
-            "pynchy.plugins.integrations.computer_use.platform.system",
-            return_value="Darwin",
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.shutil.which", return_value="/bin/cua-driver"
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
-            return_value=make_settings(data_dir=tmp_path),
-        ),
-        patch(
-            "pynchy.plugins.integrations.computer_use.asyncio.create_subprocess_exec",
-            new=AsyncMock(return_value=_FakeProcess(returncode=1, stderr=b"permission denied")),
-        ),
-    ):
-        result = await handler({"source_group": "admin", "action": "list_apps"})
-
-    assert result == {"error": "cua-driver list_apps failed: permission denied"}
+    assert result.status is ProbeStatus.DEGRADED
+    assert result.reason == "Using fallback provider cua-driver: peekaboo: not installed"
