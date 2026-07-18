@@ -13,14 +13,15 @@ from collections.abc import (
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_board_payloads import (
-    LinearBoardPayloadError,
     nodes,
     norm_name,
     normalize_status,
     payload_entity,
     projects_for_workspace,
 )
+from pynchy.plugins.integrations.linear_board_resources import load_team_resources
 from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
 from pynchy.plugins.integrations.linear_workspace_names import (
     project_description,
@@ -33,11 +34,6 @@ _TEAM_PAYLOAD_MISSING_ID = "Linear team payload missing string id"
 _TEAM_KEY_NOT_VISIBLE = "LINEAR_TEAM_KEY did not match a visible Linear team: {team_key}"
 _NO_VISIBLE_TEAMS = "Linear API key cannot see any teams"
 _LINEAR_PROJECT_MISSING = "Linear response did not include project"
-_LINEAR_TEAM_MISSING = "Linear response did not include team"
-
-
-class LinearBoardError(LinearBoardPayloadError):
-    """Raised when Linear board reconciliation cannot continue."""
 
 
 @runtime_checkable
@@ -149,7 +145,7 @@ async def ensure_workspace_board(
 ) -> LinearWorkspaceBoard:
     """Ensure Linear has a project and todo workflow states for a workspace."""
     team = await select_team(client, team_key=team_key)
-    resources = await _load_team_resources(client, str(team["id"]))
+    resources = await load_team_resources(client, str(team["id"]))
     states = await _ensure_states(client, str(team["id"]), resources["states"])
     project = await _ensure_project(client, str(team["id"]), workspace, resources["projects"])
     return LinearWorkspaceBoard(team=team, project=project, states=states)
@@ -167,7 +163,7 @@ async def reconcile_workspace_boards(
         return {}
 
     team = await select_team(client, team_key=team_key)
-    resources = await _load_team_resources(client, str(team["id"]))
+    resources = await load_team_resources(client, str(team["id"]))
     states = await _ensure_states(client, str(team["id"]), resources["states"])
     projects = resources["projects"]
 
@@ -285,34 +281,6 @@ async def list_workspace_todos(
     if include_done:
         return issues
     return [issue for issue in issues if (issue.get("state") or {}).get("type") != "completed"]
-
-
-async def _load_team_resources(
-    client: LinearQueryClient,
-    team_id: str,
-) -> dict[str, list[dict[str, Any]]]:
-    data = await client.query(
-        """
-        query TeamLinearBoardResources($team_id: String!) {
-          team(id: $team_id) {
-            projects {
-              nodes { id name url description }
-            }
-            states {
-              nodes { id name type position }
-            }
-          }
-        }
-        """,
-        team_id=team_id,
-    )
-    team = data.get("team")
-    if not isinstance(team, dict):
-        raise LinearBoardError(_LINEAR_TEAM_MISSING)
-    return {
-        "projects": nodes(team, "projects"),
-        "states": nodes(team, "states"),
-    }
 
 
 async def _ensure_states(
