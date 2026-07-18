@@ -8,6 +8,7 @@ the normal IPC approval boundary intercept every external send.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 from collections.abc import Awaitable, Callable
@@ -19,6 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from pynchy.actions import ActionId
 from pynchy.capabilities import (
+    ActionIntentContract,
+    ActionIntentDraft,
+    ActionIntentReceipt,
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -40,6 +44,7 @@ from pynchy.config import get_settings
 from pynchy.plugins.integrations.matrix_gateway_client import (
     DEFAULT_GATEWAY_COMMAND,
     MatrixGatewayError,
+    MatrixSendResult,
     create_matrix_gateway_client,
     json_result,
 )
@@ -100,6 +105,28 @@ def _message_arguments(data: dict[str, Any]) -> _ListMessagesArguments:
 def _send_arguments(data: dict[str, Any]) -> _SendMessageArguments:
     return _SendMessageArguments.model_validate(
         {"room_id": data.get("room_id"), "body": data.get("body")}
+    )
+
+
+def _send_message_draft(data: dict[str, Any]) -> ActionIntentDraft:
+    """Parse the exact message the approval and provider receipt will bind."""
+    arguments = _send_arguments(data)
+    return ActionIntentDraft(
+        recipient=arguments.room_id,
+        payload={"room_id": arguments.room_id, "body": arguments.body},
+        summary=f"Send Matrix message to {arguments.room_id}",
+    )
+
+
+def _send_message_receipt(response: dict[str, Any]) -> ActionIntentReceipt:
+    """Turn the validated Matrix event identifier into a durable provider receipt."""
+    raw_result = response.get("result")
+    if not isinstance(raw_result, str):
+        raise TypeError("Matrix send response omitted its serialized provider result")
+    result = MatrixSendResult.model_validate(json.loads(raw_result))
+    return ActionIntentReceipt(
+        provider_request_id=result.event_id,
+        receipt=result.model_dump(mode="json"),
     )
 
 
@@ -224,6 +251,15 @@ def _matrix_action(
             else IdempotencyMode.IPC_REQUEST_ID
         ),
         audit=AuditContract(),
+        action_intent=(
+            ActionIntentContract(
+                provider="matrix-gateway",
+                draft_from_request=_send_message_draft,
+                receipt_from_response=_send_message_receipt,
+            )
+            if tool_name == "matrix_send_message"
+            else None
+        ),
     )
 
 

@@ -26,9 +26,11 @@ until either remote-access option gets enabled.
 service manager or external load balancer can perform a readiness probe without
 receiving repository, channel, capability, or credential details.
 
-Use the authenticated `/status`, `/capabilities`, `/canaries/*`, and `/api/*`
-routes for operational details. A remote posture requires authentication for every
-TCP route except `/health`, including unknown paths.
+Use the authenticated `/status`, `/capabilities`, `/actions`, `/canaries/*`, and
+`/api/*` routes for operational details. `/actions` exposes external-write state
+without draft payloads; see [Action coverage](../architecture/action-coverage.md#transactional-external-actions)
+for its lifecycle. A remote posture requires authentication for every TCP route
+except `/health`, including unknown paths.
 
 ## Bootstrap a bearer token
 

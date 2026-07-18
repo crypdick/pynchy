@@ -35,6 +35,7 @@ from pynchy.host.container_manager.ipc.write import (
 )
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
+from pynchy.state import expire_action_intent
 from pynchy.types import OutboundEvent, OutboundEventType
 
 # Alphabet for short approval IDs: lowercase + digits = 36 chars.
@@ -346,6 +347,10 @@ async def _auto_deny_expired_approval(
     data: dict[str, Any],
     age_seconds: float,
 ) -> None:
+    await expire_action_intent(
+        data["request_id"],
+        reason="Approval expired before the external action was executed.",
+    )
     await asyncio.to_thread(
         write_ipc_response,
         ipc_response_path(group, data["request_id"]),

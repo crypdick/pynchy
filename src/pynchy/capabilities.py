@@ -133,6 +133,36 @@ CapabilityProbe = Callable[[CapabilityProbeContext], Awaitable[CapabilityProbeRe
 
 
 @dataclass(frozen=True)
+class ActionIntentDraft:
+    """Validated provider-neutral write payload before an external call begins."""
+
+    recipient: str
+    payload: dict[str, Any]
+    summary: str
+
+
+@dataclass(frozen=True)
+class ActionIntentReceipt:
+    """Provider evidence proving that one external write completed."""
+
+    provider_request_id: str
+    receipt: dict[str, Any]
+
+
+ActionIntentDraftFactory = Callable[[dict[str, Any]], ActionIntentDraft]
+ActionIntentReceiptParser = Callable[[dict[str, Any]], ActionIntentReceipt]
+
+
+@dataclass(frozen=True)
+class ActionIntentContract:
+    """Provider-specific parsing boundary for a durable external write."""
+
+    provider: str
+    draft_from_request: ActionIntentDraftFactory = field(compare=False, repr=False)
+    receipt_from_response: ActionIntentReceiptParser = field(compare=False, repr=False)
+
+
+@dataclass(frozen=True)
 class CapabilityDescriptor:
     """Immutable plugin-owned description of one user-meaningful capability."""
 
@@ -198,6 +228,7 @@ class HostActionDescriptor:
     idempotency: IdempotencyContract
     audit: AuditContract
     policy_service: str | None = None
+    action_intent: ActionIntentContract | None = None
 
     @property
     def service_name(self) -> str:
@@ -312,6 +343,11 @@ def _descriptor_errors(
             errors.append(f"{capability_id}: write action requires idempotency")
         if not action.audit.terminal_outcomes:
             errors.append(f"{capability_id}: write action requires terminal audit outcomes")
+    if action.action_intent is not None:
+        if action.access is not HostActionAccess.WRITE:
+            errors.append(f"{capability_id}: action intent requires write access")
+        if not action.action_intent.provider.strip():
+            errors.append(f"{capability_id}: action intent provider is required")
     errors.extend(_action_spec_errors(action, specs))
     return errors
 

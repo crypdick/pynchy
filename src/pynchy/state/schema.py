@@ -16,10 +16,12 @@ from datetime import UTC, datetime
 import aiosqlite
 
 from pynchy.logger import logger
+from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
 
-_SCHEMA = """\
+_SCHEMA = (
+    """\
 CREATE TABLE IF NOT EXISTS chats (
     jid TEXT PRIMARY KEY,
     name TEXT,
@@ -275,6 +277,8 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     is_admin INTEGER DEFAULT 0
 );
 """
+    + ACTION_INTENT_SCHEMA
+)
 
 
 def _parse_schema_columns(schema: str) -> dict[str, list[tuple[str, str]]]:
