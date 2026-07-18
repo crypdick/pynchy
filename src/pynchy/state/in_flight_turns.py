@@ -125,6 +125,22 @@ async def get_in_flight_turn_for_task(task_id: str) -> InFlightTurn | None:
     return _row_to_turn(row) if row else None
 
 
+async def get_in_flight_turn_for_group(group_folder: str) -> InFlightTurn | None:
+    """Return the active turn for one workspace, including scheduled task provenance."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM in_flight_turns
+        WHERE group_folder = ?
+        ORDER BY started_at DESC, turn_id DESC
+        LIMIT 1
+        """,
+        (group_folder,),
+    )
+    row = await cursor.fetchone()
+    return _row_to_turn(row) if row else None
+
+
 async def claim_in_flight_turn(turn_id: str) -> bool:
     """Atomically claim a turn so competing Temporal workflows cannot duplicate it."""
     db = _get_db()

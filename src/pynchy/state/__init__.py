@@ -75,6 +75,7 @@ from pynchy.state.in_flight_turns import (
     complete_in_flight_turn,
     get_in_flight_turn,
     get_in_flight_turn_for_chat,
+    get_in_flight_turn_for_group,
     get_in_flight_turn_for_task,
     get_in_flight_turns,
     mark_in_flight_output_sent,
@@ -119,6 +120,23 @@ from pynchy.state.tasks import (
     log_task_run,
     update_task,
     update_task_after_run,
+)
+from pynchy.state.work_item_models import (
+    WorkItemClaimConflictError,
+    WorkItemClaimRequest,
+    WorkItemTransitionRequest,
+)
+from pynchy.state.work_items import (
+    begin_work_item_transition,
+    create_work_item_claim,
+    get_active_work_item_execution,
+    get_latest_unresolved_work_item_transition,
+    get_work_item_execution,
+    get_work_item_execution_for_issue,
+    get_work_item_transition_by_request,
+    list_work_item_executions,
+    mark_work_item_delivery_delivered_for_turn,
+    resolve_work_item_transition,
 )
 
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
@@ -198,12 +216,27 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "complete_in_flight_turn",
     "get_in_flight_turn",
     "get_in_flight_turn_for_chat",
+    "get_in_flight_turn_for_group",
     "get_in_flight_turn_for_task",
     "get_in_flight_turns",
     "mark_in_flight_output_sent",
     "prepare_in_flight_turn_recovery",
     "release_in_flight_turn_claim",
     "update_in_flight_session",
+    # work_items
+    "WorkItemClaimConflictError",
+    "WorkItemClaimRequest",
+    "WorkItemTransitionRequest",
+    "begin_work_item_transition",
+    "create_work_item_claim",
+    "get_active_work_item_execution",
+    "get_latest_unresolved_work_item_transition",
+    "get_work_item_execution",
+    "get_work_item_execution_for_issue",
+    "get_work_item_transition_by_request",
+    "list_work_item_executions",
+    "mark_work_item_delivery_delivered_for_turn",
+    "resolve_work_item_transition",
     # sessions
     "clear_session",
     "get_all_sessions",

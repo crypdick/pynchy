@@ -18,5 +18,6 @@ LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
     "planning": TodoStatusSpec("Planning", "unstarted", 20.0, "#F2C94C"),
     "ready": TodoStatusSpec("Ready", "unstarted", 30.0, "#56CCF2"),
     "in_progress": TodoStatusSpec("In Progress", "started", 40.0, "#2F80ED"),
-    "done": TodoStatusSpec("Done", "completed", 50.0, "#27AE60"),
+    "blocked": TodoStatusSpec("Blocked", "started", 50.0, "#EB5757"),
+    "done": TodoStatusSpec("Done", "completed", 60.0, "#27AE60"),
 }

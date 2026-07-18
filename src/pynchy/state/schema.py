@@ -160,6 +160,57 @@ CREATE INDEX IF NOT EXISTS idx_in_flight_turns_chat
 ON in_flight_turns(chat_jid, started_at);
 CREATE INDEX IF NOT EXISTS idx_in_flight_turns_task
 ON in_flight_turns(task_id, started_at);
+
+CREATE TABLE IF NOT EXISTS work_item_executions (
+    id TEXT PRIMARY KEY,
+    workspace TEXT NOT NULL,
+    linear_issue_id TEXT NOT NULL,
+    linear_issue_identifier TEXT NOT NULL,
+    linear_issue_url TEXT NOT NULL,
+    turn_id TEXT,
+    task_id TEXT,
+    attempt INTEGER NOT NULL DEFAULT 1,
+    flow_id TEXT,
+    temporal_workflow_id TEXT,
+    initiated_by TEXT NOT NULL,
+    observed_state_id TEXT NOT NULL,
+    observed_state_name TEXT NOT NULL,
+    observed_updated_at TEXT,
+    status TEXT NOT NULL,
+    summary TEXT,
+    blocker TEXT,
+    handoff_to TEXT,
+    evidence_refs TEXT NOT NULL DEFAULT '[]',
+    requester_delivery_status TEXT NOT NULL DEFAULT 'not_requested',
+    requester_delivery_error TEXT,
+    requester_delivered_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue
+ON work_item_executions(linear_issue_id)
+WHERE status IN ('claiming', 'in_progress', 'blocked', 'unknown');
+CREATE INDEX IF NOT EXISTS idx_work_item_executions_workspace
+ON work_item_executions(workspace, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS work_item_transitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    execution_id TEXT NOT NULL,
+    request_id TEXT NOT NULL UNIQUE,
+    operation TEXT NOT NULL,
+    target_status TEXT NOT NULL,
+    result_execution_status TEXT NOT NULL,
+    evidence_refs TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL,
+    receipt TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT,
+    FOREIGN KEY (execution_id) REFERENCES work_item_executions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_work_item_transitions_execution
+ON work_item_transitions(execution_id, id DESC);
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,

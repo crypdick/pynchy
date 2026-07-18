@@ -61,27 +61,18 @@ def tool_specs() -> list[dict[str, Any]]:
                     "title": {"type": "string"},
                     "status": {
                         "type": "string",
-                        "enum": ["backlog", "planning", "ready", "in_progress", "done"],
+                        "enum": [
+                            "backlog",
+                            "planning",
+                            "ready",
+                            "in_progress",
+                            "blocked",
+                            "done",
+                        ],
                         "default": "backlog",
                     },
                 },
                 "required": ["title"],
-                "additionalProperties": False,
-            },
-        },
-        {
-            "name": "linear_move_todo",
-            "description": "Move a workspace Linear todo issue to a Pynchy todo status.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "issue_id": {"type": "string"},
-                    "status": {
-                        "type": "string",
-                        "enum": ["backlog", "planning", "ready", "in_progress", "done"],
-                    },
-                },
-                "required": ["issue_id", "status"],
                 "additionalProperties": False,
             },
         },

@@ -1048,6 +1048,16 @@ class TestStatusEndpoint(AioHTTPTestCase):
             assert "groups" in data
             assert data["channels"] == {"whatsapp": True}
 
+    async def test_work_items_endpoint_returns_empty_bounded_projection(self):
+        await init_test_database()
+
+        response = await self.client.get("/work-items?workspace=project&limit=1")
+        invalid = await self.client.get("/work-items?limit=zero")
+
+        assert response.status == 200
+        assert await response.json() == {"workspace": "project", "work_items": []}
+        assert invalid.status == 400
+
     async def test_canary_report_and_history_endpoints(self):
         await init_test_database()
 

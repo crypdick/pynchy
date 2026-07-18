@@ -22,6 +22,7 @@ _TOOL_MODULES = (
     "_tools_desktop_screenshot",
     "_tools_google_setup",
     "_tools_lifecycle",
+    "_tools_linear",
     "_tools_matrix",
     "_tools_memory",
     "_tools_messaging",

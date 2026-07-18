@@ -91,6 +91,11 @@ def _linear_workspace_context(workspace: WorkspaceProfile) -> _LinearWorkspaceCo
     return _LinearWorkspaceContext(folder=folder, name=name, jid=workspace.jid)
 
 
+def linear_workspace_enabled(workspace: WorkspaceProfile) -> bool:
+    """Return whether this workspace selected Linear as its canonical todo board."""
+    return _linear_workspace_context(workspace) is not None
+
+
 async def create_linear_workspace_todo(
     workspace: WorkspaceProfile,
     title: str,
