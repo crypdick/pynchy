@@ -221,6 +221,10 @@
 # decision = "needs_human"  # "allow", "deny", or "needs_human"
 
 # Reuse an explicit no-prompt computer-use grant across profiles.
+# [tools.computer_use]
+# type = "builtin"
+# name = "computer_use"
+#
 # [profiles.unrestricted-computer-use]
 # tools = ["computer_use"]
 #
