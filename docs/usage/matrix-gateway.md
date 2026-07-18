@@ -49,9 +49,22 @@ printf '%s' "$MATRIX_PASSWORD" | "$PYNCHY_MATRIX_GATEWAY" \
 
 The session token, encrypted store, and store key live in
 `~/.local/share/pynchy/matrix-gateway/` with private filesystem permissions. Verify
-the new **Pynchy communications gateway** device in Element before relying on it for
-encrypted rooms. It receives new room keys under the room's encryption policy; it does
-not recover old encrypted history automatically.
+the new **Pynchy communications gateway** device before relying on encrypted rooms. The
+gateway provides an interactive SAS command so the verification has a real second
+endpoint; merely viewing the device in Element is not sufficient:
+
+```sh
+pynchy-matrix-gateway verify --device EXISTING_ELEMENT_DEVICE_ID
+```
+
+Accept the request in the already-trusted Element session, compare the seven emojis, and
+type `confirm` into the still-running gateway command only when they match. The command
+finishes with `{"status":"verified"}`. Verification allows the trusted client to share
+future room keys; it does not guarantee recovery of old encrypted history that was never
+backed up or forwarded to the gateway.
+
+If a read finds only undecryptable encrypted events, Pynchy reports that gateway keys are
+unavailable rather than incorrectly reporting an empty room.
 
 ## Pynchy configuration
 

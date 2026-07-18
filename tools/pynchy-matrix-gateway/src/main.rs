@@ -1,8 +1,10 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
+    io::{self, BufRead, Read, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
+    sync::mpsc,
+    time::{Duration, Instant},
 };
 
 use anyhow::{bail, Context, Result};
@@ -12,10 +14,11 @@ use matrix_sdk::{
     config::{RequestConfig, SyncSettings},
     ruma::{
         events::{
+            key::verification::VerificationMethod,
             room::message::{MessageType, RoomMessageEventContent},
             AnySyncMessageLikeEvent, AnySyncTimelineEvent, SyncMessageLikeEvent,
         },
-        OwnedRoomId, OwnedUserId,
+        OwnedDeviceId, OwnedRoomId, OwnedUserId,
     },
     store::RoomLoadSettings,
     Client,
@@ -56,6 +59,15 @@ enum Command {
         room: String,
         #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..=250))]
         limit: u32,
+    },
+    /// Verify this gateway device against an existing Element device using SAS.
+    Verify {
+        /// The existing, already-trusted Element device ID.
+        #[arg(long)]
+        device: String,
+        /// Fail rather than wait indefinitely for the other device.
+        #[arg(long, default_value_t = 600, value_parser = clap::value_parser!(u64).range(30..=1800))]
+        timeout_seconds: u64,
     },
     /// Send one plain-text Matrix message as the gateway owner.
     Send {
@@ -220,6 +232,138 @@ async fn initial_sync(client: &Client) -> Result<()> {
     Ok(())
 }
 
+fn verification_confirmation_receiver() -> mpsc::Receiver<String> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        if io::stdin().lock().read_line(&mut line).is_ok() {
+            let _ = sender.send(line.trim().to_owned());
+        }
+    });
+    receiver
+}
+
+async fn verify(device_id: String, timeout_seconds: u64) -> Result<()> {
+    let (client, saved) = restored_client().await?;
+    initial_sync(&client).await?;
+
+    let target_device_id: OwnedDeviceId = device_id.into();
+    if target_device_id.as_str() == saved.device_id {
+        bail!("refusing to verify the gateway against itself");
+    }
+    let owner = saved
+        .user_id
+        .parse::<OwnedUserId>()
+        .context("parsing saved Matrix user ID")?;
+    let device = client
+        .encryption()
+        .get_device(&owner, &target_device_id)
+        .await
+        .context("loading target Matrix device")?
+        .context("target Matrix device is unknown to the gateway")?;
+    if device.is_verified() {
+        println!(
+            "{}",
+            serde_json::json!({"status": "already_verified", "device_id": target_device_id})
+        );
+        return Ok(());
+    }
+
+    let request = device
+        .request_verification_with_methods(vec![VerificationMethod::SasV1])
+        .await
+        .context("requesting Matrix device verification")?;
+    let flow_id = request.flow_id().to_owned();
+    println!(
+        "{}",
+        serde_json::json!({
+            "status": "request_sent",
+            "device_id": target_device_id,
+            "flow_id": flow_id,
+            "instruction": "Accept the verification request in Element; this command will print the seven emojis to compare."
+        })
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
+    let confirmation = verification_confirmation_receiver();
+    let mut sas = None;
+    let mut presented = false;
+    let mut confirmed = false;
+
+    while Instant::now() < deadline {
+        client
+            .sync_once(SyncSettings::default().timeout(Duration::from_secs(5)))
+            .await
+            .context("waiting for Matrix verification events")?;
+
+        if sas.is_none() {
+            if let Some(request) = client
+                .encryption()
+                .get_verification_request(&owner, &flow_id)
+                .await
+            {
+                if request.is_cancelled() {
+                    bail!("Matrix device verification was cancelled");
+                }
+                if request.is_ready() {
+                    sas = request
+                        .start_sas()
+                        .await
+                        .context("starting Matrix SAS verification")?;
+                }
+            }
+        }
+
+        if let Some(sas_verification) = sas.as_ref() {
+            if sas_verification.is_cancelled() {
+                bail!("Matrix SAS verification was cancelled");
+            }
+            if sas_verification.is_done() {
+                println!(
+                    "{}",
+                    serde_json::json!({"status": "verified", "device_id": target_device_id})
+                );
+                return Ok(());
+            }
+            if !presented && sas_verification.can_be_presented() {
+                let emojis = sas_verification
+                    .emoji()
+                    .context("Matrix verification did not provide emojis")?
+                    .iter()
+                    .map(|emoji| serde_json::json!({"symbol": emoji.symbol, "description": emoji.description}))
+                    .collect::<Vec<_>>();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "compare",
+                        "emojis": emojis,
+                        "instruction": "Compare these seven emojis with Element. Type confirm and press Enter only if they match; otherwise terminate this command."
+                    })
+                );
+                presented = true;
+            }
+            if presented && !confirmed {
+                match confirmation.try_recv() {
+                    Ok(value) if value == "confirm" => {
+                        sas_verification
+                            .confirm()
+                            .await
+                            .context("confirming Matrix SAS verification")?;
+                        confirmed = true;
+                    }
+                    Ok(_) => bail!("verification requires the exact confirmation word: confirm"),
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        bail!("verification input closed before confirmation")
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {}
+                }
+            }
+        }
+    }
+
+    bail!("Matrix device verification timed out")
+}
+
 fn message_from_event(room_id: &str, event: AnySyncTimelineEvent) -> Option<ReadMessage> {
     let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(event)) = event
     else {
@@ -323,13 +467,25 @@ async fn messages(room_id: String, limit: u32) -> Result<()> {
         .messages(options)
         .await
         .context("loading Matrix messages")?;
+    let encrypted_events = response
+        .chunk
+        .iter()
+        .filter(|event| event.raw().get_field::<String>("type").ok().flatten().as_deref() == Some("m.room.encrypted"))
+        .count();
+    let mut message_count = 0;
     for event in response.chunk.into_iter().rev() {
         let raw = event.into_raw();
         if let Ok(event) = raw.deserialize() {
             if let Some(message) = message_from_event(room.room_id().as_str(), event) {
                 println!("{}", serde_json::to_string(&message)?);
+                message_count += 1;
             }
         }
+    }
+    if message_count == 0 && encrypted_events > 0 {
+        bail!(
+            "MATRIX_GATEWAY_E2EE_KEYS_UNAVAILABLE: this room has encrypted history but the gateway has no usable room keys; complete gateway device verification before retrying"
+        );
     }
     Ok(())
 }
@@ -376,6 +532,10 @@ async fn main() -> Result<()> {
         } => login(homeserver, user, password_stdin).await,
         Command::Chats => chats().await,
         Command::Messages { room, limit } => messages(room, limit).await,
+        Command::Verify {
+            device,
+            timeout_seconds,
+        } => verify(device, timeout_seconds).await,
         Command::Send { room, body_stdin } => send(room, body_stdin).await,
     }
 }

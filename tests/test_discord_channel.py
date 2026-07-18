@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import nacl.secret
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
@@ -287,6 +286,8 @@ def test_load_opus_uses_homebrew_fallback(monkeypatch):
 def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
     """RTP-size transport crypto authenticates only the extension preamble."""
 
+    nacl_secret = pytest.importorskip("nacl.secret")
+
     class _FakeDaveSession:
         def __init__(self) -> None:
             self.packets: list[tuple[int, object, bytes]] = []
@@ -300,9 +301,9 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
     header = struct.pack(">BBHII", 0x90, 0x78, 1, 2, ssrc) + b"\xbe\xde\x00\x01"
     extension_payload = b"\x10abc"
     dave_payload = b"encrypted-opus-frame"
-    nonce = b"\x00\x00\x00\x01" + bytes(nacl.secret.Aead.NONCE_SIZE - 4)
+    nonce = b"\x00\x00\x00\x01" + bytes(nacl_secret.Aead.NONCE_SIZE - 4)
     encrypted_payload = (
-        nacl.secret.Aead(secret_key)
+        nacl_secret.Aead(secret_key)
         .encrypt(extension_payload + dave_payload, header, nonce)
         .ciphertext
         + nonce[:4]
@@ -338,6 +339,8 @@ def test_decrypt_voice_payload_preserves_rtp_extension_boundary():
 
 
 def test_decrypt_voice_payload_retries_dave_transition_frame():
+    nacl_secret = pytest.importorskip("nacl.secret")
+
     class _FakeDaveSession:
         def __init__(self) -> None:
             self.decrypt_attempts = 0
@@ -357,9 +360,9 @@ def test_decrypt_voice_payload_retries_dave_transition_frame():
     secret_key = bytes(range(32))
     header = struct.pack(">BBHII", 0x80, 0x78, 1, 2, 3)
     dave_payload = b"transition-opus-frame"
-    nonce = b"\x00\x00\x00\x01" + bytes(nacl.secret.Aead.NONCE_SIZE - 4)
+    nonce = b"\x00\x00\x00\x01" + bytes(nacl_secret.Aead.NONCE_SIZE - 4)
     encrypted_payload = (
-        nacl.secret.Aead(secret_key).encrypt(dave_payload, header, nonce).ciphertext + nonce[:4]
+        nacl_secret.Aead(secret_key).encrypt(dave_payload, header, nonce).ciphertext + nonce[:4]
     )
     dave_session = _FakeDaveSession()
     voice_client = cast(

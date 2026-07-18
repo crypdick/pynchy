@@ -231,3 +231,21 @@ class TestMatrixGatewayClient:
             pytest.raises(MatrixGatewayError, match="Matrix gateway command failed"),
         ):
             client.list_chats()
+
+    def test_encrypted_history_error_is_safe_and_actionable(self):
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr=("Error: MATRIX_GATEWAY_E2EE_KEYS_UNAVAILABLE: this room has encrypted history"),
+        )
+        client = MatrixGatewayClient(command="gateway")
+
+        with (
+            patch(
+                "pynchy.plugins.integrations.matrix_gateway_client.subprocess.run",
+                return_value=completed,
+            ),
+            pytest.raises(MatrixGatewayError, match="gateway does not have usable room keys"),
+        ):
+            client.list_messages(room_id="!friend:matrix.example.com", limit=1)
