@@ -48,7 +48,6 @@ Single source of truth for all pynchy work items.
 - [Document attachment extraction](1-approved/document-attachment-extraction.md) — Safely extract bounded text and fallback page images from inbound document attachments.
 - [Authenticated webhook flows](1-approved/authenticated-webhook-flows.md) — Route signed, schema-validated external events into an explicitly configured non-admin workspace.
 - [Tool-result reduction](1-approved/tool-result-reduction.md) — Add an opt-in, core-neutral reducer for safe noisy tool output while preserving raw evidence.
-- [Make Linear workspace boards drive Pynchy work](1-approved/linear-workspace-board-workflow.md) — Link selected Linear todos to Pynchy runs and explicit lifecycle transitions instead of only mirroring new todos.
 - if a deployment fails, it should spawn a local claude agent out-of-band to rescue the deployment
 
 
