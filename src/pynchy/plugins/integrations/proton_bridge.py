@@ -9,7 +9,7 @@ import re
 import shlex
 import ssl
 import subprocess  # noqa: S404 - runs one administrator-configured credential command.
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from email import policy
@@ -348,9 +348,9 @@ class ProtonBridgeImapClient:
                     connection.quit()
 
 
-def create_proton_mail_client() -> ProtonMailClient:
-    """Create the production direct-IMAP client from the MCP process environment."""
-    configuration = ProtonBridgeConfiguration.from_environment()
+def create_proton_mail_client(*, environment: Mapping[str, str] | None = None) -> ProtonMailClient:
+    """Create the production direct-IMAP client from an MCP environment."""
+    configuration = ProtonBridgeConfiguration.from_environment(environment)
     return ProtonBridgeImapClient(
         configuration=configuration,
         password_reader=CommandPasswordProvider(configuration.password_command).get_password,
