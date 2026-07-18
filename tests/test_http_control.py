@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -36,6 +37,7 @@ def test_default_runtime_binds_loopback_and_enables_unix_socket(tmp_path: Path) 
     assert runtime.public_bind is False
     assert runtime.remote_auth_required is False
     assert runtime.unix_socket == tmp_path / "data" / "pynchy.sock"
+    assert runtime.unix_socket_bind is not None
 
 
 def test_non_loopback_bind_requires_explicit_public_opt_in(tmp_path: Path) -> None:
@@ -337,3 +339,30 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
             await runner.cleanup()
 
     assert not socket_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_deep_project_root_binds_unix_socket_through_short_relative_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path.joinpath(*(["deep-project-directory"] * 6))
+    project_root.mkdir(parents=True)
+    monkeypatch.chdir(project_root)
+    runtime = resolve_control_plane_runtime(ServerConfig(), project_root=project_root)
+    runtime = replace(runtime, port=0)
+
+    assert runtime.unix_socket is not None
+    assert len(str(runtime.unix_socket).encode()) > 100
+    assert runtime.unix_socket_bind == "data/pynchy.sock"
+
+    app = web.Application()
+    register_unix_socket_cleanup(app, runtime)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await start_control_plane_sites(runner, runtime)
+    try:
+        assert runtime.unix_socket.exists()
+        assert stat.S_IMODE(runtime.unix_socket.stat().st_mode) == 0o600
+    finally:
+        await runner.cleanup()

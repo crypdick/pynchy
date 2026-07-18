@@ -33,6 +33,7 @@ ClientAddress = NewType("ClientAddress", str)
 
 MINIMUM_TOKEN_LENGTH = 32
 READINESS_PATH = "/health"
+_MAX_UNIX_SOCKET_PATH_BYTES = 100
 _AUDIT_CHAT_JID = "control-plane"
 _AUDIT_WORKSPACE = "host"
 
@@ -100,12 +101,30 @@ class ControlPlaneRuntime:
     allow_remote_deploy: bool
     auth_token: ControlPlaneToken | None = field(repr=False)
     rate_limiter: RequestRateLimiter = field(repr=False, compare=False)
+    unix_socket_bind: str | None = None
 
 
 def _resolved_path(project_root: Path, path: Path | None) -> Path | None:
     if path is None:
         return None
     return path if path.is_absolute() else (project_root / path).resolve()
+
+
+def _unix_socket_paths(
+    project_root: Path,
+    configured_path: Path | None,
+) -> tuple[Path | None, str | None]:
+    socket_path = _resolved_path(project_root, configured_path)
+    if socket_path is None:
+        return None, None
+    candidates = (str(socket_path), os.path.relpath(socket_path, start=Path.cwd()))
+    bind_path = min(candidates, key=lambda candidate: len(os.fsencode(candidate)))
+    if len(os.fsencode(bind_path)) > _MAX_UNIX_SOCKET_PATH_BYTES:
+        raise ControlPlaneConfigurationError(
+            "Control-plane Unix socket path exceeds the portable length limit; "
+            "configure server.unix_socket with a shorter path"
+        )
+    return socket_path, bind_path
 
 
 def is_loopback_bind_host(host: str) -> bool:
@@ -168,8 +187,9 @@ def resolve_control_plane_runtime(
         )
 
     unix_socket = None
+    unix_socket_bind = None
     if os.name != "nt":
-        unix_socket = _resolved_path(project_root, server.unix_socket)
+        unix_socket, unix_socket_bind = _unix_socket_paths(project_root, server.unix_socket)
 
     return ControlPlaneRuntime(
         bind_host=server.host,
@@ -183,6 +203,7 @@ def resolve_control_plane_runtime(
             request_limit=server.rate_limit_requests,
             window_seconds=server.rate_limit_window_seconds,
         ),
+        unix_socket_bind=unix_socket_bind,
     )
 
 
@@ -368,6 +389,6 @@ async def start_control_plane_sites(runner: web.AppRunner, runtime: ControlPlane
 
     if runtime.unix_socket is None:
         return
-    unix_site = web.UnixSite(runner, str(runtime.unix_socket))
+    unix_site = web.UnixSite(runner, runtime.unix_socket_bind or str(runtime.unix_socket))
     await unix_site.start()
     runtime.unix_socket.chmod(0o600)
