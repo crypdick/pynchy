@@ -2105,14 +2105,22 @@ class TestContainerInputAgentCoreConfig:
                 "pynchy.host.orchestrator.host_execution.mcp_manager.get_mcp_manager",
                 return_value=mcp_mgr,
             ),
+            patch(
+                "pynchy.host.orchestrator.host_execution.time.monotonic",
+                return_value=123.0,
+            ),
+            patch("pynchy.host.orchestrator.host_execution.resolve_security"),
+            patch("pynchy.host.orchestrator.host_execution.create_gate") as create_gate,
         ):
             result = await run_agent(deps, group, "chat", [{"content": "hi"}])
 
         assert result == "success"
+        create_gate.assert_called_once()
+        assert create_gate.call_args.args[:2] == ("host-group", 123.0)
         mcp_mgr.ensure_workspace_running.assert_awaited_once_with("host-group")
         mcp_mgr.get_direct_server_configs.assert_called_once_with(
             "host-group",
-            invocation_ts=0.0,
+            invocation_ts=123.0,
             instance_ids=("linear",),
         )
         assert run_host_input.await_args.args[0].mcp_direct_servers == [

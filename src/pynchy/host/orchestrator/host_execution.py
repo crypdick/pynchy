@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,7 @@ import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import build_agent_env_vars
 from pynchy.host.container_manager.mcp import manager as mcp_manager
+from pynchy.host.container_manager.security.gate import create_gate, resolve_security
 from pynchy.host.learning.mirror import prepare_full_vault_host_root
 from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.skill_activation import prepare_agent_homes
@@ -190,7 +192,12 @@ async def prepare_host_direct_mcp_servers(
     chat_jid: str,
     broadcast_host_message: Callable[[str, str], Awaitable[None]],
 ) -> None:
-    """Start selected MCP servers and attach their proxy routes to a host turn."""
+    """Register host security context, then attach selected MCP proxy routes."""
+    invocation_ts = time.monotonic()
+    security = resolve_security(group_folder, is_admin=input_data.is_admin)
+    create_gate(group_folder, invocation_ts, security)
+    input_data.invocation_ts = invocation_ts
+
     mcp_mgr = mcp_manager.get_mcp_manager()
     if mcp_mgr is None:
         return
