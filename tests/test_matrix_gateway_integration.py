@@ -1,4 +1,4 @@
-"""Tests for the host-only, approval-gated Matrix communications gateway."""
+"""Tests for Pynchy's host-only, approval-gated Matrix communications gateway."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from unittest.mock import patch
 
 import pytest
-from aiohttp.test_utils import TestClient, TestServer
 
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations import matrix_gateway
@@ -23,7 +22,7 @@ from pynchy.plugins.integrations.matrix_gateway_client import (
 
 @dataclass
 class StubMatrixGatewayClient:
-    """In-memory Matrix gateway substitute used at the MCP boundary."""
+    """In-memory Matrix gateway substitute used at the host service boundary."""
 
     calls: list[tuple[str, object]] = field(default_factory=list)
 
@@ -48,42 +47,54 @@ class StubMatrixGatewayClient:
         return MatrixSendResult(room_id=room_id, event_id="$sent")
 
 
-async def _start_mcp_client(stub: StubMatrixGatewayClient) -> TestClient:
-    client = TestClient(TestServer(matrix_gateway.build_app(lambda: stub)))
-    await client.start_server()
-    return client
+@dataclass(frozen=True)
+class StubResolvedWorkspace:
+    tools: list[str]
 
 
-class TestMatrixGatewayMcpPlugin:
-    def test_plugin_provides_a_host_only_approval_gated_mcp_server(self):
-        spec = matrix_gateway.MatrixGatewayMcpPlugin().pynchy_mcp_server_spec()
+@dataclass(frozen=True)
+class StubSettings:
+    tools: list[str]
 
-        assert spec["name"] == "matrix-gateway"
-        assert spec["port"] == 8476
-        assert spec["trust"] == {
-            "public_source": True,
-            "secret_data": True,
-            "public_sink": True,
-            "dangerous_writes": True,
+    def resolved_workspace_config(self, workspace_name: str) -> StubResolvedWorkspace | None:
+        return StubResolvedWorkspace(self.tools) if workspace_name == "all-my-chats" else None
+
+
+def _handlers() -> dict[str, object]:
+    return matrix_gateway.MatrixGatewayPlugin().pynchy_service_handler()["tools"]
+
+
+class TestMatrixGatewayPlugin:
+    def test_plugin_provides_native_ipc_handlers(self):
+        assert set(_handlers()) == {
+            "matrix_list_chats",
+            "matrix_list_messages",
+            "matrix_send_message",
         }
 
     def test_plugin_is_registered(self):
         plugin = get_plugin_manager().get_plugin("builtin-matrix-gateway")
 
-        assert isinstance(plugin, matrix_gateway.MatrixGatewayMcpPlugin)
+        assert isinstance(plugin, matrix_gateway.MatrixGatewayPlugin)
 
 
 class TestMatrixGatewayOperations:
     @pytest.mark.action("chat.matrix.list")
     async def test_list_chats_forwards_to_the_host_only_gateway(self):
         stub = StubMatrixGatewayClient()
+        handler = _handlers()["matrix_list_chats"]
 
-        result = await matrix_gateway._call_tool(
-            {"name": "matrix_list_chats", "arguments": {}},
-            lambda: stub,
-        )
+        with (
+            patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+            patch.object(
+                matrix_gateway,
+                "get_settings",
+                return_value=StubSettings(["matrix_list_chats"]),
+            ),
+        ):
+            result = await handler({"source_group": "all-my-chats"})
 
-        assert json.loads(result["content"][0]["text"]) == [
+        assert json.loads(result["result"]) == [
             {"name": "Friend", "room_id": "!friend:matrix.example.com"}
         ]
         assert stub.calls == [("list_chats", None)]
@@ -91,89 +102,89 @@ class TestMatrixGatewayOperations:
     @pytest.mark.action("chat.matrix.message.list")
     async def test_list_messages_requires_an_explicit_room(self):
         stub = StubMatrixGatewayClient()
+        handler = _handlers()["matrix_list_messages"]
 
-        result = await matrix_gateway._call_tool(
-            {
-                "name": "matrix_list_messages",
-                "arguments": {"room_id": "!friend:matrix.example.com", "limit": 3},
-            },
-            lambda: stub,
-        )
+        with (
+            patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+            patch.object(
+                matrix_gateway,
+                "get_settings",
+                return_value=StubSettings(["matrix_list_messages"]),
+            ),
+        ):
+            result = await handler(
+                {
+                    "source_group": "all-my-chats",
+                    "room_id": "!friend:matrix.example.com",
+                    "limit": 3,
+                }
+            )
 
-        assert json.loads(result["content"][0]["text"])[0]["body"] == "Hello"
+        assert json.loads(result["result"])[0]["body"] == "Hello"
         assert stub.calls == [("list_messages", ("!friend:matrix.example.com", 3))]
 
     @pytest.mark.action("chat.matrix.message.send")
     async def test_send_message_forwards_only_the_final_message_to_the_gateway(self):
         stub = StubMatrixGatewayClient()
+        handler = _handlers()["matrix_send_message"]
 
-        result = await matrix_gateway._call_tool(
-            {
-                "name": "matrix_send_message",
-                "arguments": {"room_id": "!friend:matrix.example.com", "body": "Sounds good."},
-            },
-            lambda: stub,
-        )
+        with (
+            patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+            patch.object(
+                matrix_gateway,
+                "get_settings",
+                return_value=StubSettings(["matrix_send_message"]),
+            ),
+        ):
+            result = await handler(
+                {
+                    "source_group": "all-my-chats",
+                    "room_id": "!friend:matrix.example.com",
+                    "body": "Sounds good.",
+                }
+            )
 
-        assert json.loads(result["content"][0]["text"]) == {
+        assert json.loads(result["result"]) == {
             "event_id": "$sent",
             "room_id": "!friend:matrix.example.com",
         }
         assert stub.calls == [("send_message", ("!friend:matrix.example.com", "Sounds good."))]
 
     async def test_send_message_rejects_an_empty_body_before_it_reaches_the_gateway(self):
-        with pytest.raises(MatrixGatewayError, match="Invalid Matrix gateway tool arguments"):
-            await matrix_gateway._call_tool(
+        stub = StubMatrixGatewayClient()
+        handler = _handlers()["matrix_send_message"]
+
+        with (
+            patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+            patch.object(
+                matrix_gateway,
+                "get_settings",
+                return_value=StubSettings(["matrix_send_message"]),
+            ),
+        ):
+            result = await handler(
                 {
-                    "name": "matrix_send_message",
-                    "arguments": {"room_id": "!friend:matrix.example.com", "body": "  "},
-                },
-                StubMatrixGatewayClient,
+                    "source_group": "all-my-chats",
+                    "room_id": "!friend:matrix.example.com",
+                    "body": "  ",
+                }
             )
 
+        assert "Invalid Matrix gateway tool arguments" in result["error"]
+        assert stub.calls == []
 
-class TestMatrixGatewayMcpServer:
-    async def test_mcp_lists_the_read_and_approval_gated_send_tools(self):
+    async def test_gateway_access_is_denied_outside_an_enabled_workspace(self):
         stub = StubMatrixGatewayClient()
-        client = await _start_mcp_client(stub)
-        try:
-            response = await client.post(
-                "/mcp",
-                json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
-            )
-            payload = await response.json()
-        finally:
-            await client.close()
+        handler = _handlers()["matrix_list_chats"]
 
-        names = {tool["name"] for tool in payload["result"]["tools"]}
-        assert names == {"matrix_list_chats", "matrix_list_messages", "matrix_send_message"}
+        with (
+            patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+            patch.object(matrix_gateway, "get_settings", return_value=StubSettings([])),
+        ):
+            result = await handler({"source_group": "other-workspace"})
 
-    @pytest.mark.action("chat.matrix.message.send")
-    async def test_mcp_sends_as_the_gateway_owner_after_the_approval_boundary(self):
-        stub = StubMatrixGatewayClient()
-        client = await _start_mcp_client(stub)
-        try:
-            response = await client.post(
-                "/mcp",
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "tools/call",
-                    "params": {
-                        "name": "matrix_send_message",
-                        "arguments": {
-                            "room_id": "!friend:matrix.example.com",
-                            "body": "Approved reply",
-                        },
-                    },
-                },
-            )
-            payload = await response.json()
-        finally:
-            await client.close()
-
-        assert json.loads(payload["result"]["content"][0]["text"])["event_id"] == "$sent"
-        assert stub.calls == [("send_message", ("!friend:matrix.example.com", "Approved reply"))]
+        assert result == {"error": "matrix_list_chats is not enabled for this workspace"}
+        assert stub.calls == []
 
 
 class TestMatrixGatewayClient:

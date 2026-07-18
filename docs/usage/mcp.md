@@ -83,7 +83,6 @@ tools = ["example_personal"]
 |--------|-------|
 | Google Drive | [Google Drive setup](gdrive.md) |
 | Linear | [Linear task tracking](linear.md) |
-| Matrix communications | [Matrix communications gateway](matrix-gateway.md) |
 | Notebooks | [Notebook execution](notebooks.md) |
 | Proton Mail | [Proton Mail](proton-mail.md) |
 | Slack MCP | [Slack MCP setup](slack-mcp.md) |

@@ -248,19 +248,19 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "proton_delete_mail",
         canary="proton.mail.round.trip",
     ),
-    mcp_action(
+    agent_action(
         "chat.matrix.list",
         "matrix-gateway",
         "List chats through the host-only Matrix communications gateway.",
         "matrix_list_chats",
     ),
-    mcp_action(
+    agent_action(
         "chat.matrix.message.list",
         "matrix-gateway",
         "Read recent messages from one Matrix chat.",
         "matrix_list_messages",
     ),
-    mcp_action(
+    agent_action(
         "chat.matrix.message.send",
         "matrix-gateway",
         "Send an approved message as the Matrix gateway owner.",
