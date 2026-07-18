@@ -193,7 +193,15 @@ class McpManager:
             settings=self._settings,
         )
         if instance_urls:
-            self._proxy_port = await self._proxy.start(instance_urls, trust_map=trust_map)
+            service_names = {
+                instance_id: instance.server_name
+                for instance_id, instance in self._instances.items()
+            }
+            self._proxy_port = await self._proxy.start(
+                instance_urls,
+                trust_map=trust_map,
+                service_names=service_names,
+            )
 
         logger.info(
             "Syncing MCP state to LiteLLM",

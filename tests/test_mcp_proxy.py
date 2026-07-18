@@ -88,6 +88,66 @@ class TestMcpProxyRouting:
         finally:
             await client.close()
 
+    async def test_proxy_uses_configured_service_for_hashed_instance(self, mock_backend):
+        """Workspace-scoped instance IDs must retain their configured trust policy."""
+        security = WorkspaceSecurity(services={"linear": _SAFE_TRUST})
+        create_gate("test-ws", 1000.0, security)
+
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        app = create_proxy_app(
+            {"linear_a1b2c3": backend_url},
+            service_names={"linear_a1b2c3": "linear"},
+        )
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/linear_a1b2c3",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "id": 1,
+                    "params": {"name": "linear_create_todo", "arguments": {}},
+                },
+            )
+            assert resp.status == 200
+        finally:
+            await client.close()
+
+    async def test_proxy_uses_configured_service_for_hashed_capability(self, mock_backend):
+        """Capability rules target configured names, never generated instance IDs."""
+        security = WorkspaceSecurity(
+            services={"linear": _SAFE_TRUST},
+            capabilities={
+                "mcp.linear.linear_create_todo": CapabilityRule(decision="deny"),
+            },
+        )
+        create_gate("test-ws", 1000.0, security)
+
+        backend_url = f"http://localhost:{mock_backend.port}/mcp"
+        app = create_proxy_app(
+            {"linear_a1b2c3": backend_url},
+            service_names={"linear_a1b2c3": "linear"},
+        )
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/linear_a1b2c3",
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "id": 1,
+                    "params": {"name": "linear_create_todo", "arguments": {}},
+                },
+            )
+            assert resp.status == 403
+            assert "mcp.linear.linear_create_todo" in (await resp.json())["error"]
+        finally:
+            await client.close()
+
     async def test_proxy_does_not_duplicate_streamable_http_mcp_path(self, mock_backend):
         """A streamable-HTTP client must not make the backend path ``/mcp/mcp``."""
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
