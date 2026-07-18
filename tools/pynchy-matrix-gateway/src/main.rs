@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use matrix_sdk::{
     authentication::matrix::MatrixSession,
     config::{RequestConfig, SyncSettings},
+    encryption::{BackupDownloadStrategy, EncryptionSettings},
     ruma::{
         events::{
             key::verification::VerificationMethod,
@@ -71,6 +72,12 @@ enum Command {
         /// Optional local file containing `confirm` after the emoji comparison.
         #[arg(long)]
         confirmation_file: Option<PathBuf>,
+    },
+    /// Recover E2EE keys from Matrix secret storage using a recovery key or passphrase.
+    Recover {
+        /// Read the recovery key or passphrase from standard input, never command arguments.
+        #[arg(long)]
+        secret_stdin: bool,
     },
     /// Send one plain-text Matrix message as the gateway owner.
     Send {
@@ -210,6 +217,10 @@ async fn build_client(homeserver: &str) -> Result<Client> {
     Client::builder()
         .homeserver_url(homeserver)
         .request_config(RequestConfig::new().timeout(std::time::Duration::from_secs(45)))
+        .with_encryption_settings(EncryptionSettings {
+            backup_download_strategy: BackupDownloadStrategy::OneShot,
+            ..Default::default()
+        })
         .sqlite_store(store, Some(&store_key))
         .build()
         .await
@@ -413,6 +424,32 @@ async fn verify(
     bail!("Matrix device verification timed out")
 }
 
+async fn recover(secret_stdin: bool) -> Result<()> {
+    if !secret_stdin {
+        bail!("refusing recovery-key arguments; pass --secret-stdin and provide it on standard input");
+    }
+    let mut recovery_key = String::new();
+    io::stdin()
+        .read_to_string(&mut recovery_key)
+        .context("reading Matrix recovery key from standard input")?;
+    let recovery_key = recovery_key.trim_end_matches(['\r', '\n']);
+    if recovery_key.is_empty() {
+        bail!("empty Matrix recovery key on standard input");
+    }
+
+    let (client, _) = restored_client().await?;
+    initial_sync(&client).await?;
+    client
+        .encryption()
+        .recovery()
+        .recover(recovery_key)
+        .await
+        .context("recovering Matrix encryption secrets")?;
+    initial_sync(&client).await?;
+    println!("{}", serde_json::json!({"status": "recovered"}));
+    Ok(())
+}
+
 fn message_from_event(room_id: &str, event: AnySyncTimelineEvent) -> Option<ReadMessage> {
     let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(event)) = event
     else {
@@ -586,6 +623,7 @@ async fn main() -> Result<()> {
             timeout_seconds,
             confirmation_file,
         } => verify(device, timeout_seconds, confirmation_file).await,
+        Command::Recover { secret_stdin } => recover(secret_stdin).await,
         Command::Send { room, body_stdin } => send(room, body_stdin).await,
     }
 }
