@@ -36,6 +36,7 @@ class ChannelPluginContext:
     send_message: Callable[[str, str], Any]
     on_reaction_callback: Callable[[str, str, str, str], None] | None = None
     on_ask_user_answer_callback: Callable[[str, dict[str, Any]], None] | None = None
+    on_approval_decision_callback: Callable[[str, str, str, str], None] | None = None
 
 
 def default_channel_name() -> str:

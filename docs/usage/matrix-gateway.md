@@ -21,7 +21,7 @@ approval gate stops every external send. The intended workflow is:
 1. Ask Pynchy to review a conversation or prepare a reply.
 2. Review or revise the draft in the chat where you normally talk to Pynchy.
 3. Ask Pynchy to send the final version.
-4. Approve the resulting external-send request with Pynchy's normal approval command.
+4. Select **Approve** on the resulting external-send request. Text-only channels show the matching approval command in the prompt.
 
 No automatic external sends are enabled by this integration.
 

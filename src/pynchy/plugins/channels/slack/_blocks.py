@@ -102,6 +102,7 @@ class SlackBlocksFormatter:
             OutboundEventType.THINKING: self._render_thinking,
             OutboundEventType.HOST: self._render_host,
             OutboundEventType.SYSTEM: self._render_system,
+            OutboundEventType.APPROVAL: self._render_approval,
         }
         return renderers.get(event.type, self._render_default)(event)
 
@@ -273,6 +274,34 @@ class SlackBlocksFormatter:
         """SYSTEM — small muted operational line."""
         blocks = [_context_block(f"\u2699\ufe0f {event.content}")]
         return RenderedMessage(text=f"\u2699\ufe0f {event.content}", blocks=blocks)
+
+    def _render_approval(self, event: OutboundEvent) -> RenderedMessage:
+        """APPROVAL — a visible prompt with controls backed by a short ID."""
+        short_id = str(event.metadata.get("short_id", ""))
+        blocks: list[dict[str, Any]] = [_markdown_block(event.content)]
+        if short_id:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "\u2705 Approve"},
+                            "action_id": f"cop_approve_{short_id}",
+                            "style": "primary",
+                            "value": short_id,
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "\u274c Deny"},
+                            "action_id": f"cop_deny_{short_id}",
+                            "style": "danger",
+                            "value": short_id,
+                        },
+                    ],
+                }
+            )
+        return RenderedMessage(text=event.content, blocks=blocks)
 
     def _render_default(self, event: OutboundEvent) -> RenderedMessage:
         return RenderedMessage(text=event.content)

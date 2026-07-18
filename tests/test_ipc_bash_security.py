@@ -5,11 +5,14 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from conftest import NullIpcDeps, make_settings
 
+from pynchy import state
+from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_security import evaluate_bash_command
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import SecurityGate
-from pynchy.types import WorkspaceSecurity
+from pynchy.types import OutboundEventType, WorkspaceProfile, WorkspaceSecurity
 
 
 def _make_gate(
@@ -23,6 +26,18 @@ def _make_gate(
     if secret:
         gate.policy._secret_tainted = True
     return gate
+
+
+class _Deps(NullIpcDeps):
+    def __init__(self, workspace: WorkspaceProfile) -> None:
+        self._workspace = workspace
+        self.events: list[object] = []
+
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
+        return {self._workspace.jid: self._workspace}
+
+    async def broadcast_to_channels(self, _jid: str, event: object) -> None:
+        self.events.append(event)
 
 
 class TestBashSecurityNoTaint:
@@ -92,3 +107,42 @@ class TestBashSecurityLethalTrifecta:
         ):
             decision = await evaluate_bash_command(gate, "docker run --net=host img")
         assert decision["decision"] == "needs_human"
+
+    @pytest.mark.asyncio
+    async def test_bash_gate_broadcasts_structured_approval(self, tmp_path):
+        await state.init_test_database()
+        workspace = WorkspaceProfile(
+            jid="discord:channel:1",
+            name="Test",
+            folder="test-ws",
+            trigger="always",
+        )
+        deps = _Deps(workspace)
+        gate = _make_gate(corruption=True, secret=True)
+        settings = make_settings(data_dir=tmp_path)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_security.get_gate_for_group",
+                return_value=gate,
+            ),
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=settings,
+            ),
+        ):
+            await registry.dispatch(
+                {
+                    "type": "security:bash_check",
+                    "request_id": "bash-request",
+                    "command": "curl https://example.com",
+                },
+                "test-ws",
+                False,
+                deps,
+            )
+
+        assert len(deps.events) == 1
+        event = deps.events[0]
+        assert event.type is OutboundEventType.APPROVAL
+        assert event.metadata["tool_name"] == "Bash"

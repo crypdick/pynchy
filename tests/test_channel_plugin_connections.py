@@ -48,6 +48,7 @@ def _context() -> ChannelPluginContext:
         on_chat_metadata_callback=MagicMock(),
         on_reaction_callback=MagicMock(),
         on_ask_user_answer_callback=MagicMock(),
+        on_approval_decision_callback=MagicMock(),
         workspaces=MagicMock(return_value={}),
         send_message=MagicMock(),
     )
@@ -66,17 +67,19 @@ def test_slack_plugin_uses_flat_connection_name_and_type() -> None:
         },
     )
 
+    context = _context()
     with (
         patch("pynchy.plugins.channels.slack.get_settings", return_value=settings),
         patch.dict("os.environ", {"BOT": "xoxb-test", "APP": "xapp-test"}, clear=False),
     ):
-        channels = SlackChannelPlugin().pynchy_create_channel(context=_context())
+        channels = SlackChannelPlugin().pynchy_create_channel(context=context)
 
     assert channels is not None
     assert len(channels) == 1
     assert isinstance(channels[0], SlackChannel)
     assert channels[0].name == "synapse"
     assert channels[0]._allow_create is True  # allow: private-test-imports
+    assert channels[0].on_approval_decision is context.on_approval_decision_callback
 
 
 def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
@@ -91,16 +94,18 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
         }
     )
 
+    context = _context()
     with (
         patch("pynchy.plugins.channels.discord.get_settings", return_value=settings),
         patch.dict("os.environ", {"DISCORD": "discord-token"}, clear=False),
     ):
-        channels = DiscordChannelPlugin().pynchy_create_channel(context=_context())
+        channels = DiscordChannelPlugin().pynchy_create_channel(context=context)
 
     assert channels is not None
     assert len(channels) == 1
     assert isinstance(channels[0], DiscordChannel)
     assert channels[0].name == "synapse"
+    assert channels[0].on_approval_decision is context.on_approval_decision_callback
 
 
 def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:

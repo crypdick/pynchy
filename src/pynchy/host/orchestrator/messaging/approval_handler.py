@@ -39,7 +39,7 @@ async def handle_approval_command(
     """
     pending = find_pending_by_short_id(short_id)
 
-    if pending is None:
+    if pending is None or pending.get("chat_jid") != chat_jid:
         await deps.broadcast_host_message(
             chat_jid,
             f"No pending approval found for ID: {short_id}",

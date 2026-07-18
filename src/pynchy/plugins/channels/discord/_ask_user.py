@@ -9,8 +9,6 @@ import discord
 
 from pynchy.logger import logger
 
-from ._access import InboundContext
-
 if TYPE_CHECKING:
     from ._channel import DiscordChannel
 else:
@@ -363,38 +361,4 @@ class DiscordAskUserView(discord.ui.View):
             self._channel.forget_ask_user_view(self._message_id)
 
     def is_interaction_allowed(self, interaction: object) -> bool:
-        interaction_api = cast("Any", interaction)
-        user = interaction_api.user
-        channel = interaction_api.channel
-        guild = interaction_api.guild
-        parent = getattr(channel, "parent", None)
-        role_ids = frozenset(str(role.id) for role in getattr(user, "roles", []))
-        parent_id = getattr(channel, "parent_id", None)
-        author_names = frozenset(
-            value
-            for value in (
-                getattr(user, "display_name", None),
-                getattr(user, "global_name", None),
-                getattr(user, "name", None),
-                str(user),
-            )
-            if isinstance(value, str) and value.strip()
-        )
-        ctx = InboundContext(
-            is_dm=guild is None,
-            author_id=str(user.id),
-            author_is_bot=bool(getattr(user, "bot", False)),
-            guild_id=None if guild is None else str(guild.id),
-            guild_name=None if guild is None else getattr(guild, "name", None),
-            channel_id=str(channel.id) if channel is not None else "",
-            channel_name=getattr(channel, "name", None),
-            parent_channel_id=str(parent_id) if parent_id else None,
-            parent_channel_name=getattr(parent, "name", None) if parent is not None else None,
-            author_role_ids=role_ids,
-            # Clicking a bot-owned component is the interaction equivalent of
-            # explicitly addressing the bot, so mention-gated guilds should
-            # treat it as intentional.
-            mentions_bot=True,
-            author_names=author_names,
-        )
-        return self._channel.access.decide(ctx) == "allow"
+        return self._channel.is_interaction_allowed(interaction)

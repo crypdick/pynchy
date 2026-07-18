@@ -95,6 +95,18 @@ class TestHandleApprovalCommand:
         assert "no pending" in deps.broadcast_messages[0][1].lower()
 
     @pytest.mark.asyncio
+    async def test_rejects_decision_from_another_chat(self, ipc_dir: Path, settings):
+        with patch(
+            "pynchy.host.container_manager.security.approval.get_settings", return_value=settings
+        ):
+            short_id = create_pending_approval("request-1", "x_post", "grp", "one@g.us", {})
+            deps = FakeDeps()
+            await handle_approval_command(deps, "two@g.us", "approve", short_id, "testuser")
+
+        assert not list((ipc_dir / "grp" / "approval_decisions").glob("*.json"))
+        assert "no pending" in deps.broadcast_messages[0][1].lower()
+
+    @pytest.mark.asyncio
     async def test_confirmation_broadcast(self, ipc_dir: Path, settings):
         with (
             patch(

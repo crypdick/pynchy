@@ -21,8 +21,8 @@ from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.security.approval import (
+    approval_event,
     create_pending_approval,
-    format_approval_notification,
 )
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.cop import inspect_outbound
@@ -96,10 +96,14 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
             request_data=data,
             handler_type="ipc",
         )
-        notification = format_approval_notification(operation, data, short_id)
-        notification = f"[Cop flagged: {verdict.reason}]\n\n{notification}"
         await deps.broadcast_to_channels(
-            chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
+            chat_jid,
+            approval_event(
+                operation,
+                data,
+                short_id,
+                preface=f"[Cop flagged: {verdict.reason}]",
+            ),
         )
     else:
         # Fire-and-forget: no approval possible, just warn

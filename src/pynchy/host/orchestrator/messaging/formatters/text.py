@@ -56,6 +56,7 @@ class TextFormatter:
             OutboundEventType.RESULT: self._render_result,
             OutboundEventType.HOST: self._render_host,
             OutboundEventType.SYSTEM: self._render_system,
+            OutboundEventType.APPROVAL: self._render_approval,
         }
         return renderers.get(event.type, self._render_default)(event)
 
@@ -98,6 +99,9 @@ class TextFormatter:
 
     def _render_system(self, event: OutboundEvent) -> RenderedMessage:
         return RenderedMessage(text=f"\u2699\ufe0f {event.content}")
+
+    def _render_approval(self, event: OutboundEvent) -> RenderedMessage:
+        return RenderedMessage(text=event.content)
 
     def _render_default(self, event: OutboundEvent) -> RenderedMessage:
         return RenderedMessage(text=event.content)

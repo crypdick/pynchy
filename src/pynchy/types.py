@@ -382,6 +382,7 @@ class OutboundEventType(Enum):
     SYSTEM = "system"
     HOST = "host"
     RESULT = "result"
+    APPROVAL = "approval"
 
 
 @dataclass

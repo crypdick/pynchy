@@ -9,6 +9,7 @@ import pytest
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.cop_gate import cop_gate
+from pynchy.types import OutboundEventType
 
 
 @pytest.fixture
@@ -56,12 +57,9 @@ async def test_cop_blocks_flagged_with_request_id(mock_deps):
             new_callable=AsyncMock,
         ),
         patch(
-            "pynchy.host.container_manager.security.cop_gate.create_pending_approval"
+            "pynchy.host.container_manager.security.cop_gate.create_pending_approval",
+            return_value="a1",
         ) as mock_create,
-        patch(
-            "pynchy.host.container_manager.security.cop_gate.format_approval_notification",
-            return_value="msg",
-        ),
     ):
         result = await cop_gate(
             "sync_worktree_to_main",
@@ -79,6 +77,8 @@ async def test_cop_blocks_flagged_with_request_id(mock_deps):
     assert call_kwargs.kwargs.get("handler_type") == "ipc" or (
         len(call_kwargs.args) > 5 and call_kwargs.args[5] == "ipc"
     )
+    event = mock_deps.broadcast_to_channels.call_args.args[1]
+    assert event.type is OutboundEventType.APPROVAL
 
 
 @pytest.mark.asyncio
@@ -170,10 +170,9 @@ async def test_cop_gate_notification_includes_reason(mock_deps):
             "pynchy.host.container_manager.security.cop_gate.record_security_event",
             new_callable=AsyncMock,
         ),
-        patch("pynchy.host.container_manager.security.cop_gate.create_pending_approval"),
         patch(
-            "pynchy.host.container_manager.security.cop_gate.format_approval_notification",
-            return_value="approval msg",
+            "pynchy.host.container_manager.security.cop_gate.create_pending_approval",
+            return_value="a1",
         ),
     ):
         await cop_gate(
@@ -188,4 +187,5 @@ async def test_cop_gate_notification_includes_reason(mock_deps):
     # Notification should contain the cop reason
     broadcast_call = mock_deps.broadcast_to_channels.call_args
     event = broadcast_call.args[1]
+    assert event.type is OutboundEventType.APPROVAL
     assert "backdoor pattern detected" in event.content

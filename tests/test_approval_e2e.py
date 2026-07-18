@@ -23,7 +23,7 @@ from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_hand
 from pynchy.host.container_manager.security import gate
 from pynchy.host.container_manager.security.gate import create_gate
 from pynchy.host.orchestrator.messaging.approval_handler import handle_approval_command
-from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
+from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -57,11 +57,13 @@ class FakeDeps(NullIpcDeps):
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
         self._groups = groups or {}
         self.broadcast_messages: list[tuple[str, str]] = []
+        self.broadcast_events: list[object] = []
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
     async def broadcast_to_channels(self, jid: str, event: object) -> None:
+        self.broadcast_events.append(event)
         # event is an OutboundEvent; extract .content for string assertions
         content = event.content if hasattr(event, "content") else str(event)
         self.broadcast_messages.append((jid, content))
@@ -264,6 +266,9 @@ class TestApprovalE2E:
         # Verify: notification broadcast
         assert len(deps.broadcast_messages) == 1
         self._assert_broadcast(deps, 0, "Approval required", "x_post")
+        approval_event = deps.broadcast_events[0]
+        assert approval_event.type is OutboundEventType.APPROVAL
+        assert approval_event.metadata["short_id"]
 
         # Read the actual short_id from the pending file (now random 2-char)
         short_id = self._short_id_from_pending(pending_path)

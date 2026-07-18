@@ -96,6 +96,17 @@ def test_render_system():
     assert "\u2699\ufe0f" in result.text
 
 
+def test_render_approval_preserves_manual_fallback():
+    fmt = TextFormatter()
+    event = OutboundEvent(
+        type=OutboundEventType.APPROVAL,
+        content="Approval required\n\n→ approve a1 / deny a1",
+        metadata={"short_id": "a1"},
+    )
+    result = fmt.render(event)
+    assert result.text == event.content
+
+
 def test_render_host():
     fmt = TextFormatter()
     event = OutboundEvent(type=OutboundEventType.HOST, content="deployment started")

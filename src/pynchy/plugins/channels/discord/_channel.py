@@ -6,9 +6,8 @@ inbound handling to :class:`DiscordEvents` and connection management to
 :class:`DiscordLifecycle`. Collaborators hold a back-reference to this channel
 and read the late-bound ``client`` live, since it is recreated on reconnect.
 
-Outbound text is rendered by the shared ``TextFormatter`` (its markdown renders
-natively in Discord) and split by :func:`chunk_discord_text` to respect the
-2000-character limit.
+Outbound text is rendered by the shared ``TextFormatter`` and split into
+Discord-sized messages by the outbound collaborator.
 """
 
 from __future__ import annotations
@@ -30,13 +29,14 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
     InboundFetchResult,
     NewMessage,
     OutboundEvent,
+    OutboundEventType,
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
 
-from ._access import DiscordAccess
+from ._access import DiscordAccess, interaction_context
 from ._ask_user import DiscordAskUserView, send_ask_user_prompt
-from ._chunk import DISCORD_LIMIT, chunk_discord_text
+from ._chunk import DISCORD_LIMIT
 from ._events import DiscordEvents
 from ._history import (
     MESSAGE_ID_PREFIX as _MESSAGE_ID_PREFIX,
@@ -50,6 +50,7 @@ from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
 from ._models import parse_discord_message
+from ._outbound import send_approval, send_text
 from ._provisioning import create_discord_group
 
 if TYPE_CHECKING:
@@ -83,6 +84,7 @@ class DiscordChannel:
         on_chat_metadata: Callable[[str, str, str | None], None],
         on_reaction: Callable[[str, str, str, str], None] | None = None,
         on_ask_user_answer: Callable[[str, dict[str, object]], None] | None = None,
+        on_approval_decision: Callable[[str, str, str, str], None] | None = None,
         workspaces: Callable[[], dict[str, WorkspaceProfile]] | None = None,
     ) -> None:
         self.name = connection_name
@@ -94,6 +96,7 @@ class DiscordChannel:
         self.on_chat_metadata = on_chat_metadata
         self.on_reaction = on_reaction
         self.on_ask_user_answer = on_ask_user_answer
+        self.on_approval_decision = on_approval_decision
         self.workspaces = workspaces
         self.bot_user_id: str = ""
         self.client: object | None = None
@@ -162,6 +165,10 @@ class DiscordChannel:
     def owns_jid(self, jid: str) -> bool:
         # v1 assumes a single Discord connection; every discord: jid is ours.
         return is_discord_jid(jid)
+
+    def is_interaction_allowed(self, interaction: object) -> bool:
+        """Apply the ordinary inbound access policy to a component click."""
+        return self.access.decide(interaction_context(interaction)) == "allow"
 
     def allows_registered_workspace_jid(self, jid: str, *, is_dm: bool) -> bool:
         """Return whether a runtime-registered workspace may bypass chat config."""
@@ -322,15 +329,6 @@ class DiscordChannel:
     def bind_ask_user_view(self, message_id: str, view: DiscordAskUserView) -> None:
         self._ask_user_views[message_id] = view
 
-    async def _send_text(self, channel: object, text: str) -> None:
-        channel_like = cast("Any", channel)
-        for chunk in chunk_discord_text(text):
-            await channel_like.send(
-                chunk,
-                allowed_mentions=discord.AllowedMentions.none(),
-                suppress_embeds=True,
-            )
-
     async def send_event(self, jid: str, event: OutboundEvent) -> None:
         if self.client is None or not self.owns_jid(jid):
             return
@@ -343,7 +341,11 @@ class DiscordChannel:
             logger.warning("Discord send failed to resolve channel", jid=jid, err=str(exc))
             return
         try:
-            await self._send_text(channel, rendered.text)
+            short_id = event.metadata.get("short_id")
+            if event.type is OutboundEventType.APPROVAL and isinstance(short_id, str) and short_id:
+                await send_approval(channel, self, jid, rendered.text, short_id)
+            else:
+                await send_text(channel, rendered.text)
         except discord.Forbidden as exc:
             logger.warning(
                 "Discord send forbidden (missing permission or DM blocked)", err=str(exc)

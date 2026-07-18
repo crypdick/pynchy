@@ -62,6 +62,12 @@ Write to tool
 
 A payload scanner also runs on every outbound write. If it spots credential patterns (API keys, tokens, passwords), the write escalates to human approval regardless of taint state.
 
+## Approving a Request
+
+Pynchy posts an approval prompt in the workspace that requested the action. In Discord and Slack, select **Approve** or **Deny** on that prompt. The control records the decision in the originating workspace, so a prompt from one chat cannot approve an action in another.
+
+Text-only channels show the command fallback in the prompt, for example `approve a1` or `deny a1`. Prompts expire after five minutes if no decision arrives.
+
 ## Capability Rules
 
 Use tool trust fields for broad service risk. Use profile capability rules when a specific MCP tool call needs a sharper policy than the rest of the service.

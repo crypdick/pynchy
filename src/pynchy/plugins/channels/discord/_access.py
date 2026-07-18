@@ -17,7 +17,7 @@ Two Discord-specific rules the Slack channel doesn't have:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal, cast
 
 from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     DiscordChannelConfig,
@@ -44,6 +44,41 @@ class InboundContext:
     author_role_ids: frozenset[str]
     mentions_bot: bool
     author_names: frozenset[str] = frozenset()
+
+
+def interaction_context(interaction: object) -> InboundContext:
+    """Parse a Discord component interaction into the shared access model."""
+    interaction_api = cast("Any", interaction)
+    user = interaction_api.user
+    channel = interaction_api.channel
+    guild = interaction_api.guild
+    parent = getattr(channel, "parent", None)
+    parent_id = getattr(channel, "parent_id", None)
+    author_names = frozenset(
+        value
+        for value in (
+            getattr(user, "display_name", None),
+            getattr(user, "global_name", None),
+            getattr(user, "name", None),
+            str(user),
+        )
+        if isinstance(value, str) and value.strip()
+    )
+    return InboundContext(
+        is_dm=guild is None,
+        author_id=str(user.id),
+        author_is_bot=bool(getattr(user, "bot", False)),
+        guild_id=None if guild is None else str(guild.id),
+        guild_name=None if guild is None else getattr(guild, "name", None),
+        channel_id=str(channel.id) if channel is not None else "",
+        channel_name=getattr(channel, "name", None),
+        parent_channel_id=str(parent_id) if parent_id else None,
+        parent_channel_name=getattr(parent, "name", None) if parent is not None else None,
+        author_role_ids=frozenset(str(role.id) for role in getattr(user, "roles", [])),
+        # Clicking a bot-owned component is an explicit address to the bot.
+        mentions_bot=True,
+        author_names=author_names,
+    )
 
 
 def _strip_user_prefix(entry: str) -> str:

@@ -29,7 +29,6 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.logger import logger
 from pynchy.plugins import get_plugin_manager
-from pynchy.types import OutboundEvent, OutboundEventType
 
 # Lazily populated mapping of tool_name -> async handler from plugins.
 PluginHandlers = dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]
@@ -122,8 +121,8 @@ async def _request_human_approval(
 ) -> None:
     # Lazy import to avoid circular: security.approval → ipc._write → ipc.__init__ → here
     from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - security.approval imports IPC dispatch during approval replay.
+        approval_event,
         create_pending_approval,
-        format_approval_notification,
     )
 
     short_id = create_pending_approval(
@@ -134,10 +133,9 @@ async def _request_human_approval(
         request_data=context.data,
     )
 
-    notification = format_approval_notification(context.request.tool_name, context.data, short_id)
     await context.deps.broadcast_to_channels(
         context.chat_jid,
-        OutboundEvent(type=OutboundEventType.SYSTEM, content=notification),
+        approval_event(context.request.tool_name, context.data, short_id),
     )
 
     await record_security_event(

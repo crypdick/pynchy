@@ -51,6 +51,7 @@ def _channel_context(
         Callable[[str, str, str | None], None],
         Callable[[str, str, str, str], None] | None,
         Callable[[str, dict[str, Any]], None] | None,
+        Callable[[str, str, str, str], None] | None,
     ]
     | None
 ):
@@ -66,6 +67,7 @@ def _channel_context(
         on_metadata,
         getattr(context, "on_reaction_callback", None),
         getattr(context, "on_ask_user_answer_callback", None),
+        getattr(context, "on_approval_decision_callback", None),
     )
 
 
@@ -78,6 +80,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack conn
     on_metadata: Callable[[str, str, str | None], None],
     on_reaction: Callable[[str, str, str, str], None] | None,
     on_ask_user_answer: Callable[[str, dict[str, Any]], None] | None,
+    on_approval_decision: Callable[[str, str, str, str], None] | None,
 ) -> SlackChannel | None:
     """Build one SlackChannel or log why that connection was skipped."""
     connection_name = name
@@ -121,6 +124,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack conn
         on_chat_metadata=on_metadata,
         on_reaction=on_reaction,
         on_ask_user_answer=on_ask_user_answer,
+        on_approval_decision=on_approval_decision,
     )
 
 
@@ -138,7 +142,7 @@ class SlackChannelPlugin:
         callbacks = _channel_context(context)
         if callbacks is None:
             return None
-        on_message, on_metadata, on_reaction, on_ask_user_answer = callbacks
+        on_message, on_metadata, on_reaction, on_ask_user_answer, on_approval_decision = callbacks
         channels: list[SlackChannel] = []
 
         for name, cfg in configs.items():
@@ -150,6 +154,7 @@ class SlackChannelPlugin:
                 on_metadata=on_metadata,
                 on_reaction=on_reaction,
                 on_ask_user_answer=on_ask_user_answer,
+                on_approval_decision=on_approval_decision,
             )
             if channel is not None:
                 channels.append(channel)

@@ -20,7 +20,6 @@ from pynchy.host.container_manager.security.gate import (
     resolve_security,
 )
 from pynchy.logger import logger
-from pynchy.types import OutboundEvent, OutboundEventType
 
 # Inline network-capable check (same logic as container's classify.py).
 # We duplicate rather than import because the container package isn't
@@ -166,8 +165,8 @@ async def _handle_bash_security_check(
     if decision["decision"] == "needs_human":
         # Lazy import to avoid circular: security.approval -> ipc._write -> ipc.__init__ -> here
         from pynchy.host.container_manager.security.approval import (  # noqa: PLC0415, RUF100 - avoid security.approval/import cycle.
+            approval_event,
             create_pending_approval,
-            format_approval_notification,
         )
 
         short_id = create_pending_approval(
@@ -178,9 +177,8 @@ async def _handle_bash_security_check(
             request_data={"command": command},
         )
 
-        notification = format_approval_notification("Bash", {"command": command}, short_id)
         await deps.broadcast_to_channels(
-            chat_jid, OutboundEvent(type=OutboundEventType.SYSTEM, content=notification)
+            chat_jid, approval_event("Bash", {"command": command}, short_id)
         )
 
         await record_security_event(
