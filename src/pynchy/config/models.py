@@ -505,6 +505,7 @@ class McpToolConfig(_StrictModel):
     args: list[str] = []
     port: int | None = None
     idle_timeout: int = 600
+    startup_timeout_seconds: Annotated[float, Field(gt=0)] = 5.0
     env: dict[str, str] = {}
     env_forward: dict[str, str] = {}
     volumes: list[str] = []
