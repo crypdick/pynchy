@@ -50,7 +50,13 @@ class ScheduledTurnDeps(Protocol):
     @property
     def queue(self) -> ScheduledTurnQueue: ...
 
-    async def create_scheduled_thread(self, parent_jid: str, name: str) -> str: ...
+    async def create_scheduled_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> str: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
         self,
@@ -178,6 +184,22 @@ def _thread_name(task: ScheduledTask, slot: int) -> str:
     return f"{task.group_folder}-{slot}"
 
 
+def _active_parent_participant_ids(
+    task: ScheduledTask,
+    turns: list[InFlightTurn],
+) -> tuple[str, ...]:
+    """Return identifiers of humans whose active turn reserved the parent chat."""
+    participant_ids: set[str] = set()
+    for turn in turns:
+        if turn.chat_jid != task.chat_jid or turn.work_kind is not InFlightWorkKind.INTERACTIVE:
+            continue
+        for message in turn.input_messages:
+            sender = message.get("sender")
+            if isinstance(sender, str) and sender:
+                participant_ids.add(sender)
+    return tuple(sorted(participant_ids))
+
+
 async def _new_task_target(
     request: TaskAgentRequest,
     turn_id: str,
@@ -185,12 +207,17 @@ async def _new_task_target(
 ) -> _ScheduledTaskTarget:
     """Claim an idle base chat or create a numbered child thread for this turn."""
     async with _scheduled_target_lock:
-        slot = _next_thread_slot(request.task, await get_in_flight_turns())
+        turns = await get_in_flight_turns()
+        slot = _next_thread_slot(request.task, turns)
         if slot == 0:
             target = _ScheduledTaskTarget(request.task, request.group, slot)
         else:
             name = _thread_name(request.task, slot)
-            child_jid = await request.deps.create_scheduled_thread(request.task.chat_jid, name)
+            child_jid = await request.deps.create_scheduled_thread(
+                request.task.chat_jid,
+                name,
+                participant_ids=_active_parent_participant_ids(request.task, turns),
+            )
             if not child_jid:
                 raise RuntimeError("Scheduled task thread creation returned no chat JID")
             child_group = replace(

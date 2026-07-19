@@ -302,9 +302,20 @@ class PynchyApp:
             chat_jid, event, suppress_errors=suppress_errors
         )
 
-    async def create_scheduled_thread(self, parent_jid: str, name: str) -> str:
+    async def create_scheduled_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> str:
         """Create a child conversation on the channel that owns *parent_jid*."""
-        return await create_scheduled_thread(self.channels, parent_jid, name)
+        return await create_scheduled_thread(
+            self.channels,
+            parent_jid,
+            name,
+            participant_ids=participant_ids,
+        )
 
     async def send_reaction_to_channels(
         self, chat_jid: str, message_id: str, sender: str, emoji: str

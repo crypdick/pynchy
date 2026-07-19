@@ -15,7 +15,7 @@ class _ThreadCapableChannel:
     formatter: Any = object()
 
     def __init__(self) -> None:
-        self.requests: list[tuple[str, str]] = []
+        self.requests: list[tuple[str, str, tuple[str, ...]]] = []
 
     async def connect(self) -> None: ...
 
@@ -36,8 +36,14 @@ class _ThreadCapableChannel:
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         return InboundFetchResult(messages=[])
 
-    async def create_thread(self, parent_jid: str, name: str) -> str:
-        self.requests.append((parent_jid, name))
+    async def create_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> str:
+        self.requests.append((parent_jid, name, participant_ids))
         return "discord:channel:child"
 
 
@@ -47,10 +53,14 @@ async def test_app_routes_scheduled_thread_creation_to_owning_channel() -> None:
     channel = _ThreadCapableChannel()
     app.channels = [channel]
 
-    child_jid = await app.create_scheduled_thread("discord:channel:parent", "pynchy-dev-1")
+    child_jid = await app.create_scheduled_thread(
+        "discord:channel:parent",
+        "pynchy-dev-1",
+        participant_ids=("123",),
+    )
 
     assert child_jid == "discord:channel:child"
-    assert channel.requests == [("discord:channel:parent", "pynchy-dev-1")]
+    assert channel.requests == [("discord:channel:parent", "pynchy-dev-1", ("123",))]
 
 
 @pytest.mark.asyncio

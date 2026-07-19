@@ -11,15 +11,23 @@ from pynchy.types import Channel  # noqa: TC001, RUF100 - beartype resolves this
 class ScheduledThreadChannel(Protocol):
     """Optional channel capability for creating one child conversation."""
 
-    async def create_thread(self, parent_jid: str, name: str) -> str: ...
+    async def create_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> str: ...
 
 
 async def create_scheduled_thread(
     channels: list[Channel],
     parent_jid: str,
     name: str,
+    *,
+    participant_ids: tuple[str, ...] = (),
 ) -> str:
-    """Create a child conversation on the channel that owns *parent_jid*."""
+    """Create a child conversation and include active parent participants."""
     channel = next(
         (
             candidate
@@ -30,7 +38,11 @@ async def create_scheduled_thread(
     )
     if channel is None:
         raise RuntimeError(f"Channel does not support scheduled task threads: {parent_jid}")
-    child_jid = await channel.create_thread(parent_jid, name)
+    child_jid = await channel.create_thread(
+        parent_jid,
+        name,
+        participant_ids=participant_ids,
+    )
     if not child_jid:
         raise RuntimeError("Channel returned no JID for scheduled task thread")
     return child_jid
