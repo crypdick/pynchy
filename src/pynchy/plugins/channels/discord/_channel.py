@@ -290,6 +290,18 @@ class DiscordChannel:
                     participant_id=participant_id,
                     error=str(exc),
                 )
+        send = getattr(parent, "send", None)
+        if callable(send):
+            try:
+                await send(f"Scheduled task thread: <#{thread.id}>")
+            except discord.HTTPException as exc:
+                # A thread link is discoverability help. Its failure must not
+                # make Temporal retry an otherwise valid child thread.
+                logger.warning(
+                    "Could not announce scheduled Discord thread",
+                    thread_id=thread.id,
+                    error=str(exc),
+                )
         return channel_jid(str(thread.id))
 
     async def find_configured_channel(self, target: DiscordChatTarget) -> object | None:

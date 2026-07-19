@@ -118,12 +118,16 @@ class _FakeThreadParent:
     def __init__(self) -> None:
         self.thread_requests: list[tuple[str, object]] = []
         self.created_threads: list[_FakeThread] = []
+        self.sent_messages: list[str] = []
 
     async def create_thread(self, *, name: str, **kwargs: object) -> _FakeThread:
         self.thread_requests.append((name, kwargs["type"]))
         thread = _FakeThread(id=456)
         self.created_threads.append(thread)
         return thread
+
+    async def send(self, content: str) -> None:
+        self.sent_messages.append(content)
 
 
 class _FakePynchyVoiceClient(PynchyVoiceClient):
@@ -355,6 +359,7 @@ async def test_creates_child_thread_for_scheduled_task():
 
     assert child_jid == "discord:channel:456"
     assert parent.thread_requests == [("pynchy-dev-1", discord.ChannelType.public_thread)]
+    assert parent.sent_messages == ["Scheduled task thread: <#456>"]
     ch.resolve_channel.assert_awaited_once_with("discord:channel:123")
 
 
