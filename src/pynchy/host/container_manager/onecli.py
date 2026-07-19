@@ -362,18 +362,14 @@ def _materialize_container_config(
 
 
 def _resolve_container_proxy_hosts(env_vars: dict[str, str]) -> dict[str, str]:
-    """Adapt OneCLI's Docker-default proxy hostname to the active runtime."""
+    """Return OneCLI environment suitable for the active container runtime."""
     resolved_host = resolve_container_host(_DEFAULT_CONTAINER_PROXY_HOST)
     if resolved_host == _DEFAULT_CONTAINER_PROXY_HOST:
         return env_vars
-    return {
-        key: (
-            value.replace(_DEFAULT_CONTAINER_PROXY_HOST, resolved_host)
-            if key in _CONTAINER_PROXY_ENV_KEYS
-            else value
-        )
-        for key, value in env_vars.items()
-    }
+    # OneCLI's local proxy tunnel binds the host loopback interface. Apple
+    # Container guests cannot reach that listener over the VM bridge, so
+    # injecting rewritten proxy variables would prevent their direct egress.
+    return {key: value for key, value in env_vars.items() if key not in _CONTAINER_PROXY_ENV_KEYS}
 
 
 def _string_dict(value: object, *, field: str) -> dict[str, str]:
