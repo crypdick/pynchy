@@ -134,6 +134,7 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
 
     from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - keep git_ops.utils dependency lazy during git_ops package initialization.
         git_env_with_token,
+        run_git,
     )
 
     env = git_env_with_token(repo_ctx.slug)
@@ -141,12 +142,12 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     clone_url = f"https://github.com/{repo_ctx.slug}"
 
     logger.info("Cloning repo", slug=repo_ctx.slug, dest=str(repo_ctx.root))
-    result = subprocess.run(  # noqa: S603, RUF100 - clone URL is a validated repo slug URL and argv is fixed.
-        ["git", "clone", clone_url, str(repo_ctx.root)],  # noqa: S607, RUF100 - git is the trusted host VCS executable.
-        capture_output=True,
-        text=True,
+    result = run_git(
+        "clone",
+        clone_url,
+        str(repo_ctx.root),
+        cwd=repo_ctx.root.parent,
         env=env,
-        check=False,
     )
     if result.returncode != 0:
         stderr = _sanitize_token(result.stderr.strip(), token)
