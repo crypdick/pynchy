@@ -255,8 +255,14 @@ class DiscordChannel:
     async def create_group(self, name: str) -> str:
         return await create_discord_group(self, name)
 
-    async def create_thread(self, parent_jid: str, name: str) -> str:
-        """Create a public child thread below one Discord text channel."""
+    async def create_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> str:
+        """Create a public child thread and add active Discord participants."""
         parent = cast("Any", await self.resolve_channel(parent_jid))
         create_thread = getattr(parent, "create_thread", None)
         if not callable(create_thread):
@@ -265,6 +271,25 @@ class DiscordChannel:
         # Scheduled output belongs to the configured channel's participants,
         # so opt into the public type explicitly.
         thread = await create_thread(name=name, type=discord.ChannelType.public_thread)
+        add_user = getattr(thread, "add_user", None)
+        for participant_id in dict.fromkeys(participant_ids):
+            if (
+                not participant_id.isdecimal()
+                or participant_id == self.bot_user_id
+                or not callable(add_user)
+            ):
+                continue
+            try:
+                await add_user(discord.Object(id=int(participant_id)))
+            except discord.HTTPException as exc:
+                # The public thread still exists; failing the whole scheduled
+                # turn here would create a duplicate on Temporal retry.
+                logger.warning(
+                    "Could not add participant to scheduled Discord thread",
+                    thread_id=thread.id,
+                    participant_id=participant_id,
+                    error=str(exc),
+                )
         return channel_jid(str(thread.id))
 
     async def find_configured_channel(self, target: DiscordChatTarget) -> object | None:

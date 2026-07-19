@@ -219,6 +219,7 @@ class MockSchedulerDeps:
         self.agent_runs: list = []
         self.streamed_outputs: list = []
         self.thread_creations: list[tuple[str, str]] = []
+        self.thread_participants: list[tuple[str, ...]] = []
         # Configurable return value for run_agent
         self._run_agent_result: str = "success"
         # Configurable side effect for run_agent (to call on_output)
@@ -236,8 +237,15 @@ class MockSchedulerDeps:
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         self.system_notices.append((chat_jid, text))
 
-    async def create_scheduled_thread(self, parent_jid: str, name: str) -> str:
+    async def create_scheduled_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> str:
         self.thread_creations.append((parent_jid, name))
+        self.thread_participants.append(participant_ids)
         return f"discord:channel:scheduled-{len(self.thread_creations)}"
 
     async def run_agent(
@@ -716,7 +724,7 @@ class TestRunScheduledAgent:
                 chat_jid=sample_task.chat_jid,
                 group_folder=sample_task.group_folder,
                 work_kind=InFlightWorkKind.INTERACTIVE,
-                input_messages=[{"content": "Please investigate this."}],
+                input_messages=[{"sender": "123456", "content": "Please investigate this."}],
                 input_start_cursor="",
                 input_end_cursor="",
                 started_at=datetime.now(UTC).isoformat(),
@@ -735,6 +743,7 @@ class TestRunScheduledAgent:
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert mock_deps.thread_creations == [("test@g.us", "test-group-1")]
+        assert mock_deps.thread_participants == [("123456",)]
         scheduled_run = mock_deps.agent_runs[0]
         assert scheduled_run["chat_jid"] == "discord:channel:scheduled-1"
         assert scheduled_run["group"].folder == "test-group__thread_discord-channel-scheduled-1"

@@ -108,15 +108,22 @@ class _FakeTypingChannel:
 @dataclass(slots=True)
 class _FakeThread:
     id: int
+    added_user_ids: list[int] = field(default_factory=list)
+
+    async def add_user(self, user: discord.Object) -> None:
+        self.added_user_ids.append(int(user.id))
 
 
 class _FakeThreadParent:
     def __init__(self) -> None:
         self.thread_requests: list[tuple[str, object]] = []
+        self.created_threads: list[_FakeThread] = []
 
     async def create_thread(self, *, name: str, **kwargs: object) -> _FakeThread:
         self.thread_requests.append((name, kwargs["type"]))
-        return _FakeThread(id=456)
+        thread = _FakeThread(id=456)
+        self.created_threads.append(thread)
+        return thread
 
 
 class _FakePynchyVoiceClient(PynchyVoiceClient):
@@ -349,6 +356,21 @@ async def test_creates_child_thread_for_scheduled_task():
     assert child_jid == "discord:channel:456"
     assert parent.thread_requests == [("pynchy-dev-1", discord.ChannelType.public_thread)]
     ch.resolve_channel.assert_awaited_once_with("discord:channel:123")
+
+
+@pytest.mark.asyncio
+async def test_adds_active_human_to_scheduled_child_thread():
+    ch = _channel()
+    parent = _FakeThreadParent()
+    ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
+
+    await ch.create_thread(
+        "discord:channel:123",
+        "pynchy-dev-1",
+        participant_ids=("123", "not-a-discord-user", "123"),
+    )
+
+    assert parent.created_threads[0].added_user_ids == [123]
 
 
 @pytest.mark.asyncio
