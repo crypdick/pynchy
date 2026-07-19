@@ -486,11 +486,11 @@ def pynchy_memory(self) -> Any | None:
 
 ## pynchy_webhook_routes
 
-Provide provider-authenticated HTTP callbacks that become isolated one-time agent
-tasks. A route plugin owns the provider schema, signature algorithm, replay check,
-and the closed mapping from provider events to either an agent prompt or an ignored
-reason. The host owns the public path, size and rate limits, workspace boundary,
-durable receipt, delivery deduplication, and task dispatch.
+Provide provider-authenticated HTTP callbacks. A route plugin owns the provider
+schema, signature algorithm, replay check, and closed mapping from provider events
+to an isolated agent task, a deterministic host notification, or an ignored reason.
+The host owns the public path, size and rate limits, workspace boundary, durable
+receipt, delivery deduplication, and task or notification dispatch.
 
 **Calling strategy:** All results are collected and validated during HTTP startup.
 A plugin can return one `WebhookRoute`, a tuple of routes, or `None`.
@@ -553,9 +553,11 @@ The parser receives the raw bytes because signatures commonly cover the exact bo
 It must authenticate before parsing and raise `WebhookAuthenticationError` for bad
 credentials or replay checks. Raise `WebhookPayloadError` only after authentication
 when the body does not match the provider schema. Return a `WebhookEvent` with
-exactly one actionable pair (`instructions` and `external_context`) or
-`ignored_reason`. Never copy provider text into trusted instructions. The host
-serializes and fences `external_context` before constructing the task prompt.
+exactly one actionable pair (`instructions` and `external_context`), literal
+`host_message`, or `ignored_reason`. Never copy provider text into trusted
+instructions. The host serializes and fences `external_context` before constructing
+the task prompt. Use `host_message` only for deterministic operational text; it is
+sent to the route's workspace without an agent run.
 
 `WebhookRoute` defaults to a 256 KiB body limit and 60 requests per 60 seconds per
 transport peer. A plugin may lower or raise those positive limits for its provider.

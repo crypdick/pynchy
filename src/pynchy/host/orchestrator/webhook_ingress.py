@@ -7,7 +7,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from aiohttp import web
 
@@ -28,6 +28,8 @@ from pynchy.types import ScheduledTask, WorkspaceProfile
 
 class WebhookIngressDeps(Protocol):
     """Host capabilities required by provider webhook ingress."""
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
     def get_workspace(self, folder: str) -> WorkspaceProfile | None: ...
 
@@ -195,6 +197,13 @@ async def handle_webhook(request: web.Request) -> web.Response:
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)
+    disposition: Literal["accepted", "notified", "ignored"]
+    if task is not None:
+        disposition = "accepted"
+    elif event.host_message is not None:
+        disposition = "notified"
+    else:
+        disposition = "ignored"
     receipt = WebhookReceipt(
         provider=route.provider,
         route=route.name,
@@ -204,7 +213,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
         event_action=event.action,
         subject_id=event.subject_id,
         payload_sha256=hashlib.sha256(raw_body).hexdigest(),
-        disposition="accepted" if task is not None else "ignored",
+        disposition=disposition,
         ignored_reason=event.ignored_reason,
         task_id=task.id if task is not None else None,
         occurred_at=event.occurred_at,
@@ -213,6 +222,8 @@ async def handle_webhook(request: web.Request) -> web.Response:
     admission = await admit_webhook_receipt(receipt, task)
     if admission.created and admission.task is not None:
         ingress.deps.dispatch_scheduled_task(admission.task)
+    if admission.created and event.host_message is not None:
+        await ingress.deps.broadcast_host_message(workspace.jid, event.host_message)
     logger.info(
         "Webhook delivery admitted",
         provider=route.provider,
