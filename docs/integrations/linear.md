@@ -71,10 +71,11 @@ and renames older Pynchy-managed projects when their description contains the
 matching `pynchy.workspace=...` marker. It does not delete, archive, assign, or
 otherwise clean up Linear objects automatically.
 
-If duplicate projects carry the same workspace marker, Pynchy uses the sole
-duplicate that contains issues. It fails closed when multiple duplicates contain
-issues, because choosing either would hide part of the workspace board. Empty
-duplicates use stable project-ID ordering; operators may archive them manually.
+Only boot reconciliation provisions projects and workflow states. Runtime reads,
+todo creation, and lifecycle actions require exactly one project carrying the
+workspace marker and never create or repair provider resources. Missing or
+duplicate projects fail closed so a transient or ambiguous provider response
+cannot silently create another board.
 
 When a user sends `todo ...` while a workspace task is running, a Linear-enabled
 workspace creates the issue in `Ready for Planning` without writing a second

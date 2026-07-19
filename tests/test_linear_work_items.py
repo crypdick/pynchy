@@ -141,7 +141,7 @@ def lifecycle(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeLinearState, dict[st
 
     board = AsyncMock(return_value=_board())
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_work_item_provider.ensure_workspace_board",
+        "pynchy.plugins.integrations.linear_work_item_provider.require_workspace_board",
         board,
     )
     handlers = {action.tool_name: action.handler for action in host_action_registration().actions}
@@ -362,7 +362,7 @@ async def test_submit_plan_from_dynamic_thread_uses_parent_workspace_board(
     client.issue["state"] = _state("state-ready-for-planning")
     board = AsyncMock(return_value=_board())
     monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_work_item_provider.ensure_workspace_board",
+        "pynchy.plugins.integrations.linear_work_item_provider.require_workspace_board",
         board,
     )
 
