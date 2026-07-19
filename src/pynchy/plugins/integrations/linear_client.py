@@ -17,6 +17,15 @@ _LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
 _LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
 
 
+class _AuthorizationSecret(str):
+    """Authorization credential whose diagnostic representation is redacted."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<redacted Linear authorization>"
+
+
 class LinearError(RuntimeError):
     """Raised when Linear returns GraphQL errors or an unexpected payload."""
 
@@ -31,7 +40,10 @@ class LinearClient:
         session: object,
         endpoint: str = LINEAR_API_URL,
     ) -> None:
-        self._api_key = api_key
+        # aiohttp requires a string header value, while rich tracebacks
+        # render frame locals with repr(). Keeping the semantic secret wrapper
+        # in the headers prevents provider errors from printing the credential.
+        self._api_key = _AuthorizationSecret(api_key)
         self._session = session
         self._endpoint = endpoint
 
