@@ -1,4 +1,6 @@
 nav:
   - Overview: index.md
   - Quickstart: quickstart.md
-  - ...
+  - Available plugins: available.md
+  - Packaging: packaging.md
+  - hooks

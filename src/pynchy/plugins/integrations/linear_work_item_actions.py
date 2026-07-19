@@ -107,7 +107,7 @@ def _descriptor(spec: _ActionSpec) -> HostActionDescriptor:
                     description="Enable the Linear integration for this workspace.",
                 ),
             ),
-            documentation="docs/usage/linear.md",
+            documentation="docs/integrations/linear.md",
         ),
         tool_name=HostToolName(tool_name),
         handler=handler,

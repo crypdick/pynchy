@@ -92,7 +92,9 @@ Single source of truth for all pynchy work items.
 
 
 ### Completed
-We don't track completed items here. Completed plans are deleted — git history is the archive — and the line is removed.
+Completed items do not need an entry here. Preserve a long-form plan or design in
+`5-completed/` only when it remains useful as implementation context; otherwise,
+remove the plan and rely on git history.
 
 ### Denied
 We don't track denied items here. Plans are moved to `denied/` via `git mv` and the line is removed.

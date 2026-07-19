@@ -594,13 +594,13 @@ across cores, compactions, deploy recovery, and future handoffs.
   workspace-scoped LiteLLM access.
 - docs/usage/memory.md and docs/architecture/memory-and-sessions.md define
   workspace memory, compaction archives, and the current learning reviewer.
-- docs/usage/channels.md, src/pynchy/host/audio.py, and the Discord voice
+- docs/channels/, src/pynchy/host/audio.py, and the Discord voice
   modules show the completion-audit bounded voice workspace and explain why
   it is not yet generic outbound media; the current optional davey import
   failure provides the concrete availability-boundary regression.
 - docs/plugins/index.md and src/pynchy/plugins/hookspecs.py show the plugin
   categories and loose-dict extension seams.
-- docs/usage/matrix-gateway.md and
+- docs/integrations/matrix-gateway.md and
   src/pynchy/plugins/integrations/matrix_gateway.py show the completion-audit
   native IPC migration and its explicit profile/approval boundary.
 - src/pynchy/state/outbound.py and the messaging sender/reconciler own the

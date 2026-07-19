@@ -108,8 +108,8 @@ admitted before the provider receives `200`. Routes can create isolated,
 corruption-tainted agent tasks or emit deterministic host notifications without an
 agent run. Provider input never grants authorization to execute work.
 
-See [Linear](linear.md#receive-linear-callbacks) for agent-task callbacks and
-[GitHub](github.md) for direct PR notifications.
+See [Linear](../integrations/linear.md#receive-linear-callbacks) for agent-task
+callbacks and [GitHub](../integrations/github.md) for direct PR notifications.
 
 ## Enable remote deployment separately
 

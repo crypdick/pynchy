@@ -1,6 +1,6 @@
 # Pynchy
 
-Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](docs/install.md) for installation. See [architecture](docs/architecture/index.md) for architecture. See [CONVENTIONS.md](CONVENTIONS.md) for design principles (composition over inheritance, parse-don't-validate, semantic types, code/doc coupling) — apply them when writing or reviewing code.
+Personal Claude assistant. See [README.md](README.md) for philosophy. See [installation guide](docs/installation/index.md) for installation. See [architecture](docs/architecture/index.md) for architecture. See [CONVENTIONS.md](CONVENTIONS.md) for design principles (composition over inheritance, parse-don't-validate, semantic types, code/doc coupling) — apply them when writing or reviewing code.
 
 ## Deployment Awareness
 

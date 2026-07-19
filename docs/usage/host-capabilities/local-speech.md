@@ -50,7 +50,7 @@ curl -s http://127.0.0.1:8485/status | jq '.speech'
 `ready: false` means Pocket TTS did not answer on the loopback endpoint. Check
 `$HOME/Library/Logs/pynchy/pocket-tts.err.log` before restarting the launchd
 agent. `ready: true` verifies the service boundary; a Discord call still also
-requires the Discord voice prerequisites in [Channels](channels.md#discord-voice-workspace).
+requires the Discord voice prerequisites in [Voice and speech](../../channels/voice-and-speech.md).
 
 ## Update or reinstall
 

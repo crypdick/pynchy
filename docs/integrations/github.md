@@ -35,7 +35,7 @@ workspace.
 Pynchy must have a public HTTPS URL before GitHub can reach this endpoint. Configure
 the control-plane listener with its public-bind safeguards, then place a TLS reverse
 proxy or tunnel in front of it. Do not expose the unauthenticated loopback listener
-directly; see [Control plane](control-plane.md#provider-authenticated-webhooks).
+directly; see [Control plane](../usage/control-plane.md#provider-authenticated-webhooks).
 
 In the repository's **Settings → Webhooks → Add webhook** form, configure:
 

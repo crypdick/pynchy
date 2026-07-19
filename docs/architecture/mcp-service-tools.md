@@ -51,7 +51,7 @@ replay checks current policy again.
 
 The hook registers the host half of a tool. Its in-container IPC proxy must be
 present in the selected agent image; host plugins are not imported into an
-already-running agent container. See the [hook reference](../plugins/hooks.md#pynchy_service_handler)
+already-running agent container. See the [host-service hook reference](../plugins/hooks/host-services.md#pynchy_service_handler)
 for the full descriptor shape and legacy-adapter rules.
 
 ## Built-in Handlers
@@ -59,8 +59,8 @@ for the full descriptor shape and legacy-adapter rules.
 | Plugin | Tools | Description |
 |--------|-------|-------------|
 | `caldav` | `list_calendars`, `list_calendar`, `create_event`, `delete_event` | CalDAV calendar access (Nextcloud, etc.) |
-| `google-setup` | `setup_google_{profile}` | Idempotent Google setup — GCP project, API enablement, OAuth authorization. One tool per chrome profile. ([guide](../usage/gdrive.md)) |
-| `gog` | `gog_*` | Reviewed host-only Gmail, Contacts, Docs, and Sheets operations. ([guide](../usage/gog.md)) |
+| `google-setup` | `setup_google_{profile}` | Idempotent Google setup — GCP project, API enablement, OAuth authorization. One tool per chrome profile. ([guide](../integrations/google/index.md)) |
+| `gog` | `gog_*` | Reviewed host-only Gmail, Contacts, Docs, and Sheets operations. ([guide](../integrations/google/workspace-gog.md)) |
 | `sqlite-memory` | `save_memory`, `recall_memories`, `forget_memory`, `list_memories` | Per-group persistent memory |
 
 For the full IPC protocol that carries service requests, see [IPC](ipc.md#service-requests).

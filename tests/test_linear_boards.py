@@ -299,7 +299,9 @@ class TestWorkspaceTodos:
             workspace,
             WorkspaceTodoProposal(
                 title="Review docs",
-                description="Evidence: docs/usage/linear.md\n\nAcceptance: clarify the workflow.",
+                description=(
+                    "Evidence: docs/integrations/linear.md\n\nAcceptance: clarify the workflow."
+                ),
                 priority=4,
             ),
             team_key=None,
@@ -310,7 +312,7 @@ class TestWorkspaceTodos:
         assert client.created_issues[0]["project_id"] == "project-1"
         assert client.created_issues[0]["state_id"] == "state-agent-proposed"
         description = client.created_issues[0]["description"]
-        assert description.startswith("Evidence: docs/usage/linear.md")
+        assert description.startswith("Evidence: docs/integrations/linear.md")
         assert "pynchy.workspace=code-improver" in description
         assert client.created_issues[0]["priority"] == 4
 

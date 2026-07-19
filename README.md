@@ -51,7 +51,7 @@ Built-in plugins provide integrations with external services, and they're all pl
 
 ## Getting Started
 
-See the **[installation guide](docs/install.md)**.
+See the **[installation guide](docs/installation/index.md)**.
 
 ## Documentation
 
@@ -59,7 +59,8 @@ Full documentation lives in the [documentation site](docs/index.md).
 
 | Section | What it covers |
 |---------|---------------|
-| [Usage](docs/usage/index.md) | Day-to-day operation, groups, scheduled tasks |
+| [Usage](docs/usage/index.md) | Day-to-day operation, groups, workspaces, and scheduled tasks |
+| [Integrations](docs/integrations/index.md) | Connect Google, GitHub, mail, Slack, Linear, and more |
 | [Plugin authoring](docs/plugins/index.md) | Writing plugins: channels, skills, MCP servers |
 | [Architecture & Design](docs/architecture/index.md) | Container isolation, message routing, IPC, security |
 | [Contributing](docs/contributing/contributing-code.md) | How to contribute — plugins, fixes, docs, and more |

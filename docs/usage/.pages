@@ -1,3 +1,13 @@
 nav:
   - Overview: index.md
-  - ...
+  - Groups: groups.md
+  - Workspaces: workspaces.md
+  - Prompts: prompts.md
+  - Agent cores: agent-cores.md
+  - MCP servers: mcp.md
+  - Memory: memory.md
+  - Scheduled tasks: scheduled-tasks.md
+  - Worktrees: worktrees.md
+  - Tool trust: security.md
+  - Control plane: control-plane.md
+  - host-capabilities

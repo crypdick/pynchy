@@ -10,7 +10,7 @@ Pynchy's built-in Slack channel plugin needs a bot token (`xoxb`), which means a
 
 ## Prerequisites
 
-You should already understand how pynchy manages MCP servers. If not, read the [MCP servers guide](mcp.md) first — especially the sections on `env_forward` and multi-tenant setup.
+You should already understand how pynchy manages MCP servers. If not, read the [MCP servers guide](../usage/mcp.md) first — especially the sections on `env_forward` and multi-tenant setup.
 
 ## 1. Define the server in `config.toml`
 
@@ -35,7 +35,7 @@ env_forward = { SLACK_MCP_XOXC_TOKEN = "SLACK_XOXC_ACME", SLACK_MCP_XOXD_TOKEN =
 
 The `env_forward` mapping means: the Docker container sees `SLACK_MCP_XOXC_TOKEN`, resolved from `SLACK_XOXC_ACME` in the host `.env`.
 
-For multiple Slack workspaces, add another entry with a different name, port, and `env_forward` mapping. See [MCP servers § Multi-tenant servers](mcp.md#multi-tenant-servers) for the pattern.
+For multiple Slack workspaces, add another entry with a different name, port, and `env_forward` mapping. See [MCP servers § Multi-tenant servers](../usage/mcp.md#multi-tenant-servers) for the pattern.
 
 ## 2. Extract browser tokens
 

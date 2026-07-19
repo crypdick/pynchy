@@ -6,7 +6,7 @@ with every agent core.
 
 ## Prerequisites
 
-- A working pynchy installation (see [Installation](../install.md))
+- A working Pynchy installation (see [Installation](../installation/index.md))
 - `uv` for Python package management
 
 ## 1. Scaffold the Plugin
@@ -112,7 +112,7 @@ Restart pynchy — the tool disappears.
 
 ## What's Next
 
-- [**Hook Reference**](hooks.md) — Learn about all plugin hooks
+- [**Hook Reference**](hooks/index.md) — Learn about all plugin hooks
 - [**Packaging**](packaging.md) — Publish your plugin to PyPI or share via git
 
 ## Final Plugin Structure
@@ -129,7 +129,7 @@ pynchy-plugin-hello/
 ```
 
 To add a privileged host action, read
-[`pynchy_service_handler`](hooks.md#pynchy_service_handler) next. Host actions
+[`pynchy_service_handler`](hooks/host-services.md#pynchy_service_handler) next. Host actions
 need a typed descriptor, a semantic `ActionSpec`, an agent-container tool
 surface, policy and idempotency contracts, and behavioral coverage; a raw
 handler dictionary is not a complete agent tool.

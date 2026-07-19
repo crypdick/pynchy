@@ -45,10 +45,10 @@ connection.<platform>.<connection-name>.chat.<platform-specific-target>
 
 For Discord, use `<guild-key>.channels.<channel-key>` for a configured guild
 channel or `direct.<user-key>` for a configured direct message. See
-[Channels](channels.md#built-in-discord) for the complete Discord setup.
+[Discord](../channels/discord.md) for the complete Discord setup.
 
 When `chat` is omitted, Pynchy can create a chat through the configured
-[command center](channels.md#command-center) when that channel supports group
+[command center](../channels/index.md#command-center) when that channel supports group
 creation. Give `chat` explicitly whenever the workspace must bind to a known,
 existing conversation.
 

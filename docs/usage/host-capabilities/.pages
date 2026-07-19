@@ -1,0 +1,5 @@
+nav:
+  - Overview: index.md
+  - Computer use: computer-use.md
+  - Desktop screenshots: desktop-screenshots.md
+  - Local speech synthesis: local-speech.md

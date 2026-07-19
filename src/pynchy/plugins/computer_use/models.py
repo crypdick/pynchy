@@ -75,7 +75,8 @@ class _StrictModel(BaseModel):
 class ComputerUseRouterConfig(_StrictModel):
     """Ordered provider selection for the neutral computer-use tool."""
 
-    # NOTE: Update docs/usage/computer-use.md § Configure provider order if this changes.
+    # NOTE: Update docs/usage/host-capabilities/computer-use.md § Configure provider order
+    # if this changes.
     providers: tuple[NonEmptyString, ...] = ("peekaboo", "cua-driver")
 
     @field_validator("providers")

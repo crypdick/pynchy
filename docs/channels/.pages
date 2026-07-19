@@ -1,0 +1,7 @@
+nav:
+  - Overview: index.md
+  - WhatsApp: whatsapp.md
+  - Slack: slack.md
+  - Discord: discord.md
+  - Voice and speech: voice-and-speech.md
+  - TUI: tui.md

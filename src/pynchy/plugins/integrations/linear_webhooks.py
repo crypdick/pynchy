@@ -27,7 +27,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves route vali
     WorkspaceProfile,
 )
 
-# NOTE: Update docs/usage/linear.md "Receive Linear callbacks" if this
+# NOTE: Update docs/integrations/linear.md "Receive Linear callbacks" if this
 # event-admission contract changes.
 _LINEAR_WEBHOOK_INSTRUCTIONS = (
     "Review one verified Linear activity event delivered for this workspace's Pynchy "

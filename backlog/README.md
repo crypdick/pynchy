@@ -26,6 +26,9 @@ Agent picks up  → 4-in-progress/  → done           → 5-completed/
 Rejected at any gate → denied/
 ```
 
+`5-completed/` keeps only long-form plans and designs that remain useful as
+historical implementation context. It does not need entries in `TODO.md`.
+
 ## Plan File Format
 
 ```markdown
