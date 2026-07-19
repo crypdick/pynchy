@@ -294,6 +294,8 @@ async def _audit_request(
 
 def build_control_plane_middleware(
     runtime: ControlPlaneRuntime,
+    *,
+    provider_authenticated_paths: frozenset[str] = frozenset(),
 ) -> AiohttpMiddleware:
     """Build middleware that authenticates and audits remotely reachable requests."""
 
@@ -323,6 +325,8 @@ def build_control_plane_middleware(
 
             token = runtime.auth_token
             if token is None or not _has_valid_bearer_token(request, token):
+                if request.method == "POST" and request.path in provider_authenticated_paths:
+                    return await handler(request)
                 await _audit_request(
                     request,
                     client=client,

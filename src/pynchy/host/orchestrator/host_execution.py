@@ -195,7 +195,12 @@ async def prepare_host_direct_mcp_servers(
     """Register host security context, then attach selected MCP proxy routes."""
     invocation_ts = time.monotonic()
     security = resolve_security(group_folder, is_admin=input_data.is_admin)
-    create_gate(group_folder, invocation_ts, security)
+    create_gate(
+        group_folder,
+        invocation_ts,
+        security,
+        public_source_input=input_data.input_source.startswith("webhook:"),
+    )
     input_data.invocation_ts = invocation_ts
 
     mcp_mgr = mcp_manager.get_mcp_manager()

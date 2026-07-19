@@ -10,7 +10,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
     Coroutine,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
 )
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from aiohttp import web
 
@@ -41,8 +41,14 @@ from pynchy.host.orchestrator.http_control import (
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
 from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.webhook_ingress import (
+    WebhookIngressDeps,
+    build_webhook_ingress,
+    install_webhook_ingress,
+)
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
+from pynchy.plugins.webhooks import WebhookRoute, collect_webhook_routes
 from pynchy.state import (
     action_intent_to_dict,
     get_recent_canary_runs,
@@ -106,6 +112,12 @@ class HttpDeps(Protocol):
     def get_active_sessions(self) -> dict[str, str]: ...
 
     def is_shutting_down(self) -> bool: ...
+
+
+class HttpServerDeps(HttpDeps, WebhookIngressDeps, Protocol):
+    """Full process dependencies used while starting the HTTP server."""
+
+    def get_plugin_manager(self) -> object: ...
 
 
 # ------------------------------------------------------------------
@@ -382,15 +394,21 @@ async def _handle_api_periodic(request: web.Request) -> web.Response:
 
 
 async def start_http_server(
-    deps: HttpDeps, *, status_deps: StatusDeps | None = None
+    deps: HttpServerDeps, *, status_deps: StatusDeps | None = None
 ) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
     settings = get_settings()
+    webhook_routes = collect_webhook_routes(cast("Any", deps.get_plugin_manager()))
     runtime = resolve_control_plane_runtime(
         settings.server,
         project_root=settings.project_root,
     )
-    app = create_http_app(deps, status_deps=status_deps, runtime=runtime)
+    app = create_http_app(
+        deps,
+        status_deps=status_deps,
+        runtime=runtime,
+        webhook_routes=webhook_routes,
+    )
     register_unix_socket_cleanup(app, runtime)
 
     runner = web.AppRunner(app)
@@ -417,6 +435,7 @@ def create_http_app(
     *,
     status_deps: StatusDeps | None = None,
     runtime: ControlPlaneRuntime | None = None,
+    webhook_routes: tuple[WebhookRoute, ...] = (),
 ) -> AiohttpApplication:
     """Build the aiohttp app with all HTTP routes registered."""
     resolved_runtime = runtime
@@ -426,7 +445,15 @@ def create_http_app(
             settings.server,
             project_root=settings.project_root,
         )
-    app = web.Application(middlewares=[build_control_plane_middleware(resolved_runtime)])
+    webhook_ingress = build_webhook_ingress(cast("WebhookIngressDeps", deps), webhook_routes)
+    app = web.Application(
+        middlewares=[
+            build_control_plane_middleware(
+                resolved_runtime,
+                provider_authenticated_paths=webhook_ingress.public_paths,
+            )
+        ]
+    )
     app[deps_key] = deps
     if status_deps is not None:
         app[status_deps_key] = status_deps
@@ -443,4 +470,5 @@ def create_http_app(
     app.router.add_post("/api/send", _handle_api_send)
     app.router.add_get("/api/events", _handle_api_events)
     app.router.add_get("/api/periodic", _handle_api_periodic)
+    install_webhook_ingress(app, webhook_ingress)
     return app

@@ -29,6 +29,7 @@ def _row_to_task(row: Row) -> ScheduledTask:
         status=row["status"],
         created_at=row["created_at"],
         repo_access=row["repo_access"] or None,
+        input_source=row["input_source"] or "scheduled_task",
     )
 
 
@@ -55,8 +56,8 @@ async def create_task(task: ScheduledTask) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             repo_access)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repo_access, input_source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -70,6 +71,7 @@ async def create_task(task: ScheduledTask) -> None:
             task.status,
             task.created_at,
             task.repo_access or None,
+            task.input_source,
         ),
     )
     await db.commit()
@@ -112,6 +114,7 @@ _TASK_UPDATE_FIELDS = {
     "context_mode",
     "status",
     "repo_access",
+    "input_source",
 }
 
 

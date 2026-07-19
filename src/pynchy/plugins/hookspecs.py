@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from pynchy.plugins.runtimes.detection import RuntimeProvider
     from pynchy.plugins.speech import SpeechSynthesizer
     from pynchy.plugins.tunnels import TunnelProvider
+    from pynchy.plugins.webhooks import WebhookRoute
     from pynchy.types import Channel
 
 hookspec = pluggy.HookspecMarker("pynchy")
@@ -236,3 +237,11 @@ class PynchySpec:
                   (profiles, model, and optional chat binding)
         """
         raise NotImplementedError
+
+    @hookspec
+    def pynchy_webhook_routes(self) -> WebhookRoute | tuple[WebhookRoute, ...] | None:
+        """Provide authenticated external event routes.
+
+        Each route owns its provider schema and signature parser while the host
+        enforces body, rate, workspace, receipt, and task-dispatch boundaries.
+        """

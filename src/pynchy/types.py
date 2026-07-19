@@ -370,6 +370,7 @@ class ScheduledTask:
     status: Literal["active", "paused", "completed", "cancelled"] = "active"
     created_at: str = ""
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
+    input_source: str = "scheduled_task"
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.
@@ -478,6 +479,7 @@ class ContainerInput:
     turn_id: str | None = None
     session_id: str | None = None
     is_scheduled_task: bool = False
+    input_source: str = "user"
     system_notices: list[str] | None = None
     repo_access: str | None = None  # Primary cwd repo slug; None = no worktree
     repo_accesses: list[str] = field(default_factory=list)  # All mounted repo slugs

@@ -16,7 +16,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
 )
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import aiohttp
 import pluggy
@@ -31,7 +31,11 @@ from pynchy.plugins.integrations.linear_boards import (
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
+from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
+
+if TYPE_CHECKING:
+    from pynchy.plugins.webhooks import WebhookRoute
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -91,6 +95,11 @@ class LinearMcpPlugin:
         """Keep durable work-item lifecycle writes in the host process."""
         del computer_use_backends
         return host_action_registration()
+
+    @hookimpl
+    def pynchy_webhook_routes(self) -> tuple[WebhookRoute, ...]:
+        """Expose configured Linear webhook subscriptions to the host ingress."""
+        return linear_webhook_routes()
 
 
 def build_app(*, workspace: str | None = None) -> object:
@@ -158,6 +167,7 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
         ] = {
             "linear_list_teams": _tool_list_teams,
             "linear_list_issues": _tool_list_issues,
+            "linear_get_issue": _tool_get_issue,
             "linear_create_issue": _tool_create_issue,
             "linear_list_todos": _tool_list_todos,
             "linear_create_todo": _tool_create_todo,
@@ -189,6 +199,15 @@ async def _tool_list_issues(
         "list[dict[str, Any]]",
         await cast("Any", client).list_issues(team_id=arguments.get("team_id"), first=first),
     )
+
+
+async def _tool_get_issue(
+    client: LinearClient,
+    arguments: dict[str, Any],
+    _workspace: str | None,
+) -> dict[str, Any] | None:
+    issue_id = _required_str(arguments, "issue_id")
+    return cast("dict[str, Any] | None", await cast("Any", client).get_issue(issue_id))
 
 
 async def _tool_create_issue(

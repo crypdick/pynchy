@@ -83,9 +83,18 @@ The server binds TCP to loopback and creates a mode-`0600` Unix socket by defaul
 non-loopback bind requires `allow_public_bind`; remote deployment requires the
 separate `allow_remote_deploy` capability. Either remote posture requires a strong
 bearer token from an environment variable or permission-restricted file. Middleware
-authenticates every non-readiness TCP route, rate-limits requests by transport peer,
-compares credentials in constant time, and records policy decisions in the security
-audit sink. Unix-socket requests rely on filesystem permissions.
+authenticates every non-readiness TCP route except exact plugin-registered webhook
+POST paths, rate-limits requests by transport peer, compares credentials in constant
+time, and records control-plane policy decisions in the security audit sink.
+Unix-socket requests rely on filesystem permissions.
+
+Webhook POST paths replace the bearer token with provider-owned authentication;
+for example, Linear signs the raw body with a per-subscription secret. Startup
+rejects missing secrets, duplicate paths, unknown workspaces, and admin-workspace
+targets. The host then enforces bounded bodies, a second per-route rate limit,
+durable delivery-ID deduplication, and isolated one-time task admission. Provider
+payloads are fenced as untrusted input and cannot authorize execution. See
+[Provider-authenticated webhooks](../usage/control-plane.md#provider-authenticated-webhooks).
 
 `/health` deliberately exposes only a static readiness state. Detailed `/status`,
 `/capabilities`, `/canaries/*`, and `/api/*` responses remain behind the control-plane

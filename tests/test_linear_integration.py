@@ -197,6 +197,7 @@ class TestLinearMcpServer:
             assert names == {
                 "linear_list_teams",
                 "linear_list_issues",
+                "linear_get_issue",
                 "linear_create_issue",
                 "linear_list_todos",
                 "linear_create_todo",
@@ -317,6 +318,41 @@ class TestLinearMcpServer:
             state_id=None,
             label_ids=None,
         )
+
+    @pytest.mark.action("linear.issue.read")
+    async def test_mcp_get_issue_calls_client(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.get_issue = AsyncMock(
+            return_value={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Track task",
+                "state": {"id": "state-1", "name": "Human Approved"},
+            }
+        )
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_get_issue",
+                            "arguments": {"issue_id": "issue-1"},
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        text = payload["result"]["content"][0]["text"]
+        assert json.loads(text)["identifier"] == "PYN-1"
+        fake_client.get_issue.assert_awaited_once_with("issue-1")
 
     @pytest.mark.action("linear.todo.create")
     async def test_mcp_create_workspace_todo_uses_server_workspace(self, monkeypatch):

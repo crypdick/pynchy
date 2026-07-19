@@ -77,6 +77,7 @@ class ContainerInput:
     turn_id: str | None = None
     session_id: str | None = None
     is_scheduled_task: bool = False
+    input_source: str = "user"
     system_notices: list[str] | None = None
     repo_access: str | None = None
     repo_accesses: list[str] | None = None

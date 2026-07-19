@@ -83,13 +83,14 @@ class _TaskAgentStreamState:
 
 
 def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
+    sender_name = "Webhook" if task.input_source.startswith("webhook:") else "Scheduled Task"
     return {
         "message_type": "user",
-        "sender": "scheduled_task",
-        "sender_name": "Scheduled Task",
+        "sender": task.input_source,
+        "sender_name": sender_name,
         "content": task.prompt,
         "timestamp": datetime.now(UTC).isoformat(),
-        "metadata": {"source": "scheduled_task"},
+        "metadata": {"source": task.input_source},
     }
 
 
@@ -191,7 +192,7 @@ async def run_task_agent(request: TaskAgentRequest) -> tuple[str | None, str | N
             on_output,
             is_scheduled_task=True,
             repo_access_override=None,
-            input_source="scheduled_task",
+            input_source=request.task.input_source,
             turn_id=turn_id,
         )
         if agent_result == "error":

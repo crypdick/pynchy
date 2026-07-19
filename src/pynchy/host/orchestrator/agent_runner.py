@@ -158,6 +158,7 @@ def build_container_input(
         is_admin=ctx.is_admin,
         system_notices=ctx.system_notices or None,
         is_scheduled_task=is_scheduled_task,
+        input_source=ctx.input_source,
         repo_access=ctx.repo_access,
         repo_accesses=ctx.repo_accesses,
         system_prompt_append=ctx.system_prompt_append,
@@ -360,7 +361,9 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         is_scheduled_task: Whether this is a scheduled task run.
         repo_access_override: Explicit repo_access slug; None = auto-detect from workspace config.
         input_source: Source label for input broadcasting
-            ("user", "scheduled_task", "reset_handoff", "hidden_learning_review").
+            ("user", "scheduled_task", "webhook:<provider>", "reset_handoff",
+            "hidden_learning_review"). Webhook sources also taint the invocation as
+            public-source input.
     """
     run_agent_start = time.monotonic()
     resolved_turn_id = turn_id or new_turn_id()

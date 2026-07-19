@@ -70,6 +70,10 @@ class SecurityPolicy:
         if self._workspace_contains_secrets:
             self._secret_tainted = True
 
+    def notify_public_source_input(self) -> None:
+        """Mark the invocation as having received provider-controlled input."""
+        self._corruption_tainted = True
+
     def evaluate_read(self, service: str) -> PolicyDecision:
         """Evaluate a read operation on a service.
 

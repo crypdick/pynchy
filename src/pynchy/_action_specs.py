@@ -110,6 +110,13 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="linear.workspace.round.trip",
     ),
     mcp_action(
+        "linear.issue.read",
+        "linear",
+        "Read one issue from the configured Linear workspace.",
+        "linear_get_issue",
+        canary="linear.workspace.round.trip",
+    ),
+    mcp_action(
         "linear.issue.create",
         "linear",
         "Create an issue in a selected Linear team.",
