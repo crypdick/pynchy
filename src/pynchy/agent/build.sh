@@ -56,29 +56,44 @@ uv run python ./scripts/generate_plugin_requirements.py \
 export DOCKER_BUILDKIT=1
 $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .
 
-# Build MCP server images from mcp/*.Dockerfile in parallel.
+# Build MCP server images from mcp/*.Dockerfile.
 # Image name derived from filename: notebook.Dockerfile → pynchy-mcp-notebook:latest
 MCP_DIR="${SCRIPT_DIR}/mcp"
 MCP_PIDS=()
 if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
     echo ""
     echo "Building MCP server images..."
+    # Apple Container shares one BuildKit builder between CLI clients. Concurrent
+    # builds can leave that builder stuck or report a failed aggregate build, so
+    # serialize them there. Docker keeps the faster parallel path.
+    if [ "$RUNTIME" = "container" ]; then
+        echo "  Serializing builds for Apple Container"
+    fi
     cd "${SCRIPT_DIR}/../../.."  # project root — Dockerfiles use paths relative to it
+    MCP_FAILED=0
     for df in "${MCP_DIR}"/*.Dockerfile; do
         base="$(basename "$df" .Dockerfile)"
         mcp_image="pynchy-mcp-${base}:${TAG}"
         echo "  Building ${mcp_image} from ${df}"
-        $RUNTIME build -t "${mcp_image}" -f "${df}" . &
-        MCP_PIDS+=($!)
-    done
-    # Wait for all parallel MCP builds; fail the script if any fails.
-    MCP_FAILED=0
-    for pid in "${MCP_PIDS[@]}"; do
-        if ! wait "$pid"; then
-            echo "MCP image build failed (pid $pid)"
-            MCP_FAILED=1
+        if [ "$RUNTIME" = "container" ]; then
+            if ! $RUNTIME build -t "${mcp_image}" -f "${df}" .; then
+                echo "MCP image build failed: ${mcp_image}"
+                MCP_FAILED=1
+            fi
+        else
+            $RUNTIME build -t "${mcp_image}" -f "${df}" . &
+            MCP_PIDS+=($!)
         fi
     done
+    if [ "$RUNTIME" != "container" ]; then
+        # Wait for all parallel Docker builds; fail the script if any fails.
+        for pid in "${MCP_PIDS[@]}"; do
+            if ! wait "$pid"; then
+                echo "MCP image build failed (pid $pid)"
+                MCP_FAILED=1
+            fi
+        done
+    fi
     if [ "$MCP_FAILED" -ne 0 ]; then
         exit 1
     fi
