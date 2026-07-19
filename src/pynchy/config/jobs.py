@@ -7,11 +7,9 @@ from datetime import datetime
 from croniter import croniter
 from pydantic import field_validator, model_validator
 
-from pynchy.config.models import ValidatedProfileName, _StrictModel
+from pynchy.config.models import _StrictModel
 
-_AGENT_JOB_PROFILE_REQUIRED_ERROR = "agent jobs require profile"
-_AGENT_JOB_WORKSPACE_ERROR = "agent jobs cannot set workspace; use profile"
-_HOST_JOB_PROFILE_ERROR = "host jobs cannot set profile"
+_AGENT_JOB_WORKSPACE_REQUIRED_ERROR = "agent jobs require workspace"
 _JOB_COMMAND_EMPTY_ERROR = "host job command cannot be empty"
 _JOB_TIMEOUT_SECONDS_ERROR = "timeout_seconds must be positive"
 _JOB_AT_ERROR = "job at must be an ISO datetime"
@@ -26,14 +24,14 @@ _AGENT_JOB_PROMPT_ERROR = "agent jobs require prompt or prompt_file"
 class JobConfig(_StrictModel):
     """Config-backed scheduled job.
 
-    ``workspace = "host"`` selects host execution. Agent jobs select a
-    profile; Pynchy resolves that profile to its configured root workspace.
+    ``workspace = "host"`` selects host execution. Every other workspace
+    selects the explicit parent for an agent job's derived child thread.
     """
 
     enabled: bool = True
     schedule: str | None = None
     at: str | None = None
-    profile: ValidatedProfileName | None = None
+    # NOTE: Update docs/usage/scheduled-tasks.md § Agent Tasks if target semantics change.
     workspace: str | None = None
     prompt: str | None = None
     prompt_file: str | None = None
@@ -45,13 +43,6 @@ class JobConfig(_StrictModel):
     @property
     def is_host(self) -> bool:
         return self.workspace == "host"
-
-    @property
-    def target_scope(self) -> str:
-        """Return the validated profile that selects this agent job's root."""
-        if self.profile is not None:
-            return str(self.profile)
-        raise RuntimeError("Validated agent job has no profile")
 
     @field_validator("schedule")
     @classmethod
@@ -105,8 +96,6 @@ class JobConfig(_StrictModel):
             raise ValueError(_JOB_SHAPE_ERROR)
 
         if self.is_host:
-            if self.profile is not None:
-                raise ValueError(_HOST_JOB_PROFILE_ERROR)
             if self.command is None:
                 raise ValueError(_HOST_JOB_COMMAND_ERROR)
             if self.schedule is None:
@@ -115,12 +104,10 @@ class JobConfig(_StrictModel):
                 raise ValueError(_HOST_JOB_PROMPT_ERROR)
             return self
 
-        if self.workspace is not None:
-            raise ValueError(_AGENT_JOB_WORKSPACE_ERROR)
+        if self.workspace is None:
+            raise ValueError(_AGENT_JOB_WORKSPACE_REQUIRED_ERROR)
         if self.command is not None:
             raise ValueError(_AGENT_JOB_COMMAND_ERROR)
         if (self.prompt is None) == (self.prompt_file is None):
             raise ValueError(_AGENT_JOB_PROMPT_ERROR)
-        if self.profile is None:
-            raise ValueError(_AGENT_JOB_PROFILE_REQUIRED_ERROR)
         return self

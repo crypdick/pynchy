@@ -45,7 +45,7 @@ class TestJobReconcile:
                 "daily-triage": JobConfig(
                     enabled=True,
                     schedule="0 8 * * *",
-                    profile="admin",
+                    workspace="admin",
                     prompt="Run the daily triage memo.",
                 )
             },
@@ -73,8 +73,9 @@ class TestJobReconcile:
         assert task.schedule_value == "0 8 * * *"
         assert task.context_mode == "isolated"
         assert task.repo_access is None
+        assert task.config_job_name == "daily-triage"
 
-    async def test_profile_job_resolves_root_and_persists_derived_thread(
+    async def test_workspace_job_records_only_its_config_provenance(
         self, db, monkeypatch, tmp_path
     ):
         settings = make_settings(
@@ -85,7 +86,7 @@ class TestJobReconcile:
                 "fam_daily_checkin": JobConfig(
                     enabled=True,
                     schedule="0 8 * * *",
-                    profile="relationships",
+                    workspace="relationships",
                     prompt="Check in with the family.",
                 )
             },
@@ -109,8 +110,7 @@ class TestJobReconcile:
         task = tasks[0]
         assert task.group_folder == "relationships"
         assert task.chat_jid == "discord:channel:relationships"
-        assert task.persistent_thread_name == "relationships | fam_daily_checkin"
-        assert task.persistent_thread_jid is None
+        assert task.config_job_name == "fam_daily_checkin"
 
     async def test_one_time_agent_job_creates_once_task(self, db, monkeypatch, tmp_path):
         run_at = "2026-07-08T18:30:00-07:00"
@@ -121,7 +121,7 @@ class TestJobReconcile:
                 "cancel-youtube-premium": JobConfig(
                     enabled=True,
                     at=run_at,
-                    profile="admin",
+                    workspace="admin",
                     prompt="Cancel YouTube Premium.",
                 )
             },
@@ -155,7 +155,7 @@ class TestJobReconcile:
                 "daily-triage": JobConfig(
                     enabled=True,
                     schedule="0 8 * * *",
-                    profile="admin",
+                    workspace="admin",
                     prompt="Run the daily triage memo.",
                 )
             },
@@ -190,6 +190,60 @@ class TestJobReconcile:
         task = await get_active_task_for_group("admin")
         assert task is not None
         assert task.chat_jid == "slack:CNEW"
+        assert task.config_job_name == "daily-triage"
+
+    async def test_job_reconcile_rebinds_an_explicit_parent_workspace(
+        self, db, monkeypatch, tmp_path
+    ):
+        settings = make_settings(
+            groups_dir=tmp_path / "groups",
+            profiles={"shared": ProfileConfig()},
+            workspaces={
+                "admin": WorkspaceConfig(profiles=["shared"]),
+                "relationships": WorkspaceConfig(profiles=["shared"]),
+            },
+            jobs={
+                "daily-triage": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    workspace="relationships",
+                    prompt="Run the daily triage memo.",
+                )
+            },
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            lambda: settings,
+        )
+        await create_task(
+            ScheduledTask(
+                id="job-daily-triage",
+                group_folder="admin",
+                chat_jid="slack:CADMIN",
+                prompt="Run the daily triage memo.",
+                schedule_type="cron",
+                schedule_value="0 8 * * *",
+                context_mode="isolated",
+                status="active",
+                created_at=datetime.now(UTC).isoformat(),
+                config_job_name="daily-triage",
+            )
+        )
+        registered = {
+            "discord:channel:relationships": WorkspaceProfile(
+                jid="discord:channel:relationships",
+                name="Relationships",
+                folder="relationships",
+                trigger="@Pynchy",
+            )
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        task = await get_active_task_for_group("relationships")
+        assert task is not None
+        assert task.group_folder == "relationships"
+        assert task.chat_jid == "discord:channel:relationships"
 
     async def test_disabled_job_pauses_existing_config_task(self, db, monkeypatch, tmp_path):
         self._patch_settings(
@@ -199,7 +253,7 @@ class TestJobReconcile:
                 "daily-triage": JobConfig(
                     enabled=False,
                     schedule="0 8 * * *",
-                    profile="admin",
+                    workspace="admin",
                     prompt="Run the daily triage memo.",
                 )
             },

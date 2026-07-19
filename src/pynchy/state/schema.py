@@ -17,6 +17,10 @@ import aiosqlite
 
 from pynchy.logger import logger
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
+from pynchy.state.task_schema_migrations import (
+    clear_temporal_owned_next_runs,
+    drop_derived_task_thread_columns,
+)
 from pynchy.state.webhook_schema import WEBHOOK_SCHEMA
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
@@ -60,8 +64,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     context_mode TEXT DEFAULT 'isolated',
     repo_access TEXT,
     input_source TEXT NOT NULL DEFAULT 'scheduled_task',
-    persistent_thread_name TEXT,
-    persistent_thread_jid TEXT
+    config_job_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -412,13 +415,6 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
-async def _clear_temporal_owned_next_runs(database: aiosqlite.Connection) -> None:
-    """Clear local timing values from scheduled-work rows."""
-    await database.execute("UPDATE scheduled_tasks SET next_run = NULL WHERE next_run IS NOT NULL")
-    await database.execute("UPDATE host_jobs SET next_run = NULL WHERE next_run IS NOT NULL")
-    await database.commit()
-
-
 async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     """Seed channel_cursors from existing last_agent_timestamp (one-time migration).
 
@@ -483,5 +479,6 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
     await _migrate_repo_access_column(database)
-    await _clear_temporal_owned_next_runs(database)
+    await drop_derived_task_thread_columns(database)
+    await clear_temporal_owned_next_runs(database)
     await _seed_channel_cursors(database)

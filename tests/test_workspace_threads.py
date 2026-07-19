@@ -182,7 +182,7 @@ async def test_thread_lookup_failure_does_not_block_workspace_reconciliation() -
             "blocked",
             "relationships",
             "family",
-            detail="thread lookup failed: RuntimeError",
+            detail="thread ensure failed: RuntimeError",
         )
     ]
     assert channel.created == []

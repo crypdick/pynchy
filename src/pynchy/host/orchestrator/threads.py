@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from pynchy.types import Channel  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
@@ -36,6 +37,14 @@ class ThreadParticipantChannel(Protocol):
         child_jid: str,
         participant_ids: tuple[str, ...],
     ) -> None: ...
+
+
+@dataclass(frozen=True)
+class EnsuredThread:
+    """Result of idempotently resolving one named child conversation."""
+
+    jid: str | None
+    created: bool
 
 
 def supports_thread_lookup(channels: list[Channel], parent_jid: str) -> bool:
@@ -111,3 +120,32 @@ async def add_thread_participants(
     )
     if channel is not None:
         await channel.add_thread_participants(child_jid, participant_ids)
+
+
+async def ensure_thread(
+    channels: list[Channel],
+    parent_jid: str,
+    name: str,
+    *,
+    participant_ids: tuple[str, ...] = (),
+    dry_run: bool = False,
+) -> EnsuredThread:
+    """Find or create one named child conversation without duplicating it."""
+    if not supports_thread_lookup(channels, parent_jid):
+        raise RuntimeError(f"Channel does not support thread lookup: {parent_jid}")
+
+    child_jid = await find_thread(channels, parent_jid, name)
+    if child_jid is not None:
+        await add_thread_participants(channels, child_jid, participant_ids)
+        return EnsuredThread(jid=child_jid, created=False)
+    if dry_run:
+        return EnsuredThread(jid=None, created=True)
+    return EnsuredThread(
+        jid=await create_thread(
+            channels,
+            parent_jid,
+            name,
+            participant_ids=participant_ids,
+        ),
+        created=True,
+    )

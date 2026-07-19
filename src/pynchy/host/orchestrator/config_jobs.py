@@ -30,6 +30,8 @@ _JOB_SCHEDULE_REQUIRED_ERROR = "job {job_name!r} requires schedule or at"
 
 
 def _job_task_id(job_name: str) -> str:
+    # TODO: Preserve the exact config key in task identity; `foo_bar` and
+    # `foo-bar` both normalize to the same task ID.
     return f"job-{job_name.replace('_', '-')}"
 
 
@@ -67,7 +69,6 @@ class _AgentJobTaskDetails:
     schedule_type: Literal["cron", "once"]
     schedule_value: str
     context_mode: Literal["isolated"]
-    persistent_thread_name: str
 
 
 async def _pause_disabled_job(task_id: str) -> None:
@@ -78,7 +79,6 @@ async def _pause_disabled_job(task_id: str) -> None:
 
 def _resolve_agent_job_context(
     job_name: str,
-    job: JobConfig,
     folder_to_group: dict[str, WorkspaceProfile],
     resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
     root_folder: str,
@@ -88,7 +88,6 @@ def _resolve_agent_job_context(
         logger.warning(
             "Config job root workspace is not registered; skipping",
             job=job_name,
-            profile=job.profile,
             workspace=root_folder,
         )
         return None
@@ -98,7 +97,6 @@ def _resolve_agent_job_context(
         logger.warning(
             "Config job root workspace has no resolved config; skipping",
             job=job_name,
-            profile=job.profile,
             workspace=root_folder,
         )
         return None
@@ -107,25 +105,15 @@ def _resolve_agent_job_context(
 
 
 def _root_folder_for_job(job: JobConfig, settings: Settings) -> str | None:
-    """Resolve a profile-targeted job to its one configured root workspace."""
-    if job.profile is None:
-        raise RuntimeError("Validated agent job has no profile")
-    roots = [
-        folder
-        for folder, workspace in settings.workspaces.items()
-        if job.profile in workspace.profiles
-    ]
-    return roots[0] if len(roots) == 1 else None
-
-
-def _persistent_thread_name(job_name: str, job: JobConfig) -> str:
-    """Return the human-readable stable thread for one config-backed job."""
-    return f"{job.target_scope} | {job_name}"
+    """Return an agent job's validated explicit parent workspace."""
+    workspace = job.workspace
+    return workspace if workspace in settings.workspaces else None
 
 
 async def _create_agent_job_task(
     *,
     task_id: str,
+    job_name: str,
     group: WorkspaceProfile,
     root_folder: str,
     details: _AgentJobTaskDetails,
@@ -141,7 +129,7 @@ async def _create_agent_job_task(
             context_mode=details.context_mode,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
-            persistent_thread_name=details.persistent_thread_name,
+            config_job_name=job_name,
         )
     )
 
@@ -149,13 +137,13 @@ async def _create_agent_job_task(
 def _agent_job_updates(
     *,
     existing: ScheduledTask,
+    job_name: str,
     group: WorkspaceProfile,
     details: _AgentJobTaskDetails,
 ) -> dict[str, Any]:
     updates: dict[str, Any] = {}
     if existing.chat_jid != group.jid:
         updates["chat_jid"] = group.jid
-        updates["persistent_thread_jid"] = None
     if existing.prompt != details.prompt:
         updates["prompt"] = details.prompt
     if existing.schedule_type != details.schedule_type:
@@ -166,9 +154,8 @@ def _agent_job_updates(
         updates["context_mode"] = details.context_mode
     if existing.repo_access is not None:
         updates["repo_access"] = None
-    if existing.persistent_thread_name != details.persistent_thread_name:
-        updates["persistent_thread_name"] = details.persistent_thread_name
-        updates["persistent_thread_jid"] = None
+    if existing.config_job_name != job_name:
+        updates["config_job_name"] = job_name
     if existing.status != "active":
         updates["status"] = "active"
     return updates
@@ -194,14 +181,13 @@ async def reconcile_agent_jobs(
         root_folder = _root_folder_for_job(job, settings)
         if root_folder is None:
             logger.warning(
-                "Config job profile has no unique root workspace; skipping",
+                "Config job parent workspace is unavailable; skipping",
                 job=job_name,
-                profile=job.profile,
+                workspace=job.workspace,
             )
             continue
         context = _resolve_agent_job_context(
             job_name,
-            job,
             folder_to_group,
             resolve_config,
             root_folder,
@@ -216,7 +202,6 @@ async def reconcile_agent_jobs(
             schedule_type=schedule_type,
             schedule_value=schedule_value,
             context_mode="isolated",
-            persistent_thread_name=_persistent_thread_name(job_name, job),
         )
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)
@@ -224,6 +209,7 @@ async def reconcile_agent_jobs(
         if existing is None:
             await _create_agent_job_task(
                 task_id=task_id,
+                job_name=job_name,
                 group=context.group,
                 root_folder=context.root_folder,
                 details=details,
@@ -241,11 +227,11 @@ async def reconcile_agent_jobs(
                 existing,
                 group_folder=context.root_folder,
                 chat_jid=context.group.jid,
-                persistent_thread_jid=None,
             )
 
         updates = _agent_job_updates(
             existing=existing,
+            job_name=job_name,
             group=context.group,
             details=details,
         )

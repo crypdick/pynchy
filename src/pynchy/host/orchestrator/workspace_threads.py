@@ -14,7 +14,7 @@ from pynchy.config.models import (
     WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations at runtime.
 )
 from pynchy.config.workspace_names import dynamic_thread_folder
-from pynchy.host.orchestrator.threads import create_thread, find_thread, supports_thread_lookup
+from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
 from pynchy.logger import logger
 from pynchy.types import Channel, WorkspaceProfile
 
@@ -84,9 +84,14 @@ async def reconcile_workspace_threads(
                 continue
 
             try:
-                child_jid = await find_thread(channels, parent_jid, declared_thread.name)
+                ensured = await ensure_thread(
+                    channels,
+                    parent_jid,
+                    declared_thread.name,
+                    dry_run=dry_run,
+                )
             except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one remote thread must not block startup.
-                detail = f"thread lookup failed: {type(exc).__name__}"
+                detail = f"thread ensure failed: {type(exc).__name__}"
                 actions.append(
                     WorkspaceThreadAction("blocked", folder, declared_thread.name, detail=detail)
                 )
@@ -97,31 +102,18 @@ async def reconcile_workspace_threads(
                     reason=detail,
                 )
                 continue
-            if child_jid is None:
+            if ensured.created:
                 actions.append(WorkspaceThreadAction("create", folder, declared_thread.name))
                 if dry_run:
                     continue
-                try:
-                    child_jid = await create_thread(channels, parent_jid, declared_thread.name)
-                except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; one remote thread must not block startup.
-                    detail = f"thread creation failed: {type(exc).__name__}"
-                    actions.append(
-                        WorkspaceThreadAction(
-                            "blocked", folder, declared_thread.name, detail=detail
-                        )
-                    )
-                    logger.warning(
-                        "Configured workspace thread not reconciled",
-                        workspace=folder,
-                        thread=declared_thread.name,
-                        reason=detail,
-                    )
-                    continue
             else:
                 actions.append(
-                    WorkspaceThreadAction("reuse", folder, declared_thread.name, child_jid)
+                    WorkspaceThreadAction("reuse", folder, declared_thread.name, ensured.jid)
                 )
 
+            child_jid = ensured.jid
+            if child_jid is None:
+                raise RuntimeError("Ensured workspace thread returned no chat JID")
             existing = workspaces.get(child_jid)
             parent = workspaces[parent_jid]
             profile = _child_profile(parent, child_jid, declared_thread.name, existing)

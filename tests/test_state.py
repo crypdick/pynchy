@@ -1361,6 +1361,33 @@ class TestEnsureColumns:
         assert "is_admin" in cols
         await db.close()
 
+    async def test_replaces_cached_task_thread_columns_with_config_job_provenance(self):
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE scheduled_tasks (
+                id TEXT PRIMARY KEY,
+                group_folder TEXT NOT NULL,
+                chat_jid TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                schedule_type TEXT NOT NULL,
+                schedule_value TEXT NOT NULL,
+                next_run TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                persistent_thread_name TEXT,
+                persistent_thread_jid TEXT
+            );
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute("PRAGMA table_info(scheduled_tasks)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert "config_job_name" in cols
+        assert "persistent_thread_name" not in cols
+        assert "persistent_thread_jid" not in cols
+        await db.close()
+
     async def test_renames_conversation_event_phoenix_ref(self):
         """create_schema migrates old projection refs to provider-neutral names."""
         db = await aiosqlite.connect(":memory:")

@@ -30,8 +30,7 @@ def _row_to_task(row: Row) -> ScheduledTask:
         created_at=row["created_at"],
         repo_access=row["repo_access"] or None,
         input_source=row["input_source"] or "scheduled_task",
-        persistent_thread_name=row["persistent_thread_name"] or None,
-        persistent_thread_jid=row["persistent_thread_jid"] or None,
+        config_job_name=row["config_job_name"] or None,
     )
 
 
@@ -58,8 +57,8 @@ async def create_task(task: ScheduledTask) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             repo_access, input_source, persistent_thread_name, persistent_thread_jid)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repo_access, input_source, config_job_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -74,8 +73,7 @@ async def create_task(task: ScheduledTask) -> None:
             task.created_at,
             task.repo_access or None,
             task.input_source,
-            task.persistent_thread_name,
-            task.persistent_thread_jid,
+            task.config_job_name,
         ),
     )
     await db.commit()
@@ -89,8 +87,8 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
         INSERT OR IGNORE INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             repo_access, input_source, persistent_thread_name, persistent_thread_jid)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repo_access, input_source, config_job_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -105,8 +103,7 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             task.created_at,
             task.repo_access,
             task.input_source,
-            task.persistent_thread_name,
-            task.persistent_thread_jid,
+            task.config_job_name,
         ),
     )
     await db.commit()
@@ -151,8 +148,7 @@ _TASK_UPDATE_FIELDS = {
     "status",
     "repo_access",
     "input_source",
-    "persistent_thread_name",
-    "persistent_thread_jid",
+    "config_job_name",
 }
 
 
@@ -162,12 +158,12 @@ async def update_task(task_id: str, updates: dict[str, Any]) -> None:
 
 
 async def rebind_task_root(task_id: str, *, group_folder: str, chat_jid: str) -> None:
-    """Move a config task to a replacement root and clear its child target."""
+    """Move a config task to a replacement root workspace."""
     db = _get_db()
     await db.execute(
         """
         UPDATE scheduled_tasks
-        SET group_folder = ?, chat_jid = ?, persistent_thread_jid = NULL
+        SET group_folder = ?, chat_jid = ?
         WHERE id = ?
         """,
         (group_folder, chat_jid, task_id),

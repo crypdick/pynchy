@@ -61,7 +61,7 @@ def _write_workspace_yaml(workspaces, folder_name, data):
         workspaces.profiles[profile_name] = profile
         if "schedule" in d and "prompt" in d:
             workspaces.jobs[folder_name] = JobConfig(
-                profile=profile_name,
+                workspace=folder_name,
                 schedule=d["schedule"],
                 prompt=d["prompt"],
             )
