@@ -58,7 +58,7 @@ def _payload(
         or {
             "id": "comment-1",
             "issueId": "issue-1",
-            "body": "@pynchy please review this",
+            "body": "please review this",
         },
         "type": event_type,
         "url": "https://linear.app/acme/issue/PYN-1#comment-comment-1",
@@ -102,56 +102,71 @@ def _route() -> WebhookRoute:
     )
 
 
-def test_comment_mention_maps_to_fenced_public_source_task() -> None:
+@pytest.mark.parametrize("action", ["create", "update", "remove"])
+def test_every_comment_change_maps_to_fenced_public_source_task(action: str) -> None:
     now = datetime.now(UTC)
-    raw_body, headers = _signed_request(_payload(now=now))
+    raw_body, headers = _signed_request(_payload(now=now, action=action))
 
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
 
     assert event.subject_id == "issue-1"
     assert event.instructions is not None
     assert "linear_get_issue" in event.instructions
-    assert "Do not execute work from a comment alone" in event.instructions
+    assert "linear_list_todos" in event.instructions
+    assert "does not grant execution authority" in event.instructions
     assert event.external_context is not None
-    assert event.external_context["comment_body"] == "@pynchy please review this"
-
-
-def test_comment_without_mention_is_durably_ignorable() -> None:
-    now = datetime.now(UTC)
-    payload = _payload(now=now)
-    payload["data"]["body"] = "please review this later"
-    raw_body, headers = _signed_request(payload)
-
-    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
-
-    assert event.instructions is None
-    assert event.ignored_reason == "comment_has_no_configured_mention"
+    assert event.external_context["action"] == action
+    assert event.external_context["comment_body"] == "please review this"
 
 
 @pytest.mark.parametrize(
-    ("state_name", "actionable"),
-    [("Human Approved", True), ("Ready for Planning", True), ("In Progress", False)],
+    ("action", "updated_from"),
+    [("create", None), ("update", {"title": "Old title"}), ("remove", None)],
 )
-def test_only_human_owned_issue_states_trigger_tasks(state_name: str, actionable: bool) -> None:
+def test_every_issue_change_triggers_a_task(
+    action: str,
+    updated_from: dict[str, Any] | None,
+) -> None:
     now = datetime.now(UTC)
     raw_body, headers = _signed_request(
         _payload(
             now=now,
             event_type="Issue",
-            action="update",
+            action=action,
             data={
                 "id": "issue-1",
                 "identifier": "PYN-1",
                 "title": "Webhook callbacks",
-                "state": {"id": "state-1", "name": state_name},
+                "state": {"id": "state-1", "name": "In Progress"},
             },
-            updated_from={"stateId": "old-state"},
+            updated_from=updated_from,
         )
     )
 
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
 
-    assert (event.instructions is not None) is actionable
+    assert event.instructions is not None
+    assert event.external_context is not None
+    assert event.external_context["action"] == action
+    assert event.external_context["updated_fields"] == (
+        ["title"] if updated_from is not None else []
+    )
+
+
+def test_non_issue_or_comment_delivery_remains_durably_ignorable() -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Project",
+            data={"id": "project-1", "name": "Project"},
+        )
+    )
+
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.instructions is None
+    assert event.ignored_reason == "event_type_is_not_configured"
 
 
 def test_invalid_signature_and_stale_timestamp_fail_before_parsing() -> None:
@@ -287,8 +302,11 @@ async def test_ignored_delivery_records_receipt_without_dispatch(
     client = TestClient(TestServer(app))
     await client.start_server()
     try:
-        payload = _payload(now=datetime.now(UTC))
-        payload["data"]["body"] = "no mention"
+        payload = _payload(
+            now=datetime.now(UTC),
+            event_type="Project",
+            data={"id": "project-1", "name": "Project"},
+        )
         status, body = await _post_linear_event(client, payload)
     finally:
         await client.close()

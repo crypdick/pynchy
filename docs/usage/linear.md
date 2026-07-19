@@ -98,8 +98,8 @@ human decision.
 
 ## Receive Linear callbacks
 
-Pynchy can turn selected Linear comments and issue state changes into isolated,
-one-time agent tasks. Configure one route per Linear webhook subscription:
+Pynchy can turn Linear comments and issue changes into isolated, one-time agent
+tasks. Configure one route per Linear webhook subscription:
 
 ```toml
 [[plugins.linear.options.webhook_routes]]
@@ -127,37 +127,31 @@ The final path component is the configured route `name`. Pynchy does not
 provision TLS or a public hostname. Linear requires a public, non-localhost
 HTTPS URL; see the [Linear webhook documentation](https://linear.app/developers/webhooks).
 
-The default trigger set is deliberately closed:
+Every schema-valid `create`, `update`, or `remove` delivery for a `Comment` or
+`Issue` starts a task. Comments do not need to mention `@pynchy`. Pynchy also
+wakes for its own issue transitions, such as `In Progress` and `Done`; durable
+delivery IDs prevent duplicate tasks, while the current workflow state prevents
+the callback from granting new authority.
 
-- A newly created comment starts a review only when its body contains
-  `@pynchy`. A comment never authorizes code execution.
-- An issue update starts work only when the workflow state changed to
-  `Ready for Planning` or `Human Approved`. Planning readiness permits planning
-  only. Execution still requires `linear_claim_work_item` to claim the exact
-  `Human Approved` issue.
-- All other authenticated deliveries are recorded as ignored and do not start
-  an agent task. Pynchy-created transitions such as `In Progress` therefore do
-  not create a callback loop.
+Linear scopes webhook subscriptions to one team or all public teams, not to one
+Project. Point the subscription at the team that owns the Pynchy board. When that
+team contains other Projects, their events can wake the route too. Before acting,
+the task lists the workspace's complete Pynchy board and stops unless the event's
+issue belongs to that Project.
 
-Override the closed trigger values only when the corresponding Linear workflow
-uses different names:
-
-```toml
-[[plugins.linear.options.webhook_routes]]
-name = "code-improver"
-workspace = "code-improver"
-organization_id = "your-linear-organization-id"
-comment_mentions = ["@pynchy", "@Pynchy Bot"]
-issue_statuses = ["Ready for Planning", "Human Approved"]
-```
+The callback only asks Pynchy to inspect current state. `Ready for Planning`
+permits planning only. Execution still requires `linear_claim_work_item` to claim
+the exact `Human Approved` issue. A comment, issue edit, or Pynchy-authored state
+transition never grants execution authority by itself.
 
 The route verifies Linear's HMAC-SHA256 signature against the raw request body,
 requires matching millisecond timestamps within 60 seconds, checks the optional
 organization ID, and deduplicates the `Linear-Delivery` UUID. The signing secret
 never enters the agent container. Each schema-valid authenticated delivery leaves
 a durable receipt; each actionable delivery atomically creates one persistent task
-before Pynchy returns `200` to Linear. The task fetches the issue's current Linear
-state before deciding what to do and treats the callback body as untrusted context.
+before Pynchy returns `200` to Linear. The task confirms workspace-board ownership,
+fetches the issue's current Linear state, and treats the callback body as untrusted
+context before deciding what to do.
 
 ## Schedule proactive proposals
 
