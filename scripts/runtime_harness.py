@@ -647,7 +647,7 @@ def _wait_for_runtime(spec: RuntimeSpec, process: subprocess.Popen[bytes]) -> No
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(
-                f"Pynchy exited during startup; inspect {spec.log_dir / 'pynchy.log'}"
+                f"Pynchy exited during startup; inspect {spec.log_dir / 'pynchy.general.log'}"
             )
         try:
             with urllib.request.urlopen(url, timeout=2) as response:  # noqa: S310, RUF100 - fixed loopback status URL.
@@ -871,7 +871,7 @@ def _start_pynchy_runtime(
     pynchy_marker = _new_process_marker("pynchy")
     pynchy = _start_process(
         [_executable("uv"), "run", "pynchy"],
-        spec.log_dir / "pynchy.log",
+        spec.log_dir / "pynchy.general.log",
         cwd=spec.root,
         env=_runtime_environment(spec, state),
         process_marker=pynchy_marker,
