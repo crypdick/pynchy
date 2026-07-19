@@ -29,8 +29,8 @@
         <string>$HOME</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>$PYNCHY_PROJECT_ROOT/logs/pynchy.log</string>
+    <string>$PYNCHY_PROJECT_ROOT/logs/pynchy.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>$PYNCHY_PROJECT_ROOT/logs/pynchy.error.log</string>
+    <string>$PYNCHY_PROJECT_ROOT/logs/pynchy.general.log</string>
 </dict>
 </plist>

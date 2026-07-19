@@ -43,6 +43,12 @@ def _run() -> None:
 
     load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
 
+    from pynchy.logger import (  # noqa: PLC0415, RUF100 - configure the error log before application startup.
+        configure_error_log,
+    )
+
+    configure_error_log(Path("logs/pynchy.error.log"))
+
     from pynchy.host.orchestrator.app import (  # noqa: PLC0415, RUF100 - avoid importing the orchestrator for --help and other subcommands.
         PynchyApp,
     )

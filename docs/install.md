@@ -463,7 +463,9 @@ If `uv run pynchy` works manually but the LaunchAgent exits immediately:
 - If the label is not loaded, stop the foreground process and bootstrap the
   LaunchAgent explicitly:
   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pynchy.plist`
-- Check `logs/pynchy.log` and `logs/pynchy.error.log` for application startup errors.
+- Check `logs/pynchy.error.log` for errors and `logs/pynchy.general.log` for
+  complete application context. `logs/pynchy.stdout.log` contains direct process
+  output rather than structured application logs.
 
 ### Service won't start after reboot
 

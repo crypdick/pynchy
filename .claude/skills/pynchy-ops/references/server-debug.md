@@ -4,7 +4,7 @@
 
 ```bash
 # Check for recent timeouts
-grep -E 'Container timeout|timed out' logs/pynchy.log | tail -10
+grep -E 'Container timeout|timed out' logs/pynchy.general.log | tail -10
 
 # Check container log files for the timed-out container
 ls -lt groups/*/logs/container-*.log | head -10
@@ -13,23 +13,23 @@ ls -lt groups/*/logs/container-*.log | head -10
 cat groups/<group>/logs/container-<timestamp>.log
 
 # Check if retries were scheduled and what happened
-grep -E 'Scheduling retry|retry|Max retries' logs/pynchy.log | tail -10
+grep -E 'Scheduling retry|retry|Max retries' logs/pynchy.general.log | tail -10
 ```
 
 ## Agent Not Responding
 
 ```bash
 # Check if messages are being received from WhatsApp
-grep 'New messages' logs/pynchy.log | tail -10
+grep 'New messages' logs/pynchy.general.log | tail -10
 
 # Check if messages are being processed (container spawned)
-grep -E 'Processing messages|Spawning container' logs/pynchy.log | tail -10
+grep -E 'Processing messages|Spawning container' logs/pynchy.general.log | tail -10
 
 # Check if messages are being piped to active container
-grep -E 'Piped messages|sendMessage' logs/pynchy.log | tail -10
+grep -E 'Piped messages|sendMessage' logs/pynchy.general.log | tail -10
 
 # Check the queue state — any active containers?
-grep -E 'Starting container|Container active|concurrency limit' logs/pynchy.log | tail -10
+grep -E 'Starting container|Container active|concurrency limit' logs/pynchy.general.log | tail -10
 
 # Check lastAgentTimestamp vs latest message timestamp
 sqlite3 data/messages.db "SELECT chat_jid, MAX(timestamp) as latest FROM messages GROUP BY chat_jid ORDER BY latest DESC LIMIT 5;"
@@ -39,7 +39,7 @@ sqlite3 data/messages.db "SELECT chat_jid, MAX(timestamp) as latest FROM message
 
 ```bash
 # Check mount validation logs (shows on container spawn)
-grep -E 'Mount validated|Mount.*REJECTED|mount' logs/pynchy.log | tail -10
+grep -E 'Mount validated|Mount.*REJECTED|mount' logs/pynchy.general.log | tail -10
 
 # Verify the mount allowlist is readable
 cat ~/.config/pynchy/mount-allowlist.json
@@ -80,7 +80,7 @@ This is useful for:
 
 ```bash
 # Check if QR code was requested (means auth expired)
-grep 'QR\|authentication required\|qr' logs/pynchy.log | tail -5
+grep 'QR\|authentication required\|qr' logs/pynchy.general.log | tail -5
 
 # Check auth files exist
 ls -la data/neonize.db

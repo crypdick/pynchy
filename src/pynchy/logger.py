@@ -9,12 +9,16 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import structlog
 
 if TYPE_CHECKING:
     from structlog.typing import BindableLogger
+
+
+_ERROR_LOG_HANDLER_NAME = "pynchy-error-log"
 
 
 def _setup_logging() -> object:
@@ -44,6 +48,36 @@ def _setup_logging() -> object:
 
 
 logger: BindableLogger = cast("BindableLogger", _setup_logging())
+
+
+def configure_error_log(log_path: Path) -> None:
+    """Write only ERROR and CRITICAL records to ``log_path``.
+
+    The process standard-error stream retains every application record for
+    chronological troubleshooting. This handler provides the narrow view used
+    for error review without changing the general log contents.
+    """
+    root_logger = logging.getLogger()
+    resolved_path = log_path.resolve()
+    existing_handler = next(
+        (handler for handler in root_logger.handlers if handler.name == _ERROR_LOG_HANDLER_NAME),
+        None,
+    )
+    if existing_handler is not None:
+        if (
+            isinstance(existing_handler, logging.FileHandler)
+            and Path(existing_handler.baseFilename) == resolved_path
+        ):
+            return
+        root_logger.removeHandler(existing_handler)
+        existing_handler.close()
+
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    error_handler = logging.FileHandler(resolved_path, encoding="utf-8")
+    error_handler.name = _ERROR_LOG_HANDLER_NAME
+    error_handler.setLevel(logging.ERROR)
+    error_handler.setFormatter(logging.Formatter("%(message)s"))
+    root_logger.addHandler(error_handler)
 
 
 def _uncaught_exception_handler(
