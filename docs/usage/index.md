@@ -70,5 +70,6 @@ For example, you can ask Pynchy to help you:
 | [Notebooks](notebooks.md) | Jupyter/Quarto notebook execution via MCP tools |
 | [Proton Mail](proton-mail.md) | Read, send, and delete Proton Mail through a host-side MCP server |
 | [Google Drive](gdrive.md) | Google Drive file access via OAuth2 MCP server |
+| [Google Workspace via Gog](gog.md) | Host-only Gmail, Contacts, Docs, and Sheets operations via Gog |
 | [Slack MCP](slack-mcp.md) | Slack read access via browser tokens (no admin required) |
 | [Tool Trust](security.md) | Configure tool trust declarations — control when agents need human approval |

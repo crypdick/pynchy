@@ -31,6 +31,7 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `x-integration` | Service handler | Browser-driven X actions | X tool/profile configuration | [X integration](../usage/x-integration.md) |
 | `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google Drive](../usage/gdrive.md) |
 | `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google Drive](../usage/gdrive.md) |
+| `gog` | Service handler | Host-only Gmail, Contacts, Docs, and Sheets actions | Gog CLI and configured host OAuth account | [Google Workspace via Gog](../usage/gog.md) |
 | `playwright-browser` | MCP server specification + skill | Browser-control server and usage skill | `uv sync --extra browser` when Playwright is needed | [MCP servers](../usage/mcp.md) |
 | `desktop-screenshot` | Service handler | Captures the macOS host desktop | Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
 | `computer-use` | Service-handler router + skill | Policy-mediated desktop automation through provider plugins | Enable at least one provider supported by the host | [Computer use](../usage/computer-use.md) |

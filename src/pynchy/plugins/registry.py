@@ -82,6 +82,7 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "GoogleSetupPlugin",
         "google-setup",
     ),
+    ("pynchy.plugins.integrations.gog", "GogWorkspacePlugin", "gog"),
     (
         "pynchy.plugins.integrations.playwright_browser",
         "PlaywrightBrowserPlugin",

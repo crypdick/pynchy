@@ -281,6 +281,24 @@
 # [workspaces.research]
 # profiles = ["mycompany-worker"]
 
+# Host-only Google Workspace actions through Gog. Gog's OAuth home and client
+# credentials stay on the host and are never mounted into agent containers.
+# [plugins.gog.options]
+# account = "you@example.com"
+# home = "data/gog"
+# oauth_client_path = "data/google/gog-oauth-client.json"
+#
+# [tools.gog]
+# type = "builtin"
+# public_source = true
+# secret_data = true
+# public_sink = true
+# dangerous_writes = true
+#
+# [profiles.google-workspace]
+# tools = ["gog"]
+# contains_secrets = true
+
 # Daily Pynchy operations triage. Replace the chat ref with the explicit
 # Pynchy channel/topic that should receive the memo.
 # [jobs.daily-triage]
