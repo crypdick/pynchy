@@ -271,6 +271,50 @@ class DiscordChannel:
         # Scheduled output belongs to the configured channel's participants,
         # so opt into the public type explicitly.
         thread = await create_thread(name=name, type=discord.ChannelType.public_thread)
+        await self._add_scheduled_thread_participants(thread, participant_ids)
+        send = getattr(parent, "send", None)
+        if callable(send):
+            try:
+                await send(f"Scheduled task thread: <#{thread.id}>")
+            except discord.HTTPException as exc:
+                # A thread link is discoverability help. Its failure must not
+                # make Temporal retry an otherwise valid child thread.
+                logger.warning(
+                    "Could not announce scheduled Discord thread",
+                    thread_id=thread.id,
+                    error=str(exc),
+                )
+        return channel_jid(str(thread.id))
+
+    async def find_thread(self, parent_jid: str, name: str) -> str | None:
+        """Find an active child thread with *name* below the given parent."""
+        parent = cast("Any", await self.resolve_channel(parent_jid))
+        guild = getattr(parent, "guild", None)
+        active_threads = getattr(guild, "active_threads", None)
+        if not callable(active_threads):
+            return None
+        parent_id = getattr(parent, "id", None)
+        for thread in await active_threads():
+            matches_parent = getattr(thread, "parent_id", None) == parent_id
+            matches_name = getattr(thread, "name", None) == name
+            if matches_parent and matches_name:
+                return channel_jid(str(thread.id))
+        return None
+
+    async def add_thread_participants(
+        self,
+        child_jid: str,
+        participant_ids: tuple[str, ...],
+    ) -> None:
+        """Add active parent participants to an existing scheduled child thread."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        await self._add_scheduled_thread_participants(thread, participant_ids)
+
+    async def _add_scheduled_thread_participants(
+        self,
+        thread: object,
+        participant_ids: tuple[str, ...],
+    ) -> None:
         add_user = getattr(thread, "add_user", None)
         for participant_id in dict.fromkeys(participant_ids):
             if (
@@ -290,19 +334,6 @@ class DiscordChannel:
                     participant_id=participant_id,
                     error=str(exc),
                 )
-        send = getattr(parent, "send", None)
-        if callable(send):
-            try:
-                await send(f"Scheduled task thread: <#{thread.id}>")
-            except discord.HTTPException as exc:
-                # A thread link is discoverability help. Its failure must not
-                # make Temporal retry an otherwise valid child thread.
-                logger.warning(
-                    "Could not announce scheduled Discord thread",
-                    thread_id=thread.id,
-                    error=str(exc),
-                )
-        return channel_jid(str(thread.id))
 
     async def find_configured_channel(self, target: DiscordChatTarget) -> object | None:
         guild = await self.find_configured_guild(target)

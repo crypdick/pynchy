@@ -37,7 +37,7 @@ from pynchy.host.orchestrator.messaging import (
 from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     ProcessGroupResult,
 )
-from pynchy.host.orchestrator.scheduled_threads import create_scheduled_thread
+from pynchy.host.orchestrator.scheduled_thread_routing import ScheduledThreadRouting
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.logger import logger
 from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
@@ -69,7 +69,7 @@ from pynchy.types import (
 )
 
 
-class PynchyApp:
+class PynchyApp(ScheduledThreadRouting):
     """Main application class — owns all runtime state and wires subsystems."""
 
     def __init__(self) -> None:
@@ -300,21 +300,6 @@ class PynchyApp:
     ) -> None:
         await self._broadcaster.broadcast_to_channels(
             chat_jid, event, suppress_errors=suppress_errors
-        )
-
-    async def create_scheduled_thread(
-        self,
-        parent_jid: str,
-        name: str,
-        *,
-        participant_ids: tuple[str, ...] = (),
-    ) -> str:
-        """Create a child conversation on the channel that owns *parent_jid*."""
-        return await create_scheduled_thread(
-            self.channels,
-            parent_jid,
-            name,
-            participant_ids=participant_ids,
         )
 
     async def send_reaction_to_channels(

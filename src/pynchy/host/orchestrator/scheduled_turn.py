@@ -58,6 +58,14 @@ class ScheduledTurnDeps(Protocol):
         participant_ids: tuple[str, ...] = (),
     ) -> str: ...
 
+    async def find_scheduled_thread(self, parent_jid: str, name: str) -> str | None: ...
+
+    async def add_scheduled_thread_participants(
+        self,
+        child_jid: str,
+        participant_ids: tuple[str, ...],
+    ) -> None: ...
+
     async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
         self,
         group: WorkspaceProfile,
@@ -161,23 +169,26 @@ def _parent_session_is_live(task: ScheduledTask) -> bool:
     return session is not None and session.is_alive
 
 
-def _next_thread_slot(task: ScheduledTask, turns: list[InFlightTurn]) -> int:
-    """Return the base slot or the first available numbered child slot."""
-    base_reserved = _parent_session_is_live(task) or any(
-        turn.chat_jid == task.chat_jid for turn in turns
-    )
-    occupied_slots = {
-        turn.scheduled_thread_slot
-        for turn in turns
-        if turn.scheduled_base_chat_jid == task.chat_jid and turn.scheduled_thread_slot is not None
-    }
-    if not base_reserved and 0 not in occupied_slots:
-        return 0
+def _base_channel_is_reserved(task: ScheduledTask, turns: list[InFlightTurn]) -> bool:
+    return _parent_session_is_live(task) or any(turn.chat_jid == task.chat_jid for turn in turns)
 
-    slot = 1
-    while slot in occupied_slots:
-        slot += 1
-    return slot
+
+def _numbered_slot_is_reserved(
+    task: ScheduledTask,
+    slot: int,
+    turns: list[InFlightTurn],
+) -> bool:
+    return any(
+        turn.scheduled_base_chat_jid == task.chat_jid and turn.scheduled_thread_slot == slot
+        for turn in turns
+    )
+
+
+def _thread_is_reserved(child_jid: str, task: ScheduledTask, turns: list[InFlightTurn]) -> bool:
+    if any(turn.chat_jid == child_jid for turn in turns):
+        return True
+    session = get_session(GroupFolder(dynamic_thread_folder(task.group_folder, child_jid)))
+    return session is not None and session.is_alive
 
 
 def _thread_name(task: ScheduledTask, slot: int) -> str:
@@ -205,19 +216,33 @@ async def _new_task_target(
     turn_id: str,
     input_messages: list[dict[str, Any]],
 ) -> _ScheduledTaskTarget:
-    """Claim an idle base chat or create a numbered child thread for this turn."""
+    """Claim an idle base chat or the first unreserved numbered child thread."""
     async with _scheduled_target_lock:
         turns = await get_in_flight_turns()
-        slot = _next_thread_slot(request.task, turns)
-        if slot == 0:
-            target = _ScheduledTaskTarget(request.task, request.group, slot)
+        if not _base_channel_is_reserved(request.task, turns):
+            slot = 0
+            target = _ScheduledTaskTarget(request.task, request.group, thread_slot=slot)
         else:
+            slot = 1
+            participant_ids = _active_parent_participant_ids(request.task, turns)
+            while _numbered_slot_is_reserved(request.task, slot, turns):
+                slot += 1
             name = _thread_name(request.task, slot)
-            child_jid = await request.deps.create_scheduled_thread(
-                request.task.chat_jid,
-                name,
-                participant_ids=_active_parent_participant_ids(request.task, turns),
-            )
+            child_jid = await request.deps.find_scheduled_thread(request.task.chat_jid, name)
+            while child_jid and _thread_is_reserved(child_jid, request.task, turns):
+                slot += 1
+                while _numbered_slot_is_reserved(request.task, slot, turns):
+                    slot += 1
+                name = _thread_name(request.task, slot)
+                child_jid = await request.deps.find_scheduled_thread(request.task.chat_jid, name)
+            if child_jid is None:
+                child_jid = await request.deps.create_scheduled_thread(
+                    request.task.chat_jid,
+                    name,
+                    participant_ids=participant_ids,
+                )
+            else:
+                await request.deps.add_scheduled_thread_participants(child_jid, participant_ids)
             if not child_jid:
                 raise RuntimeError("Scheduled task thread creation returned no chat JID")
             child_group = replace(
