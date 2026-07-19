@@ -10,6 +10,7 @@ import pytest
 from pynchy.plugins.integrations.linear_boards import (
     LINEAR_TODO_STATUSES,
     LinearBoardError,
+    WorkspaceTodoProposal,
     create_workspace_todo,
     ensure_workspace_board,
     list_workspace_todos,
@@ -36,11 +37,13 @@ class FakeLinearClient:
         self.created_issues: list[dict[str, Any]] = []
         self.updated_issues: list[dict[str, Any]] = []
         self.issues: list[dict[str, Any]] = []
+        self.queries: list[str] = []
 
     async def list_teams(self) -> list[dict[str, Any]]:
         return self.teams
 
     async def query(self, query: str, **variables: Any) -> dict[str, Any]:
+        self.queries.append(query)
         if "TeamLinearBoardResources" in query:
             page_start = int(variables["projects_after"] or 0)
             page_end = page_start + 50
@@ -287,17 +290,29 @@ class TestEnsureWorkspaceBoard:
 
 
 class TestWorkspaceTodos:
-    async def test_agent_created_workspace_todo_starts_as_agent_proposed(self):
+    async def test_agent_created_workspace_todo_preserves_proposal_details(self):
         client = FakeLinearClient()
         workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
 
-        issue = await create_workspace_todo(client, workspace, "Review docs", team_key=None)
+        issue = await create_workspace_todo(
+            client,
+            workspace,
+            WorkspaceTodoProposal(
+                title="Review docs",
+                description="Evidence: docs/usage/linear.md\n\nAcceptance: clarify the workflow.",
+                priority=4,
+            ),
+            team_key=None,
+        )
 
         assert issue["identifier"] == "SYN-1"
         assert issue["state"]["name"] == "Agent Proposed"
         assert client.created_issues[0]["project_id"] == "project-1"
         assert client.created_issues[0]["state_id"] == "state-agent-proposed"
-        assert "pynchy.workspace=code-improver" in client.created_issues[0]["description"]
+        description = client.created_issues[0]["description"]
+        assert description.startswith("Evidence: docs/usage/linear.md")
+        assert "pynchy.workspace=code-improver" in description
+        assert client.created_issues[0]["priority"] == 4
 
     async def test_open_todo_listing_excludes_done_and_rejected_items(self):
         client = FakeLinearClient()
@@ -312,6 +327,7 @@ class TestWorkspaceTodos:
         issues = await list_workspace_todos(client, workspace, team_key=None)
 
         assert [issue["id"] for issue in issues] == ["open"]
+        assert "title description url" in client.queries[-1]
 
     async def test_move_workspace_todo_maps_status_to_linear_state(self):
         client = FakeLinearClient()

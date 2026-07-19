@@ -55,11 +55,22 @@ def tool_specs() -> list[dict[str, Any]]:
             "name": "linear_create_todo",
             "description": (
                 "Propose a Linear work item for this Pynchy workspace. "
-                "The item starts in Agent Proposed; this tool cannot assert human approval."
+                "The item starts in Agent Proposed and may include evidence and acceptance "
+                "criteria; this tool cannot assert human approval."
             ),
             "inputSchema": {
                 "type": "object",
-                "properties": {"title": {"type": "string"}},
+                "properties": {
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "priority": {
+                        "type": "integer",
+                        "enum": [0, 1, 2, 3, 4],
+                        "description": (
+                            "Linear priority: 0 none, 1 urgent, 2 high, 3 medium, 4 low."
+                        ),
+                    },
+                },
                 "required": ["title"],
                 "additionalProperties": False,
             },
