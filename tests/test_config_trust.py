@@ -101,6 +101,7 @@ def test_valid_docker_mcp_tool_config_parses_and_resolves() -> None:
                         "runtime": "docker",
                         "image": "mcp/docs:latest",
                         "port": 8080,
+                        "startup_timeout_seconds": 20,
                     },
                 }
             },
@@ -112,6 +113,22 @@ def test_valid_docker_mcp_tool_config_parses_and_resolves() -> None:
     assert servers["docs"].type == "docker"
     assert servers["docs"].image == "mcp/docs:latest"
     assert servers["docs"].port == 8080
+    assert servers["docs"].startup_timeout_seconds == pytest.approx(20)
+
+
+def test_mcp_tool_provider_config_rejects_non_positive_startup_timeout() -> None:
+    with pytest.raises(ValidationError, match="greater than 0"):
+        TypeAdapter(ToolConfig).validate_python(
+            {
+                "type": "mcp",
+                "mcp": {
+                    "runtime": "docker",
+                    "image": "mcp/docs:latest",
+                    "port": 8080,
+                    "startup_timeout_seconds": 0,
+                },
+            }
+        )
 
 
 @pytest.mark.parametrize(
