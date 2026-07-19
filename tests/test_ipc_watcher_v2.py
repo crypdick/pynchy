@@ -644,6 +644,36 @@ class TestMessageFileProcessing:
 
         assert deps.broadcast_messages[0][1] == "Researcher: update"
 
+    async def test_duplicate_message_observation_is_processed_once(self, deps, tmp_path: Path):
+        """The event watcher and runtime sweep must not replay one message."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_ipc_file(
+            ipc_dir,
+            "admin-1",
+            "messages",
+            {"type": "message", "chatJid": "other@g.us", "text": "once"},
+        )
+
+        await asyncio.gather(
+            process_ipc_message_file(
+                file_path,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            ),
+            process_ipc_message_file(
+                file_path,
+                "admin-1",
+                is_admin=True,
+                ipc_base_dir=ipc_dir,
+                deps=deps,
+            ),
+        )
+
+        assert deps.broadcast_messages == [("other@g.us", "pynchy: once")]
+        assert not file_path.exists()
+
     async def test_malformed_json_goes_to_errors(self, deps, tmp_path: Path):
         """A file with invalid JSON should be moved to errors/."""
         ipc_dir = tmp_path / "ipc"
