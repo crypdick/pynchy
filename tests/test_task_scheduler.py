@@ -143,7 +143,7 @@ class TestScheduledTaskSnapshotDict:
             "schedule_type": "cron",
             "schedule_value": "0 9 * * *",
             "status": "active",
-            "next_run": "2026-02-15T09:00:00+00:00",
+            "next_run": None,
         }
 
     def test_next_run_none(self):
@@ -586,7 +586,7 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -623,7 +623,7 @@ class TestRunScheduledAgent:
         with (
             patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
             patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ),
             patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
@@ -662,7 +662,7 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -681,7 +681,7 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -713,7 +713,7 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -728,23 +728,23 @@ class TestRunScheduledAgent:
         assert mock_deps.streamed_outputs[0][3] == mock_deps.agent_runs[0]["turn_id"]
 
     @pytest.mark.asyncio
-    async def test_calculates_next_run_for_cron_schedule(
+    async def test_records_completion_without_calculating_next_run_for_cron_schedule(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should calculate next run time for cron schedules."""
+        """Recurring execution records evidence without rewriting schedule timing."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "cron"
         sample_task.schedule_value = "0 9 * * *"  # Daily at 9am
 
-        updates = []
+        completions = []
 
-        def mock_update(task_id, next_run, result_summary):
-            updates.append((task_id, next_run, result_summary))
+        def mock_record(task_id, *, last_result, completed):
+            completions.append((task_id, last_result, completed))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
-                side_effect=mock_update,
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                side_effect=mock_record,
             ):
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
@@ -752,31 +752,26 @@ class TestRunScheduledAgent:
                     with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        # Should have calculated next run
-        assert len(updates) == 1
-        assert updates[0][0] == "task-1"
-        assert updates[0][1] is not None  # Should have a next run time
-        # Verify it's a valid ISO timestamp
-        datetime.fromisoformat(updates[0][1])
+        assert completions == [("task-1", "Completed", False)]
 
     @pytest.mark.asyncio
-    async def test_calculates_next_run_for_interval_schedule(
+    async def test_records_completion_without_calculating_next_run_for_interval_schedule(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should calculate next run time for interval schedules."""
+        """Interval timing remains Temporal-owned after a run."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "interval"
         sample_task.schedule_value = "300000"  # 5 minutes in ms
 
-        updates = []
+        completions = []
 
-        def mock_update(task_id, next_run, result_summary):
-            updates.append((task_id, next_run, result_summary))
+        def mock_record(task_id, *, last_result, completed):
+            completions.append((task_id, last_result, completed))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
-                side_effect=mock_update,
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                side_effect=mock_record,
             ):
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
@@ -784,33 +779,26 @@ class TestRunScheduledAgent:
                     with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        # Should have calculated next run
-        assert len(updates) == 1
-        assert updates[0][1] is not None
-        # Next run should be roughly 5 minutes from now
-        next_run_dt = datetime.fromisoformat(updates[0][1])
-        now = datetime.now(UTC)
-        diff = (next_run_dt - now).total_seconds()
-        assert 290 < diff < 310  # Allow some tolerance
+        assert completions == [("task-1", "Completed", False)]
 
     @pytest.mark.asyncio
-    async def test_no_next_run_for_once_schedule(
+    async def test_marks_once_schedule_completed_without_calculating_next_run(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should not calculate next run for 'once' schedules."""
+        """A one-shot completion only records its terminal application state."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "once"
         sample_task.schedule_value = "2024-12-31T23:59:59"
 
-        updates = []
+        completions = []
 
-        def mock_update(task_id, next_run, result_summary):
-            updates.append((task_id, next_run, result_summary))
+        def mock_record(task_id, *, last_result, completed):
+            completions.append((task_id, last_result, completed))
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
-                side_effect=mock_update,
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                side_effect=mock_record,
             ):
                 with patch(
                     "pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock
@@ -818,9 +806,7 @@ class TestRunScheduledAgent:
                     with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        # Should have no next run for 'once' tasks
-        assert len(updates) == 1
-        assert updates[0][1] is None
+        assert completions == [("task-1", "Completed", True)]
 
     @pytest.mark.asyncio
     async def test_logs_error_on_agent_exception(
@@ -843,7 +829,7 @@ class TestRunScheduledAgent:
             "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
         ):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -874,7 +860,7 @@ class TestRunScheduledAgent:
             "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
         ):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -889,10 +875,10 @@ class TestRunScheduledAgent:
         assert "Agent returned error" in logged_runs[0].error
 
     @pytest.mark.asyncio
-    async def test_advances_next_run_before_execution(
+    async def test_does_not_update_next_run_before_execution(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Should advance next_run in DB before running agent to prevent re-queuing."""
+        """Temporal overlap handling removes the local next-run guard."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.schedule_type = "cron"
         sample_task.schedule_value = "0 4 * * *"
@@ -904,7 +890,7 @@ class TestRunScheduledAgent:
 
         with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(
@@ -913,13 +899,7 @@ class TestRunScheduledAgent:
                     with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        # Should have called update_task with next_run before execution
-        assert len(early_updates) == 1
-        assert early_updates[0][0] == "task-1"
-        assert "next_run" in early_updates[0][1]
-        # next_run should be a future ISO timestamp
-        next_run_dt = datetime.fromisoformat(early_updates[0][1]["next_run"])
-        assert next_run_dt > datetime.now(UTC)
+        assert early_updates == []
 
     @pytest.mark.asyncio
     async def test_detects_error_status_from_container(
@@ -953,7 +933,7 @@ class TestRunScheduledAgent:
             "pynchy.host.orchestrator.task_scheduler.log_task_run", side_effect=mock_log_run
         ):
             with patch(
-                "pynchy.host.orchestrator.task_scheduler.update_task_after_run",
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
                 new_callable=AsyncMock,
             ):
                 with patch(

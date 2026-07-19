@@ -402,6 +402,13 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
+async def _clear_temporal_owned_next_runs(database: aiosqlite.Connection) -> None:
+    """Clear local timing values from scheduled-work rows."""
+    await database.execute("UPDATE scheduled_tasks SET next_run = NULL WHERE next_run IS NOT NULL")
+    await database.execute("UPDATE host_jobs SET next_run = NULL WHERE next_run IS NOT NULL")
+    await database.commit()
+
+
 async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     """Seed channel_cursors from existing last_agent_timestamp (one-time migration).
 
@@ -466,4 +473,5 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
     await _migrate_repo_access_column(database)
+    await _clear_temporal_owned_next_runs(database)
     await _seed_channel_cursors(database)

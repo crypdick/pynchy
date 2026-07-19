@@ -436,7 +436,7 @@ class TestIpcMessageAuth:
 
 
 class TestScheduleTaskTypes:
-    async def test_creates_cron_task_with_next_run(self, deps):
+    async def test_creates_cron_task_without_local_next_run(self, deps):
         await dispatch(
             {
                 "type": "schedule_task",
@@ -453,7 +453,7 @@ class TestScheduleTaskTypes:
         tasks = await get_all_tasks()
         assert len(tasks) == 1
         assert tasks[0].schedule_type == "cron"
-        assert tasks[0].next_run is not None
+        assert tasks[0].next_run is None
 
     async def test_rejects_invalid_cron(self, deps):
         await dispatch(
@@ -488,7 +488,7 @@ class TestScheduleTaskTypes:
         tasks = await get_all_tasks()
         assert len(tasks) == 1
         assert tasks[0].schedule_type == "interval"
-        assert tasks[0].next_run is not None
+        assert tasks[0].next_run is None
 
     async def test_rejects_invalid_interval_non_numeric(self, deps):
         await dispatch(

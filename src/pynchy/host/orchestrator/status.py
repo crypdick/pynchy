@@ -32,6 +32,9 @@ from pynchy.host.git_ops.utils import (
     run_git,
 )
 from pynchy.host.orchestrator.capability_status import collect_capability_status
+from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
+from pynchy.host.orchestrator.speech_status import collect_speech_status
+from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
     SpeechSynthesizer,
@@ -44,7 +47,8 @@ from pynchy.state import (
     get_task_run_logs,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves status annotations at runtime.
-    TaskRunLog,
+    HostJob,
+    ScheduledTask,
 )
 
 
@@ -116,8 +120,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         deploy,
         repos,
         messages,
-        tasks,
-        host_jobs,
+        scheduled_work,
         gateway,
         onecli,
         temporal,
@@ -127,14 +130,14 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         _collect_deploy(),
         asyncio.to_thread(_collect_repos),
         _collect_messages(),
-        _collect_tasks(),
-        _collect_host_jobs(),
+        _collect_scheduled_work(),
         _collect_gateway(deps.get_gateway_info()),
         asyncio.to_thread(collect_onecli_status),
         _collect_temporal(),
         get_canary_report(history_limit=10),
         _collect_speech(deps.get_speech_synthesizer()),
     )
+    tasks, host_jobs = scheduled_work
     canary_report = cast("dict[str, object]", canaries)
     capabilities = await collect_capability_status(canary_report)
 
@@ -173,34 +176,7 @@ def _collect_service(deps: StatusDeps, start_time_monotonic: float) -> dict[str,
 
 
 async def _collect_speech(synthesizer: SpeechSynthesizer | None) -> dict[str, Any]:
-    """Report the configured speech provider without breaking /status on failure."""
-    if synthesizer is None:
-        return {
-            "provider": None,
-            "ready": False,
-            "endpoint": None,
-            "error": "No speech synthesis provider is configured",
-        }
-    try:
-        health = await synthesizer.health()
-    except Exception as exc:  # noqa: BLE001, RUF100 - status must report plugin failures without failing /status.
-        logger.warning(
-            "Speech synthesis health check failed",
-            provider=synthesizer.name,
-            err=str(exc),
-        )
-        return {
-            "provider": synthesizer.name,
-            "ready": False,
-            "endpoint": None,
-            "error": f"Speech synthesis health check failed: {exc}",
-        }
-    return {
-        "provider": synthesizer.name,
-        "ready": health.ready,
-        "endpoint": health.endpoint,
-        "error": health.error,
-    }
+    return await collect_speech_status(synthesizer)
 
 
 async def _collect_deploy() -> dict[str, Any]:
@@ -320,63 +296,20 @@ async def _collect_messages() -> dict[str, Any]:
     return await get_messaging_stats()
 
 
-async def _collect_tasks() -> list[dict[str, Any]]:
-    """Scheduled task list — async DB."""
-    tasks = await get_all_tasks()
-    task_logs = await asyncio.gather(
-        *(get_task_run_logs(t.id, limit=5) for t in tasks),
+async def _collect_scheduled_work() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    return await collect_scheduled_work(
+        get_all_tasks,
+        get_all_host_jobs,
+        lambda task_id: get_task_run_logs(task_id, limit=5),
+        _get_temporal_orchestration_states,
     )
-    return [
-        {
-            "id": t.id,
-            "group": t.group_folder,
-            "schedule_type": t.schedule_type,
-            "schedule_value": t.schedule_value,
-            "status": t.status,
-            "next_run": t.next_run,
-            "last_run": t.last_run,
-            "last_result": t.last_result,
-            "run_health": _task_run_health(logs),
-        }
-        for t, logs in zip(tasks, task_logs, strict=True)
-    ]
 
 
-def _task_run_health(logs: list[TaskRunLog]) -> dict[str, Any]:
-    """Summarize recent scheduled-task attempts for operator status."""
-    last = logs[0] if logs else None
-    consecutive_failures = 0
-    for log in logs:
-        if log.status != "error":
-            break
-        consecutive_failures += 1
-
-    return {
-        "last_status": last.status if last else None,
-        "consecutive_failures": consecutive_failures,
-        "last_error_signature": last.error_signature if last else None,
-        "last_temporal_workflow_id": last.temporal_workflow_id if last else None,
-        "last_temporal_attempt": last.temporal_attempt if last else None,
-        "escalation_reason": last.escalation_reason if last else None,
-    }
-
-
-async def _collect_host_jobs() -> list[dict[str, Any]]:
-    """Host job list — async DB."""
-    jobs = await get_all_host_jobs()
-    return [
-        {
-            "id": j.id,
-            "name": j.name,
-            "schedule_type": j.schedule_type,
-            "schedule_value": j.schedule_value,
-            "status": j.status,
-            "enabled": j.enabled,
-            "next_run": j.next_run,
-            "last_run": j.last_run,
-        }
-        for j in jobs
-    ]
+async def _get_temporal_orchestration_states(
+    tasks: list[ScheduledTask], jobs: list[HostJob]
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Preserve an injection seam around Temporal-backed scheduled-work status."""
+    return await get_temporal_orchestration_states(tasks, jobs)
 
 
 async def _collect_temporal() -> dict[str, Any]:

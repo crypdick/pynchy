@@ -176,7 +176,7 @@ class TestScheduledTask:
             "schedule_type": "cron",
             "schedule_value": "0 9 * * *",
             "status": "active",
-            "next_run": "2024-02-01T09:00:00Z",
+            "next_run": None,
         }
 
     def test_to_snapshot_dict_excludes_internal_fields(self):

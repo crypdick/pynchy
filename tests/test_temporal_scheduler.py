@@ -269,7 +269,7 @@ class TestTemporalSchedulerRuntime:
     def test_agent_task_workflow_id_is_stable_and_temporal_safe(self, temporal_task):
         workflow_id = temporal_scheduler.agent_task_workflow_id(temporal_task)
 
-        assert workflow_id == "pynchy-agent-task-task-with-spaces-2026-07-07T09-00-00-00-00"
+        assert workflow_id == "pynchy-agent-task-task-with-spaces-0-9"
 
     def test_agent_task_schedule_id_is_stable_and_temporal_safe(self, temporal_task):
         schedule_id = temporal_scheduler.agent_task_schedule_id(temporal_task)
@@ -344,7 +344,7 @@ class TestTemporalSchedulerRuntime:
         assert len(runtime.client.calls) == 1
         call = runtime.client.calls[0]
         assert call["args"] == (temporal_task.id,)
-        assert call["id"] == "pynchy-agent-task-task-with-spaces-2026-07-07T09-00-00-00-00"
+        assert call["id"] == "pynchy-agent-task-task-with-spaces-0-9"
         assert call["task_queue"] == "pynchy-test"
         assert call["id_reuse_policy"].name == "REJECT_DUPLICATE"
 
@@ -376,9 +376,7 @@ class TestTemporalSchedulerRuntime:
         await runtime.start_scheduled_agent_task(temporal_task)
 
         status = temporal_scheduler.get_temporal_scheduler_status()
-        assert status["last_workflow_id"] == (
-            "pynchy-agent-task-task-with-spaces-2026-07-07T09-00-00-00-00"
-        )
+        assert status["last_workflow_id"] == "pynchy-agent-task-task-with-spaces-0-9"
         assert status["last_task_id"] == temporal_task.id
         assert status["last_result"] == "started"
         assert status["last_started_at"] is not None
@@ -537,7 +535,6 @@ class TestTemporalSchedulerRuntime:
     ):
         temporal_task.schedule_type = "once"
         temporal_task.schedule_value = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
-        temporal_task.next_run = temporal_task.schedule_value
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(
             deps=NullSchedulerDeps(),
@@ -578,7 +575,6 @@ class TestTemporalSchedulerRuntime:
             created_by="admin-1",
             status="active",
             enabled=True,
-            next_run=due_at,
         )
         client = FakeScheduleClient()
         runtime = temporal_scheduler.TemporalSchedulerRuntime(

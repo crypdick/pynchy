@@ -31,9 +31,9 @@ from pynchy.state import (
     get_in_flight_turn_for_task,
     get_task_run_logs,
     log_task_run,
+    record_task_completion,
     release_in_flight_turn_claim,
     update_task,
-    update_task_after_run,
 )
 from pynchy.types import (
     ContainerOutput,
@@ -44,7 +44,6 @@ from pynchy.types import (
     TaskRunLog,
     WorkspaceProfile,
 )
-from pynchy.utils import compute_next_run
 
 
 @runtime_checkable
@@ -270,14 +269,6 @@ async def _pause_task_for_circuit_breaker(
     )
 
 
-def _next_run_guard(task: ScheduledTask, timezone: str) -> str | None:
-    return compute_next_run(task.schedule_type, task.schedule_value, timezone)
-
-
-async def _advance_next_run_guard(task: ScheduledTask, timezone: str) -> None:
-    await update_task(task.id, {"next_run": _next_run_guard(task, timezone)})
-
-
 async def _broadcast_task_start(deps: SchedulerDependencies, task: ScheduledTask) -> None:
     await deps.broadcast_to_channels(
         task.chat_jid,
@@ -318,9 +309,12 @@ async def _finish_scheduled_agent_run(
             error_signature=error_signature(error) if error else None,
         )
     )
-    next_run = _next_run_guard(task, get_settings().timezone)
     result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
-    await update_task_after_run(task.id, next_run, result_summary)
+    await record_task_completion(
+        task.id,
+        last_result=result_summary,
+        completed=task.schedule_type == "once",
+    )
     return error is None
 
 
@@ -401,12 +395,6 @@ async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) 
         )
         logger.warning("Scheduled task paused by circuit breaker", task_id=task.id, reason=reason)
         return False
-
-    # Advance next_run BEFORE execution so subsequent Temporal reconciliation
-    # does not start another one-shot workflow while this task is still running.
-    # The definitive next_run is recalculated AFTER execution based on actual
-    # completion time, which matters for long-running tasks.
-    await _advance_next_run_guard(task, s.timezone)
 
     await _broadcast_task_start(deps, task)
     result, error = await run_task_agent(

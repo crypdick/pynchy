@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pynchy.config import get_settings
+from croniter import croniter
+
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves task handler signatures at runtime.
 )
@@ -29,7 +30,6 @@ from pynchy.state import (
     update_task,
 )
 from pynchy.types import GroupFolder, ScheduledTask, WorkspaceProfile
-from pynchy.utils import compute_next_run
 
 
 @dataclass(frozen=True)
@@ -50,26 +50,20 @@ class _HostJobRequest:
     timeout_seconds: int
 
 
-def _compute_next_run_from_ipc(
+def _validate_schedule_from_ipc(
     schedule_type: Literal["cron", "interval", "once"],
     schedule_value: str,
-) -> str | None:
-    """Compute next_run from IPC schedule data, returning None on invalid input.
-
-    For 'once' tasks, parses the value as an ISO timestamp.
-    For 'cron'/'interval', delegates to compute_next_run().
-    """
+) -> None:
+    """Validate a persisted schedule definition without deriving its next fire time."""
     if schedule_type == "once":
-        scheduled = datetime.fromisoformat(schedule_value)
-        return scheduled.isoformat()
-
-    # 'once' handled above; remaining values are validated by compute_next_run,
-    # which returns None for anything other than 'cron'/'interval'.
-    return compute_next_run(
-        schedule_type,
-        schedule_value,
-        get_settings().timezone,
-    )
+        datetime.fromisoformat(schedule_value)
+        return
+    if schedule_type == "interval":
+        if int(schedule_value) <= 0:
+            raise ValueError("interval must be positive")
+        return
+    if not croniter.is_valid(schedule_value):
+        raise ValueError("invalid cron expression")
 
 
 async def _handle_schedule_task(
@@ -116,7 +110,7 @@ async def _handle_schedule_task(
         return
 
     try:
-        next_run = _compute_next_run_from_ipc(request.schedule_type, request.schedule_value)
+        _validate_schedule_from_ipc(request.schedule_type, request.schedule_value)
     except (ValueError, TypeError, KeyError):
         logger.warning(
             "invalid schedule value",
@@ -124,14 +118,6 @@ async def _handle_schedule_task(
             schedule_value=request.schedule_value,
         )
         return
-    if next_run is None:
-        logger.warning(
-            "invalid schedule value",
-            schedule_type=request.schedule_type,
-            schedule_value=request.schedule_value,
-        )
-        return
-
     task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
 
     await create_task(
@@ -143,7 +129,6 @@ async def _handle_schedule_task(
             schedule_type=request.schedule_type,
             schedule_value=request.schedule_value,
             context_mode="isolated",
-            next_run=next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
         )
@@ -266,7 +251,7 @@ async def _handle_schedule_host_job(
         return
 
     try:
-        next_run = _compute_next_run_from_ipc(request.schedule_type, request.schedule_value)
+        _validate_schedule_from_ipc(request.schedule_type, request.schedule_value)
     except (ValueError, TypeError, KeyError):
         logger.warning(
             "invalid schedule value for host job",
@@ -274,14 +259,6 @@ async def _handle_schedule_host_job(
             schedule_value=request.schedule_value,
         )
         return
-    if next_run is None:
-        logger.warning(
-            "invalid schedule value for host job",
-            schedule_type=request.schedule_type,
-            schedule_value=request.schedule_value,
-        )
-        return
-
     job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
     await create_host_job(
         {
@@ -290,7 +267,6 @@ async def _handle_schedule_host_job(
             "command": request.command,
             "schedule_type": request.schedule_type,
             "schedule_value": request.schedule_value,
-            "next_run": next_run,
             "status": "active",
             "created_at": datetime.now(UTC).isoformat(),
             "created_by": source_group,

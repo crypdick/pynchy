@@ -24,7 +24,7 @@ This lets plugins provide sensible defaults while users retain full control.
 
 ## Reconciliation
 
-Scheduled tasks and workspace state live in the database, but the **source of truth is `config.toml`** (and plugin specs). On every startup, `reconcile_workspaces()` syncs the declared config into the database:
+Scheduled-task definitions and run evidence live in the database, but the **source of truth is `config.toml`** (and plugin specs). Temporal owns future fire times, delayed one-shots, retries, and execution state. On every startup, `reconcile_workspaces()` syncs the declared config into the database:
 
 1. Merges plugin specs with `config.toml` workspaces
 2. Creates chat groups for workspaces missing database entries
@@ -35,7 +35,7 @@ Scheduled tasks and workspace state live in the database, but the **source of tr
 
 For config-backed jobs, the reconciler compares the database row against `config.toml` on every startup. If any of these fields differ, it patches the database to match:
 
-- **`schedule`** — also recalculates `next_run` when the cron expression changes
+- **`schedule`** — reconciles the Temporal Schedule; Temporal derives the next fire time
 - **`prompt`** — updates the prompt sent to the agent on each scheduled run
 - **delivery chat** — follows the target workspace's current registered JID
 - **`repo`** — updates the repo worktree mounts from the selected profiles
