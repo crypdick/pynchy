@@ -20,7 +20,6 @@ from temporalio.client import Client
 from pynchy.canaries import get_canary_report
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import run_docker
-from pynchy.host.container_manager.onecli import collect_onecli_status
 from pynchy.host.container_manager.runtime_names import runtime_container_name
 from pynchy.host.git_ops.repo import RepoContext, get_repo_context
 from pynchy.host.git_ops.utils import (
@@ -122,7 +121,6 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         messages,
         scheduled_work,
         gateway,
-        onecli,
         temporal,
         canaries,
         speech,
@@ -132,7 +130,6 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         _collect_messages(),
         _collect_scheduled_work(),
         _collect_gateway(deps.get_gateway_info()),
-        asyncio.to_thread(collect_onecli_status),
         _collect_temporal(),
         get_canary_report(history_limit=10),
         _collect_speech(deps.get_speech_synthesizer()),
@@ -146,7 +143,6 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "deploy": deploy,
         "channels": channels,
         "gateway": gateway,
-        "onecli": onecli,
         "queue": queue,
         "repos": repos,
         "messages": messages,

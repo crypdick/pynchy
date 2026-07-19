@@ -11,22 +11,11 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CronJobConfig
-from pynchy.config.models import OneCliConfig
 from pynchy.host.orchestrator.messaging.commands import (
     is_context_reset,
     is_end_session,
     is_redeploy,
 )
-
-
-def test_onecli_config_defaults_disabled():
-    cfg = OneCliConfig()
-    assert cfg.enabled is False
-    assert cfg.url == "http://localhost:10254"
-    assert cfg.api_key_env == "ONECLI_API_KEY"  # pragma: allowlist secret - env var name
-    assert cfg.project_id_env == "ONECLI_PROJECT_ID"
-    assert cfg.fail_closed is True
-    assert cfg.agent_identifier_prefix == "pynchy"
 
 
 class TestIsContextReset:

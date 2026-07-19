@@ -181,17 +181,6 @@ class GatewayConfig(_StrictModel):
     ui_password: SecretStr | None = None  # LiteLLM UI login password
 
 
-class OneCliConfig(_StrictModel):
-    """OneCLI Agent Vault integration — credential isolation for agent containers."""
-
-    enabled: bool = False
-    url: str = "http://localhost:10254"
-    api_key_env: str = "ONECLI_API_KEY"
-    project_id_env: str = "ONECLI_PROJECT_ID"
-    fail_closed: bool = True
-    agent_identifier_prefix: str = "pynchy"
-
-
 class ObsidianLearningConfig(_StrictModel):
     vault_root: str | None = None
     mount_path: str = "/workspace/vault"
@@ -505,8 +494,6 @@ class McpToolConfig(_StrictModel):
     idle_timeout: int = 600
     env: dict[str, str] = {}
     env_forward: dict[str, str] = {}
-    onecli: bool = False
-    onecli_agent: str = "workspace"
     volumes: list[str] = []
     inject_workspace: bool = False
     url: str | None = None

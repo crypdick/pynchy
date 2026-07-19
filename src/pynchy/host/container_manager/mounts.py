@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import write_env_file
-from pynchy.host.container_manager.onecli import prepare_onecli_material
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.mirror import prepare_vault_mount_root
@@ -67,18 +66,10 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     if scripts_dir.exists():
         mounts.append(VolumeMount(str(scripts_dir), "/workspace/scripts", readonly=True))
 
-    # OneCLI material is proxy/CA/stub setup, not raw secrets.  When present,
-    # OneCLI owns GitHub/API credential injection, so GH_TOKEN is not written.
-    onecli_material = prepare_onecli_material(group.folder)
-    if onecli_material is not None:
-        mounts.extend(onecli_material.mounts)
-
     # Environment file directory (per-group, GH_TOKEN scoped to admin only)
     env_dir = write_env_file(
         is_admin=is_admin,
         group_folder=group.folder,
-        extra_env_vars=onecli_material.env_vars if onecli_material else None,
-        include_gh_token=onecli_material is None,
     )
     if env_dir is not None:
         mounts.append(VolumeMount(str(env_dir), "/workspace/env-dir", readonly=True))

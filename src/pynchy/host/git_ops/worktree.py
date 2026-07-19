@@ -113,7 +113,7 @@ def _sync_existing_worktree(
 ) -> WorktreeResult:
     """Sync an existing worktree — best-effort pull, preserve local state."""
     notices: list[str] = []
-    env = git_env_with_token(repo_ctx.slug, group_folder=group_folder)
+    env = git_env_with_token(repo_ctx.slug)
 
     # Check for uncommitted changes
     status = run_git("status", "--porcelain", cwd=worktree_path)
@@ -163,7 +163,7 @@ def _create_new_worktree(
     repo_ctx: RepoContext,
 ) -> WorktreeResult:
     """Create a worktree from origin/{main}. Raises WorktreeError on failure."""
-    env = git_env_with_token(repo_ctx.slug, group_folder=group_folder)
+    env = git_env_with_token(repo_ctx.slug)
     # Fetch is required for initial creation
     fetch = run_git("fetch", "origin", cwd=repo_ctx.root, env=env)
     if fetch.returncode != 0:

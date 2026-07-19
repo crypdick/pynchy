@@ -35,7 +35,6 @@ from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
 from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
-from pynchy.host.container_manager.onecli import OneCliMaterial
 from pynchy.host.container_manager.orchestrator import (
     resolve_agent_core,
     write_initial_input,
@@ -162,7 +161,6 @@ _SETTINGS_MODULES = [
     _CR_CREDS,
     "pynchy.host.container_manager.mounts",
     "pynchy.host.container_manager.session_prep",
-    "pynchy.host.container_manager.onecli",
     _CR_ORCH,
     "pynchy.host.container_manager.snapshots",
     "pynchy.host.learning.paths",
@@ -647,9 +645,9 @@ class TestContainerArgs:
         assert "/host/path:/container/path" in args
 
     def test_apple_readonly_file_mount_uses_volume_flag(self, tmp_path: Path):
-        host_file = tmp_path / "onecli-ca.pem"
+        host_file = tmp_path / "custom-ca.pem"
         host_file.write_text("ca")
-        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
+        ca_container_path = str(PurePosixPath("/", "tmp", "custom-ca.pem"))
         mounts = [VolumeMount(str(host_file), ca_container_path, readonly=True)]
         runtime = MagicMock(name="runtime")
         runtime.name = "apple"
@@ -1230,48 +1228,6 @@ class TestMountBuilding:
             paths = [m.container_path for m in mounts]
             assert "/workspace/repos/owner/pynchy/config.toml" not in paths
 
-    def test_onecli_material_adds_mounts_env_and_suppresses_gh_token(
-        self,
-        tmp_path: Path,
-    ):
-        """OneCLI material is mounted and raw GitHub tokens stay out of env files."""
-        ca_host_path = tmp_path / "onecli-ca.pem"
-        ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
-        material = OneCliMaterial(
-            env_vars={
-                "HTTPS_PROXY": "http://proxy",
-                "SSL_CERT_FILE": ca_container_path,
-            },
-            mounts=[VolumeMount(str(ca_host_path), ca_container_path, readonly=True)],
-            warnings=[],
-        )
-        with (
-            _patch_settings(tmp_path, secret_overrides={"gh_token": "explicit-token"}),
-            patch(
-                "pynchy.host.container_manager.mounts.prepare_onecli_material",
-                return_value=material,
-                create=True,
-            ),
-            patch(f"{_GATEWAY}.get_gateway", return_value=None),
-            patch(f"{_CR_CREDS}._read_git_identity", return_value=(None, None)),
-        ):
-            (tmp_path / "groups" / "admin-1").mkdir(parents=True)
-            group = WorkspaceProfile(
-                jid="admin-1@g.us",
-                name="Admin",
-                folder="admin-1",
-                trigger="always",
-                added_at="2024-01-01",
-            )
-            mounts = build_volume_mounts(group, is_admin=True)
-
-        assert any(m.container_path == ca_container_path for m in mounts)
-        env_file = tmp_path / "data" / "env" / "admin-1" / "env"
-        content = env_file.read_text()
-        assert "HTTPS_PROXY='http://proxy'" in content
-        assert f"SSL_CERT_FILE='{ca_container_path}'" in content
-        assert "GH_TOKEN" not in content
-
 
 # ---------------------------------------------------------------------------
 # Credential / env file tests
@@ -1335,7 +1291,7 @@ class TestWriteEnvFile:
         assert "PYNCHY_IS_ADMIN='0'" in content
 
     def test_gateway_host_bypasses_container_proxy_vars(self, tmp_path: Path):
-        """Local gateway traffic must not route through OneCLI's env proxy."""
+        """Local gateway traffic must not route through explicit proxy variables."""
         gw = _MockGateway(providers={"openai"}, base_url="http://192.168.64.1:4000")
         proxy_env = {
             "HTTP_PROXY": "http://proxy.internal:8080",
@@ -2347,19 +2303,6 @@ class TestSyncSkills:
 
         # skills/ directory should still be created (empty)
         assert (session_dir / "skills").exists()
-
-    def test_syncs_generated_onecli_gateway_skill(self, tmp_path: Path):
-        """Session skill sync delegates generated OneCLI gateway skill installation."""
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with (
-            _patch_settings(tmp_path),
-            patch("pynchy.host.container_manager.session_prep.sync_onecli_gateway_skill") as sync,
-        ):
-            sync_skills(session_dir)
-
-        sync.assert_called_once_with(session_dir / "skills")
 
     def test_plugin_skills_are_synced(self, tmp_path: Path):
         """Plugin manager skill paths are copied to session dir."""

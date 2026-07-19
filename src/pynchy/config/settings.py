@@ -55,7 +55,6 @@ from pynchy.config.models import (
     McpTool,
     McpToolConfig,
     NotificationsConfig,
-    OneCliConfig,
     PluginConfig,
     ReposConfig,
     SecretsConfig,
@@ -163,7 +162,6 @@ class Settings(BaseSettings):
     logging: LoggingConfig = LoggingConfig()
     secrets: SecretsConfig = SecretsConfig()
     gateway: GatewayConfig = GatewayConfig()
-    onecli: OneCliConfig = OneCliConfig()
     learning: LearningConfig = LearningConfig()
     repos: ReposConfig = Field(default_factory=ReposConfig)
     profiles: dict[str, ProfileConfig] = {}

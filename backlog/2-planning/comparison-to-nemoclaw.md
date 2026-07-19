@@ -42,8 +42,7 @@ authority, not marketing claims.
 
 NemoClaw is still an alpha reference stack and delegates its enforcement to
 OpenShell. Findings below distinguish that platform dependency from patterns
-Pynchy can implement against its Docker, Apple Container, and OneCLI runtime
-choices.
+Pynchy can implement against its Docker and Apple Container runtime choices.
 
 Primary Pynchy evidence: `docs/architecture/security.md`,
 `src/pynchy/host/container_manager/mounts.py`,
@@ -64,10 +63,10 @@ Primary NemoClaw evidence: its [architecture reference](https://docs.nvidia.com/
 | Agent runtimes | Pluggy-discovered Claude SDK, Claude CLI, OpenAI, and Codex cores; profiles resolve a model and tools. | OpenClaw, Hermes, and Deep Agents integrations each declare binary, config, health, durable state, inference, and MCP support in a manifest. | **Adapt the manifest contract.** Pynchy has the more extensible public plugin seam but a thinner core descriptor. |
 | Channels | First-party Slack, Discord, WhatsApp, TUI, plus host Matrix gateway; canonical group routing and Discord-thread workspaces. | Manifest-first lifecycle support for Discord, Slack, Telegram, Teams, WeChat, and WhatsApp on selected agent runtimes. | Pynchy has stronger workspace semantics. **Adapt data-driven compatibility/lifecycle planning, not channel count.** |
 | Isolation | Docker or Apple Container with explicit mounts; trusted admin workspaces may deliberately use host mode. | OpenShell sandbox with network namespace, seccomp, filesystem policy, optional Landlock, capability drops, resource limits, and non-root runtime. | **Material Pynchy gap for container mode.** Host mode must remain visibly exempt rather than pretending to be sandboxed. |
-| Egress and credentials | LiteLLM isolates LLM keys; optional OneCLI injects non-LLM credentials at egress. Bash and service tools use semantic taint and approval gates. | Default-deny egress, host/port/binary restrictions, optional L7 method/path/MCP rules, SSRF checks, and credential rewriting at the proxy. | **Complementary.** Add substrate egress enforcement; retain Pynchy's stronger semantic policy. |
+| Egress and credentials | LiteLLM isolates LLM keys; scoped native credentials and Bash/service tools use semantic taint and approval gates. | Default-deny egress, host/port/binary restrictions, optional L7 method/path/MCP rules, SSRF checks, and credential rewriting at the proxy. | **Complementary.** Add substrate egress enforcement; retain Pynchy's stronger semantic policy. |
 | Scheduling | Temporal schedules/workflows, retries, interrupted-turn checkpointing, canary scheduling, and task isolation. | Sandbox-native runtime lifecycle; no comparable durable multi-workspace scheduler. | **Pynchy ahead.** Do not replace Temporal with sandbox lifecycle loops. |
 | Provider operation | LiteLLM routing and startup validation for configured effective core routes; Phoenix traces and action canaries. | Onboarding probes the actual API surface, manages provider state, has a model/agent audit-matrix schema, and reports in-sandbox route health. | **Adapt evidence and probing contracts.** Pynchy has stronger real-service action evidence already. |
-| MCP lifecycle | Plugin/config specifications, workspace instance resolution, readiness checks, trust declarations, and optional OneCLI. | Managed MCP registration, policy/provider/adapter reconciliation, lifecycle lock, and differential credential-resolution probe. | **Adapt the differential probe and explicit lifecycle transaction.** |
+| MCP lifecycle | Plugin/config specifications, workspace instance resolution, readiness checks, and trust declarations. | Managed MCP registration, policy/provider/adapter reconciliation, lifecycle lock, and differential credential-resolution probe. | **Adapt the differential probe and explicit lifecycle transaction.** |
 | State and recovery | SQLite backups, migration copies, persistent session dirs, and managed deployment rollback; no portable per-workspace export/restore contract. | Manifest-defined sanitized snapshots, restore rules, rebuild transaction, state-aware recovery, and lifecycle locks. | **Real Pynchy operator gap.** Build a narrower Pynchy state manifest, not a copy of sandbox snapshots. |
 | Extensibility | Public Pluggy hooks and entry-point discovery for cores, channels, memory, runtime, tools, observers, and workspaces. | Internal trusted manifests; the public SDK remains intentionally unimplemented. | **Pynchy ahead.** Do not abandon public plugin ownership for internal-only catalogues. |
 | Validation | Strict typing and pre-commit gates; semantic ActionSpecs and independent canaries; Phoenix retains LLM traces. | Extensive workflow-boundary tests, image/policy pin checks, provider probes, and a documented capability-audit template. | **Combine strengths.** Give Pynchy's ActionSpecs the missing execution-substrate and route evidence. |
@@ -109,7 +108,7 @@ than create a parallel "sandbox healthy" definition.
 ### P0: Introduce an execution-substrate policy for container workspaces
 
 Pynchy currently relies on container isolation, explicit mounts, the agent
-runner's Bash gate, and optional OneCLI. Its normal agent `docker run` argv
+runner's Bash gate. Its normal agent `docker run` argv
 does not set a network policy, capability drops, `no-new-privileges`, or
 resource limits. The primary agent image also grants its `agent` user
 passwordless `sudo`, so a compromised agent can install or alter local tools
@@ -127,11 +126,10 @@ the runtime provider. It should express:
   runtime and host platform.
 
 Start with a Linux/Docker backend that can enforce an allowlist. Integrate
-OneCLI where it can provide the egress boundary, but do not make OneCLI a
-required replacement for Pynchy's `SecurityPolicy`. Apple Container needs a
-separate capability probe and must report degradation honestly if it cannot
-enforce an equivalent rule. Direct host execution remains an explicit trusted
-exception and should never receive a misleading secure posture.
+the egress boundary through an enforceable runtime policy. Apple Container
+needs a separate capability probe and must report degradation honestly if it
+cannot enforce an equivalent rule. Direct host execution remains an explicit
+trusted exception and should never receive a misleading secure posture.
 
 Acceptance evidence: an untrusted container cannot connect to an unlisted
 host even through `curl`, Python, Node, or a tool subprocess; a configured
@@ -214,7 +212,7 @@ makes recovery across runtime/image changes unnecessarily manual.
 
 Create a `WorkspaceStateManifest` owned by each core/plugin. It must enumerate
 what to copy, merge, regenerate, redact, and never export; raw credentials,
-OneCLI material, mount allowlists, and host secrets remain excluded. A restore
+mount allowlists, and host secrets remain excluded. A restore
 should validate compatibility before replacement, stage a backup, apply an
 idempotent transaction, re-probe the core and MCP plan, and retain the prior
 state until verification passes. Use the existing managed deploy transaction
@@ -275,8 +273,8 @@ become an implicit privileged setup language.
 1. Deliver the locked production image and runtime posture reporting together;
    an unpinned image cannot provide a meaningful security attestation.
 2. Add Linux/Docker default-deny egress and make its relationship to
-   `SecurityPolicy` explicit. Follow with OneCLI and Apple Container backends
-   only when their enforcement contracts are testable.
+   `SecurityPolicy` explicit. Follow with Apple Container support only when
+   its enforcement contract is testable.
 3. Introduce the typed core/channel/MCP capability descriptor and implement
    `pynchy doctor` against it. Pilot it on the Codex core and one MCP tool.
 4. Add provider/model/route evidence rows and the differential MCP probe,

@@ -7,26 +7,14 @@ import subprocess  # noqa: S404, RUF100 - shared git helper uses fixed no-shell 
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves git helper signatures at runtime.
 )
-from typing import TYPE_CHECKING, Any
-from urllib.parse import urlsplit, urlunsplit
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.gateway import resolve_container_host
 from pynchy.logger import logger
-
-if TYPE_CHECKING:
-    from pynchy.host.container_manager.onecli import OneCliMaterial
-else:
-    OneCliMaterial = Any
 
 _SUBPROCESS_TIMEOUT = 30
 _DEFAULT_GIT_SSH_COMMAND = (
     "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=1"
 )
-_PROXY_ENV_KEYS = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
-_CA_ENV_KEYS = ("GIT_SSL_CAINFO", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS")
-_CONTAINER_HOSTNAME = "host.docker.internal"
-_HOST_PROCESS_HOSTNAME = "localhost"
 
 
 def _git_subprocess_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -76,98 +64,8 @@ def run_git(
         )
 
 
-def _host_process_env(material: OneCliMaterial) -> dict[str, str]:
-    host_paths_by_container_path = {
-        mount.container_path: mount.host_path for mount in material.mounts
-    }
-    env = {
-        key: _host_process_value(key, host_paths_by_container_path.get(value, value))
-        for key, value in material.env_vars.items()
-    }
-    _configure_git_ca(env)
-    return env
-
-
-def _configure_git_ca(env: dict[str, str]) -> None:
-    if env.get("GIT_SSL_CAINFO"):
-        return
-    for key in _CA_ENV_KEYS:
-        if ca_path := env.get(key):
-            env["GIT_SSL_CAINFO"] = ca_path
-            return
-
-
-def _host_process_value(key: str, value: str) -> str:
-    if key in _PROXY_ENV_KEYS:
-        return _rewrite_container_proxy_host(value)
-    return value
-
-
-def _rewrite_container_proxy_host(value: str) -> str:
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return value
-    container_hosts = {
-        _CONTAINER_HOSTNAME,
-        resolve_container_host(_CONTAINER_HOSTNAME),
-    }
-    if parsed.hostname not in container_hosts:
-        return value
-
-    host_start = parsed.netloc.rfind(parsed.hostname)
-    if host_start < 0:
-        return value
-    netloc = (
-        f"{parsed.netloc[:host_start]}"
-        f"{_HOST_PROCESS_HOSTNAME}"
-        f"{parsed.netloc[host_start + len(parsed.hostname) :]}"
-    )
-    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
-
-
-def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
-    from pynchy.host.container_manager.onecli import (  # noqa: PLC0415, RUF100 - importing container_manager.onecli at module load creates a git_ops/container_manager cycle.
-        prepare_onecli_material as _prepare_onecli_material,
-    )
-
-    return _prepare_onecli_material(group_folder, container_target=False)
-
-
-def _git_env_with_onecli(slug: str, *, group_folder: str | None) -> dict[str, str] | None:
-    s = get_settings()
-    if not s.onecli.enabled:
-        return None
-
-    agent_key = group_folder or f"git-{slug}"
-    material = prepare_onecli_material(agent_key)
-    if material is None:
-        return None
-
-    env = _host_process_env(material)
-    has_proxy = any(key in env for key in _PROXY_ENV_KEYS)
-    if not has_proxy:
-        from pynchy.host.container_manager.onecli import (  # noqa: PLC0415, RUF100 - importing container_manager.onecli at module load creates a git_ops/container_manager cycle.
-            OneCliError,
-        )
-
-        reason = "OneCLI git material did not include proxy env"
-        if s.onecli.fail_closed:
-            raise OneCliError(reason)
-        logger.warning(reason, slug=slug, onecli_agent=agent_key)
-        return None
-
-    merged = os.environ.copy()
-    merged.update(env)
-    merged["GIT_TERMINAL_PROMPT"] = "0"
-    return merged
-
-
-def git_env_with_token(slug: str, *, group_folder: str | None = None) -> dict[str, str] | None:
+def git_env_with_token(slug: str) -> dict[str, str] | None:
     """Build env dict for authenticated git remote operations.
-
-    When OneCLI is enabled, git receives OneCLI proxy/CA env and no raw token.
-    Otherwise this falls back to Pynchy's native repo token resolution.
 
     Returns None if no token is available (callers fall back to ambient
     credentials). Uses GIT_ASKPASS with a small inline script that echoes the
@@ -177,9 +75,6 @@ def git_env_with_token(slug: str, *, group_folder: str | None = None) -> dict[st
     from pynchy.host.git_ops import (  # noqa: PLC0415, RUF100 - keep repo dependency lazy to avoid tightening git_ops package initialization.
         repo as git_repo,
     )
-
-    if onecli_env := _git_env_with_onecli(slug, group_folder=group_folder):
-        return onecli_env
 
     token = git_repo.get_repo_token(slug)
     if not token:
