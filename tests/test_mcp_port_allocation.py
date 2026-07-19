@@ -59,7 +59,7 @@ class TestExpandArgPlaceholders:
         assert expand_arg_placeholders(args, {}) == ["--port", "{port}"]
 
 
-class TestMcpOneCliConfig:
+class TestMcpServerConfig:
     def test_mcp_server_uses_short_startup_timeout_by_default(self):
         cfg = McpServerConfig(type="docker", image="img", port=8000)
 
@@ -69,13 +69,7 @@ class TestMcpOneCliConfig:
         with pytest.raises(ValueError, match="startup_timeout_seconds"):
             McpServerConfig(type="docker", image="img", port=8000, startup_timeout_seconds=0)
 
-    def test_mcp_server_accepts_onecli_opt_in(self):
-        cfg = McpServerConfig(type="docker", image="img", port=8000, onecli=True)
-
-        assert cfg.onecli is True
-        assert cfg.onecli_agent == "workspace"
-
-    def test_build_env_args_merges_onecli_env(self):
+    def test_build_env_args_includes_static_env(self):
         cfg = McpServerConfig(
             type="docker",
             image="img",
@@ -83,11 +77,10 @@ class TestMcpOneCliConfig:
             env={"STATIC": "value"},
         )
 
-        args = build_env_args(cfg, extra_env={"HTTPS_PROXY": "http://proxy"})
+        args = build_env_args(cfg)
 
         assert "-e" in args
         assert "STATIC=value" in args
-        assert "HTTPS_PROXY=http://proxy" in args
 
 
 class TestDockerLifecycleHelpers:

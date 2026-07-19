@@ -274,9 +274,7 @@ def write_env_file(
     Real API keys never enter the container.
 
     Non-LLM credentials (GH_TOKEN, git identity) are written directly —
-    they are not proxied through the gateway.  OneCLI callers pass proxy env in
-    ``extra_env_vars`` and set ``include_gh_token=False`` so raw GitHub tokens
-    stay out of the container when OneCLI owns that credential boundary.
+    they are not proxied through the gateway.
     """
     s = get_settings()
     env_dir = s.data_dir / "env" / group_folder

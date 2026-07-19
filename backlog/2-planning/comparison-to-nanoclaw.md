@@ -95,7 +95,7 @@ alternative scheduler.
 
 ### Security policy and credential boundaries
 
-Both systems use explicit mounts and OneCLI credential injection. Pynchy adds
+Both systems use explicit mounts and scoped credential injection. Pynchy adds
 the key controls NanoClaw lacks: service trust declarations, separate
 corruption/secret taint, the lethal-trifecta gate, secrets scanning, and a
 cross-core Bash security gate. Pynchy also scopes secrets and distinguishes
@@ -284,7 +284,7 @@ need pairing, OAuth, or a controlled secret handoff. It should:
 
 - consume a typed plan beside a plugin, not arbitrary shell prose;
 - declare side effects and require preconditions/postconditions;
-- obtain secret material through the existing OneCLI/secret path;
+- obtain secret material through the existing secret path;
 - show a dry-run plan, journal completed idempotent steps, and surface a
   resumable failure; and
 - leave ownership of Pynchy configuration with the operator.
@@ -305,7 +305,7 @@ would make the managed path more brittle.
 Adapt the intent rather than the mechanism:
 
 - add `pynchy doctor` with read-only checks for config/schema compatibility,
-  plugin discovery, container runtime, gateway readiness, OneCLI material,
+  plugin discovery, container runtime, gateway readiness,
   Temporal health, channel liveness, pending approvals, and outbound backlog;
 - write a deployment compatibility record only after Pynchy's managed
   migration/reconciliation transaction completes; and
@@ -432,7 +432,7 @@ otherwise look like generic connection failures.
 
 - `docs/architecture/container-isolation.md` and
   `docs/architecture/security.md` — explicit mounts, runtime plugins,
-  LLM/OneCLI credential boundaries, taint policy, and host-mode exception.
+  LLM credential boundaries, taint policy, and host-mode exception.
 - `docs/architecture/message-routing.md`,
   `src/pynchy/host/orchestrator/concurrency.py`, and
   `src/pynchy/host/orchestrator/temporal/` — queueing, durable turn recovery,

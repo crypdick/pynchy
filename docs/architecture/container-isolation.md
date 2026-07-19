@@ -36,7 +36,6 @@ Pynchy labels agent containers and removes stopped agent containers when it obse
 | `src/pynchy/agent/agent_runner/src` | `/app/src` | Readonly | All (agent runner source) |
 | `data/ipc/{group}/` | `/workspace/ipc` | Read-write | All (IPC channel) |
 | `data/env/{group}/` | `/workspace/env-dir` | Readonly | All (per-group credentials) |
-| `data/onecli/{group}/` files | OneCLI-provided paths | Readonly | OneCLI-enabled groups |
 | Obsidian vault root | `/workspace/vault` | Read-write | Learning-enabled groups |
 | Repo worktrees | `/workspace/repos/<owner>/<repo>` | Read-write | Workspaces with profile `repo` |
 | `{additional mounts}` | `/workspace/extra/*` | Configurable | Per containerConfig |
@@ -80,27 +79,13 @@ Each group gets its own env file at `data/env/{group}/env`. Only allowlisted var
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
 
-**OneCLI Agent Vault** can replace direct non-LLM credential injection. When
-`[onecli].enabled = true`, each workspace maps to a OneCLI agent identifier.
-Pynchy asks OneCLI for proxy env vars, a CA certificate mount, and credential
-stub files containing `onecli-managed` placeholders. Raw service credentials
-stay in OneCLI and are injected only as matching outbound requests pass through
-the OneCLI gateway. When this material is present, `GH_TOKEN` is not written to
-the agent env file.
-
-Host-owned git operations also prefer OneCLI when it is enabled: clone, fetch,
-and push use the OneCLI proxy/CA environment instead of embedding GitHub tokens
-in command arguments. Native token helpers remain only for disabled-OneCLI or
-explicit fail-open migration setups.
-
 **Process:**
 1. Host discovers credentials from `config.toml [secrets]` and auto-discovery (OAuth, gh CLI, git config)
 2. LLM keys are registered with the gateway; containers get the gateway URL + ephemeral key
-3. If OneCLI is enabled, proxy env, CA, and stubs are materialized under `data/onecli/{group}/`
-4. Without OneCLI material, `GH_TOKEN` is included only for admin containers
-5. Per-group env file written to `data/env/{group}/env`
-6. Env and OneCLI material are mounted into the container
-7. Container entrypoint sources the env file
+3. `GH_TOKEN` is included only for admin containers
+4. Per-group env file written to `data/env/{group}/env`
+5. Env material is mounted into the container
+6. Container entrypoint sources the env file
 
 ---
 

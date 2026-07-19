@@ -81,7 +81,7 @@ def _validate_sync_preconditions(
     worktree_path = repo_ctx.worktrees_dir / group_folder
     branch_name = f"worktree/{group_folder}"
     main_branch = detect_main_branch(cwd=repo_ctx.root)
-    env = git_env_with_token(repo_ctx.slug, group_folder=group_folder)
+    env = git_env_with_token(repo_ctx.slug)
 
     if not worktree_path.exists():
         return {

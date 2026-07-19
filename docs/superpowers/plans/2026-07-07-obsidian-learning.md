@@ -223,7 +223,7 @@ Implementation notes:
 - Create `paths.memory_root` and `paths.skills_root`.
 - Add `VolumeMount(str(paths.vault_root), paths.vault_mount_path, readonly=False)`.
 - Pass `iter_learned_skill_dirs(group.folder)` into `_sync_skills`.
-- Keep worktree, group, IPC, script, OneCLI, and env mounts unchanged.
+- Keep worktree, group, IPC, script, and env mounts unchanged.
 
 - [ ] Run focused tests:
 

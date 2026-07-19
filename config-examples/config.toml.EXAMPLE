@@ -90,24 +90,6 @@
 # postgres_image = "postgres:17-alpine"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OneCLI Agent Vault
-# ─────────────────────────────────────────────────────────────────────────────
-# Preferred boundary for non-LLM agent credentials. When enabled, pynchy asks
-# OneCLI for proxy env vars, CA material, and onecli-managed credential stubs.
-# Raw service credentials stay in OneCLI and are injected at request time.
-# For GitHub, prefer a OneCLI GitHub App connection. OAuth is acceptable for a
-# personal migration path, but GitHub App installation tokens are repo-scoped and
-# short-lived, which matches pynchy's workspace isolation model.
-#
-# [onecli]
-# enabled = false
-# url = "http://localhost:10254"
-# api_key_env = "ONECLI_API_KEY"       # pragma: allowlist secret - env var name
-# project_id_env = "ONECLI_PROJECT_ID"
-# fail_closed = true
-# agent_identifier_prefix = "pynchy"
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Scheduler & Intervals
 # ─────────────────────────────────────────────────────────────────────────────
 

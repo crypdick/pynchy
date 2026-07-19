@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     import pluggy
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.onecli import sync_onecli_gateway_skill
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -136,8 +135,6 @@ def sync_skills(
             denied_skill_names or [],
         )
 
-    sync_onecli_gateway_skill(skills_dst)
-
 
 def refresh_learned_skills(
     session_dir: Path,
@@ -148,7 +145,7 @@ def refresh_learned_skills(
 ) -> None:
     """Refresh only vault-backed skills in an already-prepared agent home.
 
-    Warm sessions do not need their built-in, plugin, or OneCLI skills rebuilt.
+    Warm sessions do not need their built-in or plugin skills rebuilt.
     They do need the reviewer output that appeared after their container started.
     """
     skills_dst = session_dir / "skills"

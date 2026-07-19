@@ -262,37 +262,9 @@ OPENAI_API_KEY=gw-<random>
 - Docker containers reach the host via `host.docker.internal` (with `--add-host` on Linux)
 - Apple runtime containers use the host gateway address resolved by Pynchy when `container_host` keeps the default value
 
-#### OneCLI Agent Vault
+#### Non-LLM credentials
 
-When `[onecli].enabled = true`, Pynchy uses OneCLI as the preferred
-credential and egress boundary for non-LLM service credentials. Pynchy remains
-the source of truth for semantic capability permissions. Pynchy does not read
-decrypted secret values from OneCLI. Instead, before spawning a container it
-asks OneCLI for:
-
-- proxy environment variables such as `HTTPS_PROXY`;
-- a gateway CA certificate and the container path where that certificate should
-  be trusted;
-- credential stub files whose contents are placeholders such as
-  `onecli-managed`.
-
-Containers and opt-in MCP sidecars then call normal service URLs. OneCLI matches
-the outbound request and injects the real credential at request time. OneCLI
-rules may provide low-level egress hardening, but Pynchy capability and service
-trust policy make the user-facing permission decision. Pynchy maps each
-workspace to a stable OneCLI agent identifier so OneCLI can keep credential
-access separate per workspace.
-
-With OneCLI material present, Pynchy does not write `GH_TOKEN` into the agent env
-file. Native credential injection remains available only when OneCLI is disabled
-or explicitly configured with `fail_closed = false` for migration.
-
-For GitHub, the preferred OneCLI connection is a GitHub App installation rather
-than user OAuth. OAuth is useful for quick personal setup, but a GitHub App gives
-repo-scoped, short-lived installation tokens and maps more directly to Pynchy's
-per-workspace repo boundaries.
-
-Without OneCLI, **non-LLM credentials** get written directly to per-group env files (`data/env/{group}/env`):
+Non-LLM credentials get written directly to per-group env files (`data/env/{group}/env`):
 
 | Credential | Admin | Non-Admin | Rationale |
 |-----------|-----|---------|-----------|

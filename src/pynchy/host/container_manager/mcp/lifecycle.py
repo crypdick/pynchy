@@ -31,12 +31,8 @@ from pynchy.host.container_manager.docker import (
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
-from pynchy.host.container_manager.onecli import OneCliMaterial, prepare_onecli_material
 from pynchy.host.container_manager.runtime_names import runtime_network_name
 from pynchy.logger import logger
-from pynchy.types import (
-    VolumeMount,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
-)
 
 # ---------------------------------------------------------------------------
 # Docker lifecycle
@@ -62,8 +58,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
     await remove_container(instance.container_name)
 
     placeholders = _build_placeholders(instance)
-    onecli_material = _prepare_instance_onecli_material(instance)
-    await _start_docker_container(instance, placeholders, onecli_material)
+    await _start_docker_container(instance, placeholders)
     await _wait_for_docker_health(instance)
 
     logger.info("MCP container ready", instance_id=instance.instance_id)
@@ -89,10 +84,6 @@ async def ensure_script_running(instance: McpInstance) -> None:
     # Merge env: inherit host env + static env + env_forward
     merged_env = {**os.environ, **cfg.env}
     merged_env.update(resolve_env_forward(cfg.env_forward))
-    onecli_material = _prepare_instance_onecli_material(instance)
-    if onecli_material:
-        merged_env.update(_host_process_env(onecli_material))
-
     logger.info(
         "Starting MCP script on-demand",
         instance_id=instance.instance_id,
@@ -256,20 +247,16 @@ def _resolved_volume_arg(vol: str) -> list[str]:
 def _docker_volume_args(
     instance: McpInstance,
     placeholders: dict[str, str],
-    onecli_material: OneCliMaterial | None,
 ) -> list[str]:
     args: list[str] = []
     for vol in instance.server_config.volumes:
         args.extend(_resolved_volume_arg(_expanded_volume_spec(vol, placeholders)))
-    if onecli_material:
-        args.extend(_mounts_to_docker_args(onecli_material.mounts))
     return args
 
 
 async def _start_docker_container(
     instance: McpInstance,
     placeholders: dict[str, str],
-    onecli_material: OneCliMaterial | None,
 ) -> None:
     await run_docker(
         "run", "-d",
@@ -277,11 +264,8 @@ async def _start_docker_container(
         "--network", runtime_network_name("litellm-net"),
         "--restart", "unless-stopped",
         *_docker_publish_args(instance),
-        *build_env_args(
-            instance.server_config,
-            extra_env=onecli_material.env_vars if onecli_material else None,
-        ),
-        *_docker_volume_args(instance, placeholders, onecli_material),
+        *build_env_args(instance.server_config),
+        *_docker_volume_args(instance, placeholders),
         instance.server_config.image or "",
         *_docker_command_args(instance, placeholders),
     )  # fmt: skip
@@ -341,8 +325,6 @@ def resolve_env_forward(env_forward: dict[str, str]) -> dict[str, str]:
 
 def build_env_args(
     config: McpServerConfig,
-    *,
-    extra_env: dict[str, str] | None = None,
 ) -> list[str]:
     """Build ``-e KEY=VALUE`` Docker flags from ``env`` and ``env_forward``.
 
@@ -354,38 +336,7 @@ def build_env_args(
         args.extend(["-e", f"{key}={value}"])
     for container_var, value in resolve_env_forward(config.env_forward).items():
         args.extend(["-e", f"{container_var}={value}"])
-    for key, value in sorted((extra_env or {}).items()):
-        args.extend(["-e", f"{key}={value}"])
     return args
-
-
-def _prepare_instance_onecli_material(instance: McpInstance) -> OneCliMaterial | None:
-    cfg = instance.server_config
-    if not cfg.onecli:
-        return None
-    if cfg.onecli_agent == "workspace":
-        group_folder = instance.kwargs.get("workspace", instance.server_name)
-    else:
-        group_folder = cfg.onecli_agent
-    return prepare_onecli_material(group_folder)
-
-
-def _mounts_to_docker_args(mounts: list[VolumeMount]) -> list[str]:
-    args: list[str] = []
-    for mount in mounts:
-        suffix = ":ro" if mount.readonly else ""
-        args.extend(["-v", f"{mount.host_path}:{mount.container_path}{suffix}"])
-    return args
-
-
-def _host_process_env(material: OneCliMaterial) -> dict[str, str]:
-    host_paths_by_container_path = {
-        mount.container_path: mount.host_path for mount in material.mounts
-    }
-    return {
-        key: host_paths_by_container_path.get(value, value)
-        for key, value in material.env_vars.items()
-    }
 
 
 async def _ensure_mcp_image(config: McpServerConfig) -> None:
