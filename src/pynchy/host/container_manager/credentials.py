@@ -93,6 +93,7 @@ def shell_quote(value: str) -> str:
 _BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 _PROTON_PASS_TIMEOUT_SECONDS = 15
+_AGENT_ACCESS_REASON = "Resolve credentials for a Pynchy workspace container"
 
 
 class ProtonPassSecretResolutionError(RuntimeError):
@@ -151,6 +152,10 @@ def _workspace_proton_pass_env_vars(s: Settings, group_folder: str) -> dict[str,
             ],
             capture_output=True,
             check=False,
+            # Agent-scoped Proton Pass sessions require an auditable reason for
+            # each secret read. Keep it fixed rather than deriving it from a
+            # user-controlled workspace name.
+            env={**os.environ, "PROTON_PASS_AGENT_REASON": _AGENT_ACCESS_REASON},
             timeout=_PROTON_PASS_TIMEOUT_SECONDS,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
