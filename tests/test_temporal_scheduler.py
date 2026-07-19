@@ -563,6 +563,7 @@ class TestTemporalSchedulerRuntime:
         assert args == (temporal_task.id,)
         assert kwargs["id"].startswith("pynchy-agent-task-task-with-spaces-")
         assert kwargs["task_queue"] == "pynchy-test"
+        assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE_FAILED_ONLY"
         assert 0 < kwargs["start_delay"].total_seconds() <= 300
 
     @pytest.mark.asyncio

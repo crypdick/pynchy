@@ -17,6 +17,7 @@ from temporalio.client import (
     ScheduleAlreadyRunningError,
     ScheduleUpdate,
 )
+from temporalio.common import WorkflowIDReusePolicy
 from temporalio.service import RPCError, RPCStatusCode
 
 from pynchy.host.git_ops.repo import repo_host_root
@@ -184,6 +185,7 @@ async def _start_once_agent_task(runtime: object, task: ScheduledTask) -> None:
         workflow_id=workflow_id,
         status_id=task.id,
         start_delay=start_delay_until(once_due_at(task.schedule_value)),
+        id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
     )
 
 
