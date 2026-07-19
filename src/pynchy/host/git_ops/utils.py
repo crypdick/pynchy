@@ -51,16 +51,28 @@ def run_git(
             ls-remote). Local-only git calls don't need this. When provided,
             overrides the inherited environment.
     """
-    return subprocess.run(  # noqa: S603, RUF100 - git args are passed as argv by internal helper call sites; no shell.
-        ["git", *args],  # noqa: S607, RUF100 - git is the trusted host VCS executable.
-        cwd=str(cwd or get_settings().project_root),
-        capture_output=True,
-        text=True,
-        start_new_session=True,
-        env=_git_subprocess_env(env),
-        timeout=timeout,
-        check=False,
-    )
+    command = ["git", *args]
+    try:
+        return subprocess.run(  # noqa: S603, RUF100 - git args are passed as argv by internal helper call sites; no shell.
+            command,  # noqa: S607, RUF100 - git is the trusted host VCS executable.
+            cwd=str(cwd or get_settings().project_root),
+            capture_output=True,
+            text=True,
+            start_new_session=True,
+            env=_git_subprocess_env(env),
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        # Callers consistently branch on returncode.  Preserve that contract so
+        # a best-effort startup fetch cannot prevent the HTTP control plane
+        # from coming up when GitHub is unavailable.
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=124,
+            stdout="",
+            stderr=f"git command timed out after {timeout} seconds",
+        )
 
 
 def _host_process_env(material: OneCliMaterial) -> dict[str, str]:
