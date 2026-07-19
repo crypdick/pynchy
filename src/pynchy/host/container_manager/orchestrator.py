@@ -151,7 +151,12 @@ async def _spawn_container(
 
     security = resolve_security(group.folder, is_admin=input_data.is_admin)
     invocation_ts = start_time
-    create_gate(group.folder, invocation_ts, security)
+    create_gate(
+        group.folder,
+        invocation_ts,
+        security,
+        public_source_input=input_data.input_source.startswith("webhook:"),
+    )
     input_data.invocation_ts = invocation_ts
 
     s = get_settings()

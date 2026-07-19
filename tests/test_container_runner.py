@@ -451,6 +451,7 @@ class TestInputSerialization:
             "chat_jid": "chat@g.us",
             "is_admin": True,
             "is_scheduled_task": False,
+            "input_source": "user",
             "invocation_ts": 0.0,
             "agent_core_module": "agent_runner.cores.openai",
             "agent_core_class": "OpenAIAgentCore",

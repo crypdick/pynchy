@@ -46,7 +46,6 @@ Single source of truth for all pynchy work items.
 - [Sherpa ONNX text-to-speech plugin](1-approved/sherpa-onnx-tts-plugin.md) — Local speech synthesis plus the outbound-media path needed to deliver audio to channels.
 - [Managed flow model on Temporal](1-approved/managed-flow-model.md) — Product-level, durable wait/resume/child-flow state layered on Temporal rather than a Temporal replacement.
 - [Document attachment extraction](1-approved/document-attachment-extraction.md) — Safely extract bounded text and fallback page images from inbound document attachments.
-- [Authenticated webhook flows](1-approved/authenticated-webhook-flows.md) — Route signed, schema-validated external events into an explicitly configured non-admin workspace.
 - [Tool-result reduction](1-approved/tool-result-reduction.md) — Add an opt-in, core-neutral reducer for safe noisy tool output while preserving raw evidence.
 - if a deployment fails, it should spawn a local claude agent out-of-band to rescue the deployment
 

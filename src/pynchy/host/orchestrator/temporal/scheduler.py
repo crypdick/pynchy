@@ -140,6 +140,7 @@ __all__ = [
     "start_interactive_message_workflow",
     "start_interrupted_turn_workflow",
     "start_learning_review_workflow",
+    "start_scheduled_agent_task_workflow",
     "temporal_scheduler_runtime_active",
 ]
 
@@ -182,6 +183,12 @@ async def start_learning_review_workflow(packet: LearningPacket) -> None:
     """Start a Temporal learning review workflow using the active runtime."""
     runtime = await _require_active_runtime()
     await runtime.start_learning_review(packet)
+
+
+async def start_scheduled_agent_task_workflow(task: ScheduledTask) -> None:
+    """Start one already-persisted agent task through the active runtime."""
+    runtime = await _require_active_runtime()
+    await runtime.start_scheduled_agent_task(task)
 
 
 async def start_interactive_message_workflow(chat_jid: str) -> None:

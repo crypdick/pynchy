@@ -138,6 +138,8 @@ from pynchy.state.tasks import (
     update_task,
     update_task_after_run,
 )
+from pynchy.state.webhook_models import WebhookAdmission, WebhookReceipt
+from pynchy.state.webhooks import admit_webhook_receipt, get_webhook_receipt
 from pynchy.state.work_item_models import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
@@ -235,6 +237,11 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "log_task_run",
     "update_task",
     "update_task_after_run",
+    # webhooks
+    "WebhookAdmission",
+    "WebhookReceipt",
+    "admit_webhook_receipt",
+    "get_webhook_receipt",
     # host_jobs
     "create_host_job",
     "delete_host_job",

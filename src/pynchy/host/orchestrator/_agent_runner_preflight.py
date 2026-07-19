@@ -43,6 +43,7 @@ class PreContainerResult:
     config_timeout: float
     snapshot_ms: float
     turn_id: str | None = None
+    input_source: str = "user"
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         wrapped_on_output=wrapped_on_output,
         config_timeout=config_timeout,
         snapshot_ms=snapshot_ms,
+        input_source=request.input_source,
     )
 
 

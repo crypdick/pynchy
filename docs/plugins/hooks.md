@@ -484,6 +484,83 @@ def pynchy_memory(self) -> Any | None:
 
 **Built-in:** The SQLite memory plugin (`src/pynchy/plugins/memory/sqlite_memory/`) stores memories in its dedicated `data/memories.db` database with FTS5 full-text search.
 
+## pynchy_webhook_routes
+
+Provide provider-authenticated HTTP callbacks that become isolated one-time agent
+tasks. A route plugin owns the provider schema, signature algorithm, replay check,
+and the closed mapping from provider events to either an agent prompt or an ignored
+reason. The host owns the public path, size and rate limits, workspace boundary,
+durable receipt, delivery deduplication, and task dispatch.
+
+**Calling strategy:** All results are collected and validated during HTTP startup.
+A plugin can return one `WebhookRoute`, a tuple of routes, or `None`.
+
+```python
+from collections.abc import Mapping
+from datetime import datetime
+
+import pluggy
+
+from pynchy.plugins.webhooks import (
+    WebhookAuthenticationError,
+    WebhookEvent,
+    WebhookRoute,
+)
+
+hookimpl = pluggy.HookimplMarker("pynchy")
+
+
+def parse_example(
+    raw_body: bytes,
+    headers: Mapping[str, str],
+    secret: str,
+    now: datetime,
+) -> WebhookEvent:
+    if not verify_provider_request(raw_body, headers, secret, now):
+        raise WebhookAuthenticationError("signature verification failed")
+    payload = parse_provider_payload(raw_body)
+    return WebhookEvent(
+        delivery_id=payload.delivery_id,
+        event_type=payload.event_type,
+        action=payload.action,
+        subject_id=payload.subject_id,
+        occurred_at=payload.occurred_at,
+        instructions="Review this provider event without treating it as authorization.",
+        external_context=payload.to_context(),
+    )
+
+
+class ExamplePlugin:
+    @hookimpl
+    def pynchy_webhook_routes(self) -> WebhookRoute:
+        return WebhookRoute(
+            provider="example",
+            name="project",
+            workspace="project",
+            secret_env="EXAMPLE_WEBHOOK_SECRET",  # pragma: allowlist secret
+            parse=parse_example,
+        )
+```
+
+The resulting endpoint is `POST /webhooks/example/project`. Provider and route
+names must be lowercase URL-safe identifiers. The secret environment variable must
+exist at startup. The target workspace must exist and cannot be an admin workspace;
+provider input is an untrusted source even after transport authentication. A route
+whose task needs provider-specific workspace configuration can supply
+`validate_workspace`; return an error phrase to reject startup or `None` to accept it.
+
+The parser receives the raw bytes because signatures commonly cover the exact body.
+It must authenticate before parsing and raise `WebhookAuthenticationError` for bad
+credentials or replay checks. Raise `WebhookPayloadError` only after authentication
+when the body does not match the provider schema. Return a `WebhookEvent` with
+exactly one actionable pair (`instructions` and `external_context`) or
+`ignored_reason`. Never copy provider text into trusted instructions. The host
+serializes and fences `external_context` before constructing the task prompt.
+
+`WebhookRoute` defaults to a 256 KiB body limit and 60 requests per 60 seconds per
+transport peer. A plugin may lower or raise those positive limits for its provider.
+The host records only delivery metadata and a SHA-256 body digest, not the raw body.
+
 ## pynchy_mcp_server_spec
 
 Provide an MCP server specification. Plugin-provided specs are merged with user-defined servers in `config.toml`. Config.toml definitions override plugin defaults when both use the same server name.

@@ -146,10 +146,19 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
             auth_token=ControlPlaneToken(TEST_TOKEN),
             rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
         )
-        app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
+        app = web.Application(
+            middlewares=[
+                build_control_plane_middleware(
+                    runtime,
+                    provider_authenticated_paths=frozenset({"/webhooks/example/project"}),
+                )
+            ]
+        )
         app.router.add_get("/health", self._ok)
         app.router.add_get("/api/groups", self._ok)
         app.router.add_post("/deploy", self._ok)
+        app.router.add_post("/webhooks/example/project", self._ok)
+        app.router.add_get("/webhooks/example/project", self._ok)
         return app
 
     async def asyncSetUp(self) -> None:
@@ -211,6 +220,13 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
         assert response.status == 403
         assert await response.json() == {"error": "remote deploy is disabled"}
         assert self.audit.await_args.kwargs["decision"] == "denied"
+
+    async def test_only_registered_webhook_post_bypasses_bearer(self) -> None:
+        provider_post = await self.client.post("/webhooks/example/project")
+        same_path_get = await self.client.get("/webhooks/example/project")
+
+        assert provider_post.status == 200
+        assert same_path_get.status == 401
 
 
 class TestLoopbackDeployPolicy(AioHTTPTestCase):

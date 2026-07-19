@@ -17,6 +17,7 @@ import aiosqlite
 
 from pynchy.logger import logger
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
+from pynchy.state.webhook_schema import WEBHOOK_SCHEMA
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
 
@@ -57,7 +58,8 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL,
     context_mode TEXT DEFAULT 'isolated',
-    repo_access TEXT
+    repo_access TEXT,
+    input_source TEXT NOT NULL DEFAULT 'scheduled_task'
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -277,6 +279,7 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     is_admin INTEGER DEFAULT 0
 );
 """
+    + WEBHOOK_SCHEMA
     + ACTION_INTENT_SCHEMA
 )
 

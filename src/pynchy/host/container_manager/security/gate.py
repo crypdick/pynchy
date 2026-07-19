@@ -55,6 +55,10 @@ class SecurityGate:
         """Forward file-access notification to the policy."""
         self._policy.notify_file_access()
 
+    def notify_public_source_input(self) -> None:
+        """Forward initial public-source taint to the policy."""
+        self._policy.notify_public_source_input()
+
     def grant_session_tool_approval(self, tool_name: str) -> None:
         """Approve one opted-in host tool for this gate's session lifetime."""
         # Approval scope belongs to each tool: multi-step computer use should
@@ -114,9 +118,13 @@ def create_gate(
     source_group: str,
     invocation_ts: float,
     security: WorkspaceSecurity,
+    *,
+    public_source_input: bool = False,
 ) -> SecurityGate:
     """Create and register a SecurityGate for a container invocation."""
     gate = SecurityGate(security)
+    if public_source_input:
+        gate.notify_public_source_input()
     _gates[source_group, invocation_ts] = gate
     return gate
 

@@ -25,6 +25,16 @@ def tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "linear_get_issue",
+            "description": "Get one Linear issue by its stable id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"issue_id": {"type": "string"}},
+                "required": ["issue_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "linear_create_issue",
             "description": "Create a Linear issue in a team.",
             "inputSchema": {

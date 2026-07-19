@@ -96,6 +96,69 @@ Linear holds the complete planning and authorization state:
 `Human Approved`, or `Rejected`; change those states in Linear to record the
 human decision.
 
+## Receive Linear callbacks
+
+Pynchy can turn selected Linear comments and issue state changes into isolated,
+one-time agent tasks. Configure one route per Linear webhook subscription:
+
+```toml
+[[plugins.linear.options.webhook_routes]]
+name = "code-improver"
+workspace = "code-improver"
+secret_env = "LINEAR_WEBHOOK_SECRET"  # pragma: allowlist secret
+organization_id = "your-linear-organization-id"
+```
+
+Store the signing secret shown by Linear in the host `.env`:
+
+```bash
+LINEAR_WEBHOOK_SECRET=...
+```
+
+Expose Pynchy through a public HTTPS reverse proxy, following the
+[control-plane public-bind setup](control-plane.md#enable-remote-tui-access).
+Then create a Linear webhook for `Comment` and `Issue` events with this URL:
+
+```text
+https://pynchy.example.com/webhooks/linear/code-improver
+```
+
+The final path component is the configured route `name`. Pynchy does not
+provision TLS or a public hostname. Linear requires a public, non-localhost
+HTTPS URL; see the [Linear webhook documentation](https://linear.app/developers/webhooks).
+
+The default trigger set is deliberately closed:
+
+- A newly created comment starts a review only when its body contains
+  `@pynchy`. A comment never authorizes code execution.
+- An issue update starts work only when the workflow state changed to
+  `Ready for Planning` or `Human Approved`. Planning readiness permits planning
+  only. Execution still requires `linear_claim_work_item` to claim the exact
+  `Human Approved` issue.
+- All other authenticated deliveries are recorded as ignored and do not start
+  an agent task. Pynchy-created transitions such as `In Progress` therefore do
+  not create a callback loop.
+
+Override the closed trigger values only when the corresponding Linear workflow
+uses different names:
+
+```toml
+[[plugins.linear.options.webhook_routes]]
+name = "code-improver"
+workspace = "code-improver"
+organization_id = "your-linear-organization-id"
+comment_mentions = ["@pynchy", "@Pynchy Bot"]
+issue_statuses = ["Ready for Planning", "Human Approved"]
+```
+
+The route verifies Linear's HMAC-SHA256 signature against the raw request body,
+requires matching millisecond timestamps within 60 seconds, checks the optional
+organization ID, and deduplicates the `Linear-Delivery` UUID. The signing secret
+never enters the agent container. Each schema-valid authenticated delivery leaves
+a durable receipt; each actionable delivery atomically creates one persistent task
+before Pynchy returns `200` to Linear. The task fetches the issue's current Linear
+state before deciding what to do and treats the callback body as untrusted context.
+
 ## Schedule proactive proposals
 
 Use a config-backed [agent task](scheduled-tasks.md#agent-tasks) to run a real
@@ -134,6 +197,7 @@ The built-in MCP server provides planning and browsing tools:
 |------|---------|
 | `linear_list_teams` | Lists Linear teams visible to the API key. Use this first to find the `team_id`. |
 | `linear_list_issues` | Lists recent issues, optionally scoped by `team_id`. |
+| `linear_get_issue` | Gets one issue by its stable Linear ID. |
 | `linear_create_issue` | Creates an issue with `team_id`, `title`, and optional `description`, `project_id`, and `label_ids`. It cannot choose an approval-bearing workflow state. |
 | `linear_list_todos` | Lists open Linear todo issues for the current Pynchy workspace. |
 | `linear_create_todo` | Creates a workspace work item in `Agent Proposed`, with an optional Markdown description and Linear priority. |

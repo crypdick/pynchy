@@ -20,7 +20,7 @@ from pynchy.host.git_ops.utils import (
 )
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_server import create_http_app
-from pynchy.types import DeployClaim, DeployClaimStatus, NewMessage
+from pynchy.types import DeployClaim, DeployClaimStatus, NewMessage, ScheduledTask, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -342,6 +342,16 @@ class MockHttpDeps:
 
     def is_shutting_down(self) -> bool:
         return False
+
+    def get_plugin_manager(self) -> object:
+        return object()
+
+    def get_workspace(self, folder: str) -> WorkspaceProfile | None:
+        del folder
+        return None
+
+    def dispatch_scheduled_task(self, task: ScheduledTask) -> None:
+        del task
 
 
 class TestHealthEndpoint(AioHTTPTestCase):

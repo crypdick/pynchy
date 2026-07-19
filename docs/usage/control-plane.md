@@ -30,7 +30,8 @@ Use the authenticated `/status`, `/capabilities`, `/actions`, `/canaries/*`, and
 `/api/*` routes for operational details. `/actions` exposes external-write state
 without draft payloads; see [Action coverage](../architecture/action-coverage.md#transactional-external-actions)
 for its lifecycle. A remote posture requires authentication for every TCP route
-except `/health`, including unknown paths.
+except `/health` and exact plugin-registered webhook POST paths, including unknown
+paths.
 
 ## Bootstrap a bearer token
 
@@ -89,6 +90,25 @@ rate_limit_window_seconds = 60
 
 Policy decisions produce structured logs and durable `security_audit` rows without
 recording the bearer token.
+
+## Provider-authenticated webhooks
+
+Plugin webhook routes use exact paths shaped as
+`POST /webhooks/<provider>/<route>`. Those POST requests do not carry the Pynchy
+control-plane bearer token because an external provider cannot know it. The route
+plugin must authenticate the provider request from its raw body and headers before
+parsing it. All other methods on the same path, unknown paths, and every normal
+control-plane endpoint retain the bearer-token policy.
+
+The host applies the global unauthenticated-client rate limit first, then a
+route-specific body-size and rate limit. It accepts a configured route only when
+its secret environment variable exists and its target is a known non-admin
+workspace. Schema-valid authenticated deliveries are deduplicated and durably
+admitted before the provider receives `200`. Provider input is fenced, marks the
+agent invocation as corruption-tainted, and does not carry authorization to execute
+work.
+
+See [Linear](linear.md#receive-linear-callbacks) for the built-in route and setup.
 
 ## Enable remote deployment separately
 

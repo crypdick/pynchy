@@ -35,7 +35,7 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
     PynchyApp,
 )
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
-    HttpDeps,
+    HttpServerDeps,
 )
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     StatusDeps,
@@ -44,7 +44,10 @@ from pynchy.host.orchestrator.task_scheduler import (  # noqa: TC001, RUF100 - b
     SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
-from pynchy.host.orchestrator.temporal.scheduler import start_deploy_workflow
+from pynchy.host.orchestrator.temporal.scheduler import (
+    start_deploy_workflow,
+    start_scheduled_agent_task_workflow,
+)
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
@@ -53,7 +56,7 @@ from pynchy.utils import create_background_task
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import ContainerOutput, WorkspaceProfile
+    from pynchy.types import ContainerOutput, ScheduledTask, WorkspaceProfile
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -157,7 +160,7 @@ async def _start_temporal_deploy(
     )
 
 
-def make_http_deps(app: PynchyApp) -> HttpDeps:
+def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
     session_manager = SessionManager(app.sessions, app.session_cleared)
@@ -188,6 +191,23 @@ def make_http_deps(app: PynchyApp) -> HttpDeps:
 
         def get_active_sessions(self) -> dict[str, str]:
             return session_manager.get_active_sessions(app.workspaces)
+
+        def get_plugin_manager(self) -> object:
+            if app.plugin_manager is None:
+                raise RuntimeError("Plugin manager is unavailable during HTTP startup")
+            return app.plugin_manager
+
+        def get_workspace(self, folder: str) -> WorkspaceProfile | None:
+            return next(
+                (workspace for workspace in app.workspaces.values() if workspace.folder == folder),
+                None,
+            )
+
+        def dispatch_scheduled_task(self, task: ScheduledTask) -> None:
+            create_background_task(
+                start_scheduled_agent_task_workflow(task),
+                name=f"webhook-task-{task.id[-36:]}",
+            )
 
     return HttpDeps()
 
