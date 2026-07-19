@@ -10,7 +10,7 @@ same MCP tools.
 
 Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, etc.), as if a user had sent the message. Config-backed jobs target a named workspace.
 
-Agent tasks always run in a dedicated isolated thread for the target workspace. They can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the workspace profile selects a repo, worktree commits merge and push after a successful run.
+Agent tasks use an isolated runtime folder for the target workspace. When its target chat has no active turn, the task posts there. When a human session or another scheduled task occupies that chat, Pynchy creates a numbered child thread such as `pynchy-dev-1` and runs there instead. This requires a channel with child-thread support; Pynchy records an error rather than interrupting the occupied conversation when the channel cannot create one. Tasks can optionally send messages via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the workspace profile selects a repo, worktree commits merge and push after a successful run.
 
 For a periodic review that turns evidence into approval-gated work proposals,
 see [Schedule proactive proposals](linear.md#schedule-proactive-proposals).

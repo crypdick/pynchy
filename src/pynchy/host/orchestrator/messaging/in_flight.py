@@ -75,6 +75,8 @@ class MessageTurnStart:
     input_start_cursor: str
     input_end_cursor: str
     task_id: str | None = None
+    scheduled_base_chat_jid: str | None = None
+    scheduled_thread_slot: int | None = None
 
 
 async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
@@ -87,6 +89,8 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
     input_start_cursor = request.input_start_cursor
     input_end_cursor = request.input_end_cursor
     task_id = request.task_id
+    scheduled_base_chat_jid = request.scheduled_base_chat_jid
+    scheduled_thread_slot = request.scheduled_thread_slot
     started_at = datetime.now(UTC).isoformat()
     session_id = await get_session(GroupFolder(group.folder))
     turn = InFlightTurn(
@@ -101,6 +105,8 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
         task_id=task_id,
         session_id=str(session_id) if session_id else None,
         claimed_at=started_at,
+        scheduled_base_chat_jid=scheduled_base_chat_jid,
+        scheduled_thread_slot=scheduled_thread_slot,
     )
     await begin_in_flight_turn(turn)
     return turn
