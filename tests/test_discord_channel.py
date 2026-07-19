@@ -113,10 +113,14 @@ class _FakeThread:
     id: int
     name: str = ""
     parent_id: int | None = None
+    archived: bool = False
     added_user_ids: list[int] = field(default_factory=list)
 
     async def add_user(self, user: discord.Object) -> None:
         self.added_user_ids.append(int(user.id))
+
+    async def edit(self, *, archived: bool) -> None:
+        self.archived = archived
 
 
 class _FakeThreadParent:
@@ -126,6 +130,7 @@ class _FakeThreadParent:
         self.thread_requests: list[tuple[str, object]] = []
         self.created_threads: list[_FakeThread] = []
         self.sent_messages: list[str] = []
+        self.archived: list[_FakeThread] = []
 
     async def create_thread(self, *, name: str, **kwargs: object) -> _FakeThread:
         self.thread_requests.append((name, kwargs["type"]))
@@ -135,6 +140,10 @@ class _FakeThreadParent:
 
     async def send(self, content: str) -> None:
         self.sent_messages.append(content)
+
+    async def archived_threads(self, **_kwargs: object):
+        for thread in self.archived:
+            yield thread
 
 
 class _FakeThreadGuild:
@@ -426,6 +435,20 @@ async def test_finds_existing_active_child_thread_for_scheduled_task():
 
     assert child_jid == "discord:channel:123"
     assert parent.thread_requests == []
+
+
+@pytest.mark.asyncio
+async def test_reopens_archived_child_thread_instead_of_creating_a_duplicate():
+    ch = _channel()
+    parent = _FakeThreadParent()
+    archived = _FakeThread(id=456, name="family", parent_id=parent.id, archived=True)
+    parent.archived = [archived]
+    ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
+
+    child_jid = await ch.find_thread("discord:channel:123", "family")
+
+    assert child_jid == "discord:channel:456"
+    assert archived.archived is False
 
 
 @pytest.mark.asyncio

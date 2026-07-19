@@ -38,6 +38,14 @@ class ThreadParticipantChannel(Protocol):
     ) -> None: ...
 
 
+def supports_thread_lookup(channels: list[Channel], parent_jid: str) -> bool:
+    """Return whether the parent channel can look up existing child threads."""
+    return any(
+        candidate.owns_jid(parent_jid) and isinstance(candidate, ThreadLookupChannel)
+        for candidate in channels
+    )
+
+
 async def create_thread(
     channels: list[Channel],
     parent_jid: str,

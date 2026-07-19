@@ -1,23 +1,8 @@
-"""Centralized configuration — Pydantic BaseSettings with TOML + dotenv sources.
-
-Non-secret settings live in config.toml. Secrets (API keys, tokens, passwords)
-live in .env. Environment variables override both using ``__`` as the nested
-delimiter (e.g. ``SECRETS__ANTHROPIC_API_KEY``). Secrets use SecretStr for
-masking in logs.
-
-Priority (highest wins): init args > env vars > .env > config.toml
-
-Usage::
-
-    from pynchy.config import get_settings
-
-    s = get_settings()
-    print(s.agent.default_core)
-    print(s.container.image)
-"""
+"""Centralized Pydantic settings from TOML, dotenv, and environment variables."""
 
 from __future__ import annotations
 
+# allow: file-length - one Pydantic settings model must retain field and validator order.
 import os
 import re
 import warnings
@@ -78,6 +63,10 @@ from pynchy.config.settings_sources import (
     FilteredDotenvSettingsSource,
     hermetic_settings_sources,
     hermetic_settings_sources_enabled,
+)
+from pynchy.config.workspace_layout import (
+    WorkspaceMigrationConfig,
+    validate_workspace_migrations,
 )
 from pynchy.config.workspace_names import static_workspace_name
 
@@ -166,6 +155,7 @@ class Settings(BaseSettings):
     repos: ReposConfig = Field(default_factory=ReposConfig)
     profiles: dict[str, ProfileConfig] = {}
     workspaces: dict[str, WorkspaceConfig] = Field(default_factory=dict)
+    workspace_migrations: dict[str, WorkspaceMigrationConfig] = Field(default_factory=dict)
     user_groups: dict[str, list[str]] = {}  # group_name → [user IDs or group refs]
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
@@ -314,6 +304,12 @@ class Settings(BaseSettings):
             if resolved is None or not resolved.is_admin:
                 continue
             _assert_admin_clean_room(self, workspace_name=ws_name, workspace=ws)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_workspace_migrations(self) -> Settings:
+        """Ensure each source-root retirement points at a declared child thread."""
+        validate_workspace_migrations(self.workspace_migrations, self.workspaces)
         return self
 
     def resolved_workspace_config(self, workspace_name: str) -> ResolvedWorkspaceConfig | None:

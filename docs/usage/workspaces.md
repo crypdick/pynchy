@@ -52,6 +52,57 @@ When `chat` is omitted, Pynchy can create a chat through the configured
 creation. Give `chat` explicitly whenever the workspace must bind to a known,
 existing conversation.
 
+## Organize Child Conversations
+
+Declare durable child conversations on a workspace root when several topics
+need the same profile and access policy. Each child thread gets an isolated
+runtime folder but inherits the root workspace's resolved profile. This keeps
+the policy boundary at the parent workspace instead of copying profiles into
+every conversation.
+
+```toml
+[workspaces.relationships]
+profiles = ["relationships"]
+threads = [
+  { name = "family" },
+  { name = "family-gardening" },
+  { name = "chat-manager" },
+]
+```
+
+On startup, Pynchy finds a same-named child thread below `relationships` and
+registers it, or creates it when the channel supports both child-thread lookup
+and creation. Lookup is required before creation so a restart cannot create a
+duplicate. The Discord channel supports this arrangement; channels without
+idempotent lookup report the thread as blocked and receive no mutation.
+
+`reconcile_workspace_threads(..., dry_run=True)` returns the same proposed
+thread actions without creating threads or changing registrations. Use it from
+an operator integration before applying a large layout.
+
+## Move Existing Roots Safely
+
+Creating a parent workspace does not move messages from an existing Discord
+root channel. Keep every legacy root registered while users move to its target
+thread and while scheduled tasks still target the old workspace. Record that
+mapping before removing the legacy workspace from `[workspaces]`:
+
+```toml
+[workspace_migrations.fam]
+target_workspace = "relationships"
+target_thread = "family"
+# Leave both false while the old root remains live.
+inbound_retargeted = false
+scheduled_jobs_retargeted = false
+retire_legacy_workspace = false
+```
+
+Set `retire_legacy_workspace = true` only after changing the external inbound
+workflow and scheduled-job configuration. Pynchy requires both corresponding
+confirmation fields and still refuses retirement if an active stored task
+targets the legacy workspace. Retirement unregisters Pynchy from the old root;
+it does not delete the Discord channel.
+
 ## Workspace Overrides
 
 A workspace can override the resolved profile model without duplicating the

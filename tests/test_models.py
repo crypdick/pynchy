@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.models import ProfileConfig, WorkspaceConfig, WorkspaceThreadConfig
 
 
 class TestProfileConfigDefaults:
@@ -144,3 +144,11 @@ class TestWorkspaceConfigFields:
     def test_rejects_empty_profile_name(self):
         with pytest.raises(ValidationError):
             WorkspaceConfig(profiles=[""])
+
+    def test_workspace_threads_reject_blank_or_duplicate_names(self):
+        with pytest.raises(ValidationError, match="workspace thread name cannot be empty"):
+            WorkspaceConfig(threads=[WorkspaceThreadConfig(name=" ")])
+        with pytest.raises(ValidationError, match="workspace thread names must be unique"):
+            WorkspaceConfig(
+                threads=[WorkspaceThreadConfig(name="Family"), WorkspaceThreadConfig(name="family")]
+            )

@@ -51,9 +51,11 @@ configuration.
    ```
 
    Repo-backed cores need a profile with `repo = "owner/repo"`. Text-channel
-   threads inherit their configured parent workspace profile. Pynchy adds every
-   `default_thread_participants` user to newly created Discord threads; use
-   Discord user snowflakes, not display names.
+   threads inherit their configured parent workspace profile. Declare persistent
+   child threads on the workspace when organizing multiple conversations under
+   one profile; see [Organize Child Conversations](../usage/workspaces.md#organize-child-conversations).
+   Pynchy adds every `default_thread_participants` user to newly created Discord
+   threads; use Discord user snowflakes, not display names.
 
 5. Install dependencies, restart Pynchy, and inspect the channel state:
 
