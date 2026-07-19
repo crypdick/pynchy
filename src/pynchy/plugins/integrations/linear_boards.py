@@ -22,6 +22,10 @@ from pynchy.plugins.integrations.linear_board_payloads import (
     projects_for_workspace,
 )
 from pynchy.plugins.integrations.linear_board_resources import load_team_resources
+from pynchy.plugins.integrations.linear_board_selection import (
+    require_todo_states,
+    require_workspace_project,
+)
 from pynchy.plugins.integrations.linear_statuses import (
     AGENT_PROPOSED_STATUS,
     LINEAR_TODO_STATUSES,
@@ -148,17 +152,31 @@ async def select_team(
     )
 
 
-async def ensure_workspace_board(
+async def provision_workspace_board(
     client: LinearQueryClient,
     workspace: WorkspaceLike,
     *,
     team_key: str | None,
 ) -> LinearWorkspaceBoard:
-    """Ensure Linear has a project and todo workflow states for a workspace."""
+    """Provision one workspace board for setup and administrative operations."""
     team = await select_team(client, team_key=team_key)
     resources = await load_team_resources(client, str(team["id"]))
     states = await _ensure_states(client, str(team["id"]), resources["states"])
     project = await _ensure_project(client, str(team["id"]), workspace, resources["projects"])
+    return LinearWorkspaceBoard(team=team, project=project, states=states)
+
+
+async def require_workspace_board(
+    client: LinearQueryClient,
+    workspace: WorkspaceLike,
+    *,
+    team_key: str | None,
+) -> LinearWorkspaceBoard:
+    """Load one pre-provisioned workspace board without mutating Linear."""
+    team = await select_team(client, team_key=team_key)
+    resources = await load_team_resources(client, str(team["id"]))
+    states = require_todo_states(resources["states"], workspace.folder)
+    project = require_workspace_project(resources["projects"], workspace)
     return LinearWorkspaceBoard(team=team, project=project, states=states)
 
 
@@ -196,7 +214,7 @@ async def create_workspace_todo(
     status: str = AGENT_PROPOSED_STATUS,
 ) -> dict[str, Any]:
     """Create a Linear issue in the workspace's board."""
-    board = await ensure_workspace_board(client, workspace, team_key=team_key)
+    board = await require_workspace_board(client, workspace, team_key=team_key)
     status_key = normalize_status(status)
     state = board.states[status_key]
     data = await client.query(
@@ -245,7 +263,7 @@ async def move_workspace_todo(
     team_key: str | None,
 ) -> dict[str, Any]:
     """Move a Linear todo issue to one of Pynchy's standard statuses."""
-    board = await ensure_workspace_board(client, workspace, team_key=team_key)
+    board = await require_workspace_board(client, workspace, team_key=team_key)
     status_key = normalize_status(status)
     state = board.states[status_key]
     data = await client.query(
@@ -271,7 +289,7 @@ async def list_workspace_todos(
     include_done: bool = False,
 ) -> list[dict[str, Any]]:
     """List issues in the workspace's Linear project."""
-    board = await ensure_workspace_board(client, workspace, team_key=team_key)
+    board = await require_workspace_board(client, workspace, team_key=team_key)
     data = await client.query(
         """
         query ListWorkspaceTodos($project_id: String!) {
@@ -351,18 +369,28 @@ async def _ensure_project(
     existing_projects: list[dict[str, Any]],
 ) -> dict[str, Any]:
     project_name = workspace_project_name(workspace)
-    workspace_projects = await _rename_workspace_projects(
-        client,
-        existing_projects,
-        workspace,
-        project_name,
-    )
+    workspace_projects = projects_for_workspace(existing_projects, workspace)
+    if len(workspace_projects) > 1:
+        raise _duplicate_projects_error(workspace_projects, workspace)
     if workspace_projects:
-        return _canonical_workspace_project(workspace_projects, workspace)
+        existing = workspace_projects[0]
+        if norm_name(existing.get("name")) == norm_name(project_name):
+            return existing
+        updated = await _update_project(client, existing, workspace)
+        existing.update(updated)
+        return existing
 
-    by_name = {norm_name(project.get("name")): project for project in existing_projects}
-    existing = by_name.get(norm_name(project_name))
-    if existing is not None:
+    named_projects = [
+        project
+        for project in existing_projects
+        if norm_name(project.get("name")) == norm_name(project_name)
+    ]
+    if len(named_projects) > 1:
+        raise _duplicate_projects_error(named_projects, workspace)
+    if named_projects:
+        existing = named_projects[0]
+        updated = await _update_project(client, existing, workspace)
+        existing.update(updated)
         return existing
 
     data = await client.query(
@@ -389,32 +417,14 @@ async def _ensure_project(
     return payload_entity(data, "projectCreate", "project")
 
 
-def _canonical_workspace_project(
+def _duplicate_projects_error(
     projects: list[dict[str, Any]],
     workspace: WorkspaceLike,
-) -> dict[str, Any]:
-    populated = [project for project in projects if _project_contains_issues(project)]
-    if len(populated) > 1:
-        project_ids = ", ".join(sorted(_project_id(project) for project in populated))
-        raise LinearBoardError(
-            f"Duplicate Linear projects for workspace {workspace.folder} contain issues: "
-            f"{project_ids}"
-        )
-    if populated:
-        return populated[0]
-    return min(projects, key=_project_id)
-
-
-def _project_contains_issues(project: dict[str, Any]) -> bool:
-    connection = project.get("issues")
-    if connection is None:
-        return False
-    if not isinstance(connection, dict):
-        raise LinearBoardError("Linear project issue preview was not an object")
-    issue_nodes = connection.get("nodes")
-    if not isinstance(issue_nodes, list):
-        raise LinearBoardError("Linear project issue preview did not include nodes")
-    return bool(issue_nodes)
+) -> LinearBoardError:
+    project_ids = ", ".join(sorted(_project_id(project) for project in projects))
+    return LinearBoardError(
+        f"Duplicate Linear projects for workspace {workspace.folder}: {project_ids}"
+    )
 
 
 def _project_id(project: dict[str, Any]) -> str:
@@ -422,24 +432,6 @@ def _project_id(project: dict[str, Any]) -> str:
     if not isinstance(project_id, str) or not project_id:
         raise LinearBoardError("Linear workspace project did not include an ID")
     return project_id
-
-
-async def _rename_workspace_projects(
-    client: LinearQueryClient,
-    projects: list[dict[str, Any]],
-    workspace: WorkspaceLike,
-    project_name: str,
-) -> list[dict[str, Any]]:
-    workspace_projects = projects_for_workspace(projects, workspace)
-    renamed: list[dict[str, Any]] = []
-    for project in workspace_projects:
-        if norm_name(project.get("name")) == norm_name(project_name):
-            renamed.append(project)
-            continue
-        renamed_project = await _update_project(client, project, workspace)
-        project.update(renamed_project)
-        renamed.append(project)
-    return renamed
 
 
 async def _update_project(

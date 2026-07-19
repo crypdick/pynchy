@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard, ensure_workspace_board
+from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard, require_workspace_board
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
 from pynchy.plugins.integrations.linear_statuses import (
@@ -248,7 +248,7 @@ async def workspace_issue(
     issue_id: str,
 ) -> tuple[dict[str, Any], LinearWorkspaceBoard]:
     """Load a board issue while enforcing its workspace-project ownership."""
-    board = await ensure_workspace_board(
+    board = await require_workspace_board(
         client,
         _WorkspaceContext(folder=workspace, name=_workspace_name(workspace)),
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
