@@ -317,6 +317,86 @@ class TestEnsureWorkspaceBoard:
             "project-prefixed",
         }
 
+    async def test_prefers_only_populated_duplicate_workspace_project(self):
+        client = FakeLinearClient()
+        marker = "Managed by Pynchy.\n\npynchy.workspace=code-improver\n"
+        client.projects.extend(
+            [
+                {
+                    "id": "project-empty",
+                    "name": "Code Improver",
+                    "url": "https://linear.app/acme/project/empty",
+                    "description": marker,
+                    "issues": {"nodes": []},
+                },
+                {
+                    "id": "project-with-data",
+                    "name": "Code Improver",
+                    "url": "https://linear.app/acme/project/with-data",
+                    "description": marker,
+                    "issues": {"nodes": [{"id": "issue-1"}]},
+                },
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-with-data"
+
+    async def test_rejects_duplicate_workspace_projects_that_both_contain_issues(self):
+        client = FakeLinearClient()
+        marker = "Managed by Pynchy.\n\npynchy.workspace=code-improver\n"
+        client.projects.extend(
+            [
+                {
+                    "id": "project-one",
+                    "name": "Code Improver",
+                    "url": "https://linear.app/acme/project/one",
+                    "description": marker,
+                    "issues": {"nodes": [{"id": "issue-1"}]},
+                },
+                {
+                    "id": "project-two",
+                    "name": "Code Improver",
+                    "url": "https://linear.app/acme/project/two",
+                    "description": marker,
+                    "issues": {"nodes": [{"id": "issue-2"}]},
+                },
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        with pytest.raises(LinearBoardError, match="contain issues"):
+            await ensure_workspace_board(client, workspace, team_key=None)
+
+    async def test_empty_duplicate_workspace_projects_use_stable_id_order(self):
+        client = FakeLinearClient()
+        marker = "Managed by Pynchy.\n\npynchy.workspace=code-improver\n"
+        client.projects.extend(
+            [
+                {
+                    "id": "project-z",
+                    "name": "Code Improver",
+                    "url": "https://linear.app/acme/project/z",
+                    "description": marker,
+                    "issues": {"nodes": []},
+                },
+                {
+                    "id": "project-a",
+                    "name": "Code Improver",
+                    "url": "https://linear.app/acme/project/a",
+                    "description": marker,
+                    "issues": {"nodes": []},
+                },
+            ]
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-a"
+
 
 class TestWorkspaceTodos:
     async def test_agent_created_workspace_todo_preserves_proposal_details(self):
