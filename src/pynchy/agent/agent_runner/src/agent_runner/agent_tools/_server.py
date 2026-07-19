@@ -20,6 +20,7 @@ _TOOL_MODULES = (
     "_tools_calendar",
     "_tools_computer_use",
     "_tools_desktop_screenshot",
+    "_tools_gog",
     "_tools_google_setup",
     "_tools_lifecycle",
     "_tools_linear",

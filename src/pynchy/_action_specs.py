@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from pynchy._action_spec_helpers import agent_action, mcp_action
 from pynchy._action_specs_computer_use import COMPUTER_USE_ACTION_SPECS
 from pynchy._action_specs_core import CORE_ACTION_SPECS
+from pynchy._action_specs_gog import GOG_ACTION_SPECS
 
 if TYPE_CHECKING:
     from pynchy._action_contract import ActionSpec
@@ -30,6 +31,7 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="desktop.screenshot.round.trip",
     ),
     *COMPUTER_USE_ACTION_SPECS,
+    *GOG_ACTION_SPECS,
     agent_action(
         "integration.google.profile.setup",
         "google-setup",
