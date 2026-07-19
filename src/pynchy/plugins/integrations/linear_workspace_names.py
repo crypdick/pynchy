@@ -32,12 +32,16 @@ def project_description(workspace: WorkspaceIdentity) -> str:
     return f"Managed by Pynchy.\n\n{workspace_marker(workspace)}\npynchy.chat_jid={workspace.jid}"
 
 
-def todo_description(workspace: WorkspaceIdentity) -> str:
-    return (
+def todo_description(workspace: WorkspaceIdentity, details: str | None = None) -> str:
+    provenance = (
         "Captured from a Pynchy workspace todo.\n\n"
         f"{workspace_marker(workspace)}\n"
         f"pynchy.chat_jid={workspace.jid}"
     )
+    normalized_details = str(details or "").strip()
+    if not normalized_details:
+        return provenance
+    return f"{normalized_details}\n\n---\n\n{provenance}"
 
 
 def project_matches_workspace(project_description: object, workspace: WorkspaceIdentity) -> bool:

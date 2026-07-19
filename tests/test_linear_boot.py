@@ -99,7 +99,7 @@ async def test_create_linear_workspace_todo_uses_env_defaults(monkeypatch):
     _, args, kwargs = create_todo.mock_calls[0]
     assert args[0] is fake_client
     assert args[1].folder == "alpha"
-    assert args[2] == "Review docs"
+    assert args[2].title == "Review docs"
     assert kwargs["team_key"] is None
     assert kwargs["status"] == "ready_for_planning"
 

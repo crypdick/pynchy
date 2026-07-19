@@ -25,6 +25,7 @@ from pynchy.plugins.integrations.caldav import (
 )
 from pynchy.plugins.integrations.linear import LinearClient, WorkspaceContext
 from pynchy.plugins.integrations.linear_boards import (
+    WorkspaceTodoProposal,
     create_workspace_todo,
     list_workspace_todos,
     move_workspace_todo,
@@ -205,7 +206,7 @@ class LinearWorkspaceRoundTripCanary:
                 todo = await create_workspace_todo(
                     client,
                     workspace,
-                    f"Pynchy canary todo {context.run_id}",
+                    WorkspaceTodoProposal(title=f"Pynchy canary todo {context.run_id}"),
                     team_key=settings.linear_team_key,
                 )
                 todo_id = _linear_issue_id(todo)

@@ -69,6 +69,13 @@ class LinearWorkspaceBoard:
 
 
 @dataclass(frozen=True)
+class WorkspaceTodoProposal:
+    title: str
+    description: str | None = None
+    priority: int | None = None
+
+
+@dataclass(frozen=True)
 class _VisibleLinearTeam:
     raw: dict[str, Any]
     team_id: str
@@ -183,7 +190,7 @@ async def reconcile_workspace_boards(
 async def create_workspace_todo(
     client: LinearQueryClient,
     workspace: WorkspaceLike,
-    title: str,
+    proposal: WorkspaceTodoProposal,
     *,
     team_key: str | None,
     status: str = AGENT_PROPOSED_STATUS,
@@ -199,14 +206,16 @@ async def create_workspace_todo(
           $project_id: String!,
           $state_id: String!,
           $title: String!,
-          $description: String
+          $description: String,
+          $priority: Int
         ) {
           issueCreate(input: {
             teamId: $team_id,
             projectId: $project_id,
             stateId: $state_id,
             title: $title,
-            description: $description
+            description: $description,
+            priority: $priority
           }) {
             success
             issue {
@@ -220,8 +229,9 @@ async def create_workspace_todo(
         team_id=board.team["id"],
         project_id=board.project["id"],
         state_id=state["id"],
-        title=title,
-        description=todo_description(workspace),
+        title=proposal.title,
+        description=todo_description(workspace, proposal.description),
+        priority=proposal.priority,
     )
     return payload_entity(data, "issueCreate", "issue")
 
@@ -268,7 +278,7 @@ async def list_workspace_todos(
           project(id: $project_id) {
             issues {
               nodes {
-                id identifier title url priority createdAt updatedAt
+                id identifier title description url priority createdAt updatedAt
                 state { id name type }
                 project { id name }
               }

@@ -12,6 +12,9 @@ Agent tasks spin up a containerized agent on schedule. The agent gets a prompt a
 
 Agent tasks always run in a dedicated isolated thread for the target workspace. They can optionally send messages to their group via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the workspace profile selects a repo, worktree commits merge and push after a successful run.
 
+For a periodic review that turns evidence into approval-gated work proposals,
+see [Schedule proactive proposals](linear.md#schedule-proactive-proposals).
+
 ### Daily Triage Memo
 
 A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper workspace model override:

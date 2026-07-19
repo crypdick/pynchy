@@ -216,9 +216,38 @@ class TestLinearMcpServer:
             payload = await response.json()
             tools = {tool["name"]: tool for tool in payload["result"]["tools"]}
             assert "state_id" not in tools["linear_create_issue"]["inputSchema"]["properties"]
-            assert "status" not in tools["linear_create_todo"]["inputSchema"]["properties"]
+            todo_properties = tools["linear_create_todo"]["inputSchema"]["properties"]
+            assert "status" not in todo_properties
+            assert todo_properties["description"] == {"type": "string"}
+            assert todo_properties["priority"]["enum"] == [0, 1, 2, 3, 4]
         finally:
             await client.close()
+
+    async def test_workspace_todo_rejects_invalid_priority(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        client = TestClient(TestServer(build_app(workspace="code-improver")))
+        await client.start_server()
+        try:
+            response = await client.post(
+                "/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "linear_create_todo",
+                        "arguments": {"title": "Review docs", "priority": 5},
+                    },
+                },
+            )
+
+            payload = await response.json()
+        finally:
+            await client.close()
+
+        assert payload["result"]["isError"] is True
+        text = payload["result"]["content"][0]["text"]
+        assert "priority must be an integer from 0 through 4" in text
 
     async def test_mcp_reports_missing_api_key(self, monkeypatch):
         monkeypatch.delenv("LINEAR_API_KEY", raising=False)
@@ -319,7 +348,11 @@ class TestLinearMcpServer:
                         "method": "tools/call",
                         "params": {
                             "name": "linear_create_todo",
-                            "arguments": {"title": "Review docs"},
+                            "arguments": {
+                                "title": "Review docs",
+                                "description": "Evidence and acceptance criteria.",
+                                "priority": 4,
+                            },
                         },
                     },
                 )
@@ -332,7 +365,10 @@ class TestLinearMcpServer:
         create_todo.assert_awaited_once()
         _, args, kwargs = create_todo.mock_calls[0]
         assert args[1].folder == "code-improver"
-        assert args[2] == "Review docs"
+        proposal = args[2]
+        assert proposal.title == "Review docs"
+        assert proposal.description == "Evidence and acceptance criteria."
+        assert proposal.priority == 4
         assert kwargs["team_key"] is None
         assert kwargs["status"] == "agent_proposed"
 

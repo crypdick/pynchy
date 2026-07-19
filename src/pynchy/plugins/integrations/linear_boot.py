@@ -17,6 +17,7 @@ from pynchy.logger import logger
 from pynchy.plugins.integrations.linear import LinearClient
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
+    WorkspaceTodoProposal,
     create_workspace_todo,
     reconcile_workspace_boards,
 )
@@ -117,7 +118,7 @@ async def create_linear_workspace_todo(
             issue = await create_workspace_todo(
                 client,
                 context,
-                title,
+                WorkspaceTodoProposal(title=title),
                 team_key=os.environ.get("LINEAR_TEAM_KEY"),
                 status=READY_FOR_PLANNING_STATUS,
             )

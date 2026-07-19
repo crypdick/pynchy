@@ -96,6 +96,36 @@ Linear holds the complete planning and authorization state:
 `Human Approved`, or `Rejected`; change those states in Linear to record the
 human decision.
 
+## Schedule proactive proposals
+
+Use a config-backed [agent task](scheduled-tasks.md#agent-tasks) to run a real
+isolated review instead of posting a reminder into an interactive session. The
+bundled `prompts/pynchy-proactive-review.md` prompt reviews one bounded slice,
+deduplicates against the workspace board, and creates up to three rich
+`Agent Proposed` items. It never approves or executes them.
+
+Select the Pynchy repository and Linear tool on a dedicated private workspace:
+
+```toml
+[profiles.proactive-review]
+includes = ["base"]
+repo = "owner/pynchy"
+tools = ["linear"]
+
+[workspaces.proactive-review]
+profiles = ["proactive-review"]
+
+[jobs.pynchy-proactive-review]
+enabled = true
+schedule = "0 10 * * 1"
+workspace = "proactive-review"
+prompt_file = "prompts/pynchy-proactive-review.md"
+```
+
+The example runs each Monday at 10:00 in Pynchy's configured timezone. Linear
+remains the canonical proposal and approval surface; the job does not maintain
+a second backlog or approval ledger.
+
 ## Available tools
 
 The built-in MCP server provides planning and browsing tools:
@@ -106,7 +136,7 @@ The built-in MCP server provides planning and browsing tools:
 | `linear_list_issues` | Lists recent issues, optionally scoped by `team_id`. |
 | `linear_create_issue` | Creates an issue with `team_id`, `title`, and optional `description`, `project_id`, and `label_ids`. It cannot choose an approval-bearing workflow state. |
 | `linear_list_todos` | Lists open Linear todo issues for the current Pynchy workspace. |
-| `linear_create_todo` | Creates a workspace work item in `Agent Proposed`. |
+| `linear_create_todo` | Creates a workspace work item in `Agent Proposed`, with an optional Markdown description and Linear priority. |
 
 Pynchy exposes lifecycle tools through its built-in agent tools MCP server. Use
 them when an agent starts or finishes work from a workspace board:

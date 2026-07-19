@@ -24,6 +24,7 @@ from aiohttp import web
 
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_boards import (
+    WorkspaceTodoProposal,
     create_workspace_todo,
     list_workspace_todos,
 )
@@ -40,6 +41,8 @@ WORKSPACE_APP_KEY = web.AppKey("workspace", object)
 _LINEAR_LABEL_IDS_NOT_ARRAY = "label_ids must be an array of Linear label ids"
 _LINEAR_WORKSPACE_REQUIRED = "Workspace-scoped Linear todo tools require an MCP workspace instance"
 _LINEAR_REQUIRED_ARGUMENT = "{key} is required"
+_LINEAR_DESCRIPTION_NOT_STRING = "description must be a string"
+_LINEAR_PRIORITY_INVALID = "priority must be an integer from 0 through 4"
 
 
 @dataclass(frozen=True)
@@ -229,10 +232,20 @@ async def _tool_create_todo(
     arguments: dict[str, Any],
     workspace: str | None,
 ) -> dict[str, Any]:
+    description = arguments.get("description")
+    if description is not None and not isinstance(description, str):
+        raise LinearError(_LINEAR_DESCRIPTION_NOT_STRING)
+    priority = arguments.get("priority")
+    if priority is not None and (type(priority) is not int or not 0 <= priority <= 4):
+        raise LinearError(_LINEAR_PRIORITY_INVALID)
     return await create_workspace_todo(
         client,
         _workspace_context(workspace),
-        _required_str(arguments, "title"),
+        WorkspaceTodoProposal(
+            title=_required_str(arguments, "title"),
+            description=description,
+            priority=priority,
+        ),
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
         status=AGENT_PROPOSED_STATUS,
     )
