@@ -58,10 +58,11 @@ def test_proton_pass_resolves_only_template_variable_names(
         workspaces={"review": WorkspaceConfig.model_validate(_TEMPLATE_CONFIG)},
         project_root=tmp_path,
     )
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], str | None]] = []
 
-    def fake_run(command: list[str], **_kwargs) -> Mock:
-        calls.append(command)
+    def fake_run(command: list[str], **kwargs) -> Mock:
+        environment = kwargs["env"]
+        calls.append((command, environment.get("PROTON_PASS_AGENT_REASON")))
         return Mock(
             returncode=0,
             stdout=b"FIRST=one\0SECOND=two\0UNRELATED=three\0",
@@ -81,16 +82,19 @@ def test_proton_pass_resolves_only_template_variable_names(
 
     assert result == {"FIRST": "one", "SECOND": "two"}
     assert calls == [
-        [
-            "/opt/homebrew/bin/pass-cli",
-            "run",
-            "--no-masking",
-            "--env-file",
-            str(tmp_path / "secrets" / "review.env"),
-            "--",
-            "/usr/bin/env",
-            "-0",
-        ]
+        (
+            [
+                "/opt/homebrew/bin/pass-cli",
+                "run",
+                "--no-masking",
+                "--env-file",
+                str(tmp_path / "secrets" / "review.env"),
+                "--",
+                "/usr/bin/env",
+                "-0",
+            ],
+            "Resolve credentials for a Pynchy workspace container",
+        )
     ]
 
 
