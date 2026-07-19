@@ -858,6 +858,49 @@ class TestRunScheduledAgent:
         assert mock_deps.agent_runs[0]["group"].folder == child_folder
 
     @pytest.mark.asyncio
+    async def test_retry_reuses_original_numbered_thread_after_agent_error(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """A retry keeps the first child target rather than creating another one."""
+        mock_deps.groups["test-jid"] = sample_group
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="human-turn",
+                chat_jid=sample_task.chat_jid,
+                group_folder=sample_task.group_folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"content": "Keep working."}],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at=datetime.now(UTC).isoformat(),
+            )
+        )
+        mock_deps._run_agent_result = "error"
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            checkpoint = await get_in_flight_turn_for_task(sample_task.id)
+            assert checkpoint is not None
+
+            mock_deps._run_agent_result = "success"
+            assert await run_scheduled_agent(sample_task, mock_deps) is True
+
+        assert mock_deps.thread_creations == [("test@g.us", "test-group-1")]
+        assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
+            "discord:channel:scheduled-1",
+            "discord:channel:scheduled-1",
+        ]
+        assert await get_in_flight_turn_for_task(sample_task.id) is None
+
+    @pytest.mark.asyncio
     async def test_on_output_delegates_to_handle_streamed_output(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
