@@ -243,6 +243,42 @@ def test_prepare_onecli_material_creates_missing_agent_and_retries(
     }
 
 
+def test_prepare_onecli_material_resolves_proxy_host_for_apple_runtime(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    settings = _settings(tmp_path)
+    monkeypatch.setenv("ONECLI_API_KEY", "oc_test_key")
+    payload = {
+        "env": {
+            "HTTPS_PROXY": "http://host.docker.internal:10255",
+            "http_proxy": "http://host.docker.internal:10255",
+            "SSL_CERT_FILE": "/opt/onecli-ca.pem",
+        },
+        "credentialStubs": [],
+    }
+
+    with (
+        patch("pynchy.host.container_manager.onecli.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.onecli.urlopen",
+            return_value=_FakeResponse(payload),
+        ),
+        patch(
+            "pynchy.host.container_manager.onecli.resolve_container_host",
+            return_value="192.168.64.1",
+        ),
+    ):
+        material = prepare_onecli_material("research")
+
+    assert material is not None
+    assert material.env_vars == {
+        "HTTPS_PROXY": "http://192.168.64.1:10255",
+        "http_proxy": "http://192.168.64.1:10255",
+        "SSL_CERT_FILE": "/opt/onecli-ca.pem",
+    }
+
+
 def test_prepare_onecli_material_returns_none_when_fail_open_and_invalid_json(
     tmp_path: Path,
     monkeypatch,
