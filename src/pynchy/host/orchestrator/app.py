@@ -20,7 +20,7 @@ from pynchy.event_bus import Event, EventBus
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     OnOutput,
 )
-from pynchy.host.orchestrator import agent_runner, session_handler
+from pynchy.host.orchestrator import agent_runner, session_handler, update_offer
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.messaging import (
@@ -470,6 +470,8 @@ class PynchyApp:
 
     async def _on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:
         """Handle an ask_user answer from a channel interaction callback."""
+        if await update_offer.handle_update_offer_answer(request_id, answer, self):
+            return
         await ask_user_handler.handle_ask_user_answer(request_id, answer, self)
 
     async def on_ask_user_answer(self, request_id: str, answer: dict[str, Any]) -> None:

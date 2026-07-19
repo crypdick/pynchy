@@ -47,6 +47,8 @@ class SchedulerConfig(_StrictModel):
     temporal_task_queue: str = "pynchy-scheduler"
     git_sync_interval_seconds: int = 300
     channel_reconciliation_interval_seconds: int = 300
+    # Operators approve repository revisions unless they explicitly retain automatic deployment.
+    auto_deploy: bool = False
 
     @field_validator("git_sync_interval_seconds", "channel_reconciliation_interval_seconds")
     @classmethod

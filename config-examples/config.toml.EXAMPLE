@@ -127,6 +127,10 @@
 # git_sync_interval_seconds = 300
 # channel_reconciliation_interval_seconds = 300
 
+# Keep new repository revisions pending until an admin approves the update.
+# Set true to pull and deploy eligible source changes automatically.
+# auto_deploy = false
+
 [intervals]
 # Message polling interval (seconds)
 # message_poll = 2.0

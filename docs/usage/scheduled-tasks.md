@@ -92,7 +92,15 @@ temporal_namespace = "default"
 temporal_task_queue = "pynchy-scheduler"
 git_sync_interval_seconds = 300
 channel_reconciliation_interval_seconds = 300
+auto_deploy = false
 ```
+
+When `auto_deploy` stays `false` (the default), Pynchy detects a newer repository
+revision without changing the local checkout. It posts an update prompt to the
+configured admin workspace. Use the channel's **Fetch and upgrade** action to fetch
+the revision and deploy it. Channels without interactive controls direct the operator
+to the local control-plane `POST /deploy` endpoint. Set `auto_deploy = true` to pull
+and deploy eligible source changes automatically.
 
 Pynchy requires a reachable Temporal service when the scheduler starts. It does not fall back to local due-work execution. The local scheduler loop only reconciles desired state from config and SQLite into Temporal; it does not decide that a task is due or run shell commands itself.
 

@@ -634,7 +634,9 @@ class TestCheckOriginDrift:
             "pynchy.host.git_ops.sync_poll.host_get_origin_main_sha",
             return_value="new-origin",
         ):
-            changed = await sync_poll.check_origin_drift(tmp_path, state, None, deps)
+            changed = await sync_poll.check_origin_drift(
+                tmp_path, state, None, deps, auto_deploy=True
+            )
 
         assert changed is False
         assert state.last_origin_sha == "new-origin"
@@ -666,7 +668,9 @@ class TestCheckOriginDrift:
             ) as notify,
         ):
             sync_poll.last_notified_sha.pop(str(tmp_path), None)
-            changed = await sync_poll.check_origin_drift(tmp_path, state, repo_ctx, deps)
+            changed = await sync_poll.check_origin_drift(
+                tmp_path, state, repo_ctx, deps, auto_deploy=True
+            )
 
         assert changed is True
         assert state.last_origin_sha == "origin-new"

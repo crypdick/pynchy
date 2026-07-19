@@ -114,6 +114,31 @@ class _TemporalGitSyncDeps:
             )
             raise
 
+    async def offer_update(self, commit_sha: str) -> bool:
+        """Ask the configured admin to approve a pending repository update."""
+        chat_jid = resolve_admin_notification_jid(
+            self.workspaces(), get_settings().notifications.admin_workspace
+        )
+        if not chat_jid:
+            logger.error(
+                "Cannot offer pending update without an admin workspace", commit_sha=commit_sha
+            )
+            return False
+        offer_update = getattr(self._deps, "offer_update", None)
+        if callable(offer_update):
+            return bool(await offer_update(chat_jid, commit_sha))
+        try:
+            await self._deps.broadcast_host_message(
+                chat_jid,
+                f"Pynchy update {commit_sha[:8]} is available. "
+                "Use the local control-plane `POST /deploy` endpoint to fetch and upgrade it.",
+            )
+        # allow: exception-handling - retry a failed text notification on the next poll.
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not send update fallback notification", error=str(exc))
+            return False
+        return True
+
 
 async def _load_host_state() -> HostSyncState:
     settings = get_settings()
@@ -127,6 +152,7 @@ async def _load_host_state() -> HostSyncState:
                 deployed_sha=str(payload.get("deployed_sha", "")),
                 config_hash=str(payload.get("config_hash", "")),
                 local_head=payload.get("local_head"),
+                offered_sha=str(payload.get("offered_sha", "")),
             )
         except (json.JSONDecodeError, TypeError, ValueError):
             logger.warning("Corrupt Temporal host git-sync state, reinitializing")
@@ -179,8 +205,20 @@ async def run_host_git_sync() -> str:
     try:
         if (
             await _config_drift_started_deploy(state, deps)
-            or await _check_local_head_drift(settings.project_root, state, repo_ctx, deps)
-            or await check_origin_drift(settings.project_root, state, repo_ctx, deps)
+            or await _check_local_head_drift(
+                settings.project_root,
+                state,
+                repo_ctx,
+                deps,
+                auto_deploy=settings.scheduler.auto_deploy,
+            )
+            or await check_origin_drift(
+                settings.project_root,
+                state,
+                repo_ctx,
+                deps,
+                auto_deploy=settings.scheduler.auto_deploy,
+            )
         ):
             result = "deploy_started"
     finally:

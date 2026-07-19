@@ -76,6 +76,7 @@ class DiscordChannel:
 
     prefix_assistant_name: bool = False  # Discord shows the bot's own username
     auto_provision_configured_chats: bool = True
+    supports_direct_ask_user_callbacks: bool = True
 
     def __init__(  # noqa: PLR0913, RUF100 - channel constructor is a boundary surface for plugin wiring.
         self,
