@@ -52,6 +52,17 @@ class TestRunGit:
         assert "BatchMode=yes" in kwargs["env"]["GIT_SSH_COMMAND"]
         assert "ConnectTimeout=10" in kwargs["env"]["GIT_SSH_COMMAND"]
 
+    def test_returns_failure_result_when_git_times_out(self):
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="git fetch origin", timeout=30),
+        ):
+            result = run_git("fetch", "origin", cwd=Path("/repo"))
+
+        assert result.returncode == 124
+        assert not result.stdout
+        assert result.stderr == "git command timed out after 30 seconds"
+
 
 # ---------------------------------------------------------------------------
 # detect_main_branch
