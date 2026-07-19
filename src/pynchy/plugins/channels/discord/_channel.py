@@ -294,12 +294,18 @@ class DiscordChannel:
         if not callable(active_threads):
             return None
         parent_id = getattr(parent, "id", None)
-        for thread in await active_threads():
-            matches_parent = getattr(thread, "parent_id", None) == parent_id
-            matches_name = getattr(thread, "name", None) == name
-            if matches_parent and matches_name:
-                return channel_jid(str(thread.id))
-        return None
+        matching_threads = [
+            thread
+            for thread in await active_threads()
+            if getattr(thread, "parent_id", None) == parent_id
+            and getattr(thread, "name", None) == name
+        ]
+        if not matching_threads:
+            return None
+        # Discord snowflakes are chronologically ordered. The earliest matching
+        # thread is the canonical slot if an earlier Pynchy version created a duplicate.
+        canonical_thread = min(matching_threads, key=lambda thread: thread.id)
+        return channel_jid(str(canonical_thread.id))
 
     async def add_thread_participants(
         self,
