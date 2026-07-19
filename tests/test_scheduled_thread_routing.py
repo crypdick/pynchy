@@ -59,12 +59,12 @@ class _ThreadCapableChannel:
 
 
 @pytest.mark.asyncio
-async def test_app_routes_scheduled_thread_creation_to_owning_channel() -> None:
+async def test_app_routes_thread_creation_to_owning_channel() -> None:
     app = PynchyApp()
     channel = _ThreadCapableChannel()
     app.channels = [channel]
 
-    child_jid = await app.create_scheduled_thread(
+    child_jid = await app.create_thread(
         "discord:channel:parent",
         "pynchy-dev-1",
         participant_ids=("123",),
@@ -75,30 +75,30 @@ async def test_app_routes_scheduled_thread_creation_to_owning_channel() -> None:
 
 
 @pytest.mark.asyncio
-async def test_app_rejects_scheduled_thread_creation_without_channel_capability() -> None:
+async def test_app_rejects_thread_creation_without_channel_capability() -> None:
     app = PynchyApp()
 
-    with pytest.raises(RuntimeError, match="does not support scheduled task threads"):
-        await app.create_scheduled_thread("slack:C123", "pynchy-dev-1")
+    with pytest.raises(RuntimeError, match="does not support thread creation"):
+        await app.create_thread("slack:C123", "pynchy-dev-1")
 
 
 @pytest.mark.asyncio
-async def test_app_finds_existing_scheduled_thread_on_owning_channel() -> None:
+async def test_app_finds_existing_thread_on_owning_channel() -> None:
     app = PynchyApp()
     channel = _ThreadCapableChannel()
     app.channels = [channel]
 
-    child_jid = await app.find_scheduled_thread("discord:channel:parent", "pynchy-dev-1")
+    child_jid = await app.find_thread("discord:channel:parent", "pynchy-dev-1")
 
     assert child_jid == "discord:channel:existing"
 
 
 @pytest.mark.asyncio
-async def test_app_adds_participants_to_reused_scheduled_thread() -> None:
+async def test_app_adds_participants_to_existing_thread() -> None:
     app = PynchyApp()
     channel = _ThreadCapableChannel()
     app.channels = [channel]
 
-    await app.add_scheduled_thread_participants("discord:channel:existing", ("123",))
+    await app.add_thread_participants("discord:channel:existing", ("123",))
 
     assert channel.reused_participants == [("discord:channel:existing", ("123",))]

@@ -30,6 +30,7 @@ def test_minimal_connection_defaults():
     cfg = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
     assert cfg.bot_token_env == DISCORD_BOT_ENV
     assert cfg.application_id is None
+    assert cfg.default_thread_participants == []
     assert cfg.dm_policy == "allowlist"
     assert cfg.allow_from == []
     assert cfg.group_policy == "allowlist"
@@ -71,6 +72,15 @@ def test_nested_guild_and_channel_config():
     channel = guild.channels["general"]
     assert channel.require_mention is False
     assert channel.deny == ["dangerous_tool"]
+
+
+def test_connection_accepts_default_thread_participants():
+    cfg = DiscordConnectionConfig(
+        bot_token_env=DISCORD_BOT_ENV,
+        default_thread_participants=["123"],
+    )
+
+    assert cfg.default_thread_participants == ["123"]
 
 
 def test_voice_channel_config_uses_a_name_not_a_snowflake():

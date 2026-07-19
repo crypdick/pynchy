@@ -30,10 +30,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _channel(speech_synthesizer: object | None = None) -> DiscordChannel:
+def _channel(
+    speech_synthesizer: object | None = None,
+    config: DiscordConnectionConfig | None = None,
+) -> DiscordChannel:
     return DiscordChannel(
         connection_name="connection.discord.test",
-        config=DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
+        config=config or DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV),
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
@@ -371,12 +374,31 @@ async def test_creates_child_thread_for_scheduled_task():
 
     assert child_jid == "discord:channel:456"
     assert parent.thread_requests == [("pynchy-dev-1", discord.ChannelType.public_thread)]
-    assert parent.sent_messages == ["Scheduled task thread: <#456>"]
+    assert parent.sent_messages == ["Created thread: <#456>"]
     ch.resolve_channel.assert_awaited_once_with("discord:channel:123")
 
 
 @pytest.mark.asyncio
-async def test_adds_active_human_to_scheduled_child_thread():
+async def test_adds_configured_default_to_child_thread():
+    ch = _channel(
+        config=DiscordConnectionConfig(
+            bot_token_env=DISCORD_BOT_ENV,
+            default_thread_participants=["234"],
+        )
+    )
+    parent = _FakeThreadParent()
+    ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
+
+    await ch.create_thread(
+        "discord:channel:123",
+        "pynchy-dev-1",
+    )
+
+    assert parent.created_threads[0].added_user_ids == [234]
+
+
+@pytest.mark.asyncio
+async def test_adds_active_human_to_child_thread():
     ch = _channel()
     parent = _FakeThreadParent()
     ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]

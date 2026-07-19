@@ -262,25 +262,28 @@ class DiscordChannel:
         *,
         participant_ids: tuple[str, ...] = (),
     ) -> str:
-        """Create a public child thread and add active Discord participants."""
+        """Create a public child thread and add its default and requested participants."""
         parent = cast("Any", await self.resolve_channel(parent_jid))
         create_thread = getattr(parent, "create_thread", None)
         if not callable(create_thread):
             raise TypeError("Discord target does not support child threads")
         # discord.py defaults TextChannel.create_thread() to a private thread.
-        # Scheduled output belongs to the configured channel's participants,
+        # Child conversations belong to the configured channel's participants,
         # so opt into the public type explicitly.
         thread = await create_thread(name=name, type=discord.ChannelType.public_thread)
-        await self._add_scheduled_thread_participants(thread, participant_ids)
+        await self._add_thread_participants(
+            thread,
+            (*self.config.default_thread_participants, *participant_ids),
+        )
         send = getattr(parent, "send", None)
         if callable(send):
             try:
-                await send(f"Scheduled task thread: <#{thread.id}>")
+                await send(f"Created thread: <#{thread.id}>")
             except discord.HTTPException as exc:
-                # A thread link is discoverability help. Its failure must not
-                # make Temporal retry an otherwise valid child thread.
+                # A thread link is discoverability help. Its failure must not make
+                # a caller retry an otherwise valid child thread.
                 logger.warning(
-                    "Could not announce scheduled Discord thread",
+                    "Could not announce Discord thread",
                     thread_id=thread.id,
                     error=str(exc),
                 )
@@ -312,11 +315,11 @@ class DiscordChannel:
         child_jid: str,
         participant_ids: tuple[str, ...],
     ) -> None:
-        """Add active parent participants to an existing scheduled child thread."""
+        """Add participants to an existing child thread."""
         thread = cast("Any", await self.resolve_channel(child_jid))
-        await self._add_scheduled_thread_participants(thread, participant_ids)
+        await self._add_thread_participants(thread, participant_ids)
 
-    async def _add_scheduled_thread_participants(
+    async def _add_thread_participants(
         self,
         thread: object,
         participant_ids: tuple[str, ...],
@@ -332,10 +335,10 @@ class DiscordChannel:
             try:
                 await add_user(discord.Object(id=int(participant_id)))
             except discord.HTTPException as exc:
-                # The public thread still exists; failing the whole scheduled
-                # turn here would create a duplicate on Temporal retry.
+                # The public thread still exists; failing its caller here could
+                # create a duplicate when that caller retries.
                 logger.warning(
-                    "Could not add participant to scheduled Discord thread",
+                    "Could not add participant to Discord thread",
                     thread_id=thread.id,
                     participant_id=participant_id,
                     error=str(exc),

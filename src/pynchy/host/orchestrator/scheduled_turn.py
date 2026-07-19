@@ -50,7 +50,7 @@ class ScheduledTurnDeps(Protocol):
     @property
     def queue(self) -> ScheduledTurnQueue: ...
 
-    async def create_scheduled_thread(
+    async def create_thread(
         self,
         parent_jid: str,
         name: str,
@@ -58,9 +58,9 @@ class ScheduledTurnDeps(Protocol):
         participant_ids: tuple[str, ...] = (),
     ) -> str: ...
 
-    async def find_scheduled_thread(self, parent_jid: str, name: str) -> str | None: ...
+    async def find_thread(self, parent_jid: str, name: str) -> str | None: ...
 
-    async def add_scheduled_thread_participants(
+    async def add_thread_participants(
         self,
         child_jid: str,
         participant_ids: tuple[str, ...],
@@ -228,21 +228,21 @@ async def _new_task_target(
             while _numbered_slot_is_reserved(request.task, slot, turns):
                 slot += 1
             name = _thread_name(request.task, slot)
-            child_jid = await request.deps.find_scheduled_thread(request.task.chat_jid, name)
+            child_jid = await request.deps.find_thread(request.task.chat_jid, name)
             while child_jid and _thread_is_reserved(child_jid, request.task, turns):
                 slot += 1
                 while _numbered_slot_is_reserved(request.task, slot, turns):
                     slot += 1
                 name = _thread_name(request.task, slot)
-                child_jid = await request.deps.find_scheduled_thread(request.task.chat_jid, name)
+                child_jid = await request.deps.find_thread(request.task.chat_jid, name)
             if child_jid is None:
-                child_jid = await request.deps.create_scheduled_thread(
+                child_jid = await request.deps.create_thread(
                     request.task.chat_jid,
                     name,
                     participant_ids=participant_ids,
                 )
             else:
-                await request.deps.add_scheduled_thread_participants(child_jid, participant_ids)
+                await request.deps.add_thread_participants(child_jid, participant_ids)
             if not child_jid:
                 raise RuntimeError("Scheduled task thread creation returned no chat JID")
             child_group = replace(
