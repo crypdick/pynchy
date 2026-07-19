@@ -22,7 +22,7 @@ class WebhookReceipt:
     event_action: str
     subject_id: str
     payload_sha256: str
-    disposition: Literal["accepted", "ignored"]
+    disposition: Literal["accepted", "notified", "ignored"]
     ignored_reason: str | None
     task_id: str | None
     occurred_at: str
@@ -31,6 +31,12 @@ class WebhookReceipt:
     def __post_init__(self) -> None:
         if (self.disposition == "accepted") != (self.task_id is not None):
             raise ValueError("Accepted webhook receipts require exactly one task")
+        if self.disposition == "notified" and (
+            self.task_id is not None or self.ignored_reason is not None
+        ):
+            raise ValueError(
+                "Notified webhook receipts cannot create tasks or carry ignore reasons"
+            )
         if (self.disposition == "ignored") != (self.ignored_reason is not None):
             raise ValueError("Ignored webhook receipts require a reason")
 

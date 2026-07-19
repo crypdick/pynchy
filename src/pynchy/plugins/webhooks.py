@@ -33,7 +33,13 @@ class WebhookPayloadError(ValueError):
 
 @dataclass(frozen=True)
 class WebhookEvent:
-    """Closed provider event admitted by a plugin-owned route parser."""
+    """Closed provider event admitted by a plugin-owned route parser.
+
+    A provider parser chooses exactly one disposition: an isolated agent task,
+    a literal host notification, or an ignored delivery.  Host notifications
+    are for deterministic status updates only; provider text must never become
+    trusted agent instructions.
+    """
 
     delivery_id: str
     event_type: str
@@ -43,13 +49,17 @@ class WebhookEvent:
     instructions: str | None
     external_context: Mapping[str, object] | None
     ignored_reason: str | None = None
+    host_message: str | None = None
 
     def __post_init__(self) -> None:
         if (self.instructions is None) != (self.external_context is None):
             raise ValueError("Actionable webhook events require instructions and context")
         actionable = bool(self.instructions) and self.external_context is not None
-        if actionable == bool(self.ignored_reason):
-            raise ValueError("Webhook event must be either actionable or ignored")
+        if self.host_message is not None and not self.host_message.strip():
+            raise ValueError("Webhook host notifications cannot be blank")
+        dispositions = (actionable, self.host_message is not None, bool(self.ignored_reason))
+        if sum(dispositions) != 1:
+            raise ValueError("Webhook event must be actionable, notified, or ignored")
 
 
 WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]

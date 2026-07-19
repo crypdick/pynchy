@@ -11,6 +11,7 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, talking to
 - **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run the selected agent core and can message you back
 - **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK, OpenAI SDK, Codex CLI, or plugin-provided cores
 - **[Control plane](control-plane.md)** — Connect the local or remote TUI with fail-closed listeners and bearer authentication
+- **[GitHub PR notifications](github.md)** — Route signed pull-request events to the owning project channel without an agent run
 - **Web access** — Search and fetch content through configured browser tools
 - **Container isolation** — Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
 
@@ -58,6 +59,7 @@ For example, you can ask Pynchy to help you:
 |-------|---------------|
 | [Channels](channels.md) | WhatsApp, Slack, Discord, and TUI — multi-channel sync |
 | [Control plane](control-plane.md) | Local Unix socket, remote bearer authentication, rate limits, and deployment access |
+| [GitHub PR notifications](github.md) | Route signed GitHub PR events to explicitly mapped project workspaces |
 | [Groups](groups.md) | Group management, admin channel privileges |
 | [Workspace configuration](workspaces.md) | Compose profiles and bind workspaces to configured chats |
 | [Memory](memory.md) | Structured memory tools, file-based memory, conversation archives |
