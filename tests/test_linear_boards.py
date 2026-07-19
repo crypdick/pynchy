@@ -179,10 +179,39 @@ class TestEnsureWorkspaceBoard:
             "Awaiting Plan Approval",
             "Human Approved",
             "In Progress",
+            "Awaiting Review",
             "Blocked",
             "Done",
             "Rejected",
         } <= created_state_names
+
+    async def test_adds_awaiting_review_to_an_existing_workspace_board(self):
+        client = FakeLinearClient()
+        client.states.extend(
+            {
+                "id": f"state-{key.replace('_', '-')}",
+                "name": spec.name,
+                "type": spec.type,
+                "position": spec.position,
+            }
+            for key, spec in LINEAR_TODO_STATUSES.items()
+            if key != "awaiting_review"
+        )
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Code Improver",
+                "url": "https://linear.app/acme/project/existing",
+            }
+        )
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-existing"
+        assert board.states["awaiting_review"]["name"] == "Awaiting Review"
+        created = [query for query in client.queries if "CreateWorkflowState" in query]
+        assert len(created) == 1
 
     async def test_reuses_existing_project_by_name(self):
         client = FakeLinearClient()

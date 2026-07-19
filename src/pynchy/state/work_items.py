@@ -44,11 +44,32 @@ async def get_active_work_item_execution(issue_id: str) -> WorkItemExecution | N
         """
         SELECT * FROM work_item_executions
         WHERE linear_issue_id = ?
-          AND status IN ('claiming', 'in_progress', 'blocked', 'unknown')
+          AND status IN ('claiming', 'in_progress', 'awaiting_review', 'blocked', 'unknown')
         ORDER BY created_at DESC
         LIMIT 1
         """,
         (issue_id,),
+    )
+    row = await cursor.fetchone()
+    return row_to_execution(row) if row else None
+
+
+async def get_work_item_execution_for_evidence_ref(
+    reference: str,
+    *,
+    workspace: str,
+) -> WorkItemExecution | None:
+    """Return the latest workspace execution linked to an exact evidence reference."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT work_item_executions.*
+        FROM work_item_executions, json_each(work_item_executions.evidence_refs) AS evidence
+        WHERE work_item_executions.workspace = ? AND evidence.value = ?
+        ORDER BY work_item_executions.updated_at DESC, work_item_executions.id DESC
+        LIMIT 1
+        """,
+        (workspace, reference),
     )
     row = await cursor.fetchone()
     return row_to_execution(row) if row else None
@@ -217,6 +238,7 @@ async def begin_work_item_transition(request: WorkItemTransitionRequest) -> Work
             request=request,
             created_at=now,
         )
+        delivery_status = _delivery_status_for_operation(request.operation)
         await db.execute(
             """
             UPDATE work_item_executions
@@ -224,9 +246,11 @@ async def begin_work_item_transition(request: WorkItemTransitionRequest) -> Work
                 blocker = ?,
                 handoff_to = ?,
                 evidence_refs = ?,
-                requester_delivery_status = ?,
-                requester_delivery_error = NULL,
-                requester_delivered_at = NULL,
+                requester_delivery_status = COALESCE(?, requester_delivery_status),
+                requester_delivery_error = CASE WHEN ? IS NULL
+                    THEN requester_delivery_error ELSE NULL END,
+                requester_delivered_at = CASE WHEN ? IS NULL
+                    THEN requester_delivered_at ELSE NULL END,
                 updated_at = ?
             WHERE id = ?
             """,
@@ -235,7 +259,9 @@ async def begin_work_item_transition(request: WorkItemTransitionRequest) -> Work
                 request.blocker,
                 request.handoff_to,
                 json.dumps(request.evidence_refs),
-                _delivery_status_for_operation(request.operation),
+                delivery_status,
+                delivery_status,
+                delivery_status,
                 now,
                 request.execution.id,
             ),
@@ -404,6 +430,8 @@ def _issue_state(issue: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
-def _delivery_status_for_operation(operation: str) -> str:
+def _delivery_status_for_operation(operation: str) -> str | None:
     """Reserve a requester-delivery outcome for operations with a user summary."""
+    if operation == "complete_after_pull_request_merge":
+        return None
     return "not_requested" if operation == "claim" else "pending"

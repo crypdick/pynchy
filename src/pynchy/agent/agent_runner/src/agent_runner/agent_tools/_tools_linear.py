@@ -50,19 +50,25 @@ register_ipc_tool(
 )
 
 register_ipc_tool(
-    name="linear_complete_work_item",
+    name="linear_await_review_work_item",
     description=(
-        "Complete a Linear work item owned by the current workspace's active Pynchy "
-        "execution. Include a concise completion summary."
+        "Submit a Linear work item owned by the current workspace's active Pynchy "
+        "execution for review. This moves it to Awaiting Review and links the GitHub "
+        "pull request; only an authenticated merged-PR webhook moves it to Done."
     ),
     input_schema={
         "type": "object",
         "properties": {
             "issue_id": {"type": "string", "minLength": 1},
             "summary": {"type": "string", "minLength": 1},
+            "pull_request_url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/[1-9][0-9]*/?$",
+            },
             "evidence_refs": _evidence_refs_schema(),
         },
-        "required": ["issue_id", "summary"],
+        "required": ["issue_id", "summary", "pull_request_url"],
         "additionalProperties": False,
     },
 )

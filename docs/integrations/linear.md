@@ -87,14 +87,16 @@ Linear holds the complete planning and authorization state:
 | `Awaiting Plan Approval` | A concrete plan exists, but execution lacks approval | Agent after planning |
 | `Human Approved` | A human explicitly authorized execution | Human |
 | `In Progress` | Pynchy claimed the approved item and started work | Pynchy lifecycle |
+| `Awaiting Review` | Pynchy opened a GitHub pull request and linked it to the execution | Pynchy lifecycle |
 | `Blocked` | Execution needs intervention | Pynchy lifecycle |
-| `Done` | Pynchy completed and verified the work | Pynchy lifecycle |
+| `Done` | The linked GitHub pull request merged | Authenticated GitHub webhook |
 | `Rejected` | A human declined the proposal | Human |
 
 `Ready for Planning` never authorizes execution. Pynchy can claim only a
 `Human Approved` item. Agent tools cannot set `Ready for Planning`,
-`Human Approved`, or `Rejected`; change those states in Linear to record the
-human decision.
+`Human Approved`, `Done`, or `Rejected`; change the human decision states in
+Linear. Pynchy reserves `Done` for merge evidence from GitHub rather than an
+agent's completion claim.
 
 ## Receive Linear callbacks
 
@@ -129,7 +131,8 @@ HTTPS URL; see the [Linear webhook documentation](https://linear.app/developers/
 
 Every schema-valid `create`, `update`, or `remove` delivery for a `Comment` or
 `Issue` starts a task. Comments do not need to mention `@pynchy`. Pynchy also
-wakes for its own issue transitions, such as `In Progress` and `Done`; durable
+wakes for its own issue transitions, such as `In Progress`, `Awaiting Review`,
+and `Done`; durable
 delivery IDs prevent duplicate tasks, while the current workflow state prevents
 the callback from granting new authority.
 
@@ -202,7 +205,7 @@ them when an agent starts or finishes work from a workspace board:
 | Tool | Purpose |
 |------|---------|
 | `linear_claim_work_item` | Claims a `Human Approved` issue for the current Pynchy execution and moves it to `In Progress`. |
-| `linear_complete_work_item` | Completes a claimed item and records a completion summary. |
+| `linear_await_review_work_item` | Moves a claimed item to `Awaiting Review`, records a summary, and links its GitHub pull-request URL. |
 | `linear_block_work_item` | Moves a claimed item to Blocked and records the blocker. |
 | `linear_handoff_work_item` | Moves a claimed item to Blocked, records the next owner, and releases Pynchy's claim. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider outcome by checking Linear instead of retrying the mutation blindly. |
@@ -218,9 +221,17 @@ Linear state, attempt number, evidence references, and the requested transition
 before writing to Linear.
 
 One active Pynchy execution can own an issue. A second claim fails with the
-existing execution record instead of creating duplicate work. Completion,
-blocking, and handoff act only on that linked execution. A handoff releases the
-claim so another owner can pick the item up deliberately.
+existing execution record instead of creating duplicate work. Review
+submission, blocking, and handoff act only on that linked execution. A handoff
+releases the claim so another owner can pick the item up deliberately.
+
+When the implementation is ready, call `linear_await_review_work_item` with the
+canonical `https://github.com/<owner>/<repository>/pull/<number>` URL. The claim
+stays active while the issue is in `Awaiting Review`. If that repository's
+[GitHub webhook route](github.md) maps to the same workspace, an authenticated
+merged-PR delivery moves the linked issue to `Done` and releases the claim.
+Opening the PR, converting it from draft, or closing it without merging does not
+complete the work item.
 
 If a network failure happens after Pynchy sends a Linear mutation, Pynchy marks
 the transition unknown. Use `linear_reconcile_work_item` to inspect provider

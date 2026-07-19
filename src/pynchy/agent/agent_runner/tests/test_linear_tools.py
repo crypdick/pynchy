@@ -13,9 +13,12 @@ async def test_linear_tool_contract_keeps_human_approval_out_of_agent_control() 
 
     claim = tools["linear_claim_work_item"]
     move = tools["linear_move_todo"]
+    await_review = tools["linear_await_review_work_item"]
 
     assert "Human Approved" in (claim.description or "")
     assert move.inputSchema["properties"]["status"]["enum"] == [
         "agent_proposed",
         "awaiting_plan_approval",
     ]
+    assert "pull_request_url" in await_review.inputSchema["required"]
+    assert "merged-PR webhook" in (await_review.description or "")

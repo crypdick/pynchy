@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -29,6 +29,10 @@ class WebhookAuthenticationError(ValueError):
 
 class WebhookPayloadError(ValueError):
     """Raised when an authenticated provider request has an invalid schema."""
+
+
+class WebhookProcessingError(RuntimeError):
+    """Raised when a trusted, idempotent host effect could not be completed."""
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,7 @@ class WebhookEvent:
 
 
 WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]
+WebhookEventProcessor = Callable[[WebhookEvent], Awaitable[None]]
 WebhookWorkspaceValidator = Callable[[WorkspaceProfile], str | None]
 
 
@@ -79,6 +84,7 @@ class WebhookRoute:
     max_body_bytes: int = 256 * 1024
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
+    process_event: WebhookEventProcessor | None = None
 
     @property
     def path(self) -> str:

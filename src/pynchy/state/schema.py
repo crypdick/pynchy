@@ -197,6 +197,9 @@ CREATE TABLE IF NOT EXISTS work_item_executions (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue
 ON work_item_executions(linear_issue_id)
 WHERE status IN ('claiming', 'in_progress', 'blocked', 'unknown');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue_v2
+ON work_item_executions(linear_issue_id)
+WHERE status IN ('claiming', 'in_progress', 'awaiting_review', 'blocked', 'unknown');
 CREATE INDEX IF NOT EXISTS idx_work_item_executions_workspace
 ON work_item_executions(workspace, updated_at DESC);
 
