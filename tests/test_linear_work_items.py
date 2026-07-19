@@ -354,6 +354,31 @@ async def test_submit_plan_requires_ready_for_planning_state(lifecycle):
     assert result == {"error": "Linear work item must be Ready for Planning before planning"}
 
 
+async def test_submit_plan_from_dynamic_thread_uses_parent_workspace_board(
+    lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client, handlers = lifecycle
+    client.issue["state"] = _state("state-ready-for-planning")
+    board = AsyncMock(return_value=_board())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_provider.ensure_workspace_board",
+        board,
+    )
+
+    result = await handlers["linear_submit_plan"](
+        {
+            "source_group": "pynchy__thread_discord-channel-123",
+            "request_id": "plan-1",
+            "issue_id": "issue-1",
+            "plan": "A concrete plan.",
+        }
+    )
+
+    assert "error" not in result
+    assert board.await_args.args[1].folder == "pynchy"
+
+
 @pytest.mark.action("linear.workitem.list")
 async def test_list_returns_bounded_operator_projection(lifecycle):
     _client, handlers = lifecycle
