@@ -440,7 +440,7 @@ otherwise look like generic connection failures.
 - `src/pynchy/plugins/hookspecs.py`, `src/pynchy/plugins/registry.py`, and
   `docs/architecture/workspaces.md` — plugin contracts, profile composition,
   config precedence, and dynamic thread workspaces.
-- `src/pynchy/types.py` and `docs/usage/channels.md` — current text-event
+- `src/pynchy/types.py` and `docs/channels/` — current text-event
   channel contract; existing streaming/reactions/inbound STT; explicitly absent
   outbound voice and interactive questions.
 - `src/pynchy/state/outbound.py`,

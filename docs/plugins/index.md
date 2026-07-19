@@ -62,5 +62,5 @@ All plugin Python code runs on the **host** during discovery. See [Security Mode
 
 - [**Available Plugins**](available.md) — Browse built-in plugins and community listings
 - [**Quickstart**](quickstart.md) — Build your first plugin in 5 minutes
-- [**Hook Reference**](hooks.md) — All plugin hooks and return value schemas
+- [**Hook Reference**](hooks/index.md) — All plugin hooks and return value schemas
 - [**Packaging**](packaging.md) — Entry points, distribution, installation

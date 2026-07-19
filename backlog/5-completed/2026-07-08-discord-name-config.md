@@ -24,7 +24,7 @@
 - Modify: `src/pynchy/plugins/channels/discord/_access.py`
 - Modify: `src/pynchy/plugins/channels/discord/_channel.py`
 - Modify: `src/pynchy/host/orchestrator/workspace_config.py`
-- Modify: `docs/usage/channels.md`
+- Modify: `docs/channels/discord.md`
 
 - [ ] **Step 1: Write failing tests**
 

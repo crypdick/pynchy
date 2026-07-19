@@ -42,7 +42,8 @@ class PeekabooConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    # NOTE: Update docs/usage/computer-use.md § Built-in: Peekaboo if these defaults change.
+    # NOTE: Update docs/usage/host-capabilities/computer-use.md § Built-in: Peekaboo
+    # if these defaults change.
     binary: Annotated[str, Field(min_length=1)] = "peekaboo"
     timeout_seconds: PositiveTimeout = 30.0
 

@@ -12,7 +12,7 @@ class ServerConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    # NOTE: Update docs/usage/control-plane.md and docs/install.md (§ Headless
+    # NOTE: Update docs/usage/control-plane.md and docs/installation/server.md (§ Headless
     # Server Deployment) if these listener or authentication defaults change.
     host: str = "127.0.0.1"
     port: int = 8484

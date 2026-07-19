@@ -51,7 +51,7 @@ Built-in plugins provide integrations with external services, and they're all pl
 
 ## Getting Started
 
-See the **[installation guide](docs/install.md)**.
+See the **[installation guide](docs/installation/index.md)**.
 
 ## Documentation
 

@@ -2,7 +2,7 @@
 
 How messages flow from channels to agents and back. Read this to debug message delivery and reason about what the LLM sees in its context. For user-facing info on talking to your assistant (trigger words, message prefixes), see [Usage](../usage/index.md).
 
-Messages arrive from plugin-provided [channels](../usage/channels.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
+Messages arrive from plugin-provided [channels](../channels/index.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
 
 ## Chat History And Trace History
 
@@ -37,7 +37,7 @@ message reaches the agent.
 ## Routing Behavior
 
 - Only messages from registered groups get processed; the router ignores unregistered groups
-- All channels stay in sync — see [Channels](../usage/channels.md) for how multi-channel broadcast works
+- All channels stay in sync — see [Channels](../channels/index.md) for how multi-channel broadcast works
 - Messages that arrive while a task runs follow escalation rules — see [Messaging During Active Tasks](../usage/index.md#messaging-during-active-tasks)
 
 For how messages are typed and stored, see [Message types](message-types.md).

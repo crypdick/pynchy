@@ -1,7 +1,8 @@
 nav:
   - Home: index.md
-  - Installation: install.md
+  - installation
   - usage
+  - channels
   - integrations
   - plugins
   - contributing

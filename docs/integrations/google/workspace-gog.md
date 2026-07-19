@@ -6,7 +6,7 @@ reads and exports, and Google Sheets reads and range updates. It does not expose
 generic `gog` shell command, a selectable Google account, or a credential mount to
 the agent container.
 
-Gog complements the existing [Google Drive](gdrive.md) MCP integration; it does
+Gog complements the existing [Google Drive](drive.md) MCP integration; it does
 not replace it.
 
 ## Install and configure

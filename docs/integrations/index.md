@@ -8,9 +8,7 @@ fit your environment.
 
 | Integration | What it does |
 |-------------|--------------|
-| [Google Calendar](gcal.md) | Read and manage calendar events. |
-| [Google Drive](gdrive.md) | Search, list, and read Drive files. |
-| [Google Workspace via Gog](gog.md) | Work with Gmail, Contacts, Docs, and Sheets through a narrow host-side service. |
+| [Google integrations](google/index.md) | Set up one or more Google services for a workspace. |
 
 ## Communication
 

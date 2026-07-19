@@ -81,7 +81,7 @@ tools = ["example_personal"]
 
 | Server | Guide |
 |--------|-------|
-| Google Drive | [Google Drive setup](../integrations/gdrive.md) |
+| Google Drive | [Google Drive setup](../integrations/google/drive.md) |
 | Linear | [Linear task tracking](../integrations/linear.md) |
 | Notebooks | [Notebook execution](../integrations/notebooks.md) |
 | Proton Mail | [Proton Mail](../integrations/proton-mail.md) |

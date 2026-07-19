@@ -196,7 +196,7 @@ async def _setup_channels(app: PynchyApp) -> None:
         create_background_task(store_chat_metadata(jid, ts, name), name="store-metadata")
 
     async def send_text_message(jid: str, text: str) -> None:
-        """Adapter for the documented plugin contract (docs/plugins/hooks.md):
+        """Adapter for the documented plugin contract (docs/plugins/hooks/index.md):
         send_message takes plain text, not the internal OutboundEvent type.
         """
         await app.broadcast_to_channels(

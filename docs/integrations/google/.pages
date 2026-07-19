@@ -1,0 +1,5 @@
+nav:
+  - Overview and setup: index.md
+  - Google Drive: drive.md
+  - Google Calendar: calendar.md
+  - Google Workspace via Gog: workspace-gog.md

@@ -1,8 +1,6 @@
 nav:
   - Overview: index.md
-  - Google Calendar: gcal.md
-  - Google Drive: gdrive.md
-  - Google Workspace via Gog: gog.md
+  - google
   - GitHub PR notifications: github.md
   - Linear: linear.md
   - Matrix communications: matrix-gateway.md

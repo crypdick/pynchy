@@ -1,0 +1,10 @@
+nav:
+  - Overview: index.md
+  - Agent cores: agent-cores.md
+  - Host services: host-services.md
+  - Skills: skills.md
+  - Channels and speech: channels.md
+  - Runtime and tunnels: runtime-and-tunnels.md
+  - Observers and memory: observers-and-memory.md
+  - Webhooks: webhooks.md
+  - MCP servers and workspaces: mcp-and-workspaces.md

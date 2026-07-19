@@ -18,25 +18,25 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `claude-cli` | Agent core | Claude Code CLI core | Select with `[agent].default_core = "claude-cli"` | [Agent cores](../usage/agent-cores.md) |
 | `openai` | Agent core | OpenAI Agents SDK core | Select with `[agent].default_core = "openai"` | [Agent cores](../usage/agent-cores.md) |
 | `codex` | Agent core | OpenAI Codex CLI core | Select with `[agent].default_core = "codex"` | [Agent cores](../usage/agent-cores.md) |
-| `discord` | Channel | Discord channel, including text and voice input | `uv sync --extra discord` and `[connections]` configuration | [Channels](../usage/channels.md) |
-| `slack` | Channel | Slack Socket Mode channel | `uv sync --extra slack` and `[connections]` configuration | [Channels](../usage/channels.md) |
-| `tui` | Channel | Local terminal UI over HTTP/SSE | No external credential | [Channels](../usage/channels.md) |
-| `whatsapp` | Channel | WhatsApp channel through Neonize | `uv sync --extra whatsapp` and QR authentication | [Channels](../usage/channels.md) |
-| `pocket-tts` | Speech synthesizer | Local neural speech synthesis for spoken replies | Loopback Pocket TTS service | [Local speech synthesis](../usage/local-speech.md) |
+| `discord` | Channel | Discord channel, including text and voice input | `uv sync --extra discord` and `[connections]` configuration | [Discord](../channels/discord.md) |
+| `slack` | Channel | Slack Socket Mode channel | `uv sync --extra slack` and `[connections]` configuration | [Slack](../channels/slack.md) |
+| `tui` | Channel | Local terminal UI over HTTP/SSE | No external credential | [Terminal UI](../channels/tui.md) |
+| `whatsapp` | Channel | WhatsApp channel through Neonize | `uv sync --extra whatsapp` and QR authentication | [WhatsApp](../channels/whatsapp.md) |
+| `pocket-tts` | Speech synthesizer | Local neural speech synthesis for spoken replies | Loopback Pocket TTS service | [Local speech synthesis](../usage/host-capabilities/local-speech.md) |
 | `tailscale` | Tunnel | Tailscale connectivity detection | `tailscale` CLI on the host | [Tunnels](../architecture/tunnels.md) |
 | `docker-runtime` | Container runtime | Docker agent-container runtime | Docker CLI and daemon | [Container isolation](../architecture/container-isolation.md) |
 | `apple-runtime` | Container runtime | Apple Container agent-container runtime | macOS with Apple Container | [Container isolation](../architecture/container-isolation.md) |
 | `caldav` | Service handler | CalDAV calendar actions | `uv sync --extra caldav` and calendar configuration | [MCP service tools](../architecture/mcp-service-tools.md) |
 | `slack-token-extractor` | Service handler | Refreshes Slack browser tokens from persistent sessions | Slack browser session | [Slack MCP](../integrations/slack-mcp.md) |
 | `x-integration` | Service handler | Browser-driven X actions | X tool/profile configuration | [X integration](../integrations/x-integration.md) |
-| `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google Drive](../integrations/gdrive.md) |
-| `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google Drive](../integrations/gdrive.md) |
-| `gog` | Service handler | Host-only Gmail, Contacts, Docs, and Sheets actions | Gog CLI and configured host OAuth account | [Google Workspace via Gog](../integrations/gog.md) |
+| `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google integrations](../integrations/google/index.md) |
+| `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google integrations](../integrations/google/index.md) |
+| `gog` | Service handler | Host-only Gmail, Contacts, Docs, and Sheets actions | Gog CLI and configured host OAuth account | [Google Workspace via Gog](../integrations/google/workspace-gog.md) |
 | `playwright-browser` | MCP server specification + skill | Browser-control server and usage skill | `uv sync --extra browser` when Playwright is needed | [MCP servers](../usage/mcp.md) |
-| `desktop-screenshot` | Service handler | Captures the macOS host desktop | Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
-| `computer-use` | Service-handler router + skill | Policy-mediated desktop automation through provider plugins | Enable at least one provider supported by the host | [Computer use](../usage/computer-use.md) |
-| `peekaboo` | Computer-use provider | Semantic macOS automation with stable accessibility references | Peekaboo plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md#built-in-peekaboo) |
-| `cua-driver` | Computer-use provider | Compatibility backend for the original macOS action set | Cua Driver plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md#built-in-cua-driver) |
+| `desktop-screenshot` | Service handler | Captures the macOS host desktop | Screen Recording permission | [Desktop screenshots](../usage/host-capabilities/desktop-screenshots.md) |
+| `computer-use` | Service-handler router + skill | Policy-mediated desktop automation through provider plugins | Enable at least one provider supported by the host | [Computer use](../usage/host-capabilities/computer-use.md) |
+| `peekaboo` | Computer-use provider | Semantic macOS automation with stable accessibility references | Peekaboo plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/host-capabilities/computer-use.md#built-in-peekaboo) |
+| `cua-driver` | Computer-use provider | Compatibility backend for the original macOS action set | Cua Driver plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/host-capabilities/computer-use.md#built-in-cua-driver) |
 | `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../integrations/linear.md) |
 | `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../integrations/github.md) |
 | `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../integrations/proton-mail.md) |

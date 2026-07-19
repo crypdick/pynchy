@@ -141,7 +141,7 @@ does not need a separate `skills` entry.
 
 Compose this profile only into workspaces intended to control the real host
 without confirmation. A service property set to `"forbidden"` still blocks
-the action. See [Capability Rules](security.md#capability-rules) for the full
+the action. See [Capability Rules](../security.md#capability-rules) for the full
 policy precedence.
 
 ## Artifacts and safety
@@ -160,5 +160,5 @@ confirmations unless the user explicitly authorized that exact action.
 ---
 
 **Want to customize this?** Write your own provider plugin using the
-[`pynchy_computer_use_backend` hook](../plugins/hooks.md#pynchy_computer_use_backend),
+[`pynchy_computer_use_backend` hook](../../plugins/hooks/host-services.md#pynchy_computer_use_backend),
 or [open a feature request](https://github.com/crypdick/pynchy/issues).

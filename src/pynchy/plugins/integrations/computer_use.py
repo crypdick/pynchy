@@ -182,7 +182,7 @@ def _capability(
         ),
         setup_hint="Enable a computer-use provider plugin supported by this host platform.",
         recovery_hint="Check the selected provider's installation and platform permissions.",
-        documentation="docs/usage/computer-use.md",
+        documentation="docs/usage/host-capabilities/computer-use.md",
         probe=probe,
     )
 

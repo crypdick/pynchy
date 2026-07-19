@@ -4,7 +4,7 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, and talkin
 
 ## What You Can Do
 
-- **[Channels](channels.md)** — Message your assistant from WhatsApp, Slack, Discord, or the built-in TUI (plugin-provided — more can be added)
+- **[Channels](../channels/index.md)** — Message your assistant from WhatsApp, Slack, Discord, or the built-in TUI (plugin-provided — more can be added)
 - **[Workspaces](workspaces.md)** — Bind a chat to reusable profiles for prompts, tools, skills, repositories, and security policy
 - **Admin channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
 - **[Persistent memory](memory.md)** — Agents save and recall facts across sessions using structured memory tools with ranked search (plugin-provided backend)
@@ -57,7 +57,7 @@ For example, you can ask Pynchy to help you:
 
 | Topic | What it covers |
 |-------|---------------|
-| [Channels](channels.md) | WhatsApp, Slack, Discord, and TUI — multi-channel sync |
+| [Channels](../channels/index.md) | WhatsApp, Slack, Discord, and TUI — multi-channel sync |
 | [Control plane](control-plane.md) | Local Unix socket, remote bearer authentication, rate limits, and deployment access |
 | [Groups](groups.md) | Group management, admin channel privileges |
 | [Workspace configuration](workspaces.md) | Compose profiles and bind workspaces to configured chats |
@@ -66,5 +66,5 @@ For example, you can ask Pynchy to help you:
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
 | [Prompts](prompts.md) | System prompt extensions via profiles and workspaces |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |
-| [Computer use](computer-use.md) | Drive a host desktop through replaceable provider plugins for real-browser and native-app workflows |
+| [Host capabilities](host-capabilities/index.md) | Computer use, screenshots, and local speech services for the host desktop |
 | [Tool Trust](security.md) | Configure tool trust declarations — control when agents need human approval |

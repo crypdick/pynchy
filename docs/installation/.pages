@@ -1,0 +1,6 @@
+nav:
+  - Overview: index.md
+  - Local installation: local.md
+  - Headless Linux server: server.md
+  - Migration: migration.md
+  - Troubleshooting: troubleshooting.md

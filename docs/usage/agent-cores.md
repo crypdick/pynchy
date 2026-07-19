@@ -141,7 +141,7 @@ Claude SDK and OpenAI Agents SDK calls route through a host-side gateway. You ge
 - **Provider flexibility** — [100+ LLM providers](https://docs.litellm.ai/docs/providers) via LiteLLM
 - **Load balancing** — across multiple API keys or providers
 
-The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../install.md).
+The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../installation/index.md).
 
 The Codex CLI core also uses the gateway. Pynchy generates a Codex custom model
 provider for each workspace with:
