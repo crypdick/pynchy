@@ -31,6 +31,19 @@ def test_runtime_names_scope_feature_resources(monkeypatch: pytest.MonkeyPatch) 
     assert oneshot_container_name("jobs").startswith("pynchy-example-a1b2-jobs-")
 
 
+def test_runtime_container_name_shortens_dynamic_thread_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PYNCHY_RUNTIME_NAMESPACE", raising=False)
+    suffix = "pynchy-dev--thread-discord-channel-1528253416487387187-1784434948918"
+
+    name = runtime_container_name(suffix)
+
+    assert len(name) == 64
+    assert name.startswith("pynchy-pynchy-dev--thread-discord-channel-")
+    assert name != runtime_container_name(f"{suffix}-next")
+
+
 def test_runtime_namespace_rejects_unsafe_names(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYNCHY_RUNTIME_NAMESPACE", "Pynchy/../../prod")
     with pytest.raises(ValueError, match="PYNCHY_RUNTIME_NAMESPACE"):

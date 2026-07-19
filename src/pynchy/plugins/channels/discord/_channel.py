@@ -261,7 +261,10 @@ class DiscordChannel:
         create_thread = getattr(parent, "create_thread", None)
         if not callable(create_thread):
             raise TypeError("Discord target does not support child threads")
-        thread = await create_thread(name=name)
+        # discord.py defaults TextChannel.create_thread() to a private thread.
+        # Scheduled output belongs to the configured channel's participants,
+        # so opt into the public type explicitly.
+        thread = await create_thread(name=name, type=discord.ChannelType.public_thread)
         return channel_jid(str(thread.id))
 
     async def find_configured_channel(self, target: DiscordChatTarget) -> object | None:

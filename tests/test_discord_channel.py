@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from pynchy.config.models import DiscordConnectionConfig
@@ -111,10 +112,10 @@ class _FakeThread:
 
 class _FakeThreadParent:
     def __init__(self) -> None:
-        self.thread_names: list[str] = []
+        self.thread_requests: list[tuple[str, object]] = []
 
-    async def create_thread(self, *, name: str) -> _FakeThread:
-        self.thread_names.append(name)
+    async def create_thread(self, *, name: str, **kwargs: object) -> _FakeThread:
+        self.thread_requests.append((name, kwargs["type"]))
         return _FakeThread(id=456)
 
 
@@ -346,7 +347,7 @@ async def test_creates_child_thread_for_scheduled_task():
     child_jid = await ch.create_thread("discord:channel:123", "pynchy-dev-1")
 
     assert child_jid == "discord:channel:456"
-    assert parent.thread_names == ["pynchy-dev-1"]
+    assert parent.thread_requests == [("pynchy-dev-1", discord.ChannelType.public_thread)]
     ch.resolve_channel.assert_awaited_once_with("discord:channel:123")
 
 

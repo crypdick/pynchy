@@ -297,10 +297,14 @@ async def _finish_checkpoint(
 ) -> None:
     if interrupted:
         return
+    if error:
+        # Keep the checkpoint for a first attempt as well as a resumed one.
+        # Temporal retries the activity after an agent failure; preserving its
+        # selected target prevents a retry from creating another child thread.
+        await release_in_flight_turn_claim(turn_id)
+        return
     if resume_turn is None:
         await clear_in_flight_turn(turn_id)
-    elif error:
-        await release_in_flight_turn_claim(turn_id)
 
 
 async def run_task_agent(request: TaskAgentRequest) -> tuple[str | None, str | None]:
