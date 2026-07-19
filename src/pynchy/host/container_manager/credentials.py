@@ -7,14 +7,18 @@ API credentials.  Real keys never leave the host process.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess  # noqa: S404, RUF100 - credential discovery uses fixed no-shell gh/git argv.
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves credential helpers at runtime.
 from urllib.parse import urlparse
+
+from dotenv import dotenv_values
 
 from pynchy.config import get_settings
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
 )
+from pynchy.config.workspace_names import static_workspace_name
 from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
     LiteLLMGateway,
@@ -88,6 +92,89 @@ def shell_quote(value: str) -> str:
 
 _BASE_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
+_PROTON_PASS_TIMEOUT_SECONDS = 15
+
+
+class ProtonPassSecretResolutionError(RuntimeError):
+    """A configured scoped secret reference could not be resolved safely."""
+
+
+def _null_delimited_env_values(output: bytes) -> dict[str, str]:
+    """Parse ``env -0`` output without ever rendering it to logs."""
+    values: dict[str, str] = {}
+    for entry in output.split(b"\0"):
+        if not entry or b"=" not in entry:
+            continue
+        raw_name, raw_value = entry.split(b"=", maxsplit=1)
+        name = raw_name.decode("utf-8", errors="strict")
+        values[name] = raw_value.decode("utf-8", errors="strict")
+    return values
+
+
+def _workspace_proton_pass_env_vars(s: Settings, group_folder: str) -> dict[str, str]:
+    """Resolve one workspace's Proton Pass references for its env-dir only.
+
+    The template stores ``pass://`` references, never real secret values.  The
+    ``pass-cli`` child receives the real values and this process copies only the
+    explicitly named variables into Pynchy's already-scoped container env file.
+    """
+    workspace = s.workspaces.get(static_workspace_name(group_folder))
+    template_name = workspace.proton_pass_env_file if workspace else None
+    if template_name is None:
+        return {}
+
+    template_path = (s.project_root / template_name).resolve()
+    if not template_path.is_file():
+        msg = f"Proton Pass secret template is missing for workspace {group_folder!r}"
+        raise ProtonPassSecretResolutionError(msg)
+    template_values = dotenv_values(template_path)
+    expected_names = {name for name, value in template_values.items() if value is not None}
+    if not expected_names:
+        return {}
+    pass_cli = shutil.which("pass-cli")
+    if pass_cli is None:
+        msg = f"Proton Pass CLI is unavailable for workspace {group_folder!r}"
+        raise ProtonPassSecretResolutionError(msg)
+
+    try:
+        # pass_cli is discovered locally; every other argv element stays fixed.
+        result = subprocess.run(  # noqa: S603, RUF100
+            [
+                pass_cli,
+                "run",
+                "--no-masking",
+                "--env-file",
+                str(template_path),
+                "--",
+                "/usr/bin/env",
+                "-0",
+            ],
+            capture_output=True,
+            check=False,
+            timeout=_PROTON_PASS_TIMEOUT_SECONDS,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        msg = (
+            "Proton Pass secret resolution unavailable for workspace "
+            f"{group_folder!r}: {type(exc).__name__}"
+        )
+        raise ProtonPassSecretResolutionError(msg) from exc
+    if result.returncode != 0:
+        msg = (
+            f"Proton Pass secret resolution failed for workspace {group_folder!r} "
+            f"(exit {result.returncode})"
+        )
+        raise ProtonPassSecretResolutionError(msg)
+
+    resolved = _null_delimited_env_values(result.stdout)
+    missing_names = sorted(name for name in expected_names if name not in resolved)
+    if missing_names:
+        msg = (
+            "Proton Pass did not provide configured variables for workspace "
+            f"{group_folder!r}: {', '.join(missing_names)}"
+        )
+        raise ProtonPassSecretResolutionError(msg)
+    return {name: resolved[name] for name in expected_names}
 
 
 def has_api_credentials() -> bool:
@@ -249,6 +336,10 @@ def build_agent_env_vars(
         env_vars.update(extra_env_vars)
     if gateway_env_vars:
         _merge_no_proxy_hosts(env_vars, _gateway_no_proxy_hosts(gateway))
+    # NOTE: Update docs/architecture/container-isolation.md § Environment Variable
+    # Isolation and docs/architecture/security.md § 6. Credential Handling when
+    # changing this workspace-scoped credential path.
+    env_vars.update(_workspace_proton_pass_env_vars(s, group_folder))
     # The deterministic runtime must not discover credentials from the host,
     # including credentials held by gh outside its sandboxed HOME directory.
     # NOTE: Keep docs/contributing/new-feature.md in sync.  # temporal-ok: current doc path.

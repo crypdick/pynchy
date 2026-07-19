@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import signal
 import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-shell processes.
 from pathlib import Path
@@ -283,16 +284,33 @@ async def _wait_for_docker_health(instance: McpInstance) -> None:
             any_non_5xx=True,
             health_timeout_seconds=instance.server_config.startup_timeout_seconds,
         )
-    except (TimeoutError, RuntimeError):
+    except (TimeoutError, RuntimeError) as exc:
+        log_result = await run_docker("logs", "--tail", "50", instance.container_name, check=False)
         logger.error(
             "MCP container failed health check",
             instance_id=instance.instance_id,
             container=instance.container_name,
+            error_type=type(exc).__name__,
+            log_tail=_redacted_container_log_tail(log_result),
         )
         # Clean up the failed container (matches script path which
-        # calls terminate_process before re-raising).
+        # calls terminate_process before re-raising). Capture diagnostics
+        # first: docker rm makes a timeout otherwise impossible to diagnose.
         await stop_container(instance.container_name, stop_timeout_seconds=1)
         raise
+
+
+def _redacted_container_log_tail(result: subprocess.CompletedProcess[str]) -> str:
+    """Return bounded diagnostic text without obvious credential values."""
+    combined = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    if not combined:
+        return "(no container log output)"
+    redacted = re.sub(
+        r"(?i)\\b(token|secret|password|api[_-]?key|authorization)\\b\\s*[:=]\\s*\\S+",
+        r"\\1=<redacted>",
+        combined,
+    )
+    return redacted[-4000:]
 
 
 def kwargs_to_args(kwargs: dict[str, str]) -> list[str]:

@@ -78,6 +78,7 @@ Each group gets its own env file at `data/env/{group}/env`. Only allowlisted var
 - `GH_TOKEN` — **admin containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-admin containers don't receive this; their git operations are routed through host IPC.
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
+- Workspace-scoped Proton Pass variables — resolved only for workspaces that declare a secret-reference template. See [Credential Handling](security.md#workspace-scoped-proton-pass-templates).
 
 **Process:**
 1. Host discovers credentials from `config.toml [secrets]` and auto-discovery (OAuth, gh CLI, git config)

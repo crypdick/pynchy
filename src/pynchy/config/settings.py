@@ -323,9 +323,12 @@ class Settings(BaseSettings):
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
         resolved = merge_workspace_profiles([self.profiles[name] for name in profile_names])
-        if workspace.model is not None:
-            return replace(resolved, model=workspace.model)
-        return resolved
+        return replace(
+            resolved,
+            model=workspace.model if workspace.model is not None else resolved.model,
+            contains_secrets=resolved.contains_secrets
+            or workspace.proton_pass_env_file is not None,
+        )
 
     def configured_agent_models(self) -> tuple[str, ...]:
         """Return the distinct model routes configured globally or per workspace."""

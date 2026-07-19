@@ -423,6 +423,19 @@ class WorkspaceConfig(_StrictModel):
     profiles: list[ValidatedProfileName] = Field(default_factory=list)
     model: str | None = None
     chat: ValidatedChatRef | None = None
+    proton_pass_env_file: str | None = None
+
+    @field_validator("proton_pass_env_file")
+    @classmethod
+    def validate_proton_pass_env_file(cls, value: str | None) -> str | None:
+        """Keep secret-reference templates rooted in the Pynchy checkout."""
+        if value is None:
+            return None
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts or not value.strip():
+            msg = "proton_pass_env_file must be a non-empty relative path without '..'"
+            raise ValueError(msg)
+        return value
 
 
 class ReposConfig(_StrictModel):

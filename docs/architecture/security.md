@@ -276,6 +276,22 @@ Non-LLM credentials get written directly to per-group env files (`data/env/{grou
 
 Each group gets its own env directory, so concurrent containers don't share secrets. A compromised non-admin container's token is scoped to a single repo and cannot access other repositories.
 
+#### Workspace-scoped Proton Pass templates
+
+Use a Proton Pass reference template when one workspace needs a non-LLM credential. Store only `pass://` references in the template; Pynchy resolves them immediately before launching that workspace and writes the resolved values only to its per-group env directory.
+
+```toml
+[workspaces.review]
+profiles = ["review"]
+proton_pass_env_file = "secrets/review.env"
+```
+
+```dotenv
+TODOIST_API_KEY=pass://Operations/Todoist/password
+```
+
+Keep the template out of version control when its vault or item names disclose sensitive context. Configure `pass-cli` with a Proton Pass personal access token that can read only the listed items. Pynchy fails the launch without revealing command output when that CLI cannot resolve a configured variable.
+
 **Token resolution order** for host-side git operations (fetch, push, ls-remote):
 
 1. `repos."owner/repo".token` — explicit per-repo fine-grained PAT (highest priority)
