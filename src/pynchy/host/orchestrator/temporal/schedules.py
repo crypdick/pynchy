@@ -125,7 +125,7 @@ def schedule_for_agent_task(task: ScheduledTask) -> Schedule:
             task.schedule_value,
             timezone=_schedule_timezone(),
         ),
-        policy=_schedule_policy(),
+        policy=_agent_task_schedule_policy(task),
     )
 
 
@@ -267,3 +267,15 @@ def _recurring_schedule_spec(
 
 def _schedule_policy() -> SchedulePolicy:
     return SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP, pause_on_failure=False)
+
+
+def _agent_task_schedule_policy(task: ScheduledTask) -> SchedulePolicy:
+    """Keep config jobs serial without suppressing one pending occurrence.
+
+    Config jobs have a permanent task thread. Buffering one occurrence ensures
+    that an overrun remains in that same thread after the current run finishes.
+    Database-created direct tasks preserve the existing skip-on-overlap policy.
+    """
+    if task.persistent_thread_name is not None:
+        return SchedulePolicy(overlap=ScheduleOverlapPolicy.BUFFER_ONE, pause_on_failure=False)
+    return _schedule_policy()

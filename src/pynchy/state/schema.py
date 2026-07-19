@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     created_at TEXT NOT NULL,
     context_mode TEXT DEFAULT 'isolated',
     repo_access TEXT,
-    input_source TEXT NOT NULL DEFAULT 'scheduled_task'
+    input_source TEXT NOT NULL DEFAULT 'scheduled_task',
+    persistent_thread_name TEXT,
+    persistent_thread_jid TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -389,11 +391,11 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
     if "pynchy_repo_access" in cols:
         # Copy truthy rows using 'pynchy' as a placeholder slug.
         # Users must update their config.toml to set the real slug.
-        if "repo_access" in cols:
-            await database.execute(
-                "UPDATE scheduled_tasks SET repo_access = 'pynchy' "
-                "WHERE pynchy_repo_access = 1 AND repo_access IS NULL"
-            )
+        # _ensure_columns runs before this migration, so repo_access exists.
+        await database.execute(
+            "UPDATE scheduled_tasks SET repo_access = 'pynchy' "
+            "WHERE pynchy_repo_access = 1 AND repo_access IS NULL"
+        )
         try:
             await database.execute("ALTER TABLE scheduled_tasks DROP COLUMN pynchy_repo_access")
             logger.info("Dropped scheduled_tasks.pynchy_repo_access column")

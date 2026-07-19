@@ -122,29 +122,59 @@ def test_claude_cli_accepts_workspace_model_override() -> None:
     assert resolved.model == "workspace-model"
 
 
-def test_agent_job_targets_configured_workspace() -> None:
+def test_agent_job_targets_configured_profile() -> None:
     settings = _settings(
         jobs={
             "daily-triage": JobConfig(
                 enabled=True,
                 schedule="0 8 * * *",
-                workspace="admin",
+                profile="admin",
                 prompt_file="prompts/daily-triage.md",
             )
         }
     )
 
     job = settings.jobs["daily-triage"]
-    assert job.workspace == "admin"
+    assert job.profile == "admin"
+    assert job.workspace is None
     assert job.schedule == "0 8 * * *"
     assert job.prompt_file == "prompts/daily-triage.md"
+
+
+def test_profile_targeted_agent_job_requires_one_root_workspace() -> None:
+    with pytest.raises(ValidationError, match="must select exactly one root workspace"):
+        _settings(
+            workspaces={
+                "relationships": WorkspaceConfig(profiles=["admin"]),
+                "relationships-archive": WorkspaceConfig(profiles=["admin"]),
+            },
+            jobs={
+                "fam_daily_checkin": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    profile="admin",
+                    prompt="Check in.",
+                )
+            },
+        )
+
+
+def test_agent_job_rejects_profile_and_legacy_workspace_together() -> None:
+    with pytest.raises(ValidationError, match="cannot set both profile and workspace"):
+        JobConfig(
+            enabled=True,
+            schedule="0 8 * * *",
+            profile="admin",
+            workspace="admin",
+            prompt="Check in.",
+        )
 
 
 def test_one_time_agent_job_uses_at_instead_of_schedule() -> None:
     job = JobConfig(
         enabled=True,
         at="2026-07-08T18:30:00-07:00",
-        workspace="admin",
+        profile="admin",
         prompt="Cancel the subscription.",
     )
 

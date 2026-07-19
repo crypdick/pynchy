@@ -67,9 +67,34 @@ def validate_profile_references(
                 )
                 raise ValueError(message)
     for job_name, job in jobs.items():
-        if job.workspace != "host" and job.workspace not in workspaces:
-            message = f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
-            raise ValueError(message)
+        _validate_job_reference(job_name, job, profiles, workspaces)
+
+
+def _validate_job_reference(
+    job_name: str,
+    job: JobConfig,
+    profiles: dict[str, ProfileConfig],
+    workspaces: dict[str, WorkspaceConfig],
+) -> None:
+    """Validate one config job's profile-to-root-workspace binding."""
+    if job.is_host:
+        return
+    if job.profile is None:
+        if job.workspace not in workspaces:
+            raise ValueError(
+                f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
+            )
+        return
+    if job.profile not in profiles:
+        raise ValueError(f"jobs.{job_name}.profile references unknown profile: {job.profile}")
+    roots = [
+        folder for folder, workspace in workspaces.items() if job.profile in workspace.profiles
+    ]
+    if len(roots) != 1:
+        raise ValueError(
+            f"jobs.{job_name}.profile must select exactly one root workspace; "
+            f"found {roots} for profile: {job.profile}"
+        )
 
 
 def validate_workspace_chat_references(settings: Settings) -> None:

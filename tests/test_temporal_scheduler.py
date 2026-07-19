@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 from conftest import make_settings
 from temporalio import activity
-from temporalio.client import WorkflowFailureError
+from temporalio.client import ScheduleOverlapPolicy, WorkflowFailureError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -529,7 +529,20 @@ class TestTemporalSchedulerRuntime:
         assert schedule.action.workflow == "ScheduledAgentTaskWorkflow"
         assert schedule.action.args == [temporal_task.id]
         assert schedule.action.id == "pynchy-agent-schedule-task-with-spaces-workflow"
+        assert schedule.policy.overlap is ScheduleOverlapPolicy.SKIP
         assert kwargs == {}
+
+    def test_profile_task_buffers_one_overlapping_schedule_occurrence(
+        self, monkeypatch, temporal_task
+    ):
+        """Profile jobs remain serial while retaining one pending run."""
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+        temporal_task.persistent_thread_name = "relationships | fam_daily_checkin"
+
+        schedule = temporal_schedules.schedule_for_agent_task(temporal_task)
+
+        assert schedule.policy.overlap is ScheduleOverlapPolicy.BUFFER_ONE
 
     @pytest.mark.asyncio
     async def test_reconcile_starts_once_agent_task_as_delayed_workflow(

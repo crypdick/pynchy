@@ -136,6 +136,7 @@ from pynchy.state.tasks import (
     get_task_run_logs,
     get_tasks_for_group,
     log_task_run,
+    rebind_task_root,
     record_task_completion,
     update_task,
 )
@@ -238,8 +239,9 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_task_run_logs",
     "get_tasks_for_group",
     "log_task_run",
-    "update_task",
     "record_task_completion",
+    "rebind_task_root",
+    "update_task",
     # webhooks
     "WebhookAdmission",
     "WebhookReceipt",

@@ -74,6 +74,44 @@ class TestJobReconcile:
         assert task.context_mode == "isolated"
         assert task.repo_access is None
 
+    async def test_profile_job_resolves_root_and_persists_derived_thread(
+        self, db, monkeypatch, tmp_path
+    ):
+        settings = make_settings(
+            groups_dir=tmp_path / "groups",
+            profiles={"relationships": ProfileConfig()},
+            workspaces={"relationships": WorkspaceConfig(profiles=["relationships"])},
+            jobs={
+                "fam_daily_checkin": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    profile="relationships",
+                    prompt="Check in with the family.",
+                )
+            },
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings
+        )
+        registered = {
+            "discord:channel:relationships": WorkspaceProfile(
+                jid="discord:channel:relationships",
+                name="Relationships",
+                folder="relationships",
+                trigger="@Pynchy",
+            )
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        task = tasks[0]
+        assert task.group_folder == "relationships"
+        assert task.chat_jid == "discord:channel:relationships"
+        assert task.persistent_thread_name == "relationships | fam_daily_checkin"
+        assert task.persistent_thread_jid is None
+
     async def test_one_time_agent_job_creates_once_task(self, db, monkeypatch, tmp_path):
         run_at = "2026-07-08T18:30:00-07:00"
         self._patch_settings(

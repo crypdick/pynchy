@@ -375,6 +375,8 @@ class ScheduledTask:
     created_at: str = ""
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
     input_source: str = "scheduled_task"
+    persistent_thread_name: str | None = None
+    persistent_thread_jid: str | None = None
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.
