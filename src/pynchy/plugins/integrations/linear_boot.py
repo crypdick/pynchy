@@ -1,4 +1,9 @@
-"""Startup reconciliation for Linear workspace boards."""
+"""Startup reconciliation for Linear workspace boards.
+
+This module sits below the aggregate Linear plugin because webhook routes reuse
+its workspace selector. Import provider primitives from leaf modules here to
+avoid a plugin -> webhook -> boot import cycle.
+"""
 
 from __future__ import annotations
 
@@ -14,13 +19,13 @@ from pynchy.config import get_settings
 from pynchy.config.models import LinearTool
 from pynchy.host.orchestrator.workspace_config import static_workspace_folder
 from pynchy.logger import logger
-from pynchy.plugins.integrations.linear import LinearClient
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     WorkspaceTodoProposal,
     create_workspace_todo,
     reconcile_workspace_boards,
 )
+from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_statuses import READY_FOR_PLANNING_STATUS
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     WorkspaceProfile,
