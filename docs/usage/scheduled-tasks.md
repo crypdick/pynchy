@@ -8,9 +8,13 @@ same MCP tools.
 
 ## Agent Tasks
 
-Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, etc.), as if a user had sent the message. Config-backed jobs target a named workspace.
+Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, and so on), as if a user had sent the message. A config-backed agent job targets a named profile. That profile must appear directly in exactly one configured root workspace.
 
-Agent tasks use an isolated runtime folder for the target workspace. When its target chat has no active turn, the task posts there. When a human session or another scheduled task occupies that chat, Pynchy creates a numbered child thread such as `pynchy-dev-1` and runs there instead. This requires a channel with child-thread support; Pynchy records an error rather than interrupting the occupied conversation when the channel cannot create one. Tasks can optionally send messages via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the workspace profile selects a repo, worktree commits merge and push after a successful run.
+Pynchy creates one durable sibling thread for each config-backed job beneath that root. It names the thread `<profile> | <job_id>`. For example, `fam_daily_checkin` with `profile = "relationships"` runs only in `relationships | fam_daily_checkin` under `#relationships`. Pynchy stores the created thread JID and reuses it for every run and retry. Different jobs in the same profile use different threads and can run concurrently.
+
+Temporal buffers one overlapping occurrence for a config-backed job. The next run waits for the current one, then runs in the same task thread; Pynchy never creates a numbered spillover thread for that job. This requires a channel with child-thread support. Pynchy records an error instead of moving the run to another target when the root channel cannot create threads.
+
+Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy, they retain the existing numbered-child-thread behavior. Each agent task uses an isolated runtime folder. If its workspace profile selects a repo, worktree commits merge and push after a successful run.
 
 For a periodic review that turns evidence into approval-gated work proposals,
 see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-proposals).
@@ -20,17 +24,17 @@ see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-
 A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper workspace model override:
 
 ```toml
-[profiles.pynchy-admin]
+[profiles.admin]
 is_admin = true
 
 [workspaces.admin]
-profiles = ["pynchy-admin"]
+profiles = ["admin"]
 model = "chatgpt/gpt-5.3-codex-spark"
 
 [jobs.daily-triage]
 enabled = true
 schedule = "0 8 * * *"
-workspace = "admin"
+profile = "admin"
 prompt = """
 Produce the daily Pynchy triage memo.
 
@@ -55,7 +59,7 @@ One-time agent jobs use `at` instead of `schedule`:
 [jobs.cancel-youtube-premium]
 enabled = true
 at = "2026-07-08T18:30:00-07:00"
-workspace = "admin"
+profile = "admin"
 prompt = """
 Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
 """

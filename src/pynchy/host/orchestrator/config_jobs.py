@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves job reconciliation annotations at runtime.
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -19,7 +19,7 @@ from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.state import create_task, get_task_by_id, update_task
+from pynchy.state import create_task, get_task_by_id, rebind_task_root, update_task
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
     WorkspaceProfile,
@@ -58,6 +58,7 @@ def _job_schedule(job_name: str, settings: Settings) -> tuple[Literal["cron", "o
 class _AgentJobContext:
     group: WorkspaceProfile
     resolved: ResolvedWorkspaceConfig
+    root_folder: str
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class _AgentJobTaskDetails:
     schedule_type: Literal["cron", "once"]
     schedule_value: str
     context_mode: Literal["isolated"]
+    persistent_thread_name: str
 
 
 async def _pause_disabled_job(task_id: str) -> None:
@@ -79,39 +81,59 @@ def _resolve_agent_job_context(
     job: JobConfig,
     folder_to_group: dict[str, WorkspaceProfile],
     resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
+    root_folder: str,
 ) -> _AgentJobContext | None:
-    group = folder_to_group.get(job.workspace)
+    group = folder_to_group.get(root_folder)
     if group is None:
         logger.warning(
-            "Config job workspace is not registered; skipping",
+            "Config job root workspace is not registered; skipping",
             job=job_name,
-            workspace=job.workspace,
+            profile=job.profile,
+            workspace=root_folder,
         )
         return None
 
-    resolved = resolve_config(job.workspace)
+    resolved = resolve_config(root_folder)
     if resolved is None:
         logger.warning(
-            "Config job workspace has no resolved config; skipping",
+            "Config job root workspace has no resolved config; skipping",
             job=job_name,
-            workspace=job.workspace,
+            profile=job.profile,
+            workspace=root_folder,
         )
         return None
 
-    return _AgentJobContext(group=group, resolved=resolved)
+    return _AgentJobContext(group=group, resolved=resolved, root_folder=root_folder)
+
+
+def _root_folder_for_job(job: JobConfig, settings: Settings) -> str | None:
+    """Resolve a profile-targeted job to its one configured root workspace."""
+    if job.profile is None:
+        raise RuntimeError("Validated agent job has no profile")
+    roots = [
+        folder
+        for folder, workspace in settings.workspaces.items()
+        if job.profile in workspace.profiles
+    ]
+    return roots[0] if len(roots) == 1 else None
+
+
+def _persistent_thread_name(job_name: str, job: JobConfig) -> str:
+    """Return the human-readable stable thread for one config-backed job."""
+    return f"{job.target_scope} | {job_name}"
 
 
 async def _create_agent_job_task(
     *,
     task_id: str,
-    job: JobConfig,
     group: WorkspaceProfile,
+    root_folder: str,
     details: _AgentJobTaskDetails,
 ) -> None:
     await create_task(
         ScheduledTask(
             id=task_id,
-            group_folder=job.workspace,
+            group_folder=root_folder,
             chat_jid=group.jid,
             prompt=details.prompt,
             schedule_type=details.schedule_type,
@@ -119,6 +141,7 @@ async def _create_agent_job_task(
             context_mode=details.context_mode,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
+            persistent_thread_name=details.persistent_thread_name,
         )
     )
 
@@ -132,6 +155,7 @@ def _agent_job_updates(
     updates: dict[str, Any] = {}
     if existing.chat_jid != group.jid:
         updates["chat_jid"] = group.jid
+        updates["persistent_thread_jid"] = None
     if existing.prompt != details.prompt:
         updates["prompt"] = details.prompt
     if existing.schedule_type != details.schedule_type:
@@ -142,6 +166,9 @@ def _agent_job_updates(
         updates["context_mode"] = details.context_mode
     if existing.repo_access is not None:
         updates["repo_access"] = None
+    if existing.persistent_thread_name != details.persistent_thread_name:
+        updates["persistent_thread_name"] = details.persistent_thread_name
+        updates["persistent_thread_jid"] = None
     if existing.status != "active":
         updates["status"] = "active"
     return updates
@@ -164,7 +191,21 @@ async def reconcile_agent_jobs(
             await _pause_disabled_job(task_id)
             continue
 
-        context = _resolve_agent_job_context(job_name, job, folder_to_group, resolve_config)
+        root_folder = _root_folder_for_job(job, settings)
+        if root_folder is None:
+            logger.warning(
+                "Config job profile has no unique root workspace; skipping",
+                job=job_name,
+                profile=job.profile,
+            )
+            continue
+        context = _resolve_agent_job_context(
+            job_name,
+            job,
+            folder_to_group,
+            resolve_config,
+            root_folder,
+        )
         if context is None:
             continue
 
@@ -175,6 +216,7 @@ async def reconcile_agent_jobs(
             schedule_type=schedule_type,
             schedule_value=schedule_value,
             context_mode="isolated",
+            persistent_thread_name=_persistent_thread_name(job_name, job),
         )
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)
@@ -182,12 +224,25 @@ async def reconcile_agent_jobs(
         if existing is None:
             await _create_agent_job_task(
                 task_id=task_id,
-                job=job,
                 group=context.group,
+                root_folder=context.root_folder,
                 details=details,
             )
             logger.info("Created config agent job task", job=job_name, task_id=task_id)
             continue
+
+        if existing.group_folder != context.root_folder:
+            await rebind_task_root(
+                task_id,
+                group_folder=context.root_folder,
+                chat_jid=context.group.jid,
+            )
+            existing = replace(
+                existing,
+                group_folder=context.root_folder,
+                chat_jid=context.group.jid,
+                persistent_thread_jid=None,
+            )
 
         updates = _agent_job_updates(
             existing=existing,

@@ -122,29 +122,58 @@ def test_claude_cli_accepts_workspace_model_override() -> None:
     assert resolved.model == "workspace-model"
 
 
-def test_agent_job_targets_configured_workspace() -> None:
+def test_agent_job_targets_configured_profile() -> None:
     settings = _settings(
         jobs={
             "daily-triage": JobConfig(
                 enabled=True,
                 schedule="0 8 * * *",
-                workspace="admin",
+                profile="admin",
                 prompt_file="prompts/daily-triage.md",
             )
         }
     )
 
     job = settings.jobs["daily-triage"]
-    assert job.workspace == "admin"
+    assert job.profile == "admin"
+    assert job.workspace is None
     assert job.schedule == "0 8 * * *"
     assert job.prompt_file == "prompts/daily-triage.md"
+
+
+def test_profile_targeted_agent_job_requires_one_root_workspace() -> None:
+    with pytest.raises(ValidationError, match="must select exactly one root workspace"):
+        _settings(
+            workspaces={
+                "relationships": WorkspaceConfig(profiles=["admin"]),
+                "relationships-archive": WorkspaceConfig(profiles=["admin"]),
+            },
+            jobs={
+                "fam_daily_checkin": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    profile="admin",
+                    prompt="Check in.",
+                )
+            },
+        )
+
+
+def test_agent_job_rejects_workspace_selector() -> None:
+    with pytest.raises(ValidationError, match="cannot set workspace; use profile"):
+        JobConfig(
+            enabled=True,
+            schedule="0 8 * * *",
+            workspace="admin",
+            prompt="Check in.",
+        )
 
 
 def test_one_time_agent_job_uses_at_instead_of_schedule() -> None:
     job = JobConfig(
         enabled=True,
         at="2026-07-08T18:30:00-07:00",
-        workspace="admin",
+        profile="admin",
         prompt="Cancel the subscription.",
     )
 
@@ -157,7 +186,7 @@ def test_one_time_agent_job_rejects_invalid_at_timestamp() -> None:
         JobConfig(
             enabled=True,
             at="tomorrow-ish",
-            workspace="admin",
+            profile="admin",
             prompt="Cancel the subscription.",
         )
 
@@ -255,7 +284,7 @@ def test_job_requires_exactly_one_schedule_shape() -> None:
             enabled=True,
             schedule="0 8 * * *",
             at="2026-07-08T18:30:00-07:00",
-            workspace="admin",
+            profile="admin",
             prompt="Nope.",
         )
 
@@ -285,7 +314,7 @@ def test_host_job_is_selected_by_workspace_magic_word() -> None:
 
 def test_agent_job_requires_prompt_or_prompt_file() -> None:
     with pytest.raises(ValidationError, match="agent jobs require prompt or prompt_file"):
-        JobConfig(enabled=True, schedule="0 8 * * *", workspace="admin")
+        JobConfig(enabled=True, schedule="0 8 * * *", profile="admin")
 
 
 def test_host_job_rejects_agent_prompt_fields() -> None:

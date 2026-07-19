@@ -48,6 +48,8 @@ def _row_to_task(row: Row | None) -> ScheduledTask | None:
         created_at=row["created_at"],
         repo_access=row["repo_access"] or None,
         input_source=row["input_source"] or "scheduled_task",
+        persistent_thread_name=row["persistent_thread_name"] or None,
+        persistent_thread_jid=row["persistent_thread_jid"] or None,
     )
 
 
@@ -82,8 +84,8 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             repo_access, input_source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repo_access, input_source, persistent_thread_name, persistent_thread_jid)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -98,6 +100,8 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
             task.created_at,
             task.repo_access,
             task.input_source,
+            task.persistent_thread_name,
+            task.persistent_thread_jid,
         ),
     )
 

@@ -26,6 +26,7 @@ from pynchy.state import (
     get_in_flight_turns,
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
+    update_task,
 )
 from pynchy.types import (
     ContainerOutput,
@@ -216,8 +217,10 @@ async def _new_task_target(
     turn_id: str,
     input_messages: list[dict[str, Any]],
 ) -> _ScheduledTaskTarget:
-    """Claim an idle base chat or the first unreserved numbered child thread."""
+    """Claim a persistent task thread or a numbered child conversation."""
     async with _scheduled_target_lock:
+        if request.task.persistent_thread_name is not None:
+            return await _persistent_task_target(request, turn_id, input_messages)
         turns = await get_in_flight_turns()
         if not _base_channel_is_reserved(request.task, turns):
             slot = 0
@@ -271,6 +274,62 @@ async def _new_task_target(
             )
         )
         return target
+
+
+async def _persistent_task_target(
+    request: TaskAgentRequest,
+    turn_id: str,
+    input_messages: list[dict[str, Any]],
+) -> _ScheduledTaskTarget:
+    """Claim the one durable child thread assigned to a config-backed job.
+
+    Persistent task jobs never use their child thread as a parent. The root
+    workspace is only the creation parent; every run then uses the stored child
+    JID, including retries and runs after a host restart.
+    """
+    name = request.task.persistent_thread_name
+    if name is None:
+        raise RuntimeError("Persistent task target requires a thread name")
+    child_jid = request.task.persistent_thread_jid
+    if child_jid is None:
+        child_jid = await request.deps.find_thread(request.task.chat_jid, name)
+        if child_jid is None:
+            child_jid = await request.deps.create_thread(request.task.chat_jid, name)
+        if not child_jid:
+            raise RuntimeError("Persistent scheduled task thread returned no chat JID")
+        await update_task(request.task.id, {"persistent_thread_jid": child_jid})
+        request.task.persistent_thread_jid = child_jid
+
+    child_group = replace(
+        request.group,
+        jid=child_jid,
+        name=f"{request.group.name}/{name}",
+        folder=dynamic_thread_folder(request.group.folder, child_jid),
+    )
+    target = _ScheduledTaskTarget(
+        task=replace(
+            request.task,
+            group_folder=child_group.folder,
+            chat_jid=child_jid,
+            persistent_thread_jid=child_jid,
+        ),
+        group=child_group,
+        thread_slot=0,
+    )
+    await begin_message_turn(
+        MessageTurnStart(
+            turn_id=turn_id,
+            chat_jid=target.task.chat_jid,
+            group=target.group,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=input_messages,
+            input_start_cursor="",
+            input_end_cursor="",
+            task_id=request.task.id,
+            scheduled_base_chat_jid=request.task.chat_jid,
+        )
+    )
+    return target
 
 
 def _resumed_task_target(request: TaskAgentRequest, turn: InFlightTurn) -> _ScheduledTaskTarget:
