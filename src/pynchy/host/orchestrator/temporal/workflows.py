@@ -209,6 +209,11 @@ class DatabaseHostJobWorkflow:
                 "run_database_host_job",
                 job_id,
                 start_to_close_timeout=timedelta(hours=12),
+                # A host-job command can already have made an external change
+                # before it returns a nonzero exit status. The next scheduled
+                # occurrence is the retry boundary; retrying this activity
+                # would repeat that change without an operator decision.
+                retry_policy=RetryPolicy(maximum_attempts=1),
             ),
         )
 

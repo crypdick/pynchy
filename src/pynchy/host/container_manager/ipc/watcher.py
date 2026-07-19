@@ -15,6 +15,10 @@ from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC watcher deps at runtime.
 )
 from pynchy.host.container_manager.ipc.events import IpcEventHandler
+from pynchy.host.container_manager.ipc.file_claims import (
+    claim_ipc_file,
+    release_ipc_file,
+)
 from pynchy.host.container_manager.ipc.handlers_signals import handle_signal
 from pynchy.host.container_manager.ipc.input_processing import (
     classify_queued_ipc_file,
@@ -68,18 +72,6 @@ def _log_sweep_error(message: str, exc: OSError, source_group: str) -> None:
     logger.error(message, err=str(exc), source_group=source_group)
 
 
-def _path_exists(path: Path) -> bool:
-    return path.exists()
-
-
-def _mkdir_parents(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def _unlink_path(path: Path) -> None:
-    path.unlink()
-
-
 def _json_files_in_dir(path: Path) -> list[Path]:
     if not path.exists():
         return []
@@ -99,6 +91,8 @@ async def process_ipc_message_file(
     deps: IpcDeps,
 ) -> None:
     """Process a single IPC message file."""
+    if not claim_ipc_file(file_path):
+        return
     try:
         await handle_message_file(file_path, source_group, is_admin=is_admin, deps=deps)
     except Exception:  # noqa: BLE001, RUF100 - IPC message handling is an isolation boundary; move failures to error dir.
@@ -108,6 +102,8 @@ async def process_ipc_message_file(
             source_group=source_group,
         )
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+    finally:
+        release_ipc_file(file_path)
 
 
 async def process_ipc_request_file(
@@ -119,6 +115,8 @@ async def process_ipc_request_file(
     deps: IpcDeps,
 ) -> None:
     """Process a single canonical IPC request file."""
+    if not claim_ipc_file(file_path):
+        return
     try:
         await _handle_request_file(
             file_path,
@@ -134,6 +132,8 @@ async def process_ipc_request_file(
             source_group=source_group,
         )
         await asyncio.to_thread(_move_to_error_dir, ipc_base_dir, source_group, file_path)
+    finally:
+        release_ipc_file(file_path)
 
 
 async def _handle_request_file(
@@ -160,12 +160,12 @@ async def _handle_request_file(
             is_admin=is_admin,
             deps=deps,
         )
-        await asyncio.to_thread(_unlink_path, file_path)
+        await asyncio.to_thread(file_path.unlink)
         return
 
     if _claim_request_for_execution(envelope, ipc_base_dir):
         await dispatch(envelope, source_group, is_admin=is_admin, deps=deps)
-    await asyncio.to_thread(_unlink_path, file_path)
+    await asyncio.to_thread(file_path.unlink)
 
 
 async def process_ipc_output_file(
@@ -489,7 +489,7 @@ async def start_ipc_watcher(deps: IpcDeps) -> None:
 
     s = get_settings()
     ipc_base_dir = s.data_dir / "ipc"
-    await asyncio.to_thread(_mkdir_parents, ipc_base_dir)
+    await asyncio.to_thread(ipc_base_dir.mkdir, parents=True, exist_ok=True)
 
     # --- Startup sweep (crash recovery) ---
     swept = await recover_ipc_startup(ipc_base_dir, deps)
