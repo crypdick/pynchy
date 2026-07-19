@@ -126,14 +126,14 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     mcp_action(
         "linear.todo.create",
         "linear",
-        "Create a Linear todo issue for a Pynchy workspace.",
+        "Propose a Linear work item for a Pynchy workspace.",
         "linear_create_todo",
         canary="linear.workspace.round.trip",
     ),
     agent_action(
         "linear.todo.move",
         "linear",
-        "Move an unlinked Linear todo issue to a Pynchy todo status.",
+        "Move an unlinked Linear item between agent-controlled planning states.",
         "linear_move_todo",
         canary="linear.workspace.round.trip",
     ),
@@ -146,7 +146,7 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action(
         "linear.workitem.claim",
         "linear",
-        "Claim a Ready Linear work item for the current Pynchy execution.",
+        "Claim a Human Approved Linear work item for the current Pynchy execution.",
         "linear_claim_work_item",
     ),
     agent_action(

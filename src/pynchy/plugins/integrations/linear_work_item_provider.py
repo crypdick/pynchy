@@ -11,6 +11,7 @@ import aiohttp
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard, ensure_workspace_board
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
+from pynchy.plugins.integrations.linear_statuses import HUMAN_APPROVED_STATUS
 from pynchy.state import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
@@ -28,7 +29,7 @@ from pynchy.types import (
 )
 
 _WORKSPACE_ISSUE_REQUIRED = "Linear issue does not belong to this Pynchy workspace board"
-_READY_REQUIRED = "Linear work item must be in Ready before Pynchy can claim it"
+_HUMAN_APPROVAL_REQUIRED = "Linear work item must be Human Approved before Pynchy can claim it"
 
 
 @dataclass(frozen=True)
@@ -80,10 +81,10 @@ async def claim_work_item(
     issue_id: str,
     request_id: str,
 ) -> WorkItemExecution:
-    """Persist a claim, then transition a Ready issue to In Progress."""
+    """Persist a claim, then transition a Human Approved issue to In Progress."""
     issue, board = await workspace_issue(client, workspace, issue_id)
-    if state_id(issue) != state_id(board.states["ready"]):
-        raise ValueError(_READY_REQUIRED)
+    if state_id(issue) != state_id(board.states[HUMAN_APPROVED_STATUS]):
+        raise ValueError(_HUMAN_APPROVAL_REQUIRED)
     turn = await get_in_flight_turn_for_group(workspace)
     execution = await create_work_item_claim(
         WorkItemClaimRequest(
@@ -102,7 +103,7 @@ async def claim_work_item(
             board=board,
             execution=execution,
             transition=transition,
-            expected_statuses={"ready"},
+            expected_statuses={HUMAN_APPROVED_STATUS},
             target_status="in_progress",
         ),
     )

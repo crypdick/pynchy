@@ -28,6 +28,7 @@ from pynchy.plugins.integrations.linear_boards import (
     list_workspace_todos,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
+from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 
@@ -204,7 +205,7 @@ async def _tool_create_issue(
             title=title,
             description=arguments.get("description"),
             project_id=arguments.get("project_id"),
-            state_id=arguments.get("state_id"),
+            state_id=None,
             label_ids=label_ids,
         ),
     )
@@ -233,7 +234,7 @@ async def _tool_create_todo(
         _workspace_context(workspace),
         _required_str(arguments, "title"),
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
-        status=str(arguments.get("status", "backlog")),
+        status=AGENT_PROPOSED_STATUS,
     )
 
 

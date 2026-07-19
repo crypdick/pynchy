@@ -22,7 +22,11 @@ from pynchy.plugins.integrations.linear_board_payloads import (
     projects_for_workspace,
 )
 from pynchy.plugins.integrations.linear_board_resources import load_team_resources
-from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
+from pynchy.plugins.integrations.linear_statuses import (
+    AGENT_PROPOSED_STATUS,
+    LINEAR_TODO_STATUSES,
+    TERMINAL_STATE_TYPES,
+)
 from pynchy.plugins.integrations.linear_workspace_names import (
     project_description,
     todo_description,
@@ -182,7 +186,7 @@ async def create_workspace_todo(
     title: str,
     *,
     team_key: str | None,
-    status: str = "backlog",
+    status: str = AGENT_PROPOSED_STATUS,
 ) -> dict[str, Any]:
     """Create a Linear issue in the workspace's board."""
     board = await ensure_workspace_board(client, workspace, team_key=team_key)
@@ -280,7 +284,11 @@ async def list_workspace_todos(
     issues = nodes(project, "issues")
     if include_done:
         return issues
-    return [issue for issue in issues if (issue.get("state") or {}).get("type") != "completed"]
+    return [
+        issue
+        for issue in issues
+        if (issue.get("state") or {}).get("type") not in TERMINAL_STATE_TYPES
+    ]
 
 
 async def _ensure_states(

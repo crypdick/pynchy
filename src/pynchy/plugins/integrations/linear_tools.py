@@ -34,7 +34,6 @@ def tool_specs() -> list[dict[str, Any]]:
                     "title": {"type": "string"},
                     "description": {"type": "string"},
                     "project_id": {"type": "string"},
-                    "state_id": {"type": "string"},
                     "label_ids": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": ["team_id", "title"],
@@ -54,24 +53,13 @@ def tool_specs() -> list[dict[str, Any]]:
         },
         {
             "name": "linear_create_todo",
-            "description": "Create a Linear todo issue for this Pynchy workspace.",
+            "description": (
+                "Propose a Linear work item for this Pynchy workspace. "
+                "The item starts in Agent Proposed; this tool cannot assert human approval."
+            ),
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "status": {
-                        "type": "string",
-                        "enum": [
-                            "backlog",
-                            "planning",
-                            "ready",
-                            "in_progress",
-                            "blocked",
-                            "done",
-                        ],
-                        "default": "backlog",
-                    },
-                },
+                "properties": {"title": {"type": "string"}},
                 "required": ["title"],
                 "additionalProperties": False,
             },

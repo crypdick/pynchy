@@ -12,6 +12,7 @@ from pynchy.plugins.integrations.linear_boards import (
     LinearBoardError,
     create_workspace_todo,
     ensure_workspace_board,
+    list_workspace_todos,
     move_workspace_todo,
     select_team,
 )
@@ -34,6 +35,7 @@ class FakeLinearClient:
         self.updated_projects: list[dict[str, Any]] = []
         self.created_issues: list[dict[str, Any]] = []
         self.updated_issues: list[dict[str, Any]] = []
+        self.issues: list[dict[str, Any]] = []
 
     async def list_teams(self) -> list[dict[str, Any]]:
         return self.teams
@@ -81,17 +83,21 @@ class FakeLinearClient:
             self.states.append(state)
             return {"workflowStateCreate": {"success": True, "workflowState": state}}
         if "CreateWorkspaceTodo" in query:
+            state = next(state for state in self.states if state["id"] == variables["state_id"])
             issue = {
                 "id": "issue-1",
                 "identifier": "SYN-1",
                 "title": variables["title"],
                 "url": "https://linear.app/acme/issue/SYN-1",
-                "state": {"id": variables["state_id"], "name": "Backlog", "type": "backlog"},
+                "state": state,
                 "project": {"id": variables["project_id"], "name": "Code Improver"},
             }
             self.created_issues.append(variables)
+            self.issues.append(issue)
             return {"issueCreate": {"success": True, "issue": issue}}
-        if "MoveWorkspaceTodo" in query:
+        if "ListWorkspaceTodos" in query:
+            response = {"project": {"issues": {"nodes": self.issues}}}
+        elif "MoveWorkspaceTodo" in query:
             issue = {
                 "id": variables["issue_id"],
                 "identifier": variables["issue_id"],
@@ -100,9 +106,11 @@ class FakeLinearClient:
                 "state": {"id": variables["state_id"], "name": "In Progress"},
             }
             self.updated_issues.append(variables)
-            return {"issueUpdate": {"success": True, "issue": issue}}
-        message = f"Unexpected query: {query}"
-        raise AssertionError(message)
+            response = {"issueUpdate": {"success": True, "issue": issue}}
+        else:
+            message = f"Unexpected query: {query}"
+            raise AssertionError(message)
+        return response
 
 
 class TestSelectTeam:
@@ -162,7 +170,16 @@ class TestEnsureWorkspaceBoard:
         assert board.project["name"] == "Code Improver"
         assert board.states.keys() == LINEAR_TODO_STATUSES.keys()
         created_state_names = {state["name"] for state in client.states}
-        assert {"Backlog", "Planning", "Ready", "In Progress", "Done"} <= created_state_names
+        assert {
+            "Agent Proposed",
+            "Ready for Planning",
+            "Awaiting Plan Approval",
+            "Human Approved",
+            "In Progress",
+            "Blocked",
+            "Done",
+            "Rejected",
+        } <= created_state_names
 
     async def test_reuses_existing_project_by_name(self):
         client = FakeLinearClient()
@@ -270,16 +287,31 @@ class TestEnsureWorkspaceBoard:
 
 
 class TestWorkspaceTodos:
-    async def test_create_workspace_todo_uses_backlog_state_and_workspace_project(self):
+    async def test_agent_created_workspace_todo_starts_as_agent_proposed(self):
         client = FakeLinearClient()
         workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
 
         issue = await create_workspace_todo(client, workspace, "Review docs", team_key=None)
 
         assert issue["identifier"] == "SYN-1"
+        assert issue["state"]["name"] == "Agent Proposed"
         assert client.created_issues[0]["project_id"] == "project-1"
-        assert client.created_issues[0]["state_id"] == "state-backlog"
+        assert client.created_issues[0]["state_id"] == "state-agent-proposed"
         assert "pynchy.workspace=code-improver" in client.created_issues[0]["description"]
+
+    async def test_open_todo_listing_excludes_done_and_rejected_items(self):
+        client = FakeLinearClient()
+        workspace = WorkspaceStub(folder="code-improver", name="Code Improver")
+        board = await ensure_workspace_board(client, workspace, team_key=None)
+        client.issues = [
+            {"id": "open", "state": board.states["agent_proposed"]},
+            {"id": "done", "state": board.states["done"]},
+            {"id": "rejected", "state": board.states["rejected"]},
+        ]
+
+        issues = await list_workspace_todos(client, workspace, team_key=None)
+
+        assert [issue["id"] for issue in issues] == ["open"]
 
     async def test_move_workspace_todo_maps_status_to_linear_state(self):
         client = FakeLinearClient()

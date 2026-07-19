@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.plugins.integrations.linear_client import LinearError
+from pynchy.plugins.integrations.linear_statuses import AGENT_SETTABLE_STATUSES
 from pynchy.plugins.integrations.linear_work_item_provider import (
     claim_work_item,
     linear_client,
@@ -40,6 +41,7 @@ _BLOCKER_REQUIRED = "reason is required"
 _HANDOFF_REQUIRED = "owner is required"
 _ACTIVE_EXECUTION_REQUIRED = "No active Pynchy execution owns this Linear work item"
 _UNKNOWN_TRANSITION_REQUIRED = "No uncertain work-item transition needs reconciliation"
+_AGENT_SETTABLE_STATUS_ERROR = "Agents may move unlinked Linear items only to: {statuses}"
 
 
 @dataclass(frozen=True)
@@ -226,6 +228,12 @@ async def handle_move_unlinked_todo(data: dict[str, Any]) -> dict[str, object]:
         return {
             "error": "Use the linked work-item lifecycle tools while Pynchy owns this issue",
             "result": {"work_item": work_item_execution_to_dict(active)},
+        }
+    if status not in AGENT_SETTABLE_STATUSES:
+        return {
+            "error": _AGENT_SETTABLE_STATUS_ERROR.format(
+                statuses=", ".join(sorted(AGENT_SETTABLE_STATUSES))
+            )
         }
     try:
         async with linear_client() as client:

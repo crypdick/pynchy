@@ -55,16 +55,35 @@ class FakeLinearClientContext:
 
 def _state(state_id: str) -> dict[str, str]:
     states = {
-        "state-ready": {"id": "state-ready", "name": "Ready", "type": "unstarted"},
+        "state-agent-proposed": {
+            "id": "state-agent-proposed",
+            "name": "Agent Proposed",
+            "type": "backlog",
+        },
+        "state-ready-for-planning": {
+            "id": "state-ready-for-planning",
+            "name": "Ready for Planning",
+            "type": "unstarted",
+        },
+        "state-awaiting-plan-approval": {
+            "id": "state-awaiting-plan-approval",
+            "name": "Awaiting Plan Approval",
+            "type": "unstarted",
+        },
+        "state-human-approved": {
+            "id": "state-human-approved",
+            "name": "Human Approved",
+            "type": "unstarted",
+        },
         "state-in-progress": {"id": "state-in-progress", "name": "In Progress", "type": "started"},
         "state-blocked": {"id": "state-blocked", "name": "Blocked", "type": "started"},
         "state-done": {"id": "state-done", "name": "Done", "type": "completed"},
-        "state-backlog": {"id": "state-backlog", "name": "Backlog", "type": "backlog"},
+        "state-rejected": {"id": "state-rejected", "name": "Rejected", "type": "canceled"},
     }
     return states[state_id]
 
 
-def _issue(*, state_id: str = "state-ready") -> dict[str, Any]:
+def _issue(*, state_id: str = "state-human-approved") -> dict[str, Any]:
     return {
         "id": "issue-1",
         "identifier": "PYN-1",
@@ -81,12 +100,14 @@ def _board() -> LinearWorkspaceBoard:
         team={"id": "team-1"},
         project={"id": "project-1", "name": "Pynchy"},
         states={
-            "backlog": _state("state-backlog"),
-            "planning": {"id": "state-planning", "name": "Planning", "type": "unstarted"},
-            "ready": _state("state-ready"),
+            "agent_proposed": _state("state-agent-proposed"),
+            "ready_for_planning": _state("state-ready-for-planning"),
+            "awaiting_plan_approval": _state("state-awaiting-plan-approval"),
+            "human_approved": _state("state-human-approved"),
             "in_progress": _state("state-in-progress"),
             "blocked": _state("state-blocked"),
             "done": _state("state-done"),
+            "rejected": _state("state-rejected"),
         },
     )
 
@@ -137,6 +158,16 @@ async def test_claim_persists_execution_before_moving_issue(lifecycle):
     assert execution["task_id"] is None
     assert client.issue["state"]["name"] == "In Progress"
     assert (await get_active_work_item_execution("issue-1")) is not None
+
+
+async def test_claim_requires_explicit_human_approval(lifecycle):
+    client, handlers = lifecycle
+    client.issue["state"] = _state("state-awaiting-plan-approval")
+
+    result = await _call(handlers, "linear_claim_work_item", "claim-1", issue_id="issue-1")
+
+    assert result == {"error": "Linear work item must be Human Approved before Pynchy can claim it"}
+    assert await get_active_work_item_execution("issue-1") is None
 
 
 @pytest.mark.action("linear.workitem.complete")
@@ -243,10 +274,28 @@ async def test_generic_move_rejects_linked_items_and_moves_unlinked_items(lifecy
         "linear_move_todo",
         "move-2",
         issue_id="issue-1",
-        status="backlog",
+        status="agent_proposed",
     )
-    assert moved["result"]["issue"]["state"]["name"] == "Backlog"
-    assert client.issue["state"]["name"] == "Backlog"
+    assert moved["result"]["issue"]["state"]["name"] == "Agent Proposed"
+    assert client.issue["state"]["name"] == "Agent Proposed"
+
+
+async def test_agent_cannot_mark_an_item_human_approved(lifecycle):
+    _client, handlers = lifecycle
+
+    result = await _call(
+        handlers,
+        "linear_move_todo",
+        "move-1",
+        issue_id="issue-1",
+        status="human_approved",
+    )
+
+    assert result == {
+        "error": (
+            "Agents may move unlinked Linear items only to: agent_proposed, awaiting_plan_approval"
+        )
+    }
 
 
 @pytest.mark.action("linear.workitem.list")
@@ -324,7 +373,7 @@ async def test_claim_rejects_an_issue_from_another_workspace_board(lifecycle):
 async def test_remote_state_conflict_stays_visible_for_reconciliation(lifecycle):
     client, handlers = lifecycle
     await _call(handlers, "linear_claim_work_item", "claim-1", issue_id="issue-1")
-    client.issue["state"] = _state("state-ready")
+    client.issue["state"] = _state("state-human-approved")
 
     result = await _call(
         handlers,

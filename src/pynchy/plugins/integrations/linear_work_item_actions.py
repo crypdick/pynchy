@@ -49,7 +49,7 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_claim_work_item",
             "linear.workitem.claim",
-            "Claim a Ready Linear work item for the current Pynchy execution.",
+            "Claim a Human Approved Linear work item for the current Pynchy execution.",
             HostActionAccess.WRITE,
             handle_claim_work_item,
         ),
@@ -84,7 +84,7 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_move_todo",
             "linear.todo.move",
-            "Move an unlinked Linear todo issue to a Pynchy todo status.",
+            "Move an unlinked Linear item between agent-controlled planning states.",
             HostActionAccess.WRITE,
             handle_move_unlinked_todo,
         ),
