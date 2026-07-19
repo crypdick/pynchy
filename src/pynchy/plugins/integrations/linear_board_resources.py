@@ -40,7 +40,10 @@ async def load_team_resources(
             ) {
               team(id: $team_id) {
                 projects(first: $projects_first, after: $projects_after) {
-                  nodes { id name url description }
+                  nodes {
+                    id name url description
+                    issues(first: 1) { nodes { id } }
+                  }
                   pageInfo { hasNextPage endCursor }
                 }
                 states {

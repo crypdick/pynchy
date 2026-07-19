@@ -358,7 +358,7 @@ async def _ensure_project(
         project_name,
     )
     if workspace_projects:
-        return workspace_projects[0]
+        return _canonical_workspace_project(workspace_projects, workspace)
 
     by_name = {norm_name(project.get("name")): project for project in existing_projects}
     existing = by_name.get(norm_name(project_name))
@@ -387,6 +387,41 @@ async def _ensure_project(
         description=project_description(workspace),
     )
     return payload_entity(data, "projectCreate", "project")
+
+
+def _canonical_workspace_project(
+    projects: list[dict[str, Any]],
+    workspace: WorkspaceLike,
+) -> dict[str, Any]:
+    populated = [project for project in projects if _project_contains_issues(project)]
+    if len(populated) > 1:
+        project_ids = ", ".join(sorted(_project_id(project) for project in populated))
+        raise LinearBoardError(
+            f"Duplicate Linear projects for workspace {workspace.folder} contain issues: "
+            f"{project_ids}"
+        )
+    if populated:
+        return populated[0]
+    return min(projects, key=_project_id)
+
+
+def _project_contains_issues(project: dict[str, Any]) -> bool:
+    connection = project.get("issues")
+    if connection is None:
+        return False
+    if not isinstance(connection, dict):
+        raise LinearBoardError("Linear project issue preview was not an object")
+    issue_nodes = connection.get("nodes")
+    if not isinstance(issue_nodes, list):
+        raise LinearBoardError("Linear project issue preview did not include nodes")
+    return bool(issue_nodes)
+
+
+def _project_id(project: dict[str, Any]) -> str:
+    project_id = project.get("id")
+    if not isinstance(project_id, str) or not project_id:
+        raise LinearBoardError("Linear workspace project did not include an ID")
+    return project_id
 
 
 async def _rename_workspace_projects(
