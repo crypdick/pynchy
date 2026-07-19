@@ -394,12 +394,15 @@ async def test_adds_active_human_to_scheduled_child_thread():
 async def test_finds_existing_active_child_thread_for_scheduled_task():
     ch = _channel()
     parent = _FakeThreadParent()
-    parent.guild.threads = [_FakeThread(id=456, name="pynchy-dev-1", parent_id=parent.id)]
+    parent.guild.threads = [
+        _FakeThread(id=456, name="pynchy-dev-1", parent_id=parent.id),
+        _FakeThread(id=123, name="pynchy-dev-1", parent_id=parent.id),
+    ]
     ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
 
     child_jid = await ch.find_thread("discord:channel:123", "pynchy-dev-1")
 
-    assert child_jid == "discord:channel:456"
+    assert child_jid == "discord:channel:123"
     assert parent.thread_requests == []
 
 
