@@ -24,7 +24,6 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconc
     ScheduledTask,
     WorkspaceProfile,
 )
-from pynchy.utils import compute_next_run
 
 _JOB_PROMPT_REQUIRED_ERROR = "agent job {job_name!r} requires prompt or prompt_file"
 _JOB_SCHEDULE_REQUIRED_ERROR = "job {job_name!r} requires schedule or at"
@@ -45,16 +44,14 @@ def _job_prompt(job_name: str, settings: Settings) -> str:
     return path.read_text()
 
 
-def _job_schedule(
-    job_name: str, settings: Settings
-) -> tuple[Literal["cron", "once"], str, str | None]:
+def _job_schedule(job_name: str, settings: Settings) -> tuple[Literal["cron", "once"], str]:
     job = settings.jobs[job_name]
     if job.schedule is not None:
-        return "cron", job.schedule, compute_next_run("cron", job.schedule, settings.timezone)
+        return "cron", job.schedule
     at = job.at
     if at is None:
         raise ValueError(_JOB_SCHEDULE_REQUIRED_ERROR.format(job_name=job_name))
-    return "once", at, at
+    return "once", at
 
 
 @dataclass(frozen=True)
@@ -68,7 +65,6 @@ class _AgentJobTaskDetails:
     prompt: str
     schedule_type: Literal["cron", "once"]
     schedule_value: str
-    next_run: str | None
     context_mode: Literal["isolated"]
 
 
@@ -121,7 +117,6 @@ async def _create_agent_job_task(
             schedule_type=details.schedule_type,
             schedule_value=details.schedule_value,
             context_mode=details.context_mode,
-            next_run=details.next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
         )
@@ -143,7 +138,6 @@ def _agent_job_updates(
         updates["schedule_type"] = details.schedule_type
     if existing.schedule_value != details.schedule_value:
         updates["schedule_value"] = details.schedule_value
-        updates["next_run"] = details.next_run
     if existing.context_mode != details.context_mode:
         updates["context_mode"] = details.context_mode
     if existing.repo_access is not None:
@@ -174,13 +168,12 @@ async def reconcile_agent_jobs(
         if context is None:
             continue
 
-        schedule_type, schedule_value, next_run = _job_schedule(job_name, settings)
+        schedule_type, schedule_value = _job_schedule(job_name, settings)
         prompt = _job_prompt(job_name, settings)
         details = _AgentJobTaskDetails(
             prompt=prompt,
             schedule_type=schedule_type,
             schedule_value=schedule_value,
-            next_run=next_run,
             context_mode="isolated",
         )
         desired_task_ids.add(task_id)

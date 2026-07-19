@@ -33,6 +33,7 @@ from pynchy.state import (
     log_task_run,
     mark_delivered,
     record_outbound,
+    record_task_completion,
     set_chat_cleared_at,
     set_last_group_sync,
     set_router_state,
@@ -43,7 +44,6 @@ from pynchy.state import (
     update_chat_name,
     update_host_job,
     update_task,
-    update_task_after_run,
 )
 from pynchy.state.connection import atomic_write
 from pynchy.state.schema import create_schema
@@ -160,7 +160,7 @@ def _assert_full_task(task: ScheduledTask) -> None:
         "interval",
         "3600000",
         "group",
-        "2024-06-01T00:00:00Z",
+        None,
         "active",
         "owner/pynchy",
     )
@@ -860,7 +860,7 @@ class TestTaskAdvanced:
         assert task is not None
         assert task.status == "active"  # unchanged
 
-    async def test_update_task_after_run_sets_completed_for_once(self):
+    async def test_record_task_completion_sets_completed_for_once(self):
         await create_task(
             replace(
                 self._TASK_TEMPLATE,
@@ -870,25 +870,25 @@ class TestTaskAdvanced:
             )
         )
 
-        # next_run=None means 'once' task → should be marked 'completed'
-        await update_task_after_run("once-task", None, "Completed successfully")
+        await record_task_completion(
+            "once-task", last_result="Completed successfully", completed=True
+        )
         task = await get_task_by_id("once-task")
         assert task is not None
         assert task.status == "completed"
         assert task.last_result == "Completed successfully"
         assert task.last_run is not None
 
-    async def test_update_task_after_run_preserves_active_for_cron(self):
+    async def test_record_task_completion_preserves_recurring_schedule_state(self):
         await create_task(
             replace(self._TASK_TEMPLATE, id="cron-task", next_run="2024-06-01T00:00:00Z")
         )
 
-        # next_run is set → task stays 'active'
-        await update_task_after_run("cron-task", "2024-06-01T01:00:00Z", "Done")
+        await record_task_completion("cron-task", last_result="Done", completed=False)
         task = await get_task_by_id("cron-task")
         assert task is not None
         assert task.status == "active"
-        assert task.next_run == "2024-06-01T01:00:00Z"
+        assert task.next_run is None
 
     async def test_log_task_run(self):
         await create_task(replace(self._TASK_TEMPLATE, id="logged-task", next_run=None))

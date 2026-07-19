@@ -103,7 +103,7 @@ class TestHostJobScheduling:
         job = await get_host_job_by_name("year-end-report")
         assert job is not None
         assert job.schedule_type == "once"
-        assert job.next_run == future_time
+        assert job.next_run is None
 
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_activity_executes_command(self, mock_shell, tmp_path):
@@ -135,6 +135,11 @@ class TestHostJobScheduling:
         mock_shell.assert_awaited_once()
         call_kwargs = mock_shell.await_args.kwargs
         assert call_kwargs["cwd"] == cwd
+        completed_job = await get_host_job_by_id("job-exec")
+        assert completed_job is not None
+        assert completed_job.status == "completed"
+        assert completed_job.last_run is not None
+        assert completed_job.next_run is None
 
     @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
     async def test_temporal_database_host_job_failure_is_not_recorded_as_success(
@@ -166,7 +171,7 @@ class TestHostJobScheduling:
         job = await get_host_job_by_id("job-failure")
         assert job is not None
         assert job.last_run is None
-        assert job.next_run == due_at
+        assert job.next_run is None
 
     async def test_host_job_validates_invalid_cron(self, mock_ipc_deps):
         """Host job creation rejects invalid cron expressions."""
