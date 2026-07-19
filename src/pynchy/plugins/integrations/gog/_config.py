@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from pynchy.config import get_settings
-
-if TYPE_CHECKING:
-    from pynchy.config.settings import Settings
+from pynchy.config.settings import (
+    Settings,  # noqa: TC001 - beartype resolves this annotation at runtime.
+)
 
 PositiveTimeout = Annotated[float, Field(gt=0, le=300)]
 

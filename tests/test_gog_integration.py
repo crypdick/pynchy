@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from pynchy.capabilities import CapabilityProbeContext, ProbeStatus
+from pynchy.config.settings import validate_settings_mapping
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations import gog
 
@@ -86,6 +87,17 @@ def _handler(tool_name: str):
 
 def _enabled_settings() -> StubSettings:
     return StubSettings(["gog"])
+
+
+def test_gog_config_resolves_paths_with_runtime_type_checking() -> None:
+    """Gog setup reaches these methods through beartype in the host process."""
+    settings = validate_settings_mapping({})
+    config = gog.GogConfig(home="data/gog", oauth_client_path="data/gog-client.json")
+
+    assert config.resolved_home(settings) == settings.project_root / "data/gog"
+    assert config.resolved_oauth_client_path(settings) == (
+        settings.project_root / "data/gog-client.json"
+    )
 
 
 class TestGogPlugin:
