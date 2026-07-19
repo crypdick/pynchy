@@ -600,7 +600,7 @@ across cores, compactions, deploy recovery, and future handoffs.
   failure provides the concrete availability-boundary regression.
 - docs/plugins/index.md and src/pynchy/plugins/hookspecs.py show the plugin
   categories and loose-dict extension seams.
-- docs/usage/matrix-gateway.md and
+- docs/integrations/matrix-gateway.md and
   src/pynchy/plugins/integrations/matrix_gateway.py show the completion-audit
   native IPC migration and its explicit profile/approval boundary.
 - src/pynchy/state/outbound.py and the messaging sender/reconciler own the

@@ -1,0 +1,12 @@
+nav:
+  - Overview: index.md
+  - Google Calendar: gcal.md
+  - Google Drive: gdrive.md
+  - Google Workspace via Gog: gog.md
+  - GitHub PR notifications: github.md
+  - Linear: linear.md
+  - Matrix communications: matrix-gateway.md
+  - Notebooks: notebooks.md
+  - Proton Mail: proton-mail.md
+  - Slack MCP: slack-mcp.md
+  - X (Twitter): x-integration.md

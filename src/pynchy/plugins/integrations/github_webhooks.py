@@ -26,7 +26,7 @@ from pynchy.plugins.webhooks import (
 
 # GitHub rejects webhook deliveries larger than this documented maximum, so this
 # route accepts every payload GitHub can actually deliver without making ingress
-# unbounded. Keep docs/usage/github.md in sync with this provider contract.
+# unbounded. Keep docs/integrations/github.md in sync with this provider contract.
 GITHUB_MAX_WEBHOOK_BODY_BYTES = 25 * 1024 * 1024
 _FAILURE_CONCLUSIONS = frozenset(
     {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}

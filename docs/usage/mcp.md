@@ -81,10 +81,10 @@ tools = ["example_personal"]
 
 | Server | Guide |
 |--------|-------|
-| Google Drive | [Google Drive setup](gdrive.md) |
-| Linear | [Linear task tracking](linear.md) |
-| Notebooks | [Notebook execution](notebooks.md) |
-| Proton Mail | [Proton Mail](proton-mail.md) |
-| Slack MCP | [Slack MCP setup](slack-mcp.md) |
+| Google Drive | [Google Drive setup](../integrations/gdrive.md) |
+| Linear | [Linear task tracking](../integrations/linear.md) |
+| Notebooks | [Notebook execution](../integrations/notebooks.md) |
+| Proton Mail | [Proton Mail](../integrations/proton-mail.md) |
+| Slack MCP | [Slack MCP setup](../integrations/slack-mcp.md) |
 
 For architecture internals (instance deduplication, LiteLLM integration, access control), see [MCP management architecture](../architecture/mcp-management.md).

@@ -116,7 +116,7 @@ LINEAR_WEBHOOK_SECRET=...
 ```
 
 Expose Pynchy through a public HTTPS reverse proxy, following the
-[control-plane public-bind setup](control-plane.md#enable-remote-tui-access).
+[control-plane public-bind setup](../usage/control-plane.md#enable-remote-tui-access).
 Then create a Linear webhook for `Comment` and `Issue` events with this URL:
 
 ```text
@@ -155,7 +155,7 @@ context before deciding what to do.
 
 ## Schedule proactive proposals
 
-Use a config-backed [agent task](scheduled-tasks.md#agent-tasks) to run a real
+Use a config-backed [agent task](../usage/scheduled-tasks.md#agent-tasks) to run a real
 isolated review instead of posting a reminder into an interactive session. The
 bundled `prompts/pynchy-proactive-review.md` prompt reviews one bounded slice,
 deduplicates against the workspace board, and creates up to three rich

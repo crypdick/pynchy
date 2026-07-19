@@ -238,7 +238,7 @@ def _matrix_action(
             ),
             setup_hint="Follow the Matrix gateway setup guide and enable this tool in a profile.",
             recovery_hint="Verify the gateway executable and Matrix device session.",
-            documentation="docs/usage/matrix-gateway.md",
+            documentation="docs/integrations/matrix-gateway.md",
             probe=_probe_matrix_gateway,
         ),
         tool_name=HostToolName(tool_name),

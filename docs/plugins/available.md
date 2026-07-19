@@ -27,21 +27,21 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `docker-runtime` | Container runtime | Docker agent-container runtime | Docker CLI and daemon | [Container isolation](../architecture/container-isolation.md) |
 | `apple-runtime` | Container runtime | Apple Container agent-container runtime | macOS with Apple Container | [Container isolation](../architecture/container-isolation.md) |
 | `caldav` | Service handler | CalDAV calendar actions | `uv sync --extra caldav` and calendar configuration | [MCP service tools](../architecture/mcp-service-tools.md) |
-| `slack-token-extractor` | Service handler | Refreshes Slack browser tokens from persistent sessions | Slack browser session | [Slack MCP](../usage/slack-mcp.md) |
-| `x-integration` | Service handler | Browser-driven X actions | X tool/profile configuration | [X integration](../usage/x-integration.md) |
-| `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google Drive](../usage/gdrive.md) |
-| `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google Drive](../usage/gdrive.md) |
-| `gog` | Service handler | Host-only Gmail, Contacts, Docs, and Sheets actions | Gog CLI and configured host OAuth account | [Google Workspace via Gog](../usage/gog.md) |
+| `slack-token-extractor` | Service handler | Refreshes Slack browser tokens from persistent sessions | Slack browser session | [Slack MCP](../integrations/slack-mcp.md) |
+| `x-integration` | Service handler | Browser-driven X actions | X tool/profile configuration | [X integration](../integrations/x-integration.md) |
+| `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google Drive](../integrations/gdrive.md) |
+| `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google Drive](../integrations/gdrive.md) |
+| `gog` | Service handler | Host-only Gmail, Contacts, Docs, and Sheets actions | Gog CLI and configured host OAuth account | [Google Workspace via Gog](../integrations/gog.md) |
 | `playwright-browser` | MCP server specification + skill | Browser-control server and usage skill | `uv sync --extra browser` when Playwright is needed | [MCP servers](../usage/mcp.md) |
 | `desktop-screenshot` | Service handler | Captures the macOS host desktop | Screen Recording permission | [Desktop screenshots](../usage/desktop-screenshots.md) |
 | `computer-use` | Service-handler router + skill | Policy-mediated desktop automation through provider plugins | Enable at least one provider supported by the host | [Computer use](../usage/computer-use.md) |
 | `peekaboo` | Computer-use provider | Semantic macOS automation with stable accessibility references | Peekaboo plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md#built-in-peekaboo) |
 | `cua-driver` | Computer-use provider | Compatibility backend for the original macOS action set | Cua Driver plus macOS Accessibility and Screen Recording permissions | [Computer use](../usage/computer-use.md#built-in-cua-driver) |
-| `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../usage/linear.md) |
-| `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../usage/github.md) |
-| `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../usage/proton-mail.md) |
-| `matrix-gateway` | Service handler | Matrix gateway actions | Matrix gateway configuration | [Matrix gateway](../usage/matrix-gateway.md) |
-| `notebook` | MCP server specification | Jupyter notebook execution server | `uv sync --extra notebook` | [Notebooks](../usage/notebooks.md) |
+| `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../integrations/linear.md) |
+| `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../integrations/github.md) |
+| `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../integrations/proton-mail.md) |
+| `matrix-gateway` | Service handler | Matrix gateway actions | Matrix gateway configuration | [Matrix gateway](../integrations/matrix-gateway.md) |
+| `notebook` | MCP server specification | Jupyter notebook execution server | `uv sync --extra notebook` | [Notebooks](../integrations/notebooks.md) |
 | `sqlite-observer` | Observer | Persists operational event summaries | No external dependency | [Observers](../architecture/observers.md) |
 | `sqlite-memory` | Memory backend | Per-workspace memory with FTS5 search | No external dependency | [Memory](../usage/memory.md) |
 

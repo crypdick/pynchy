@@ -13,7 +13,7 @@ Agent tasks spin up a containerized agent on schedule. The agent gets a prompt a
 Agent tasks use an isolated runtime folder for the target workspace. When its target chat has no active turn, the task posts there. When a human session or another scheduled task occupies that chat, Pynchy creates a numbered child thread such as `pynchy-dev-1` and runs there instead. This requires a channel with child-thread support; Pynchy records an error rather than interrupting the occupied conversation when the channel cannot create one. Tasks can optionally send messages via `send_message`, or finish silently. Each run is logged to the database with duration and result. If the workspace profile selects a repo, worktree commits merge and push after a successful run.
 
 For a periodic review that turns evidence into approval-gated work proposals,
-see [Schedule proactive proposals](linear.md#schedule-proactive-proposals).
+see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-proposals).
 
 ### Daily Triage Memo
 

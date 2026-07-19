@@ -502,7 +502,7 @@ class TestLinearMcpServer:
 
 
 class TestDocs:
-    def test_linear_usage_doc_exists(self):
-        doc = Path(__file__).resolve().parent.parent / "docs" / "usage" / "linear.md"
+    def test_linear_integration_doc_exists(self):
+        doc = Path(__file__).resolve().parent.parent / "docs" / "integrations" / "linear.md"
 
         assert doc.exists()

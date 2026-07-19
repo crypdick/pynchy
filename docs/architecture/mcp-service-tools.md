@@ -59,8 +59,8 @@ for the full descriptor shape and legacy-adapter rules.
 | Plugin | Tools | Description |
 |--------|-------|-------------|
 | `caldav` | `list_calendars`, `list_calendar`, `create_event`, `delete_event` | CalDAV calendar access (Nextcloud, etc.) |
-| `google-setup` | `setup_google_{profile}` | Idempotent Google setup — GCP project, API enablement, OAuth authorization. One tool per chrome profile. ([guide](../usage/gdrive.md)) |
-| `gog` | `gog_*` | Reviewed host-only Gmail, Contacts, Docs, and Sheets operations. ([guide](../usage/gog.md)) |
+| `google-setup` | `setup_google_{profile}` | Idempotent Google setup — GCP project, API enablement, OAuth authorization. One tool per chrome profile. ([guide](../integrations/gdrive.md)) |
+| `gog` | `gog_*` | Reviewed host-only Gmail, Contacts, Docs, and Sheets operations. ([guide](../integrations/gog.md)) |
 | `sqlite-memory` | `save_memory`, `recall_memories`, `forget_memory`, `list_memories` | Per-group persistent memory |
 
 For the full IPC protocol that carries service requests, see [IPC](ipc.md#service-requests).

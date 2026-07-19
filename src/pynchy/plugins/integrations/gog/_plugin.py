@@ -291,7 +291,7 @@ def _descriptor(definition: ActionDefinition) -> HostActionDescriptor:
                 "Follow the Google Workspace via Gog guide and enable the gog workspace tool."
             ),
             recovery_hint="Check the Gog executable and refresh the configured host OAuth session.",
-            documentation="docs/usage/gog.md",
+            documentation="docs/integrations/gog.md",
             probe=_probe_gog,
         ),
         tool_name=HostToolName(tool_name),
