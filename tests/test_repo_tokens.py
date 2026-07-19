@@ -457,16 +457,18 @@ class TestGitEnvWithToken:
         assert "GIT_CONFIG_VALUE_1" not in env
         get_token.assert_not_called()
 
-    def test_onecli_git_proxy_rewrites_container_host_for_host_processes(self, tmp_path: Path):
-        """Host git must not receive container-only proxy hostnames."""
+    def test_onecli_git_proxy_rewrites_resolved_container_host_for_host_processes(
+        self, tmp_path: Path
+    ):
+        """Host git must not receive the runtime-resolved container proxy address."""
         ca_host_path = tmp_path / "onecli-ca.pem"
         ca_container_path = str(PurePosixPath("/", "tmp", "onecli-ca.pem"))
         material = OneCliMaterial(
             env_vars={
-                "HTTPS_PROXY": "http://host.docker.internal:10255",
-                "HTTP_PROXY": "http://host.docker.internal:10255",
-                "https_proxy": "http://host.docker.internal:10255",
-                "http_proxy": "http://host.docker.internal:10255",
+                "HTTPS_PROXY": "http://192.168.64.1:10255",
+                "HTTP_PROXY": "http://192.168.64.1:10255",
+                "https_proxy": "http://192.168.64.1:10255",
+                "http_proxy": "http://192.168.64.1:10255",
                 "SSL_CERT_FILE": ca_container_path,
             },
             mounts=[
@@ -483,6 +485,10 @@ class TestGitEnvWithToken:
 
         with (
             patch("pynchy.host.git_ops.utils.get_settings", return_value=s),
+            patch(
+                "pynchy.host.git_ops.utils.resolve_container_host",
+                return_value="192.168.64.1",
+            ),
             patch(
                 "pynchy.host.git_ops.utils.prepare_onecli_material",
                 return_value=material,

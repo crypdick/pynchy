@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit, urlunsplit
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.gateway import resolve_container_host
 from pynchy.logger import logger
 
 if TYPE_CHECKING:
@@ -107,16 +108,20 @@ def _rewrite_container_proxy_host(value: str) -> str:
         parsed = urlsplit(value)
     except ValueError:
         return value
-    if parsed.hostname != _CONTAINER_HOSTNAME:
+    container_hosts = {
+        _CONTAINER_HOSTNAME,
+        resolve_container_host(_CONTAINER_HOSTNAME),
+    }
+    if parsed.hostname not in container_hosts:
         return value
 
-    host_start = parsed.netloc.rfind(_CONTAINER_HOSTNAME)
+    host_start = parsed.netloc.rfind(parsed.hostname)
     if host_start < 0:
         return value
     netloc = (
         f"{parsed.netloc[:host_start]}"
         f"{_HOST_PROCESS_HOSTNAME}"
-        f"{parsed.netloc[host_start + len(_CONTAINER_HOSTNAME) :]}"
+        f"{parsed.netloc[host_start + len(parsed.hostname) :]}"
     )
     return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
