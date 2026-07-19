@@ -16,6 +16,7 @@ class _ThreadCapableChannel:
 
     def __init__(self) -> None:
         self.requests: list[tuple[str, str, tuple[str, ...]]] = []
+        self.reused_participants: list[tuple[str, tuple[str, ...]]] = []
 
     async def connect(self) -> None: ...
 
@@ -25,7 +26,7 @@ class _ThreadCapableChannel:
         return True
 
     def owns_jid(self, jid: str) -> bool:
-        return jid == "discord:channel:parent"
+        return jid in {"discord:channel:parent", "discord:channel:existing"}
 
     async def disconnect(self) -> None: ...
 
@@ -45,6 +46,16 @@ class _ThreadCapableChannel:
     ) -> str:
         self.requests.append((parent_jid, name, participant_ids))
         return "discord:channel:child"
+
+    async def find_thread(self, parent_jid: str, name: str) -> str | None:
+        return "discord:channel:existing" if name == "pynchy-dev-1" else None
+
+    async def add_thread_participants(
+        self,
+        child_jid: str,
+        participant_ids: tuple[str, ...],
+    ) -> None:
+        self.reused_participants.append((child_jid, participant_ids))
 
 
 @pytest.mark.asyncio
@@ -69,3 +80,25 @@ async def test_app_rejects_scheduled_thread_creation_without_channel_capability(
 
     with pytest.raises(RuntimeError, match="does not support scheduled task threads"):
         await app.create_scheduled_thread("slack:C123", "pynchy-dev-1")
+
+
+@pytest.mark.asyncio
+async def test_app_finds_existing_scheduled_thread_on_owning_channel() -> None:
+    app = PynchyApp()
+    channel = _ThreadCapableChannel()
+    app.channels = [channel]
+
+    child_jid = await app.find_scheduled_thread("discord:channel:parent", "pynchy-dev-1")
+
+    assert child_jid == "discord:channel:existing"
+
+
+@pytest.mark.asyncio
+async def test_app_adds_participants_to_reused_scheduled_thread() -> None:
+    app = PynchyApp()
+    channel = _ThreadCapableChannel()
+    app.channels = [channel]
+
+    await app.add_scheduled_thread_participants("discord:channel:existing", ("123",))
+
+    assert channel.reused_participants == [("discord:channel:existing", ("123",))]
