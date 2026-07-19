@@ -27,6 +27,7 @@ from pynchy.capabilities import (
 )
 from pynchy.plugins.hookspecs import PynchySpec
 from pynchy.plugins.host_actions import get_host_action_catalog
+from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
 from pynchy.plugins.integrations.matrix_gateway import MATRIX_HOST_ACTIONS
 
 hookimpl = pluggy.HookimplMarker("pynchy")
@@ -136,6 +137,15 @@ def test_legacy_registration_is_parsed_through_action_specs():
     assert action.capability.origin is DescriptorOrigin.LEGACY_ADAPTER
     assert action.capability.action_ids == (ActionId("chat.matrix.list"),)
     assert action.access is HostActionAccess.READ
+
+
+def test_caldav_legacy_registration_classifies_list_tools_as_read_only():
+    catalog = get_host_action_catalog(_plugin_manager(CalDAVMcpServerPlugin()))
+
+    assert catalog.action_for("list_calendars").access is HostActionAccess.READ
+    assert catalog.action_for("list_calendar").access is HostActionAccess.READ
+    assert catalog.action_for("create_event").access is HostActionAccess.WRITE
+    assert catalog.action_for("delete_event").access is HostActionAccess.WRITE
 
 
 def test_legacy_registration_without_semantic_action_fails_closed():

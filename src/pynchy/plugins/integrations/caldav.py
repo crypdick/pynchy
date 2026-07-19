@@ -300,4 +300,8 @@ class CalDAVMcpServerPlugin:
                 "create_event": _handle_create_event,
                 "delete_event": _handle_delete_event,
             },
+            # The mapping registration adapter treats unlisted tools as writes.
+            # Calendar discovery/event listing are read-only and cron reviews
+            # cannot answer an otherwise unnecessary approval prompt.
+            "read_tools": ("list_calendars", "list_calendar"),
         }
