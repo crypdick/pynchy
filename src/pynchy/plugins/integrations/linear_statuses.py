@@ -23,7 +23,6 @@ AWAITING_REVIEW_STATUS = "awaiting_review"
 AGENT_SETTABLE_STATUSES = frozenset(
     {
         AGENT_PROPOSED_STATUS,
-        AWAITING_PLAN_APPROVAL_STATUS,
     }
 )
 TERMINAL_STATE_TYPES = frozenset({"completed", "canceled"})

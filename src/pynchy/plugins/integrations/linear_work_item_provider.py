@@ -11,7 +11,12 @@ import aiohttp
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard, ensure_workspace_board
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
-from pynchy.plugins.integrations.linear_statuses import HUMAN_APPROVED_STATUS
+from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
+from pynchy.plugins.integrations.linear_statuses import (
+    AWAITING_PLAN_APPROVAL_STATUS,
+    HUMAN_APPROVED_STATUS,
+    READY_FOR_PLANNING_STATUS,
+)
 from pynchy.state import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
@@ -30,6 +35,7 @@ from pynchy.types import (
 
 _WORKSPACE_ISSUE_REQUIRED = "Linear issue does not belong to this Pynchy workspace board"
 _HUMAN_APPROVAL_REQUIRED = "Linear work item must be Human Approved before Pynchy can claim it"
+_PLANNING_READY_REQUIRED = "Linear work item must be Ready for Planning before planning"
 
 
 @dataclass(frozen=True)
@@ -166,6 +172,25 @@ async def move_unlinked_work_item(
     if status not in board.states:
         raise ValueError(f"Unknown Pynchy todo status: {status}")
     return await update_issue_state(client, issue_id, state_id(board.states[status]))
+
+
+async def submit_work_item_plan(
+    client: LinearClient,
+    workspace: str,
+    issue_id: str,
+    plan: str,
+) -> dict[str, Any]:
+    """Persist a concrete plan before advancing to the human plan-approval gate."""
+    issue, board = await workspace_issue(client, workspace, issue_id)
+    if state_id(issue) != state_id(board.states[READY_FOR_PLANNING_STATUS]):
+        raise ValueError(_PLANNING_READY_REQUIRED)
+    description = description_with_plan(issue.get("description"), plan)
+    return await update_issue_plan(
+        client,
+        issue_id=issue_id,
+        state_id=state_id(board.states[AWAITING_PLAN_APPROVAL_STATUS]),
+        description=description,
+    )
 
 
 async def transition_issue(

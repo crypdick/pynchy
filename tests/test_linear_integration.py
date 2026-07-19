@@ -102,6 +102,20 @@ class TestLinearClient:
         with pytest.raises(LinearError, match="Nope"):
             await client.query("query Broken { viewer { id } }")
 
+    async def test_http_error_does_not_embed_the_authorization_header(self):
+        response = MagicMock(status=400)
+        response.json = AsyncMock(return_value={"errors": [{"message": "Query is invalid"}]})
+        session = MagicMock()
+        session.post.return_value = FakePostContext(response)
+        client = LinearClient(api_key="lin_api_test_must_not_leak", session=session)
+
+        with pytest.raises(LinearError) as exc_info:
+            await client.query("query Broken { viewer { id } }")
+
+        assert "Query is invalid" in str(exc_info.value)
+        assert "lin_api_test_must_not_leak" not in str(exc_info.value)
+        response.raise_for_status.assert_not_called()
+
     async def test_list_teams_flattens_nodes(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         client.query = AsyncMock(

@@ -53,7 +53,10 @@ from pynchy.plugins.channel_runtime import (
     resolve_default_channel,
 )
 from pynchy.plugins.host_actions import initialize_host_action_catalog
-from pynchy.plugins.integrations import linear_boot
+from pynchy.plugins.integrations import linear_boot, linear_decision_inbox
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
+    LinearWorkspaceBoard,
+)
 from pynchy.plugins.runtimes import system_checks
 from pynchy.state import (
     init_database,
@@ -248,8 +251,8 @@ async def _setup_channels(app: PynchyApp) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
-    """Worktree + workspace reconciliation.  Returns repo_groups."""
+async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
+    """Reconcile worktrees and workspaces, returning live Linear board identities."""
     s = get_settings()
 
     repo_groups = workspace_config.get_repo_access_groups(s.workspaces)
@@ -266,9 +269,9 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
         unregister_fn=app.unregister_workspace,
     )
 
-    await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
+    linear_boards = await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
 
-    return repo_groups
+    return dict(linear_boards)
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +279,10 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, list[str]]:
 # ---------------------------------------------------------------------------
 
 
-async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) -> None:
+async def _start_subsystems(
+    app: PynchyApp,
+    linear_boards: dict[str, LinearWorkspaceBoard],
+) -> None:
     """Scheduler, IPC, git sync, HTTP server."""
     s = get_settings()
 
@@ -286,6 +292,16 @@ async def _start_subsystems(app: PynchyApp, _repo_groups: dict[str, list[str]]) 
             task_scheduler.start_scheduler_loop(scheduler_deps), name="scheduler"
         )
     )
+    if linear_boards:
+        app.add_subsystem_task(
+            create_background_task(
+                linear_decision_inbox.start_linear_decision_inbox_loop(
+                    app.workspaces,
+                    linear_boards,
+                ),
+                name="linear-decision-inbox",
+            )
+        )
     app.add_subsystem_task(
         create_background_task(
             ipc_manager.start_ipc_watcher(dep_factory.make_ipc_deps(app)),

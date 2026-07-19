@@ -19,6 +19,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     move_unlinked_work_item,
     reconcile_work_item,
+    submit_work_item_plan,
     transition_linked_work_item,
 )
 from pynchy.state import (
@@ -41,6 +42,7 @@ _ISSUE_REQUIRED = "issue_id is required"
 _SUMMARY_REQUIRED = "summary is required"
 _BLOCKER_REQUIRED = "reason is required"
 _HANDOFF_REQUIRED = "owner is required"
+_PLAN_REQUIRED = "plan is required"
 _ACTIVE_EXECUTION_REQUIRED = "No active Pynchy execution owns this Linear work item"
 _UNKNOWN_TRANSITION_REQUIRED = "No uncertain work-item transition needs reconciliation"
 _AGENT_SETTABLE_STATUS_ERROR = "Agents may move unlinked Linear items only to: {statuses}"
@@ -298,6 +300,24 @@ async def handle_move_unlinked_todo(data: dict[str, Any]) -> dict[str, object]:
     try:
         async with linear_client() as client:
             updated = await move_unlinked_work_item(client, workspace, issue_id, status)
+    except (LinearError, ValueError) as exc:
+        return {"error": str(exc)}
+    return {"result": {"issue": _issue_projection(updated)}}
+
+
+async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
+    workspace = _workspace(data)
+    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
+    plan = _required_str(data, "plan", _PLAN_REQUIRED)
+    active = await get_active_work_item_execution(issue_id)
+    if active is not None:
+        return {
+            "error": "A claimed Linear work item cannot re-enter planning",
+            "result": {"work_item": work_item_execution_to_dict(active)},
+        }
+    try:
+        async with linear_client() as client:
+            updated = await submit_work_item_plan(client, workspace, issue_id, plan)
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}
     return {"result": {"issue": _issue_projection(updated)}}

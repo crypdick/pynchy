@@ -128,6 +128,7 @@ from pynchy.state.sessions import (
 )
 from pynchy.state.tasks import (
     create_task,
+    create_task_if_absent,
     delete_task,
     get_active_task_for_group,
     get_all_tasks,
@@ -229,6 +230,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "store_message_direct",
     # tasks
     "create_task",
+    "create_task_if_absent",
     "delete_task",
     "get_active_task_for_group",
     "get_all_tasks",

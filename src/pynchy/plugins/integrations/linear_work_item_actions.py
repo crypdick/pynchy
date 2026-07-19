@@ -27,6 +27,7 @@ from pynchy.plugins.integrations.linear_work_items import (
     handle_list_work_items,
     handle_move_unlinked_todo,
     handle_reconcile_work_item,
+    handle_submit_plan,
 )
 
 _ActionSpec = tuple[str, str, str, HostActionAccess, HostActionHandler]
@@ -45,6 +46,13 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
             "List durable Pynchy executions linked to Linear work items.",
             HostActionAccess.READ,
             handle_list_work_items,
+        ),
+        (
+            "linear_submit_plan",
+            "linear.todo.plan",
+            "Persist a concrete Linear plan and request human plan approval.",
+            HostActionAccess.WRITE,
+            handle_submit_plan,
         ),
         (
             "linear_claim_work_item",
@@ -84,7 +92,7 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_move_todo",
             "linear.todo.move",
-            "Move an unlinked Linear item between agent-controlled planning states.",
+            "Return an unlinked Linear item to Agent Proposed.",
             HostActionAccess.WRITE,
             handle_move_unlinked_todo,
         ),

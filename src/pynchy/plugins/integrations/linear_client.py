@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
+
+import aiohttp
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 _LINEAR_DATA_OBJECT_MISSING = "Linear response did not include a data object"
@@ -40,12 +43,21 @@ class LinearClient:
         }
         session = cast("Any", self._session)
         async with session.post(self._endpoint, json=payload, headers=headers) as response:
-            response.raise_for_status()
-            body = await response.json()
+            try:
+                body = await response.json()
+            except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                status = response.status if isinstance(response.status, int) else 500
+                raise LinearError(f"Linear request failed with HTTP {status}") from exc
 
         if errors := body.get("errors"):
             messages = "; ".join(str(error.get("message", error)) for error in errors)
             raise LinearError(messages)
+        status = response.status if isinstance(response.status, int) else 200
+        if not 200 <= status < 300:
+            # aiohttp's ClientResponseError retains request headers in its repr.
+            # Converting HTTP failures here prevents an uncaught traceback from
+            # printing the Linear authorization credential.
+            raise LinearError(f"Linear request failed with HTTP {status}")
         data = body.get("data")
         if not isinstance(data, dict):
             raise LinearError(_LINEAR_DATA_OBJECT_MISSING)
@@ -159,7 +171,7 @@ class LinearClient:
                 """
                 query GetIssue($issue_id: String!) {
                   issue(id: $issue_id) {
-                    id identifier title url updatedAt
+                    id identifier title description url updatedAt
                     state { id name type }
                     project { id name }
                   }

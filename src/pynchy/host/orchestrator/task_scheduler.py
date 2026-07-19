@@ -313,7 +313,9 @@ async def _finish_scheduled_agent_run(
     await record_task_completion(
         task.id,
         last_result=result_summary,
-        completed=task.schedule_type == "once",
+        # A failed one-shot remains active so Temporal's activity retry can
+        # run the same durable task instead of observing a false completion.
+        completed=task.schedule_type == "once" and error is None,
     )
     return error is None
 
