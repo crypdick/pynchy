@@ -11,6 +11,8 @@ from uuid import uuid4
 
 import pytest
 from conftest import make_settings
+from temporalio import activity
+from temporalio.client import WorkflowFailureError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -1430,3 +1432,37 @@ class TestTemporalSchedulerRuntime:
 
         assert result == "completed"
         assert called == {"task_id": temporal_task.id, "deps": deps}
+
+    @pytest.mark.asyncio
+    async def test_database_host_job_failure_does_not_retry_side_effects(self):
+        """A recurring host job may retry only at its next schedule instant."""
+        attempts = 0
+        task_queue = f"pynchy-temporal-test-{uuid4()}"
+
+        @activity.defn(name="run_database_host_job")
+        async def fail_host_job(_job_id: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            await asyncio.sleep(0)
+            raise RuntimeError("expected command failure")
+
+        env = await WorkflowEnvironment.start_time_skipping()
+        try:
+            async with Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[temporal_workflows.DatabaseHostJobWorkflow],
+                activities=[fail_host_job],
+                workflow_runner=temporal_scheduler.scheduler_workflow_runner(),
+            ):
+                with pytest.raises(WorkflowFailureError):
+                    await env.client.execute_workflow(
+                        temporal_workflows.DatabaseHostJobWorkflow.run,
+                        "job-id",
+                        id=f"pynchy-temporal-test-{uuid4()}",
+                        task_queue=task_queue,
+                    )
+        finally:
+            await env.shutdown()
+
+        assert attempts == 1
