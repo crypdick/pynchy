@@ -243,7 +243,7 @@ def test_prepare_onecli_material_creates_missing_agent_and_retries(
     }
 
 
-def test_prepare_onecli_material_resolves_proxy_host_for_apple_runtime(
+def test_prepare_onecli_material_omits_unreachable_proxy_for_apple_runtime(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -273,8 +273,6 @@ def test_prepare_onecli_material_resolves_proxy_host_for_apple_runtime(
 
     assert material is not None
     assert material.env_vars == {
-        "HTTPS_PROXY": "http://192.168.64.1:10255",
-        "http_proxy": "http://192.168.64.1:10255",
         "SSL_CERT_FILE": "/opt/onecli-ca.pem",
     }
 
