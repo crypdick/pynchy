@@ -188,8 +188,17 @@ def _urlopen_http_request(request: Request, *, timeout: int | float) -> _Urlopen
     )
 
 
-def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
-    """Fetch and write OneCLI material for a group, or return ``None`` when disabled."""
+def prepare_onecli_material(
+    group_folder: str,
+    *,
+    container_target: bool = True,
+) -> OneCliMaterial | None:
+    """Fetch OneCLI material for a container or host Git invocation.
+
+    Apple containers cannot reach OneCLI's loopback proxy, so container
+    material omits proxy variables there. Host Git runs on the machine that
+    owns that proxy and must retain them.
+    """
     settings = get_settings()
     config = settings.onecli
     if not config.enabled:
@@ -218,6 +227,7 @@ def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
         data_dir=settings.data_dir,
         group_folder=group_folder,
         container_config=container_config,
+        container_target=container_target,
     )
 
 
@@ -318,10 +328,11 @@ def _materialize_container_config(
     data_dir: Path,
     group_folder: str,
     container_config: dict[str, Any],
+    container_target: bool,
 ) -> OneCliMaterial:
-    env_vars = _resolve_container_proxy_hosts(
-        _string_dict(container_config.get("env", {}), field="env")
-    )
+    env_vars = _string_dict(container_config.get("env", {}), field="env")
+    if container_target:
+        env_vars = _resolve_container_proxy_hosts(env_vars)
     warnings = _string_list(container_config.get("warnings", []), field="warnings")
     base_dir = data_dir / "onecli" / group_folder
     mounts: list[VolumeMount] = []

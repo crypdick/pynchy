@@ -441,10 +441,9 @@ class TestGitEnvWithToken:
         with (
             patch("pynchy.host.git_ops.utils.get_settings", return_value=s),
             patch(
-                "pynchy.host.git_ops.utils.prepare_onecli_material",
+                "pynchy.host.container_manager.onecli.prepare_onecli_material",
                 return_value=material,
-                create=True,
-            ),
+            ) as prepare_material,
             patch("pynchy.host.git_ops.repo.get_repo_token") as get_token,
         ):
             env = git_env_with_token(REPO_SLUG, group_folder="code-improver")
@@ -455,6 +454,7 @@ class TestGitEnvWithToken:
         assert env["GIT_TERMINAL_PROMPT"] == "0"
         assert "GH_TOKEN" not in env
         assert "GIT_CONFIG_VALUE_1" not in env
+        prepare_material.assert_called_once_with("code-improver", container_target=False)
         get_token.assert_not_called()
 
     def test_onecli_git_proxy_rewrites_resolved_container_host_for_host_processes(

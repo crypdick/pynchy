@@ -131,7 +131,7 @@ def prepare_onecli_material(group_folder: str) -> OneCliMaterial | None:
         prepare_onecli_material as _prepare_onecli_material,
     )
 
-    return _prepare_onecli_material(group_folder)
+    return _prepare_onecli_material(group_folder, container_target=False)
 
 
 def _git_env_with_onecli(slug: str, *, group_folder: str | None) -> dict[str, str] | None:
