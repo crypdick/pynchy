@@ -270,6 +270,20 @@ class TestEnsureRepoCloned:
         error_call = mock_logger.error.call_args
         assert SCOPED_CREDENTIAL not in str(error_call)
 
+    def test_clone_timeout_returns_false_without_blocking_startup(self, tmp_path: Path):
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG, root=tmp_path / "repo", worktrees_dir=tmp_path / "wt"
+        )
+
+        with (
+            patch("pynchy.host.git_ops.repo.get_repo_token", return_value=None),
+            patch(
+                "subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="git clone", timeout=30),
+            ),
+        ):
+            assert ensure_repo_cloned(repo_ctx) is False
+
 
 # ---------------------------------------------------------------------------
 # Container credential injection
