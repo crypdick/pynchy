@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, Mock
+import subprocess  # noqa: S404, RUF100 - test fixtures construct completed Docker command results.
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from conftest import make_settings
@@ -101,7 +102,9 @@ class TestDockerLifecycleHelpers:
             "pynchy.host.container_manager.mcp.lifecycle.remove_container",
             AsyncMock(),
         )
-        run_docker_mock = AsyncMock(return_value=Mock(returncode=0))
+        run_docker_mock = AsyncMock(
+            return_value=subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        )
         monkeypatch.setattr(
             "pynchy.host.container_manager.mcp.lifecycle.run_docker",
             run_docker_mock,
@@ -225,6 +228,31 @@ class TestDockerLifecycleHelpers:
             "any_non_5xx": True,
             "health_timeout_seconds": 5.0,
         }
+
+    @pytest.mark.asyncio
+    async def test_ensure_docker_running_captures_logs_before_removing_unhealthy_container(
+        self,
+        monkeypatch,
+    ):
+        instance = self._make_instance()
+        run_docker_mock, wait_healthy_mock = self._stub_docker_lifecycle(monkeypatch)
+        wait_healthy_mock.side_effect = TimeoutError("not ready")
+        stop_container_mock = AsyncMock()
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.stop_container",
+            stop_container_mock,
+        )
+
+        with pytest.raises(TimeoutError, match="not ready"):
+            await ensure_docker_running(instance)
+
+        assert run_docker_mock.await_args_list[-1].args == (
+            "logs",
+            "--tail",
+            "50",
+            "pynchy-mcp-browser",
+        )
+        stop_container_mock.assert_awaited_once_with("pynchy-mcp-browser", stop_timeout_seconds=1)
 
 
 # ---------------------------------------------------------------------------
