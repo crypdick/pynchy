@@ -168,10 +168,12 @@ async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcD
     )
     workspace_config.add_job_to_toml(
         request.name,
-        JobConfig(
-            workspace=request.name,
-            schedule=request.schedule,
-            prompt=request.prompt,
+        JobConfig.model_validate(
+            {
+                "profile": request.profile,
+                "schedule": request.schedule,
+                "prompt": request.prompt,
+            }
         ),
     )
 

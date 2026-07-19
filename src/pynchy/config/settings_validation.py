@@ -80,11 +80,7 @@ def _validate_job_reference(
     if job.is_host:
         return
     if job.profile is None:
-        if job.workspace not in workspaces:
-            raise ValueError(
-                f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}"
-            )
-        return
+        raise RuntimeError("Validated agent job has no profile")
     if job.profile not in profiles:
         raise ValueError(f"jobs.{job_name}.profile references unknown profile: {job.profile}")
     roots = [

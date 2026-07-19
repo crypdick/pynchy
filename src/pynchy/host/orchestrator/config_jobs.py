@@ -109,7 +109,7 @@ def _resolve_agent_job_context(
 def _root_folder_for_job(job: JobConfig, settings: Settings) -> str | None:
     """Resolve a profile-targeted job to its one configured root workspace."""
     if job.profile is None:
-        return job.workspace
+        raise RuntimeError("Validated agent job has no profile")
     roots = [
         folder
         for folder, workspace in settings.workspaces.items()

@@ -45,7 +45,7 @@ class TestJobReconcile:
                 "daily-triage": JobConfig(
                     enabled=True,
                     schedule="0 8 * * *",
-                    workspace="admin",
+                    profile="admin",
                     prompt="Run the daily triage memo.",
                 )
             },
@@ -121,7 +121,7 @@ class TestJobReconcile:
                 "cancel-youtube-premium": JobConfig(
                     enabled=True,
                     at=run_at,
-                    workspace="admin",
+                    profile="admin",
                     prompt="Cancel YouTube Premium.",
                 )
             },
@@ -155,7 +155,7 @@ class TestJobReconcile:
                 "daily-triage": JobConfig(
                     enabled=True,
                     schedule="0 8 * * *",
-                    workspace="admin",
+                    profile="admin",
                     prompt="Run the daily triage memo.",
                 )
             },
@@ -199,7 +199,7 @@ class TestJobReconcile:
                 "daily-triage": JobConfig(
                     enabled=False,
                     schedule="0 8 * * *",
-                    workspace="admin",
+                    profile="admin",
                     prompt="Run the daily triage memo.",
                 )
             },

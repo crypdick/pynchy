@@ -65,10 +65,6 @@ Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
 """
 ```
 
-Migrate an older agent job that uses `workspace = "admin"` by changing it to
-`profile = "admin"`. Pynchy accepts the older form during migration, but new
-agent jobs should use `profile`.
-
 Host jobs use the reserved workspace name `host`:
 
 ```toml

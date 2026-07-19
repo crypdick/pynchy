@@ -9,10 +9,9 @@ from pydantic import field_validator, model_validator
 
 from pynchy.config.models import ValidatedProfileName, _StrictModel
 
-_JOB_PROFILE_OR_WORKSPACE_ERROR = "agent jobs require profile"
-_JOB_PROFILE_AND_WORKSPACE_ERROR = "agent jobs cannot set both profile and workspace"
+_AGENT_JOB_PROFILE_REQUIRED_ERROR = "agent jobs require profile"
+_AGENT_JOB_WORKSPACE_ERROR = "agent jobs cannot set workspace; use profile"
 _HOST_JOB_PROFILE_ERROR = "host jobs cannot set profile"
-_HOST_JOB_WORKSPACE_ERROR = "host jobs require workspace = 'host'"
 _JOB_COMMAND_EMPTY_ERROR = "host job command cannot be empty"
 _JOB_TIMEOUT_SECONDS_ERROR = "timeout_seconds must be positive"
 _JOB_AT_ERROR = "job at must be an ISO datetime"
@@ -29,8 +28,6 @@ class JobConfig(_StrictModel):
 
     ``workspace = "host"`` selects host execution. Agent jobs select a
     profile; Pynchy resolves that profile to its configured root workspace.
-    ``workspace`` remains accepted when no profile is configured so a service
-    can adopt the profile selector incrementally.
     """
 
     enabled: bool = True
@@ -51,12 +48,10 @@ class JobConfig(_StrictModel):
 
     @property
     def target_scope(self) -> str:
-        """Return the profile name or the workspace target without a profile."""
+        """Return the validated profile that selects this agent job's root."""
         if self.profile is not None:
             return str(self.profile)
-        if self.workspace is not None:
-            return self.workspace
-        raise RuntimeError("Validated agent job has no target scope")
+        raise RuntimeError("Validated agent job has no profile")
 
     @field_validator("schedule")
     @classmethod
@@ -120,14 +115,12 @@ class JobConfig(_StrictModel):
                 raise ValueError(_HOST_JOB_PROMPT_ERROR)
             return self
 
-        if self.workspace == "host":
-            raise ValueError(_HOST_JOB_WORKSPACE_ERROR)
+        if self.workspace is not None:
+            raise ValueError(_AGENT_JOB_WORKSPACE_ERROR)
         if self.command is not None:
             raise ValueError(_AGENT_JOB_COMMAND_ERROR)
         if (self.prompt is None) == (self.prompt_file is None):
             raise ValueError(_AGENT_JOB_PROMPT_ERROR)
-        if self.profile is not None and self.workspace is not None:
-            raise ValueError(_JOB_PROFILE_AND_WORKSPACE_ERROR)
-        if self.profile is None and self.workspace is None:
-            raise ValueError(_JOB_PROFILE_OR_WORKSPACE_ERROR)
+        if self.profile is None:
+            raise ValueError(_AGENT_JOB_PROFILE_REQUIRED_ERROR)
         return self

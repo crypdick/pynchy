@@ -28,7 +28,9 @@ from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_s
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.state import (
     begin_in_flight_turn,
+    create_task,
     get_in_flight_turn_for_task,
+    get_task_by_id,
     init_test_database,
     prepare_in_flight_turn_recovery,
 )
@@ -1067,9 +1069,10 @@ class TestRunScheduledAgent:
     async def test_profile_job_retry_reuses_its_persistent_thread(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """An agent retry resumes its task thread instead of creating a child of it."""
+        """A restart reloads and reuses the persisted task-thread identity."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.persistent_thread_name = "relationships | fam_daily_checkin"
+        await create_task(sample_task)
         mock_deps._run_agent_result = "error"
 
         with (
@@ -1082,10 +1085,18 @@ class TestRunScheduledAgent:
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
             assert await run_scheduled_agent(sample_task, mock_deps) is False
+            reloaded_task = await get_task_by_id(sample_task.id)
+            assert reloaded_task is not None
+            assert reloaded_task is not sample_task
+            assert reloaded_task.persistent_thread_jid == "discord:channel:scheduled-1"
+            lookups_before_retry = len(mock_deps.thread_lookups)
+            creations_before_retry = len(mock_deps.thread_creations)
             mock_deps._run_agent_result = "success"
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(reloaded_task, mock_deps) is True
 
         assert mock_deps.thread_creations == [("test@g.us", "relationships | fam_daily_checkin")]
+        assert len(mock_deps.thread_lookups) == lookups_before_retry
+        assert len(mock_deps.thread_creations) == creations_before_retry
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
             "discord:channel:scheduled-1",
             "discord:channel:scheduled-1",
