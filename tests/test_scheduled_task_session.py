@@ -156,6 +156,23 @@ class TestScheduledTaskUsesSession:
         assert kwargs.get("idle_timeout_override") > 0
 
     @pytest.mark.asyncio
+    async def test_discards_a_persisted_provider_session_before_spawning(self):
+        """A fresh one-shot container must not resume an unavailable rollout."""
+        self.ctx.session_id = "codex:gpt-5.6:stale-thread"
+        build_input = MagicMock(return_value=_make_container_input())
+
+        with (
+            patch(_P_BUILD, build_input),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
+            patch(_P_CREATE, new_callable=AsyncMock, return_value=self.fake_session),
+            patch(_P_DESTROY, new_callable=AsyncMock),
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
+        ):
+            await self._call()
+
+        assert build_input.call_args.args[1].session_id is None
+
+    @pytest.mark.asyncio
     async def test_sets_output_handler_on_session(self):
         """Session should have the wrapped_on_output handler set, enabling
         real-time streaming through the IPC watcher."""

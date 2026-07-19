@@ -390,6 +390,10 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
 
     # --- Scheduled tasks: one-shot container, no persistent session ---
     if is_scheduled_task:
+        # The one-shot container has a fresh provider home, so it cannot
+        # resume a durable interactive Codex rollout. Pynchy's in-flight turn
+        # supplies its own semantic recovery context when a task restarts.
+        ctx.session_id = None
         logger.info(
             "run_agent scheduled task (one-shot)",
             group=group.name,
