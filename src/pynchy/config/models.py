@@ -23,6 +23,9 @@ from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validato
 
 from pynchy.config.caldav import CalDAVConfig
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
+from pynchy.config.workspace_layout import (
+    WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
+)
 
 # Reference strings whose well-formedness is proven by a validator. Carrying
 # the proof in a distinct type (per CONVENTIONS.md "Parse, don't validate") means
@@ -425,6 +428,14 @@ class WorkspaceConfig(_StrictModel):
     model: str | None = None
     chat: ValidatedChatRef | None = None
     proton_pass_env_file: str | None = None
+    threads: list[WorkspaceThreadConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_thread_names_are_unique(self) -> WorkspaceConfig:
+        names = [thread.name.casefold() for thread in self.threads]
+        if len(names) != len(set(names)):
+            raise ValueError("workspace thread names must be unique ignoring case")
+        return self
 
     @field_validator("proton_pass_env_file")
     @classmethod

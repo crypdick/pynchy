@@ -290,7 +290,12 @@ class DiscordChannel:
         return channel_jid(str(thread.id))
 
     async def find_thread(self, parent_jid: str, name: str) -> str | None:
-        """Find an active child thread with *name* below the given parent."""
+        """Find a child thread with *name* below the given parent.
+
+        Declared workspace threads are durable names, so include archived public
+        threads before deciding a name is free. A matching archived thread gets
+        reopened instead of letting startup create a duplicate sibling.
+        """
         parent = cast("Any", await self.resolve_channel(parent_jid))
         guild = getattr(parent, "guild", None)
         active_threads = getattr(guild, "active_threads", None)
@@ -304,10 +309,32 @@ class DiscordChannel:
             and getattr(thread, "name", None) == name
         ]
         if not matching_threads:
+            archived_threads = getattr(parent, "archived_threads", None)
+            if callable(archived_threads):
+                matching_threads = [
+                    thread
+                    async for thread in archived_threads(private=False, limit=100)
+                    if getattr(thread, "parent_id", None) == parent_id
+                    and getattr(thread, "name", None) == name
+                ]
+        if not matching_threads:
             return None
         # Discord snowflakes are chronologically ordered. The earliest matching
         # thread is the canonical slot if an earlier Pynchy version created a duplicate.
         canonical_thread = min(matching_threads, key=lambda thread: thread.id)
+        if getattr(canonical_thread, "archived", False):
+            edit = getattr(canonical_thread, "edit", None)
+            if callable(edit):
+                try:
+                    await edit(archived=False)
+                except discord.HTTPException as exc:
+                    # Reuse the canonical thread rather than creating a duplicate.
+                    # The normal send path reports if Discord keeps it unavailable.
+                    logger.warning(
+                        "Could not reopen archived Discord thread",
+                        thread_id=canonical_thread.id,
+                        error=str(exc),
+                    )
         return channel_jid(str(canonical_thread.id))
 
     async def add_thread_participants(

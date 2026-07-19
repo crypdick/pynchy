@@ -10,6 +10,13 @@ A workspace spec declares which profiles a workspace selects. Profiles carry reu
 
 At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. Config-backed jobs under `[jobs.*]` create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [prompts](../usage/prompts.md) rather than seeded files.
 
+Workspace specs can also declare named child threads. The reconciler creates
+or reuses each thread below its configured root, then registers a dynamic
+workspace with the parent's complete profile. It requires a channel to support
+thread lookup as well as creation; creation without lookup would make startup
+non-idempotent. The thread reconciler supports a dry-run mode that returns its
+planned actions without changing a channel or runtime registration.
+
 ## Config Merging
 
 Workspace specs come from two sources: plugins and `config.toml`. When both define the same workspace folder, **user config always wins**.
@@ -30,6 +37,21 @@ Scheduled-task definitions and run evidence live in the database, but the **sour
 2. Creates chat groups for workspaces missing database entries
 3. Creates or updates scheduled tasks from `[jobs.*]` agent jobs
 4. Creates channel aliases across messaging platforms
+
+### Root-to-thread migration safety
+
+A Discord root channel cannot become a child thread, so parent-workspace
+migration proceeds as an additive change. `[workspace_migrations.<legacy>]`
+maps a retained legacy root to a declared target workspace and thread. Until
+`retire_legacy_workspace` is confirmed with both inbound and scheduled-job
+retargeting confirmations, reconciliation preserves that legacy registration.
+Even after confirmation, an active stored task that still targets the legacy
+folder blocks retirement. Retirement removes only Pynchy's registration; it
+does not delete the external Discord channel.
+
+The scheduler owns scheduled-job retargeting. Workspace reconciliation only
+checks that old persisted tasks no longer target the legacy root before it
+retires that registration.
 
 ### Automatic config-to-database sync
 

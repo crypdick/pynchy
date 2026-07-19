@@ -70,6 +70,41 @@ def test_workspace_profile_reference_must_exist() -> None:
         )
 
 
+def test_workspace_migration_must_target_a_declared_child_thread() -> None:
+    with pytest.raises(ValidationError, match="targets undeclared thread"):
+        validate_settings_mapping(
+            {
+                "workspaces": {
+                    "relationships": {"threads": [{"name": "family"}]},
+                },
+                "workspace_migrations": {
+                    "fam": {
+                        "target_workspace": "relationships",
+                        "target_thread": "other",
+                    }
+                },
+            }
+        )
+
+
+def test_workspace_migration_retirement_requires_all_retargeting_confirmations() -> None:
+    with pytest.raises(ValidationError, match="retire_legacy_workspace requires"):
+        validate_settings_mapping(
+            {
+                "workspaces": {
+                    "relationships": {"threads": [{"name": "family"}]},
+                },
+                "workspace_migrations": {
+                    "fam": {
+                        "target_workspace": "relationships",
+                        "target_thread": "family",
+                        "retire_legacy_workspace": True,
+                    }
+                },
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("config", "configured_path"),
     [

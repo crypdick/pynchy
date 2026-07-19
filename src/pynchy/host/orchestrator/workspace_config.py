@@ -6,7 +6,6 @@ Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 
 from __future__ import annotations
 
-import re
 from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
@@ -28,13 +27,15 @@ from pynchy.config.merge import (
 )
 from pynchy.config.models import WorkspaceConfig
 from pynchy.config.toml_io import mutate_config_toml
-from pynchy.config.workspace_names import DYNAMIC_THREAD_DELIMITER, parent_workspace_name
+from pynchy.config.workspace_names import dynamic_thread_folder as _dynamic_thread_folder
+from pynchy.config.workspace_names import parent_workspace_name
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
     resolve_display_name,
     sync_workspace_profile,
 )
+from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
 from pynchy.state import (
     get_all_tasks,
@@ -61,14 +62,9 @@ class _WorkspaceConfigState:
 _state = _WorkspaceConfigState()
 
 
-def _safe_folder_fragment(value: str) -> str:
-    fragment = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
-    return fragment or "thread"
-
-
 def dynamic_thread_folder(parent_folder: str, thread_jid: str) -> str:
     """Return the isolated runtime folder for a dynamic thread workspace."""
-    return f"{parent_folder}{DYNAMIC_THREAD_DELIMITER}{_safe_folder_fragment(thread_jid)}"
+    return _dynamic_thread_folder(parent_folder, thread_jid)
 
 
 def _parent_folder_for_dynamic_thread(folder: str) -> str | None:
@@ -217,6 +213,7 @@ async def _remove_orphaned_workspaces(
     specs: dict[str, WorkspaceSpec],
     workspaces: dict[str, WorkspaceProfile],
     unregister_fn: Callable[[str], Awaitable[None]] | None,
+    retained_legacy_folders: set[str],
 ) -> None:
     """Remove workspace registrations in the DB but not in config (admin exempt).
 
@@ -226,6 +223,8 @@ async def _remove_orphaned_workspaces(
         return
     config_folders = set(specs.keys())
     for jid, profile in list(workspaces.items()):
+        if profile.folder in retained_legacy_folders:
+            continue
         if profile.folder in config_folders or profile.is_admin:
             continue
         parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
@@ -233,6 +232,34 @@ async def _remove_orphaned_workspaces(
             continue
         await unregister_fn(jid)
         logger.info("Removed orphaned workspace registration", folder=profile.folder, jid=jid)
+
+
+async def _retained_legacy_workspace_folders() -> set[str]:
+    """Return source roots that cannot safely retire yet.
+
+    Discord cannot move a root channel's inbound messages into a child thread.
+    The migration flags therefore serve as an explicit operator
+    confirmation, while this check independently refuses retirement while an
+    active scheduled task still targets the source workspace.
+    """
+    migrations = get_settings().workspace_migrations
+    active_task_folders = {
+        task.group_folder for task in await get_all_tasks() if task.status == "active"
+    }
+    retained: set[str] = set()
+    for legacy_folder, migration in migrations.items():
+        if not migration.retire_legacy_workspace:
+            retained.add(legacy_folder)
+            continue
+        if legacy_folder in active_task_folders:
+            retained.add(legacy_folder)
+            logger.warning(
+                "Legacy workspace retirement blocked by active scheduled task",
+                legacy_workspace=legacy_folder,
+                target_workspace=migration.target_workspace,
+                target_thread=migration.target_thread,
+            )
+    return retained
 
 
 async def reconcile_workspaces(
@@ -280,9 +307,23 @@ async def reconcile_workspaces(
     if reconciled:
         logger.info("Workspaces reconciled", count=reconciled)
 
+    thread_actions = await reconcile_workspace_threads(
+        workspaces,
+        {folder: spec.config for folder, spec in specs.items()},
+        channels,
+        register_fn,
+    )
+    if thread_actions:
+        logger.info("Workspace child threads reconciled", count=len(thread_actions))
+
     desired_job_task_ids = await reconcile_agent_jobs(workspaces, s, load_resolved_config)
     await _pause_orphaned_tasks(specs, desired_job_task_ids)
-    await _remove_orphaned_workspaces(specs, workspaces, unregister_fn)
+    await _remove_orphaned_workspaces(
+        specs,
+        workspaces,
+        unregister_fn,
+        await _retained_legacy_workspace_folders(),
+    )
 
 
 # ---------------------------------------------------------------------------
