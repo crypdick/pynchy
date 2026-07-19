@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pynchy.host.orchestrator.workspace_config import static_workspace_folder
 from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import AGENT_SETTABLE_STATUSES
@@ -324,7 +325,7 @@ async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
 
 
 def _workspace(data: dict[str, Any]) -> str:
-    return _required_str(data, "source_group", _WORKSPACE_REQUIRED)
+    return static_workspace_folder(_required_str(data, "source_group", _WORKSPACE_REQUIRED))
 
 
 def _required_str(data: dict[str, Any], key: str, error: str) -> str:
