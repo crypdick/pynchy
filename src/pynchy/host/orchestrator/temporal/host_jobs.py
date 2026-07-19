@@ -5,6 +5,9 @@ from __future__ import annotations
 from temporalio import activity
 
 from pynchy.config import get_settings
+from pynchy.config.scheduler_models import (
+    CronJobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
+)
 from pynchy.host.orchestrator.task_scheduler import resolve_cron_job_cwd
 from pynchy.host.orchestrator.temporal.runtime_state import _record_activity_result
 from pynchy.logger import logger
@@ -12,7 +15,7 @@ from pynchy.state import get_host_job_by_id, update_host_job_after_run
 from pynchy.types import (
     HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
 )
-from pynchy.utils import compute_next_run, log_shell_result, run_shell_command
+from pynchy.utils import ShellResult, compute_next_run, log_shell_result, run_shell_command
 
 
 @activity.defn(name="run_database_host_job")
@@ -43,25 +46,31 @@ async def run_config_host_cron_job(job_name: str) -> str:
         return "skipped"
 
     try:
-        command_cwd = resolve_cron_job_cwd(job.cwd)
-        logger.info(
-            "Running config host cron job",
-            job=job_name,
-            schedule=job.schedule,
-            cwd=command_cwd,
-        )
-        result = await run_shell_command(
-            job.command,
-            cwd=command_cwd,
-            timeout_seconds=job.timeout_seconds,
-        )
-        if not (job.quiet_on_success and result.returncode == 0):
-            log_shell_result(result, label="Config host cron job", job=job_name)
+        await _run_config_host_cron_job(job_name, job)
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(job_name, "error", str(exc))
         raise
     _record_activity_result(job_name, "completed")
     return "completed"
+
+
+async def _run_config_host_cron_job(job_name: str, job: CronJobConfig) -> None:
+    """Run a config-backed host cron job and surface shell failures to Temporal."""
+    command_cwd = resolve_cron_job_cwd(job.cwd)
+    logger.info(
+        "Running config host cron job",
+        job=job_name,
+        schedule=job.schedule,
+        cwd=command_cwd,
+    )
+    result = await run_shell_command(
+        job.command,
+        cwd=command_cwd,
+        timeout_seconds=job.timeout_seconds,
+    )
+    if not (job.quiet_on_success and result.returncode == 0):
+        log_shell_result(result, label="Config host cron job", job=job_name)
+    _raise_for_failed_command(result, job_name)
 
 
 async def _run_database_host_job(job: HostJob) -> None:
@@ -80,7 +89,17 @@ async def _run_database_host_job(job: HostJob) -> None:
         timeout_seconds=job.timeout_seconds,
     )
     log_shell_result(result, label="Database host job", job_id=job.id)
+    _raise_for_failed_command(result, job.id)
 
     next_run = compute_next_run(job.schedule_type, job.schedule_value, get_settings().timezone)
-    exit_code = result.returncode if result.returncode is not None else 1
-    await update_host_job_after_run(job.id, next_run, exit_code)
+    await update_host_job_after_run(job.id, next_run)
+
+
+def _raise_for_failed_command(result: ShellResult, job_identifier: str) -> None:
+    """Raise so Temporal records failed commands instead of false completion."""
+    if result.start_error is not None:
+        raise RuntimeError(f"Host job {job_identifier} failed to start: {result.start_error}")
+    if result.timed_out:
+        raise RuntimeError(f"Host job {job_identifier} timed out")
+    if result.returncode != 0:
+        raise RuntimeError(f"Host job {job_identifier} exited with code {result.returncode}")

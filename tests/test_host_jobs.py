@@ -13,6 +13,7 @@ from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
 from pynchy.state import (
     create_host_job,
+    get_host_job_by_id,
     get_host_job_by_name,
 )
 from pynchy.utils import ShellResult
@@ -134,6 +135,38 @@ class TestHostJobScheduling:
         mock_shell.assert_awaited_once()
         call_kwargs = mock_shell.await_args.kwargs
         assert call_kwargs["cwd"] == cwd
+
+    @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
+    async def test_temporal_database_host_job_failure_is_not_recorded_as_success(
+        self, mock_shell, tmp_path
+    ):
+        """A failed command must make the Temporal activity fail visibly."""
+        mock_shell.return_value = ShellResult(returncode=1, stdout="", stderr="boom")
+        due_at = "2020-01-01T00:00:00+00:00"
+        await create_host_job(
+            {
+                "id": "job-failure",
+                "name": "failure-job",
+                "command": "exit 1",
+                "schedule_type": "once",
+                "schedule_value": due_at,
+                "next_run": due_at,
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+                "created_by": "admin-1",
+                "cwd": str(tmp_path),
+                "timeout_seconds": 60,
+                "enabled": True,
+            }
+        )
+
+        with pytest.raises(RuntimeError, match="Host job job-failure exited with code 1"):
+            await run_database_host_job("job-failure")
+
+        job = await get_host_job_by_id("job-failure")
+        assert job is not None
+        assert job.last_run is None
+        assert job.next_run == due_at
 
     async def test_host_job_validates_invalid_cron(self, mock_ipc_deps):
         """Host job creation rejects invalid cron expressions."""

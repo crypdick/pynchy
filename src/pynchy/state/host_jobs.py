@@ -61,8 +61,8 @@ async def create_host_job(job: dict[str, Any]) -> None:
     await db.commit()
 
 
-async def update_host_job_after_run(job_id: str, next_run: str | None, _exit_code: int) -> None:
-    """Update a host job after a run."""
+async def update_host_job_after_run(job_id: str, next_run: str | None) -> None:
+    """Update a host job after a successful run."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
     await db.execute(
