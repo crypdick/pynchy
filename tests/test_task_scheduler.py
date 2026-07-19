@@ -241,7 +241,7 @@ class MockSchedulerDeps:
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         self.system_notices.append((chat_jid, text))
 
-    async def create_scheduled_thread(
+    async def create_thread(
         self,
         parent_jid: str,
         name: str,
@@ -252,11 +252,11 @@ class MockSchedulerDeps:
         self.thread_participants.append(participant_ids)
         return f"discord:channel:scheduled-{len(self.thread_creations)}"
 
-    async def find_scheduled_thread(self, parent_jid: str, name: str) -> str | None:
+    async def find_thread(self, parent_jid: str, name: str) -> str | None:
         self.thread_lookups.append((parent_jid, name))
         return self.existing_threads.get(name)
 
-    async def add_scheduled_thread_participants(
+    async def add_thread_participants(
         self,
         child_jid: str,
         participant_ids: tuple[str, ...],

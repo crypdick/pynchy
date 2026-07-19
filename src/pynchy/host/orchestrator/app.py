@@ -37,8 +37,8 @@ from pynchy.host.orchestrator.messaging import (
 from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     ProcessGroupResult,
 )
-from pynchy.host.orchestrator.scheduled_thread_routing import ScheduledThreadRouting
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
+from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.logger import logger
 from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     MemoryProvider,
@@ -69,7 +69,7 @@ from pynchy.types import (
 )
 
 
-class PynchyApp(ScheduledThreadRouting):
+class PynchyApp(ThreadRouting):
     """Main application class — owns all runtime state and wires subsystems."""
 
     def __init__(self) -> None:

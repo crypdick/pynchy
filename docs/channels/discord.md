@@ -26,6 +26,7 @@ configuration.
    [connections.mybot]
    type = "discord"
    bot_token_env = "DISCORD_BOT_TOKEN"
+   default_thread_participants = ["<your-discord-user-id>"]
    dm_policy = "allowlist"               # open | allowlist | disabled
    allow_from = ["alice"]
    group_policy = "allowlist"            # open | disabled | allowlist
@@ -50,7 +51,9 @@ configuration.
    ```
 
    Repo-backed cores need a profile with `repo = "owner/repo"`. Text-channel
-   threads inherit their configured parent workspace profile.
+   threads inherit their configured parent workspace profile. Pynchy adds every
+   `default_thread_participants` user to newly created Discord threads; use
+   Discord user snowflakes, not display names.
 
 5. Install dependencies, restart Pynchy, and inspect the channel state:
 

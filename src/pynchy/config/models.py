@@ -323,6 +323,7 @@ class DiscordConnectionConfig(_StrictModel):
     bot_token_env: str
     application_id: str | None = None
     processing_ack_emoji: str | None = "🦞"
+    default_thread_participants: list[str] = []
     dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
     allow_from: list[str] = []  # DM allowlist (names or ids); "*" = open
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
