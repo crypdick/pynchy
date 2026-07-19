@@ -77,6 +77,36 @@ async def create_task(task: ScheduledTask) -> None:
     await db.commit()
 
 
+async def create_task_if_absent(task: ScheduledTask) -> bool:
+    """Atomically create an externally discovered task once by stable ID."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        INSERT OR IGNORE INTO scheduled_tasks
+            (id, group_folder, chat_jid, prompt, schedule_type,
+             schedule_value, context_mode, next_run, status, created_at,
+             repo_access, input_source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            task.id,
+            task.group_folder,
+            task.chat_jid,
+            task.prompt,
+            task.schedule_type,
+            task.schedule_value,
+            task.context_mode,
+            task.next_run,
+            task.status,
+            task.created_at,
+            task.repo_access,
+            task.input_source,
+        ),
+    )
+    await db.commit()
+    return cursor.rowcount == 1
+
+
 async def get_task_by_id(task_id: str) -> ScheduledTask | None:
     """Get a task by its ID."""
     db = _get_db()

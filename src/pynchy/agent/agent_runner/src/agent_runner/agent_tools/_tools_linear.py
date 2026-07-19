@@ -11,7 +11,7 @@ def _issue_schema(*, include_status: bool = False) -> dict[str, object]:
     if include_status:
         properties["status"] = {
             "type": "string",
-            "enum": ["agent_proposed", "awaiting_plan_approval"],
+            "enum": ["agent_proposed"],
         }
         required.append("status")
     return {
@@ -29,6 +29,23 @@ def _evidence_refs_schema() -> dict[str, object]:
         "description": "Optional concise URLs, artifact paths, or other evidence references.",
     }
 
+
+register_ipc_tool(
+    name="linear_submit_plan",
+    description=(
+        "Persist a concrete Markdown plan for a Ready for Planning Linear item and move it "
+        "to Awaiting Plan Approval. This does not authorize or begin execution."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "issue_id": {"type": "string", "minLength": 1},
+            "plan": {"type": "string", "minLength": 1},
+        },
+        "required": ["issue_id", "plan"],
+        "additionalProperties": False,
+    },
+)
 
 register_ipc_tool(
     name="linear_list_work_items",
@@ -121,9 +138,9 @@ register_ipc_tool(
 register_ipc_tool(
     name="linear_move_todo",
     description=(
-        "Move an unlinked workspace Linear item between agent-controlled planning states. "
-        "This tool cannot set Ready for Planning, Human Approved, or Rejected; those states "
-        "record human decisions in Linear. Active Pynchy executions must use lifecycle tools."
+        "Return an unlinked workspace Linear item to Agent Proposed. Use linear_submit_plan "
+        "to persist a plan and request plan approval. Human decision states remain controlled "
+        "in Linear, and active Pynchy executions must use lifecycle tools."
     ),
     input_schema=_issue_schema(include_status=True),
 )

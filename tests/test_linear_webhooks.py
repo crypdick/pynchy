@@ -113,6 +113,8 @@ def test_every_comment_change_maps_to_fenced_public_source_task(action: str) -> 
     assert event.instructions is not None
     assert "linear_get_issue" in event.instructions
     assert "linear_list_todos" in event.instructions
+    assert "linear_submit_plan" in event.instructions
+    assert "linear_claim_work_item" in event.instructions
     assert "does not grant execution authority" in event.instructions
     assert event.external_context is not None
     assert event.external_context["action"] == action

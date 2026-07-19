@@ -38,6 +38,8 @@ class FakeLinearState:
         if "state_id" not in variables:
             raise AssertionError("test client only supports issue state updates")
         self.issue["state"] = _state(str(variables["state_id"]))
+        if "description" in variables:
+            self.issue["description"] = variables["description"]
         self.issue["updatedAt"] = "2026-07-18T17:00:00+00:00"
         if self.fail_after_update:
             raise RuntimeError("connection closed after provider accepted mutation")
@@ -96,6 +98,7 @@ def _issue(*, state_id: str = "state-human-approved") -> dict[str, Any]:
         "identifier": "PYN-1",
         "title": "Ship durable work item tracking",
         "url": "https://linear.app/example/issue/PYN-1",
+        "description": "Acceptance criteria from the user.",
         "updatedAt": "2026-07-18T16:00:00+00:00",
         "state": _state(state_id),
         "project": {"id": "project-1", "name": "Pynchy"},
@@ -302,7 +305,8 @@ async def test_generic_move_rejects_linked_items_and_moves_unlinked_items(lifecy
     assert client.issue["state"]["name"] == "Agent Proposed"
 
 
-async def test_agent_cannot_mark_an_item_human_approved(lifecycle):
+@pytest.mark.parametrize("status", ["awaiting_plan_approval", "human_approved"])
+async def test_generic_move_cannot_bypass_plan_or_human_approval(lifecycle, status):
     _client, handlers = lifecycle
 
     result = await _call(
@@ -310,14 +314,44 @@ async def test_agent_cannot_mark_an_item_human_approved(lifecycle):
         "linear_move_todo",
         "move-1",
         issue_id="issue-1",
-        status="human_approved",
+        status=status,
     )
 
-    assert result == {
-        "error": (
-            "Agents may move unlinked Linear items only to: agent_proposed, awaiting_plan_approval"
-        )
-    }
+    assert result == {"error": "Agents may move unlinked Linear items only to: agent_proposed"}
+
+
+@pytest.mark.action("linear.todo.plan")
+async def test_submit_plan_persists_markdown_and_advances_only_to_plan_approval(lifecycle):
+    client, handlers = lifecycle
+    client.issue["state"] = _state("state-ready-for-planning")
+
+    result = await _call(
+        handlers,
+        "linear_submit_plan",
+        "plan-1",
+        issue_id="issue-1",
+        plan="1. Add the failing test.\n2. Implement the behavior.\n3. Run the full gate.",
+    )
+
+    assert result["result"]["issue"]["state"]["name"] == "Awaiting Plan Approval"
+    assert client.issue["description"].startswith("Acceptance criteria from the user.")
+    assert "<!-- pynchy.plan:start -->" in client.issue["description"]
+    assert "1. Add the failing test." in client.issue["description"]
+    assert "<!-- pynchy.plan:end -->" in client.issue["description"]
+
+
+async def test_submit_plan_requires_ready_for_planning_state(lifecycle):
+    _client, handlers = lifecycle
+
+    result = await _call(
+        handlers,
+        "linear_submit_plan",
+        "plan-1",
+        issue_id="issue-1",
+        plan="A concrete plan.",
+    )
+
+    assert result == {"error": "Linear work item must be Ready for Planning before planning"}
 
 
 @pytest.mark.action("linear.workitem.list")

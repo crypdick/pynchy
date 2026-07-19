@@ -1125,6 +1125,31 @@ class TestRunScheduledAgent:
         assert completions == [("task-1", "Completed", True)]
 
     @pytest.mark.asyncio
+    async def test_once_schedule_remains_active_for_temporal_retry_after_agent_error(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """A failed one-shot must remain runnable for the workflow retry."""
+        mock_deps.groups["test-jid"] = sample_group
+        mock_deps._run_agent_result = "error"
+        sample_task.schedule_type = "once"
+        sample_task.schedule_value = "2026-07-19T08:00:00+00:00"
+        completions = []
+
+        def mock_record(task_id, *, last_result, completed):
+            completions.append((task_id, last_result, completed))
+
+        with patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock):
+            with patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                side_effect=mock_record,
+            ):
+                with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+                    completed = await run_scheduled_agent(sample_task, mock_deps)
+
+        assert completed is False
+        assert completions == [("task-1", "Error: Agent returned error", False)]
+
+    @pytest.mark.asyncio
     async def test_logs_error_on_agent_exception(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):

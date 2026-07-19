@@ -84,7 +84,7 @@ Linear holds the complete planning and authorization state:
 |-------|---------|-----------------|
 | `Agent Proposed` | Pynchy identified an opportunity; no human endorsed it | Agent creates the item |
 | `Ready for Planning` | A human wants Pynchy to develop the idea into a plan | Human |
-| `Awaiting Plan Approval` | A concrete plan exists, but execution lacks approval | Agent after planning |
+| `Awaiting Plan Approval` | The issue description contains a concrete Pynchy plan, but execution lacks approval | Agent through `linear_submit_plan` |
 | `Human Approved` | A human explicitly authorized execution | Human |
 | `In Progress` | Pynchy claimed the approved item and started work | Pynchy lifecycle |
 | `Awaiting Review` | Pynchy opened a GitHub pull request and linked it to the execution | Pynchy lifecycle |
@@ -156,6 +156,17 @@ before Pynchy returns `200` to Linear. The task confirms workspace-board ownersh
 fetches the issue's current Linear state, and treats the callback body as untrusted
 context before deciding what to do.
 
+Linear recommends webhooks instead of API polling for update-driven integrations.
+When a Linear-enabled workspace has no webhook route, Pynchy keeps the approval
+workflow functional on a local-only host: once per minute, the host queries only
+the shared `Ready for Planning` and `Human Approved` states and admits one
+deterministic isolated task for each newly observed issue on a managed workspace
+Project. A planning task must persist its plan through `linear_submit_plan`; an
+execution task must claim the issue before it changes code. Configure a webhook
+route for lower latency and to wake on comments and other issue changes. Pynchy
+excludes webhook-routed workspaces from this fallback query so one workspace does
+not use both delivery paths.
+
 ## Schedule proactive proposals
 
 Use a config-backed [agent task](../usage/scheduled-tasks.md#agent-tasks) to run a real
@@ -204,13 +215,14 @@ them when an agent starts or finishes work from a workspace board:
 
 | Tool | Purpose |
 |------|---------|
+| `linear_submit_plan` | Writes a concrete Markdown plan into a `Ready for Planning` issue and atomically moves it to `Awaiting Plan Approval`; it never authorizes execution. |
 | `linear_claim_work_item` | Claims a `Human Approved` issue for the current Pynchy execution and moves it to `In Progress`. |
 | `linear_await_review_work_item` | Moves a claimed item to `Awaiting Review`, records a summary, and links its GitHub pull-request URL. |
 | `linear_block_work_item` | Moves a claimed item to Blocked and records the blocker. |
 | `linear_handoff_work_item` | Moves a claimed item to Blocked, records the next owner, and releases Pynchy's claim. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider outcome by checking Linear instead of retrying the mutation blindly. |
 | `linear_list_work_items` | Lists durable Pynchy execution records for the current workspace. |
-| `linear_move_todo` | Moves an unlinked item to `agent_proposed` or `awaiting_plan_approval`. It rejects approval-bearing targets and items with an active Pynchy claim. |
+| `linear_move_todo` | Returns an unlinked item to `agent_proposed`. Planning tasks must use `linear_submit_plan` so the plan and state change stay coupled. It rejects decision-bearing targets and items with an active Pynchy claim. |
 
 ## Execute a work item
 
