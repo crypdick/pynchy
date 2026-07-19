@@ -20,9 +20,9 @@ from pynchy.capabilities import (
     IdempotencyMode,
 )
 from pynchy.plugins.integrations.linear_work_items import (
+    handle_await_review_work_item,
     handle_block_work_item,
     handle_claim_work_item,
-    handle_complete_work_item,
     handle_handoff_work_item,
     handle_list_work_items,
     handle_move_unlinked_todo,
@@ -54,11 +54,11 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
             handle_claim_work_item,
         ),
         (
-            "linear_complete_work_item",
-            "linear.workitem.complete",
-            "Complete a Pynchy-linked Linear work item.",
+            "linear_await_review_work_item",
+            "linear.workitem.review",
+            "Submit a Pynchy-linked Linear work item for review with its pull request.",
             HostActionAccess.WRITE,
-            handle_complete_work_item,
+            handle_await_review_work_item,
         ),
         (
             "linear_block_work_item",

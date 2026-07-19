@@ -9,9 +9,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
+from pynchy.plugins.integrations.linear_work_items import complete_merged_pull_request
 from pynchy.state import (
     begin_in_flight_turn,
     get_active_work_item_execution,
@@ -76,6 +78,11 @@ def _state(state_id: str) -> dict[str, str]:
             "type": "unstarted",
         },
         "state-in-progress": {"id": "state-in-progress", "name": "In Progress", "type": "started"},
+        "state-awaiting-review": {
+            "id": "state-awaiting-review",
+            "name": "Awaiting Review",
+            "type": "started",
+        },
         "state-blocked": {"id": "state-blocked", "name": "Blocked", "type": "started"},
         "state-done": {"id": "state-done", "name": "Done", "type": "completed"},
         "state-rejected": {"id": "state-rejected", "name": "Rejected", "type": "canceled"},
@@ -105,6 +112,7 @@ def _board() -> LinearWorkspaceBoard:
             "awaiting_plan_approval": _state("state-awaiting-plan-approval"),
             "human_approved": _state("state-human-approved"),
             "in_progress": _state("state-in-progress"),
+            "awaiting_review": _state("state-awaiting-review"),
             "blocked": _state("state-blocked"),
             "done": _state("state-done"),
             "rejected": _state("state-rejected"),
@@ -170,24 +178,38 @@ async def test_claim_requires_explicit_human_approval(lifecycle):
     assert await get_active_work_item_execution("issue-1") is None
 
 
-@pytest.mark.action("linear.workitem.complete")
-async def test_complete_records_summary_and_releases_claim(lifecycle):
+@pytest.mark.action("linear.workitem.review")
+async def test_review_submission_links_pr_and_keeps_claim_until_merge(lifecycle):
     _client, handlers = lifecycle
     await _call(handlers, "linear_claim_work_item", "claim-1", issue_id="issue-1")
 
     result = await _call(
         handlers,
-        "linear_complete_work_item",
-        "complete-1",
+        "linear_await_review_work_item",
+        "review-1",
         issue_id="issue-1",
         summary="Implemented and tested the lifecycle service.",
+        pull_request_url="https://github.com/example/pynchy/pull/42",
         evidence_refs=["tests/test_linear_work_items.py"],
     )
 
-    assert result["result"]["work_item"]["status"] == "completed"
+    assert result["result"]["work_item"]["status"] == "awaiting_review"
     work_item = result["result"]["work_item"]
     assert work_item["summary"] == "Implemented and tested the lifecycle service."
-    assert work_item["evidence_refs"] == ["tests/test_linear_work_items.py"]
+    assert work_item["evidence_refs"] == [
+        "https://github.com/example/pynchy/pull/42",
+        "tests/test_linear_work_items.py",
+    ]
+    assert (await get_active_work_item_execution("issue-1")) is not None
+
+    completed = await complete_merged_pull_request(
+        "pynchy",
+        GitHubPullRequestRef.parse("https://github.com/example/pynchy/pull/42"),
+        "delivery-1",
+    )
+
+    assert completed is not None
+    assert completed.status.value == "completed"
     assert await get_active_work_item_execution("issue-1") is None
 
 
@@ -377,10 +399,11 @@ async def test_remote_state_conflict_stays_visible_for_reconciliation(lifecycle)
 
     result = await _call(
         handlers,
-        "linear_complete_work_item",
-        "complete-1",
+        "linear_await_review_work_item",
+        "review-1",
         issue_id="issue-1",
         summary="Completed locally, but the board moved first.",
+        pull_request_url="https://github.com/example/pynchy/pull/42",
     )
 
     assert "conflicted" in result["error"]
@@ -403,17 +426,27 @@ async def test_requester_delivery_remains_separate_until_final_result(lifecycle)
     )
     await _call(handlers, "linear_claim_work_item", "claim-1", issue_id="issue-1")
 
-    completed = await _call(
+    review_ready = await _call(
         handlers,
-        "linear_complete_work_item",
-        "complete-1",
+        "linear_await_review_work_item",
+        "review-1",
         issue_id="issue-1",
-        summary="Completed.",
+        summary="Ready for review.",
+        pull_request_url="https://github.com/example/pynchy/pull/42",
     )
-    assert completed["result"]["work_item"]["requester_delivery"]["status"] == "pending"
+    assert review_ready["result"]["work_item"]["requester_delivery"]["status"] == "pending"
 
     await mark_work_item_delivery_delivered_for_turn("turn-1")
 
     execution = (await list_work_item_executions(workspace="pynchy"))[0]
     assert execution.requester_delivery_status == "delivered"
     assert execution.requester_delivered_at is not None
+
+    completed = await complete_merged_pull_request(
+        "pynchy",
+        GitHubPullRequestRef.parse("https://github.com/example/pynchy/pull/42"),
+        "delivery-1",
+    )
+    assert completed is not None
+    assert completed.requester_delivery_status == "delivered"
+    assert completed.requester_delivered_at == execution.requester_delivered_at

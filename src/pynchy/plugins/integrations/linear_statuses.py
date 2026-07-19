@@ -19,6 +19,7 @@ AGENT_PROPOSED_STATUS = "agent_proposed"
 READY_FOR_PLANNING_STATUS = "ready_for_planning"
 AWAITING_PLAN_APPROVAL_STATUS = "awaiting_plan_approval"
 HUMAN_APPROVED_STATUS = "human_approved"
+AWAITING_REVIEW_STATUS = "awaiting_review"
 AGENT_SETTABLE_STATUSES = frozenset(
     {
         AGENT_PROPOSED_STATUS,
@@ -36,6 +37,7 @@ LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
     ),
     HUMAN_APPROVED_STATUS: TodoStatusSpec("Human Approved", "unstarted", 40.0, "#56CCF2"),
     "in_progress": TodoStatusSpec("In Progress", "started", 50.0, "#2F80ED"),
+    AWAITING_REVIEW_STATUS: TodoStatusSpec("Awaiting Review", "started", 55.0, "#5E6AD2"),
     "blocked": TodoStatusSpec("Blocked", "started", 60.0, "#EB5757"),
     "done": TodoStatusSpec("Done", "completed", 70.0, "#27AE60"),
     "rejected": TodoStatusSpec("Rejected", "canceled", 80.0, "#6B7280"),

@@ -8,7 +8,7 @@ import json
 from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -90,6 +90,22 @@ def _route() -> WebhookRoute:
     )
 
 
+def _route_with_host_effect() -> WebhookRoute:
+    settings = make_settings(
+        plugins={
+            "github": PluginConfig(
+                options={
+                    "webhook_routes": [
+                        {"name": "project", "workspace": "project", "repository": _REPOSITORY}
+                    ]
+                }
+            )
+        }
+    )
+    with patch("pynchy.plugins.integrations.github_webhooks.get_settings", return_value=settings):
+        return github_webhook_routes()[0]
+
+
 def test_config_uses_github_documented_payload_maximum() -> None:
     assert _config().max_body_bytes == GITHUB_MAX_WEBHOOK_BODY_BYTES
 
@@ -104,6 +120,23 @@ def test_description_change_maps_to_literal_host_notification() -> None:
     assert event.external_context is None
     assert event.host_message == (
         "GitHub PR update — example/project#42: PR description updated.\n"
+        "https://github.com/example/project/pull/42"
+    )
+
+
+def test_merged_pull_request_has_a_distinct_trusted_action() -> None:
+    now = datetime.now(UTC)
+    payload = _payload(action="closed", changes={})
+    pull_request = payload["pull_request"]
+    assert isinstance(pull_request, dict)
+    pull_request["merged"] = True
+    raw_body, headers = _signed_request(payload, "pull_request")
+
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.action == "merged"
+    assert event.host_message == (
+        "GitHub PR update — example/project#42: PR merged.\n"
         "https://github.com/example/project/pull/42"
     )
 
@@ -289,6 +322,82 @@ async def test_delivery_notifies_its_route_workspace_without_agent_run(
     receipt = await get_webhook_receipt("github", "project", _DELIVERY_ID)
     assert receipt is not None
     assert receipt.disposition == "notified"
+
+
+async def test_merged_delivery_runs_the_idempotent_host_effect_before_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", _SIGNING_KEY)
+    complete = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhooks.complete_merged_pull_request",
+        complete,
+    )
+    deps = _WebhookDeps()
+    app = create_http_app(
+        deps,
+        runtime=_public_runtime(),
+        webhook_routes=(_route_with_host_effect(),),
+    )
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        payload = _payload(action="closed", changes={})
+        pull_request = payload["pull_request"]
+        assert isinstance(pull_request, dict)
+        pull_request["merged"] = True
+        raw_body, headers = _signed_request(payload, "pull_request")
+        first_response = await client.post(
+            "/webhooks/github/project", data=raw_body, headers=headers
+        )
+        first = await first_response.json()
+        second_response = await client.post(
+            "/webhooks/github/project", data=raw_body, headers=headers
+        )
+        second = await second_response.json()
+    finally:
+        await client.close()
+
+    assert first_response.status == second_response.status == 200
+    assert first == {"status": "notified", "duplicate": False}
+    assert second == {"status": "notified", "duplicate": True}
+    complete.assert_awaited_once()
+    args = complete.await_args.args
+    assert args[0] == "project"
+    assert args[1].url == "https://github.com/example/project/pull/42"
+    assert args[2] == _DELIVERY_ID
+
+
+async def test_failed_merge_effect_is_retryable_and_not_admitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", _SIGNING_KEY)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhooks.complete_merged_pull_request",
+        AsyncMock(side_effect=ValueError("Linear unavailable")),
+    )
+    deps = _WebhookDeps()
+    app = create_http_app(
+        deps,
+        runtime=_public_runtime(),
+        webhook_routes=(_route_with_host_effect(),),
+    )
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        payload = _payload(action="closed", changes={})
+        pull_request = payload["pull_request"]
+        assert isinstance(pull_request, dict)
+        pull_request["merged"] = True
+        raw_body, headers = _signed_request(payload, "pull_request")
+        response = await client.post("/webhooks/github/project", data=raw_body, headers=headers)
+        body = await response.json()
+    finally:
+        await client.close()
+
+    assert response.status == 503
+    assert body == {"error": "webhook processing failed"}
+    assert await get_webhook_receipt("github", "project", _DELIVERY_ID) is None
 
 
 def test_builtin_plugin_is_registered() -> None:

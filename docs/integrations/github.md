@@ -1,9 +1,11 @@
 # GitHub PR notifications
 
-The built-in GitHub webhook plugin sends read-only pull-request updates directly to
-the mapped project workspace. It does not start an agent, create a worktree, or
-write to GitHub. A route binds one GitHub repository to one Pynchy workspace, so an
-event can never fall back to an admin or unrelated channel.
+The built-in GitHub webhook plugin sends pull-request updates directly to the
+mapped project workspace. It does not start an agent, create a worktree, or write
+to GitHub. When a Pynchy-owned Linear item links the same pull request, an
+authenticated merge delivery also moves that item from `Awaiting Review` to
+`Done`. A route binds one GitHub repository to one Pynchy workspace, so an event
+can never fall back to an admin or unrelated channel.
 
 ## Configure repository routes
 
@@ -62,6 +64,13 @@ The plugin emits concise direct host notifications for:
 - Submitted, edited, or dismissed reviews.
 - Failed check runs that GitHub associates with one or more pull requests.
 - An explicit non-mergeable state included in a pull-request delivery.
+
+A merged pull request is also a trusted lifecycle signal for the built-in
+[Linear integration](linear.md). Pynchy matches the canonical PR URL stored by
+`linear_await_review_work_item`, records the Linear transition before applying
+it, and completes only an execution already in `Awaiting Review`. Duplicate
+GitHub delivery IDs do not repeat the transition. A PR with no linked Pynchy
+execution remains a notification only.
 
 GitHub does not publish a dedicated merge-conflict event, and mergeability can be
 computed asynchronously. The webhook immediately reports the commit event; retain a

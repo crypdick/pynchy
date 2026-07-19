@@ -19,10 +19,11 @@ from pynchy.plugins.webhooks import (
     WebhookConfigurationError,
     WebhookEvent,
     WebhookPayloadError,
+    WebhookProcessingError,
     WebhookRoute,
     validate_webhook_routes,
 )
-from pynchy.state import WebhookReceipt, admit_webhook_receipt
+from pynchy.state import WebhookReceipt, admit_webhook_receipt, get_webhook_receipt
 from pynchy.types import ScheduledTask, WorkspaceProfile
 
 
@@ -131,6 +132,28 @@ async def _request_body(
     return web.json_response({"error": "webhook unavailable"}, status=503)
 
 
+async def _process_route_event(
+    route: WebhookRoute,
+    event: WebhookEvent,
+) -> web.Response | None:
+    """Deduplicate or apply one route-owned trusted host effect before admission."""
+    existing = await get_webhook_receipt(route.provider, route.name, event.delivery_id)
+    if existing is not None:
+        return web.json_response({"status": existing.disposition, "duplicate": True})
+    if route.process_event is None:
+        return None
+    try:
+        await route.process_event(event)
+    except WebhookProcessingError as exc:
+        logger.warning(
+            "Authenticated webhook host effect failed",
+            route=route.path,
+            reason=str(exc),
+        )
+        return web.json_response({"error": "webhook processing failed"}, status=503)
+    return None
+
+
 def _parse_event(
     request: web.Request,
     route: WebhookRoute,
@@ -194,6 +217,10 @@ async def handle_webhook(request: web.Request) -> web.Response:
     if workspace is None or workspace.is_admin:
         logger.error("Webhook route lost its configured non-admin workspace", route=route.path)
         return web.json_response({"error": "webhook route unavailable"}, status=503)
+
+    processing_response = await _process_route_event(route, event)
+    if processing_response is not None:
+        return processing_response
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)

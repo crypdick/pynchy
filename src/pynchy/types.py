@@ -246,6 +246,7 @@ class WorkItemExecutionStatus(StrEnum):
 
     CLAIMING = "claiming"
     IN_PROGRESS = "in_progress"
+    AWAITING_REVIEW = "awaiting_review"
     BLOCKED = "blocked"
     UNKNOWN = "unknown"
     COMPLETED = "completed"
@@ -258,6 +259,7 @@ class WorkItemExecutionStatus(StrEnum):
         return self in {
             self.CLAIMING,
             self.IN_PROGRESS,
+            self.AWAITING_REVIEW,
             self.BLOCKED,
             self.UNKNOWN,
         }

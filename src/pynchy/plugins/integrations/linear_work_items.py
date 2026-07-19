@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import AGENT_SETTABLE_STATUSES
 from pynchy.plugins.integrations.linear_work_item_provider import (
@@ -26,6 +27,7 @@ from pynchy.state import (
     get_active_work_item_execution,
     get_in_flight_turn_for_group,
     get_latest_unresolved_work_item_transition,
+    get_work_item_execution_for_evidence_ref,
     get_work_item_execution_for_issue,
     list_work_item_executions,
 )
@@ -115,20 +117,78 @@ async def _existing_claim_response(
     }
 
 
-async def handle_complete_work_item(data: dict[str, Any]) -> dict[str, object]:
+async def handle_await_review_work_item(data: dict[str, Any]) -> dict[str, object]:
+    pull_request = GitHubPullRequestRef.parse(
+        _required_str(data, "pull_request_url", "pull_request_url is required")
+    )
+    evidence_refs = tuple(dict.fromkeys((pull_request.url, *_evidence_refs(data))))
     return await _handle_linked_transition(
         data,
         _LinkedTransitionSpec(
-            operation="complete",
-            target_status="done",
-            result_status=WorkItemExecutionStatus.COMPLETED,
+            operation="await_review",
+            target_status="awaiting_review",
+            result_status=WorkItemExecutionStatus.AWAITING_REVIEW,
             expected_statuses={"in_progress", "blocked"},
         ),
         _TransitionDetails(
             summary=_required_str(data, "summary", _SUMMARY_REQUIRED),
-            evidence_refs=_evidence_refs(data),
+            evidence_refs=evidence_refs,
         ),
     )
+
+
+async def complete_merged_pull_request(
+    workspace: str,
+    pull_request: GitHubPullRequestRef,
+    delivery_id: str,
+) -> WorkItemExecution | None:
+    """Complete the work item linked to an authenticated merged-PR delivery."""
+    execution = await get_work_item_execution_for_evidence_ref(
+        pull_request.url,
+        workspace=workspace,
+    )
+    if execution is None:
+        return None
+    if execution.status is WorkItemExecutionStatus.COMPLETED:
+        return execution
+    if execution.status is WorkItemExecutionStatus.FAILED:
+        raise LinearError("Merged-PR completion previously conflicted with Linear state")
+    async with linear_client() as client:
+        if execution.status is WorkItemExecutionStatus.UNKNOWN:
+            transition = await get_latest_unresolved_work_item_transition(execution.id)
+            if transition is None or transition.target_status != "done":
+                raise LinearError("Merged-PR completion has an unrelated uncertain transition")
+            reconciled = await reconcile_work_item(
+                client,
+                workspace,
+                execution.linear_issue_id,
+                transition,
+            )
+            if reconciled.status is not WorkItemExecutionStatus.COMPLETED:
+                raise LinearError("Merged-PR completion could not be reconciled")
+            return reconciled
+        if execution.status is not WorkItemExecutionStatus.AWAITING_REVIEW:
+            return None
+        updated = await transition_linked_work_item(
+            client,
+            workspace,
+            execution.linear_issue_id,
+            WorkItemTransitionRequest(
+                execution=execution,
+                request_id=f"github-merge:{delivery_id}",
+                operation="complete_after_pull_request_merge",
+                target_status="done",
+                result_execution_status=WorkItemExecutionStatus.COMPLETED,
+                summary=execution.summary,
+                evidence_refs=execution.evidence_refs,
+            ),
+            {"awaiting_review"},
+        )
+    if updated.status is WorkItemExecutionStatus.UNKNOWN:
+        raise LinearError("Merged-PR completion outcome is unknown")
+    if updated.status is WorkItemExecutionStatus.FAILED:
+        raise LinearError("Linear state conflicted with merged-PR completion")
+    return updated
 
 
 async def handle_block_work_item(data: dict[str, Any]) -> dict[str, object]:
@@ -139,7 +199,7 @@ async def handle_block_work_item(data: dict[str, Any]) -> dict[str, object]:
             operation="block",
             target_status="blocked",
             result_status=WorkItemExecutionStatus.BLOCKED,
-            expected_statuses={"in_progress"},
+            expected_statuses={"in_progress", "awaiting_review"},
         ),
         _TransitionDetails(
             blocker=reason,
@@ -157,7 +217,7 @@ async def handle_handoff_work_item(data: dict[str, Any]) -> dict[str, object]:
             operation="handoff",
             target_status="blocked",
             result_status=WorkItemExecutionStatus.HANDED_OFF,
-            expected_statuses={"in_progress", "blocked"},
+            expected_statuses={"in_progress", "awaiting_review", "blocked"},
         ),
         _TransitionDetails(
             handoff_to=owner,
