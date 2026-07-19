@@ -60,6 +60,13 @@ def test_agent_dockerfile_installs_codex_as_agent_executable() -> None:
     assert "readlink -f /usr/local/bin/codex" not in dockerfile
 
 
+def test_agent_dockerfile_has_native_build_toolchain() -> None:
+    """Agent workspaces can build Python packages with native extensions."""
+    dockerfile = Path("src/pynchy/agent/Dockerfile").read_text(encoding="utf-8")
+
+    assert "build-essential" in dockerfile
+
+
 def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> None:
     """Each group gets isolated Codex CLI state mounted at ~/.codex."""
     settings = make_settings(
