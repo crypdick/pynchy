@@ -55,6 +55,20 @@ actions are not part of this integration.
 The flow uses Gog's [remote two-step authorization](https://gogcli.sh/commands/gog-auth-add.html),
 which keeps OAuth state on the host.
 
+### Google Advanced Protection
+
+Google Advanced Protection blocks unverified third-party OAuth clients from
+accessing Gmail, Drive, Contacts, and other sensitive Google data. If Google
+shows `Error 400: policy_enforced` or says that the OAuth app lacks Advanced
+Protection approval, Pynchy cannot complete Gog authorization for that account.
+
+Advanced Protection does not provide a personal allowlist for an unverified
+client. Keep Advanced Protection enabled. To use Gog with that account, submit
+the OAuth app for [Google OAuth app verification](https://support.google.com/cloud/answer/13461325).
+Google requires app identity details, scope justification, and an end-to-end
+demo; restricted scopes can also require a security assessment. Until Google
+approves the app, use an account that does not enroll in Advanced Protection.
+
 ## Operations and approval
 
 The agent can use these reviewed operations:
