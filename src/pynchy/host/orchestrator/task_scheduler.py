@@ -86,7 +86,7 @@ class SchedulerDependencies(Protocol):
 
 
 _scheduler_lock = asyncio.Lock()
-_persistent_task_run_locks: dict[str, asyncio.Lock] = {}
+_config_job_run_locks: dict[str, asyncio.Lock] = {}
 TemporalSchedulerRuntime: Any | None = None
 _STAGNATION_THRESHOLD = 3
 _NO_PROGRESS_THRESHOLD = 5
@@ -360,19 +360,19 @@ async def resume_interrupted_scheduled_turn(
 
 async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
     """Execute a single scheduled agent task via the unified run_agent path."""
-    if task.persistent_thread_name is None:
+    if task.config_job_name is None:
         return await _run_scheduled_agent(task, deps)
 
     # Temporal BUFFER_ONE serializes normal schedule overlap durably. This
     # process-local lock also serializes duplicate/manual activity delivery so
-    # every execution stays in the task's one persistent thread.
-    lock = _persistent_task_run_locks.setdefault(task.id, asyncio.Lock())
+    # every execution stays in the task's one derived thread.
+    lock = _config_job_run_locks.setdefault(task.id, asyncio.Lock())
     async with lock:
         return await _run_scheduled_agent(task, deps)
 
 
 async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
-    """Run one task after applying persistent-task serialization."""
+    """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
     interrupted_turn = await get_in_flight_turn_for_task(task.id)
     if interrupted_turn is not None:

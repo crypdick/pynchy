@@ -19,6 +19,9 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     begin_message_turn,
     interrupted_resume_message,
 )
+from pynchy.host.orchestrator.threads import (
+    EnsuredThread,  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
+)
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.logger import logger
 from pynchy.state import (
@@ -26,7 +29,6 @@ from pynchy.state import (
     get_in_flight_turns,
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
-    update_task,
 )
 from pynchy.types import (
     ContainerOutput,
@@ -66,6 +68,14 @@ class ScheduledTurnDeps(Protocol):
         child_jid: str,
         participant_ids: tuple[str, ...],
     ) -> None: ...
+
+    async def ensure_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> EnsuredThread: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
         self,
@@ -196,6 +206,15 @@ def _thread_name(task: ScheduledTask, slot: int) -> str:
     return f"{task.group_folder}-{slot}"
 
 
+def _config_job_thread_name(task: ScheduledTask) -> str:
+    """Derive the current human-readable child thread for a config job."""
+    if task.config_job_name is None:
+        raise RuntimeError("Config job task requires a config job name")
+    # Human-readable names are intentional. A config rename may select another
+    # thread instead of preserving an opaque machine identity across the rename.
+    return f"{task.group_folder} | {task.config_job_name}"
+
+
 def _active_parent_participant_ids(
     task: ScheduledTask,
     turns: list[InFlightTurn],
@@ -217,10 +236,10 @@ async def _new_task_target(
     turn_id: str,
     input_messages: list[dict[str, Any]],
 ) -> _ScheduledTaskTarget:
-    """Claim a persistent task thread or a numbered child conversation."""
+    """Claim a config-job thread or a numbered child conversation."""
     async with _scheduled_target_lock:
-        if request.task.persistent_thread_name is not None:
-            return await _persistent_task_target(request, turn_id, input_messages)
+        if request.task.config_job_name is not None:
+            return await _config_job_task_target(request, turn_id, input_messages)
         turns = await get_in_flight_turns()
         if not _base_channel_is_reserved(request.task, turns):
             slot = 0
@@ -276,29 +295,22 @@ async def _new_task_target(
         return target
 
 
-async def _persistent_task_target(
+async def _config_job_task_target(
     request: TaskAgentRequest,
     turn_id: str,
     input_messages: list[dict[str, Any]],
 ) -> _ScheduledTaskTarget:
-    """Claim the one durable child thread assigned to a config-backed job.
+    """Resolve the derived child workspace assigned to a config-backed job.
 
-    Persistent task jobs never use their child thread as a parent. The root
-    workspace is only the creation parent; every run then uses the stored child
-    JID, including retries and runs after a host restart.
+    Config jobs never use their child thread as a parent. Each run derives
+    the current human-readable name and resolves it through the idempotent
+    thread path, so archived or deleted destinations never rely on cached JIDs.
     """
-    name = request.task.persistent_thread_name
-    if name is None:
-        raise RuntimeError("Persistent task target requires a thread name")
-    child_jid = request.task.persistent_thread_jid
+    name = _config_job_thread_name(request.task)
+    ensured = await request.deps.ensure_thread(request.task.chat_jid, name)
+    child_jid = ensured.jid
     if child_jid is None:
-        child_jid = await request.deps.find_thread(request.task.chat_jid, name)
-        if child_jid is None:
-            child_jid = await request.deps.create_thread(request.task.chat_jid, name)
-        if not child_jid:
-            raise RuntimeError("Persistent scheduled task thread returned no chat JID")
-        await update_task(request.task.id, {"persistent_thread_jid": child_jid})
-        request.task.persistent_thread_jid = child_jid
+        raise RuntimeError("Config scheduled-job thread returned no chat JID")
 
     child_group = replace(
         request.group,
@@ -311,7 +323,6 @@ async def _persistent_task_target(
             request.task,
             group_folder=child_group.folder,
             chat_jid=child_jid,
-            persistent_thread_jid=child_jid,
         ),
         group=child_group,
         thread_slot=0,

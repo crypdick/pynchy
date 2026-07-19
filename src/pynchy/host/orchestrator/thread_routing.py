@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pynchy.host.orchestrator.threads import (
+    EnsuredThread,
     add_thread_participants,
     create_thread,
+    ensure_thread,
     find_thread,
 )
 from pynchy.types import (
@@ -43,3 +45,18 @@ class ThreadRouting:
     ) -> None:
         """Add participants to a child conversation, when the channel supports it."""
         await add_thread_participants(self.channels, child_jid, participant_ids)
+
+    async def ensure_thread(
+        self,
+        parent_jid: str,
+        name: str,
+        *,
+        participant_ids: tuple[str, ...] = (),
+    ) -> EnsuredThread:
+        """Find or create one named child conversation idempotently."""
+        return await ensure_thread(
+            self.channels,
+            parent_jid,
+            name,
+            participant_ids=participant_ids,
+        )

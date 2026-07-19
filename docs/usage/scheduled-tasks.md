@@ -8,9 +8,9 @@ same MCP tools.
 
 ## Agent Tasks
 
-Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, and so on), as if a user had sent the message. A config-backed agent job targets a named profile. That profile must appear directly in exactly one configured root workspace.
+Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, and so on), as if a user had sent the message. A config-backed agent job names its parent workspace explicitly with `workspace`.
 
-Pynchy creates one durable sibling thread for each config-backed job beneath that root. It names the thread `<profile> | <job_id>`. For example, `fam_daily_checkin` with `profile = "relationships"` runs only in `relationships | fam_daily_checkin` under `#relationships`. Pynchy stores the created thread JID and reuses it for every run and retry. Different jobs in the same profile use different threads and can run concurrently.
+Pynchy derives one human-readable sibling thread for each config-backed job beneath that workspace. It names the thread `<workspace> | <job_name>`. For example, `fam_daily_checkin` with `workspace = "relationships"` runs in `relationships | fam_daily_checkin` under `#relationships`. Every new run finds or creates that derived thread, including reopening an archived thread. Pynchy doesn't cache the derived name or thread JID in scheduled-task state. Renaming the workspace or job selects a new thread. Different jobs under the same workspace use different threads and can run concurrently.
 
 Temporal buffers one overlapping occurrence for a config-backed job. The next run waits for the current one, then runs in the same task thread; Pynchy never creates a numbered spillover thread for that job. This requires a channel with child-thread support. Pynchy records an error instead of moving the run to another target when the root channel cannot create threads.
 
@@ -34,7 +34,7 @@ model = "chatgpt/gpt-5.3-codex-spark"
 [jobs.daily-triage]
 enabled = true
 schedule = "0 8 * * *"
-profile = "admin"
+workspace = "admin"
 prompt = """
 Produce the daily Pynchy triage memo.
 
@@ -59,7 +59,7 @@ One-time agent jobs use `at` instead of `schedule`:
 [jobs.cancel-youtube-premium]
 enabled = true
 at = "2026-07-08T18:30:00-07:00"
-profile = "admin"
+workspace = "admin"
 prompt = """
 Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
 """

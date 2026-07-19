@@ -175,8 +175,7 @@ class TestCreatePeriodicAgent:
             )
             add_ws.assert_called_once()
             add_job.assert_called_once()
-            assert add_job.call_args.args[1].profile == "pynchy-worker"
-            assert add_job.call_args.args[1].workspace is None
+            assert add_job.call_args.args[1].workspace == "daily-briefing"
 
         # 1. Folder created
         agent_dir = tmp_path / "daily-briefing"

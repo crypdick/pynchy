@@ -157,50 +157,63 @@ def test_claude_cli_accepts_workspace_model_override() -> None:
     assert resolved.model == "workspace-model"
 
 
-def test_agent_job_targets_configured_profile() -> None:
+def test_agent_job_targets_configured_workspace() -> None:
     settings = _settings(
         jobs={
             "daily-triage": JobConfig(
                 enabled=True,
                 schedule="0 8 * * *",
-                profile="admin",
+                workspace="admin",
                 prompt_file="prompts/daily-triage.md",
             )
         }
     )
 
     job = settings.jobs["daily-triage"]
-    assert job.profile == "admin"
-    assert job.workspace is None
+    assert job.workspace == "admin"
     assert job.schedule == "0 8 * * *"
     assert job.prompt_file == "prompts/daily-triage.md"
 
 
-def test_profile_targeted_agent_job_requires_one_root_workspace() -> None:
-    with pytest.raises(ValidationError, match="must select exactly one root workspace"):
-        _settings(
-            workspaces={
-                "relationships": WorkspaceConfig(profiles=["admin"]),
-                "relationships-archive": WorkspaceConfig(profiles=["admin"]),
-            },
-            jobs={
-                "fam_daily_checkin": JobConfig(
-                    enabled=True,
-                    schedule="0 8 * * *",
-                    profile="admin",
-                    prompt="Check in.",
-                )
-            },
-        )
+def test_agent_job_workspace_can_use_a_profile_shared_by_other_roots() -> None:
+    settings = _settings(
+        workspaces={
+            "relationships": WorkspaceConfig(profiles=["admin"]),
+            "relationships-archive": WorkspaceConfig(profiles=["admin"]),
+        },
+        jobs={
+            "fam_daily_checkin": JobConfig(
+                enabled=True,
+                schedule="0 8 * * *",
+                workspace="relationships",
+                prompt="Check in.",
+            )
+        },
+    )
+
+    assert settings.jobs["fam_daily_checkin"].workspace == "relationships"
 
 
-def test_agent_job_rejects_workspace_selector() -> None:
-    with pytest.raises(ValidationError, match="cannot set workspace; use profile"):
+def test_agent_job_requires_workspace_selector() -> None:
+    with pytest.raises(ValidationError, match="agent jobs require workspace"):
         JobConfig(
             enabled=True,
             schedule="0 8 * * *",
-            workspace="admin",
             prompt="Check in.",
+        )
+
+
+def test_agent_job_workspace_must_exist() -> None:
+    with pytest.raises(ValidationError, match="references unknown workspace"):
+        _settings(
+            jobs={
+                "daily-triage": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    workspace="missing",
+                    prompt="Check in.",
+                )
+            }
         )
 
 
@@ -208,7 +221,7 @@ def test_one_time_agent_job_uses_at_instead_of_schedule() -> None:
     job = JobConfig(
         enabled=True,
         at="2026-07-08T18:30:00-07:00",
-        profile="admin",
+        workspace="admin",
         prompt="Cancel the subscription.",
     )
 
@@ -221,7 +234,7 @@ def test_one_time_agent_job_rejects_invalid_at_timestamp() -> None:
         JobConfig(
             enabled=True,
             at="tomorrow-ish",
-            profile="admin",
+            workspace="admin",
             prompt="Cancel the subscription.",
         )
 
@@ -319,7 +332,7 @@ def test_job_requires_exactly_one_schedule_shape() -> None:
             enabled=True,
             schedule="0 8 * * *",
             at="2026-07-08T18:30:00-07:00",
-            profile="admin",
+            workspace="admin",
             prompt="Nope.",
         )
 
@@ -349,7 +362,7 @@ def test_host_job_is_selected_by_workspace_magic_word() -> None:
 
 def test_agent_job_requires_prompt_or_prompt_file() -> None:
     with pytest.raises(ValidationError, match="agent jobs require prompt or prompt_file"):
-        JobConfig(enabled=True, schedule="0 8 * * *", profile="admin")
+        JobConfig(enabled=True, schedule="0 8 * * *", workspace="admin")
 
 
 def test_host_job_rejects_agent_prompt_fields() -> None:

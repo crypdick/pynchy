@@ -532,13 +532,13 @@ class TestTemporalSchedulerRuntime:
         assert schedule.policy.overlap is ScheduleOverlapPolicy.SKIP
         assert kwargs == {}
 
-    def test_profile_task_buffers_one_overlapping_schedule_occurrence(
+    def test_config_job_buffers_one_overlapping_schedule_occurrence(
         self, monkeypatch, temporal_task
     ):
-        """Profile jobs remain serial while retaining one pending run."""
+        """Config jobs remain serial while retaining one pending run."""
         settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
-        temporal_task.persistent_thread_name = "relationships | fam_daily_checkin"
+        temporal_task.config_job_name = "fam_daily_checkin"
 
         schedule = temporal_schedules.schedule_for_agent_task(temporal_task)
 

@@ -170,7 +170,7 @@ async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcD
         request.name,
         JobConfig.model_validate(
             {
-                "profile": request.profile,
+                "workspace": request.name,
                 "schedule": request.schedule,
                 "prompt": request.prompt,
             }
