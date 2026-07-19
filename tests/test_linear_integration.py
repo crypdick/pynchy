@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+from io import StringIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from rich.console import Console
+from rich.traceback import Traceback
 
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations.linear import LinearClient, LinearError, LinearMcpPlugin, build_app
@@ -115,6 +118,32 @@ class TestLinearClient:
         assert "Query is invalid" in str(exc_info.value)
         assert "lin_api_test_must_not_leak" not in str(exc_info.value)
         response.raise_for_status.assert_not_called()
+
+    async def test_graphql_error_traceback_does_not_render_authorization_header(self):
+        response = MagicMock(status=400)
+        response.json = AsyncMock(return_value={"errors": [{"message": "Query is invalid"}]})
+        session = MagicMock()
+        session.post.return_value = FakePostContext(response)
+        client = LinearClient(api_key="lin_api_traceback_must_not_leak", session=session)
+
+        with pytest.raises(LinearError) as exc_info:
+            await client.query("query Broken { viewer { id } }")
+
+        client_traceback = exc_info.value.__traceback__
+        while client_traceback and client_traceback.tb_frame.f_code.co_filename == __file__:
+            client_traceback = client_traceback.tb_next
+        assert client_traceback is not None
+        rendered = StringIO()
+        Console(file=rendered, color_system=None, width=200).print(
+            Traceback.from_exception(
+                type(exc_info.value),
+                exc_info.value,
+                client_traceback,
+                show_locals=True,
+            )
+        )
+
+        assert "lin_api_traceback_must_not_leak" not in rendered.getvalue()
 
     async def test_list_teams_flattens_nodes(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())

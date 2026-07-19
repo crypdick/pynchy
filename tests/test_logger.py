@@ -52,3 +52,21 @@ def test_configuring_the_same_error_log_is_idempotent(tmp_path: Path):
         _remove_error_log_handler(error_log)
 
     assert handlers == [first_handler]
+
+
+def test_error_log_does_not_render_traceback_locals(tmp_path: Path):
+    error_log = (tmp_path / "pynchy.error.log").resolve()
+    try:
+        configure_error_log(error_log)
+        credential_that_must_not_leak = "lin_api_logger_" + "traceback_must_not_leak"
+        try:
+            raise RuntimeError("provider request failed")
+        except RuntimeError:
+            logger.exception("Linear request failed")
+
+        contents = error_log.read_text(encoding="utf-8")
+    finally:
+        _remove_error_log_handler(error_log)
+
+    assert "provider request failed" in contents
+    assert credential_that_must_not_leak not in contents

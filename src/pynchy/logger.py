@@ -36,7 +36,12 @@ def _setup_logging() -> object:
             structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
-            structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty()),
+            # Exception frames routinely contain credentials and provider
+            # payloads. Preserve the traceback while never rendering locals.
+            structlog.dev.ConsoleRenderer(
+                colors=sys.stderr.isatty(),
+                exception_formatter=structlog.dev.RichTracebackFormatter(show_locals=False),
+            ),
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
