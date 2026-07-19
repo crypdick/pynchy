@@ -23,6 +23,7 @@ from pynchy.config import get_settings
 from pynchy.config.models import (
     OneCliConfig,  # noqa: TC001, RUF100 - beartype resolves OneCLI client signatures at runtime.
 )
+from pynchy.host.container_manager.gateway import resolve_container_host
 from pynchy.logger import logger
 from pynchy.types import VolumeMount
 
@@ -40,6 +41,10 @@ _CREDENTIAL_STUB_FIELDS_ERROR = "OneCLI credential stub needs containerPath and 
 _OBJECT_FIELD_ERROR = "OneCLI {} must be an object"
 _STRING_ENTRIES_ERROR = "OneCLI {} entries must be strings"
 _LIST_FIELD_ERROR = "OneCLI {} must be a list"
+_CONTAINER_PROXY_ENV_KEYS = frozenset(
+    {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"}
+)
+_DEFAULT_CONTAINER_PROXY_HOST = "host.docker.internal"
 
 
 @runtime_checkable
@@ -314,7 +319,9 @@ def _materialize_container_config(
     group_folder: str,
     container_config: dict[str, Any],
 ) -> OneCliMaterial:
-    env_vars = _string_dict(container_config.get("env", {}), field="env")
+    env_vars = _resolve_container_proxy_hosts(
+        _string_dict(container_config.get("env", {}), field="env")
+    )
     warnings = _string_list(container_config.get("warnings", []), field="warnings")
     base_dir = data_dir / "onecli" / group_folder
     mounts: list[VolumeMount] = []
@@ -352,6 +359,21 @@ def _materialize_container_config(
         mounts.append(VolumeMount(str(host_path), normalized_container_path, readonly=True))
 
     return OneCliMaterial(env_vars=env_vars, mounts=mounts, warnings=warnings)
+
+
+def _resolve_container_proxy_hosts(env_vars: dict[str, str]) -> dict[str, str]:
+    """Adapt OneCLI's Docker-default proxy hostname to the active runtime."""
+    resolved_host = resolve_container_host(_DEFAULT_CONTAINER_PROXY_HOST)
+    if resolved_host == _DEFAULT_CONTAINER_PROXY_HOST:
+        return env_vars
+    return {
+        key: (
+            value.replace(_DEFAULT_CONTAINER_PROXY_HOST, resolved_host)
+            if key in _CONTAINER_PROXY_ENV_KEYS
+            else value
+        )
+        for key, value in env_vars.items()
+    }
 
 
 def _string_dict(value: object, *, field: str) -> dict[str, str]:
