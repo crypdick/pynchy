@@ -339,6 +339,8 @@ class InFlightTurn:
     interrupted_at: str | None = None
     deploy_id: str | None = None
     claimed_at: str | None = None
+    scheduled_base_chat_jid: str | None = None
+    scheduled_thread_slot: int | None = None
 
 
 @dataclass
@@ -624,6 +626,9 @@ class Channel(Protocol):
 
     # Optional: group creation. Not all channels support this.
     # create_group is NOT part of the protocol — check with hasattr at call sites.
+
+    # Optional: child-thread creation. Not all channels support this.
+    # create_thread is NOT part of the protocol — check with hasattr at call sites.
 
     # Whether to prefix outbound messages with the assistant name.
     # Some channels (e.g. Telegram bots) already display their name, so they return false.

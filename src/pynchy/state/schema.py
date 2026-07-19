@@ -158,7 +158,9 @@ CREATE TABLE IF NOT EXISTS in_flight_turns (
     output_sent INTEGER NOT NULL DEFAULT 0,
     interrupted_at TEXT,
     deploy_id TEXT,
-    claimed_at TEXT
+    claimed_at TEXT,
+    scheduled_base_chat_jid TEXT,
+    scheduled_thread_slot INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_in_flight_turns_chat
 ON in_flight_turns(chat_jid, started_at);

@@ -396,7 +396,9 @@ async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) 
         logger.warning("Scheduled task paused by circuit breaker", task_id=task.id, reason=reason)
         return False
 
-    await _broadcast_task_start(deps, task)
+    async def on_started(target_task: ScheduledTask) -> None:
+        await _broadcast_task_start(deps, target_task)
+
     result, error = await run_task_agent(
         TaskAgentRequest(
             task=task,
@@ -404,6 +406,7 @@ async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) 
             group=group,
             idle_enabled=True,
             idle_timeout=s.idle_timeout,
+            on_started=on_started,
         )
     )
     return await _finish_scheduled_agent_run(

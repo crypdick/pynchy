@@ -41,6 +41,8 @@ def _row_to_turn(row: Row) -> InFlightTurn:
         interrupted_at=row["interrupted_at"],
         deploy_id=row["deploy_id"],
         claimed_at=row["claimed_at"],
+        scheduled_base_chat_jid=row["scheduled_base_chat_jid"],
+        scheduled_thread_slot=row["scheduled_thread_slot"],
     )
 
 
@@ -52,8 +54,9 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
         INSERT INTO in_flight_turns (
             turn_id, chat_jid, group_folder, work_kind, input_messages,
             input_start_cursor, input_end_cursor, started_at, task_id,
-            session_id, output_sent, interrupted_at, deploy_id, claimed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            session_id, output_sent, interrupted_at, deploy_id, claimed_at,
+            scheduled_base_chat_jid, scheduled_thread_slot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             turn.turn_id,
@@ -70,6 +73,8 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             turn.interrupted_at,
             turn.deploy_id,
             turn.claimed_at,
+            turn.scheduled_base_chat_jid,
+            turn.scheduled_thread_slot,
         ),
     )
     await db.commit()

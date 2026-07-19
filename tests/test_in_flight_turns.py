@@ -27,6 +27,8 @@ def _turn(
     *,
     work_kind: InFlightWorkKind = InFlightWorkKind.INTERACTIVE,
     task_id: str | None = None,
+    scheduled_base_chat_jid: str | None = None,
+    scheduled_thread_slot: int | None = None,
 ) -> InFlightTurn:
     return InFlightTurn(
         turn_id=turn_id,
@@ -40,6 +42,8 @@ def _turn(
         task_id=task_id,
         session_id="session-before",
         claimed_at="2026-07-14T10:00:02+00:00",
+        scheduled_base_chat_jid=scheduled_base_chat_jid,
+        scheduled_thread_slot=scheduled_thread_slot,
     )
 
 
@@ -51,6 +55,8 @@ async def test_round_trips_turn_and_domain_lookups() -> None:
         "turn-2",
         work_kind=InFlightWorkKind.SCHEDULED,
         task_id="task-2",
+        scheduled_base_chat_jid="slack:C123",
+        scheduled_thread_slot=1,
     )
 
     await begin_in_flight_turn(interactive)
