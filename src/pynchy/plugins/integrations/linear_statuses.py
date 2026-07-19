@@ -13,11 +13,30 @@ class TodoStatusSpec:
     color: str
 
 
+# Authorization must be visible in the workflow name. In particular, planning
+# readiness must never be mistaken for human permission to execute.
+AGENT_PROPOSED_STATUS = "agent_proposed"
+READY_FOR_PLANNING_STATUS = "ready_for_planning"
+AWAITING_PLAN_APPROVAL_STATUS = "awaiting_plan_approval"
+HUMAN_APPROVED_STATUS = "human_approved"
+AGENT_SETTABLE_STATUSES = frozenset(
+    {
+        AGENT_PROPOSED_STATUS,
+        AWAITING_PLAN_APPROVAL_STATUS,
+    }
+)
+TERMINAL_STATE_TYPES = frozenset({"completed", "canceled"})
+
+# NOTE: Keep docs/usage/linear.md and the agent-runner Linear tool schemas in sync.
 LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
-    "backlog": TodoStatusSpec("Backlog", "backlog", 10.0, "#8A8F98"),
-    "planning": TodoStatusSpec("Planning", "unstarted", 20.0, "#F2C94C"),
-    "ready": TodoStatusSpec("Ready", "unstarted", 30.0, "#56CCF2"),
-    "in_progress": TodoStatusSpec("In Progress", "started", 40.0, "#2F80ED"),
-    "blocked": TodoStatusSpec("Blocked", "started", 50.0, "#EB5757"),
-    "done": TodoStatusSpec("Done", "completed", 60.0, "#27AE60"),
+    AGENT_PROPOSED_STATUS: TodoStatusSpec("Agent Proposed", "backlog", 10.0, "#8A8F98"),
+    READY_FOR_PLANNING_STATUS: TodoStatusSpec("Ready for Planning", "unstarted", 20.0, "#F2C94C"),
+    AWAITING_PLAN_APPROVAL_STATUS: TodoStatusSpec(
+        "Awaiting Plan Approval", "unstarted", 30.0, "#BB87FC"
+    ),
+    HUMAN_APPROVED_STATUS: TodoStatusSpec("Human Approved", "unstarted", 40.0, "#56CCF2"),
+    "in_progress": TodoStatusSpec("In Progress", "started", 50.0, "#2F80ED"),
+    "blocked": TodoStatusSpec("Blocked", "started", 60.0, "#EB5757"),
+    "done": TodoStatusSpec("Done", "completed", 70.0, "#27AE60"),
+    "rejected": TodoStatusSpec("Rejected", "canceled", 80.0, "#6B7280"),
 }

@@ -11,7 +11,7 @@ def _issue_schema(*, include_status: bool = False) -> dict[str, object]:
     if include_status:
         properties["status"] = {
             "type": "string",
-            "enum": ["backlog", "planning", "ready", "in_progress", "blocked", "done"],
+            "enum": ["agent_proposed", "awaiting_plan_approval"],
         }
         required.append("status")
     return {
@@ -42,8 +42,9 @@ register_ipc_tool(
 register_ipc_tool(
     name="linear_claim_work_item",
     description=(
-        "Claim one Ready workspace Linear item for the current Pynchy execution and move it "
-        "to In Progress. A claim is rejected if another active Pynchy execution owns it."
+        "Claim one Human Approved workspace Linear item for the current Pynchy execution and "
+        "move it to In Progress. Planning readiness does not authorize execution. A claim is "
+        "rejected if another active Pynchy execution owns it."
     ),
     input_schema=_issue_schema(),
 )
@@ -114,8 +115,9 @@ register_ipc_tool(
 register_ipc_tool(
     name="linear_move_todo",
     description=(
-        "Move an unlinked workspace Linear todo to a Pynchy status. This is rejected while "
-        "an active Pynchy execution owns the item; use lifecycle tools for linked work."
+        "Move an unlinked workspace Linear item between agent-controlled planning states. "
+        "This tool cannot set Ready for Planning, Human Approved, or Rejected; those states "
+        "record human decisions in Linear. Active Pynchy executions must use lifecycle tools."
     ),
     input_schema=_issue_schema(include_status=True),
 )

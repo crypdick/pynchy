@@ -204,6 +204,22 @@ class TestLinearMcpServer:
         finally:
             await client.close()
 
+    async def test_agent_tools_cannot_assert_human_approval(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        client = await start_mcp_client()
+        try:
+            response = await client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            )
+
+            payload = await response.json()
+            tools = {tool["name"]: tool for tool in payload["result"]["tools"]}
+            assert "state_id" not in tools["linear_create_issue"]["inputSchema"]["properties"]
+            assert "status" not in tools["linear_create_todo"]["inputSchema"]["properties"]
+        finally:
+            await client.close()
+
     async def test_mcp_reports_missing_api_key(self, monkeypatch):
         monkeypatch.delenv("LINEAR_API_KEY", raising=False)
         client = await start_mcp_client()
@@ -318,6 +334,7 @@ class TestLinearMcpServer:
         assert args[1].folder == "code-improver"
         assert args[2] == "Review docs"
         assert kwargs["team_key"] is None
+        assert kwargs["status"] == "agent_proposed"
 
     @pytest.mark.action("linear.team.list")
     async def test_mcp_lists_teams_from_the_configured_linear_client(self, monkeypatch):
