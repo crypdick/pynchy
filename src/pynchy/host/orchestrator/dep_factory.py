@@ -20,6 +20,7 @@ from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolve
 )
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.host.orchestrator import update_offer
 from pynchy.host.orchestrator.adapters import (
     EventBusAdapter,
     GroupMetadataManager,
@@ -83,6 +84,14 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
         broadcast_host_message = host_broadcaster.broadcast_host_message
         broadcast_system_notice = host_broadcaster.broadcast_system_notice
         broadcast_to_channels = broadcaster.broadcast_to_channels
+
+        async def offer_update(self, chat_jid: str, commit_sha: str) -> bool:
+            return await update_offer.send_update_offer(
+                channels=app.channels,
+                broadcast_host_message=host_broadcaster.broadcast_host_message,
+                chat_jid=chat_jid,
+                commit_sha=commit_sha,
+            )
 
         def workspaces(self) -> dict[str, WorkspaceProfile]:
             return app.workspaces

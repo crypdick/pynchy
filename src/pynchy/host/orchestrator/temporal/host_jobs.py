@@ -11,11 +11,11 @@ from pynchy.config.scheduler_models import (
 from pynchy.host.orchestrator.task_scheduler import resolve_cron_job_cwd
 from pynchy.host.orchestrator.temporal.runtime_state import _record_activity_result
 from pynchy.logger import logger
-from pynchy.state import get_host_job_by_id, update_host_job_after_run
+from pynchy.state import get_host_job_by_id, record_host_job_completion
 from pynchy.types import (
     HostJob,  # noqa: TC001, RUF100 - beartype resolves Temporal host-job annotations at runtime.
 )
-from pynchy.utils import ShellResult, compute_next_run, log_shell_result, run_shell_command
+from pynchy.utils import ShellResult, log_shell_result, run_shell_command
 
 
 @activity.defn(name="run_database_host_job")
@@ -91,8 +91,7 @@ async def _run_database_host_job(job: HostJob) -> None:
     log_shell_result(result, label="Database host job", job_id=job.id)
     _raise_for_failed_command(result, job.id)
 
-    next_run = compute_next_run(job.schedule_type, job.schedule_value, get_settings().timezone)
-    await update_host_job_after_run(job.id, next_run)
+    await record_host_job_completion(job.id, completed=job.schedule_type == "once")
 
 
 def _raise_for_failed_command(result: ShellResult, job_identifier: str) -> None:

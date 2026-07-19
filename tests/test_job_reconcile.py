@@ -105,7 +105,7 @@ class TestJobReconcile:
         assert task.id == "job-cancel-youtube-premium"
         assert task.schedule_type == "once"
         assert task.schedule_value == run_at
-        assert task.next_run == run_at
+        assert task.next_run is None
 
     async def test_job_reconcile_updates_delivery_when_workspace_jid_changes(
         self, db, monkeypatch, tmp_path

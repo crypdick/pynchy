@@ -50,6 +50,34 @@ def _status_settings(*, repos: dict[str, RepoConfig] | None = None):
     )
 
 
+def _inert_orchestration_states(tasks, jobs):
+    """Return Temporal-shaped state without opening a Temporal connection."""
+    return {
+        **{
+            ("task", task.id): {
+                "source": "temporal",
+                "state": "scheduled",
+                "next_run": None,
+                "schedule_id": None,
+                "workflow_id": None,
+                "error": None,
+            }
+            for task in tasks
+        },
+        **{
+            ("host_job", job.id): {
+                "source": "temporal",
+                "state": "scheduled",
+                "next_run": None,
+                "schedule_id": None,
+                "workflow_id": None,
+                "error": None,
+            }
+            for job in jobs
+        },
+    }
+
+
 @contextlib.contextmanager
 def _inert_status():
     """Neutralise every I/O-bound status collector via its public deps.
@@ -87,6 +115,11 @@ def _inert_status():
         p("get_all_tasks", new_callable=AsyncMock, return_value=[])
         p("get_task_run_logs", new_callable=AsyncMock, return_value=[])
         p("get_all_host_jobs", new_callable=AsyncMock, return_value=[])
+        p(
+            "_get_temporal_orchestration_states",
+            new_callable=AsyncMock,
+            side_effect=_inert_orchestration_states,
+        )
         p("run_docker", new_callable=AsyncMock, return_value=Mock(returncode=1, stdout=""))
         p(
             "get_temporal_scheduler_status",
@@ -541,6 +574,82 @@ class TestCollectTasks:
         assert tasks[0]["schedule_type"] == "cron"
         assert tasks[0]["status"] == "active"
         assert tasks[0]["last_result"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_uses_temporal_next_run_instead_of_stale_database_value(self):
+        task = ScheduledTask(
+            id="t1",
+            group_folder="admin",
+            chat_jid="admin@g.us",
+            prompt="check health",
+            schedule_type="cron",
+            schedule_value="0 9 * * *",
+            context_mode="group",
+            status="active",
+            next_run="2026-02-21T09:00:00+00:00",
+        )
+        temporal_state = {
+            ("task", "t1"): {
+                "source": "temporal",
+                "state": "scheduled",
+                "next_run": "2026-02-21T17:00:00+00:00",
+                "schedule_id": "pynchy-agent-schedule-t1",
+                "workflow_id": None,
+                "error": None,
+            }
+        }
+        deps = MockStatusDeps()
+        with (
+            _inert_status(),
+            patch(f"{_S}.get_all_tasks", new_callable=AsyncMock, return_value=[task]),
+            patch(
+                f"{_S}._get_temporal_orchestration_states",
+                new_callable=AsyncMock,
+                return_value=temporal_state,
+            ),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        assert result["tasks"][0]["next_run"] == "2026-02-21T17:00:00+00:00"
+        assert result["tasks"][0]["orchestration"]["source"] == "temporal"
+
+    @pytest.mark.asyncio
+    async def test_reports_unavailable_temporal_state_without_database_fallback(self):
+        task = ScheduledTask(
+            id="t1",
+            group_folder="admin",
+            chat_jid="admin@g.us",
+            prompt="check health",
+            schedule_type="cron",
+            schedule_value="0 9 * * *",
+            context_mode="group",
+            status="active",
+            next_run="2026-02-21T09:00:00+00:00",
+        )
+        temporal_state = {
+            ("task", "t1"): {
+                "source": "temporal",
+                "state": "unavailable",
+                "next_run": None,
+                "schedule_id": "pynchy-agent-schedule-t1",
+                "workflow_id": None,
+                "error": "connection refused",
+            }
+        }
+        deps = MockStatusDeps()
+        with (
+            _inert_status(),
+            patch(f"{_S}.get_all_tasks", new_callable=AsyncMock, return_value=[task]),
+            patch(
+                f"{_S}._get_temporal_orchestration_states",
+                new_callable=AsyncMock,
+                return_value=temporal_state,
+            ),
+        ):
+            result = await collect_status(deps, time.monotonic())
+
+        assert result["tasks"][0]["next_run"] is None
+        assert result["tasks"][0]["orchestration"]["state"] == "unavailable"
 
     @pytest.mark.asyncio
     async def test_includes_run_health_from_task_attempt_ledger(self):

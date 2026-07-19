@@ -82,8 +82,8 @@ from pynchy.state.host_jobs import (
     get_all_host_jobs,
     get_host_job_by_id,
     get_host_job_by_name,
+    record_host_job_completion,
     update_host_job,
-    update_host_job_after_run,
 )
 from pynchy.state.in_flight_turns import (
     begin_in_flight_turn,
@@ -135,8 +135,8 @@ from pynchy.state.tasks import (
     get_task_run_logs,
     get_tasks_for_group,
     log_task_run,
+    record_task_completion,
     update_task,
-    update_task_after_run,
 )
 from pynchy.state.webhook_models import WebhookAdmission, WebhookReceipt
 from pynchy.state.webhooks import admit_webhook_receipt, get_webhook_receipt
@@ -236,7 +236,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_tasks_for_group",
     "log_task_run",
     "update_task",
-    "update_task_after_run",
+    "record_task_completion",
     # webhooks
     "WebhookAdmission",
     "WebhookReceipt",
@@ -249,7 +249,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_host_job_by_id",
     "get_host_job_by_name",
     "update_host_job",
-    "update_host_job_after_run",
+    "record_host_job_completion",
     # in_flight_turns
     "begin_in_flight_turn",
     "claim_in_flight_turn",

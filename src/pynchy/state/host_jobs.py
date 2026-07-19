@@ -49,7 +49,7 @@ async def create_host_job(job: dict[str, Any]) -> None:
             job["command"],
             job["schedule_type"],
             job["schedule_value"],
-            job.get("next_run"),
+            None,
             job["status"],
             job["created_at"],
             job["created_by"],
@@ -61,18 +61,18 @@ async def create_host_job(job: dict[str, Any]) -> None:
     await db.commit()
 
 
-async def update_host_job_after_run(job_id: str, next_run: str | None) -> None:
-    """Update a host job after a successful run."""
+async def record_host_job_completion(job_id: str, *, completed: bool) -> None:
+    """Record job execution evidence without maintaining Temporal-owned timing."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
     await db.execute(
         """
         UPDATE host_jobs
-        SET next_run = ?, last_run = ?,
-            status = CASE WHEN ? IS NULL THEN 'completed' ELSE status END
+        SET last_run = ?,
+            status = CASE WHEN ? THEN 'completed' ELSE status END
         WHERE id = ?
         """,
-        (next_run, now, next_run, job_id),
+        (now, completed, job_id),
     )
     await db.commit()
 
@@ -105,7 +105,7 @@ async def get_all_host_jobs() -> list[HostJob]:
     return [_row_to_host_job(row) for row in rows]
 
 
-_HOST_JOB_UPDATE_FIELDS = {"status", "enabled", "next_run", "schedule_value"}
+_HOST_JOB_UPDATE_FIELDS = {"status", "enabled", "schedule_value"}
 
 
 async def update_host_job(job_id: str, updates: dict[str, Any]) -> None:

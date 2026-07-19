@@ -211,6 +211,7 @@ class HostSyncState:
     deployed_sha: str
     config_hash: str
     local_head: str | None = None
+    offered_sha: str = ""
 
 
 async def _check_config_drift(state: HostSyncState, deps: GitSyncDeps) -> bool:
@@ -228,6 +229,8 @@ async def _check_local_head_drift(
     state: HostSyncState,
     pynchy_repo_ctx: RepoContext | None,
     deps: GitSyncDeps,
+    *,
+    auto_deploy: bool,
 ) -> bool:
     """Detect local HEAD drift and deploy if needed. Returns True to stop the loop."""
     state.local_head = await asyncio.to_thread(get_local_head_sha, pynchy_root)
@@ -243,6 +246,9 @@ async def _check_local_head_drift(
         deployed_sha=state.deployed_sha[:8],
         local_head=state.local_head[:8],
     )
+    if not auto_deploy:
+        await _offer_update_if_needed(state, deps, state.local_head)
+        return False
     if pynchy_repo_ctx:
         notified = last_notified_sha.get(str(pynchy_root), "")
         if notified != state.local_head:
@@ -252,11 +258,37 @@ async def _check_local_head_drift(
     return True
 
 
+async def _offer_update_if_needed(
+    state: HostSyncState,
+    deps: GitSyncDeps,
+    commit_sha: str,
+) -> bool:
+    """Notify the admin once for each revision that awaits approval."""
+    if state.offered_sha == commit_sha:
+        return True
+    offer_update = getattr(deps, "offer_update", None)
+    if not callable(offer_update):
+        logger.error("Git sync cannot offer a pending update", commit_sha=commit_sha)
+        return False
+    try:
+        offered = await offer_update(commit_sha)
+    # allow: exception-handling - a notification failure must be retried by the next poll.
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Git sync update offer failed", commit_sha=commit_sha, error=str(exc))
+        return False
+    if offered is False:
+        return False
+    state.offered_sha = commit_sha
+    return True
+
+
 async def check_origin_drift(
     pynchy_root: Path,
     state: HostSyncState,
     pynchy_repo_ctx: RepoContext | None,
     deps: GitSyncDeps,
+    *,
+    auto_deploy: bool,
 ) -> bool:
     """Detect origin/main drift, pull, and deploy if needed. Returns True to stop the loop."""
     current_origin = await asyncio.to_thread(host_get_origin_main_sha, pynchy_root)
@@ -264,6 +296,13 @@ async def check_origin_drift(
         return False
 
     _log_origin_sync(state.last_origin_sha, current_origin)
+
+    if not auto_deploy:
+        # Keep the running checkout intact until an admin approves the
+        # advertised revision while retaining a cheap remote-SHA poll.
+        if await _offer_update_if_needed(state, deps, current_origin):
+            state.last_origin_sha = current_origin
+        return False
 
     if state.local_head == current_origin:
         state.last_origin_sha = current_origin

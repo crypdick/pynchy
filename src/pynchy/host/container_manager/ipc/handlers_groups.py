@@ -32,7 +32,6 @@ from pynchy.host.orchestrator import workspace_config
 from pynchy.logger import logger
 from pynchy.state import create_task
 from pynchy.types import ScheduledTask, WorkspaceProfile
-from pynchy.utils import compute_next_run
 
 
 @runtime_checkable
@@ -206,7 +205,6 @@ async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcD
     )
     deps.register_workspace(profile)
 
-    next_run = compute_next_run("cron", request.schedule, setup.settings.timezone)
     task_id = f"periodic-{request.name}-{uuid.uuid4().hex[:8]}"
 
     await create_task(
@@ -218,7 +216,6 @@ async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcD
             schedule_type="cron",
             schedule_value=request.schedule,
             context_mode="isolated",
-            next_run=next_run,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
         )

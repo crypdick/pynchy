@@ -10,6 +10,7 @@ from conftest import make_settings
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 from pynchy.config.models import NotificationsConfig
+from pynchy.host.git_ops import sync_poll
 from pynchy.host.orchestrator.temporal import git_sync
 from pynchy.state import (
     claim_deployment,
@@ -27,6 +28,24 @@ class _RuntimeDeps:
 
     workspaces: dict[str, WorkspaceProfile]
     broadcast_host_message: object
+
+
+@dataclass
+class _UpdateDeps:
+    """Minimal git-sync dependency object that records update outcomes."""
+
+    offer_update: AsyncMock
+    trigger_deploy: AsyncMock
+
+    async def broadcast_host_message(self, _jid: str, _text: str) -> None: ...
+
+    async def broadcast_system_notice(self, _jid: str, _text: str) -> None: ...
+
+    def has_active_session(self, _group_folder: str) -> bool:
+        return False
+
+    def workspaces(self) -> dict[str, WorkspaceProfile]:
+        return {}
 
 
 async def test_host_git_sync_skips_the_hermetic_runtime(
@@ -150,3 +169,94 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
 
     assert await git_sync.run_host_git_sync() == "idle"
     assert recorded == [(git_sync.HOST_GIT_SYNC_ID, "idle")]
+
+
+async def test_origin_drift_offers_update_without_changing_checkout_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Default updates stay pending until the administrator accepts the offer."""
+    deps = _UpdateDeps(offer_update=AsyncMock(), trigger_deploy=AsyncMock())
+    state = sync_poll.HostSyncState(
+        last_origin_sha="old-origin",
+        deployed_sha="old-deploy",
+        config_hash="config",
+        local_head="old-deploy",
+    )
+    update_main = AsyncMock(return_value=True)
+    monkeypatch.setattr(sync_poll, "host_get_origin_main_sha", lambda _root: "new-origin")
+    monkeypatch.setattr(sync_poll, "host_update_main", update_main)
+
+    changed = await sync_poll.check_origin_drift(
+        tmp_path,
+        state,
+        None,
+        deps,
+        auto_deploy=False,
+    )
+
+    assert not changed
+    update_main.assert_not_awaited()
+    deps.offer_update.assert_awaited_once_with("new-origin")
+    deps.trigger_deploy.assert_not_awaited()
+    assert state.last_origin_sha == "new-origin"
+    assert state.offered_sha == "new-origin"
+
+
+async def test_origin_drift_retries_when_the_update_notification_cannot_send(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """A delivery failure keeps the remote revision eligible for the next poll."""
+    deps = _UpdateDeps(offer_update=AsyncMock(return_value=False), trigger_deploy=AsyncMock())
+    state = sync_poll.HostSyncState(
+        last_origin_sha="old-origin",
+        deployed_sha="old-deploy",
+        config_hash="config",
+        local_head="old-deploy",
+    )
+    monkeypatch.setattr(sync_poll, "host_get_origin_main_sha", lambda _root: "new-origin")
+
+    changed = await sync_poll.check_origin_drift(
+        tmp_path,
+        state,
+        None,
+        deps,
+        auto_deploy=False,
+    )
+
+    assert not changed
+    deps.offer_update.assert_awaited_once_with("new-origin")
+    assert state.last_origin_sha == "old-origin"
+    assert not state.offered_sha
+
+
+async def test_origin_drift_keeps_existing_auto_deploy_behavior_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """An explicit opt-in still fetches and deploys immediately."""
+    deps = _UpdateDeps(offer_update=AsyncMock(), trigger_deploy=AsyncMock())
+    state = sync_poll.HostSyncState(
+        last_origin_sha="old-origin",
+        deployed_sha="old-deploy",
+        config_hash="config",
+        local_head="old-deploy",
+    )
+    monkeypatch.setattr(sync_poll, "host_get_origin_main_sha", lambda _root: "new-origin")
+    monkeypatch.setattr(sync_poll, "host_update_main", lambda _root: True)
+    monkeypatch.setattr(sync_poll, "get_local_head_sha", lambda _root: "new-deploy")
+    monkeypatch.setattr(sync_poll, "needs_deploy", lambda _old, _new: True)
+    monkeypatch.setattr(sync_poll, "needs_container_rebuild", lambda _old, _new: True)
+
+    changed = await sync_poll.check_origin_drift(
+        tmp_path,
+        state,
+        None,
+        deps,
+        auto_deploy=True,
+    )
+
+    assert changed
+    deps.offer_update.assert_not_awaited()
+    deps.trigger_deploy.assert_awaited_once_with("old-deploy", rebuild=True)

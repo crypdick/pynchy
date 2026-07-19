@@ -386,7 +386,7 @@ class ScheduledTask:
             "schedule_type": self.schedule_type,
             "schedule_value": self.schedule_value,
             "status": self.status,
-            "next_run": self.next_run,
+            "next_run": None,
         }
 
 
@@ -466,7 +466,7 @@ class HostJob:
             "schedule_type": self.schedule_type,
             "schedule_value": self.schedule_value,
             "status": self.status,
-            "next_run": self.next_run,
+            "next_run": None,
         }
 
 

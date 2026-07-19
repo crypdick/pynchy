@@ -67,7 +67,7 @@ async def create_task(task: ScheduledTask) -> None:
             task.schedule_type,
             task.schedule_value,
             task.context_mode,
-            task.next_run,
+            None,
             task.status,
             task.created_at,
             task.repo_access or None,
@@ -112,7 +112,6 @@ _TASK_UPDATE_FIELDS = {
     "schedule_type",
     "schedule_value",
     "context_mode",
-    "next_run",
     "status",
     "repo_access",
     "input_source",
@@ -144,18 +143,18 @@ async def get_active_task_for_group(group_folder: str) -> ScheduledTask | None:
     return _row_to_task(row)
 
 
-async def update_task_after_run(task_id: str, next_run: str | None, last_result: str) -> None:
-    """Update a task after a run."""
+async def record_task_completion(task_id: str, *, last_result: str, completed: bool) -> None:
+    """Record task execution evidence without maintaining Temporal-owned timing."""
     db = _get_db()
     now = datetime.now(UTC).isoformat()
     await db.execute(
         """
         UPDATE scheduled_tasks
-        SET next_run = ?, last_run = ?, last_result = ?,
-            status = CASE WHEN ? IS NULL THEN 'completed' ELSE status END
+        SET last_run = ?, last_result = ?,
+            status = CASE WHEN ? THEN 'completed' ELSE status END
         WHERE id = ?
         """,
-        (next_run, now, last_result, next_run, task_id),
+        (now, last_result, completed, task_id),
     )
     await db.commit()
 

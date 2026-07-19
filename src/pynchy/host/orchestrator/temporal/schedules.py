@@ -51,7 +51,7 @@ def safe_workflow_fragment(value: str) -> str:
 
 def agent_task_workflow_id(task: ScheduledTask) -> str:
     """Return the idempotency key for a one-time scheduled agent task."""
-    due_at = task.next_run or "unscheduled"
+    due_at = task.schedule_value
     return f"pynchy-agent-task-{safe_workflow_fragment(task.id)}-{safe_workflow_fragment(due_at)}"
 
 
@@ -62,7 +62,7 @@ def agent_task_schedule_id(task: ScheduledTask) -> str:
 
 def database_host_job_workflow_id(job: HostJob) -> str:
     """Return the idempotency key for a one-time database host job."""
-    due_at = job.next_run or job.schedule_value or "unscheduled"
+    due_at = job.schedule_value
     return f"pynchy-host-job-{safe_workflow_fragment(job.id)}-{safe_workflow_fragment(due_at)}"
 
 

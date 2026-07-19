@@ -396,7 +396,7 @@ class PeriodicAgentManager:
                     "schedule": task.schedule_value,
                     "context_mode": task.context_mode,
                     "last_run": task.last_run,
-                    "next_run": task.next_run,
+                    "next_run": None,
                     "status": task.status,
                 }
             )

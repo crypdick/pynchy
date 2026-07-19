@@ -271,7 +271,7 @@ def _list_tasks_text(tasks_file: Path) -> list[TextContent]:
                 f"- [{t['id']}] [host] {label} "
                 f"({t['schedule_type']}: {t['schedule_value']}) "
                 f"- {t['status']}, "
-                f"next: {t.get('next_run', 'N/A')}"
+                "next: managed by Temporal"
             )
         else:
             prompt = t.get("prompt", "")[:50]
@@ -279,7 +279,7 @@ def _list_tasks_text(tasks_file: Path) -> list[TextContent]:
                 f"- [{t['id']}] [agent] {prompt}... "
                 f"({t['schedule_type']}: {t['schedule_value']}) "
                 f"- {t['status']}, "
-                f"next: {t.get('next_run', 'N/A')}"
+                "next: managed by Temporal"
             )
 
     return [

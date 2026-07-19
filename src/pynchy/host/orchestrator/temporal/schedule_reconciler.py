@@ -183,7 +183,7 @@ async def _start_once_agent_task(runtime: object, task: ScheduledTask) -> None:
         task.id,
         workflow_id=workflow_id,
         status_id=task.id,
-        start_delay=start_delay_until(once_due_at(task.next_run or task.schedule_value)),
+        start_delay=start_delay_until(once_due_at(task.schedule_value)),
     )
 
 
@@ -195,7 +195,7 @@ async def _start_once_database_host_job(runtime: object, job: HostJob) -> None:
         job.id,
         workflow_id=workflow_id,
         status_id=job.id,
-        start_delay=start_delay_until(once_due_at(job.next_run or job.schedule_value)),
+        start_delay=start_delay_until(once_due_at(job.schedule_value)),
     )
 
 
