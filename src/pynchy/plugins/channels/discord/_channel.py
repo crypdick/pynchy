@@ -41,7 +41,7 @@ from ._history import (
     history_high_water_mark,
     history_message,
 )
-from ._ids import dm_jid, is_discord_jid, parse_jid
+from ._ids import channel_jid, dm_jid, is_discord_jid, parse_jid
 from ._lifecycle import DiscordLifecycle
 from ._lookup import discord_user_names, normalize_discord_channel_name, same_name
 from ._models import parse_discord_message
@@ -254,6 +254,15 @@ class DiscordChannel:
 
     async def create_group(self, name: str) -> str:
         return await create_discord_group(self, name)
+
+    async def create_thread(self, parent_jid: str, name: str) -> str:
+        """Create a public child thread below one Discord text channel."""
+        parent = cast("Any", await self.resolve_channel(parent_jid))
+        create_thread = getattr(parent, "create_thread", None)
+        if not callable(create_thread):
+            raise TypeError("Discord target does not support child threads")
+        thread = await create_thread(name=name)
+        return channel_jid(str(thread.id))
 
     async def find_configured_channel(self, target: DiscordChatTarget) -> object | None:
         guild = await self.find_configured_guild(target)

@@ -104,6 +104,20 @@ class _FakeTypingChannel:
         self.typing_calls += 1
 
 
+@dataclass(slots=True)
+class _FakeThread:
+    id: int
+
+
+class _FakeThreadParent:
+    def __init__(self) -> None:
+        self.thread_names: list[str] = []
+
+    async def create_thread(self, *, name: str) -> _FakeThread:
+        self.thread_names.append(name)
+        return _FakeThread(id=456)
+
+
 class _FakePynchyVoiceClient(PynchyVoiceClient):
     def __init__(self) -> None:
         self.received_listener: object | None = None
@@ -321,6 +335,19 @@ def test_owns_only_discord_jids():
     assert ch.owns_jid("discord:channel:1") is True
     assert ch.owns_jid("discord:direct:1") is True
     assert ch.owns_jid("slack:C1") is False
+
+
+@pytest.mark.asyncio
+async def test_creates_child_thread_for_scheduled_task():
+    ch = _channel()
+    parent = _FakeThreadParent()
+    ch.resolve_channel = AsyncMock(return_value=parent)  # type: ignore[method-assign]
+
+    child_jid = await ch.create_thread("discord:channel:123", "pynchy-dev-1")
+
+    assert child_jid == "discord:channel:456"
+    assert parent.thread_names == ["pynchy-dev-1"]
+    ch.resolve_channel.assert_awaited_once_with("discord:channel:123")
 
 
 @pytest.mark.asyncio
