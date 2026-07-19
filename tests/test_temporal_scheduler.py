@@ -732,6 +732,27 @@ class TestTemporalSchedulerRuntime:
         log_shell_result.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_failed_config_host_job_fails_its_temporal_activity(self, monkeypatch):
+        settings = make_settings(
+            cron_jobs={
+                "backup_db": CronJobConfig(
+                    schedule="15 3 * * *",
+                    command="scripts/backup_runtime_dbs.sh",
+                )
+            },
+        )
+        monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_host_jobs, "resolve_cron_job_cwd", lambda cwd: "/repo")
+        monkeypatch.setattr(
+            temporal_host_jobs,
+            "run_shell_command",
+            AsyncMock(return_value=ShellResult(returncode=1, stdout="", stderr="boom")),
+        )
+
+        with pytest.raises(RuntimeError, match="Host job backup_db exited with code 1"):
+            await temporal_host_jobs.run_config_host_cron_job("backup_db")
+
+    @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedules_for_git_sync_and_channel_reconcile(
         self, monkeypatch, tmp_path
     ):
