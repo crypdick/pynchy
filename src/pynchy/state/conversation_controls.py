@@ -8,6 +8,8 @@ from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
     ConversationId,
+    ExternalProvider,
+    ExternalRoute,
 )
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.types import ChatJid, GroupFolder
@@ -27,6 +29,7 @@ def _row_to_binding(row: Row) -> ConversationControlBinding:
         thread_jid=ChatJid(row["thread_jid"]),
         title=row["title"],
         updated_at=row["updated_at"],
+        closed=bool(row["closed"]),
     )
 
 
@@ -59,6 +62,28 @@ async def get_conversation_control_by_thread(
     return _row_to_binding(row) if row is not None else None
 
 
+async def list_idle_conversation_ids(
+    provider: ExternalProvider,
+    route: ExternalRoute,
+) -> tuple[ConversationId, ...]:
+    """Return route conversations whose control state can be safely reconciled."""
+    cursor = await _get_db().execute(
+        """
+        SELECT DISTINCT owned.conversation_id
+        FROM conversation_deliveries AS owned
+        WHERE owned.provider = ? AND owned.route = ?
+          AND NOT EXISTS (
+              SELECT 1 FROM conversation_deliveries AS active
+              WHERE active.conversation_id = owned.conversation_id
+                AND active.status = 'claimed'
+          )
+        ORDER BY owned.conversation_id
+        """,
+        (provider, route),
+    )
+    return tuple(ConversationId(row["conversation_id"]) for row in await cursor.fetchall())
+
+
 async def set_conversation_control_binding(
     binding: ConversationControlBinding,
 ) -> ConversationControlBinding:
@@ -78,14 +103,15 @@ async def set_conversation_control_binding(
             """
             INSERT INTO conversation_control_bindings (
                 conversation_id, surface, parent_workspace, parent_jid,
-                thread_jid, title, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                thread_jid, title, closed, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(conversation_id) DO UPDATE SET
                 surface = excluded.surface,
                 parent_workspace = excluded.parent_workspace,
                 parent_jid = excluded.parent_jid,
                 thread_jid = excluded.thread_jid,
                 title = excluded.title,
+                closed = excluded.closed,
                 updated_at = excluded.updated_at
             """,
             (
@@ -95,6 +121,7 @@ async def set_conversation_control_binding(
                 binding.parent_jid,
                 binding.thread_jid,
                 binding.title,
+                binding.closed,
                 binding.updated_at,
             ),
         )

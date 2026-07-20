@@ -44,6 +44,7 @@ class WebhookConversation:
 
     subject: ConversationSubject
     control_title: str
+    control_closed: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.control_title.strip():

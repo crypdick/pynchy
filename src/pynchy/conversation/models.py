@@ -141,3 +141,4 @@ class ConversationControlBinding:
     thread_jid: ChatJid
     title: str
     updated_at: str
+    closed: bool = False

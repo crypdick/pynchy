@@ -4,8 +4,9 @@
 
 Provide a provider-authenticated HTTP callback. The plugin owns provider schema,
 signature verification, replay detection, and the closed mapping from provider
-events to a task, host notification, or ignored result. The host owns the public
-path, size/rate limits, workspace boundary, durable receipt, and dispatch.
+events to an isolated task, routed conversation, host notification, or ignored
+result. The host owns the public path, size/rate limits, workspace boundary,
+durable receipt, and dispatch.
 
 ```python
 class ExamplePlugin:
@@ -30,3 +31,10 @@ Authenticate before parsing; raise `WebhookAuthenticationError` for bad
 credentials or replay checks, and `WebhookPayloadError` only for an authenticated
 payload that fails its schema. Do not copy provider text into trusted task
 instructions. The host fences external context before building the task prompt.
+
+Set `routes_conversations=True` when actionable events target durable subjects.
+Return a `WebhookConversation` with an immutable `ConversationSubject` and a
+readable control title. `control_closed=True` requests a closed control after
+the routed turn completes, `False` requests an open control, and `None` preserves
+the conversation's persisted lifecycle intent. The channel owns the native
+mapping; Discord maps closed controls to archived threads.

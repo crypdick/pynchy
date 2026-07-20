@@ -150,6 +150,14 @@ delivery creates a replacement and rebinds the existing issue conversation and
 session. Messages that people send in the Discord thread join that same context;
 they do not become Linear comments automatically.
 
+Linear also owns the thread lifecycle. After a routed delivery showing the
+issue in `Done` finishes, Pynchy closes the Discord thread by archiving it. Any
+later Issue callback showing a non-`Done` state reopens the same thread before
+the next turn. Comment callbacks preserve the last known lifecycle state: a
+comment can temporarily reopen a closed thread for processing, and successful
+turn finalization closes it again. A restart reapplies a committed lifecycle
+change if the Discord edit did not finish.
+
 Linear scopes webhook subscriptions to one team or all public teams, not to one
 Project. Point the subscription at the team that owns the Pynchy board. When that
 team contains other Projects, their events can wake the route too. Before acting,

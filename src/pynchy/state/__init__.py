@@ -60,6 +60,7 @@ from pynchy.state.connection import _get_db, close_test_database, init_database,
 from pynchy.state.conversation_controls import (
     get_conversation_control_binding,
     get_conversation_control_by_thread,
+    list_idle_conversation_ids,
     set_conversation_control_binding,
 )
 from pynchy.state.conversation_events import (
@@ -234,6 +235,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_conversation_control_by_thread",
     "get_conversation_delivery",
     "get_conversation_for_subject",
+    "list_idle_conversation_ids",
     "list_pending_conversation_ids",
     "prepare_conversation_delivery_recovery",
     "rebind_conversation_workspace",

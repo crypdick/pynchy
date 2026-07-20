@@ -112,6 +112,7 @@ class DiscordThreadChannel:
     def __init__(self) -> None:
         self.threads: dict[tuple[str, str], str] = {}
         self.created: list[tuple[str, str, str]] = []
+        self.closed: dict[str, bool] = {}
 
     async def connect(self) -> None: ...
 
@@ -135,7 +136,10 @@ class DiscordThreadChannel:
         return InboundFetchResult(messages=[])
 
     async def find_thread(self, parent_jid: str, name: str) -> str | None:
-        return self.threads.get((parent_jid, name))
+        jid = self.threads.get((parent_jid, name))
+        if jid is not None:
+            self.closed[jid] = False
+        return jid
 
     async def create_thread(
         self,
@@ -147,8 +151,14 @@ class DiscordThreadChannel:
         assert participant_ids == ()
         jid = f"discord:channel:linear-thread-{len(self.created) + 1}"
         self.threads[parent_jid, name] = jid
+        self.closed[jid] = False
         self.created.append((parent_jid, name, jid))
         return jid
+
+    async def set_thread_closed(self, child_jid: str, *, closed: bool) -> None:
+        if child_jid not in self.closed:
+            raise RuntimeError(f"Unknown test thread: {child_jid}")
+        self.closed[child_jid] = closed
 
 
 class LinearWebhookHarness:

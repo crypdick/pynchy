@@ -92,6 +92,7 @@ def test_every_comment_change_maps_to_fenced_issue_conversation(action: str) -> 
     assert event.conversation.subject.namespace == "linear:org-1:issue"
     assert event.conversation.subject.key == "issue-1"
     assert event.conversation.control_title == "[PYN-1] Linear issue"
+    assert event.conversation.control_closed is None
 
 
 @pytest.mark.parametrize(
@@ -128,6 +129,7 @@ def test_every_issue_change_targets_the_issue_conversation(
     )
     assert event.conversation is not None
     assert event.conversation.control_title == "[PYN-1] Webhook callbacks"
+    assert event.conversation.control_closed is False
 
 
 def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:

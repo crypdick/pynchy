@@ -76,6 +76,13 @@ identity or agent session. Titles remain readable operator-facing text rather
 than protocol-shaped IDs. The registered parent workspace constrains where the
 binding can move.
 
+The binding also stores provider-neutral closed intent. Channels map that intent
+to their native lifecycle operation; Discord uses thread archival. Reconciliation
+opens a thread while a routed turn needs it, then successful delivery completion
+reapplies the durable intent before waking the next FIFO sibling. Startup
+reconciles idle bindings, which repairs a crash after delivery completion but
+before the channel lifecycle edit.
+
 ## Integration Boundary
 
 This layer provides persistence, typed identities, claims, sessions, and control
@@ -109,6 +116,11 @@ Linear callback content carries public-source taint and enters a fenced context
 block. The turn re-fetches current Linear state before acting. Neither the
 callback nor a Discord message grants planning or execution authority; explicit
 Linear actions still enforce the provider workflow state.
+
+The adapter maps the current Linear `Done` state to closed control intent and any
+other named issue state to open intent. Events without issue state, such as
+minimal Comment payloads, preserve the binding's current intent. This keeps
+Linear authoritative without deriving lifecycle from mutable Discord state.
 
 ## Matrix Routes
 

@@ -17,9 +17,10 @@ from pynchy.conversation.models import (
     ConversationId,
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
-from pynchy.host.orchestrator.threads import ensure_thread
+from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
 from pynchy.state import (
     get_conversation,
+    get_conversation_control_binding,
     get_conversation_control_by_thread,
     get_workspace_profile,
     set_conversation_control_binding,
@@ -35,6 +36,7 @@ class ConversationControlRequest:
     parent_workspace: GroupFolder
     parent_jid: ChatJid
     title: str
+    closed: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -102,6 +104,15 @@ async def ensure_conversation_control(
     ):
         raise ValueError("Conversation control parent must be a registered workspace root")
 
+    current_binding = await get_conversation_control_binding(request.conversation_id)
+    closed = (
+        request.closed
+        if request.closed is not None
+        else current_binding.closed
+        if current_binding is not None
+        else False
+    )
+
     index = 1
     while True:
         title = request.title if index == 1 else f"{request.title} ({index})"
@@ -126,6 +137,7 @@ async def ensure_conversation_control(
             thread_jid=thread_jid,
             title=title,
             updated_at=datetime.now(UTC).isoformat(),
+            closed=closed,
         )
         try:
             await set_conversation_control_binding(binding)
@@ -139,6 +151,16 @@ async def ensure_conversation_control(
             index += 1
             continue
         return EnsuredConversationControl(binding=binding, created=ensured.created)
+
+
+async def sync_conversation_control_state(
+    channels: list[Channel],
+    conversation_id: ConversationId,
+) -> None:
+    """Apply a conversation's durable lifecycle intent to its current thread."""
+    binding = await get_conversation_control_binding(conversation_id)
+    if binding is not None:
+        await set_thread_closed(channels, binding.thread_jid, closed=binding.closed)
 
 
 async def ensure_conversation_workspace(

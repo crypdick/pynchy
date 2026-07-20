@@ -115,12 +115,14 @@ class _FakeThread:
     parent_id: int | None = None
     archived: bool = False
     added_user_ids: list[int] = field(default_factory=list)
+    archive_edits: list[bool] = field(default_factory=list)
 
     async def add_user(self, user: discord.Object) -> None:
         self.added_user_ids.append(int(user.id))
 
     async def edit(self, *, archived: bool) -> None:
         self.archived = archived
+        self.archive_edits.append(archived)
 
 
 class _FakeThreadParent:
@@ -449,6 +451,20 @@ async def test_reopens_archived_child_thread_instead_of_creating_a_duplicate():
 
     assert child_jid == "discord:channel:456"
     assert archived.archived is False
+
+
+@pytest.mark.asyncio
+async def test_maps_conversation_closed_state_to_thread_archival():
+    ch = _channel()
+    thread = _FakeThread(id=456)
+    ch.resolve_channel = AsyncMock(return_value=thread)  # type: ignore[method-assign]
+
+    await ch.set_thread_closed("discord:channel:456", closed=True)
+    await ch.set_thread_closed("discord:channel:456", closed=True)
+    await ch.set_thread_closed("discord:channel:456", closed=False)
+
+    assert thread.archived is False
+    assert thread.archive_edits == [True, False]
 
 
 @pytest.mark.asyncio
