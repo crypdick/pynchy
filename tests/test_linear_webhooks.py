@@ -50,10 +50,8 @@ from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
-from pynchy.plugins.integrations.linear_webhooks import (
-    linear_webhook_routes,
-    parse_linear_webhook,
-)
+from pynchy.plugins.integrations.linear import LinearMcpPlugin
+from pynchy.plugins.integrations.linear_webhooks import parse_linear_webhook
 from pynchy.plugins.webhooks import WebhookAuthenticationError, WebhookConfigurationError
 from pynchy.state import (
     get_all_tasks,
@@ -153,7 +151,7 @@ def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
             return_value=settings,
         ),
     ):
-        route = linear_webhook_routes()[0]
+        route = LinearMcpPlugin().pynchy_webhook_routes()[0]
         validate = route.validate_workspace
         assert validate is not None
         assert validate(_WebhookDeps().workspace) is None
