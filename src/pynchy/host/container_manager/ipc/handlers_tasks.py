@@ -26,6 +26,7 @@ from pynchy.state import (
     delete_task,
     get_host_job_by_id,
     get_task_by_id,
+    resume_task,
     update_host_job,
     update_task,
 )
@@ -317,13 +318,17 @@ async def _handle_resume_task(
     _deps: IpcDeps,
 ) -> None:
     task_id = data.get("taskId", "")
-    update = update_host_job if task_id.startswith("host-") else update_task
+    action = (
+        (lambda tid: update_host_job(tid, {"status": "active"}))
+        if task_id.startswith("host-")
+        else resume_task
+    )
     await _authorized_task_action(
         data,
         source_group,
         is_admin=is_admin,
         action_name="resume",
-        action=lambda tid: update(tid, {"status": "active"}),
+        action=action,
     )
 
 

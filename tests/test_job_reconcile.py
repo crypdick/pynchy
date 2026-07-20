@@ -11,8 +11,14 @@ from conftest import init_test_database, make_settings
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
-from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import ScheduledTask, WorkspaceProfile
+from pynchy.state import (
+    create_task,
+    get_active_task_for_group,
+    get_all_tasks,
+    get_task_run_logs,
+    log_task_run,
+)
+from pynchy.types import ScheduledTask, TaskRunLog, WorkspaceProfile
 
 
 class TestJobReconcile:
@@ -344,3 +350,59 @@ class TestJobReconcile:
 
         tasks = await get_all_tasks()
         assert tasks[0].status == "paused"
+
+    async def test_enabled_job_resets_failures_when_reactivating_config_task(
+        self, db, monkeypatch, tmp_path
+    ):
+        self._patch_settings(
+            monkeypatch,
+            tmp_path,
+            jobs={
+                "daily-triage": JobConfig(
+                    enabled=True,
+                    schedule="0 8 * * *",
+                    workspace="admin",
+                    prompt="Run the daily triage memo.",
+                )
+            },
+        )
+        await create_task(
+            ScheduledTask(
+                id="job-daily-triage",
+                group_folder="admin",
+                chat_jid="slack:CADMIN",
+                prompt="Run the daily triage memo.",
+                schedule_type="cron",
+                schedule_value="0 8 * * *",
+                context_mode="isolated",
+                status="paused",
+                created_at=datetime.now(UTC).isoformat(),
+                config_job_name="daily-triage",
+                derived_thread_name="admin | daily-triage",
+            )
+        )
+        await log_task_run(
+            TaskRunLog(
+                task_id="job-daily-triage",
+                run_at="2026-07-20T00:00:00Z",
+                duration_ms=1,
+                status="error",
+                error="stale implementation failure",
+            )
+        )
+        registered = {
+            "slack:CADMIN": WorkspaceProfile(
+                jid="slack:CADMIN",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            )
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        task = await get_active_task_for_group("admin")
+        logs = await get_task_run_logs("job-daily-triage")
+        assert task is not None
+        assert [log.status for log in logs] == ["resumed", "error"]

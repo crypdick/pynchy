@@ -16,6 +16,7 @@ from pynchy.state import (
     get_all_tasks,
     get_host_job_by_id,
     get_task_by_id,
+    get_task_run_logs,
     set_workspace_profile,
 )
 from pynchy.types import ScheduledTask, WorkspaceProfile
@@ -276,8 +277,10 @@ class TestResumeTaskAuth:
     async def test_admin_can_resume_any_task(self, deps):
         await dispatch({"type": "resume_task", "taskId": "task-paused"}, "admin-1", True, deps)
         task = await get_task_by_id("task-paused")
+        logs = await get_task_run_logs("task-paused")
         assert task is not None
         assert task.status == "active"
+        assert logs[0].status == "resumed"
 
     async def test_non_admin_can_resume_own_task(self, deps):
         await dispatch(

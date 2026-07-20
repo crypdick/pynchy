@@ -20,7 +20,7 @@ from pynchy.config.settings import (
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
-from pynchy.state import create_task, get_task_by_id, rebind_task_root, update_task
+from pynchy.state import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
     WorkspaceProfile,
@@ -169,8 +169,6 @@ def _agent_job_updates(
         updates["config_job_name"] = job_name
     if existing.derived_thread_name != details.derived_thread_name:
         updates["derived_thread_name"] = details.derived_thread_name
-    if existing.status != "active":
-        updates["status"] = "active"
     return updates
 
 
@@ -242,6 +240,10 @@ async def reconcile_agent_jobs(
                 group_folder=context.root_folder,
                 chat_jid=context.group.jid,
             )
+
+        if existing.status != "active":
+            await resume_task(task_id)
+            existing = replace(existing, status="active")
 
         updates = _agent_job_updates(
             existing=existing,

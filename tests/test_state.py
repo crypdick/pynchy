@@ -34,6 +34,7 @@ from pynchy.state import (
     mark_delivered,
     record_outbound,
     record_task_completion,
+    resume_task,
     set_chat_cleared_at,
     set_last_group_sync,
     set_router_state,
@@ -943,6 +944,28 @@ class TestTaskAdvanced:
         assert logs[0].temporal_attempt == 2
         assert logs[0].error_signature == "ValueError: failed on port #"
         assert logs[0].escalation_reason == "stagnation"
+
+    async def test_resume_task_preserves_history_and_resets_failure_window(self):
+        await create_task(
+            replace(self._TASK_TEMPLATE, id="resume-task", next_run=None, status="paused")
+        )
+        await log_task_run(
+            TaskRunLog(
+                task_id="resume-task",
+                run_at="2024-06-01T00:00:00Z",
+                duration_ms=500,
+                status="error",
+                error="persistent failure",
+            )
+        )
+
+        await resume_task("resume-task")
+
+        task = await get_task_by_id("resume-task")
+        logs = await get_task_run_logs("resume-task")
+        assert task is not None
+        assert task.status == "active"
+        assert [log.status for log in logs] == ["resumed", "error"]
 
     async def test_create_task_with_repo_access(self):
         await create_task(
