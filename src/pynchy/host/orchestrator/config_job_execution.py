@@ -26,6 +26,7 @@ _MAX_PRE_RUN_STREAM_CHARS = 12_000
 class ConfigJobExecutionDeps(Protocol):
     """Runtime capabilities required by workspace-owned shell jobs."""
 
+    @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
@@ -74,7 +75,7 @@ async def register_scheduled_target(
     profile: WorkspaceProfile,
 ) -> None:
     """Persist an owned thread so later inbound replies retain its policy."""
-    existing = deps.workspaces().get(profile.jid)
+    existing = deps.workspaces.get(profile.jid)
     if existing is not None:
         profile = replace(profile, added_at=existing.added_at)
     await deps.register_workspace(profile)
@@ -166,7 +167,7 @@ async def run_deterministic_config_job(
     display_name = job.display_name or task.config_job_name
     output = _deterministic_job_output(display_name, result)
     if output:
-        placement = resolve_workspace_placement(deps.workspaces().values(), task.group_folder)
+        placement = resolve_workspace_placement(deps.workspaces.values(), task.group_folder)
         if placement is None:
             raise RuntimeError(f"Workspace placement not found: {task.group_folder}")
         thread_name = task.derived_thread_name or f"{task.group_folder} | {display_name}"

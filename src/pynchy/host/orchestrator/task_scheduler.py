@@ -56,6 +56,7 @@ from pynchy.types import (
 class SchedulerDependencies(Protocol):
     """Dependencies for the task scheduler."""
 
+    @property
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
@@ -161,8 +162,7 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: objec
 
 
 def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:
-    workspaces = deps.workspaces
-    return workspaces() if callable(workspaces) else workspaces
+    return deps.workspaces
 
 
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:

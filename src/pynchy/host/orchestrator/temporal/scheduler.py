@@ -283,7 +283,7 @@ async def _notify_canary_transitions(results: list[CanaryRun], deps: SchedulerDe
     ]
     if not notices:
         return
-    admin_jids = [workspace.jid for workspace in deps.workspaces().values() if workspace.is_admin]
+    admin_jids = [workspace.jid for workspace in deps.workspaces.values() if workspace.is_admin]
     for jid in admin_jids:
         for notice in notices:
             await deps.broadcast_host_message(jid, notice)

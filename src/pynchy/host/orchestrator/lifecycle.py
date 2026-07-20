@@ -17,7 +17,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
 )
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations.
-from typing import Any, cast
+from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
@@ -316,7 +316,10 @@ async def _start_subsystems(
     """Scheduler, IPC, git sync, HTTP server."""
     s = get_settings()
 
-    scheduler_deps = cast("task_scheduler.SchedulerDependencies", app)
+    # PynchyApp stores workspaces as a mapping, while scheduler jobs consume a
+    # callable accessor plus thread-routing methods. Keep that boundary in the
+    # adapter instead of treating the app as structurally interchangeable.
+    scheduler_deps = dep_factory.make_scheduler_deps(app)
     app.add_subsystem_task(
         create_background_task(
             task_scheduler.start_scheduler_loop(scheduler_deps), name="scheduler"

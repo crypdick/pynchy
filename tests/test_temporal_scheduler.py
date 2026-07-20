@@ -61,9 +61,11 @@ class NullSchedulerDeps:
     """Structural fake for SchedulerDependencies."""
 
     queue: GroupQueue = field(default_factory=GroupQueue)
+    groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
 
+    @property
     def workspaces(self):
-        return {}
+        return self.groups
 
     async def broadcast_to_channels(self, jid, event) -> None: ...
 
@@ -1348,7 +1350,7 @@ class TestTemporalSchedulerRuntime:
     @pytest.mark.asyncio
     async def test_run_scheduled_canaries_uses_configured_target(self, monkeypatch):
         deps = NullSchedulerDeps()
-        deps.workspaces = lambda: {
+        deps.groups = {
             "admin": WorkspaceProfile(
                 jid="slack:admin",
                 name="admin",
