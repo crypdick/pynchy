@@ -50,6 +50,11 @@ unchanged, so the interrupted FIFO head gets claimed again before later
 deliveries. Provider integrations complete or release the claim after their
 agent turn; an idle conversation carries no claim.
 
+Cursor advancement is a separate provider concern. A polling adapter commits
+its continuation cursor only after it has validated the whole page and durably
+admitted every eligible delivery. Receipt replay repairs a crash between receipt
+admission and FIFO linking without creating a second delivery.
+
 ## Discord Control Bindings
 
 A control binding stores the current Discord child thread, its explicit parent
@@ -69,6 +74,38 @@ This layer provides persistence, typed identities, claims, sessions, and control
 reconciliation. Provider plugins still decide how an authenticated event maps to
 an immutable subject and when to enqueue agent execution. The generic layer does
 not perform provider writes or interpret provider payloads.
+
+## Matrix Routes
+
+The first-party Matrix integration applies this foundation to one named owner
+identity per `[connections.<name>]` entry. A top-level `[routes.<name>]` binds
+one exact Matrix room endpoint to an explicit parent workspace. It never creates
+a general Matrix channel or a shared command-center workspace.
+
+For each configured route, startup verifies the joined room, expected owner,
+optional bridge name, and optional active-portal state. The connection accepts
+only live, decrypted, original `m.room.message` events with `msgtype = "m.text"`
+from a sender other than the owner. Backfill, edits, reactions, redactions, and
+owner-authored messages do not enter the receipt ledger. An undecryptable live
+event fails the page and retains the previous cursor.
+
+`activation = "on_event"` links eligible events to the FIFO and wakes the
+conversation. `activation = "on_demand"` records the authenticated event and
+advances the connection cursor without creating a FIFO delivery or waking an
+agent. Replaying the same Matrix event ID reuses its receipt, conversation, and
+delivery.
+
+The generated conversation workspace inherits its configured parent and can
+only reduce the parent's tools or capability policy. It receives two
+destination-free tools: `matrix_route_read` and `matrix_route_send`. The host
+resolves both tools through the active route binding. A caller cannot supply a
+room ID or redirect a send.
+
+The control thread is also the approval surface. Every Matrix send requires
+human approval in that thread, bound to the exact connection, route,
+conversation, control thread, room, portal assertion, and body. Replay rebuilds
+the current workspace policy and rechecks the live portal before transmitting.
+See [Matrix communications](../integrations/matrix-gateway.md) for configuration.
 
 For ordinary channel messages and interrupted agent turns, see
 [Message routing](message-routing.md). For workspace inheritance below Discord

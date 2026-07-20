@@ -7,7 +7,7 @@ When a decision file appears in approval_decisions/, this handler:
 - Cleans up pending and decision files
 
 Approved service actions re-check current policy before execution; the human
-human decision satisfies only the approval requirement, not later policy
+decision satisfies only the approval requirement, not later policy
 denial or descriptor removal.
 
 Two handler types are supported:
@@ -32,21 +32,32 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves run
     HostActionDescriptor,
 )
 from pynchy.config import Settings, get_settings
+from pynchy.conversation.models import ConversationId
 from pynchy.host.container_manager.action_intents import execute_action_intent
 from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc.approval_replay import (
+    ApprovalDecisionContext as _ApprovalDecisionContext,
+)
+from pynchy.host.container_manager.ipc.approval_replay import (
+    approval_replay_gate as _approval_replay_gate,
+)
+from pynchy.host.container_manager.ipc.approval_replay import (
+    approval_replay_validation_error as _approval_replay_validation_error,
+)
 from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
-    build_workspace_security,
     evaluate_host_action_policy,
-    get_gate_for_group,
 )
 from pynchy.logger import logger
-from pynchy.state import approve_action_intent, deny_action_intent, fail_action_intent
-from pynchy.types import WorkspaceSecurity
+from pynchy.state import (
+    approve_action_intent,
+    deny_action_intent,
+    fail_action_intent,
+)
 
 if TYPE_CHECKING:
     from pynchy.host.container_manager.ipc.deps import IpcDeps
@@ -61,23 +72,6 @@ class _ApprovedServiceContext:
     chat_jid: str
     action: HostActionDescriptor | None
     gate: SecurityGate
-
-
-@dataclass(frozen=True)
-class _ApprovalDecisionContext:
-    request_id: str
-    source_group: str
-    tool_name: str
-    chat_jid: str
-    request_data: dict[str, Any]
-    approved: bool
-    approver: str
-    approved_at: str
-    handler_type: str
-    action: HostActionDescriptor | None
-    gate: SecurityGate
-    capability_id: str | None
-    action_ids: tuple[str, ...]
 
 
 def _read_json_file(path: Path) -> dict[str, Any]:
@@ -150,11 +144,10 @@ def _approval_decision_context(
     settings: Settings,
 ) -> _ApprovalDecisionContext:
     tool_name = pending.get("tool_name", "unknown")
-    chat_jid = pending.get("chat_jid", "unknown")
+    chat_jid = pending.get("approval_chat_jid", "unknown")
     request_data = pending.get("request_data", {})
     handler_type = pending.get("handler_type", "service")
     action = _get_action_catalog().action_for(tool_name) if handler_type == "service" else None
-    gate = _approval_replay_gate(settings, source_group)
     capability_id = str(action.capability.id) if action is not None else None
     action_ids = (
         tuple(str(action_id) for action_id in action.capability.action_ids)
@@ -168,6 +161,15 @@ def _approval_decision_context(
     approved_at = (
         decided_at if isinstance(decided_at, str) and decided_at else datetime.now(UTC).isoformat()
     )
+    origin = pending.get("origin_conversation_id")
+    origin_conversation_id = ConversationId(origin) if isinstance(origin, str) and origin else None
+    gate = _approval_replay_gate(
+        settings,
+        source_group,
+        require_resolved=origin_conversation_id is not None,
+    )
+    action_payload = pending.get("action_payload")
+    raw_timeout = pending.get("expires_after_seconds", security_approval.APPROVAL_TIMEOUT_SECONDS)
     return _ApprovalDecisionContext(
         request_id=request_id,
         source_group=source_group,
@@ -182,6 +184,19 @@ def _approval_decision_context(
         gate=gate,
         capability_id=capability_id,
         action_ids=action_ids,
+        origin_conversation_id=origin_conversation_id,
+        action_payload=action_payload if isinstance(action_payload, dict) else None,
+        action_payload_sha256=(
+            pending.get("action_payload_sha256")
+            if isinstance(pending.get("action_payload_sha256"), str)
+            else None
+        ),
+        requested_at=(
+            pending.get("timestamp") if isinstance(pending.get("timestamp"), str) else None
+        ),
+        expires_after_seconds=(
+            raw_timeout if isinstance(raw_timeout, int) and raw_timeout > 0 else 0
+        ),
     )
 
 
@@ -221,11 +236,32 @@ async def _resolve_mcp_proxy_approval(context: _ApprovalDecisionContext) -> None
 async def _dispatch_approved_request(
     context: _ApprovalDecisionContext, deps: object | None
 ) -> None:
+    validation_error = await _approval_replay_validation_error(context)
+    if validation_error is not None:
+        await fail_action_intent(context.request_id, reason=validation_error)
+        await asyncio.to_thread(
+            write_ipc_response,
+            ipc_response_path(context.source_group, context.request_id),
+            {"error": f"Approval is stale: {validation_error}"},
+        )
+        await record_security_event(
+            chat_jid=context.chat_jid,
+            workspace=context.source_group,
+            tool_name=context.tool_name,
+            decision="execution_failed",
+            reason=validation_error,
+            request_id=context.request_id,
+            capability_id=context.capability_id,
+            action_ids=context.action_ids,
+        )
+        return
     if context.handler_type == "ipc":
         await _execute_ipc_approval(
             context.request_data, context.source_group, context.request_id, deps
         )
     else:
+        if context.gate is None:
+            raise RuntimeError("Approval replay policy disappeared after validation")
         if context.action is not None and context.action.action_intent is not None:
             await approve_action_intent(
                 context.request_id,
@@ -371,20 +407,6 @@ async def _execute_service_approval(
                 capability_id=str(action.capability.id),
                 action_ids=tuple(str(action_id) for action_id in action.capability.action_ids),
             )
-
-
-def _approval_replay_gate(settings: Settings, source_group: str) -> SecurityGate:
-    """Rebuild current policy when the request-time invocation gate is gone."""
-    gate = get_gate_for_group(source_group)
-    if gate is not None:
-        return gate
-    resolved = settings.resolved_workspace_config(source_group)
-    security = (
-        build_workspace_security(settings, resolved)
-        if resolved is not None
-        else WorkspaceSecurity()
-    )
-    return SecurityGate(security)
 
 
 async def _execute_ipc_approval(

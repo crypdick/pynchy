@@ -6,10 +6,26 @@ import json
 
 import pytest
 
+from pynchy.conversation.models import (
+    ConversationClaimId,
+    ConversationDeliveryStatus,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalDeliveryReceipt,
+    ExternalProvider,
+    ExternalRoute,
+)
 from pynchy.state import (
+    admit_conversation_delivery,
+    admit_external_delivery_receipt,
     begin_in_flight_turn,
     claim_in_flight_turn,
+    claim_next_conversation_delivery,
     complete_in_flight_turn,
+    get_conversation_delivery,
     get_in_flight_turn,
     get_in_flight_turn_for_chat,
     get_in_flight_turn_for_task,
@@ -19,7 +35,7 @@ from pynchy.state import (
     prepare_in_flight_turn_recovery,
     update_in_flight_session,
 )
-from pynchy.types import InFlightTurn, InFlightWorkKind
+from pynchy.types import GroupFolder, InFlightTurn, InFlightWorkKind
 
 
 def _turn(
@@ -117,3 +133,60 @@ async def test_completion_advances_cursor_and_deletes_checkpoint_together() -> N
     stored = await get_router_state("last_agent_timestamp")
     assert stored is not None
     assert json.loads(stored) == timestamps
+
+
+@pytest.mark.asyncio
+async def test_completion_atomically_commits_routed_delivery_and_cursor() -> None:
+    await init_test_database()
+    identity = ExternalDeliveryIdentity(
+        provider=ExternalProvider("matrix"),
+        route=ExternalRoute("personal:family"),
+        delivery_id=ExternalDeliveryId("$event"),
+    )
+    await admit_external_delivery_receipt(
+        ExternalDeliveryReceipt(
+            identity=identity,
+            payload_sha256="sha",
+            received_at="2026-07-19T12:00:00+00:00",
+        )
+    )
+    admission = await admit_conversation_delivery(
+        identity,
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("matrix:me:family:room"),
+            key=ConversationSubjectKey("!family:example.com"),
+        ),
+        GroupFolder("support"),
+    )
+    claim_id = ConversationClaimId("claim-live")
+    assert await claim_next_conversation_delivery(admission.conversation.id, claim_id)
+    await begin_in_flight_turn(_turn())
+    timestamps = {"slack:C123": "2026-07-14T10:00:00+00:00"}
+
+    await complete_in_flight_turn(
+        "turn-1",
+        last_agent_timestamps=timestamps,
+        conversation_claim_id=claim_id,
+    )
+
+    delivery = await get_conversation_delivery(identity)
+    assert delivery is not None
+    assert delivery.status is ConversationDeliveryStatus.COMPLETED
+    assert await get_in_flight_turn("turn-1") is None
+    assert json.loads((await get_router_state("last_agent_timestamp")) or "null") == timestamps
+
+
+@pytest.mark.asyncio
+async def test_missing_routed_claim_rolls_back_turn_and_cursor_completion() -> None:
+    await init_test_database()
+    await begin_in_flight_turn(_turn())
+
+    with pytest.raises(ValueError, match="claim disappeared"):
+        await complete_in_flight_turn(
+            "turn-1",
+            last_agent_timestamps={"slack:C123": "new"},
+            conversation_claim_id="missing",
+        )
+
+    assert await get_in_flight_turn("turn-1") is not None
+    assert await get_router_state("last_agent_timestamp") is None

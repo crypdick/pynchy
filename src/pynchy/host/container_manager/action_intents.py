@@ -16,6 +16,7 @@ from pynchy.state import (
     claim_action_intent,
     confirm_action_intent,
     create_action_intent,
+    fail_action_intent,
     get_action_intent_by_request,
     mark_action_intent_executing,
     mark_action_intent_outcome_unknown,
@@ -102,6 +103,9 @@ async def execute_action_intent(
     """Claim, invoke once, and persist a provider receipt or unknown outcome."""
     contract = action.action_intent
     if contract is not None:
+        validation_error = await _validate_current_intent(action, data, request_id)
+        if validation_error is not None:
+            return validation_error
         claimed = await claim_action_intent(request_id)
         if claimed is None:
             return {"error": "External action record is missing; refusing to send."}
@@ -110,6 +114,33 @@ async def execute_action_intent(
         await mark_action_intent_executing(request_id)
         return await _record_action_intent_attempt(action, data, request_id=request_id)
     return await action.handler(data)
+
+
+async def _validate_current_intent(
+    action: HostActionDescriptor,
+    data: dict[str, Any],
+    request_id: str,
+) -> dict[str, Any] | None:
+    """Prove the destination and payload still match the durable approval draft."""
+    contract = action.action_intent
+    existing = await load_action_intent(request_id)
+    if contract is None or existing is None:
+        return {"error": "External action record is missing; refusing to send."}
+    try:
+        current = contract.draft_from_request(data)
+    except (TypeError, ValueError) as exc:
+        await fail_action_intent(
+            request_id,
+            reason=f"Approved payload is no longer valid: {exc}",
+        )
+        return {"error": "Approved external action is no longer valid; request it again."}
+    if current.recipient == existing.recipient and current.payload == existing.payload:
+        return None
+    await fail_action_intent(
+        request_id,
+        reason="Approved destination or payload changed before execution.",
+    )
+    return {"error": "Approved external action changed; request a new approval."}
 
 
 async def _record_action_intent_attempt(

@@ -11,7 +11,7 @@ from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
     Iterable,  # noqa: TC003, RUF100 - beartype resolves workspace config annotations at runtime.
 )
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -29,6 +29,7 @@ from pynchy.config.models import WorkspaceConfig
 from pynchy.config.toml_io import mutate_config_toml
 from pynchy.config.workspace_names import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.config.workspace_names import parent_workspace_name
+from pynchy.conversation.workspaces import conversation_id_from_folder
 from pynchy.host.orchestrator.config_jobs import reconcile_agent_jobs
 from pynchy.host.orchestrator.workspace_registration import (
     ensure_workspace_registered,
@@ -42,6 +43,7 @@ from pynchy.state import (
     update_task,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    CapabilityRule,
     Channel,
     WorkspaceProfile,
 )
@@ -60,6 +62,36 @@ class _WorkspaceConfigState:
 
 
 _state = _WorkspaceConfigState()
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeWorkspaceRestriction:
+    """Connection-owned restrictions applied beneath one configured workspace."""
+
+    parent_workspace: str
+    tools: tuple[str, ...] | None = None
+    capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
+
+
+_runtime_restrictions: dict[str, RuntimeWorkspaceRestriction] = {}
+
+
+def register_runtime_workspace_restriction(
+    folder: str,
+    restriction: RuntimeWorkspaceRestriction,
+) -> None:
+    """Register a fail-closed runtime restriction for one generated workspace."""
+    _runtime_restrictions[folder] = restriction
+
+
+def clear_runtime_workspace_restrictions() -> None:
+    """Clear connection-owned runtime restrictions during lifecycle teardown/tests."""
+    _runtime_restrictions.clear()
+
+
+def unregister_runtime_workspace_restriction(folder: str) -> None:
+    """Remove one generated workspace restriction during connection teardown."""
+    _runtime_restrictions.pop(folder, None)
 
 
 def dynamic_thread_folder(parent_folder: str, thread_jid: str) -> str:
@@ -122,8 +154,17 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
 
     Returns None if the group has no [workspaces.<name>] section in config.toml.
     """
+    runtime_restriction = _runtime_restrictions.get(group_folder)
+    if conversation_id_from_folder(group_folder) is not None and runtime_restriction is None:
+        # A persisted route workspace can outlive its route configuration.
+        # Never let that stale registration fall back to the full parent policy.
+        return None
     specs = _workspace_specs()
-    parent_folder = _parent_folder_for_dynamic_thread(group_folder)
+    parent_folder = (
+        runtime_restriction.parent_workspace
+        if runtime_restriction is not None
+        else _parent_folder_for_dynamic_thread(group_folder)
+    )
     spec = specs.get(parent_folder or group_folder)
     if spec is None:
         return None
@@ -146,13 +187,32 @@ def load_resolved_config(group_folder: str) -> ResolvedWorkspaceConfig | None:
         return None
 
     s = get_settings()
+    runtime_restriction = _runtime_restrictions.get(group_folder)
     resolved = s.resolved_workspace_config(group_folder)
+    base: ResolvedWorkspaceConfig | None
     if resolved is not None:
-        return resolved
-    parent_folder = _parent_folder_for_dynamic_thread(group_folder)
-    if parent_folder is not None:
-        return s.resolved_workspace_config(parent_folder)
-    return None
+        base = resolved
+    else:
+        parent_folder = (
+            runtime_restriction.parent_workspace
+            if runtime_restriction is not None
+            else _parent_folder_for_dynamic_thread(group_folder)
+        )
+        base = s.resolved_workspace_config(parent_folder) if parent_folder is not None else None
+    if base is None or runtime_restriction is None:
+        return base
+    restricted_tools = (
+        [tool for tool in base.tools if tool in runtime_restriction.tools]
+        if runtime_restriction.tools is not None
+        else list(base.tools)
+    )
+    capabilities = dict(base.capabilities)
+    decision_rank = {"allow": 0, "needs_human": 1, "deny": 2}
+    for capability, restriction in runtime_restriction.capabilities.items():
+        current = capabilities.get(capability)
+        if current is None or decision_rank[restriction.decision] > decision_rank[current.decision]:
+            capabilities[capability] = restriction
+    return replace(base, tools=restricted_tools, capabilities=capabilities)
 
 
 def _first_repo(resolved: ResolvedWorkspaceConfig | None) -> str | None:
@@ -226,6 +286,17 @@ async def _remove_orphaned_workspaces(
         if profile.folder in retained_legacy_folders:
             continue
         if profile.folder in config_folders or profile.is_admin:
+            continue
+        if (
+            conversation_id_from_folder(profile.folder) is not None
+            and profile.folder not in _runtime_restrictions
+        ):
+            await unregister_fn(jid)
+            logger.info(
+                "Removed stale routed workspace registration",
+                folder=profile.folder,
+                jid=jid,
+            )
             continue
         parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
         if parent_folder in config_folders:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -51,14 +52,15 @@ def _write_pending(
         "short_id": "ab",  # 2-char short_id (test fixture, not used by handler)
         "tool_name": tool_name,
         "source_group": group,
-        "chat_jid": "j@g.us",
+        "approval_chat_jid": "j@g.us",
         "handler_type": handler_type,
         "request_data": {
             "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
             "request_id": request_id,
             **request_data,
         },
-        "timestamp": "2026-02-24T12:00:00+00:00",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "expires_after_seconds": 3600,
     }
     filepath = pending_dir / f"{request_id}.json"
     filepath.write_text(json.dumps(data))

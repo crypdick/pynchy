@@ -5,20 +5,53 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
+import pluggy
 import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.plugins.connections import load_connection_runtimes
+from pynchy.plugins.hookspecs import PynchySpec
 from pynchy.state import get_chat_history, init_test_database
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+hookimpl = pluggy.HookimplMarker("pynchy")
+
 
 class StopAfterArgumentValidationError(Exception):
     """Sentinel raised once run_app reaches its first startup phase."""
+
+
+class _ConnectionRuntime:
+    def __init__(self, name: str, events: list[str], *, fail: bool = False) -> None:
+        self.name = name
+        self.events = events
+        self.fail = fail
+        self.ready = False
+
+    async def start(self, _context) -> None:
+        self.events.append(f"start:{self.name}")
+        self.ready = True
+        if self.fail:
+            raise RuntimeError(f"failed:{self.name}")
+
+    async def close(self) -> None:
+        self.events.append(f"close:{self.name}")
+        self.ready = False
+
+    def is_ready(self) -> bool:
+        return self.ready
+
+
+def _connection_plugin_manager(plugin: object) -> pluggy.PluginManager:
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    manager.register(plugin)
+    return manager
 
 
 def _completed_awaitable(value: Any = None) -> Awaitable[Any]:
@@ -53,6 +86,65 @@ async def test_pynchyapp_startup_annotations_resolve() -> None:
     await app.set_memory_provider(None)
 
     assert app.session_cleared == {"admin"}
+
+
+@pytest.mark.asyncio
+async def test_connection_start_failure_closes_failing_and_prior_runtimes() -> None:
+    events: list[str] = []
+    app = PynchyApp()
+    first = _ConnectionRuntime("first", events)
+    failing = _ConnectionRuntime("failing", events, fail=True)
+    untouched = _ConnectionRuntime("untouched", events)
+    app.connection_runtime_owner.set([first, failing, untouched])
+
+    with pytest.raises(RuntimeError, match="failed:failing"):
+        await lifecycle.start_connection_runtimes(app)
+
+    assert events == [
+        "start:first",
+        "start:failing",
+        "close:failing",
+        "close:first",
+    ]
+    assert app.connection_runtime_owner.runtimes() == ()
+
+
+@pytest.mark.asyncio
+async def test_connection_self_partial_start_is_closed() -> None:
+    events: list[str] = []
+    app = PynchyApp()
+    failing = _ConnectionRuntime("failing", events, fail=True)
+    app.connection_runtime_owner.set([failing])
+
+    with pytest.raises(RuntimeError, match="failed:failing"):
+        await lifecycle.start_connection_runtimes(app)
+
+    assert events == ["start:failing", "close:failing"]
+    assert failing.is_ready() is False
+
+
+def test_connection_runtime_loader_rejects_invalid_contribution() -> None:
+    class InvalidPlugin:
+        @hookimpl
+        def pynchy_connection_runtime(self) -> object:
+            return object()
+
+    with pytest.raises(TypeError, match="ConnectionRuntime"):
+        load_connection_runtimes(_connection_plugin_manager(InvalidPlugin()))
+
+
+def test_connection_runtime_loader_rejects_duplicate_names() -> None:
+    class DuplicatePlugin:
+        @hookimpl
+        def pynchy_connection_runtime(self) -> tuple[_ConnectionRuntime, ...]:
+            events: list[str] = []
+            return (
+                _ConnectionRuntime("duplicate", events),
+                _ConnectionRuntime("duplicate", events),
+            )
+
+    with pytest.raises(ValueError, match="duplicate runtime names"):
+        load_connection_runtimes(_connection_plugin_manager(DuplicatePlugin()))
 
 
 @pytest.mark.asyncio

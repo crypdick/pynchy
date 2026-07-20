@@ -268,6 +268,9 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
         def get_channel_status(self) -> dict[str, bool]:
             return {ch.name: ch.is_connected() for ch in metadata_manager.channels()}
 
+        def get_connection_status(self) -> dict[str, bool]:
+            return app.connection_runtime_owner.status()
+
         def get_queue_snapshot(self) -> dict[str, Any]:
             raw = app.queue.snapshot()
             meta = raw.pop("_meta", {})

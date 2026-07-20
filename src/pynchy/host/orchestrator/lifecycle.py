@@ -52,6 +52,7 @@ from pynchy.plugins.channel_runtime import (
     load_channels,
     resolve_default_channel,
 )
+from pynchy.plugins.connections import ConnectionRuntimeContext, load_connection_runtimes
 from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot, linear_decision_inbox
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
@@ -117,6 +118,7 @@ async def _cleanup_http_runner(app: PynchyApp) -> None:
 
 
 async def _close_runtime_resources(app: PynchyApp) -> None:
+    await app.connection_runtime_owner.close()
     await gateway_manager.stop_gateway()
     await app.close_observers()
     await app.close_memory_provider()
@@ -271,7 +273,32 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
 
     linear_boards = await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
 
+    plugin_manager = _require_plugin_manager(app, "_reconcile_state")
+    app.connection_runtime_owner.set(load_connection_runtimes(plugin_manager))
+
     return dict(linear_boards)
+
+
+async def start_connection_runtimes(app: PynchyApp) -> None:
+    """Start provider polling only after recovery and dispatch are ready."""
+    context = ConnectionRuntimeContext(
+        channels=lambda: app.channels,
+        workspaces=lambda: app.workspaces,
+        register_workspace=app.register_workspace,
+        unregister_workspace=app.unregister_workspace,
+        bind_session=app.bind_routed_session,
+        ingest_message=app.on_inbound,
+    )
+    attempted_runtimes = []
+    try:
+        for runtime in app.connection_runtime_owner.runtimes():
+            attempted_runtimes.append(runtime)
+            await runtime.start(context)
+    except BaseException:
+        for runtime in reversed(attempted_runtimes):
+            await runtime.close()
+        app.connection_runtime_owner.set([])
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +337,7 @@ async def _start_subsystems(
     )
 
     app.queue.set_process_messages_fn(app.process_group_messages)
+    await start_connection_runtimes(app)
 
     plugin_manager = _require_plugin_manager(app, "_start_subsystems")
     tunnel_plugins.check_tunnels(plugin_manager)

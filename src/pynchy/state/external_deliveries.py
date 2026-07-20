@@ -3,9 +3,31 @@
 from __future__ import annotations
 
 from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves state annotations at runtime.
+    ExternalDeliveryIdentity,
     ExternalDeliveryReceipt,
 )
-from pynchy.state.connection import atomic_write
+from pynchy.state.connection import _get_db, atomic_write
+
+
+async def get_external_delivery_receipt(
+    identity: ExternalDeliveryIdentity,
+) -> ExternalDeliveryReceipt | None:
+    """Return durable authentication evidence for one external delivery."""
+    cursor = await _get_db().execute(
+        """
+        SELECT payload_sha256, received_at FROM external_receipts
+        WHERE provider = ? AND route = ? AND delivery_id = ?
+        """,
+        (identity.provider, identity.route, identity.delivery_id),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return ExternalDeliveryReceipt(
+        identity=identity,
+        payload_sha256=row["payload_sha256"],
+        received_at=row["received_at"],
+    )
 
 
 async def admit_external_delivery_receipt(receipt: ExternalDeliveryReceipt) -> bool:

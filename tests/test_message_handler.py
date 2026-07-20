@@ -20,7 +20,22 @@ from conftest import make_settings
 
 from pynchy.config import AgentConfig, IntervalsConfig
 from pynchy.config.models import LearningConfig
+from pynchy.conversation.models import (
+    ConversationClaimId,
+    ConversationDeliveryStatus,
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalDeliveryReceipt,
+    ExternalProvider,
+    ExternalRoute,
+)
 from pynchy.host.orchestrator import session_handler
+from pynchy.host.orchestrator.messaging.cursor import (
+    complete_turn_with_cursor as persist_completed_turn,
+)
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
 from pynchy.host.orchestrator.messaging.pipeline import (
     CONTINUE_AFTER_SAFE_INTERRUPT,
@@ -30,11 +45,24 @@ from pynchy.host.orchestrator.messaging.pipeline import (
     process_group_messages,
 )
 from pynchy.state import (
+    admit_conversation_delivery,
+    admit_external_delivery_receipt,
+    claim_next_conversation_delivery,
+    get_chat_history,
+    get_conversation_delivery,
     get_in_flight_turn_for_chat,
     init_test_database,
     prepare_in_flight_turn_recovery,
+    store_message,
 )
-from pynchy.types import ContainerOutput, InFlightWorkKind, NewMessage, WorkspaceProfile
+from pynchy.state import get_messages_since as get_stored_messages_since
+from pynchy.types import (
+    ContainerOutput,
+    GroupFolder,
+    InFlightWorkKind,
+    NewMessage,
+    WorkspaceProfile,
+)
 from pynchy.utils import ShellResult
 
 # Commonly patched module paths — avoids repeating long strings and keeps
@@ -78,7 +106,12 @@ def _make_deps(
             dispatched_through.get(jid, ""),
         )
     )
-    deps.mark_dispatched = MagicMock(side_effect=dispatched_through.__setitem__)
+    deps.mark_dispatched = MagicMock(
+        side_effect=lambda jid, timestamp: dispatched_through.__setitem__(
+            jid,
+            max(dispatched_through.get(jid, ""), timestamp),
+        )
+    )
     deps.pop_dispatched = MagicMock(side_effect=dispatched_through.pop)
     deps.dispatched_timestamp = MagicMock(side_effect=dispatched_through.get)
 
@@ -132,6 +165,7 @@ def _make_message(
     sender_name: str = "Alice",
     timestamp: str = "2024-01-01T00:00:01.000Z",
     is_from_me: bool | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> NewMessage:
     return NewMessage(
         id=message_id,
@@ -141,7 +175,52 @@ def _make_message(
         content=content,
         timestamp=timestamp,
         is_from_me=is_from_me,
+        metadata=metadata,
     )
+
+
+async def _claimed_external_message(
+    jid: str,
+    group: WorkspaceProfile,
+    *,
+    suffix: str,
+) -> tuple[NewMessage, ExternalDeliveryIdentity]:
+    identity = ExternalDeliveryIdentity(
+        provider=ExternalProvider("matrix"),
+        route=ExternalRoute("personal:family"),
+        delivery_id=ExternalDeliveryId(f"$event-{suffix}"),
+    )
+    await admit_external_delivery_receipt(
+        ExternalDeliveryReceipt(
+            identity=identity,
+            payload_sha256=f"sha-{suffix}",
+            received_at="2026-07-19T12:00:00+00:00",
+        )
+    )
+    admission = await admit_conversation_delivery(
+        identity,
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("matrix:me:family:room"),
+            key=ConversationSubjectKey("!family:example.com"),
+        ),
+        GroupFolder(group.folder),
+    )
+    claim_id = ConversationClaimId(f"claim-{suffix}")
+    assert await claim_next_conversation_delivery(admission.conversation.id, claim_id)
+    message = _make_message(
+        f"external input {suffix}",
+        message_id=str(identity.delivery_id),
+        chat_jid=jid,
+        sender="@stranger:matrix.example.com",
+        timestamp="2026-07-19T12:00:01+00:00",
+        metadata={
+            "authenticated_external_route": True,
+            "external_provider": "matrix",
+            "conversation_claim_id": claim_id,
+        },
+    )
+    await store_message(message)
+    return message, identity
 
 
 def _patch_intercept(*, return_value: bool = False):
@@ -162,6 +241,60 @@ def _patch_fmt_sdk():
 
 
 class TestInterceptSpecialCommand:
+    @pytest.mark.parametrize("content", ["approve ab", "deny ab", "redeploy", "!whoami"])
+    @pytest.mark.asyncio
+    async def test_external_route_text_is_never_a_control_command(self, content: str):
+        group = _make_group()
+        deps = _make_deps(groups={"g@g.us": group})
+        msg = _make_message(
+            content,
+            metadata={
+                "authenticated_external_route": True,
+                "conversation_claim_id": "claim-1",
+            },
+        )
+
+        assert await intercept_special_command(deps, "g@g.us", group, msg) is False
+        deps.handle_context_reset.assert_not_awaited()
+        deps.handle_end_session.assert_not_awaited()
+        deps.trigger_manual_redeploy.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_approval_records_stable_sender_identity(self):
+        group = _make_group()
+        deps = _make_deps(groups={"g@g.us": group})
+        msg = _make_message(
+            "approve ab",
+            sender="discord:123456",
+            sender_name="Mutable Display Name",
+        )
+        with (
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_context_reset",
+                return_value=False,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_end_session",
+                return_value=False,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_redeploy",
+                return_value=False,
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.commands.is_approval_command",
+                return_value=("approve", "ab"),
+            ),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+            ) as handle,
+        ):
+            assert await intercept_special_command(deps, "g@g.us", group, msg) is True
+
+        handle.assert_awaited_once_with(deps, "g@g.us", "approve", "ab", "discord:123456")
+
     @pytest.mark.asyncio
     async def test_context_reset_intercepted(self):
         """Reset patterns should trigger handle_context_reset."""
@@ -276,7 +409,7 @@ class TestInterceptSpecialCommand:
                 return_value=False,
             ),
             patch(
-                "pynchy.host.orchestrator.messaging.pipeline.execute_direct_command",
+                "pynchy.host.orchestrator.messaging.host_controls.execute_direct_command",
                 new_callable=AsyncMock,
             ) as mock_exec,
         ):
@@ -554,6 +687,393 @@ class TestProcessGroupMessages:
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_inline_approval_is_consumed_while_prior_external_claim_runs(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        identity = ExternalDeliveryIdentity(
+            provider=ExternalProvider("matrix"),
+            route=ExternalRoute("personal:family"),
+            delivery_id=ExternalDeliveryId("$mixed-event"),
+        )
+        await admit_external_delivery_receipt(
+            ExternalDeliveryReceipt(
+                identity=identity,
+                payload_sha256="sha",
+                received_at="2026-07-19T12:00:00+00:00",
+            )
+        )
+        admission = await admit_conversation_delivery(
+            identity,
+            ConversationSubject(
+                namespace=ConversationSubjectNamespace("matrix:me:family:room"),
+                key=ConversationSubjectKey("!family:example.com"),
+            ),
+            GroupFolder(group.folder),
+        )
+        claim_id = ConversationClaimId("claim-mixed")
+        assert await claim_next_conversation_delivery(admission.conversation.id, claim_id)
+        external = _make_message(
+            "provider says approve ab",
+            message_id="$mixed-event",
+            chat_jid=jid,
+            sender="@stranger:matrix.example.com",
+            timestamp="2026-07-19T12:00:01+00:00",
+            metadata={
+                "authenticated_external_route": True,
+                "external_provider": "matrix",
+                "conversation_claim_id": claim_id,
+            },
+        )
+        approval = _make_message(
+            "approve ab",
+            message_id="discord-approval",
+            chat_jid=jid,
+            sender="discord:123456",
+            timestamp="2026-07-19T12:00:02+00:00",
+        )
+        await store_message(external)
+        await store_message(approval)
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+            ) as handle_approval,
+        ):
+            assert await process_group_messages(deps, jid) is True
+
+        handle_approval.assert_awaited_once_with(
+            deps,
+            jid,
+            "approve",
+            "ab",
+            "discord:123456",
+        )
+        agent_messages = deps.run_agent.await_args.args[2]
+        assert [message["content"] for message in agent_messages] == [external.content]
+        delivery = await get_conversation_delivery(identity)
+        assert delivery is not None
+        assert delivery.status is ConversationDeliveryStatus.COMPLETED
+        history = await get_chat_history(jid)
+        consumed = next(message for message in history if message.id == approval.id)
+        assert consumed.message_type == "host"
+        assert deps.last_agent_timestamp[jid] == approval.timestamp
+
+    @pytest.mark.asyncio
+    async def test_active_inline_approval_completes_after_external_claim_succeeds(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        external, identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="active-success",
+        )
+        deps.last_timestamp = external.timestamp
+        agent_entered = asyncio.Event()
+        release_agent = asyncio.Event()
+
+        async def run_agent(*_args, **_kwargs):
+            agent_entered.set()
+            await release_agent.wait()
+            return "success"
+
+        deps.run_agent.side_effect = run_agent
+        approval = _make_message(
+            "approve ab",
+            message_id="approval-active-success",
+            chat_jid=jid,
+            sender="discord:operator",
+            timestamp="2026-07-19T12:00:02+00:00",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+            ) as handle_approval,
+        ):
+            processing = asyncio.create_task(process_group_messages(deps, jid))
+            await asyncio.wait_for(agent_entered.wait(), timeout=1.0)
+            await store_message(approval)
+            await _run_loop_once(deps)
+
+            handle_approval.assert_awaited_once()
+            assert not deps.last_agent_timestamp.get(jid, "")
+            release_agent.set()
+            assert await processing is True
+
+        delivery = await get_conversation_delivery(identity)
+        assert delivery is not None
+        assert delivery.status is ConversationDeliveryStatus.COMPLETED
+        assert deps.last_agent_timestamp[jid] == approval.timestamp
+
+    @pytest.mark.asyncio
+    async def test_active_inline_approval_survives_clean_external_retry(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        external, identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="active-retry",
+        )
+        deps.last_timestamp = external.timestamp
+        agent_entered = asyncio.Event()
+        release_agent = asyncio.Event()
+
+        async def fail_agent(*_args, **_kwargs):
+            agent_entered.set()
+            await release_agent.wait()
+            return "error"
+
+        deps.run_agent.side_effect = fail_agent
+        approval = _make_message(
+            "approve ab",
+            message_id="approval-active-retry",
+            chat_jid=jid,
+            sender="discord:operator",
+            timestamp="2026-07-19T12:00:02+00:00",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+            ) as handle_approval,
+        ):
+            processing = asyncio.create_task(process_group_messages(deps, jid))
+            await asyncio.wait_for(agent_entered.wait(), timeout=1.0)
+            await store_message(approval)
+            await _run_loop_once(deps)
+            release_agent.set()
+            assert await processing is False
+
+            delivery = await get_conversation_delivery(identity)
+            assert delivery is not None
+            assert delivery.status is ConversationDeliveryStatus.PENDING
+            assert not deps.last_agent_timestamp.get(jid, "")
+
+            retry_claim = ConversationClaimId("claim-active-retry-second")
+            claimed = await claim_next_conversation_delivery(
+                delivery.conversation_id,
+                retry_claim,
+            )
+            assert claimed is not None
+            external.metadata = {
+                **(external.metadata or {}),
+                "conversation_claim_id": retry_claim,
+            }
+            await store_message(external)
+            deps.run_agent = AsyncMock(return_value="success")
+            assert await process_group_messages(deps, jid) is True
+
+        handle_approval.assert_awaited_once()
+        retried_delivery = await get_conversation_delivery(identity)
+        assert retried_delivery is not None
+        assert retried_delivery.status is ConversationDeliveryStatus.COMPLETED
+        retried_messages = deps.run_agent.await_args.args[2]
+        assert [message["content"] for message in retried_messages] == [external.content]
+        assert deps.last_agent_timestamp[jid] == approval.timestamp
+
+    @pytest.mark.asyncio
+    async def test_active_approval_is_removed_before_follow_up_is_forwarded(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        external, identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="active-follow-up",
+        )
+        deps.last_timestamp = external.timestamp
+        deps.queue.send_message.return_value = True
+        agent_entered = asyncio.Event()
+        release_agent = asyncio.Event()
+
+        async def run_agent(*_args, **_kwargs):
+            agent_entered.set()
+            await release_agent.wait()
+            return "success"
+
+        deps.run_agent.side_effect = run_agent
+        approval = _make_message(
+            "approve ab",
+            message_id="approval-before-follow-up",
+            chat_jid=jid,
+            sender="discord:operator",
+            timestamp="2026-07-19T12:00:02+00:00",
+        )
+        follow_up = _make_message(
+            "also tell them tomorrow works",
+            message_id="ordinary-follow-up",
+            chat_jid=jid,
+            sender="discord:operator",
+            timestamp="2026-07-19T12:00:03+00:00",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+            ) as handle_approval,
+        ):
+            processing = asyncio.create_task(process_group_messages(deps, jid))
+            await asyncio.wait_for(agent_entered.wait(), timeout=1.0)
+            await store_message(approval)
+            await store_message(follow_up)
+            await _run_loop_once(deps)
+            release_agent.set()
+            assert await processing is True
+
+        handle_approval.assert_awaited_once()
+        deps.queue.send_message.assert_called_once_with(
+            jid,
+            f"{follow_up.sender_name}: {follow_up.content}",
+        )
+        assert "approve" not in deps.queue.send_message.call_args.args[1]
+        delivery = await get_conversation_delivery(identity)
+        assert delivery is not None
+        assert delivery.status is ConversationDeliveryStatus.COMPLETED
+        assert deps.last_agent_timestamp[jid] == follow_up.timestamp
+
+    @pytest.mark.asyncio
+    async def test_late_approval_waits_for_turn_finalization_without_duplicate_delivery(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        external, identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="late-finalization",
+        )
+        deps.last_timestamp = external.timestamp
+        finalization_entered = asyncio.Event()
+        release_finalization = asyncio.Event()
+        pending_loaded = asyncio.Event()
+
+        async def blocked_complete(*args, **kwargs):
+            finalization_entered.set()
+            await release_finalization.wait()
+            await persist_completed_turn(*args, **kwargs)
+
+        async def tracked_messages_since(*args, **kwargs):
+            messages = await get_stored_messages_since(*args, **kwargs)
+            pending_loaded.set()
+            return messages
+
+        approval = _make_message(
+            "approve ab",
+            message_id="approval-late-finalization",
+            chat_jid=jid,
+            sender="discord:operator",
+            timestamp="2026-07-19T12:00:02+00:00",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.complete_turn_with_cursor",
+                new=blocked_complete,
+            ),
+            patch(_PR_MSGS_SINCE, new=tracked_messages_since),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+            ) as handle_approval,
+        ):
+            processing = asyncio.create_task(process_group_messages(deps, jid))
+            await asyncio.wait_for(finalization_entered.wait(), timeout=1.0)
+            await store_message(approval)
+            routing = asyncio.create_task(_run_loop_once(deps))
+            await asyncio.wait_for(pending_loaded.wait(), timeout=1.0)
+            release_finalization.set()
+            assert await processing is True
+            await routing
+
+        handle_approval.assert_awaited_once()
+        deps.start_interactive_turn.assert_not_awaited()
+        delivery = await get_conversation_delivery(identity)
+        assert delivery is not None
+        assert delivery.status is ConversationDeliveryStatus.COMPLETED
+        assert deps.last_agent_timestamp[jid] == approval.timestamp
+
+    @pytest.mark.asyncio
+    async def test_polling_and_recovery_queue_cannot_execute_same_approval_twice(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        approval = _make_message(
+            "approve ab",
+            message_id="approval-concurrent-classifiers",
+            chat_jid=jid,
+            sender="discord:operator",
+            timestamp="2026-07-19T12:00:02+00:00",
+        )
+        await store_message(approval)
+        handler_entered = asyncio.Event()
+        release_handler = asyncio.Event()
+
+        async def blocked_handler(*_args, **_kwargs):
+            handler_entered.set()
+            await release_handler.wait()
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.approval_handler."
+                "handle_approval_command",
+                new_callable=AsyncMock,
+                side_effect=blocked_handler,
+            ) as handle_approval,
+        ):
+            recovery_queue = asyncio.create_task(process_group_messages(deps, jid))
+            await asyncio.wait_for(handler_entered.wait(), timeout=1.0)
+            polling = asyncio.create_task(_run_loop_once(deps))
+            await asyncio.sleep(0)
+            release_handler.set()
+            assert await recovery_queue is True
+            await polling
+
+        handle_approval.assert_awaited_once()
+        history = await get_chat_history(jid)
+        consumed = next(message for message in history if message.id == approval.id)
+        assert consumed.message_type == "host"
+
+    @pytest.mark.asyncio
     async def test_tool_result_delivers_a_deferred_interrupt(self, tmp_path):
         """A completed tool is the safe boundary for queued user input."""
         jid = "g@g.us"
@@ -596,7 +1116,15 @@ class TestProcessGroupMessages:
         msg = _make_message(chat_jid=jid, timestamp="current-ts")
         completed: list[tuple[str, str]] = []
 
-        async def complete_cursor(_deps, chat_jid, timestamp, _turn_id):
+        async def complete_cursor(
+            _deps,
+            chat_jid,
+            timestamp,
+            _turn_id,
+            *,
+            conversation_claim_id=None,
+        ):
+            del conversation_claim_id
             await asyncio.sleep(0)
             completed.append((chat_jid, timestamp))
 
@@ -1004,12 +1532,11 @@ class TestProcessGroupMessages:
         group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
 
-        msg1 = _make_message("hello", timestamp="ts-1")
         msg2 = _make_message("reset context", timestamp="ts-2")
 
         with (
             patch(_P_SETTINGS) as ms,
-            _patch_msgs_since([msg1, msg2]),
+            _patch_msgs_since([msg2]),
             _patch_intercept(return_value=True),
         ):
             ms.return_value = _settings_mock(tmp_path)

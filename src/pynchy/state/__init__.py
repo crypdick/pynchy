@@ -59,6 +59,7 @@ from pynchy.state.chats import (
 from pynchy.state.connection import _get_db, close_test_database, init_database, init_test_database
 from pynchy.state.conversation_controls import (
     get_conversation_control_binding,
+    get_conversation_control_by_thread,
     set_conversation_control_binding,
 )
 from pynchy.state.conversation_events import (
@@ -72,6 +73,7 @@ from pynchy.state.conversation_routing import (
     get_conversation,
     get_conversation_delivery,
     get_conversation_for_subject,
+    list_pending_conversation_ids,
     prepare_conversation_delivery_recovery,
     rebind_conversation_workspace,
     release_conversation_delivery_claim,
@@ -87,7 +89,14 @@ from pynchy.state.deployments import (
     initialize_deployment_state,
 )
 from pynchy.state.events import store_event
-from pynchy.state.external_deliveries import admit_external_delivery_receipt
+from pynchy.state.external_cursors import (
+    get_external_provider_cursor,
+    set_external_provider_cursor,
+)
+from pynchy.state.external_deliveries import (
+    admit_external_delivery_receipt,
+    get_external_delivery_receipt,
+)
 from pynchy.state.groups import (
     delete_workspace_profile,
     get_all_workspace_profiles,
@@ -123,6 +132,7 @@ from pynchy.state.messages import (
     get_messages_since,
     get_messaging_stats,
     get_new_messages,
+    mark_message_as_host,
     message_exists,
     prune_messages_by_sender,
     store_message,
@@ -215,8 +225,10 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "complete_conversation_delivery",
     "get_conversation",
     "get_conversation_control_binding",
+    "get_conversation_control_by_thread",
     "get_conversation_delivery",
     "get_conversation_for_subject",
+    "list_pending_conversation_ids",
     "prepare_conversation_delivery_recovery",
     "rebind_conversation_workspace",
     "release_conversation_delivery_claim",
@@ -245,6 +257,9 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "store_event",
     # external_deliveries
     "admit_external_delivery_receipt",
+    "get_external_delivery_receipt",
+    "get_external_provider_cursor",
+    "set_external_provider_cursor",
     # chats
     "get_all_chats",
     "get_chat_cleared_at",
@@ -260,6 +275,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_messaging_stats",
     "get_new_messages",
     "message_exists",
+    "mark_message_as_host",
     "prune_messages_by_sender",
     "store_message",
     "store_message_direct",

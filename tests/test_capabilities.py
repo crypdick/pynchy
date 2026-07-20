@@ -39,9 +39,9 @@ async def _handler(_data: dict) -> dict[str, object]:
 
 def _descriptor(
     *,
-    capability_id: str = "chat.matrix.list",
-    tool_name: str = "matrix_list_chats",
-    action_id: str = "chat.matrix.list",
+    capability_id: str = "chat.matrix.route.read",
+    tool_name: str = "matrix_route_read",
+    action_id: str = "chat.matrix.route.read",
     access: HostActionAccess = HostActionAccess.READ,
 ) -> HostActionDescriptor:
     return HostActionDescriptor(
@@ -85,28 +85,28 @@ def test_validation_rejects_duplicate_ids_and_tools():
 
     errors = validate_host_action_descriptors((descriptor, descriptor), ACTION_SPECS)
 
-    assert "duplicate capability id: chat.matrix.list" in errors
-    assert "duplicate host tool name: matrix_list_chats" in errors
+    assert "duplicate capability id: chat.matrix.route.read" in errors
+    assert "duplicate host tool name: matrix_route_read" in errors
 
 
 def test_validation_rejects_unknown_or_mismatched_action_specs():
     unknown = _descriptor(action_id="chat.unknown.list")
-    mismatched = _descriptor(action_id="chat.matrix.message.list")
+    mismatched = _descriptor(action_id="chat.matrix.route.send")
 
     errors = validate_host_action_descriptors((unknown, mismatched), ACTION_SPECS)
 
-    assert "chat.matrix.list: unknown ActionSpec chat.unknown.list" in errors
+    assert "chat.matrix.route.read: unknown ActionSpec chat.unknown.list" in errors
     assert (
-        "chat.matrix.list: ActionSpec chat.matrix.message.list does not expose tool "
-        "matrix_list_chats"
+        "chat.matrix.route.read: ActionSpec chat.matrix.route.send does not expose tool "
+        "matrix_route_read"
     ) in errors
 
 
 def test_write_actions_require_idempotency_and_terminal_audit():
     write = _descriptor(
-        capability_id="chat.matrix.message.send",
-        tool_name="matrix_send_message",
-        action_id="chat.matrix.message.send",
+        capability_id="chat.matrix.route.send",
+        tool_name="matrix_route_send",
+        action_id="chat.matrix.route.send",
         access=HostActionAccess.WRITE,
     )
     invalid = replace(
@@ -117,8 +117,8 @@ def test_write_actions_require_idempotency_and_terminal_audit():
 
     errors = validate_host_action_descriptors((invalid,), ACTION_SPECS)
 
-    assert "chat.matrix.message.send: write action requires idempotency" in errors
-    assert "chat.matrix.message.send: write action requires terminal audit outcomes" in errors
+    assert "chat.matrix.route.send: write action requires idempotency" in errors
+    assert "chat.matrix.route.send: write action requires terminal audit outcomes" in errors
 
 
 def test_legacy_registration_is_parsed_through_action_specs():
@@ -126,16 +126,16 @@ def test_legacy_registration_is_parsed_through_action_specs():
         @hookimpl
         def pynchy_service_handler(self) -> dict[str, object]:
             return {
-                "tools": {"matrix_list_chats": _handler},
-                "read_tools": ("matrix_list_chats",),
+                "tools": {"matrix_route_read": _handler},
+                "read_tools": ("matrix_route_read",),
             }
 
     catalog = get_host_action_catalog(_plugin_manager(LegacyPlugin()))
-    action = catalog.action_for("matrix_list_chats")
+    action = catalog.action_for("matrix_route_read")
 
     assert action is not None
     assert action.capability.origin is DescriptorOrigin.LEGACY_ADAPTER
-    assert action.capability.action_ids == (ActionId("chat.matrix.list"),)
+    assert action.capability.action_ids == (ActionId("chat.matrix.route.read"),)
     assert action.access is HostActionAccess.READ
 
 
@@ -192,7 +192,7 @@ def test_plugin_can_contribute_action_spec_and_typed_host_action():
 
 
 def test_plugin_action_spec_cannot_redefine_builtin_action_id():
-    duplicate = next(spec for spec in ACTION_SPECS if str(spec.id) == "chat.matrix.list")
+    duplicate = next(spec for spec in ACTION_SPECS if str(spec.id) == "chat.matrix.route.read")
 
     class DuplicatePlugin:
         @hookimpl
@@ -201,6 +201,6 @@ def test_plugin_action_spec_cannot_redefine_builtin_action_id():
 
     with pytest.raises(
         CapabilityCatalogError,
-        match=r"duplicate action id: chat\.matrix\.list",
+        match=r"duplicate action id: chat\.matrix\.route\.read",
     ):
         get_host_action_catalog(_plugin_manager(DuplicatePlugin()))

@@ -11,6 +11,7 @@ from conftest import NullIpcDeps, make_host_action_catalog
 
 from pynchy import state
 from pynchy.capabilities import ApprovalMode
+from pynchy.config.merge import ResolvedWorkspaceConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
@@ -161,10 +162,17 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
             return_value=catalog,
         ),
     ):
-        data = _make_request("my_tool", some_param="value")
+        data = _make_request("my_tool", some_param="value", source_group="attacker-workspace")
         await registry.dispatch(data, "test-ws", False, deps)
 
-    mock_handler.assert_awaited_once()
+    mock_handler.assert_awaited_once_with(
+        {
+            "type": "service:my_tool",
+            "request_id": "test-req-1",
+            "some_param": "value",
+            "source_group": "test-ws",
+        }
+    )
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
     response = json.loads(response_file.read_text())
@@ -178,16 +186,65 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["matrix_route_read", "matrix_route_send"])
+async def test_raw_ipc_cannot_invoke_route_tool_omitted_by_runtime_policy(
+    tmp_path,
+    tool_name,
+):
+    mock_handler = AsyncMock(return_value={"result": "unsafe"})
+    catalog = _make_action_catalog(
+        "matrix_route_read",
+        "matrix_route_send",
+        handler_fn=mock_handler,
+    )
+    settings = _make_settings()
+    settings.data_dir = tmp_path
+    resolved = ResolvedWorkspaceConfig(
+        prompts=[],
+        skills=[],
+        tools=[],
+        repo=[],
+        model=None,
+        execution_mode="container",
+        cwd=None,
+        is_admin=False,
+        contains_secrets=False,
+    )
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_active_matrix_route",
+            return_value=object(),
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.workspace_config.load_resolved_config",
+            return_value=resolved,
+        ),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+    ):
+        await registry.dispatch(_make_request(tool_name), "routed-workspace", False, FakeDeps())
+
+    mock_handler.assert_not_awaited()
+    response_file = tmp_path / "ipc/routed-workspace/responses/test-req-1.json"
+    response = json.loads(response_file.read_text())
+    assert response == {"error": f"Service tool is not enabled for this route: {tool_name}"}
+
+
+@pytest.mark.asyncio
 async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, register_gate):
     """A Matrix read must taint the turn before later actions can use its text."""
     mock_handler = AsyncMock(return_value={"result": {"messages": ["untrusted text"]}})
     catalog = _make_action_catalog(
-        "matrix_list_messages",
+        "matrix_route_read",
         handler_fn=mock_handler,
-        read_tools=("matrix_list_messages",),
+        read_tools=("matrix_route_read",),
     )
     registered_gate = register_gate(
-        matrix_list_messages=ServiceTrustConfig(
+        matrix_route_read=ServiceTrustConfig(
             public_source=True,
             secret_data=True,
             public_sink=False,
@@ -209,7 +266,7 @@ async def test_declared_read_tool_taints_untrusted_private_content(tmp_path, reg
             return_value=catalog,
         ),
     ):
-        await registry.dispatch(_make_request("matrix_list_messages"), "test-ws", False, deps)
+        await registry.dispatch(_make_request("matrix_route_read"), "test-ws", False, deps)
 
     mock_handler.assert_awaited_once()
     assert registered_gate.policy.corruption_tainted is True

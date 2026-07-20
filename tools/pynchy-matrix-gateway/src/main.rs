@@ -2,7 +2,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, BufRead, Read, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -26,8 +26,11 @@ use matrix_sdk::{
 };
 use serde::{Deserialize, Serialize};
 
+mod routing;
+
 const APP_NAME: &str = "pynchy-matrix-gateway";
 const DEVICE_NAME: &str = "Pynchy communications gateway";
+const DATA_DIR_ENV: &str = "PYNCHY_MATRIX_GATEWAY_DATA_DIR";
 
 #[derive(Parser)]
 #[command(
@@ -87,6 +90,17 @@ enum Command {
         #[arg(long)]
         body_stdin: bool,
     },
+    /// Fetch one durable-cursor sync page for explicitly configured rooms.
+    Sync {
+        /// Read `{"since": ..., "room_ids": [...]}` from standard input.
+        #[arg(long)]
+        request_stdin: bool,
+    },
+    /// Recheck immutable room identity, owner identity, and bridge portal state.
+    RoomStatus {
+        #[arg(long)]
+        room: String,
+    },
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -114,7 +128,31 @@ struct ReadMessage {
 }
 
 fn app_dir() -> Result<PathBuf> {
-    let home = std::env::var_os("HOME").context("HOME is not set")?;
+    resolve_app_dir(
+        std::env::var_os(DATA_DIR_ENV),
+        std::env::var_os("HOME"),
+    )
+}
+
+fn resolve_app_dir(
+    configured_data_dir: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Result<PathBuf> {
+    if let Some(configured_data_dir) = configured_data_dir {
+        let path = PathBuf::from(configured_data_dir);
+        if !path.is_absolute() {
+            bail!("{DATA_DIR_ENV} must be an absolute path");
+        }
+        if path.parent().is_none()
+            || path
+                .components()
+                .any(|component| component == Component::ParentDir)
+        {
+            bail!("{DATA_DIR_ENV} must identify a specific directory without parent traversal");
+        }
+        return Ok(path);
+    }
+    let home = home.context("HOME is not set")?;
     Ok(PathBuf::from(home).join(".local/share/pynchy/matrix-gateway"))
 }
 
@@ -625,5 +663,63 @@ async fn main() -> Result<()> {
         } => verify(device, timeout_seconds, confirmation_file).await,
         Command::Recover { secret_stdin } => recover(secret_stdin).await,
         Command::Send { room, body_stdin } => send(room, body_stdin).await,
+        Command::Sync { request_stdin } => {
+            let (client, saved) = restored_client().await?;
+            routing::sync(&client, &saved.user_id, request_stdin).await
+        }
+        Command::RoomStatus { room } => {
+            let (client, saved) = restored_client().await?;
+            routing::room_status(&client, &saved.user_id, room).await
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{ffi::OsString, path::PathBuf};
+
+    use super::resolve_app_dir;
+
+    #[test]
+    fn configured_data_dir_isolates_state_from_home_default() {
+        let path = resolve_app_dir(
+            Some(OsString::from("/srv/pynchy/matrix-gateway/personal")),
+            Some(OsString::from("/home/operator")),
+        )
+        .unwrap();
+
+        assert_eq!(
+            path,
+            PathBuf::from("/srv/pynchy/matrix-gateway/personal")
+        );
+    }
+
+    #[test]
+    fn data_dir_rejects_broad_or_ambiguous_paths_and_defaults_for_direct_cli_use() {
+        assert!(
+            resolve_app_dir(
+                Some(OsString::from("matrix-gateway/personal")),
+                Some(OsString::from("/home/operator")),
+            )
+            .is_err()
+        );
+        assert!(
+            resolve_app_dir(
+                Some(OsString::from("/")),
+                Some(OsString::from("/home/operator")),
+            )
+            .is_err()
+        );
+        assert!(
+            resolve_app_dir(
+                Some(OsString::from("/srv/pynchy/../matrix-gateway")),
+                Some(OsString::from("/home/operator")),
+            )
+            .is_err()
+        );
+        assert_eq!(
+            resolve_app_dir(None, Some(OsString::from("/home/operator"))).unwrap(),
+            PathBuf::from("/home/operator/.local/share/pynchy/matrix-gateway")
+        );
     }
 }

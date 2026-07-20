@@ -369,3 +369,36 @@ async def test_deleted_control_thread_is_replaced_and_workspace_can_rebind() -> 
     assert current.id == conversation.id
     assert current.workspace == GroupFolder("engineering")
     assert current.session_id == SessionId("session-42")
+
+
+async def test_control_titles_use_human_friendly_suffixes_for_distinct_conversations() -> None:
+    parent_jid = ChatJid("discord:channel:triage")
+    await _register_workspace(parent_jid, "triage")
+    first = await resolve_conversation(_subject("family-route"), GroupFolder("triage"))
+    second = await resolve_conversation(_subject("renamed-family-route"), GroupFolder("triage"))
+    channel = _DiscordThreadChannel()
+
+    first_control = await ensure_conversation_control(
+        [channel],
+        ConversationControlRequest(
+            conversation_id=first.id,
+            parent_workspace=GroupFolder("triage"),
+            parent_jid=parent_jid,
+            title="Family",
+        ),
+    )
+    renamed_route_control = await ensure_conversation_control(
+        [channel],
+        ConversationControlRequest(
+            conversation_id=second.id,
+            parent_workspace=GroupFolder("triage"),
+            parent_jid=parent_jid,
+            title="Family",
+        ),
+    )
+
+    assert first_control.binding.title == "Family"
+    assert renamed_route_control.binding.title == "Family (2)"
+    assert first_control.binding.thread_jid != renamed_route_control.binding.thread_jid
+    assert [created[1] for created in channel.created] == ["Family", "Family (2)"]
+    assert "conv_" not in renamed_route_control.binding.title

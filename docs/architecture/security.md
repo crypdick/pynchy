@@ -164,6 +164,23 @@ the IPC request ID, decision, safe reason, and taint state. Handler exceptions
 and `{"error": ...}` responses both record terminal failure without copying
 provider error bodies into capability status.
 
+**Authenticated external routes.** A connection runtime may authenticate an
+external provider event before routing it into a non-admin conversation
+workspace. Authentication proves provider origin; it does not make the message
+trusted. Matrix route input starts the invocation both corruption-tainted and
+secret-source-tainted. It bypasses only ordinary channel sender allowlists.
+Host commands such as approval, denial, identity, and deploy commands are not
+parsed from the external message body.
+
+An operator can still approve or deny a pending action in the same Discord
+control thread while the routed agent turn is active. The host executes that
+control message but excludes it from agent input. Lifecycle controls that would
+replace context run after the active turn commits. Matrix writes have a
+mandatory exact-request approval even when other service policy would allow the
+call. The approved replay must still match the conversation control binding,
+unexpired action payload, current effective workspace policy, and live route
+portal.
+
 Admin workspaces use the same tool trust declarations at runtime. They are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)), which prevents admin workspaces from selecting public-source tools. See [Tool Trust](../usage/security.md) for configuration.
 
 ### 5b. Bash Security Gate

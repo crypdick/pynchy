@@ -74,6 +74,10 @@ class SecurityPolicy:
         """Mark the invocation as having received provider-controlled input."""
         self._corruption_tainted = True
 
+    def notify_secret_source_input(self) -> None:
+        """Mark input itself as private data, independent of workspace files."""
+        self._secret_tainted = True
+
     def evaluate_read(self, service: str) -> PolicyDecision:
         """Evaluate a read operation on a service.
 

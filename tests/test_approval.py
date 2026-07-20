@@ -53,7 +53,7 @@ class TestCreatePendingApproval:
                 request_id="aabb001122334455",
                 tool_name="x_post",
                 source_group="personal",
-                chat_jid="group@g.us",
+                approval_chat_jid="group@g.us",
                 request_data={"type": "service:x_post", "text": "hello"},
             )
 
@@ -67,7 +67,7 @@ class TestCreatePendingApproval:
             "request_id": "aabb001122334455",
             "tool_name": "x_post",
             "source_group": "personal",
-            "chat_jid": "group@g.us",
+            "approval_chat_jid": "group@g.us",
         }
         for field_name, expected_value in expected_fields.items():
             assert data[field_name] == expected_value
@@ -85,7 +85,7 @@ class TestCreatePendingApproval:
                 request_id="abc123",
                 tool_name="test",
                 source_group="grp",
-                chat_jid="j@g.us",
+                approval_chat_jid="j@g.us",
                 request_data={},
             )
 
@@ -100,7 +100,7 @@ class TestCreatePendingApproval:
                 request_id="aabb001122334455",
                 tool_name="x_post",
                 source_group="personal",
-                chat_jid="group@g.us",
+                approval_chat_jid="group@g.us",
                 request_data={},
             )
 

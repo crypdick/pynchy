@@ -9,6 +9,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 import pynchy.config.prompts as prompt_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
+from pynchy.conversation.workspaces import conversation_id_from_folder
 from pynchy.host.container_manager import (
     OnOutput,
     resolve_agent_core,
@@ -21,6 +22,7 @@ from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
+    set_conversation_session,
     set_session,
     update_in_flight_session,
 )
@@ -196,6 +198,8 @@ def session_tracking_output_handler(
         ) and group_folder not in deps.session_cleared:
             deps.sessions[group_folder] = session_id
             await set_session(GroupFolder(group_folder), SessionId(session_id))
+            if conversation_id := conversation_id_from_folder(group_folder):
+                await set_conversation_session(conversation_id, SessionId(session_id))
             await update_in_flight_session(group_folder, session_id)
         if on_output:
             await on_output(output)

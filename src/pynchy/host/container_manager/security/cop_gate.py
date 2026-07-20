@@ -92,7 +92,7 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
             request_id=request_id,
             tool_name=operation,
             source_group=source_group,
-            chat_jid=chat_jid,
+            approval_chat_jid=chat_jid,
             request_data=data,
             handler_type="ipc",
         )

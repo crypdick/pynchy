@@ -20,6 +20,7 @@ See docs/plans/2026-02-24-human-approval-gate-design.md
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import secrets
 import string
@@ -163,10 +164,12 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
     request_id: str,
     tool_name: str,
     source_group: str,
-    chat_jid: str,
+    approval_chat_jid: str,
     request_data: dict[str, Any],
     handler_type: str = "service",
     expires_after_seconds: int = APPROVAL_TIMEOUT_SECONDS,
+    origin_conversation_id: str | None = None,
+    action_payload: dict[str, Any] | None = None,
 ) -> str:
     """Write a pending approval file (PENDING state).
 
@@ -189,8 +192,15 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
         "short_id": short_id,
         "tool_name": tool_name,
         "source_group": source_group,
-        "chat_jid": chat_jid,
+        "approval_chat_jid": approval_chat_jid,
+        "origin_conversation_id": origin_conversation_id,
         "request_data": request_data,
+        "action_payload": action_payload,
+        "action_payload_sha256": (
+            hashlib.sha256(json.dumps(action_payload, sort_keys=True).encode()).hexdigest()
+            if action_payload is not None
+            else None
+        ),
         "handler_type": handler_type,
         "timestamp": datetime.now(UTC).isoformat(),
         "expires_after_seconds": expires_after_seconds,
@@ -357,7 +367,7 @@ async def _auto_deny_expired_approval(
         {"error": "Approval expired (no response within timeout)"},
     )
     await record_security_event(
-        chat_jid=data.get("chat_jid", "unknown"),
+        chat_jid=data.get("approval_chat_jid", "unknown"),
         workspace=group,
         tool_name=data.get("tool_name", "unknown"),
         decision="approval_expired",

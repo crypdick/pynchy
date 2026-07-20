@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -57,6 +58,10 @@ def _row_to_conversation(row: Row) -> Conversation:
 
 
 def _row_to_delivery(row: Row) -> ConversationDelivery:
+    raw_payload = row["payload"]
+    payload = json.loads(raw_payload) if raw_payload is not None else None
+    if payload is not None and not isinstance(payload, dict):
+        raise TypeError("Conversation delivery payload has an invalid persisted shape")
     return ConversationDelivery(
         sequence=row["sequence"],
         identity=ExternalDeliveryIdentity(
@@ -67,6 +72,7 @@ def _row_to_delivery(row: Row) -> ConversationDelivery:
         conversation_id=ConversationId(row["conversation_id"]),
         status=ConversationDeliveryStatus(row["status"]),
         received_at=row["received_at"],
+        payload=payload,
         claim_id=(ConversationClaimId(row["claim_id"]) if row["claim_id"] is not None else None),
         claimed_at=row["claimed_at"],
         completed_at=row["completed_at"],
@@ -228,6 +234,8 @@ async def admit_conversation_delivery(
     identity: ExternalDeliveryIdentity,
     subject: ConversationSubject,
     workspace: GroupFolder,
+    *,
+    payload: dict[str, Any] | None = None,
 ) -> ConversationDeliveryAdmission:
     """Link one authenticated receipt to a conversation exactly once.
 
@@ -263,8 +271,8 @@ async def admit_conversation_delivery(
         cursor = await database.execute(
             """
             INSERT INTO conversation_deliveries (
-                provider, route, delivery_id, conversation_id, status, received_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                provider, route, delivery_id, conversation_id, status, received_at, payload
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 identity.provider,
@@ -273,6 +281,7 @@ async def admit_conversation_delivery(
                 conversation.id,
                 ConversationDeliveryStatus.PENDING.value,
                 receipt["received_at"],
+                json.dumps(payload, sort_keys=True) if payload is not None else None,
             ),
         )
         sequence = cursor.lastrowid
@@ -284,6 +293,7 @@ async def admit_conversation_delivery(
             conversation_id=conversation.id,
             status=ConversationDeliveryStatus.PENDING,
             received_at=receipt["received_at"],
+            payload=payload,
         )
         return ConversationDeliveryAdmission(
             conversation=conversation,
@@ -297,6 +307,22 @@ async def get_conversation_delivery(
 ) -> ConversationDelivery | None:
     """Return the FIFO entry linked to one external delivery."""
     return await _delivery_by_identity(_get_db(), identity)
+
+
+async def list_pending_conversation_ids(
+    provider: ExternalProvider,
+    route: ExternalRoute,
+) -> tuple[ConversationId, ...]:
+    """Return conversations with queued work for one exact provider route."""
+    cursor = await _get_db().execute(
+        """
+        SELECT DISTINCT conversation_id FROM conversation_deliveries
+        WHERE provider = ? AND route = ? AND status = 'pending'
+        ORDER BY conversation_id
+        """,
+        (provider, route),
+    )
+    return tuple(ConversationId(row["conversation_id"]) for row in await cursor.fetchall())
 
 
 async def claim_next_conversation_delivery(
