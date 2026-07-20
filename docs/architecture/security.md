@@ -90,10 +90,14 @@ Unix-socket requests rely on filesystem permissions.
 
 Webhook POST paths replace the bearer token with provider-owned authentication;
 for example, Linear signs the raw body with a per-subscription secret. Startup
-rejects missing secrets, duplicate paths, unknown workspaces, and admin-workspace
-targets. The host then enforces bounded bodies, a second per-route rate limit,
-durable delivery-ID deduplication, and isolated one-time task admission. Provider
-payloads are fenced as untrusted input and cannot authorize execution. See
+rejects missing secrets, duplicate paths, unknown workspaces, and fixed routes
+to admin workspaces. A provider-derived route must declare every candidate
+workspace and explicitly opt into admin candidates; the host checks the resolved
+owner against that allowlist for every delivery. Admin candidates still must pass
+the clean room's source-trust validation. The host then enforces bounded bodies,
+a second per-route rate limit, durable delivery-ID deduplication, and isolated
+task admission. Content declared `public_source = true` receives an untrusted
+input fence, and provider callbacks never bypass workflow authorization gates. See
 [Provider-authenticated webhooks](../usage/control-plane.md#provider-authenticated-webhooks).
 
 `/health` deliberately exposes only a static readiness state. Detailed `/status`,

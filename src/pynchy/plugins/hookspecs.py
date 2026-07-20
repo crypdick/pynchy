@@ -251,6 +251,16 @@ class PynchySpec:
         raise NotImplementedError
 
     @hookspec
+    def pynchy_job_specs(self) -> tuple[dict[str, object], ...]:
+        """Provide config-backed scheduled jobs from an external registry.
+
+        Each mapping contains ``name`` and ``config``. The config follows the
+        core ``JobConfig`` schema; user ``[jobs.*]`` declarations win on name
+        collisions.
+        """
+        raise NotImplementedError
+
+    @hookspec
     def pynchy_webhook_routes(self) -> WebhookRoute | tuple[WebhookRoute, ...] | None:
         """Provide authenticated external event routes.
 

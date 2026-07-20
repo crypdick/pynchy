@@ -45,6 +45,8 @@ class WebhookConversation:
     subject: ConversationSubject
     control_title: str
     control_closed: bool | None = None
+    workspace: str | None = None
+    public_source: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.control_title.strip():
@@ -106,7 +108,7 @@ class WebhookRoute:
 
     provider: str
     name: str
-    workspace: str
+    workspace: str | None
     secret_env: str
     parse: WebhookParser
     # NOTE: Update docs/plugins/hooks/webhooks.md and
@@ -121,6 +123,8 @@ class WebhookRoute:
     prepare_event: WebhookEventPreparer | None = None
     process_event: WebhookEventProcessor | None = None
     routes_conversations: bool = False
+    candidate_workspaces: tuple[str, ...] = ()
+    allow_admin_workspaces: bool = False
 
     @property
     def path(self) -> str:
@@ -133,8 +137,10 @@ def _validate_route(route: WebhookRoute) -> None:
             raise WebhookConfigurationError(
                 f"Webhook route {label} must be a lowercase URL-safe identifier: {value!r}"
             )
-    if not route.workspace.strip():
-        raise WebhookConfigurationError(f"Webhook route {route.path} has no workspace")
+    if route.workspace is not None and not route.workspace.strip():
+        raise WebhookConfigurationError(f"Webhook route {route.path} has a blank workspace")
+    if route.workspace is None and not route.candidate_workspaces:
+        raise WebhookConfigurationError(f"Webhook route {route.path} has no workspace candidates")
     if not _ENV_REFERENCE.fullmatch(route.secret_env):
         raise WebhookConfigurationError(
             f"Webhook route {route.path} has an invalid secret environment reference"

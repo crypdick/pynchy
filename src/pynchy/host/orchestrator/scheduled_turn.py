@@ -14,6 +14,7 @@ from typing import Any, Protocol, runtime_checkable
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import OnOutput, get_session
 from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
+from pynchy.host.orchestrator.config_job_execution import derived_thread_name
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
     begin_message_turn,
@@ -110,6 +111,7 @@ class TaskAgentRequest:
     idle_timeout: float
     resume_turn: InFlightTurn | None = None
     on_started: Callable[[ScheduledTask], Awaitable[None]] | None = None
+    on_target_created: Callable[[WorkspaceProfile], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True)
@@ -206,15 +208,6 @@ def _thread_name(task: ScheduledTask, slot: int) -> str:
     return f"{task.group_folder}-{slot}"
 
 
-def _config_job_thread_name(task: ScheduledTask) -> str:
-    """Derive the current human-readable child thread for a config job."""
-    if task.config_job_name is None:
-        raise RuntimeError("Config job task requires a config job name")
-    # Human-readable names are intentional. A config rename may select another
-    # thread instead of preserving an opaque machine identity across the rename.
-    return f"{task.group_folder} | {task.config_job_name}"
-
-
 def _active_parent_participant_ids(
     task: ScheduledTask,
     turns: list[InFlightTurn],
@@ -238,8 +231,8 @@ async def _new_task_target(
 ) -> _ScheduledTaskTarget:
     """Claim a config-job thread or a numbered child conversation."""
     async with _scheduled_target_lock:
-        if request.task.config_job_name is not None:
-            return await _config_job_task_target(request, turn_id, input_messages)
+        if request.task.derived_thread_name is not None or request.task.config_job_name is not None:
+            return await _derived_thread_task_target(request, turn_id, input_messages)
         turns = await get_in_flight_turns()
         if not _base_channel_is_reserved(request.task, turns):
             slot = 0
@@ -296,7 +289,7 @@ async def _new_task_target(
         return target
 
 
-async def _config_job_task_target(
+async def _derived_thread_task_target(
     request: TaskAgentRequest,
     turn_id: str,
     input_messages: list[dict[str, Any]],
@@ -307,7 +300,7 @@ async def _config_job_task_target(
     the current human-readable name and resolves it through the idempotent
     thread path, so archived or deleted destinations never rely on cached JIDs.
     """
-    name = _config_job_thread_name(request.task)
+    name = derived_thread_name(request.task)
     ensured = await request.deps.ensure_thread(request.task.chat_jid, name)
     child_jid = ensured.jid
     if child_jid is None:
@@ -328,6 +321,8 @@ async def _config_job_task_target(
         group=child_group,
         thread_slot=0,
     )
+    if request.on_target_created is not None:
+        await request.on_target_created(child_group)
     await begin_message_turn(
         MessageTurnStart(
             turn_id=turn_id,

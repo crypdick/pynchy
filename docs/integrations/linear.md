@@ -107,9 +107,26 @@ agent's completion claim.
 ## Receive Linear callbacks
 
 Pynchy can route Linear comments and issue changes into durable issue
-conversations. Configure one route per Linear webhook subscription. The named
-workspace must select a Linear tool and point to a Discord guild channel where
-Pynchy can create issue threads:
+conversations. For one subscription covering all Pynchy-managed boards, omit
+`workspace`:
+
+```toml
+[[plugins.linear.options.webhook_routes]]
+name = "managed-boards"
+secret_env = "LINEAR_WEBHOOK_SECRET"  # pragma: allowlist secret
+organization_id = "your-linear-organization-id"
+```
+
+Pynchy fetches the issue's current Project, maps its immutable Project ID to
+the exact workspace owner reconciled at boot, and creates the issue thread
+below that owner's physical Discord root. A `pynchy-dev` issue therefore uses
+the admin, host-executed `pynchy-dev` profile; a `fam` issue uses the `fam`
+profile under the relationships category. The category is placement only and
+does not contribute policy.
+
+Set `workspace` only for a deliberately fixed single-board route. The named
+workspace must select a Linear tool and have a Discord root or semantic scope
+where Pynchy can create issue threads:
 
 ```toml
 [[plugins.linear.options.webhook_routes]]
@@ -130,7 +147,7 @@ Expose Pynchy through a public HTTPS reverse proxy, following the
 Then create a Linear webhook for `Comment` and `Issue` events with this URL:
 
 ```text
-https://pynchy.example.com/webhooks/linear/code-improver
+https://pynchy.example.com/webhooks/linear/<route-name>
 ```
 
 The final path component is the configured route `name`. Pynchy does not
@@ -159,11 +176,12 @@ turn finalization closes it again. A restart reapplies a committed lifecycle
 change if the Discord edit did not finish.
 
 Linear scopes webhook subscriptions to one team or all public teams, not to one
-Project. Point the subscription at the team that owns the Pynchy board. When that
-team contains other Projects, their events can reach the route too. Before Pynchy
-creates or wakes a thread, the host fetches the issue and confirms that it belongs
-to the configured workspace Project. Off-board deliveries receive a durable
-ignored receipt and never enter an agent turn.
+Project. Point the subscription at the team that owns the Pynchy boards. Before
+Pynchy creates or wakes a thread, the host fetches the issue and requires either
+the fixed route's Project or a Project ID in the boot-reconciled workspace-board
+registry. Off-board deliveries receive a durable ignored receipt and never enter
+an agent turn. Project-routed subscriptions replace per-workspace polling for all
+managed boards; fixed routes replace polling only for their named workspace.
 
 The selected Linear tool's `public_source` declaration also governs callback
 content. With `public_source = false`, a signed comment from the private board

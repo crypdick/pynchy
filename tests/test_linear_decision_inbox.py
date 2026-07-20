@@ -145,6 +145,10 @@ async def test_reconcile_admits_each_human_decision_to_its_own_workspace_once() 
         "linear:human_approved",
     }
     assert all(task.context_mode == "isolated" for task in created)
+    assert {task.derived_thread_name for task in created} == {
+        "[SYN-1] Plan the task inbox",
+        "[SYN-3] Execute an approved task",
+    }
     assert len(await get_all_tasks()) == 2
 
 
@@ -228,3 +232,21 @@ def test_webhook_routed_workspace_does_not_also_use_polling() -> None:
         fallback = polling_boards(boards)
 
     assert fallback == {"beta": boards["beta"]}
+
+
+def test_project_routed_webhook_covers_every_managed_board() -> None:
+    settings = make_settings(
+        plugins={"linear": PluginConfig(options={"webhook_routes": [{"name": "all-boards"}]})}
+    )
+    boards = {
+        "fam": _board("project-fam"),
+        "pynchy-dev": _board("project-pynchy"),
+    }
+
+    with patch(
+        "pynchy.plugins.integrations.linear_decision_inbox.get_settings",
+        return_value=settings,
+    ):
+        fallback = polling_boards(boards)
+
+    assert fallback == {}

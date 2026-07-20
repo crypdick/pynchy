@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
@@ -19,11 +18,18 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     OnOutput,
 )
+from pynchy.host.orchestrator.config_job_execution import (
+    ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
+    prepare_config_job,
+    register_scheduled_target,
+    run_deterministic_config_job,
+)
 from pynchy.host.orchestrator.scheduled_turn import (
     ScheduledTurnDeps,
     TaskAgentRequest,
     run_task_agent,
 )
+from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.state import (
     claim_in_flight_turn,
@@ -190,17 +196,6 @@ async def _run_scheduler_loop(
         await asyncio.sleep(get_settings().scheduler.poll_interval)
 
 
-def resolve_cron_job_cwd(cwd: str | None) -> str:
-    """Resolve optional cron job cwd against project root."""
-    project_root = get_settings().project_root
-    if not cwd:
-        return str(project_root)
-    path = Path(cwd)
-    if path.is_absolute():
-        return str(path)
-    return str((project_root / path).resolve())
-
-
 def error_signature(error: str) -> str:
     """Normalize volatile details so repeated failures can be grouped."""
     first_line = next((line.strip() for line in error.splitlines() if line.strip()), "")
@@ -220,7 +215,11 @@ def _scheduled_group(
     group_folder: str,
 ) -> WorkspaceProfile | None:
     groups = _workspace_map(deps)
-    return next((group for group in groups.values() if group.folder == group_folder), None)
+    exact = next((group for group in groups.values() if group.folder == group_folder), None)
+    if exact is not None:
+        return exact
+    placement = resolve_workspace_placement(groups.values(), group_folder)
+    return placement.owner if placement is not None else None
 
 
 async def _log_task_error(
@@ -371,7 +370,9 @@ async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) 
         return await _run_scheduled_agent(task, deps)
 
 
-async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
+async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler terminal outcomes.
+    task: ScheduledTask, deps: SchedulerDependencies
+) -> bool:
     """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
     interrupted_turn = await get_in_flight_turn_for_task(task.id)
@@ -412,17 +413,57 @@ async def _run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies)
         logger.warning("Scheduled task paused by circuit breaker", task_id=task.id, reason=reason)
         return False
 
+    deterministic = await run_deterministic_config_job(task, cast("ConfigJobExecutionDeps", deps))
+    if deterministic is not None:
+        return await _finish_scheduled_agent_run(
+            task,
+            start_time=start_time,
+            result=deterministic.result,
+            error=deterministic.error,
+        )
+
+    prepared_task, skipped_result = await prepare_config_job(task)
+    if prepared_task is None:
+        return await _finish_scheduled_agent_run(
+            task,
+            start_time=start_time,
+            result=skipped_result,
+            error=None,
+        )
+
+    execution_task = prepared_task
+    if execution_task.derived_thread_name is not None or execution_task.config_job_name is not None:
+        placement = resolve_workspace_placement(
+            _workspace_map(deps).values(),
+            execution_task.group_folder,
+        )
+        if placement is None:
+            await _log_task_error(
+                task.id,
+                start_time=start_time,
+                error=f"Workspace placement not found: {task.group_folder}",
+            )
+            return False
+        execution_task = replace(
+            execution_task,
+            chat_jid=placement.control_parent.jid,
+        )
+
     async def on_started(target_task: ScheduledTask) -> None:
         await _broadcast_task_start(deps, target_task)
 
+    async def on_target_created(profile: WorkspaceProfile) -> None:
+        await register_scheduled_target(cast("ConfigJobExecutionDeps", deps), profile)
+
     result, error = await run_task_agent(
         TaskAgentRequest(
-            task=task,
+            task=execution_task,
             deps=cast("ScheduledTurnDeps", deps),
             group=group,
             idle_enabled=True,
             idle_timeout=s.idle_timeout,
             on_started=on_started,
+            on_target_created=on_target_created,
         )
     )
     return await _finish_scheduled_agent_run(

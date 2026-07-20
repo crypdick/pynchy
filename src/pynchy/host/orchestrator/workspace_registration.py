@@ -48,7 +48,7 @@ def resolve_display_name(folder: str) -> str:
     return folder.replace("-", " ").title()
 
 
-def _workspace_security(
+def workspace_security(
     _config: WorkspaceConfig, resolved: ResolvedWorkspaceConfig
 ) -> WorkspaceSecurity:
     services: dict[str, ServiceTrustConfig] = {}
@@ -119,7 +119,7 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
         trigger=f"@{settings.agent.name}",
         added_at=datetime.now(UTC).isoformat(),
         is_admin=resolved.is_admin,
-        security=_workspace_security(config, resolved),
+        security=workspace_security(config, resolved),
     )
     workspaces[created_jid] = profile
     folder_to_jid[folder] = created_jid
@@ -198,7 +198,7 @@ async def sync_workspace_profile(  # noqa: PLR0913, RUF100 - sync boundary mirro
         changed["name"] = display_name
     if profile.is_admin != resolved.is_admin:
         changed["is_admin"] = resolved.is_admin
-    security = _workspace_security(config, resolved)
+    security = workspace_security(config, resolved)
     if profile.security != security:
         changed["security"] = security
     if not changed:

@@ -15,9 +15,18 @@ class _StrictWorkspaceLayoutModel(BaseModel):
 
 
 class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
-    """A durable child conversation declared below one workspace root."""
+    """A durable child conversation declared below one workspace root.
+
+    ``workspace`` turns the thread into a semantic workspace with its own
+    profiles.  The Discord thread remains physically below the declaring root,
+    while jobs and routed conversations use the semantic workspace as their
+    policy owner.
+    """
 
     name: str
+    workspace: str | None = None
+    profiles: list[str] = []
+    model: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -26,6 +35,68 @@ class WorkspaceThreadConfig(_StrictWorkspaceLayoutModel):
         if not name:
             raise ValueError("workspace thread name cannot be empty")
         return name
+
+    @field_validator("workspace")
+    @classmethod
+    def validate_workspace(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        workspace = value.strip()
+        if not workspace:
+            raise ValueError("workspace thread workspace cannot be empty")
+        return workspace
+
+    @model_validator(mode="after")
+    def validate_semantic_workspace_shape(self) -> WorkspaceThreadConfig:
+        if self.workspace is None and (self.profiles or self.model is not None):
+            raise ValueError("workspace thread profiles and model require workspace")
+        if self.workspace is not None and not self.profiles:
+            raise ValueError("semantic workspace threads require profiles")
+        return self
+
+
+class WorkspaceScopeConfig(_StrictWorkspaceLayoutModel):
+    """A policy owner placed below a physical root without a static control."""
+
+    workspace: str
+    profiles: list[str]
+    model: str | None = None
+
+    @field_validator("workspace")
+    @classmethod
+    def validate_workspace(cls, value: str) -> str:
+        workspace = value.strip()
+        if not workspace:
+            raise ValueError("workspace scope cannot be empty")
+        return workspace
+
+    @field_validator("profiles")
+    @classmethod
+    def validate_profiles(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("workspace scopes require profiles")
+        return value
+
+
+def semantic_workspace_configs(
+    workspaces: Mapping[str, Any],
+) -> dict[str, tuple[str, WorkspaceThreadConfig | WorkspaceScopeConfig]]:
+    """Return semantic child workspace definitions keyed by policy identity."""
+    result: dict[str, tuple[str, WorkspaceThreadConfig | WorkspaceScopeConfig]] = {}
+    for parent, config in workspaces.items():
+        semantic = [*config.scopes, *(thread for thread in config.threads if thread.workspace)]
+        for child in semantic:
+            workspace = child.workspace
+            if workspace is None:
+                continue
+            if workspace in workspaces:
+                raise ValueError(
+                    f"semantic workspace {workspace!r} conflicts with a root workspace"
+                )
+            if workspace in result:
+                raise ValueError(f"semantic workspace {workspace!r} is declared more than once")
+            result[workspace] = (parent, child)
+    return result
 
 
 class WorkspaceMigrationConfig(_StrictWorkspaceLayoutModel):

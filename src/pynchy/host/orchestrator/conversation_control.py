@@ -18,6 +18,7 @@ from pynchy.conversation.models import (
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.threads import ensure_thread, set_thread_closed
+from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.state import (
     get_conversation,
     get_conversation_control_binding,
@@ -36,6 +37,7 @@ class ConversationControlRequest:
     parent_workspace: GroupFolder
     parent_jid: ChatJid
     title: str
+    owner_workspace: GroupFolder | None = None
     closed: bool | None = None
 
     def __post_init__(self) -> None:
@@ -179,11 +181,17 @@ async def ensure_conversation_workspace(
     if parent is None or parent.jid != request.parent_jid:
         raise ValueError("Conversation control parent workspace is not registered")
 
+    owner_folder = request.owner_workspace or request.parent_workspace
+    placement = resolve_workspace_placement(context.workspaces().values(), owner_folder)
+    if placement is None:
+        raise ValueError("Conversation policy owner is not registered")
+    owner = placement.owner
+
     control = await ensure_conversation_control(context.channels(), request)
     conversation = await get_conversation(request.conversation_id)
     if conversation is None:
         raise RuntimeError("Conversation disappeared while placing its workspace")
-    folder = routed_conversation_folder(request.parent_workspace, conversation.id)
+    folder = routed_conversation_folder(owner_folder, conversation.id)
 
     for jid, existing in list(context.workspaces().items()):
         if existing.folder == folder and jid != control.binding.thread_jid:
@@ -191,12 +199,12 @@ async def ensure_conversation_workspace(
 
     profile = WorkspaceProfile(
         jid=control.binding.thread_jid,
-        name=f"{parent.name}/{control.binding.title}",
+        name=f"{owner.name}/{control.binding.title}",
         folder=folder,
-        trigger=parent.trigger,
-        container_config=parent.container_config,
-        security=parent.security,
-        is_admin=False,
+        trigger=owner.trigger,
+        container_config=owner.container_config,
+        security=owner.security,
+        is_admin=owner.is_admin,
         added_at=datetime.now(UTC).isoformat(),
     )
     current = context.workspaces().get(profile.jid)

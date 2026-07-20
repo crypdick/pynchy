@@ -29,6 +29,7 @@ from pynchy.host.orchestrator import adapters as orchestrator_adapters
 from pynchy.host.orchestrator import (
     dep_factory,
     http_server,
+    job_sources,
     service_installer,
     startup_handler,
     status,
@@ -170,6 +171,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
+    job_sources.configure_plugin_jobs(app.plugin_manager)
     system_checks.ensure_container_system_running()
 
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
@@ -258,7 +260,7 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
     """Reconcile worktrees and workspaces, returning live Linear board identities."""
     s = get_settings()
 
-    repo_groups = workspace_config.get_repo_access_groups(s.workspaces)
+    repo_groups = workspace_config.get_repo_access_groups(s.workspace_names())
 
     await asyncio.to_thread(
         worktree_ops.reconcile_worktrees_at_startup,

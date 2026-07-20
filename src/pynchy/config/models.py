@@ -24,6 +24,7 @@ from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validato
 from pynchy.config.caldav import CalDAVConfig
 from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 from pynchy.config.workspace_layout import (
+    WorkspaceScopeConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
     WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
 )
 from pynchy.plugins.integrations.matrix_routing_config import MatrixConnectionConfig
@@ -431,6 +432,7 @@ class WorkspaceConfig(_StrictModel):
     proton_pass_env_file: str | None = None
 
     threads: list[WorkspaceThreadConfig] = Field(default_factory=list)
+    scopes: list[WorkspaceScopeConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_thread_names_are_unique(self) -> WorkspaceConfig:

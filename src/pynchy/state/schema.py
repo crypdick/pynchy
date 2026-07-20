@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     context_mode TEXT DEFAULT 'isolated',
     repo_access TEXT,
     input_source TEXT NOT NULL DEFAULT 'scheduled_task',
-    config_job_name TEXT
+    config_job_name TEXT,
+    derived_thread_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);

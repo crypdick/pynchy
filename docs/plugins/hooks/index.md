@@ -23,7 +23,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 | [Runtime and tunnels](runtime-and-tunnels.md) | `pynchy_container_runtime`, `pynchy_tunnel` |
 | [Observers and memory](observers-and-memory.md) | `pynchy_observer`, `pynchy_memory` |
 | [Webhooks](webhooks.md) | `pynchy_webhook_routes` |
-| [MCP servers and workspaces](mcp-and-workspaces.md) | `pynchy_mcp_server_spec`, `pynchy_workspace_spec` |
+| [MCP servers, workspaces, and jobs](mcp-and-workspaces.md) | `pynchy_mcp_server_spec`, `pynchy_workspace_spec`, `pynchy_job_specs` |
 
 ## Multi-category plugins
 

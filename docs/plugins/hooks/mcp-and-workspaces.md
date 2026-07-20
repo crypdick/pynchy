@@ -1,4 +1,4 @@
-# MCP-server and workspace hooks
+# MCP-server, workspace, and job hooks
 
 ## `pynchy_mcp_server_spec`
 
@@ -40,3 +40,29 @@ Pynchy merges plugin workspace specifications with user workspaces. `folder` is
 the workspace folder name and `config` accepts `WorkspaceConfig`-compatible
 fields. Deliver agent instructions through [Prompts](../../usage/prompts.md),
 not a `claude_md` field.
+
+## `pynchy_job_specs`
+
+Provide config-backed jobs from a plugin-owned registry:
+
+```python
+@hookimpl
+def pynchy_job_specs(self) -> tuple[dict[str, Any], ...]:
+    return (
+        {
+            "name": "family-check-in",
+            "config": {
+                "workspace": "fam",
+                "schedule": "0 15 * * *",
+                "display_name": "family afternoon check-in",
+                "prompt": "Review the family board and report what needs attention.",
+            },
+        },
+    )
+```
+
+Each contribution contains `name` and a `JobConfig`-compatible `config`.
+Plugin jobs use the same validation, SQLite task records, Temporal schedules,
+derived-thread routing, and execution paths as `[jobs.*]`. User config wins on
+name collisions. Store a logical `workspace`; do not persist a chat JID or a
+generated thread folder. See [Scheduled tasks](../../usage/scheduled-tasks.md).

@@ -67,6 +67,7 @@ from pynchy.config.settings_sources import (
 )
 from pynchy.config.workspace_layout import (
     WorkspaceMigrationConfig,
+    semantic_workspace_configs,
     validate_workspace_migrations,
 )
 from pynchy.config.workspace_names import static_workspace_name
@@ -280,7 +281,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_host_execution_workspaces(self) -> Settings:
-        for workspace_name in self.workspaces:
+        for workspace_name in self.workspace_names():
             resolved = self.resolved_workspace_config(workspace_name)
             if resolved is None or resolved.execution_mode != "host":
                 continue
@@ -306,7 +307,10 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_admin_clean_room(self) -> Settings:
         """Reject admin workspaces that resolve to public-source tools."""
-        for ws_name, ws in self.workspaces.items():
+        for ws_name in self.workspace_names():
+            ws = self.workspace_config(ws_name)
+            if ws is None:
+                continue
             resolved = self.resolved_workspace_config(ws_name)
             if resolved is None or not resolved.is_admin:
                 continue
@@ -321,7 +325,7 @@ class Settings(BaseSettings):
 
     def resolved_workspace_config(self, workspace_name: str) -> ResolvedWorkspaceConfig | None:
         """Return the merged config for a workspace or its dynamic-thread parent."""
-        workspace = self.workspaces.get(static_workspace_name(workspace_name))
+        workspace = self.workspace_config(static_workspace_name(workspace_name))
         if workspace is None:
             return None
         profile_names = self._expanded_selected_profile_names(workspace.profiles)
@@ -333,12 +337,32 @@ class Settings(BaseSettings):
             or workspace.proton_pass_env_file is not None,
         )
 
+    def workspace_config(self, workspace_name: str) -> WorkspaceConfig | None:
+        """Return a root or semantic child workspace's own policy config."""
+        root = self.workspaces.get(workspace_name)
+        if root is not None:
+            return root
+        semantic = semantic_workspace_configs(self.workspaces).get(workspace_name)
+        if semantic is None:
+            return None
+        _parent, thread = semantic
+        return WorkspaceConfig.model_validate({"profiles": thread.profiles, "model": thread.model})
+
+    def workspace_parent(self, workspace_name: str) -> str | None:
+        """Return the physical root that owns a semantic child workspace."""
+        semantic = semantic_workspace_configs(self.workspaces).get(workspace_name)
+        return semantic[0] if semantic is not None else None
+
+    def workspace_names(self) -> tuple[str, ...]:
+        """Return every routable root and semantic child workspace identity."""
+        return (*self.workspaces, *semantic_workspace_configs(self.workspaces))
+
     def configured_agent_models(self) -> tuple[str, ...]:
         """Return the distinct model routes configured globally or per workspace."""
         models = [self.agent.model]
         models.extend(
             resolved.model
-            for workspace_name in self.workspaces
+            for workspace_name in self.workspace_names()
             if (resolved := self.resolved_workspace_config(workspace_name)) is not None
         )
         return tuple(dict.fromkeys(model for model in models if model))

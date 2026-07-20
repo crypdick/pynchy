@@ -10,11 +10,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
+from pynchy.config import get_settings
+from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves child policy annotations.
+    ResolvedWorkspaceConfig,
+)
 from pynchy.config.models import (
     WorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations at runtime.
 )
+from pynchy.config.workspace_layout import (  # noqa: TC001, RUF100 - beartype resolves workspace-thread annotations.
+    WorkspaceThreadConfig,
+)
 from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.host.orchestrator.threads import ensure_thread, supports_thread_lookup
+from pynchy.host.orchestrator.workspace_registration import workspace_security
 from pynchy.logger import logger
 from pynchy.types import Channel, WorkspaceProfile
 
@@ -30,21 +38,66 @@ class WorkspaceThreadAction:
     detail: str | None = None
 
 
-def _child_profile(
+def _child_profile(  # noqa: PLR0913, RUF100 - profile construction keeps policy and placement explicit.
     parent: WorkspaceProfile,
     child_jid: str,
     thread_name: str,
+    folder: str,
+    config: WorkspaceConfig,
+    resolved: ResolvedWorkspaceConfig,
     existing: WorkspaceProfile | None,
 ) -> WorkspaceProfile:
+    dynamic_folder = dynamic_thread_folder(parent.folder, child_jid)
     return WorkspaceProfile(
         jid=child_jid,
-        name=f"{parent.name}/{thread_name}",
-        folder=dynamic_thread_folder(parent.folder, child_jid),
+        name=(
+            f"{parent.name}/{thread_name}"
+            if folder == dynamic_folder
+            else folder.replace("-", " ").title()
+        ),
+        folder=folder,
         trigger=parent.trigger,
         container_config=parent.container_config,
-        security=parent.security,
-        is_admin=parent.is_admin,
+        security=workspace_security(config, resolved),
+        is_admin=resolved.is_admin,
         added_at=existing.added_at if existing is not None else datetime.now(UTC).isoformat(),
+    )
+
+
+def _declared_child_profile(
+    parent: WorkspaceProfile,
+    child_jid: str,
+    declared_thread: WorkspaceThreadConfig,
+    existing: WorkspaceProfile | None,
+    fallback_config: WorkspaceConfig,
+) -> WorkspaceProfile:
+    """Build either an inherited category child or a semantic policy owner."""
+    if declared_thread.workspace is None:
+        return WorkspaceProfile(
+            jid=child_jid,
+            name=f"{parent.name}/{declared_thread.name}",
+            folder=dynamic_thread_folder(parent.folder, child_jid),
+            trigger=parent.trigger,
+            container_config=parent.container_config,
+            security=parent.security,
+            is_admin=parent.is_admin,
+            added_at=(existing.added_at if existing is not None else datetime.now(UTC).isoformat()),
+        )
+
+    settings = get_settings()
+    child_folder = declared_thread.workspace
+    child_config = settings.workspace_config(child_folder) or fallback_config
+    resolved = settings.resolved_workspace_config(child_folder)
+    if resolved is None:
+        raise RuntimeError(f"Declared workspace thread lacks policy: {child_folder}")
+    return _child_profile(
+        parent,
+        child_jid,
+        declared_thread.name,
+        child_folder,
+        child_config,
+        resolved,
+        existing,
     )
 
 
@@ -115,8 +168,13 @@ async def reconcile_workspace_threads(
             if child_jid is None:
                 raise RuntimeError("Ensured workspace thread returned no chat JID")
             existing = workspaces.get(child_jid)
-            parent = workspaces[parent_jid]
-            profile = _child_profile(parent, child_jid, declared_thread.name, existing)
+            profile = _declared_child_profile(
+                workspaces[parent_jid],
+                child_jid,
+                declared_thread,
+                existing,
+                config,
+            )
             if existing == profile:
                 continue
             actions.append(

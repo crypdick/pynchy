@@ -18,6 +18,7 @@ from pynchy.config.merge import (
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
 )
+from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.state import create_task, get_task_by_id, rebind_task_root, update_task
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
@@ -46,10 +47,14 @@ def _job_prompt(job_name: str, settings: Settings) -> str:
     return path.read_text()
 
 
-def _job_schedule(job_name: str, settings: Settings) -> tuple[Literal["cron", "once"], str]:
+def _job_schedule(
+    job_name: str, settings: Settings
+) -> tuple[Literal["cron", "interval", "once"], str]:
     job = settings.jobs[job_name]
     if job.schedule is not None:
         return "cron", job.schedule
+    if job.interval_minutes is not None:
+        return "interval", str(job.interval_minutes * 60 * 1000)
     at = job.at
     if at is None:
         raise ValueError(_JOB_SCHEDULE_REQUIRED_ERROR.format(job_name=job_name))
@@ -66,9 +71,10 @@ class _AgentJobContext:
 @dataclass(frozen=True)
 class _AgentJobTaskDetails:
     prompt: str
-    schedule_type: Literal["cron", "once"]
+    schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
     context_mode: Literal["isolated"]
+    derived_thread_name: str
 
 
 async def _pause_disabled_job(task_id: str) -> None:
@@ -83,8 +89,8 @@ def _resolve_agent_job_context(
     resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
     root_folder: str,
 ) -> _AgentJobContext | None:
-    group = folder_to_group.get(root_folder)
-    if group is None:
+    placement = resolve_workspace_placement(folder_to_group.values(), root_folder)
+    if placement is None:
         logger.warning(
             "Config job root workspace is not registered; skipping",
             job=job_name,
@@ -101,13 +107,17 @@ def _resolve_agent_job_context(
         )
         return None
 
-    return _AgentJobContext(group=group, resolved=resolved, root_folder=root_folder)
+    return _AgentJobContext(
+        group=placement.owner,
+        resolved=resolved,
+        root_folder=root_folder,
+    )
 
 
 def _root_folder_for_job(job: JobConfig, settings: Settings) -> str | None:
     """Return an agent job's validated explicit parent workspace."""
     workspace = job.workspace
-    return workspace if workspace in settings.workspaces else None
+    return workspace if workspace is not None and settings.workspace_config(workspace) else None
 
 
 async def _create_agent_job_task(
@@ -130,6 +140,7 @@ async def _create_agent_job_task(
             status="active",
             created_at=datetime.now(UTC).isoformat(),
             config_job_name=job_name,
+            derived_thread_name=details.derived_thread_name,
         )
     )
 
@@ -156,6 +167,8 @@ def _agent_job_updates(
         updates["repo_access"] = None
     if existing.config_job_name != job_name:
         updates["config_job_name"] = job_name
+    if existing.derived_thread_name != details.derived_thread_name:
+        updates["derived_thread_name"] = details.derived_thread_name
     if existing.status != "active":
         updates["status"] = "active"
     return updates
@@ -196,12 +209,13 @@ async def reconcile_agent_jobs(
             continue
 
         schedule_type, schedule_value = _job_schedule(job_name, settings)
-        prompt = _job_prompt(job_name, settings)
+        prompt = "" if job.is_deterministic else _job_prompt(job_name, settings)
         details = _AgentJobTaskDetails(
             prompt=prompt,
             schedule_type=schedule_type,
             schedule_value=schedule_value,
             context_mode="isolated",
+            derived_thread_name=(f"{context.root_folder} | {job.display_name or job_name}"),
         )
         desired_task_ids.add(task_id)
         existing = await get_task_by_id(task_id)

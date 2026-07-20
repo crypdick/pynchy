@@ -2,15 +2,31 @@
 
 Schedule recurring or one-time tasks: briefings, maintenance scripts, periodic code reviews, or anything else that runs on a timer.
 
-Two kinds: **agent tasks** (run the workspace's selected agent core in a
-container) and **host tasks** (run shell commands on the host). Both use the
-same MCP tools.
+Three execution shapes share the native scheduler:
+
+- **Agent tasks** run the owning workspace's selected agent core, on the host
+  or in a container according to its profile.
+- **Deterministic workspace tasks** run a host command without an LLM and post
+  its output through an owned workspace thread.
+- **Host tasks** run infrastructure commands without a conversational
+  workspace.
 
 ## Agent Tasks
 
-Agent tasks spin up a containerized agent on schedule. The agent gets a prompt and uses its normal tools (Bash, MCP, and so on), as if a user had sent the message. A config-backed agent job names its parent workspace explicitly with `workspace`.
+Agent tasks run an agent on schedule. The agent gets a prompt and uses its
+owning workspace's normal tools, skills, repo, admin status, and execution mode
+as if a user had sent the message. A config-backed agent job names its policy
+owner explicitly with `workspace`.
 
-Pynchy derives one human-readable sibling thread for each config-backed job beneath that workspace. It names the thread `<workspace> | <job_name>`. For example, `fam_daily_checkin` with `workspace = "relationships"` runs in `relationships | fam_daily_checkin` under `#relationships`. Every new run finds or creates that derived thread, including reopening an archived thread. Pynchy doesn't cache the derived name or thread JID in scheduled-task state. Renaming the workspace or job selects a new thread. Different jobs under the same workspace use different threads and can run concurrently.
+Pynchy derives one human-readable thread for each config-backed job. It names
+the thread `<workspace> | <display_name>`, falling back to the config job name.
+Every run finds or creates that thread, including reopening an archived one;
+it never stores a Discord thread JID as policy. A semantic workspace can be
+physically placed below a category while retaining its own profile. For
+example, a `fam` job may create `fam | afternoon check-in` under
+`#relationships`, but the thread runs and remains registered with only the
+`fam` profile. Different jobs under the same workspace use different threads
+and can run concurrently.
 
 Temporal buffers one overlapping occurrence for a config-backed job. The next run waits for the current one, then runs in the same task thread; Pynchy never creates a numbered spillover thread for that job. This requires a channel with child-thread support. Pynchy records an error instead of moving the run to another target when the root channel cannot create threads.
 
@@ -64,6 +80,54 @@ prompt = """
 Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
 """
 ```
+
+Use `interval_minutes` for config-backed interval jobs. An agent job can also
+run a host-side gate before creating its thread:
+
+```toml
+[jobs.marketplace-poller]
+workspace = "marketplace-inbox-poller"
+interval_minutes = 30
+display_name = "marketplace inbox poller"
+prompt = "Review the gate output and act on actionable messages."
+pre_run_command = "scripts/marketplace_gate.py"
+pre_run_cwd = "."
+pre_run_timeout_seconds = 300
+```
+
+If the final non-empty line of successful gate output is JSON containing
+`"wakeAgent": false`, Pynchy records a skipped run without creating a thread or
+starting an agent. Otherwise, stdout and stderr become bounded pre-run context
+for the agent.
+
+## Deterministic Workspace Tasks
+
+Set `agent = false` for a script that does not need an LLM but still belongs to
+a conversational workspace:
+
+```toml
+[jobs.scheduler-watchdog]
+workspace = "cron"
+schedule = "0 23 * * *"
+display_name = "scheduler health watchdog"
+agent = false
+command = "scripts/scheduler_watchdog.py"
+cwd = "."
+timeout_seconds = 300
+```
+
+The command runs on the host. Non-empty output goes to the derived thread under
+the workspace's physical Discord root, and Pynchy registers that thread with
+the logical owner's profile for future replies. Successful output ending in
+`{"wakeAgent": false}` skips delivery and does not create a thread.
+
+## Plugin-Sourced Jobs
+
+Plugins can implement `pynchy_job_specs` to load jobs from another durable
+registry. Contributions use the same `JobConfig` fields and enter the same
+database and Temporal reconciliation paths as `[jobs.*]`. User config wins on
+name collisions. A plugin should store logical `workspace` owners, never chat
+JIDs or generated thread folder names.
 
 Host jobs use the reserved workspace name `host`:
 
@@ -223,6 +287,8 @@ Both agent tasks and database host jobs support these schedule types:
 | `interval` | Milliseconds | `3600000` (every hour) |
 | `once` | ISO timestamp | `2024-12-25T09:00:00Z` |
 
-Config-file host cron jobs only support `cron`.
+Config-backed agent and deterministic workspace jobs use `schedule` for cron,
+`interval_minutes` for intervals, or `at` for one-time execution. Config-file
+host jobs only support cron.
 
 `cron` and `interval` entries run as Temporal Schedules. `once` entries run as delayed Temporal workflows. Temporal owns the wake-up; Pynchy activities own the actual agent or host-shell execution.
