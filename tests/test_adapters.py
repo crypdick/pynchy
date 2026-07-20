@@ -14,7 +14,6 @@ from conftest import NullChannel
 
 from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.adapters import (
-    GroupMetadataManager,
     HostMessageBroadcaster,
     MessageBroadcaster,
     SessionManager,
@@ -292,28 +291,3 @@ class TestSessionManager:
             await manager.clear_session("nonexistent")
 
         assert "nonexistent" in cleared
-
-
-# ---------------------------------------------------------------------------
-# GroupMetadataManager
-# ---------------------------------------------------------------------------
-
-
-class TestGroupMetadataManager:
-    """Test group metadata queries."""
-
-    def test_channels_connected_returns_true_when_any_connected(self):
-        connected = FakeChannel(connected=True)
-        disconnected = FakeChannel(connected=False)
-        manager = GroupMetadataManager({}, [connected, disconnected], AsyncMock())
-        assert manager.channels_connected() is True
-
-    def test_channels_connected_returns_false_when_all_disconnected(self):
-        ch1 = FakeChannel(connected=False)
-        ch2 = FakeChannel(connected=False)
-        manager = GroupMetadataManager({}, [ch1, ch2], AsyncMock())
-        assert manager.channels_connected() is False
-
-    def test_channels_connected_returns_false_when_no_channels(self):
-        manager = GroupMetadataManager({}, [], AsyncMock())
-        assert manager.channels_connected() is False

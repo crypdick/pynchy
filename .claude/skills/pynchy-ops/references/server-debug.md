@@ -52,29 +52,34 @@ sqlite3 data/messages.db "SELECT name, container_config FROM registered_groups;"
 container run -i --rm --entrypoint ls pynchy-agent:latest /workspace/extra/
 ```
 
-## Sending Messages via the TUI API
+## Exercising the Message Pipeline
 
-The TUI HTTP API can be used to send messages to any group without a TUI client. Messages sent this way go through the full pipeline (stored, broadcast to channels, trigger agent) — identical to a real user message.
+Pynchy does not expose a production HTTP endpoint for injecting user messages. Send a test
+message from a real account through the configured channel to exercise channel authentication,
+message ingestion, routing, the agent turn, and outbound delivery.
 
 ```bash
-# 1. Look up the group's JID
-PYNCHY_BASE_URL="${PYNCHY_BASE_URL:-http://localhost:8484}"
-curl -s "$PYNCHY_BASE_URL/api/groups" | python3 -m json.tool
-# Returns: [{"name": "my-group", "jid": "...", ...}, ...]
+# Identify the destination JID before sending the test message.
+sqlite3 data/messages.db "
+  SELECT jid, name, folder
+  FROM registered_groups
+  ORDER BY name;
+"
 
-# 2. Send a message to the agent in that group
-curl -s -X POST "$PYNCHY_BASE_URL/api/send" \
-  -H 'Content-Type: application/json' \
-  -d '{"jid": "<jid-from-step-1>", "content": "your message here"}'
-
-# 3. Watch the response via SSE (or just check /api/messages after a moment)
-curl -s "$PYNCHY_BASE_URL/api/messages?jid=<jid>&limit=5" | python3 -m json.tool
+# After sending from the real channel, inspect the conversation.
+sqlite3 data/messages.db "
+  SELECT timestamp, sender_name, message_type, substr(content, 1, 120)
+  FROM messages
+  WHERE chat_jid = '<JID>'
+  ORDER BY timestamp DESC
+  LIMIT 15;
+"
 ```
 
 This is useful for:
-- **Debugging the agent** from an SSH session without needing WhatsApp or the TUI app running.
+- **Debugging the agent** while preserving the same trust boundary as normal messages.
 - **Exercising MCP tools** — send a message like "use the playwright MCP to check ..." to prompt the agent to invoke an MCP tool it wouldn't use unprompted. Handy for verifying MCP server connectivity, tool schemas, or end-to-end behavior.
-- **Scripting interactions** from another agent's container (via `mcp__pynchy__*` tools) or CI.
+- **Verifying output delivery** through the configured channel instead of only inspecting host state.
 
 ## WhatsApp Auth Issues
 

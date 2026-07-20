@@ -169,18 +169,12 @@ ssh "$PYNCHY_HOST" 'tail -n 50 ~/Library/Logs/pynchy/backup.err.log'
 | Agent tool calls and traces | **SQLite** `events` table |
 | Container startup errors (before DB writes) | `docker logs pynchy-<group>` |
 
-## Sending Synthetic Messages
+## Exercising Message Ingress
 
-Use the TUI API to inject messages into any group's chat pipeline (useful for testing):
-
-```bash
-# Send a message as if a user typed it
-curl -s -X POST "http://$PYNCHY_HOST:${PYNCHY_PORT:-8484}/api/send" \
-  -H "Content-Type: application/json" \
-  -d '{"jid": "<JID>", "content": "your message here"}'
-```
-
-This goes through the full message pipeline (routing → agent → output → broadcast), same as a real Slack/WhatsApp message.
+Pynchy does not expose a production HTTP endpoint for injecting user messages. Send a test
+message from a real account through a configured channel so the test crosses the channel's
+authentication and ingestion boundaries. Inspect the resulting messages and agent activity in
+SQLite as described in [server debugging](references/server-debug.md#exercising-the-message-pipeline).
 
 ## Service Management Reference
 

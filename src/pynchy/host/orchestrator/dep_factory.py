@@ -223,7 +223,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         app.workspaces, app.register_workspace, app.send_clear_confirmation
     )
     session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
+    metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
 
     class IpcDeps:
         broadcast_to_channels = broadcaster.broadcast_to_channels
@@ -259,7 +259,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
     session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
+    metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
 
     class _StatusDeps:
         def is_shutting_down(self) -> bool:
