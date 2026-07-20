@@ -190,6 +190,29 @@ class TestSecurityGateTaintPersistence:
         decision = gate.evaluate_write("linear", {})
         assert decision.allowed is False
 
+    def test_named_linear_account_owns_host_action_policy(self, monkeypatch):
+        settings = validate_settings_mapping(
+            {
+                "profiles": {"synapse": {"tools": ["linear_synapse"]}},
+                "workspaces": {"synapse": {"profiles": ["synapse"]}},
+                "tools": {
+                    "linear_synapse": {
+                        "type": "linear",
+                        "public_source": False,
+                        "secret_data": True,
+                        "public_sink": "forbidden",
+                        "dangerous_writes": False,
+                    }
+                },
+            }
+        )
+        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
+
+        gate = SecurityGate(resolve_security("synapse", is_admin=False))
+
+        assert gate.evaluate_read("linear").allowed is True
+        assert gate.evaluate_write("linear", {}).allowed is False
+
 
 class TestGetGateForGroup:
     """Tests for get_gate_for_group — lookup by group folder only."""

@@ -127,6 +127,41 @@ def test_new_schema_parses_minimal_config() -> None:
     assert settings.notifications.admin_workspace == "discord-admin"
 
 
+def test_named_linear_account_parses_credential_selectors() -> None:
+    settings = _settings_from_toml(
+        """
+        [tools.linear_synapse]
+        type = "linear"
+        api_key_env = "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
+        team_key_env = "LINEAR_SYNAPSE_TEAM_KEY"
+        public_source = false
+        secret_data = true
+        public_sink = false
+        dangerous_writes = false
+        """
+    )
+
+    account = settings.tools["linear_synapse"]
+    assert account.type == "linear"
+    assert account.api_key_env == "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
+    assert account.team_key_env == "LINEAR_SYNAPSE_TEAM_KEY"
+
+
+@pytest.mark.parametrize("field", ["api_key_env", "team_key_env"])
+def test_linear_account_rejects_empty_credential_selector(field: str) -> None:
+    with pytest.raises(ValidationError, match="credential environment"):
+        _settings_from_dict(
+            {
+                "tools": {
+                    "linear": {
+                        "type": "linear",
+                        field: "",
+                    }
+                }
+            }
+        )
+
+
 def test_agent_rejects_unknown_codex_reasoning_effort() -> None:
     with pytest.raises(ValidationError, match="model_reasoning_effort"):
         _settings_from_dict({"agent": {"model_reasoning_effort": "excessive"}})

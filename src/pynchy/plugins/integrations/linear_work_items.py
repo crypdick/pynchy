@@ -88,7 +88,7 @@ async def handle_claim_work_item(data: dict[str, Any]) -> dict[str, object]:
     if existing_response is not None:
         return existing_response
     try:
-        async with linear_client() as client:
+        async with linear_client(workspace=workspace) as client:
             transition = await claim_work_item(client, workspace, issue_id, request_id)
     except WorkItemClaimConflictError as exc:
         turn = await get_in_flight_turn_for_group(workspace)
@@ -156,7 +156,7 @@ async def complete_merged_pull_request(
         return execution
     if execution.status is WorkItemExecutionStatus.FAILED:
         raise LinearError("Merged-PR completion previously conflicted with Linear state")
-    async with linear_client() as client:
+    async with linear_client(workspace=workspace) as client:
         if execution.status is WorkItemExecutionStatus.UNKNOWN:
             transition = await get_latest_unresolved_work_item_transition(execution.id)
             if transition is None or transition.target_status != "done":
@@ -242,7 +242,7 @@ async def _handle_linked_transition(
     if execution is None or execution.workspace != workspace:
         return {"error": _ACTIVE_EXECUTION_REQUIRED}
     try:
-        async with linear_client() as client:
+        async with linear_client(workspace=workspace) as client:
             updated = await transition_linked_work_item(
                 client,
                 workspace,
@@ -275,7 +275,7 @@ async def handle_reconcile_work_item(data: dict[str, Any]) -> dict[str, object]:
     if transition is None:
         return {"error": _UNKNOWN_TRANSITION_REQUIRED}
     try:
-        async with linear_client() as client:
+        async with linear_client(workspace=workspace) as client:
             resolved = await reconcile_work_item(client, workspace, issue_id, transition)
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}
@@ -299,7 +299,7 @@ async def handle_move_unlinked_todo(data: dict[str, Any]) -> dict[str, object]:
             )
         }
     try:
-        async with linear_client() as client:
+        async with linear_client(workspace=workspace) as client:
             updated = await move_unlinked_work_item(client, workspace, issue_id, status)
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}
@@ -317,7 +317,7 @@ async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
             "result": {"work_item": work_item_execution_to_dict(active)},
         }
     try:
-        async with linear_client() as client:
+        async with linear_client(workspace=workspace) as client:
             updated = await submit_work_item_plan(client, workspace, issue_id, plan)
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}

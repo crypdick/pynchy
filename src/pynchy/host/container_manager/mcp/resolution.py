@@ -262,6 +262,7 @@ def resolve_all_instances(
     # Track how many instances we've created per server_name so we can
     # offset the host port for each additional instance.
     port_counters: dict[str, int] = {}
+    assigned_ports: set[int] = set()
 
     for folder in settings.workspaces:
         servers = resolve_workspace_servers(settings, all_servers, folder)
@@ -287,9 +288,18 @@ def resolve_all_instances(
             if iid not in state.instances:
                 container_name = runtime_container_name(f"mcp-{iid}")
                 offset = port_counters.get(server_name, 0)
-                port_counters[server_name] = offset + 1
                 base_port = server_config.port
                 instance_port = (base_port + offset) if base_port is not None else None
+                while (
+                    server_config.type == "script"
+                    and instance_port is not None
+                    and instance_port in assigned_ports
+                ):
+                    offset += 1
+                    instance_port = base_port + offset if base_port is not None else None
+                port_counters[server_name] = offset + 1
+                if server_config.type == "script" and instance_port is not None:
+                    assigned_ports.add(instance_port)
                 state.instances[iid] = McpInstance(
                     server_name=server_name,
                     server_config=server_config,

@@ -379,6 +379,28 @@ class TestResolveAllInstancesPortOffset:
         inst = next(iter(state.instances.values()))
         assert inst.port == 9100
 
+    def test_distinct_servers_with_the_same_base_port_do_not_collide(self):
+        state = self._resolve_instances(
+            workspaces={
+                "public": ["linear-public"],
+                "synapse": ["linear-synapse"],
+            },
+            tool_mcp_configs={
+                "linear-public": {
+                    "runtime": "script",
+                    "command": "uv",
+                    "port": 8474,
+                },
+                "linear-synapse": {
+                    "runtime": "script",
+                    "command": "uv",
+                    "port": 8474,
+                },
+            },
+        )
+
+        assert sorted(instance.port for instance in state.instances.values()) == [8474, 8475]
+
     @pytest.mark.asyncio
     async def test_sync_makes_parent_workspace_instances_available_to_dynamic_threads(
         self, monkeypatch

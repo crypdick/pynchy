@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
 
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_accounts import (
+    LinearAccount,
+    linear_account,
+    linear_account_for_workspace,
+)
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard, require_workspace_board
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
@@ -65,24 +69,46 @@ class _TransitionAttempt:
 class LinearClientContext:
     """Own the aiohttp session needed by a short-lived host Linear operation."""
 
-    def __init__(self) -> None:
+    def __init__(self, account: LinearAccount) -> None:
+        self._account = account
         self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> LinearClient:
-        api_key = os.environ.get("LINEAR_API_KEY")
+        api_key = self._account.api_key
         if not api_key:
-            raise ValueError("LINEAR_API_KEY is not configured")  # pragma: allowlist secret
+            raise ValueError(
+                f"{self._account.config.api_key_env} is not configured"
+            )  # pragma: allowlist secret
         self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
-        return LinearClient(api_key=api_key, session=self._session)
+        return LinearClient(
+            api_key=api_key,
+            session=self._session,
+            team_key=self._account.team_key,
+        )
 
     async def __aexit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
         if self._session is not None:
             await self._session.close()
 
 
-def linear_client() -> LinearClientContext:
-    """Create a context manager for one host-owned Linear operation."""
-    return LinearClientContext()
+def linear_client(
+    *,
+    workspace: str | None = None,
+    account_name: str | None = None,
+) -> LinearClientContext:
+    """Create a client for one exact workspace-selected or named account."""
+    if (workspace is None) == (account_name is None):
+        raise ValueError("Linear client requires exactly one workspace or account name")
+    account: LinearAccount | None
+    if account_name is not None:
+        account = linear_account(account_name)
+    elif workspace is not None:
+        account = linear_account_for_workspace(workspace)
+    else:
+        raise AssertionError("Linear account selector validation failed")
+    if account is None:
+        raise ValueError(f"Workspace '{workspace}' does not select a Linear account")
+    return LinearClientContext(account)
 
 
 async def claim_work_item(
@@ -255,7 +281,7 @@ async def workspace_issue(
     board = await require_workspace_board(
         client,
         _WorkspaceContext(folder=workspace, name=_workspace_name(workspace)),
-        team_key=os.environ.get("LINEAR_TEAM_KEY"),
+        team_key=client.team_key,
     )
     issue = await client.get_issue(issue_id)
     if issue is None:
