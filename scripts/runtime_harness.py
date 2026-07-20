@@ -308,6 +308,7 @@ def _generated_config(spec: RuntimeSpec) -> str:
         "[scheduler]\n"
         f'temporal_address = "127.0.0.1:{spec.temporal_port}"\n'
         f"temporal_task_queue = {json.dumps(f'{spec.namespace}-scheduler')}\n"
+        "\n[workspaces.pynchy]\n"
     )
 
 
@@ -345,6 +346,7 @@ def _write_runtime_config(spec: RuntimeSpec) -> dict[str, object]:
         "gateway_key": gateway_key,
         "server_url": f"http://127.0.0.1:{spec.server_port}",
         "gateway_url": f"http://127.0.0.1:{spec.gateway_port}",
+        "database_path": str(spec.root / "data" / "messages.db"),
         "fake_container": spec.fake_container_name,
         "network": spec.network_name,
         "model": _DETERMINISTIC_MODEL,
@@ -359,6 +361,27 @@ async def _initialize_databases(root: Path) -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(data_dir / "messages.db") as database:
         await create_schema(database)
+        await database.execute(
+            "INSERT OR REPLACE INTO chats (jid, name, last_message_time) VALUES (?, ?, ?)",
+            ("runtime:pynchy", "Pynchy", "1970-01-01T00:00:00+00:00"),
+        )
+        await database.execute(
+            """
+            INSERT OR REPLACE INTO registered_groups
+                (jid, name, folder, trigger_pattern, added_at,
+                 container_config, security_profile, is_admin)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, 1)
+            """,
+            (
+                "runtime:pynchy",
+                "Pynchy",
+                "pynchy",
+                "@pynchy",
+                "1970-01-01T00:00:00+00:00",
+                json.dumps({"services": {}, "contains_secrets": False}),
+            ),
+        )
+        await database.commit()
     reset_settings()
     memory = SqliteMemoryBackend()
     try:

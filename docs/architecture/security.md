@@ -74,10 +74,10 @@ The host verifies messages and task operations against group identity:
 
 ### HTTP Control Plane
 
-The HTTP surface carries chat history, real-time events, capability and canary
-evidence, operational status, and deployment actions. Pynchy treats the application
-listener as a security boundary instead of delegating authorization to Tailscale or a
-host firewall.
+The HTTP surface carries capability and canary evidence, operational status,
+provider webhooks, and deployment actions. Pynchy treats the application listener
+as a security boundary instead of delegating authorization to Tailscale or a host
+firewall.
 
 The server binds TCP to loopback and creates a mode-`0600` Unix socket by default. A
 non-loopback bind requires `allow_public_bind`; remote deployment requires the
@@ -97,8 +97,9 @@ payloads are fenced as untrusted input and cannot authorize execution. See
 [Provider-authenticated webhooks](../usage/control-plane.md#provider-authenticated-webhooks).
 
 `/health` deliberately exposes only a static readiness state. Detailed `/status`,
-`/capabilities`, `/canaries/*`, and `/api/*` responses remain behind the control-plane
-policy. See [Control Plane Access](../usage/control-plane.md) for operator setup.
+`/capabilities`, `/actions`, `/work-items`, and `/canaries/*` responses remain
+behind the control-plane policy. See [Control Plane Access](../usage/control-plane.md)
+for operator setup.
 
 ### 5. Service Trust Policy (Lethal Trifecta Defenses)
 

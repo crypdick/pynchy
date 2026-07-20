@@ -55,7 +55,6 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.plugins.agent_cores.codex", "CodexAgentCorePlugin", "codex"),
     ("pynchy.plugins.channels.discord", "DiscordChannelPlugin", "discord"),
     ("pynchy.plugins.channels.slack", "SlackChannelPlugin", "slack"),
-    ("pynchy.plugins.channels.tui", "TuiChannelPlugin", "tui"),
     ("pynchy.plugins.channels.whatsapp", "WhatsAppPlugin", "whatsapp"),
     ("pynchy.plugins.speech.pocket_tts", "PocketTtsPlugin", "pocket-tts"),
     ("pynchy.plugins.tunnels.tailscale", "TailscaleTunnelPlugin", "tailscale"),

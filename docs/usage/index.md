@@ -4,13 +4,13 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, and talkin
 
 ## What You Can Do
 
-- **[Channels](../channels/index.md)** — Message your assistant from WhatsApp, Slack, Discord, or the built-in TUI (plugin-provided — more can be added)
+- **[Channels](../channels/index.md)** — Message your assistant from WhatsApp, Slack, or Discord (plugin-provided — more can be added)
 - **[Workspaces](workspaces.md)** — Bind a chat to reusable profiles for prompts, tools, skills, repositories, and security policy
 - **Admin channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
 - **[Persistent memory](memory.md)** — Agents save and recall facts across sessions using structured memory tools with ranked search (plugin-provided backend)
 - **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run the selected agent core and can message you back
 - **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK, OpenAI SDK, Codex CLI, or plugin-provided cores
-- **[Control plane](control-plane.md)** — Connect the local or remote TUI with fail-closed listeners and bearer authentication
+- **[Control plane](control-plane.md)** — Inspect local or remote operational state through fail-closed listeners and bearer authentication
 - **[Integrations](../integrations/index.md)** — Connect your workspaces to Google, GitHub, mail, Slack, Linear, and other external services
 - **Web access** — Search and fetch content through configured browser tools
 - **Container isolation** — Agents sandboxed in Apple Container (macOS) or Docker (macOS/Linux)
@@ -57,7 +57,7 @@ For example, you can ask Pynchy to help you:
 
 | Topic | What it covers |
 |-------|---------------|
-| [Channels](../channels/index.md) | WhatsApp, Slack, Discord, and TUI — multi-channel sync |
+| [Channels](../channels/index.md) | WhatsApp, Slack, and Discord — multi-channel sync |
 | [Control plane](control-plane.md) | Local Unix socket, remote bearer authentication, rate limits, and deployment access |
 | [Groups](groups.md) | Group management, admin channel privileges |
 | [Workspace configuration](workspaces.md) | Compose profiles and bind workspaces to configured chats |

@@ -7,7 +7,6 @@ import hmac
 import json
 from datetime import UTC, datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -31,10 +30,7 @@ from pynchy.plugins.integrations.github_webhooks import (
 )
 from pynchy.plugins.webhooks import WebhookAuthenticationError, WebhookPayloadError, WebhookRoute
 from pynchy.state import get_all_tasks, get_webhook_receipt, init_test_database
-from pynchy.types import NewMessage, ScheduledTask, WorkspaceProfile
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+from pynchy.types import ScheduledTask, WorkspaceProfile
 
 _SIGNING_KEY = "github-webhook-test-signing-key-long-enough"
 _DELIVERY_ID = "ee7b4ec5-daa1-48fa-8c8f-c4de20e9d65f"
@@ -232,34 +228,6 @@ class _WebhookDeps:
 
     def admin_chat_jid(self) -> str:
         return "discord:pynchy-dev"
-
-    def channels_connected(self) -> bool:
-        return True
-
-    def get_groups(self) -> list[dict[str, Any]]:
-        return []
-
-    async def get_messages(self, jid: str, limit: int) -> list[NewMessage]:
-        del jid, limit
-        return []
-
-    async def send_user_message(self, jid: str, content: str) -> None:
-        del jid, content
-
-    def subscribe_events(
-        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
-    ) -> Callable[[], None]:
-        del callback
-        return lambda: None
-
-    async def get_periodic_agents(self) -> list[dict[str, Any]]:
-        return []
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
-
-    def is_shutting_down(self) -> bool:
-        return False
 
     def get_plugin_manager(self) -> object:
         return object()

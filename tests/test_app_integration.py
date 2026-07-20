@@ -371,17 +371,24 @@ class TestAppImports:
 
 
 class TestFirstRunBootstrap:
-    """Verify first-run workspace bootstrap without external channels."""
+    """Verify first-run workspace bootstrap requires a real channel."""
 
-    async def test_creates_tui_admin_workspace_without_channel(self, app: PynchyApp):
+    async def test_creates_admin_workspace_through_command_center(self, app: PynchyApp):
+        app.workspaces = {}
+        channel = MagicMock(name="command_center")
+        channel.name = "discord-primary"
+        channel.create_group = AsyncMock(return_value="discord:channel:admin")
+
+        await startup_handler.setup_admin_group(app, default_channel=channel)
+
+        channel.create_group.assert_awaited_once_with("Pynchy")
+        assert app.workspaces["discord:channel:admin"].is_admin is True
+
+    async def test_rejects_bootstrap_without_creation_capable_channel(self, app: PynchyApp):
         app.workspaces = {}
 
-        await startup_handler.setup_admin_group(app, default_channel=None)
-
-        assert len(app.workspaces) == 1
-        [(jid, group)] = list(app.workspaces.items())
-        assert jid.startswith("tui://")
-        assert group.is_admin is True
+        with pytest.raises(RuntimeError, match=r"command_center\.connection"):
+            await startup_handler.setup_admin_group(app, default_channel=None)
 
 
 class TestProcessGroupMessages:

@@ -48,6 +48,11 @@ downloads the pinned image and locked Python artifacts when the local cache lack
 Its tag combines the runtime namespace and source digest; harness teardown removes that exact
 test image after its owned containers have stopped.
 
+Interactive runtime tests enter through a harness-only loopback route enabled by
+`PYNCHY_RUNTIME_HARNESS=1`. The route calls the same inbound orchestration boundary as a channel;
+it never exists in a normal Pynchy process. Tests inspect the harness-owned SQLite database for
+durable results instead of exposing production chat-history endpoints.
+
 ## Run runtime integration tests locally
 
 From an isolated, otherwise clean checkout, run the same command as CI:

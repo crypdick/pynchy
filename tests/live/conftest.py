@@ -40,7 +40,7 @@ class RecordingChannel:
     name: str = "recording"
     connected: bool = True
     # Whether outbound messages are prefixed with assistant name.
-    # WhatsApp: True, Slack: False (bot name shown by platform), TUI: N/A (SSE)
+    # WhatsApp: True; Slack and Discord: False (the platform shows bot identity).
     prefix_assistant_name: bool = True
 
     # Captured outputs
@@ -112,16 +112,6 @@ class StreamingChannel(RecordingChannel):
     async def update_event(self, jid: str, message_id: str, event: object) -> None:
         content = event.content if hasattr(event, "content") else str(event)
         self.updated_messages.append((jid, message_id, content))
-
-
-def make_tui_channel() -> RecordingChannel:
-    """TUI channel stub.
-
-    TUI doesn't go through send_message — it uses SSE/EventBus. But for
-    broadcast_to_channels tests, we create a recording channel that mimics
-    how a TUI-like channel would behave if it were a Channel protocol impl.
-    """
-    return RecordingChannel(name="tui", prefix_assistant_name=True)
 
 
 def make_whatsapp_channel() -> RecordingChannel:
@@ -305,7 +295,6 @@ async def live_app(tmp_path: Path) -> PynchyApp:
 def all_channels() -> dict[str, RecordingChannel]:
     """Create one instance of each channel type for parity testing."""
     return {
-        "tui": make_tui_channel(),
         "whatsapp": make_whatsapp_channel(),
         "slack": make_slack_channel(),
     }

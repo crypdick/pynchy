@@ -27,7 +27,7 @@ Linux, start Docker and confirm the user belongs to the `docker` group.
 
 Pynchy binds to `127.0.0.1:8484` by default and intentionally rejects remote
 clients. Confirm Tailscale connectivity when you use it, then configure a
-public listener and bearer token through [Control plane access](../usage/control-plane.md#enable-remote-tui-access).
+public listener and bearer token through [Control plane access](../usage/control-plane.md#enable-remote-diagnostic-access).
 
 ## macOS LaunchAgent exits immediately
 
@@ -40,7 +40,7 @@ paths rather than literal `$HOME` strings. Inspect `logs/pynchy.error.log` and
 Check user lingering with `loginctl show-user $USER | grep Linger`. Enable it
 with `sudo loginctl enable-linger $USER` when needed.
 
-## First run does not create the systemd service
+## First run cannot create the admin workspace
 
-Run `uv run pynchy` without `--tui` for the initial setup. The TUI-only command
-does not create the service.
+Set `command_center.connection` to a configured channel that supports chat
+creation, then run `uv run pynchy` again.

@@ -124,7 +124,7 @@ LINEAR_WEBHOOK_SECRET=...
 ```
 
 Expose Pynchy through a public HTTPS reverse proxy, following the
-[control-plane public-bind setup](../usage/control-plane.md#enable-remote-tui-access).
+[control-plane public-bind setup](../usage/control-plane.md#enable-remote-diagnostic-access).
 Then create a Linear webhook for `Comment` and `Issue` events with this URL:
 
 ```text

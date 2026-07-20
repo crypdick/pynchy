@@ -207,30 +207,6 @@ class MockHttpDeps:
     def admin_chat_jid(self) -> str:
         return "admin@g.us"
 
-    def channels_connected(self) -> bool:
-        return True
-
-    def get_groups(self) -> list[dict[str, Any]]:
-        return []
-
-    async def get_messages(self, _jid: str, _limit: int) -> list[Any]:
-        return []
-
-    async def send_user_message(self, _jid: str, _content: str) -> None:
-        return None
-
-    def subscribe_events(self, _callback: Any) -> Any:
-        return lambda: None
-
-    async def get_periodic_agents(self) -> list[dict[str, Any]]:
-        return []
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
-
-    def is_shutting_down(self) -> bool:
-        return False
-
 
 # ---------------------------------------------------------------------------
 # service section

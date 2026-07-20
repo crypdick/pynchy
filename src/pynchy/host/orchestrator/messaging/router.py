@@ -153,8 +153,8 @@ async def broadcast_agent_input(
         return
 
     if source == "user":
-        # User messages are already visible in chat — just emit trace events
-        # for TUI/SSE consumers who want the full token stream.
+        # User messages are already visible in chat. Emit trace events for
+        # observers that need the complete agent-input record.
         for msg in messages:
             if not isinstance(msg, dict):
                 continue

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess  # noqa: S404, RUF100 - helper reads only a harness-owned Docker sidecar.
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import pytest
@@ -54,36 +54,50 @@ def json_request(
 
 
 def groups(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return registered workspaces from the public TUI API."""
-    value = json_request(f"{_required_string(state, 'server_url')}/api/groups")
-    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-        pytest.fail("Runtime /api/groups did not return a JSON list of objects")
-    return value
+    """Return registered workspaces from the harness-owned database."""
+    with sqlite3.connect(_database_path(state), timeout=10) as database:
+        rows = database.execute(
+            "SELECT jid, name, folder FROM registered_groups ORDER BY folder"
+        ).fetchall()
+    return [{"jid": jid, "name": name, "folder": folder} for jid, name, folder in rows]
 
 
 def messages(
     state: dict[str, Any], jid: str, *, limit: int = _RUNTIME_HISTORY_LIMIT
 ) -> list[dict[str, Any]]:
     """Read enough history that response-count assertions cannot hit a moving cap."""
-    encoded_jid = quote(jid, safe="")
-    value = json_request(
-        f"{_required_string(state, 'server_url')}/api/messages?jid={encoded_jid}&limit={limit}"
-    )
-    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-        pytest.fail("Runtime /api/messages did not return a JSON list of objects")
-    return value
+    with sqlite3.connect(_database_path(state), timeout=10) as database:
+        rows = database.execute(
+            """
+            SELECT sender_name, content, timestamp, is_from_me
+            FROM messages
+            WHERE chat_jid = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (jid, limit),
+        ).fetchall()
+    return [
+        {
+            "sender_name": sender_name,
+            "content": content,
+            "timestamp": timestamp,
+            "is_from_me": bool(is_from_me),
+        }
+        for sender_name, content, timestamp, is_from_me in reversed(rows)
+    ]
 
 
 def send_message(state: dict[str, Any], jid: str, content: str) -> None:
-    """Submit one TUI message through Pynchy's public HTTP ingress."""
+    """Submit one message through the explicit harness-only ingress."""
     value = json_request(
-        f"{_required_string(state, 'server_url')}/api/send",
+        f"{_required_string(state, 'server_url')}/__pynchy_runtime__/messages",
         method="POST",
         body={"jid": jid, "content": content},
         headers={"Content-Type": "application/json"},
     )
-    if value != {"status": "ok"}:
-        pytest.fail(f"Runtime /api/send returned unexpected payload: {value!r}")
+    if value != {"status": "accepted"}:
+        pytest.fail(f"Runtime harness ingress returned unexpected payload: {value!r}")
 
 
 def status(state: dict[str, Any]) -> dict[str, Any]:
@@ -184,6 +198,10 @@ def _required_string(state: dict[str, Any], key: str) -> str:
     if not isinstance(value, str):
         pytest.fail(f"Runtime state is missing string field {key!r}")
     return value
+
+
+def _database_path(state: dict[str, Any]) -> str:
+    return _required_string(state, "database_path")
 
 
 def _messages_if_response_count(

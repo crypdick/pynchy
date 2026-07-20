@@ -20,7 +20,7 @@ from pynchy.host.git_ops.utils import (
 )
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
 from pynchy.host.orchestrator.http_server import create_http_app
-from pynchy.types import DeployClaim, DeployClaimStatus, NewMessage, ScheduledTask, WorkspaceProfile
+from pynchy.types import DeployClaim, DeployClaimStatus, ScheduledTask, WorkspaceProfile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -299,18 +299,9 @@ class MockHttpDeps:
     """Mock implementation of HttpDeps for testing."""
 
     def __init__(self):
-        self.messages_sent: list[tuple[str, str]] = []
         self.broadcasts: list[tuple[str, str]] = []
-        self.user_messages: list[tuple[str, str]] = []
-        self._groups = [{"jid": "test@g.us", "name": "Test Group"}]
-        self._messages: list[NewMessage] = []
-        self._connected = True
+        self.runtime_messages: list[tuple[str, str]] = []
         self._admin_jid = "admin-1@g.us"
-        self._event_callbacks: list = []
-        self._periodic_agents: list[dict[str, Any]] = []
-
-    async def send_message(self, jid: str, text: str) -> None:
-        self.messages_sent.append((jid, text))
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.broadcasts.append((jid, text))
@@ -318,30 +309,8 @@ class MockHttpDeps:
     def admin_chat_jid(self) -> str:
         return self._admin_jid
 
-    def channels_connected(self) -> bool:
-        return self._connected
-
-    def get_groups(self) -> list[dict[str, Any]]:
-        return self._groups
-
-    async def get_messages(self, jid: str, limit: int) -> list[NewMessage]:
-        return self._messages[-limit:]
-
-    async def send_user_message(self, jid: str, content: str) -> None:
-        self.user_messages.append((jid, content))
-
-    def subscribe_events(self, callback) -> Any:
-        self._event_callbacks.append(callback)
-        return lambda: self._event_callbacks.remove(callback)
-
-    async def get_periodic_agents(self) -> list[dict[str, Any]]:
-        return self._periodic_agents
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
-
-    def is_shutting_down(self) -> bool:
-        return False
+    async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
+        self.runtime_messages.append((jid, content))
 
     def get_plugin_manager(self) -> object:
         return object()
@@ -381,89 +350,36 @@ class TestHealthEndpoint(AioHTTPTestCase):
         repo_dirty.assert_not_called()
 
 
-class TestTUIAPIEndpoints(AioHTTPTestCase):
-    """Tests for TUI API endpoints."""
-
-    async def get_application(self) -> web.Application:
-        self.deps = MockHttpDeps()
-        self.deps._messages = [
-            NewMessage(
-                id="m1",
-                chat_jid="test@g.us",
-                sender="user@s.whatsapp.net",
-                sender_name="Alice",
-                content="Hello",
-                timestamp="2024-01-01T00:00:00.000Z",
-                is_from_me=False,
-            ),
-            NewMessage(
-                id="m2",
-                chat_jid="test@g.us",
-                sender="bot@s.whatsapp.net",
-                sender_name="Bot",
-                content="Hi Alice",
-                timestamp="2024-01-01T00:00:01.000Z",
-                is_from_me=True,
-            ),
-        ]
-        self.deps._periodic_agents = [{"name": "test-agent", "status": "running"}]
-
-        return create_http_app(self.deps)
-
-    async def test_api_groups_returns_groups(self):
-        """GET /api/groups returns registered groups."""
-        resp = await self.client.get("/api/groups")
-        assert resp.status == 200
-        data = await resp.json()
-        assert data == [{"jid": "test@g.us", "name": "Test Group"}]
-
-    async def test_api_messages_returns_messages(self):
-        """GET /api/messages returns chat history."""
-        resp = await self.client.get("/api/messages?jid=test@g.us&limit=10")
-        assert resp.status == 200
-        data = await resp.json()
-        assert len(data) == 2
-        assert data[0]["sender_name"] == "Alice"
-        assert data[0]["content"] == "Hello"
-        assert data[1]["sender_name"] == "Bot"
-        assert data[1]["content"] == "Hi Alice"
-
-    async def test_api_messages_requires_jid(self):
-        """GET /api/messages requires jid parameter."""
-        resp = await self.client.get("/api/messages")
-        assert resp.status == 400
-        data = await resp.json()
-        assert "jid" in data["error"]
-
-    async def test_api_messages_respects_limit(self):
-        """GET /api/messages respects limit parameter."""
-        resp = await self.client.get("/api/messages?jid=test@g.us&limit=1")
-        assert resp.status == 200
-        data = await resp.json()
-        assert len(data) == 1
-
-    async def test_api_send_sends_message(self):
-        """POST /api/send sends user message."""
-        resp = await self.client.post(
-            "/api/send",
-            json={"jid": "test@g.us", "content": "Test message"},
+async def test_runtime_harness_ingress_is_absent_from_normal_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
+    client = TestClient(TestServer(create_http_app(MockHttpDeps())))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/__pynchy_runtime__/messages",
+            json={"jid": "runtime:pynchy", "content": "hello"},
         )
-        assert resp.status == 200
-        data = await resp.json()
-        assert data["status"] == "ok"
-        assert self.deps.user_messages == [("test@g.us", "Test message")]
+        assert response.status == 404
+    finally:
+        await client.close()
 
-    async def test_api_send_requires_jid_and_content(self):
-        """POST /api/send requires jid and content."""
-        resp = await self.client.post("/api/send", json={"jid": "test@g.us"})
-        assert resp.status == 400
 
-        resp = await self.client.post("/api/send", json={"content": "test"})
-        assert resp.status == 400
-
-    async def test_api_periodic_returns_agents(self):
-        """GET /api/periodic returns periodic agent status."""
-        resp = await self.client.get("/api/periodic")
-        assert resp.status == 200
-        data = await resp.json()
-        assert data == [{"name": "test-agent", "status": "running"}]
+async def test_runtime_harness_ingress_calls_real_ingestion_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
+    deps = MockHttpDeps()
+    client = TestClient(TestServer(create_http_app(deps)))
+    await client.start_server()
+    try:
+        response = await client.post(
+            "/__pynchy_runtime__/messages",
+            json={"jid": "runtime:pynchy", "content": "hello"},
+        )
+        assert response.status == 200
+        assert await response.json() == {"status": "accepted"}
+        assert deps.runtime_messages == [("runtime:pynchy", "hello")]
+    finally:
+        await client.close()

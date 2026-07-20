@@ -155,7 +155,7 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
             ]
         )
         app.router.add_get("/health", self._ok)
-        app.router.add_get("/api/groups", self._ok)
+        app.router.add_get("/status", self._ok)
         app.router.add_post("/deploy", self._ok)
         app.router.add_post("/webhooks/example/project", self._ok)
         app.router.add_get("/webhooks/example/project", self._ok)
@@ -185,10 +185,10 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
         assert await response.json() == {"status": "ok"}
         self.audit.assert_not_awaited()
 
-    async def test_remote_api_rejects_missing_or_invalid_bearer(self) -> None:
-        missing = await self.client.get("/api/groups")
+    async def test_remote_operator_endpoint_rejects_missing_or_invalid_bearer(self) -> None:
+        missing = await self.client.get("/status")
         invalid = await self.client.get(
-            "/api/groups",
+            "/status",
             headers={"Authorization": "Bearer invalid"},
         )
 
@@ -200,16 +200,16 @@ class TestRemoteControlPlanePolicy(AioHTTPTestCase):
             "denied",
         ]
 
-    async def test_remote_api_accepts_and_audits_valid_bearer(self) -> None:
+    async def test_remote_operator_endpoint_accepts_and_audits_valid_bearer(self) -> None:
         response = await self.client.get(
-            "/api/groups",
+            "/status",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
 
         assert response.status == 200
         self.audit.assert_awaited_once()
         assert self.audit.await_args.kwargs["decision"] == "allowed"
-        assert self.audit.await_args.kwargs["tool_name"] == "http:GET:/api/groups"
+        assert self.audit.await_args.kwargs["tool_name"] == "http:GET:/status"
 
     async def test_public_bind_does_not_implicitly_enable_remote_deploy(self) -> None:
         response = await self.client.post(
@@ -284,7 +284,7 @@ class TestRemoteRateLimit(AioHTTPTestCase):
             rate_limiter=RequestRateLimiter(request_limit=1, window_seconds=60),
         )
         app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
-        app.router.add_get("/api/groups", self._ok)
+        app.router.add_get("/status", self._ok)
         return app
 
     async def asyncSetUp(self) -> None:
@@ -304,9 +304,9 @@ class TestRemoteRateLimit(AioHTTPTestCase):
         return web.json_response({"status": "ok"})
 
     async def test_rate_limit_runs_before_bearer_acceptance(self) -> None:
-        unauthorized = await self.client.get("/api/groups")
+        unauthorized = await self.client.get("/status")
         limited = await self.client.get(
-            "/api/groups",
+            "/status",
             headers={"Authorization": f"Bearer {TEST_TOKEN}"},
         )
 
@@ -337,7 +337,7 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
 
     with patch("pynchy.host.orchestrator.http_control.record_security_event", audit):
         app = web.Application(middlewares=[build_control_plane_middleware(runtime)])
-        app.router.add_get("/api/groups", ok)
+        app.router.add_get("/status", ok)
         register_unix_socket_cleanup(app, runtime)
         runner = web.AppRunner(app)
         await runner.setup()
@@ -346,7 +346,7 @@ async def test_unix_socket_is_mode_0600_and_bypasses_tcp_bearer(
             connector = aiohttp.UnixConnector(path=str(socket_path))
             async with (
                 aiohttp.ClientSession(connector=connector) as session,
-                session.get("http://localhost/api/groups") as response,
+                session.get("http://localhost/status") as response,
             ):
                 assert response.status == 200
             assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
