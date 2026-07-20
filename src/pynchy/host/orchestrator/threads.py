@@ -39,6 +39,13 @@ class ThreadParticipantChannel(Protocol):
     ) -> None: ...
 
 
+@runtime_checkable
+class ThreadLifecycleChannel(Protocol):
+    """Optional channel capability for opening or closing a child conversation."""
+
+    async def set_thread_closed(self, child_jid: str, *, closed: bool) -> None: ...
+
+
 @dataclass(frozen=True)
 class EnsuredThread:
     """Result of idempotently resolving one named child conversation."""
@@ -120,6 +127,26 @@ async def add_thread_participants(
     )
     if channel is not None:
         await channel.add_thread_participants(child_jid, participant_ids)
+
+
+async def set_thread_closed(
+    channels: list[Channel],
+    child_jid: str,
+    *,
+    closed: bool,
+) -> None:
+    """Apply provider-neutral closed state through the child channel owner."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(child_jid) and isinstance(candidate, ThreadLifecycleChannel)
+        ),
+        None,
+    )
+    if channel is None:
+        raise RuntimeError(f"Channel does not support thread lifecycle: {child_jid}")
+    await channel.set_thread_closed(child_jid, closed=closed)
 
 
 async def ensure_thread(

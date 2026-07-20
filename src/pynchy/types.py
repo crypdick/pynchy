@@ -635,6 +635,9 @@ class Channel(Protocol):
     # Optional: child-thread creation. Not all channels support this.
     # create_thread is NOT part of the protocol — check with hasattr at call sites.
 
+    # Optional: child-thread lifecycle. Channels may map closed state to their
+    # native archive or equivalent through set_thread_closed.
+
     # Whether to prefix outbound messages with the assistant name.
     # Some channels (e.g. Telegram bots) already display their name, so they return false.
     # Default true if not implemented.

@@ -346,6 +346,16 @@ class DiscordChannel:
         thread = cast("Any", await self.resolve_channel(child_jid))
         await self._add_thread_participants(thread, participant_ids)
 
+    async def set_thread_closed(self, child_jid: str, *, closed: bool) -> None:
+        """Map conversation closed state to Discord's thread archive flag."""
+        thread = cast("Any", await self.resolve_channel(child_jid))
+        if bool(getattr(thread, "archived", False)) == closed:
+            return
+        edit = getattr(thread, "edit", None)
+        if not callable(edit):
+            raise TypeError("Discord target does not support thread lifecycle")
+        await edit(archived=closed)
+
     async def _add_thread_participants(
         self,
         thread: object,

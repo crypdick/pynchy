@@ -24,7 +24,9 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
+    sync_conversation_control_state,
 )
+from pynchy.logger import logger
 from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
     WebhookEvent,
     WebhookRoute,
@@ -34,6 +36,7 @@ from pynchy.state import (
     claim_next_conversation_delivery,
     get_conversation,
     get_conversation_control_binding,
+    list_idle_conversation_ids,
     list_pending_conversation_ids,
     release_conversation_delivery_claim,
 )
@@ -79,9 +82,13 @@ class WebhookConversationDispatcher:
         for provider in {route.provider for route in self.routes}:
             register_conversation_delivery_waker(provider, self.owner, self.after_completion)
         for route in self.routes:
+            provider = ExternalProvider(route.provider)
+            route_id = ExternalRoute(route.name)
+            for conversation_id in await list_idle_conversation_ids(provider, route_id):
+                await self._sync_control_state(route, conversation_id)
             pending = await list_pending_conversation_ids(
-                ExternalProvider(route.provider),
-                ExternalRoute(route.name),
+                provider,
+                route_id,
             )
             for conversation_id in pending:
                 await self.wake(conversation_id)
@@ -113,6 +120,7 @@ class WebhookConversationDispatcher:
             payload={
                 "prompt": prompt,
                 "control_title": target.control_title,
+                "control_closed": target.control_closed,
                 "event_type": event.event_type,
                 "event_action": event.action,
             },
@@ -136,7 +144,29 @@ class WebhookConversationDispatcher:
         """Wake only a pending sibling owned by this route registry."""
         owned_routes = {(route.provider, route.name) for route in self.routes}
         if (completed.identity.provider, completed.identity.route) in owned_routes:
+            route = next(
+                route
+                for route in self.routes
+                if (route.provider, route.name)
+                == (completed.identity.provider, completed.identity.route)
+            )
+            await self._sync_control_state(route, completed.conversation_id)
             await self.wake(completed.conversation_id)
+
+    async def _sync_control_state(
+        self,
+        route: WebhookRoute,
+        conversation_id: ConversationId,
+    ) -> None:
+        try:
+            await sync_conversation_control_state(self.deps.channels(), conversation_id)
+        except Exception:  # noqa: BLE001, RUF100 - durable intent is retried at startup.
+            logger.exception(
+                "Conversation control lifecycle sync failed",
+                provider=route.provider,
+                route=route.name,
+                conversation_id=conversation_id,
+            )
 
     async def _prepare_message(
         self,
@@ -146,8 +176,11 @@ class WebhookConversationDispatcher:
         payload = delivery.payload or {}
         prompt = payload.get("prompt")
         proposed_title = payload.get("control_title")
+        proposed_closed = payload.get("control_closed")
         if not isinstance(prompt, str) or not isinstance(proposed_title, str):
             raise TypeError("Routed webhook delivery lost its host-parsed prompt")
+        if proposed_closed is not None and not isinstance(proposed_closed, bool):
+            raise TypeError("Routed webhook delivery lost its control lifecycle state")
 
         conversation = await get_conversation(delivery.conversation_id)
         if conversation is None:
@@ -157,6 +190,13 @@ class WebhookConversationDispatcher:
             raise RuntimeError("Routed webhook conversation lost its parent workspace")
         binding = await get_conversation_control_binding(conversation.id)
         title = binding.title if binding is not None else proposed_title
+        closed = (
+            proposed_closed
+            if proposed_closed is not None
+            else binding.closed
+            if binding is not None
+            else False
+        )
         workspace = await ensure_conversation_workspace(
             ConversationWorkspaceContext(
                 channels=self.deps.channels,
@@ -170,6 +210,7 @@ class WebhookConversationDispatcher:
                 parent_workspace=conversation.workspace,
                 parent_jid=ChatJid(parent.jid),
                 title=title,
+                closed=closed,
             ),
         )
         return workspace.profile.jid, NewMessage(

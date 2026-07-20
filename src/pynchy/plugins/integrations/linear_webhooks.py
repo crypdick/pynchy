@@ -24,6 +24,7 @@ from pynchy.conversation.models import (
     ConversationSubjectNamespace,
 )
 from pynchy.plugins.integrations.linear_boot import linear_workspace_enabled
+from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
 from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
     WebhookConversation,
@@ -51,6 +52,7 @@ _LINEAR_WEBHOOK_INSTRUCTIONS = (
 )
 _LINEAR_ISSUE_URL = re.compile(r"/issue/([^/#?]+)", re.IGNORECASE)
 _DISCORD_THREAD_TITLE_LIMIT = 100
+_DONE_STATE_NAME = LINEAR_TODO_STATUSES["done"].name
 
 
 class _LinearWebhookModel(BaseModel):
@@ -230,6 +232,23 @@ def _control_title(payload: _LinearWebhookPayload) -> str:
     return value[:_DISCORD_THREAD_TITLE_LIMIT]
 
 
+def _issue_state_name(payload: _LinearWebhookPayload) -> str:
+    nested_issue = payload.data.get("issue")
+    issue = nested_issue if isinstance(nested_issue, dict) else {}
+    for candidate in (payload.data.get("state"), issue.get("state")):
+        if not isinstance(candidate, dict):
+            continue
+        name = _optional_text(candidate.get("name"))
+        if name is not None:
+            return name
+    return ""
+
+
+def _issue_control_closed(payload: _LinearWebhookPayload) -> bool | None:
+    state_name = _issue_state_name(payload)
+    return state_name == _DONE_STATE_NAME if state_name else None
+
+
 def _conversation(payload: _LinearWebhookPayload, issue_id: str) -> WebhookConversation:
     return WebhookConversation(
         subject=ConversationSubject(
@@ -237,6 +256,7 @@ def _conversation(payload: _LinearWebhookPayload, issue_id: str) -> WebhookConve
             key=ConversationSubjectKey(issue_id),
         ),
         control_title=_control_title(payload),
+        control_closed=_issue_control_closed(payload),
     )
 
 
@@ -265,14 +285,6 @@ def _comment_event(
         },
         conversation=_conversation(payload, issue_id),
     )
-
-
-def _issue_state_name(payload: _LinearWebhookPayload) -> str:
-    state = payload.data.get("state")
-    if not isinstance(state, dict):
-        return ""
-    name = state.get("name")
-    return name if isinstance(name, str) else ""
 
 
 def _issue_event(

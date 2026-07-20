@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS conversation_control_bindings (
     parent_jid TEXT NOT NULL,
     thread_jid TEXT NOT NULL,
     title TEXT NOT NULL,
+    closed INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (conversation_id) REFERENCES routed_conversations(id)
 );
