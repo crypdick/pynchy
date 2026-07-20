@@ -41,6 +41,74 @@ cleanup_runtime_build_state() {
 }
 trap cleanup_runtime_build_state EXIT
 
+mcp_image_fingerprint() {
+    local base="$1"
+    local pathspecs=()
+    case "$base" in
+        gcal)
+            pathspecs=(
+                "src/pynchy/agent/mcp/gcal.Dockerfile"
+                "src/pynchy/agent/mcp/gcal-entrypoint.sh"
+            )
+            ;;
+        gdrive)
+            pathspecs=(
+                "src/pynchy/agent/mcp/gdrive.Dockerfile"
+                "src/pynchy/agent/mcp/gdrive-wrapper.mjs"
+            )
+            ;;
+        notebook)
+            pathspecs=(
+                "src/pynchy/agent/mcp/notebook.Dockerfile"
+                "src/pynchy/plugins/integrations/notebook_server"
+            )
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    local tracked_files
+    tracked_files="$(
+        git -C "$PROJECT_ROOT" ls-files --cached --others --exclude-standard -- "${pathspecs[@]}"
+    )"
+    if [ -z "$tracked_files" ]; then
+        return 1
+    fi
+
+    while IFS= read -r tracked_file; do
+        printf '%s\t%s\n' \
+            "$tracked_file" \
+            "$(git -C "$PROJECT_ROOT" hash-object "$PROJECT_ROOT/$tracked_file")"
+    done <<< "$tracked_files" | git hash-object --stdin
+}
+
+mcp_image_is_current() {
+    local base="$1"
+    local image="$2"
+    local fingerprint="$3"
+    local stamp="$MCP_STAMP_DIR/${base}-${TAG//\//_}.fingerprint"
+    local recorded_fingerprint=""
+
+    if [ "${PYNCHY_REBUILD_MCP:-0}" = "1" ] || [ ! -f "$stamp" ]; then
+        return 1
+    fi
+    IFS= read -r recorded_fingerprint < "$stamp"
+    [ "$recorded_fingerprint" = "$fingerprint" ] && \
+        "$RUNTIME" image inspect "$image" >/dev/null 2>&1
+}
+
+record_mcp_image_fingerprint() {
+    local base="$1"
+    local fingerprint="$2"
+    local stamp="$MCP_STAMP_DIR/${base}-${TAG//\//_}.fingerprint"
+    local temporary_stamp="${stamp}.tmp.$$"
+
+    mkdir -p "$MCP_STAMP_DIR"
+    printf '%s\n' "$fingerprint" > "$temporary_stamp"
+    mv "$temporary_stamp" "$stamp"
+}
+
 IMAGE_NAME="pynchy-agent"
 TAG="${1:-latest}"
 
@@ -59,6 +127,7 @@ $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .
 # Build MCP server images from mcp/*.Dockerfile.
 # Image name derived from filename: notebook.Dockerfile → pynchy-mcp-notebook:latest
 MCP_DIR="${SCRIPT_DIR}/mcp"
+MCP_STAMP_DIR="${PROJECT_ROOT}/data/build-cache/mcp-images"
 MCP_PIDS=()
 if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
     echo ""
@@ -74,11 +143,25 @@ if compgen -G "${MCP_DIR}/*.Dockerfile" > /dev/null 2>&1; then
     for df in "${MCP_DIR}"/*.Dockerfile; do
         base="$(basename "$df" .Dockerfile)"
         mcp_image="pynchy-mcp-${base}:${TAG}"
+        mcp_fingerprint=""
+        if [ "$RUNTIME" = "container" ]; then
+            # Normal deploys reuse content-identical MCP images. Scheduled
+            # maintenance sets PYNCHY_REBUILD_MCP=1 to refresh floating bases.
+            if mcp_fingerprint="$(mcp_image_fingerprint "$base")" && \
+                mcp_image_is_current "$base" "$mcp_image" "$mcp_fingerprint"; then
+                echo "  Reusing ${mcp_image}; source inputs are unchanged"
+                continue
+            fi
+        fi
         echo "  Building ${mcp_image} from ${df}"
         if [ "$RUNTIME" = "container" ]; then
             if ! $RUNTIME build -t "${mcp_image}" -f "${df}" .; then
                 echo "MCP image build failed: ${mcp_image}"
                 MCP_FAILED=1
+            else
+                if [ -n "$mcp_fingerprint" ]; then
+                    record_mcp_image_fingerprint "$base" "$mcp_fingerprint"
+                fi
             fi
         else
             $RUNTIME build -t "${mcp_image}" -f "${df}" . &
