@@ -78,6 +78,12 @@ class _RouteSendArguments(_StrictModel):
         return value
 
 
+class _RouteSendReceipt(_StrictModel):
+    """Agent-safe provider receipt without destination identifiers."""
+
+    event_id: str = Field(min_length=1)
+
+
 def _active_route(data: dict[str, Any]) -> ActiveMatrixRoute:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
@@ -127,7 +133,7 @@ def _send_message_receipt(response: dict[str, Any]) -> ActionIntentReceipt:
     raw_result = response.get("result")
     if not isinstance(raw_result, str):
         raise TypeError("Matrix send response omitted its serialized provider result")
-    result = MatrixSendResult.model_validate(json.loads(raw_result))
+    result = _RouteSendReceipt.model_validate(json.loads(raw_result))
     return ActionIntentReceipt(
         provider_request_id=result.event_id,
         receipt=result.model_dump(mode="json"),
@@ -147,8 +153,10 @@ async def _handle_route_read(data: dict[str, Any]) -> dict[str, Any]:
     try:
         active = await _current_active_route(data)
         arguments = _read_arguments(data)
+        client = _gateway_for(active)
+        await _revalidate_portal(active, client)
         messages = await asyncio.to_thread(
-            _gateway_for(active).list_messages,
+            client.list_messages,
             room_id=active.route.endpoint.room_id,
             limit=arguments.limit,
         )
@@ -166,20 +174,31 @@ async def _handle_route_read(data: dict[str, Any]) -> dict[str, Any]:
     return {"result": json.dumps(scoped, indent=2, sort_keys=True)}
 
 
-async def _send_route_message(active: ActiveMatrixRoute, body: str) -> MatrixSendResult:
-    client = _gateway_for(active)
+async def _revalidate_portal(
+    active: ActiveMatrixRoute,
+    client: MatrixRouteGateway,
+) -> None:
+    """Prove the live room and portal still match the registered route."""
     assertion = await asyncio.to_thread(
         client.room_assertion,
         room_id=active.route.endpoint.room_id,
     )
     _validate_portal(active.route, assertion)
     if assertion != active.portal:
-        raise MatrixGatewayError("Matrix route portal changed; request a new approval")
-    return await asyncio.to_thread(
+        raise MatrixGatewayError("Matrix route portal changed; refresh the conversation route")
+
+
+async def _send_route_message(active: ActiveMatrixRoute, body: str) -> MatrixSendResult:
+    client = _gateway_for(active)
+    await _revalidate_portal(active, client)
+    result = await asyncio.to_thread(
         client.send_message,
         room_id=active.route.endpoint.room_id,
         body=body,
     )
+    if result.room_id != active.route.endpoint.room_id:
+        raise MatrixGatewayError("Matrix gateway returned an unexpected destination")
+    return result
 
 
 async def _handle_route_send(data: dict[str, Any]) -> dict[str, Any]:
@@ -192,7 +211,7 @@ async def _handle_route_send(data: dict[str, Any]) -> dict[str, Any]:
         result = await _send_route_message(active, arguments.body)
     except (MatrixGatewayError, ValidationError, ValueError) as exc:
         return {"error": f"Matrix route send denied: {exc}"}
-    return {"result": json_result(result)}
+    return {"result": json_result(_RouteSendReceipt(event_id=result.event_id))}
 
 
 def _gateway_executable_exists(command: str) -> bool:

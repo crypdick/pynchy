@@ -193,6 +193,8 @@ async def _request_human_approval(
         expires_after_seconds=context.action.approval.expires_after_seconds,
         origin_conversation_id=(str(control.conversation_id) if control is not None else None),
         action_payload=(context.intent.payload if context.intent is not None else None),
+        corruption_tainted=context.gate.policy.corruption_tainted,
+        secret_tainted=context.gate.policy.secret_tainted,
     )
     if context.action.action_intent is not None:
         await mark_action_intent_awaiting_approval(

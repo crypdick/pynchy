@@ -1,6 +1,6 @@
 """File-backed approval state manager for the human approval gate.
 
-Manages pending approval files in ipc/{group}/pending_approvals/.
+Manages host-owned approval files outside the agent-mounted IPC tree.
 Each file represents a PENDING state in the approval state machine:
 
     request arrives (needs_human=True)
@@ -97,16 +97,21 @@ _MAX_DETAIL_LEN = 100
 
 def _pending_approvals_dir(source_group: str) -> Path:
     """Return the pending_approvals directory for a group, creating it if needed."""
-    d = get_settings().data_dir / "ipc" / source_group / "pending_approvals"
+    d = approval_state_root() / source_group / "pending_approvals"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def _approval_decisions_dir(source_group: str) -> Path:
     """Return the approval_decisions directory for a group, creating it if needed."""
-    d = get_settings().data_dir / "ipc" / source_group / "approval_decisions"
+    d = approval_state_root() / source_group / "approval_decisions"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def approval_state_root() -> Path:
+    """Return approval state that is never mounted into an agent runtime."""
+    return get_settings().data_dir / "approvals"
 
 
 def _path_exists(path: Path) -> bool:
@@ -170,6 +175,9 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
     expires_after_seconds: int = APPROVAL_TIMEOUT_SECONDS,
     origin_conversation_id: str | None = None,
     action_payload: dict[str, Any] | None = None,
+    *,
+    corruption_tainted: bool = False,
+    secret_tainted: bool = False,
 ) -> str:
     """Write a pending approval file (PENDING state).
 
@@ -204,6 +212,10 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
         "handler_type": handler_type,
         "timestamp": datetime.now(UTC).isoformat(),
         "expires_after_seconds": expires_after_seconds,
+        # Persist request-time taint because the in-memory SecurityGate can be
+        # gone when a host-owned approval decision is replayed after restart.
+        "corruption_tainted": corruption_tainted,
+        "secret_tainted": secret_tainted,
     }
 
     write_json_atomic(pending_dir / f"{request_id}.json", data, indent=2)
@@ -224,10 +236,9 @@ def list_pending_approvals(group: str | None = None) -> list[dict[str, Any]]:
 
     Returns parsed dicts sorted by timestamp (oldest first).
     """
-    s = get_settings()
-    ipc_dir = s.data_dir / "ipc"
+    approval_dir = approval_state_root()
 
-    if not ipc_dir.exists():
+    if not approval_dir.exists():
         return []
 
     results: list[dict[str, Any]] = []
@@ -235,11 +246,11 @@ def list_pending_approvals(group: str | None = None) -> list[dict[str, Any]]:
     groups = (
         [group]
         if group
-        else [f.name for f in ipc_dir.iterdir() if f.is_dir() and f.name != "errors"]
+        else [f.name for f in approval_dir.iterdir() if f.is_dir() and f.name != "errors"]
     )
 
     for grp in groups:
-        pending_dir = ipc_dir / grp / "pending_approvals"
+        pending_dir = approval_dir / grp / "pending_approvals"
         if not pending_dir.exists():
             continue
         for filepath in pending_dir.glob("*.json"):
@@ -263,12 +274,11 @@ def find_pending_by_short_id(short_id: str) -> dict[str, Any] | None:
     Scans file contents for the ``short_id`` field. With typically 0-3
     pending approvals across all groups, this is fast enough.
     """
-    s = get_settings()
-    ipc_dir = s.data_dir / "ipc"
-    if not ipc_dir.exists():
+    approval_dir = approval_state_root()
+    if not approval_dir.exists():
         return None
 
-    for group_dir in ipc_dir.iterdir():
+    for group_dir in approval_dir.iterdir():
         if not group_dir.is_dir() or group_dir.name == "errors":
             continue
         pending_dir = group_dir / "pending_approvals"
@@ -290,17 +300,16 @@ async def sweep_expired_approvals() -> list[dict[str, Any]]:
     Called on startup (crash recovery) and optionally on a slow timer.
     Returns list of expired approval dicts.
     """
-    s = get_settings()
-    ipc_dir = s.data_dir / "ipc"
-    if not await asyncio.to_thread(_path_exists, ipc_dir):
+    approval_dir = approval_state_root()
+    if not await asyncio.to_thread(_path_exists, approval_dir):
         return []
 
     now = datetime.now(UTC)
     expired: list[dict[str, Any]] = []
 
-    for group in await asyncio.to_thread(_ipc_groups, ipc_dir):
-        pending_dir = ipc_dir / group / "pending_approvals"
-        decisions_dir = ipc_dir / group / "approval_decisions"
+    for group in await asyncio.to_thread(_approval_groups, approval_dir):
+        pending_dir = approval_dir / group / "pending_approvals"
+        decisions_dir = approval_dir / group / "approval_decisions"
         expired.extend(await _expire_pending_approvals(group, pending_dir, now))
         pending_ids = await asyncio.to_thread(_pending_request_ids, pending_dir)
         await asyncio.to_thread(_remove_orphaned_decisions, decisions_dir, pending_ids)
@@ -308,8 +317,10 @@ async def sweep_expired_approvals() -> list[dict[str, Any]]:
     return expired
 
 
-def _ipc_groups(ipc_dir: Path) -> list[str]:
-    return [entry.name for entry in ipc_dir.iterdir() if entry.is_dir() and entry.name != "errors"]
+def _approval_groups(approval_dir: Path) -> list[str]:
+    return [
+        entry.name for entry in approval_dir.iterdir() if entry.is_dir() and entry.name != "errors"
+    ]
 
 
 async def _expire_pending_approvals(

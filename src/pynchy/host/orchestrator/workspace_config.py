@@ -18,6 +18,10 @@ from typing import Any, cast
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 import tomlkit
 
+from pynchy.capability_policy import (
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
+)
 from pynchy.config import get_settings, reset_settings
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
@@ -207,11 +211,15 @@ def load_resolved_config(group_folder: str) -> ResolvedWorkspaceConfig | None:
         else list(base.tools)
     )
     capabilities = dict(base.capabilities)
-    decision_rank = {"allow": 0, "needs_human": 1, "deny": 2}
     for capability, restriction in runtime_restriction.capabilities.items():
-        current = capabilities.get(capability)
-        if current is None or decision_rank[restriction.decision] > decision_rank[current.decision]:
-            capabilities[capability] = restriction
+        inherited = (
+            rule
+            for pattern, rule in base.capabilities.items()
+            if capability_pattern_matches(pattern, capability)
+        )
+        capabilities[capability] = (
+            most_restrictive_capability_rule((*inherited, restriction)) or restriction
+        )
     return replace(base, tools=restricted_tools, capabilities=capabilities)
 
 

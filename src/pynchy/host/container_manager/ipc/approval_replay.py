@@ -92,6 +92,26 @@ async def _approval_payload_error(context: ApprovalDecisionContext) -> str | Non
         intent = await get_action_intent_by_request(context.request_id)
         if intent is None or intent.payload != context.action_payload:
             return "approved action payload no longer matches its durable intent"
+        binding_error = _bound_presentation_error(context)
+        if binding_error is not None:
+            return binding_error
+    return None
+
+
+def _bound_presentation_error(context: ApprovalDecisionContext) -> str | None:
+    """Cross-check route-bound presentation against the pending approval."""
+    payload = context.action_payload
+    if payload is None or not {
+        "conversation_id",
+        "approval_chat_jid",
+    }.intersection(payload):
+        return None
+    if context.origin_conversation_id is None:
+        return "route-bound approval lost its originating conversation"
+    if payload.get("conversation_id") != context.origin_conversation_id:
+        return "approval conversation does not match its bound action payload"
+    if payload.get("approval_chat_jid") != context.chat_jid:
+        return "approval destination does not match its bound action payload"
     return None
 
 
@@ -108,6 +128,8 @@ def approval_replay_gate(
     source_group: str,
     *,
     require_resolved: bool = False,
+    request_corruption_tainted: bool = False,
+    request_secret_tainted: bool = False,
 ) -> SecurityGate | None:
     """Rebuild current policy while retaining sticky taint from the active gate."""
     active_gate = get_gate_for_group(source_group)
@@ -117,8 +139,10 @@ def approval_replay_gate(
             return None
         return active_gate or SecurityGate(resolve_security(source_group))
     gate = SecurityGate(build_workspace_security(settings, resolved))
-    if active_gate is not None and active_gate.policy.corruption_tainted:
+    if request_corruption_tainted or (
+        active_gate is not None and active_gate.policy.corruption_tainted
+    ):
         gate.notify_public_source_input()
-    if active_gate is not None and active_gate.policy.secret_tainted:
+    if request_secret_tainted or (active_gate is not None and active_gate.policy.secret_tainted):
         gate.notify_secret_source_input()
     return gate

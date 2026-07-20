@@ -154,7 +154,7 @@ class TestLoadResolvedConfig:
                 "base": ProfileConfig(
                     tools=["matrix_route_read", "matrix_route_send"],
                     capabilities={
-                        "chat.matrix.route.read": {"decision": "deny"},
+                        "chat.matrix.*": {"decision": "deny"},
                         "chat.matrix.route.send": {"decision": "needs_human"},
                     },
                 )
@@ -178,7 +178,8 @@ class TestLoadResolvedConfig:
         assert resolved is not None
         assert resolved.tools == ["matrix_route_read"]
         assert resolved.capabilities["chat.matrix.route.read"].decision == "deny"
-        assert resolved.capabilities["chat.matrix.route.send"].decision == "needs_human"
+        assert resolved.capabilities["chat.matrix.*"].decision == "deny"
+        assert resolved.capabilities["chat.matrix.route.send"].decision == "deny"
 
     def test_stale_routed_workspace_cannot_inherit_parent_tools(self):
         s = _settings_with_workspaces(

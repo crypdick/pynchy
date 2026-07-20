@@ -32,6 +32,7 @@ from pynchy.state import (
     get_router_state,
     init_test_database,
     mark_in_flight_output_sent,
+    prepare_conversation_delivery_recovery,
     prepare_in_flight_turn_recovery,
     update_in_flight_session,
 )
@@ -45,6 +46,8 @@ def _turn(
     task_id: str | None = None,
     scheduled_base_chat_jid: str | None = None,
     scheduled_thread_slot: int | None = None,
+    conversation_claim_id: str | None = None,
+    input_source: str = "user",
 ) -> InFlightTurn:
     return InFlightTurn(
         turn_id=turn_id,
@@ -60,6 +63,8 @@ def _turn(
         claimed_at="2026-07-14T10:00:02+00:00",
         scheduled_base_chat_jid=scheduled_base_chat_jid,
         scheduled_thread_slot=scheduled_thread_slot,
+        conversation_claim_id=conversation_claim_id,
+        input_source=input_source,
     )
 
 
@@ -102,6 +107,48 @@ async def test_recovery_releases_old_claim_and_is_claimed_only_once() -> None:
     assert recovered[0].claimed_at is None
     assert await claim_in_flight_turn("turn-1") is True
     assert await claim_in_flight_turn("turn-1") is False
+
+
+@pytest.mark.asyncio
+async def test_recovery_preserves_delivery_claim_owned_by_surviving_turn() -> None:
+    await init_test_database()
+    identity = ExternalDeliveryIdentity(
+        provider=ExternalProvider("matrix"),
+        route=ExternalRoute("personal:family"),
+        delivery_id=ExternalDeliveryId("$preserved"),
+    )
+    await admit_external_delivery_receipt(
+        ExternalDeliveryReceipt(
+            identity=identity,
+            payload_sha256="sha",
+            received_at="2026-07-19T12:00:00+00:00",
+        )
+    )
+    admission = await admit_conversation_delivery(
+        identity,
+        ConversationSubject(
+            namespace=ConversationSubjectNamespace("matrix:me:family:room"),
+            key=ConversationSubjectKey("!family:example.com"),
+        ),
+        GroupFolder("support"),
+    )
+    claim_id = ConversationClaimId("claim-survives-restart")
+    assert await claim_next_conversation_delivery(admission.conversation.id, claim_id)
+    turn = _turn(
+        conversation_claim_id=claim_id,
+        input_source="external:matrix",
+    )
+    await begin_in_flight_turn(turn)
+
+    assert await prepare_conversation_delivery_recovery() == 0
+    recovered = await prepare_in_flight_turn_recovery("deploy-sha")
+
+    delivery = await get_conversation_delivery(identity)
+    assert delivery is not None
+    assert delivery.status is ConversationDeliveryStatus.CLAIMED
+    assert delivery.claim_id == claim_id
+    assert recovered[0].conversation_claim_id == claim_id
+    assert recovered[0].input_source == "external:matrix"
 
 
 @pytest.mark.asyncio

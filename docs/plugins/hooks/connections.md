@@ -23,9 +23,11 @@ def is_ready(self) -> bool: ...
 
 Runtime names must be unique across all plugins. Pynchy rejects malformed
 contributions and duplicate names at startup. It starts runtimes only after the
-database has released interrupted delivery claims and the message queue can
-accept work. If one runtime fails to start, Pynchy closes that runtime and every
-runtime started before it in reverse order, then fails startup.
+database has released orphan delivery claims while preserving claims owned by
+surviving turns, and after the message queue can accept work. Runtimes are ready
+before interrupted turns are dispatched. If one runtime fails to start, Pynchy
+closes that runtime and every runtime started before it in reverse order, then
+fails startup and invokes deploy rollback when applicable.
 
 `ConnectionRuntimeContext` exposes host-owned callbacks for channels,
 workspaces, workspace registration, session binding, and inbound message

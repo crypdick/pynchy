@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from pynchy.capability_policy import (
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
+)
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves route settings.
     Settings,
 )
@@ -78,13 +82,15 @@ def resolve_matrix_routes(settings: Settings) -> tuple[ResolvedMatrixRoute, ...]
             raise ValueError(
                 f"Matrix route {route_name!r} tools must be a restriction of workspace tools"
             )
-        weakened = [
-            capability
-            for capability, decision in route.capabilities.items()
-            if (parent := workspace.capabilities.get(capability)) is not None
-            and parent.decision == "deny"
-            and decision != "deny"
-        ]
+        weakened = []
+        for capability, decision in route.capabilities.items():
+            inherited = most_restrictive_capability_rule(
+                rule
+                for pattern, rule in workspace.capabilities.items()
+                if capability_pattern_matches(pattern, capability)
+            )
+            if inherited is not None and inherited.decision == "deny" and decision != "deny":
+                weakened.append(capability)
         if weakened:
             raise ValueError(
                 f"Matrix route {route_name!r} capabilities cannot weaken workspace denial: "

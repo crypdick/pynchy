@@ -441,13 +441,17 @@ async def release_conversation_delivery_claim(
 
 
 async def prepare_conversation_delivery_recovery() -> int:
-    """Release process-owned claims while retaining FIFO sequence order."""
+    """Release only claims that have no surviving durable agent turn."""
     async with atomic_write() as database:
         cursor = await database.execute(
             """
             UPDATE conversation_deliveries
             SET status = 'pending', claim_id = NULL, claimed_at = NULL
             WHERE status = 'claimed'
+              AND NOT EXISTS (
+                  SELECT 1 FROM in_flight_turns
+                  WHERE in_flight_turns.conversation_claim_id = conversation_deliveries.claim_id
+              )
             """
         )
         return cursor.rowcount

@@ -16,6 +16,7 @@ import threading
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
 )
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations.
 from typing import Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
@@ -360,6 +361,31 @@ async def _start_subsystems(
     )
 
 
+async def _prepare_state_and_subsystems(
+    app: PynchyApp,
+    continuation_path: Path,
+) -> startup_handler.InterruptedTurnRecovery:
+    """Start stateful runtime owners inside the deploy rollback boundary."""
+    try:
+        repo_groups = await _reconcile_state(app)
+        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
+        # Provider runtimes may wake orphaned deliveries prepared above, but
+        # interrupted durable turns must not be dispatched until every runtime
+        # that owns their route is ready.
+        await _start_subsystems(app, repo_groups)
+        await startup_handler.confirm_deploy_startup(interrupted_recovery)
+    except Exception as exc:  # noqa: BLE001, RUF100 - deploy rollback must cover every startup owner.
+        app.cancel_subsystem_tasks()
+        try:
+            await app.connection_runtime_owner.close()
+        except Exception:  # noqa: BLE001, RUF100 - preserve the startup error that triggers rollback.
+            logger.exception("Connection runtime cleanup failed during startup rollback")
+        if await asyncio.to_thread(continuation_path.exists):
+            await startup_handler.auto_rollback(continuation_path, exc)
+        raise
+    return interrupted_recovery
+
+
 # ---------------------------------------------------------------------------
 # Run — top-level orchestrator
 # ---------------------------------------------------------------------------
@@ -412,10 +438,7 @@ async def run_app(app: PynchyApp) -> None:
         default_channel = resolve_default_channel(app.channels)
         await startup_handler.setup_admin_group(app, default_channel)
 
-    repo_groups = await _reconcile_state(app)
-    interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
-    await startup_handler.confirm_deploy_startup(interrupted_recovery)
-    await _start_subsystems(app, repo_groups)
+    interrupted_recovery = await _prepare_state_and_subsystems(app, continuation_path)
 
     await startup_handler.send_boot_notification(app)
     await app.catch_up_channels()

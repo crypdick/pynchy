@@ -11,6 +11,7 @@ from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves IPC watcher 
 from watchdog.observers import Observer
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.ipc.approval_recovery import sweep_host_approval_decisions
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves IPC watcher deps at runtime.
 )
@@ -247,28 +248,6 @@ async def _sweep_output_events(output_dir: Path, source_group: str, ipc_base_dir
         return count
 
 
-async def _sweep_approval_decisions(decisions_dir: Path, source_group: str, deps: IpcDeps) -> int:
-    """Process approval decisions during live runtime recovery sweeps."""
-    try:
-        count = 0
-        from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - approval handler imports service dispatch; keep watcher startup narrow.
-            process_approval_decision,
-        )
-
-        for file_path in await asyncio.to_thread(_json_files_in_dir, decisions_dir):
-            await process_approval_decision(file_path, source_group, deps=deps)
-            count += 1
-    except OSError as exc:
-        _log_sweep_error(
-            "Error reading IPC approval_decisions directory during runtime sweep",
-            exc,
-            source_group,
-        )
-        return 0
-    else:
-        return count
-
-
 def _clean_output_dir(output_dir: Path, source_group: str) -> int:
     """Delete stale output files — mid-query artefacts from a dead session;
     replaying them on crash recovery is meaningless since there's no active
@@ -407,9 +386,11 @@ async def recover_ipc_runtime(
             deps=deps,
         )
         processed += await _sweep_output_events(group_dir / "output", source_group, ipc_base_dir)
-        processed += await _sweep_approval_decisions(
-            group_dir / "approval_decisions", source_group, deps
-        )
+
+    # Approval state is host-owned and intentionally outside the watched IPC
+    # mount. The command path processes decisions immediately; this sweep only
+    # recovers a file persisted immediately before a host crash.
+    processed += await sweep_host_approval_decisions(deps)
 
     await _sweep_expired_state()
 
@@ -467,12 +448,6 @@ async def _dispatch_queued_ipc_file(file_path: Path, ipc_base_dir: Path, deps: I
         )
     elif queued.subdir == "output":
         await process_ipc_output_file(queued.path, queued.source_group, ipc_base_dir)
-    elif queued.subdir == "approval_decisions":
-        from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - approval handler imports service dispatch; keep watcher startup narrow.
-            process_approval_decision,
-        )
-
-        await process_approval_decision(queued.path, queued.source_group, deps=deps)
 
 
 async def start_ipc_watcher(deps: IpcDeps) -> None:

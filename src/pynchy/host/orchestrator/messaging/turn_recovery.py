@@ -89,6 +89,7 @@ async def handle_reset_handoff(
             input_messages=reset_messages,
             input_start_cursor="",
             input_end_cursor="",
+            input_source="reset_handoff",
         )
     )
 

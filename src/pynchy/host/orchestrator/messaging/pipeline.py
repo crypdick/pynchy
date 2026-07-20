@@ -88,6 +88,7 @@ class _FinalizeCursorRetryRequest:
     learning_summary: learning_capture.LearningRunSummary
     s: Settings
     turn_id: str
+    conversation_claim_id: str | None
 
 
 def _turn_id_for_batch(messages: list[types.NewMessage]) -> str:
@@ -125,10 +126,9 @@ def _conversation_claim_for_batch(
     return ConversationClaimId(next(iter(claim_ids))) if claim_ids else None
 
 
-async def _release_conversation_claim(messages: list[types.NewMessage]) -> None:
-    claim_id = _conversation_claim_for_batch(messages)
+async def _release_conversation_claim(claim_id: str | None) -> None:
     if claim_id is not None:
-        await release_conversation_delivery_claim(claim_id)
+        await release_conversation_delivery_claim(ConversationClaimId(claim_id))
 
 
 async def _announce_processing_start(
@@ -207,7 +207,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
 
         if clean_failure:
             await clear_in_flight_turn(request.turn_id)
-            await _release_conversation_claim(request.missed_messages)
+            await _release_conversation_claim(request.conversation_claim_id)
             # A control classifier that was waiting for this lock now observes
             # no active turn and cannot add another active-boundary marker.
             request.deps.pop_dispatched(request.chat_jid, final_cursor)
@@ -217,7 +217,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
                 request.chat_jid,
                 final_cursor,
                 request.turn_id,
-                conversation_claim_id=_conversation_claim_for_batch(request.missed_messages),
+                conversation_claim_id=request.conversation_claim_id,
             )
             late_dispatched = request.deps.pop_dispatched(
                 request.chat_jid,
@@ -284,7 +284,7 @@ async def _continue_after_host_turn(
                 request.chat_jid,
                 request.missed_messages[-1].timestamp,
                 request.turn_id,
-                conversation_claim_id=_conversation_claim_for_batch(request.missed_messages),
+                conversation_claim_id=request.conversation_claim_id,
             )
             request.deps.pop_dispatched(
                 request.chat_jid,
@@ -323,9 +323,9 @@ async def _begin_interactive_message_turn(
     messages: list[dict[str, Any]],
     missed_messages: list[types.NewMessage],
     since_timestamp: str,
-) -> str:
+) -> types.InFlightTurn:
     turn_id = _turn_id_for_batch(missed_messages)
-    await begin_message_turn(
+    return await begin_message_turn(
         MessageTurnStart(
             turn_id=turn_id,
             chat_jid=chat_jid,
@@ -334,9 +334,10 @@ async def _begin_interactive_message_turn(
             input_messages=messages,
             input_start_cursor=since_timestamp,
             input_end_cursor=missed_messages[-1].timestamp,
+            conversation_claim_id=_conversation_claim_for_batch(missed_messages),
+            input_source=_input_source_for_batch(missed_messages),
         )
     )
-    return turn_id
 
 
 @dataclass(frozen=True)
@@ -417,18 +418,19 @@ async def process_group_messages(
     had_error = False
     output_sent_to_user = False
     learning_summary = learning_capture.LearningRunSummary()
-    turn_id = await _begin_interactive_message_turn(
+    turn = await _begin_interactive_message_turn(
         chat_jid,
         group,
         messages,
         missed_messages,
         since_timestamp,
     )
+    turn_id = turn.turn_id
     try:
         process_start = await _start_processing(deps, chat_jid, group, missed_messages)
     except BaseException:
         await clear_in_flight_turn(turn_id)
-        await _release_conversation_claim(missed_messages)
+        await _release_conversation_claim(turn.conversation_claim_id)
         raise
 
     async def on_output(result: types.ContainerOutput) -> None:
@@ -451,14 +453,13 @@ async def process_group_messages(
             messages,
             on_output,
             reset_system_notices or None,
-            input_source=_input_source_for_batch(missed_messages),
+            input_source=turn.input_source,
             turn_id=turn_id,
         )
     except asyncio.CancelledError:
         raise
     except BaseException:
         await release_in_flight_turn_claim(turn_id)
-        await _release_conversation_claim(missed_messages)
         raise
 
     await _announce_processing_complete(
@@ -480,11 +481,11 @@ async def process_group_messages(
             learning_summary=learning_summary,
             s=s,
             turn_id=turn_id,
+            conversation_claim_id=turn.conversation_claim_id,
         )
         if (continuation := await _continue_after_host_turn(finalization)) is not None:
             return continuation
         return await _finalize_cursor_and_retry(finalization)
     except BaseException:
         await release_in_flight_turn_claim(turn_id)
-        await _release_conversation_claim(missed_messages)
         raise

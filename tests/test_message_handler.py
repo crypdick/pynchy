@@ -1216,6 +1216,93 @@ class TestProcessGroupMessages:
         assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
 
     @pytest.mark.asyncio
+    async def test_agent_exception_preserves_routed_claim_for_durable_resume(self, tmp_path):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        external, identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="agent-exception",
+        )
+        deps.run_agent = AsyncMock(side_effect=RuntimeError("agent crashed"))
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_P_MSGS_SINCE, new_callable=AsyncMock, side_effect=[[external], []]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+        ):
+            with pytest.raises(RuntimeError, match="agent crashed"):
+                await process_group_messages(deps, jid)
+
+            delivery = await get_conversation_delivery(identity)
+            checkpoint = await get_in_flight_turn_for_chat(
+                jid,
+                {InFlightWorkKind.INTERACTIVE},
+            )
+            assert delivery is not None
+            assert delivery.status is ConversationDeliveryStatus.CLAIMED
+            assert checkpoint is not None
+            assert checkpoint.conversation_claim_id == delivery.claim_id
+            assert checkpoint.input_source == "external:matrix"
+
+            deps.run_agent = AsyncMock(return_value="success")
+            assert await process_group_messages(deps, jid) is True
+
+        completed = await get_conversation_delivery(identity)
+        assert completed is not None
+        assert completed.status is ConversationDeliveryStatus.COMPLETED
+        assert deps.run_agent.await_args.kwargs["input_source"] == "external:matrix"
+        assert deps.last_agent_timestamp[jid] == external.timestamp
+
+    @pytest.mark.asyncio
+    async def test_finalization_exception_preserves_routed_claim_for_resume(self, tmp_path):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        external, identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="finalization-exception",
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_P_MSGS_SINCE, new_callable=AsyncMock, side_effect=[[external], []]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+            patch(
+                "pynchy.host.orchestrator.messaging.pipeline.complete_turn_with_cursor",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("cursor commit failed"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="cursor commit failed"):
+                await process_group_messages(deps, jid)
+
+            delivery = await get_conversation_delivery(identity)
+            checkpoint = await get_in_flight_turn_for_chat(
+                jid,
+                {InFlightWorkKind.INTERACTIVE},
+            )
+            assert delivery is not None
+            assert delivery.status is ConversationDeliveryStatus.CLAIMED
+            assert checkpoint is not None
+            assert checkpoint.conversation_claim_id == delivery.claim_id
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            _patch_msgs_since([]),
+        ):
+            assert await process_group_messages(deps, jid) is True
+
+        completed = await get_conversation_delivery(identity)
+        assert completed is not None
+        assert completed.status is ConversationDeliveryStatus.COMPLETED
+        assert deps.last_agent_timestamp[jid] == external.timestamp
+
+    @pytest.mark.asyncio
     async def test_restart_semantically_resumes_partial_turn_without_replaying_input(
         self, tmp_path
     ):

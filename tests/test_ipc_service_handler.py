@@ -361,7 +361,7 @@ async def test_dangerous_writes_requires_human(
     assert not response_file.exists()
 
     # Pending approval file was created
-    pending_file = tmp_path / "ipc" / "test-ws" / "pending_approvals" / "test-req-1.json"
+    pending_file = tmp_path / "approvals" / "test-ws" / "pending_approvals" / "test-req-1.json"
     assert pending_file.exists()
     pending = json.loads(pending_file.read_text())
     assert pending["tool_name"] == "sensitive_tool"
@@ -413,7 +413,7 @@ async def test_explicit_profile_allow_executes_dangerous_write_without_approval(
 
     response_file = tmp_path / "ipc" / "test-ws" / "responses" / "test-req-1.json"
     assert json.loads(response_file.read_text()) == {"result": "ok"}
-    assert not (tmp_path / "ipc" / "test-ws" / "pending_approvals").exists()
+    assert not (tmp_path / "approvals" / "test-ws" / "pending_approvals").exists()
     assert deps.broadcast_messages == []
     mock_handler.assert_awaited_once()
 
@@ -510,7 +510,7 @@ async def test_fallback_security_for_unconfigured_workspace(tmp_path):
     assert not response_file.exists()
 
     # Pending approval file created
-    pending_file = tmp_path / "ipc" / "unknown-ws" / "pending_approvals" / "test-req-1.json"
+    pending_file = tmp_path / "approvals" / "unknown-ws" / "pending_approvals" / "test-req-1.json"
     assert pending_file.exists()
 
 

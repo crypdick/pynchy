@@ -220,6 +220,7 @@ def test_route_references_fail_closed(case: str, error: str) -> None:
         ("admin-on-event", "untrusted events to an admin workspace"),
         ("tool-expansion", "tools must be a restriction"),
         ("capability-weakening", "cannot weaken workspace denial"),
+        ("wildcard-capability-weakening", "cannot weaken workspace denial"),
     ],
 )
 def test_route_policy_can_only_reduce_parent_workspace_privilege(
@@ -233,9 +234,13 @@ def test_route_policy_can_only_reduce_parent_workspace_privilege(
         raw["profiles"]["support"]["is_admin"] = True
     elif case == "tool-expansion":
         raw["routes"]["family"]["tools"] = ["matrix_route_read"]
-    else:
+    elif case == "capability-weakening":
         capability = "chat.matrix.route.read"
         raw["profiles"]["support"]["capabilities"] = {capability: {"decision": "deny"}}
+        raw["routes"]["family"]["capabilities"] = {capability: "needs_human"}
+    else:
+        capability = "chat.matrix.route.read"
+        raw["profiles"]["support"]["capabilities"] = {"chat.matrix.*": {"decision": "deny"}}
         raw["routes"]["family"]["capabilities"] = {capability: "needs_human"}
     settings = validate_settings_mapping(raw)
 
@@ -312,8 +317,32 @@ async def test_route_read_ignores_caller_destination_and_uses_bound_room(tmp_pat
         )
 
     assert json.loads(result["result"])[0]["body"] == "Hello"
-    assert stub.calls == [("list_messages", (_ROOM, 3))]
+    assert stub.calls == [
+        ("room_assertion", _ROOM),
+        ("list_messages", (_ROOM, 3)),
+    ]
     assert _ROOM not in result["result"]
+
+
+@pytest.mark.action("chat.matrix.route.read")
+async def test_route_read_rechecks_live_portal_and_denies_stale_binding(tmp_path: Path) -> None:
+    _bind_route()
+    stub = StubMatrixGatewayClient(_portal(room_id="!replacement:matrix.example.com"))
+    handler = _handlers()["matrix_route_read"]
+
+    with (
+        patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+        patch.object(matrix_gateway, "get_settings", return_value=make_settings(data_dir=tmp_path)),
+        patch.object(
+            matrix_gateway,
+            "get_conversation_control_binding",
+            return_value=type("Binding", (), {"thread_jid": _CONTROL})(),
+        ),
+    ):
+        result = await handler({"source_group": _FOLDER, "limit": 3})
+
+    assert "denied" in result["error"].lower()
+    assert stub.calls == [("room_assertion", _ROOM)]
 
 
 @pytest.mark.action("chat.matrix.route.send")
@@ -335,6 +364,37 @@ async def test_route_send_rechecks_exact_portal_before_provider_write(tmp_path: 
 
     assert "denied" in result["error"].lower()
     assert all(call[0] != "send_message" for call in stub.calls)
+
+
+@pytest.mark.action("chat.matrix.route.send")
+async def test_route_send_returns_only_agent_safe_event_receipt(tmp_path: Path) -> None:
+    _bind_route()
+    stub = StubMatrixGatewayClient(_portal())
+    handler = _handlers()["matrix_route_send"]
+
+    with (
+        patch.object(matrix_gateway, "create_matrix_gateway_client", return_value=stub),
+        patch.object(matrix_gateway, "get_settings", return_value=make_settings(data_dir=tmp_path)),
+        patch.object(
+            matrix_gateway,
+            "get_conversation_control_binding",
+            return_value=type("Binding", (), {"thread_jid": _CONTROL})(),
+        ),
+    ):
+        result = await handler({"source_group": _FOLDER, "body": "Private reply"})
+
+    assert json.loads(result["result"]) == {"event_id": "$sent"}
+    assert _ROOM not in result["result"]
+    assert stub.calls == [
+        ("room_assertion", _ROOM),
+        ("send_message", (_ROOM, "Private reply")),
+    ]
+    action = matrix_gateway.MATRIX_HOST_ACTIONS.action_for("matrix_route_send")
+    assert action is not None
+    assert action.action_intent is not None
+    receipt = action.action_intent.receipt_from_response(result)
+    assert receipt.provider_request_id == "$sent"
+    assert receipt.receipt == {"event_id": "$sent"}
 
 
 def test_read_only_route_rejects_draft_before_approval() -> None:

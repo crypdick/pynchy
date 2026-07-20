@@ -220,8 +220,12 @@ async def _write_matrix_approval(
         ).hexdigest(),
         "timestamp": timestamp or datetime.now(UTC).isoformat(),
         "expires_after_seconds": 300,
+        "corruption_tainted": False,
+        "secret_tainted": False,
     }
-    pending_path = tmp_path / "ipc" / _MATRIX_FOLDER / "pending_approvals" / f"{request_id}.json"
+    pending_path = (
+        tmp_path / "approvals" / _MATRIX_FOLDER / "pending_approvals" / f"{request_id}.json"
+    )
     pending_path.parent.mkdir(parents=True, exist_ok=True)
     pending_path.write_text(json.dumps(pending), encoding="utf-8")
     decision = {
@@ -230,7 +234,9 @@ async def _write_matrix_approval(
         "decided_by": "operator",
         "decided_at": datetime.now(UTC).isoformat(),
     }
-    decision_path = tmp_path / "ipc" / _MATRIX_FOLDER / "approval_decisions" / f"{request_id}.json"
+    decision_path = (
+        tmp_path / "approvals" / _MATRIX_FOLDER / "approval_decisions" / f"{request_id}.json"
+    )
     decision_path.parent.mkdir(parents=True, exist_ok=True)
     decision_path.write_text(json.dumps(decision), encoding="utf-8")
     return action, provider_handler, pending, decision_path
@@ -268,11 +274,11 @@ async def _process_matrix_approval(
         ),
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+            "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
             return_value=HostActionCatalog(actions=(action,)),
         ),
         patch(
-            "pynchy.host.container_manager.ipc.handlers_approval._approval_replay_gate",
+            "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
             return_value=SecurityGate(WorkspaceSecurity()) if policy_available else None,
         ),
         patch(
@@ -326,7 +332,7 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
         "body": "private payload",
     }
     decision_path = (
-        tmp_path / "ipc" / "test-workspace" / "approval_decisions" / f"{request_id}.json"
+        tmp_path / "approvals" / "test-workspace" / "approval_decisions" / f"{request_id}.json"
     )
     try:
         with (
@@ -367,7 +373,7 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
                 return_value=settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=HostActionCatalog(actions=(action,)),
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
@@ -402,7 +408,10 @@ async def test_expired_matrix_approval_never_reaches_provider(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tampering", ["payload_hash", "durable_intent"])
+@pytest.mark.parametrize(
+    "tampering",
+    ["payload_hash", "durable_intent", "pending_conversation", "pending_chat"],
+)
 async def test_tampered_matrix_approval_evidence_never_reaches_provider(
     tmp_path: Path,
     tampering: str,
@@ -415,13 +424,17 @@ async def test_tampered_matrix_approval_evidence_never_reaches_provider(
     pending_path = decision.parents[1] / "pending_approvals" / decision.name
     if tampering == "payload_hash":
         pending["action_payload_sha256"] = "0" * 64
-    else:
+    elif tampering == "durable_intent":
         altered = dict(pending["action_payload"])
         altered["body"] = "replacement payload"
         pending["action_payload"] = altered
         pending["action_payload_sha256"] = hashlib.sha256(
             json.dumps(altered, sort_keys=True).encode()
         ).hexdigest()
+    elif tampering == "pending_conversation":
+        pending["origin_conversation_id"] = "different-conversation"
+    else:
+        pending["approval_chat_jid"] = "discord:channel:different-thread"
     pending_path.write_text(json.dumps(pending), encoding="utf-8")
 
     response = await _process_matrix_approval(tmp_path, action, decision)
@@ -430,7 +443,10 @@ async def test_tampered_matrix_approval_evidence_never_reaches_provider(
     intent = await get_action_intent_by_request(request_id)
     assert intent is not None
     assert intent.status is ActionIntentStatus.FAILED
-    assert any(word in str(response["error"]).lower() for word in ("payload", "intent"))
+    assert any(
+        word in str(response["error"]).lower()
+        for word in ("payload", "intent", "conversation", "destination")
+    )
 
 
 @pytest.mark.asyncio

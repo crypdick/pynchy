@@ -321,10 +321,10 @@ class DiscordEvents:
         if self._dedup(message.id):
             return
         jid = jid_for(ctx)
-        if ch.access.decide(ctx) != "allow" and not ch.allows_registered_workspace_jid(
-            jid, is_dm=ctx.is_dm
-        ):
-            return
+        if ch.access.decide(ctx) != "allow":
+            registered_destination = ch.allows_registered_workspace_jid(jid, is_dm=ctx.is_dm)
+            if not registered_destination or ch.access.decide_registered_workspace(ctx) != "allow":
+                return
 
         sender_name = message.author.display_name or message.author.rendered_name
         created = message.created_at

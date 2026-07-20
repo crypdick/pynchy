@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock
 
 import pluggy
 import pytest
@@ -190,7 +191,9 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
 
     def fake_prepare_recovery() -> Awaitable[object]:
         recovery_order.append("prepare")
-        return _completed_awaitable(object())
+        return _completed_awaitable(
+            MagicMock(spec=lifecycle.startup_handler.InterruptedTurnRecovery)
+        )
 
     def fake_start_subsystems(*_args: Any) -> Awaitable[None]:
         recovery_order.append("start_worker")
@@ -268,7 +271,55 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_can_finish.set()
     await run_task
     assert shutdown_finished.is_set()
-    assert recovery_order == ["prepare", "confirm", "start_worker", "dispatch"]
+    assert recovery_order == ["prepare", "start_worker", "confirm", "dispatch"]
+
+
+@pytest.mark.asyncio
+async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_boundary(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    settings = make_settings(data_dir=tmp_path / "data")
+    settings.data_dir.mkdir(parents=True)
+    continuation_path = settings.data_dir / "deploy_continuation.json"
+    continuation_path.write_text("{}")
+    app = PynchyApp()
+    app.workspaces = {
+        "slack:C123": WorkspaceProfile(
+            jid="slack:C123",
+            name="Test",
+            folder="test",
+            trigger="always",
+        )
+    }
+    rollback_errors: list[Exception] = []
+
+    def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[Any]:
+        return _completed_awaitable({})
+
+    def fail_runtime_start(*_args: Any) -> Awaitable[None]:
+        return _failed_awaitable(RuntimeError("matrix runtime failed"))
+
+    def record_rollback(_path: Any, exc: Exception) -> Awaitable[None]:
+        rollback_errors.append(exc)
+        return _completed_awaitable()
+
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
+    monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
+    monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
+    monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
+    monkeypatch.setattr(lifecycle, "_start_subsystems", fail_runtime_start)
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "prepare_interrupted_turn_recovery",
+        noop_phase,
+    )
+    monkeypatch.setattr(lifecycle.startup_handler, "auto_rollback", record_rollback)
+
+    with pytest.raises(RuntimeError, match="matrix runtime failed"):
+        await lifecycle.run_app(app)
+
+    assert [str(exc) for exc in rollback_errors] == ["matrix runtime failed"]
 
 
 @pytest.mark.asyncio

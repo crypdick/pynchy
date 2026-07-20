@@ -19,6 +19,7 @@ from conftest import NullIpcDeps, make_settings
 from pynchy.config.models import NotificationsConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.watcher import (
+    recover_ipc_runtime,
     start_ipc_watcher,
 )
 from pynchy.host.git_ops.repo import RepoContext
@@ -185,6 +186,36 @@ class TestStartupSweepErrorFiles:
 
         assert (error_dir / "admin-1-msg.json").read_text() == "new error"
         assert not source.exists()
+
+
+class TestHostApprovalRecovery:
+    async def test_runtime_sweep_recovers_host_owned_decision(self, deps, tmp_path: Path):
+        """A crash-persisted decision is recovered outside the agent IPC mount."""
+        ipc_dir = tmp_path / "ipc"
+        ipc_dir.mkdir()
+        decision = tmp_path / "approvals" / "other-group" / "approval_decisions" / "req.json"
+        decision.parent.mkdir(parents=True)
+        decision.write_text("{}")
+        settings = _test_settings(data_dir=tmp_path)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
+                new_callable=AsyncMock,
+            ) as process_decision,
+            patch(
+                "pynchy.host.container_manager.ipc.watcher._sweep_expired_state",
+                new_callable=AsyncMock,
+            ),
+        ):
+            handled = await recover_ipc_runtime(ipc_dir, deps)
+
+        assert handled == 1
+        process_decision.assert_awaited_once_with(decision, "other-group", deps=deps)
 
 
 # ---------------------------------------------------------------------------

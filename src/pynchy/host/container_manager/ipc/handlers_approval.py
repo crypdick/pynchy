@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
@@ -31,20 +30,21 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves run
     ApprovalMode,
     HostActionDescriptor,
 )
-from pynchy.config import Settings, get_settings
-from pynchy.conversation.models import ConversationId
+from pynchy.config import get_settings
 from pynchy.host.container_manager.action_intents import execute_action_intent
 from pynchy.host.container_manager.ipc import registry
+from pynchy.host.container_manager.ipc.approval_decision_context import (
+    ApprovalDecision as _ApprovalDecision,
+)
+from pynchy.host.container_manager.ipc.approval_decision_context import (
+    build_approval_decision_context as _build_approval_decision_context,
+)
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext as _ApprovalDecisionContext,
 )
 from pynchy.host.container_manager.ipc.approval_replay import (
-    approval_replay_gate as _approval_replay_gate,
-)
-from pynchy.host.container_manager.ipc.approval_replay import (
     approval_replay_validation_error as _approval_replay_validation_error,
 )
-from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
 from pynchy.host.container_manager.security.audit import record_security_event
@@ -74,12 +74,16 @@ class _ApprovedServiceContext:
     gate: SecurityGate
 
 
-def _read_json_file(path: Path) -> dict[str, Any]:
-    return cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))
+def _read_json_file(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _path_exists(path: Path) -> bool:
     return path.exists()
+
+
+def _paths_match(first: Path, second: Path) -> bool:
+    return first.resolve() == second.resolve()
 
 
 def _unlink_missing_ok(path: Path) -> None:
@@ -91,113 +95,79 @@ def _unlink_all_missing_ok(*paths: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-async def process_approval_decision(
+async def process_approval_decision(  # noqa: PLR0911 - each invalid durable-state case has distinct cleanup semantics.
     decision_file: Path, source_group: str, *, deps: object | None = None
 ) -> None:
     """Process an approval decision file — execute or deny the pending request."""
     try:
-        decision = await asyncio.to_thread(_read_json_file, decision_file)
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.error("Failed to read decision file", path=str(decision_file), err=str(exc))
+        decision = _ApprovalDecision.parse(await asyncio.to_thread(_read_json_file, decision_file))
+    except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
+        logger.error("Rejected invalid decision file", path=str(decision_file), err=str(exc))
         await asyncio.to_thread(_unlink_missing_ok, decision_file)
         return
 
-    request_id = decision.get("request_id")
-    if not request_id:
-        logger.warning("Decision file missing request_id", path=str(decision_file))
+    s = get_settings()
+    approval_group_dir = s.data_dir / "approvals" / source_group
+    expected_decision_file = (
+        approval_group_dir / "approval_decisions" / f"{decision.request_id}.json"
+    )
+    if not await asyncio.to_thread(_paths_match, decision_file, expected_decision_file):
+        logger.warning(
+            "Rejected decision outside host-owned approval state",
+            path=str(decision_file),
+            expected_path=str(expected_decision_file),
+        )
         await asyncio.to_thread(_unlink_missing_ok, decision_file)
         return
 
     # Find the corresponding pending approval
-    s = get_settings()
-    pending_file = s.data_dir / "ipc" / source_group / "pending_approvals" / f"{request_id}.json"
+    pending_file = approval_group_dir / "pending_approvals" / f"{decision.request_id}.json"
 
     if not await asyncio.to_thread(_path_exists, pending_file):
-        logger.warning("No pending approval for decision", request_id=request_id)
+        logger.warning("No pending approval for decision", request_id=decision.request_id)
         await asyncio.to_thread(_unlink_missing_ok, decision_file)
         return
 
     try:
-        pending = await asyncio.to_thread(_read_json_file, pending_file)
+        raw_pending = await asyncio.to_thread(_read_json_file, pending_file)
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Failed to read pending file", path=str(pending_file), err=str(exc))
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
+    if not isinstance(raw_pending, dict):
+        logger.error("Rejected invalid pending approval", path=str(pending_file))
+        await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
+        return
+    pending = cast("dict[str, Any]", raw_pending)
+    if (
+        pending.get("request_id") != decision.request_id
+        or pending.get("source_group") != source_group
+    ):
+        logger.error(
+            "Rejected approval with mismatched pending identity",
+            request_id=decision.request_id,
+            source_group=source_group,
+        )
+        await asyncio.to_thread(_unlink_missing_ok, decision_file)
+        return
 
-    context = _approval_decision_context(
-        pending,
-        decision,
-        request_id=request_id,
-        source_group=source_group,
-        settings=s,
-    )
+    try:
+        context = _build_approval_decision_context(
+            pending,
+            decision,
+            source_group=source_group,
+            settings=s,
+        )
+    except (TypeError, ValueError) as exc:
+        logger.error(
+            "Rejected malformed pending approval",
+            path=str(pending_file),
+            err=str(exc),
+        )
+        await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
+        return
     await _dispatch_approval_decision(context, deps)
     await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
-
-
-def _approval_decision_context(
-    pending: dict[str, Any],
-    decision: dict[str, Any],
-    *,
-    request_id: str,
-    source_group: str,
-    settings: Settings,
-) -> _ApprovalDecisionContext:
-    tool_name = pending.get("tool_name", "unknown")
-    chat_jid = pending.get("approval_chat_jid", "unknown")
-    request_data = pending.get("request_data", {})
-    handler_type = pending.get("handler_type", "service")
-    action = _get_action_catalog().action_for(tool_name) if handler_type == "service" else None
-    capability_id = str(action.capability.id) if action is not None else None
-    action_ids = (
-        tuple(str(action_id) for action_id in action.capability.action_ids)
-        if action is not None
-        else ()
-    )
-    approved = decision.get("approved", False)
-    decided_by = decision.get("decided_by")
-    approver = decided_by if isinstance(decided_by, str) and decided_by else "user"
-    decided_at = decision.get("decided_at")
-    approved_at = (
-        decided_at if isinstance(decided_at, str) and decided_at else datetime.now(UTC).isoformat()
-    )
-    origin = pending.get("origin_conversation_id")
-    origin_conversation_id = ConversationId(origin) if isinstance(origin, str) and origin else None
-    gate = _approval_replay_gate(
-        settings,
-        source_group,
-        require_resolved=origin_conversation_id is not None,
-    )
-    action_payload = pending.get("action_payload")
-    raw_timeout = pending.get("expires_after_seconds", security_approval.APPROVAL_TIMEOUT_SECONDS)
-    return _ApprovalDecisionContext(
-        request_id=request_id,
-        source_group=source_group,
-        tool_name=tool_name,
-        chat_jid=chat_jid,
-        request_data=request_data,
-        approved=approved,
-        approver=approver,
-        approved_at=approved_at,
-        handler_type=handler_type,
-        action=action,
-        gate=gate,
-        capability_id=capability_id,
-        action_ids=action_ids,
-        origin_conversation_id=origin_conversation_id,
-        action_payload=action_payload if isinstance(action_payload, dict) else None,
-        action_payload_sha256=(
-            pending.get("action_payload_sha256")
-            if isinstance(pending.get("action_payload_sha256"), str)
-            else None
-        ),
-        requested_at=(
-            pending.get("timestamp") if isinstance(pending.get("timestamp"), str) else None
-        ),
-        expires_after_seconds=(
-            raw_timeout if isinstance(raw_timeout, int) and raw_timeout > 0 else 0
-        ),
-    )
 
 
 async def _dispatch_approval_decision(
