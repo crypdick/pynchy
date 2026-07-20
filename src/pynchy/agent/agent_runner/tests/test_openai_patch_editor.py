@@ -8,6 +8,7 @@ import pytest
 from agents.editor import ApplyPatchOperation
 
 from agent_runner.cores.openai import ContainerPatchEditor
+from agent_runner.hooks import HookDecision
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -48,3 +49,26 @@ async def test_patch_editor_missing_update_returns_failed(tmp_path: Path) -> Non
 
     assert result.status == "failed"
     assert str(missing_path) in (result.output or "")
+
+
+@pytest.mark.asyncio
+async def test_patch_editor_runs_shared_security_roster_before_write(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    async def deny_persistence(  # noqa: RUF029, RUF100 - hook protocol is asynchronous.
+        tool_name: str, tool_input: dict[str, object]
+    ) -> HookDecision:
+        calls.append((tool_name, tool_input))
+        return HookDecision(allowed=False, reason="PERSIST001")
+
+    editor = ContainerPatchEditor([deny_persistence])
+    target = tmp_path / ".bashrc"
+    result = await editor.create_file(
+        ApplyPatchOperation(type="create_file", path=str(target), diff="+payload")
+    )
+
+    assert result.status == "failed"
+    assert result.output is not None
+    assert "PERSIST001" in result.output
+    assert calls == [("apply_patch", {"path": str(target), "diff": "+payload"})]
+    assert not target.exists()

@@ -292,7 +292,12 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             if gw is None:
                 return {"mode": "none"}
             mode = "litellm" if isinstance(gw, gateway_manager.LiteLLMGateway) else "builtin"
-            return {"mode": mode, "port": gw.port, "key": gw.key}
+            return {
+                "mode": mode,
+                "port": gw.port,
+                "key": gw.key,
+                "redaction": gw.redaction_posture.value,
+            }
 
         def get_active_sessions_count(self) -> int:
             active = session_manager.get_active_sessions(app.workspaces)

@@ -11,10 +11,33 @@ is untouched.
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import UTC, datetime
 
+from pynchy.host.container_manager.security.llm_redaction import irreversibly_redact
+from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 from pynchy.state import prune_messages_by_sender, store_message_direct
+
+_SENSITIVE_VALUE = re.compile(
+    r"(?i)\b(token|secret|password|api[_-]?key|authorization)\b\s*[:=]\s*\S+"
+)
+_BEARER_VALUE = re.compile(r"(?i)\bbearer\s+\S+")
+_URL_QUERY = re.compile(r"(https?://[^\s?]+)\?\S+")
+
+
+def redact_audit_reason(reason: str | None) -> str | None:
+    """Remove credential values and URL queries from persisted audit reasons."""
+    if reason is None:
+        return None
+    locally_redacted = irreversibly_redact(reason)
+    if locally_redacted != reason:
+        return locally_redacted
+    if scan_payload_for_secrets(reason).secrets_found:
+        return "[redacted: secret-bearing reason]"
+    redacted = _SENSITIVE_VALUE.sub(r"\1=<redacted>", reason)
+    redacted = _BEARER_VALUE.sub("Bearer <redacted>", redacted)
+    return _URL_QUERY.sub(r"\1?<redacted>", redacted)
 
 
 async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror the policy decision fields directly.
@@ -29,6 +52,8 @@ async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror th
     request_id: str | None = None,
     capability_id: str | None = None,
     action_ids: tuple[str, ...] = (),
+    rule_ids: tuple[str, ...] = (),
+    guarded_action_id: str | None = None,
 ) -> None:
     """Record a policy evaluation in the messages table."""
     metadata = {
@@ -37,10 +62,12 @@ async def record_security_event(  # noqa: PLR0913, RUF100 - audit rows mirror th
         "decision": decision,
         "corruption_tainted": corruption_tainted,
         "secret_tainted": secret_tainted,
-        "reason": reason,
+        "reason": redact_audit_reason(reason),
         "request_id": request_id,
+        "guarded_action_id": guarded_action_id or request_id,
         "capability_id": capability_id,
         "action_ids": action_ids or None,
+        "rule_ids": rule_ids or None,
     }
     metadata = {k: v for k, v in metadata.items() if v is not None}
 

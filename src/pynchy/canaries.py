@@ -17,6 +17,7 @@ from uuid import uuid4
 from pynchy.actions import ACTION_SPECS
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.logger import logger
+from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 from pynchy.state import (
     get_latest_canary_runs,
     get_recent_canary_runs,
@@ -74,10 +75,27 @@ def declared_canary_actions() -> dict[str, tuple[str, ...]]:
     return {scenario_id: tuple(action_ids) for scenario_id, action_ids in sorted(result.items())}
 
 
+def declared_canary_scenarios() -> dict[str, tuple[str, ...]]:
+    """Return semantic-action and local security-assurance scenarios."""
+    return {
+        **declared_canary_actions(),
+        **dict.fromkeys(SECURITY_CANARY_IDS, ()),
+    }
+
+
 def register_canary_scenario(scenario_id: str, scenario: CanaryScenario) -> None:
     """Register an executable scenario implementation from Pynchy or a plugin."""
     if scenario_id not in declared_canary_actions():
         raise ValueError(f"Canary scenario is not declared by an action: {scenario_id}")
+    if scenario_id in _SCENARIO_EXECUTORS:
+        raise ValueError(f"Canary scenario already registered: {scenario_id}")
+    _SCENARIO_EXECUTORS[scenario_id] = scenario
+
+
+def register_security_canary_scenario(scenario_id: str, scenario: CanaryScenario) -> None:
+    """Register a declared local security-assurance scenario without action claims."""
+    if scenario_id not in SECURITY_CANARY_IDS:
+        raise ValueError(f"Security canary scenario is not declared: {scenario_id}")
     if scenario_id in _SCENARIO_EXECUTORS:
         raise ValueError(f"Canary scenario already registered: {scenario_id}")
     _SCENARIO_EXECUTORS[scenario_id] = scenario
@@ -135,7 +153,7 @@ async def run_declared_canaries(  # noqa: PLR0913, RUF100 - optional revisions a
 def _selected_canary_actions(
     scenario_ids: Collection[str] | None,
 ) -> dict[str, tuple[str, ...]]:
-    declared = declared_canary_actions()
+    declared = declared_canary_scenarios()
     if scenario_ids is None:
         return declared
     unknown = sorted(set(scenario_ids) - set(declared))
@@ -154,10 +172,13 @@ async def get_canary_report(*, history_limit: int = 50) -> dict[str, object]:
     latest_by_scenario: dict[str, list[dict[str, object]]] = {}
     for run in latest:
         latest_by_scenario.setdefault(run.scenario_id, []).append(_canary_run_dict(run))
-    declared = declared_canary_actions()
+    declared = declared_canary_scenarios()
+    semantic_scenarios = declared_canary_actions()
     return {
         "summary": {
             "declared_scenarios": len(declared),
+            "semantic_action_scenarios": len(semantic_scenarios),
+            "security_assurance_scenarios": len(SECURITY_CANARY_IDS),
             "established_targets": sum(run.outcome is CanaryOutcome.PASSED for run in latest),
             "not_established_targets": sum(
                 run.outcome is CanaryOutcome.NOT_ESTABLISHED for run in latest
@@ -168,6 +189,9 @@ async def get_canary_report(*, history_limit: int = 50) -> dict[str, object]:
             {
                 "id": scenario_id,
                 "action_ids": action_ids,
+                "evidence_kind": (
+                    "semantic_action" if scenario_id in semantic_scenarios else "security_assurance"
+                ),
                 "latest_runs": latest_by_scenario.get(scenario_id, []),
             }
             for scenario_id, action_ids in declared.items()
@@ -316,6 +340,11 @@ def _register_builtin_canary_scenarios() -> None:
     )
 
     register_operational_canary_scenarios(register_canary_scenario)
+    from pynchy.security_canaries import (  # noqa: PLC0415, RUF100 - same late registration boundary as service canaries.
+        register_security_canary_scenarios,
+    )
+
+    register_security_canary_scenarios(register_security_canary_scenario)
 
 
 _register_builtin_canary_scenarios()

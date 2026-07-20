@@ -127,7 +127,7 @@ in Codex. Other models and accounts can expose a different subset.
 
 All built-in cores share the `BEFORE_TOOL_USE` hook pipeline. Built-in security hooks run first; plugin-provided hooks run after.
 
-**Bash security gate.** Every Bash tool call is intercepted before execution. Safe commands (file operations, text processing) run immediately; network-capable commands are checked against the session's taint state and may require Cop review or human approval. The agent doesn't see this unless a command is blocked. See [Bash Command Gating](security.md#bash-command-gating).
+**Agent tool security gate.** File and shell operations pass through one semantic gate before execution. File-capable tools establish workspace taint, deterministic hazards get blocked locally, and network-capable commands remain subject to Cop review or human approval. CLI hook payload errors, built-in gate exceptions, and unavailable Bash policy responses deny the tool call. See [Agent Tool Gating](security.md#agent-tool-gating).
 
 **WebFetch removal.** The `WebFetch` tool is gone from both cores. Web access goes through the Playwright browser MCP server, which is gated by the standard tool trust policy.
 
@@ -142,6 +142,12 @@ Claude SDK and OpenAI Agents SDK calls route through a host-side gateway. You ge
 - **Load balancing** — across multiple API keys or providers
 
 The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../installation/index.md).
+
+Pynchy's local LLM-request redaction runs only when using the built-in gateway.
+LiteLLM bypasses the owned Python request boundary and reports
+`redaction = "not_enforced"` in `/status`. See [LLM request
+redaction](../architecture/security.md#llm-request-redaction) for the exact
+scope and restoration restrictions.
 
 The Codex CLI core also uses the gateway. Pynchy generates a Codex custom model
 provider for each workspace with:

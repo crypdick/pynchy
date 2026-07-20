@@ -35,6 +35,10 @@ from pynchy.host.container_manager.ipc.write import (
     write_json_atomic,
 )
 from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.host.container_manager.security.identity import (
+    guarded_action_id,
+    request_payload_hash,
+)
 from pynchy.logger import logger
 from pynchy.state import expire_action_intent
 from pynchy.types import OutboundEvent, OutboundEventType
@@ -173,6 +177,7 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
     request_data: dict[str, Any],
     handler_type: str = "service",
     expires_after_seconds: int = APPROVAL_TIMEOUT_SECONDS,
+    approval_scope: str = "exact_request",
     origin_conversation_id: str | None = None,
     action_payload: dict[str, Any] | None = None,
     *,
@@ -197,6 +202,8 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
 
     data = {
         "request_id": request_id,
+        "guarded_action_id": str(guarded_action_id(request_id)),
+        "request_payload_hash": str(request_payload_hash(request_data)),
         "short_id": short_id,
         "tool_name": tool_name,
         "source_group": source_group,
@@ -212,6 +219,7 @@ def create_pending_approval(  # noqa: PLR0913, RUF100 - approval files intention
         "handler_type": handler_type,
         "timestamp": datetime.now(UTC).isoformat(),
         "expires_after_seconds": expires_after_seconds,
+        "approval_scope": approval_scope,
         # Persist request-time taint because the in-memory SecurityGate can be
         # gone when a host-owned approval decision is replayed after restart.
         "corruption_tainted": corruption_tainted,

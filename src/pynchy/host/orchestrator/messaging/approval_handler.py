@@ -49,6 +49,9 @@ async def handle_approval_command(
     decisions_dir = _approval_decisions_dir(source_group)
     decision_data = {
         "request_id": request_id,
+        "guarded_action_id": pending["guarded_action_id"],
+        "request_payload_hash": pending["request_payload_hash"],
+        "source_group": source_group,
         "approved": approved,
         "decided_by": sender,
         "decided_at": datetime.now(UTC).isoformat(),

@@ -28,6 +28,7 @@ async def test_record_security_event():
         request_id="req-123",
         capability_id="mail.message.read",
         action_ids=("mail.message.list", "mail.message.read"),
+        rule_ids=("CRED001",),
     )
 
     entries = await get_chat_history("group@test")
@@ -41,8 +42,48 @@ async def test_record_security_event():
     assert metadata["corruption_tainted"] is True
     assert metadata["secret_tainted"] is False
     assert metadata["request_id"] == "req-123"
+    assert metadata["guarded_action_id"] == "req-123"
     assert metadata["capability_id"] == "mail.message.read"
     assert metadata["action_ids"] == ["mail.message.list", "mail.message.read"]
+    assert metadata["rule_ids"] == ["CRED001"]
+
+
+@pytest.mark.asyncio
+async def test_record_security_event_redacts_secret_bearing_reason():
+    """Audit metadata keeps correlation but never persists raw secret values."""
+    raw_secret = "".join(("ghp_", "a" * 36))
+    await record_security_event(
+        chat_jid="group@test",
+        workspace="main",
+        tool_name="Bash",
+        decision="denied",
+        reason=f"token={raw_secret}",
+        request_id="guard-1",
+    )
+
+    entry = (await get_chat_history("group@test"))[0]
+    assert raw_secret not in entry.content
+    assert entry.metadata is not None
+    assert entry.metadata["reason"] == "[redacted sensitive data: credential]"
+    assert entry.metadata["guarded_action_id"] == "guard-1"
+
+
+@pytest.mark.asyncio
+async def test_record_security_event_redacts_pii_reason():
+    """PII does not enter persisted audit content or metadata."""
+    await record_security_event(
+        chat_jid="group@test",
+        workspace="main",
+        tool_name="send_email",
+        decision="denied",
+        reason="Blocked recipient private@example.test",
+        request_id="guard-pii",
+    )
+
+    entry = (await get_chat_history("group@test"))[0]
+    assert "private@example.test" not in entry.content
+    assert entry.metadata is not None
+    assert entry.metadata["reason"] == "[redacted sensitive data: email]"
 
 
 @pytest.mark.asyncio

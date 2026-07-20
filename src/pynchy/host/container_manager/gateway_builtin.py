@@ -18,6 +18,12 @@ import aiohttp
 from aiohttp import web
 
 from pynchy.config import get_settings
+from pynchy.host.container_manager.security.llm_redaction import (
+    GatewayRedactionPosture,
+    RedactionRequestError,
+    irreversibly_redact_llm_request_body,
+    redaction_posture_for_gateway_mode,
+)
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -122,8 +128,17 @@ class BuiltinGateway:
     def base_url(self) -> str:
         return f"http://{self.container_host}:{self.port}"
 
+    @property
+    def redaction_posture(self) -> GatewayRedactionPosture:
+        """Report the request-body redaction enforced by this owned proxy."""
+        return redaction_posture_for_gateway_mode("builtin")
+
     def has_provider(self, name: str) -> bool:
         return name in self._credentials
+
+    def prepare_upstream_body(self, body: bytes) -> bytes:
+        """Irreversibly redact one provider request before it leaves Pynchy."""
+        return irreversibly_redact_llm_request_body(body)
 
     # ------------------------------------------------------------------
     # Credential discovery
@@ -193,6 +208,10 @@ class BuiltinGateway:
             self._credentials[provider]["value"],
         )
         body = await proxy_request.read()
+        try:
+            upstream_body = self.prepare_upstream_body(body)
+        except RedactionRequestError:
+            return web.Response(status=400, text="Invalid LLM request body")
 
         try:
             return await _relay_upstream_response(
@@ -200,7 +219,7 @@ class BuiltinGateway:
                 request=request,
                 upstream_url=upstream_url,
                 headers=headers,
-                body=body,
+                body=upstream_body,
             )
         except aiohttp.ClientError as exc:
             logger.error("Gateway upstream error", provider=provider, err=str(exc))

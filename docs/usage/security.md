@@ -66,6 +66,16 @@ A payload scanner also runs on every outbound write. If it spots credential patt
 
 Pynchy posts an approval prompt in the workspace that requested the action. In Discord and Slack, select **Approve** or **Deny** on that prompt. The control records the decision in the originating workspace, so a prompt from one chat cannot approve an action in another.
 
+An exact-request approval covers only the reviewed payload. Pynchy rejects a
+changed payload, a copied decision from another workspace, or a replayed
+approval. The same guarded-action ID appears across the related security audit
+events so an operator can trace the decision through execution.
+
+For package artifact prompts, the reviewed payload is the normalized package
+coordinate list attached to the blocked in-flight hook, not the full shell
+string. Approval resumes only that waiting tool call and is not a reusable
+shell approval.
+
 Text-only channels show the command fallback in the prompt, for example `approve a1` or `deny a1`. Prompts expire after five minutes if no decision arrives.
 
 ## Capability Rules
@@ -215,11 +225,29 @@ Admin workspaces cannot use public-source tools.
 
 For web browsing, email, or other untrusted-input tasks, use a non-admin workspace.
 
-## Bash Command Gating
+## Agent Tool Gating
 
-Agents have a general-purpose Bash tool. The bash security gate inspects every command before it runs, using the same taint tracking as the tool trust policy above.
+Agents can read and edit files, fetch URLs, install packages, and run shell commands. The agent tool gate normalizes those different operations before they run, using the same taint tracking as the tool trust policy above.
 
-**Safe commands always run.** Common dev tools — `ls`, `cat`, `grep`, `sed`, `jq`, `find`, `git`, `wc`, and dozens more — are on a local whitelist. They can't reach the network and run with no delay or IPC.
+**File access establishes workspace taint.** File and shell operations notify the host before execution. If the selected profile sets `contains_secrets = true`, even a local command such as `ls` sets secret taint before a later external action. Access to a recognized credential path such as `.env` or `.env.production` also sets secret taint when the profile omitted that declaration. If no active host gate can retain the taint, the operation is denied.
+
+**Security gate failures deny the operation.** Bash requests are denied when the active host gate is missing or the host response is unavailable, empty, malformed, or unknown. CLI-backed cores also emit a denial for malformed hook input or an unexpected built-in gate exception. A malformed optional plugin-hook configuration falls back to the built-in security roster.
+
+**Deterministic hazards never run.** The local gate blocks destructive system commands, reverse shells, remote content piped directly into a shell, and structured or shell-based writes to common persistence and autostart paths. This includes redirects, appends, `tee`, `cp`, and `install` destinations.
+
+**Safe commands still run without Cop review.** Common dev tools — `ls`, `cat`, `grep`, `sed`, `jq`, `find`, `git`, `wc`, and dozens more — are on a local whitelist. They cannot reach the network. Their file-access notification must still reach the active host gate, but the Cop does not review them.
+
+**Package installs carry typed provenance.** Pynchy recognizes `uv`, `uvx`,
+pip, pipx, npm, Yarn, and Cargo operations plus writes to their common manifests
+and lockfiles. Shell-generated or ambiguous package names are denied. Direct
+URLs, VCS, local or custom-registry sources, unpinned executable installs, and
+releases less than seven days old require approval. Custom index flags,
+registry environment variables, requirements directives, and uv index/source
+tables count as custom registries. Registry outages also require approval for
+executable installs; lock-pinned manifest reconciliation can continue with a
+degraded audit event. Only the normalized registry coordinate is queried.
+Pynchy does not use a third-party package reputation service, and package
+checks do not change skill admission.
 
 **Network commands are gated when tainted.** Commands like `curl`, `wget`, `python`, `ssh`, `pip install`, and similar network-capable tools are checked against the session's taint state:
 
@@ -229,13 +257,13 @@ Agents have a general-purpose Bash tool. The bash security gate inspects every c
 
 **Unknown commands get Cop review.** Commands not on either list go to the Cop for inspection. If the Cop flags the command and both taint flags are set, the decision escalates to human approval.
 
-No config needed — the bash security gate is always active. For technical details, see [Bash Security Gate](../architecture/security.md#5b-bash-security-gate).
+No config needed — the agent tool gate is always active. For technical details, see [Agent Tool Security Gate](../architecture/security.md#5b-agent-tool-security-gate).
 
 ## Host-Mutating Operations
 
 Some IPC operations can change what code runs on the host: merging code, registering new workspaces, scheduling tasks, running host commands. These are automatically inspected by the **Cop** — an LLM-based security reviewer.
 
-The Cop examines the payload of each host-mutating operation (the diff being merged, the task prompt, the group config) and flags anything suspicious. Flagged operations require human approval before proceeding.
+The Cop examines the payload of each host-mutating operation (the diff being merged, the task prompt, the group config) together with a small recent context window. Flagged operations require human approval before proceeding. If Cop or its context is unavailable, request-reply operations also require approval; fire-and-forget operations are blocked.
 
 **What's covered:**
 - Code merges (`sync_worktree_to_main`)

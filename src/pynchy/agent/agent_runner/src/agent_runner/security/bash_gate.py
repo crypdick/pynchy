@@ -15,6 +15,7 @@ import sys
 from typing import Any
 
 from agent_runner.hooks import HookDecision
+from agent_runner.security.action_identity import current_guarded_action_id
 from agent_runner.security.classify import CommandClass, classify_command
 
 
@@ -32,38 +33,50 @@ async def _ipc_bash_check(command: str) -> HookDecision:
         ipc_service_request,
     )
 
-    results = await ipc_service_request(
-        "bash_check",
-        {"command": command},
-        response_timeout_seconds=300,  # Match approval timeout
-        type_override="security:bash_check",
-    )
-
-    # Parse the response
-    if not results:
-        _log("Empty IPC response, allowing command")
-        return HookDecision(allowed=True)
-
-    text = results[0].text
-    if text.startswith("Error:"):
-        # IPC error (timeout, etc.) -- fail open with warning
-        _log(f"IPC error: {text}")
-        return HookDecision(allowed=True)
-
     try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        _log(f"Malformed IPC response: {text}")
-        return HookDecision(allowed=True)
-
-    decision = data.get("decision", "allow")
-    reason = data.get("reason")
-
-    if decision == "deny":
+        results = await ipc_service_request(
+            "bash_check",
+            {"command": command},
+            response_timeout_seconds=300,  # Match approval timeout
+            type_override="security:bash_check",
+            guarded_action_id=str(current_guarded_action_id()),
+        )
+    except Exception as exc:  # allow: exception-handling  # noqa: BLE001, RUF100
+        reason = f"Host Bash policy unavailable; failing closed: {type(exc).__name__}"
+        _log(reason)
         return HookDecision(allowed=False, reason=reason)
 
-    # "allow" or anything else -> allow
-    return HookDecision(allowed=True)
+    return _parse_host_decision(results)
+
+
+def _parse_host_decision(results: list[Any]) -> HookDecision:
+    """Parse the host result without treating absence or novelty as approval."""
+    denial_reason: str | None = None
+
+    if not results:
+        denial_reason = "Host returned an empty Bash decision; failing closed"
+    else:
+        text = results[0].text
+        if text.startswith("Error:"):
+            denial_reason = "Host Bash policy unavailable; failing closed"
+        else:
+            try:
+                data = json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                data = None
+            if not isinstance(data, dict):
+                denial_reason = "Host returned a malformed Bash decision; failing closed"
+            elif data.get("decision") == "allow":
+                return HookDecision(allowed=True)
+            elif data.get("decision") == "deny":
+                host_reason = data.get("reason")
+                reason = host_reason if isinstance(host_reason, str) else "Denied by host policy"
+                return HookDecision(allowed=False, reason=reason)
+            else:
+                denial_reason = "Host returned an unknown Bash decision; failing closed"
+
+    _log(denial_reason)
+    return HookDecision(allowed=False, reason=denial_reason)
 
 
 async def bash_security_hook(tool_name: str, tool_input: dict[str, Any]) -> HookDecision:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import BaseModel, SecretStr
@@ -38,9 +39,33 @@ from pynchy.config import (
     ServerConfig,
     Settings,
 )
+from pynchy.host.container_manager.security.cop import (
+    CopContextAvailability,
+    CopInspectionContext,
+    CopVerdict,
+)
 from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.state import close_test_database, init_test_database
 from pynchy.types import InboundFetchResult, NewMessage
+
+
+@pytest.fixture(autouse=True)
+def _clean_host_mutation_cop():
+    """Give non-security tests a hermetic, successful Cop boundary."""
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
+            new_callable=AsyncMock,
+            return_value=CopVerdict(flagged=False),
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.load_cop_inspection_context",
+            new_callable=AsyncMock,
+            return_value=CopInspectionContext(availability=CopContextAvailability.AVAILABLE),
+        ),
+    ):
+        yield
+
 
 __all__ = [
     "NullChannel",

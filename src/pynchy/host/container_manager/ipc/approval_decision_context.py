@@ -26,19 +26,33 @@ class ApprovalDecision:
     approved: bool
     decided_by: str
     decided_at: str
+    guarded_action_id: str | None = None
+    request_payload_hash: str | None = None
+    source_group: str | None = None
 
     @classmethod
     def parse(cls, value: object) -> ApprovalDecision:
         """Parse a decision without truthy or identity fallbacks."""
         if not isinstance(value, dict):
             raise TypeError("approval decision must be a JSON object")
-        expected_fields = {"request_id", "approved", "decided_by", "decided_at"}
+        expected_fields = {
+            "request_id",
+            "guarded_action_id",
+            "request_payload_hash",
+            "source_group",
+            "approved",
+            "decided_by",
+            "decided_at",
+        }
         if set(value) != expected_fields:
             raise ValueError("approval decision has missing or unexpected fields")
         request_id = value["request_id"]
         approved = value["approved"]
         decided_by = value["decided_by"]
         decided_at = value["decided_at"]
+        guarded_action_id = value["guarded_action_id"]
+        request_payload_hash = value["request_payload_hash"]
+        source_group = value["source_group"]
         if not isinstance(request_id, str) or not request_id:
             raise ValueError("approval decision request_id must be a non-empty string")
         if type(approved) is not bool:
@@ -47,6 +61,13 @@ class ApprovalDecision:
             raise ValueError("approval decision decided_by must be a non-empty string")
         if not isinstance(decided_at, str) or not decided_at:
             raise ValueError("approval decision decided_at must be a non-empty string")
+        for field_name, field_value in (
+            ("guarded_action_id", guarded_action_id),
+            ("request_payload_hash", request_payload_hash),
+            ("source_group", source_group),
+        ):
+            if not isinstance(field_value, str) or not field_value:
+                raise ValueError(f"approval decision {field_name} must be a non-empty string")
         try:
             parsed_decided_at = datetime.fromisoformat(decided_at)
         except ValueError as exc:
@@ -58,6 +79,9 @@ class ApprovalDecision:
             approved=approved,
             decided_by=decided_by,
             decided_at=decided_at,
+            guarded_action_id=guarded_action_id,
+            request_payload_hash=request_payload_hash,
+            source_group=source_group,
         )
 
 
@@ -75,7 +99,13 @@ def build_approval_decision_context(
     if not isinstance(request_data, dict):
         raise TypeError("pending approval request_data must be an object")
     handler_type = pending.get("handler_type")
-    if handler_type not in {"service", "ipc", "mcp_proxy"}:
+    if handler_type not in {
+        "service",
+        "ipc",
+        "mcp_proxy",
+        "security_bash",
+        "security_artifact",
+    }:
         raise ValueError("pending approval handler_type is invalid")
     action = _get_action_catalog().action_for(tool_name) if handler_type == "service" else None
     capability_id = str(action.capability.id) if action is not None else None

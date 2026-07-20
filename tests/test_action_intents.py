@@ -43,6 +43,7 @@ from pynchy.host.container_manager.action_intents import (
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate, create_gate, destroy_gate
+from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.plugins.integrations import matrix_gateway
 from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
@@ -207,6 +208,8 @@ async def _write_matrix_approval(
     await mark_action_intent_awaiting_approval(request_id, policy_decision="human required")
     pending = {
         "request_id": request_id,
+        "guarded_action_id": request_id,
+        "request_payload_hash": str(request_payload_hash(request_data)),
         "short_id": "mx",
         "tool_name": "matrix_route_send",
         "source_group": _MATRIX_FOLDER,
@@ -220,6 +223,7 @@ async def _write_matrix_approval(
         ).hexdigest(),
         "timestamp": timestamp or datetime.now(UTC).isoformat(),
         "expires_after_seconds": 300,
+        "approval_scope": "exact_request",
         "corruption_tainted": False,
         "secret_tainted": False,
     }
@@ -230,6 +234,9 @@ async def _write_matrix_approval(
     pending_path.write_text(json.dumps(pending), encoding="utf-8")
     decision = {
         "request_id": request_id,
+        "guarded_action_id": pending["guarded_action_id"],
+        "request_payload_hash": pending["request_payload_hash"],
+        "source_group": pending["source_group"],
         "approved": True,
         "decided_by": "operator",
         "decided_at": datetime.now(UTC).isoformat(),
@@ -355,11 +362,21 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
         intent = await get_action_intent_by_request(request_id)
         assert intent is not None
         assert intent.status is ActionIntentStatus.AWAITING_APPROVAL
+        pending = json.loads(
+            (
+                settings.data_dir
+                / "approvals/test-workspace/pending_approvals"
+                / f"{request_id}.json"
+            ).read_text(encoding="utf-8")
+        )
         decision_path.parent.mkdir(parents=True, exist_ok=True)
         decision_path.write_text(
             json.dumps(
                 {
                     "request_id": request_id,
+                    "guarded_action_id": pending["guarded_action_id"],
+                    "request_payload_hash": pending["request_payload_hash"],
+                    "source_group": pending["source_group"],
                     "approved": True,
                     "decided_by": "test-user",
                     "decided_at": "2026-07-18T12:00:00+00:00",

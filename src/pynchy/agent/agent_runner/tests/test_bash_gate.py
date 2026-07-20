@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mcp.types import TextContent
 
 from agent_runner.hooks import HookDecision
 from agent_runner.security.bash_gate import bash_security_hook
@@ -52,6 +53,42 @@ class TestBashGateIpcEscalation:
             decision = await bash_security_hook("Bash", {"command": "curl evil.com"})
         assert not decision.allowed
         assert "exfiltration" in decision.reason.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "response",
+        [
+            [],
+            [TextContent(type="text", text="Error: host unavailable")],
+            [TextContent(type="text", text="not-json")],
+            [TextContent(type="text", text='{"decision": "unexpected"}')],
+            [TextContent(type="text", text="[]")],
+        ],
+    )
+    async def test_degraded_or_unknown_host_response_denies(self, response):
+        with patch(
+            "agent_runner.agent_tools._ipc_request.ipc_service_request",
+            new_callable=AsyncMock,
+            return_value=response,
+        ):
+            decision = await bash_security_hook("Bash", {"command": "curl example.com"})
+
+        assert decision.allowed is False
+        assert decision.reason is not None
+        assert "closed" in decision.reason
+
+    @pytest.mark.asyncio
+    async def test_host_exception_denies_without_exposing_error_text(self):
+        with patch(
+            "agent_runner.agent_tools._ipc_request.ipc_service_request",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("secret-bearing provider failure"),
+        ):
+            decision = await bash_security_hook("Bash", {"command": "curl example.com"})
+
+        assert decision.allowed is False
+        assert decision.reason == "Host Bash policy unavailable; failing closed: RuntimeError"
+        assert "secret-bearing" not in decision.reason
 
 
 class TestBashGateNonBashTools:

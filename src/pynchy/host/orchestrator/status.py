@@ -350,7 +350,10 @@ async def _collect_gateway(info: dict[str, Any]) -> dict[str, Any]:
     Args:
         info: Dict from deps.get_gateway_info() with mode, port, key.
     """
-    result: dict[str, Any] = {"mode": info.get("mode", "unknown")}
+    result: dict[str, Any] = {
+        "mode": info.get("mode", "unknown"),
+        "redaction": info.get("redaction", "unknown"),
+    }
 
     if info.get("mode") != "litellm":
         return result

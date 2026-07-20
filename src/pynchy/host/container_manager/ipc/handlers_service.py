@@ -191,6 +191,7 @@ async def _request_human_approval(
         approval_chat_jid=context.chat_jid,
         request_data=context.data,
         expires_after_seconds=context.action.approval.expires_after_seconds,
+        approval_scope=context.action.approval.mode.value,
         origin_conversation_id=(str(control.conversation_id) if control is not None else None),
         action_payload=(context.intent.payload if context.intent is not None else None),
         corruption_tainted=context.gate.policy.corruption_tainted,
@@ -246,13 +247,22 @@ async def _maybe_require_cop_approval(
     source_group: str,
     deps: IpcDeps,
 ) -> bool:
-    if data.get("_cop_approved"):
-        return True
-
     settings = get_settings()
 
     tool = settings.tools.get(request.tool_name)
     if not isinstance(tool, McpTool) or tool.mcp.runtime != "script":
+        return True
+
+    operation = f"script_mcp:{request.tool_name}"
+    receipt = await cop_gate_module.verify_approval_receipt(operation, data, source_group, deps)
+    if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        _write_response(
+            source_group,
+            request.request_id,
+            {"error": "Invalid or replayed approval receipt"},
+        )
+        return False
+    if receipt is cop_gate_module.ReceiptVerification.VALID:
         return True
 
     args_preview = json_mod.dumps(
@@ -261,7 +271,7 @@ async def _maybe_require_cop_approval(
     )[:1000]
     summary = f"script MCP tool: {request.tool_name}\nargs: {args_preview}"
     return await cop_gate_module.cop_gate(
-        f"script_mcp:{request.tool_name}",
+        operation,
         summary,
         data,
         source_group,

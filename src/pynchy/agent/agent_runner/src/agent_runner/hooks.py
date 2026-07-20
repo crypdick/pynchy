@@ -164,13 +164,14 @@ def load_hooks(plugin_hooks: list[dict[str, str]]) -> dict[HookEvent, list[HookF
     return hooks
 
 
-def builtin_before_tool_hooks() -> list[BeforeToolUseHook]:
-    """Return the built-in BEFORE_TOOL_USE security hooks, in enforcement order.
-
-    Built-ins run before any plugin-provided BEFORE_TOOL_USE hooks. Callers
-    should not compose the full gate by hand -- use
-    :func:`before_tool_use_roster` so every core enforces the same set.
-    """
+async def builtin_security_hook(tool_name: str, tool_input: dict[str, Any]) -> HookDecision:
+    """Run every built-in tool policy under one guarded-action identity."""
+    from agent_runner.security.action_identity import (  # noqa: PLC0415, RUF100 - avoid security/hooks import cycle.
+        guarded_action_scope,
+    )
+    from agent_runner.security.artifact_gate import (  # noqa: PLC0415, RUF100 - artifact_gate imports HookDecision from this module.
+        artifact_security_hook,
+    )
     from agent_runner.security.bash_gate import (  # noqa: PLC0415, RUF100 - bash_gate imports HookDecision from this module.
         bash_security_hook,
     )
@@ -178,7 +179,22 @@ def builtin_before_tool_hooks() -> list[BeforeToolUseHook]:
         guard_git_hook,
     )
 
-    return [bash_security_hook, guard_git_hook]
+    with guarded_action_scope():
+        for hook in (artifact_security_hook, bash_security_hook, guard_git_hook):
+            decision = await hook(tool_name, tool_input)
+            if not decision.allowed:
+                return decision
+    return HookDecision(allowed=True)
+
+
+def builtin_before_tool_hooks() -> list[BeforeToolUseHook]:
+    """Return the built-in BEFORE_TOOL_USE security hooks, in enforcement order.
+
+    Built-ins run before any plugin-provided BEFORE_TOOL_USE hooks. Callers
+    should not compose the full gate by hand -- use
+    :func:`before_tool_use_roster` so every core enforces the same set.
+    """
+    return [builtin_security_hook]
 
 
 def before_tool_use_roster(

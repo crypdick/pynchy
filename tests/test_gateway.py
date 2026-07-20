@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +24,7 @@ from pynchy.host.container_manager.gateway_litellm import (
     resolve_litellm_environment,
 )
 from pynchy.host.container_manager.litellm_config import LiteLLMConfigPreparer
+from pynchy.host.container_manager.security.llm_redaction import GatewayRedactionPosture
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -71,6 +73,15 @@ class TestLiteLLMGatewayInit:
         assert gw.has_provider("anthropic") is True
         assert gw.has_provider("openai") is True
         assert gw.has_provider("anything") is True
+
+    def test_reports_truthful_redaction_posture(self, tmp_path: Path):
+        gw = LiteLLMGateway(
+            config_path=str(tmp_path / "config.yaml"),
+            data_dir=tmp_path,
+            **_LITELLM_KWARGS,
+        )
+
+        assert gw.redaction_posture is GatewayRedactionPosture.NOT_ENFORCED
 
     def test_persists_salt_and_pg_password(self, tmp_path: Path):
         LiteLLMGateway(
@@ -495,6 +506,26 @@ class TestBuiltinGateway:
         )
         assert gw.has_provider("anthropic") is False
         assert gw.has_provider("openai") is False
+
+    def test_redacts_complete_request_at_owned_gateway_boundary(self):
+        gw = BuiltinGateway(
+            port=4010,
+            host=ALL_INTERFACE_BIND_HOST,
+            container_host="host.docker.internal",
+        )
+        secret = "".join(("sk-", "a" * 32))
+        body = json.dumps(
+            {
+                "instructions": "Contact person@example.test",
+                "input": f"Use {secret}",
+            }
+        ).encode()
+
+        forwarded = gw.prepare_upstream_body(body)
+
+        assert gw.redaction_posture is GatewayRedactionPosture.ENFORCED
+        assert secret.encode() not in forwarded
+        assert b"person@example.test" not in forwarded
 
 
 class TestBuiltinGatewayAuthHeaders:

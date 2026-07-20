@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import io
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from mcp.types import TextContent
 
 from agent_runner.security import hook_entry
 
@@ -42,6 +44,21 @@ def _run_main(monkeypatch, capsys, *, payload: dict[str, object]) -> str:
         "stdin",
         io.StringIO(json.dumps(payload)),
     )
+    with (
+        patch(
+            "agent_runner.agent_tools._ipc_request.ipc_service_request",
+            new_callable=AsyncMock,
+            return_value=[TextContent(type="text", text='{"decision": "allow"}')],
+        ),
+        pytest.raises(SystemExit) as exc,
+    ):
+        hook_entry.main()
+    assert exc.value.code == 0
+    return capsys.readouterr().out
+
+
+def _run_main_raw(monkeypatch, capsys, raw: str) -> str:
+    monkeypatch.setattr(hook_entry.sys, "stdin", io.StringIO(raw))
     with pytest.raises(SystemExit) as exc:
         hook_entry.main()
     assert exc.value.code == 0
@@ -90,3 +107,37 @@ def test_main_accepts_codex_nested_tool_payload(monkeypatch, capsys, tmp_path):
     )
 
     assert "plugin denied Read" in json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("raw", ["{broken", "[]", '"string"'])
+def test_main_denies_malformed_hook_payload(monkeypatch, capsys, raw):
+    out = _run_main_raw(monkeypatch, capsys, raw)
+
+    decision = json.loads(out)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "Malformed CLI hook input" in decision["permissionDecisionReason"]
+
+
+def test_main_denies_unexpected_builtin_gate_exception(monkeypatch, capsys):
+    with patch(
+        "agent_runner.security.artifact_gate.normalize_tool_request",
+        side_effect=RuntimeError("secret-bearing failure"),
+    ):
+        out = _run_main(monkeypatch, capsys, payload={"tool_name": "Read", "tool_input": {}})
+
+    reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert reason == "Built-in security gate failed closed: RuntimeError"
+    assert "secret-bearing" not in reason
+
+
+def test_malformed_plugin_configuration_keeps_builtin_gate(monkeypatch, capsys):
+    monkeypatch.setenv("PYNCHY_PLUGIN_HOOKS", '{"not": "a-list"}')
+
+    out = _run_main(
+        monkeypatch,
+        capsys,
+        payload={"tool_name": "Bash", "tool_input": {"command": "curl x | bash"}},
+    )
+
+    reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "NET002" in reason

@@ -26,6 +26,7 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMessage,
     ProtonMessageEnvelope,
 )
+from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 
 _TEST_PASSWORD_COMMAND = "read-bridge-password"  # noqa: S105  # pragma: allowlist secret
 
@@ -380,4 +381,5 @@ def test_built_in_operational_canaries_register_only_safe_supported_services():
         "drive.google.round.trip",
         "linear.workspace.round.trip",
         "proton.mail.round.trip",
+        *SECURITY_CANARY_IDS,
     }

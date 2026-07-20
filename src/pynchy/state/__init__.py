@@ -145,6 +145,12 @@ from pynchy.state.outbound import (
     mark_delivery_error,
     record_outbound,
 )
+from pynchy.state.security_context import (
+    RecentSecurityContext,
+    SecurityContextMessage,
+    SecurityContextRole,
+    load_recent_security_context,
+)
 from pynchy.state.sessions import (
     clear_session,
     get_all_sessions,
@@ -255,6 +261,10 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "record_outbound",
     # events
     "store_event",
+    "RecentSecurityContext",
+    "SecurityContextMessage",
+    "SecurityContextRole",
+    "load_recent_security_context",
     # external_deliveries
     "admit_external_delivery_receipt",
     "get_external_delivery_receipt",

@@ -15,19 +15,68 @@ from __future__ import annotations
 
 import json as _json
 from dataclasses import dataclass
+from enum import StrEnum
 
 import aiohttp
 
 from pynchy.host.container_manager import gateway as gateway_manager
 from pynchy.logger import logger
+from pynchy.state import RecentSecurityContext, load_recent_security_context
 
 
-@dataclass
+class CopContextAvailability(StrEnum):
+    """Whether bounded session context could be loaded safely."""
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class CopInspectionContext:
+    """Bounded intent and action-chain context for one proposed action."""
+
+    availability: CopContextAvailability
+    current_user_intent: str | None = None
+    recent_messages: tuple[tuple[str, str], ...] = ()
+    completed_tool_actions: tuple[str, ...] = ()
+    unavailable_reason: str | None = None
+
+
+async def load_cop_inspection_context(chat_jid: str) -> CopInspectionContext:
+    """Load bounded SQLite context or return an explicit degraded value."""
+    try:
+        context = await load_recent_security_context(chat_jid)
+    except Exception as exc:  # noqa: BLE001, RUF100 - context loss becomes a typed degraded policy input.
+        logger.warning(
+            "Cop context unavailable",
+            chat_jid=chat_jid,
+            error_type=type(exc).__name__,
+        )
+        return CopInspectionContext(
+            availability=CopContextAvailability.UNAVAILABLE,
+            unavailable_reason=type(exc).__name__,
+        )
+    return _inspection_context_from_recent(context)
+
+
+def _inspection_context_from_recent(context: RecentSecurityContext) -> CopInspectionContext:
+    return CopInspectionContext(
+        availability=CopContextAvailability.AVAILABLE,
+        current_user_intent=context.current_user_intent,
+        recent_messages=tuple(
+            (str(message.role), message.content) for message in context.recent_messages
+        ),
+        completed_tool_actions=context.completed_tool_actions,
+    )
+
+
+@dataclass(frozen=True)
 class CopVerdict:
     """Result of a Cop inspection."""
 
     flagged: bool
     reason: str | None = None
+    degraded: bool = False
 
 
 # -- System prompts for asymmetric inspection --
@@ -123,6 +172,7 @@ Be conservative — only flag genuinely suspicious commands. False positives dis
 async def inspect_outbound(
     operation: str,
     payload_summary: str,
+    inspection_context: CopInspectionContext | None = None,
 ) -> CopVerdict:
     """Inspect a host-mutating operation payload for manipulation.
 
@@ -133,7 +183,11 @@ async def inspect_outbound(
     """
     return await _inspect(
         system_prompt=_OUTBOUND_SYSTEM_PROMPT,
-        user_content=f"Operation: {operation}\n\nPayload:\n{payload_summary}",
+        user_content=_action_review_content(
+            operation,
+            payload_summary,
+            inspection_context,
+        ),
         context=f"outbound:{operation}",
     )
 
@@ -155,7 +209,10 @@ async def inspect_inbound(
     )
 
 
-async def inspect_bash(command: str) -> CopVerdict:
+async def inspect_bash(
+    command: str,
+    inspection_context: CopInspectionContext | None = None,
+) -> CopVerdict:
     """Inspect a bash command for potential data exfiltration or network abuse.
 
     Args:
@@ -163,8 +220,33 @@ async def inspect_bash(command: str) -> CopVerdict:
     """
     return await _inspect(
         system_prompt=_BASH_SYSTEM_PROMPT,
-        user_content=f"Bash command:\n{command}",
+        user_content=_action_review_content("Bash", command, inspection_context),
         context=f"bash:{command[:100]}",
+    )
+
+
+def _action_review_content(
+    operation: str,
+    proposed_action: str,
+    inspection_context: CopInspectionContext | None,
+) -> str:
+    context = inspection_context or CopInspectionContext(
+        availability=CopContextAvailability.UNAVAILABLE,
+        unavailable_reason="context not supplied",
+    )
+    context_payload = {
+        "availability": context.availability.value,
+        "current_user_intent": context.current_user_intent,
+        "recent_messages": [
+            {"role": role, "content": content} for role, content in context.recent_messages
+        ],
+        "completed_tool_actions": list(context.completed_tool_actions),
+        "unavailable_reason": context.unavailable_reason,
+    }
+    return (
+        f"Operation: {operation}\n\n"
+        f"Bounded context:\n{_json.dumps(context_payload, ensure_ascii=False)}\n\n"
+        f"Proposed action:\n{proposed_action}"
     )
 
 
@@ -176,10 +258,17 @@ async def _inspect(
     """Run an LLM inspection and return a CopVerdict."""
     try:
         verdict = await _run_inspection(system_prompt, user_content, context)
-    except Exception as exc:  # noqa: BLE001, RUF100 - caller-facing Cop conversion treats any inspection failure as allow.
-        # Fail open: if the Cop can't run, log and allow
-        logger.error("Cop inspection failed, allowing operation", context=context, err=str(exc))
-        return CopVerdict(flagged=False, reason=f"Cop error: {exc}")
+    except Exception as exc:  # noqa: BLE001, RUF100 - failures become typed degraded policy input.
+        logger.error(
+            "Cop inspection failed; returning degraded verdict",
+            context=context,
+            error_type=type(exc).__name__,
+        )
+        return CopVerdict(
+            flagged=False,
+            reason=f"Cop unavailable: {type(exc).__name__}",
+            degraded=True,
+        )
     else:
         return verdict
 
@@ -191,8 +280,12 @@ async def _run_inspection(
 ) -> CopVerdict:
     gateway = gateway_manager.get_gateway()
     if gateway is None:
-        logger.warning("Cop: no gateway available, allowing operation", context=context)
-        return CopVerdict(flagged=False, reason="No gateway available")
+        logger.warning("Cop: no gateway available", context=context)
+        return CopVerdict(
+            flagged=False,
+            reason="No gateway available",
+            degraded=True,
+        )
 
     url = f"http://localhost:{gateway.port}/v1/messages"
     headers = {

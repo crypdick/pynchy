@@ -71,7 +71,12 @@ async def _handle_register_group(
         )
         return
 
-    if not data.get("_cop_approved"):
+    receipt = await cop_gate_module.verify_approval_receipt(
+        "register_group", data, source_group, deps
+    )
+    if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        return
+    if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary = f"name={request.name}, folder={request.folder}, trigger={request.trigger}"
         allowed = await cop_gate_module.cop_gate(
             "register_group",
@@ -139,7 +144,12 @@ async def _periodic_agent_cop_allowed(
     source_group: str,
     deps: IpcDeps,
 ) -> bool:
-    if not data.get("_cop_approved"):
+    receipt = await cop_gate_module.verify_approval_receipt(
+        "create_periodic_agent", data, source_group, deps
+    )
+    if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        return False
+    if receipt is not cop_gate_module.ReceiptVerification.VALID:
         prompt_preview = request.prompt[:500]
         summary = (
             f"name={request.name}, profile={request.profile}, "
