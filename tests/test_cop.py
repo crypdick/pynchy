@@ -9,9 +9,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from pynchy.host.container_manager.security.cop import (
+    CopContextAvailability,
+    CopInspectionContext,
     inspect_bash,
     inspect_inbound,
     inspect_outbound,
+    load_cop_inspection_context,
 )
 
 API_DOWN_MESSAGE = "API down"
@@ -29,7 +32,12 @@ def _fake_gateway(port: int = 4010, key: str = "test-key") -> _Gateway:
     return _Gateway(port=port, key=key)
 
 
-def _mock_aiohttp_session(response_text: str, *, status: int = 200):
+def _mock_aiohttp_session(
+    response_text: str,
+    *,
+    status: int = 200,
+    captured_bodies: list[dict[str, object]] | None = None,
+):
     """Return a patch context manager that mocks aiohttp.ClientSession.
 
     The mock's post() returns a response whose .json() resolves to the
@@ -43,7 +51,9 @@ def _mock_aiohttp_session(response_text: str, *, status: int = 200):
     mock_resp.json = AsyncMock(return_value=body)
 
     @asynccontextmanager
-    async def _post(*_args, **_kwargs):
+    async def _post(*_args, **kwargs):
+        if captured_bodies is not None:
+            captured_bodies.append(kwargs["json"])
         yield mock_resp
 
     mock_session = AsyncMock()
@@ -91,6 +101,49 @@ async def test_outbound_malicious_diff():
 
 
 @pytest.mark.asyncio
+async def test_outbound_sends_bounded_context_and_proposed_action():
+    """The Cop sees intent and action names, not an unbounded transcript."""
+    bodies: list[dict[str, object]] = []
+    context = CopInspectionContext(
+        availability=CopContextAvailability.AVAILABLE,
+        current_user_intent="Fix the typo",
+        recent_messages=(("user", "Please fix it"), ("assistant", "I will inspect it")),
+        completed_tool_actions=("Read", "ApplyPatch"),
+    )
+    with (
+        patch(
+            "pynchy.host.container_manager.gateway.get_gateway",
+            return_value=_fake_gateway(),
+        ),
+        _mock_aiohttp_session(
+            '{"flagged": false, "reason": "matches intent"}',
+            captured_bodies=bodies,
+        ),
+    ):
+        await inspect_outbound("sync_worktree_to_main", "diff: typo fix", context)
+
+    request_text = str(bodies[0]["messages"])
+    assert "Fix the typo" in request_text
+    assert "ApplyPatch" in request_text
+    assert "diff: typo fix" in request_text
+
+
+@pytest.mark.asyncio
+async def test_context_load_failure_is_explicitly_unavailable():
+    """SQLite errors become typed degraded context instead of invented values."""
+    with patch(
+        "pynchy.host.container_manager.security.cop.load_recent_security_context",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("database offline"),
+    ):
+        context = await load_cop_inspection_context("chat@test")
+
+    assert context.availability is CopContextAvailability.UNAVAILABLE
+    assert context.current_user_intent is None
+    assert context.unavailable_reason == "RuntimeError"
+
+
+@pytest.mark.asyncio
 async def test_inbound_benign_content():
     """Normal email content is not flagged."""
     gw_patch = patch(
@@ -124,18 +177,19 @@ async def test_inbound_injection_attempt():
 
 
 @pytest.mark.asyncio
-async def test_cop_no_gateway_fails_open():
-    """If no gateway is available, the Cop allows the operation."""
+async def test_cop_no_gateway_returns_degraded_verdict():
+    """No gateway returns a typed degraded verdict for policy escalation."""
     with patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None):
         verdict = await inspect_outbound("deploy", "rebuilding container")
 
     assert not verdict.flagged
     assert "No gateway" in verdict.reason
+    assert verdict.degraded is True
 
 
 @pytest.mark.asyncio
-async def test_cop_error_fails_open():
-    """If the LLM call fails, the Cop allows the operation (fail open)."""
+async def test_cop_error_returns_degraded_verdict_without_raw_error():
+    """An LLM failure returns a typed degraded verdict without exception text."""
     gw_patch = patch(
         "pynchy.host.container_manager.gateway.get_gateway", return_value=_fake_gateway()
     )
@@ -158,11 +212,21 @@ async def test_cop_error_fails_open():
         "pynchy.host.container_manager.security.cop.aiohttp.ClientSession", _session_ctx
     )
 
-    with gw_patch, session_patch:
+    with (
+        gw_patch,
+        session_patch,
+        patch("pynchy.host.container_manager.security.cop.logger.error") as log_error,
+    ):
         verdict = await inspect_outbound("deploy", "rebuilding container")
 
     assert not verdict.flagged
-    assert "Cop error" in verdict.reason
+    assert verdict.reason == "Cop unavailable: RuntimeError"
+    assert verdict.degraded is True
+    log_error.assert_called_once_with(
+        "Cop inspection failed; returning degraded verdict",
+        context="outbound:deploy",
+        error_type="RuntimeError",
+    )
 
 
 @pytest.mark.asyncio

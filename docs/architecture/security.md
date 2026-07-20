@@ -160,21 +160,71 @@ policy denial added before or after approval.
 
 Policy, approval, and terminal execution events use the existing security
 audit sink. Descriptor-backed events include `capability_id`, `action_ids`,
-the IPC request ID, decision, safe reason, and taint state. Handler exceptions
-and `{"error": ...}` responses both record terminal failure without copying
+the guarded-action ID, decision, redacted reason, and taint state. One guarded
+action ID spans the agent hook checks, host policy and Cop decisions, approval
+record, execution response, and audit events. Handler exceptions and
+`{"error": ...}` responses both record terminal failure without copying
 provider error bodies into capability status.
+
+Exact-request approvals store a canonical SHA-256 hash of the complete JSON
+request. Approved host-mutating replays receive a process-local, single-use
+receipt bound to that hash, guarded-action ID, operation, and workspace. The
+destination consumes the receipt before execution; replay, mutation, and
+cross-workspace use fail closed. Caller-supplied approval booleans are not
+trusted.
 
 Admin workspaces use the same tool trust declarations at runtime. They are additionally protected by the clean room policy ([§5d](#5d-admin-clean-room)), which prevents admin workspaces from selecting public-source tools. See [Tool Trust](../usage/security.md) for configuration.
 
-### 5b. Bash Security Gate
+### 5b. Agent Tool Security Gate
 
-The service trust policy (above) gates MCP service tools, but agents also have a general-purpose Bash tool. Without extra controls, a corruption-tainted agent could run `curl`, `python`, or `ssh` to exfiltrate data — bypassing the service trust layer entirely.
+The service trust policy (above) gates MCP service tools, but agents also have file, shell, editing, URL, and package tools. Without a shared boundary, a corruption-tainted agent could read workspace secrets and later run `curl`, `python`, or `ssh` to exfiltrate them.
 
-The bash security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook inside the container, intercepting every Bash tool call before execution. The Claude and OpenAI SDK cores and both CLI cores compose the same hook roster, so the gate applies regardless of the selected built-in core.
+The agent tool security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook inside the container. The Claude and OpenAI SDK cores and both CLI cores compose the same hook roster, so the gate applies regardless of the selected built-in core.
+
+**Semantic artifact normalization.** The gate parses core-specific tool names and input shapes into owned artifact types: commands, read and write paths, written content, URLs, and package references. Policy therefore follows the operation when an SDK renames a shell or patch tool. Stable deterministic rules then block destructive system commands (`CMD001`), reverse shells (`NET001`), remote content piped directly into a shell (`NET002`), and writes to persistence or autostart paths (`PERSIST001`). Persistence detection covers structured writes and shell redirection, append, `tee`, `cp`, and `install` destinations. Credential-path reads emit `CRED001`, including `.env.*` variants; audits retain rule IDs without copying matched file content.
+
+**File taint notification.** Every normalized file operation and every shell operation notifies the host before execution. The host calls `SecurityPolicy.notify_file_access()`, so a workspace with `contains_secrets = true` becomes secret-tainted even when the later Bash classifier considers a command such as `cat .env` or `ls` provably local. A credential path such as `.env`, `.env.production`, `.netrc`, or a private-key path also sets secret taint when the workspace profile omitted `contains_secrets`. Taint remains sticky for the container invocation. The host rejects the operation when no active invocation gate can retain that taint; it never substitutes a throwaway policy object. Bash policy requests follow the same rule: a missing gate, unavailable host, empty or malformed response, or unknown decision denies the command because an approval cannot be obtained safely.
+
+**CLI hook failure behavior.** CLI-backed cores emit an explicit denial when the hook input is malformed or a built-in security hook raises unexpectedly. Malformed optional plugin-hook configuration falls back to the built-in roster, so an optional extension cannot disable the owned gate.
+
+**Package provenance and release age.** Package commands normalize `uv add`,
+`uv tool install`, `uvx`, pip, pipx, npm, Yarn, and Cargo into an ecosystem,
+normalized name, exact version when present, source class, intent, and lock-pin
+state. Writes and patches to `pyproject.toml`, `uv.lock`, requirements files,
+`package.json`, npm and Yarn locks, `Cargo.toml`, and `Cargo.lock` produce the
+same owned references. Deterministic rules reject shell-evaluated (`PKG002`)
+and ambiguous or missing (`PKG003`) coordinates. Direct URL, VCS, local, and
+custom-registry sources (`PKG001`) and unpinned executable installs (`PKG004`)
+require human approval. Custom registry detection covers package-manager index
+and registry flags, pip/uv/npm registry environment prefixes, requirements
+index directives, and uv index/source tables in `pyproject.toml`; those
+packages are never mislabeled as authoritative PyPI, npm, or crates.io results.
+
+For an exact registry coordinate, the host queries only the authoritative
+PyPI, npm, or crates.io endpoint. Requests have a three-second timeout, a
+256-KiB response limit, strict response parsing, and a six-hour
+content-addressed cache keyed only by ecosystem, normalized name, and version.
+No command, prompt, workspace content, or secret crosses this boundary. A
+release less than seven days old (`PKG006`) requires approval. When registry
+metadata is unavailable (`PKG005`), executable and direct installs require
+approval; an already lock-pinned manifest reconciliation may continue and
+records an explicit degraded audit event. The cache is an availability
+optimization, not provenance proof. Pynchy does not consult a third-party
+package reputation service.
+
+Package checks do not admit or vet learned skills. Skill discovery and skill
+access remain their existing separate capability surface. Documentation and
+local caches may make repeated inspection cheaper, but neither counts as
+security evidence.
+
+A package artifact approval binds the normalized package coordinates and the
+guarded in-flight hook request. It does not claim that the human reviewed an
+unseen full shell string. The blocked hook can resume only that current tool
+call; approval cannot be replayed as a general shell authorization.
 
 **Classification cascade.** The container classifies each command locally using a three-tier system:
 
-1. **Regex whitelist** — provably local commands (`ls`, `cat`, `grep`, `sed`, `jq`, etc.) that cannot reach the network. These run immediately without IPC.
+1. **Regex whitelist** — provably local commands (`ls`, `cat`, `grep`, `sed`, `jq`, etc.) that cannot reach the network. After the file-taint notification, these run without Cop review.
 2. **Regex blacklist** — known network-capable commands (`curl`, `python`, `ssh`, `wget`, `pip install`, etc.). These always escalate to the host.
 3. **Unknown** — commands on neither list. Also escalated to the host.
 
@@ -190,7 +240,10 @@ Pipelines and chains are split into segments; one network-capable segment makes 
 
 The Cop is the same LLM-based inspector used for host-mutating operations. If the Cop flags a command in a dual-tainted session, the decision escalates to human approval. The 300-second approval timeout matches the existing service approval flow.
 
-**Fail-open design.** If IPC fails (timeout, malformed response), the gate allows the command. Otherwise the security gate would break normal agent operation during transient failures.
+**Degraded behavior.** Deterministic blocking rules run locally. If the host
+cannot record and retain an artifact notification, the artifact hook fails
+closed. Cop or bounded-context loss on request-reply operations requires human
+approval; fire-and-forget host mutations remain blocked.
 
 ### 5c. Host-Mutating Operations (Cop Gate)
 
@@ -218,8 +271,14 @@ Some IPC operations change what code runs on the host machine. These are **host-
 | Not flagged | Operation proceeds |
 | Flagged (request-reply) | Human approval required |
 | Flagged (fire-and-forget) | Operation blocked, warning broadcast |
+| Cop or bounded context unavailable (request-reply) | Human approval required |
+| Cop or bounded context unavailable (fire-and-forget) | Operation blocked, warning broadcast |
 
-The Cop always inspects. Humans only get pulled in when the Cop detects something suspicious.
+The Cop receives a bounded SQLite view of the current user intent, the four
+most recent user or assistant messages (500 characters each), and the eight
+most recent completed tool names. Tool inputs and full history do not cross
+this boundary. The proposed action is included separately. Missing context is
+explicit rather than replaced with guessed values.
 
 ### 5d. Admin Clean Room
 
@@ -231,9 +290,9 @@ For tasks that need untrusted input (web browsing, email), create a non-admin wo
 
 ### 6. Credential Handling
 
-#### LLM Gateway (default)
+#### LLM Gateway
 
-When `gateway.enabled = true` (the default), an LLM API gateway runs on the host and proxies container API calls to real providers. Containers **never see real LLM API keys**.
+An LLM API gateway runs on the host and proxies container API calls to real providers. Containers **never see real LLM API keys**.
 
 **How it works:**
 
@@ -241,7 +300,7 @@ When `gateway.enabled = true` (the default), an LLM API gateway runs on the host
 Container ──[gateway key]──► Host Gateway ──[real API key]──► Provider
 ```
 
-1. The gateway discovers real credentials (Anthropic API key / OAuth token, OpenAI API key) from `config.toml [secrets]` and auto-discovery (Claude Code keychain, etc.).
+1. The built-in gateway reads provider credentials from `config.toml [secrets]`. LiteLLM resolves credentials from its own YAML and environment.
 2. On startup, a random per-session ephemeral key (`gw-…`) is generated.
 3. Containers receive environment variables pointing to the gateway:
 
@@ -262,6 +321,37 @@ OPENAI_API_KEY=gw-<random>
 - A compromised container cannot use the ephemeral key to reach providers directly
 - Docker containers reach the host via `host.docker.internal` (with `--add-host` on Linux)
 - Apple runtime containers use the host gateway address resolved by Pynchy when `container_host` keeps the default value
+
+#### LLM request redaction
+
+The built-in gateway owns the authenticated Python request boundary. It reads
+each complete provider-native JSON request and replaces detected credentials,
+private keys, email addresses, phone numbers, Social Security numbers, and
+payment-card numbers before forwarding the request. Redaction covers system
+and instruction fields, prompts, message content, Responses API input, and
+tool results. Provider response chunks pass through unchanged, which preserves
+streaming and tool-call framing.
+
+Each request receives a random placeholder namespace and an isolated in-memory
+map while the body is transformed. Spans contain only offsets and data classes,
+not matched values. The production gateway takes only the redacted bytes and
+immediately discards that map, so gateway redaction is irreversible. Pynchy
+does not restore placeholders into model-generated tool arguments, public or
+remote sinks, third-party prompts, audit logs, or errors; placeholders returned
+by a model remain placeholders.
+
+The redaction module retains a generic request-local restoration primitive for
+isolated tests and a future trusted sink integration. Its caller-constructed
+descriptor is not production authority, and no active gateway path retains the
+session or accepts that descriptor. A future reversible flow must bind the
+session to an owned non-public sink descriptor and authoritative capability
+policy before it can make a production restoration claim.
+
+LiteLLM runs as a separate Docker proxy and does not expose an owned Python
+request callback in Pynchy's current integration. Redaction therefore reports
+`not_enforced` in `/status` for LiteLLM mode. It reports `enforced` only for the
+built-in gateway. Do not treat LiteLLM routing as protected by this redaction
+layer unless the integration gains an enforceable request hook.
 
 #### Non-LLM credentials
 

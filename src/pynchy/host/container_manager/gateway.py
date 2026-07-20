@@ -39,6 +39,8 @@ from pynchy.config.models import McpTool
 
 if TYPE_CHECKING:
     import pluggy
+
+    from pynchy.host.container_manager.security.llm_redaction import GatewayRedactionPosture
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
@@ -77,6 +79,8 @@ class GatewayProto(Protocol):
 
     @property
     def base_url(self) -> str: ...
+    @property
+    def redaction_posture(self) -> GatewayRedactionPosture: ...
     def has_provider(self, name: str) -> bool: ...
     async def start(self) -> None: ...
     async def stop(self) -> None: ...

@@ -51,6 +51,10 @@ from pynchy.host.container_manager.runtime_names import (
     runtime_network_name,
     runtime_volume_name,
 )
+from pynchy.host.container_manager.security.llm_redaction import (
+    GatewayRedactionPosture,
+    redaction_posture_for_gateway_mode,
+)
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -197,6 +201,11 @@ class LiteLLMGateway:
     @property
     def base_url(self) -> str:
         return f"http://{self.container_host}:{self.port}"
+
+    @property
+    def redaction_posture(self) -> GatewayRedactionPosture:
+        """Report that the external LiteLLM process bypasses Python enforcement."""
+        return redaction_posture_for_gateway_mode("litellm")
 
     @property
     def required_models(self) -> tuple[str, ...]:

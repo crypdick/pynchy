@@ -48,11 +48,29 @@ def _load_roster() -> tuple[BeforeToolUseHook, ...]:
     a different set than the SDK core -- parity by construction, not by comment.
     """
     raw = os.environ.get(_PLUGIN_HOOKS_ENV, "")
+    specs: list[dict[str, str]]
     try:
-        specs = json.loads(raw) if raw.strip() else []
+        parsed = json.loads(raw) if raw.strip() else []
     except json.JSONDecodeError:
-        _log(f"unparseable {_PLUGIN_HOOKS_ENV}, running built-in gate only: {raw[:200]}")
+        _log(f"unparseable {_PLUGIN_HOOKS_ENV}; running built-in gate only")
         specs = []
+    else:
+        specs = []
+        malformed = not isinstance(parsed, list)
+        if isinstance(parsed, list):
+            for spec in parsed:
+                if not isinstance(spec, dict):
+                    malformed = True
+                    break
+                name = spec.get("name")
+                module_path = spec.get("module_path")
+                if not isinstance(name, str) or not isinstance(module_path, str):
+                    malformed = True
+                    break
+                specs.append({"name": name, "module_path": module_path})
+        if malformed:
+            _log(f"malformed {_PLUGIN_HOOKS_ENV}; running built-in gate only")
+            specs = []
     return tuple(before_tool_use_roster(load_hooks(specs)))
 
 
@@ -102,38 +120,47 @@ def _extract_tool_call(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     return _extract_tool_name(data), _extract_tool_input(data)
 
 
+def _emit_deny(reason: str) -> None:
+    """Write the CLI hook protocol's fail-closed decision shape."""
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
+        },
+        sys.stdout,
+    )
+
+
 def main() -> None:
     raw = sys.stdin.read()
     try:
         data = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
-        # Malformed hook payload is a harness bug, not an attack surface. Failing
-        # closed here would brick every tool call; fail open and log loudly. The
-        # bash gate itself remains the real control on well-formed calls.
-        _log(f"unparseable hook input, allowing by default: {raw[:200]}")
+        reason = "Malformed CLI hook input; failing closed"
+        _log(reason)
+        _emit_deny(reason)
+        sys.exit(0)
+    if not isinstance(data, dict):
+        reason = "Malformed CLI hook input; failing closed"
+        _log(reason)
+        _emit_deny(reason)
         sys.exit(0)
 
-    tool_name, tool_input = _extract_tool_call(data)
-
-    hooks = _load_roster()
     try:
+        tool_name, tool_input = _extract_tool_call(data)
+        hooks = _load_roster()
         decision = asyncio.run(_evaluate(hooks, tool_name, tool_input))
-    except Exception as exc:  # allow: exception-handling; gate fails open  # noqa: BLE001, RUF100
-        _log(f"gate evaluation error, allowing by default: {exc}")
+    except Exception as exc:  # allow: exception-handling  # noqa: BLE001, RUF100
+        reason = f"Built-in security gate failed closed: {type(exc).__name__}"
+        _log(reason)
+        _emit_deny(reason)
         sys.exit(0)
 
     if decision is not None:
-        # Same deny shape the SDK core emits via _wrap_before_tool_use.
-        json.dump(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": (decision.reason or "Blocked by security policy"),
-                }
-            },
-            sys.stdout,
-        )
+        _emit_deny(decision.reason or "Blocked by security policy")
         _log(f"denied {tool_name}: {decision.reason or 'security policy'}")
 
     # Empty stdout + exit 0 == allow.

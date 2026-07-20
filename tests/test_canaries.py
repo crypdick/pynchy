@@ -8,6 +8,7 @@ from pynchy.canaries import (
     CanaryExercise,
     CanarySkippedError,
     declared_canary_actions,
+    declared_canary_scenarios,
     get_canary_report,
     register_canary_scenario,
     run_declared_canaries,
@@ -87,12 +88,16 @@ async def test_runner_records_evidence_and_marks_unimplemented_scenarios_not_est
     )
 
     history = await get_recent_canary_runs(limit=20)
-    assert len(history) == len(declared_canary_actions())
+    assert len(history) == len(declared_canary_scenarios())
     report = await get_canary_report()
     assert report["summary"] == {
-        "declared_scenarios": len(declared_canary_actions()),
+        "declared_scenarios": len(declared_canary_scenarios()),
+        "semantic_action_scenarios": len(declared_canary_actions()),
+        "security_assurance_scenarios": (
+            len(declared_canary_scenarios()) - len(declared_canary_actions())
+        ),
         "established_targets": 1,
-        "not_established_targets": len(declared_canary_actions()) - 1,
+        "not_established_targets": len(declared_canary_scenarios()) - 1,
         "unresolved_regressions": 0,
     }
 

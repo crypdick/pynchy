@@ -42,6 +42,12 @@ scenario_ids = [
   "drive.google.round.trip",
   "linear.workspace.round.trip",
   "proton.mail.round.trip",
+  "security.deterministic.hard-block",
+  "security.file-secret-taint",
+  "security.approval.mutation-replay",
+  "security.cop.degraded-approval",
+  "security.gateway.posture",
+  "security.package.metadata",
 ]
 calendar_name = "pynchy-canary"
 google_calendar_server = "gcal.canary"
@@ -82,6 +88,16 @@ Google Drive search/read access, Linear issue and workspace-todo lifecycle,
 and Proton Mail delivery, receipt, read, and deletion. Credential setup,
 token refresh, social posting, desktop control, and channel interaction remain
 separate scenarios because they need their own dedicated test targets.
+
+Six harmless local scenarios use the same runner, durable evidence rows,
+regression handling, report, and history endpoints to exercise deterministic
+blocking, credential-file taint, approval mutation and replay rejection,
+degraded Cop approval, gateway redaction posture, and package metadata
+fresh/degraded behavior. They create no external artifact and require no tool
+on the target profile. Report rows label them with
+`evidence_kind = "security_assurance"` and an empty `action_ids` tuple. They
+supplement operational security evidence; they do not pretend to prove a
+semantic user action or satisfy `pytest --action-coverage`.
 
 Pynchy stores every run with its scenario and action IDs, target profile, code
 and configuration revisions, timestamps, outcome, redacted error class, and

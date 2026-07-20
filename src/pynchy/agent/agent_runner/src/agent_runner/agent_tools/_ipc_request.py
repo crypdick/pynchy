@@ -116,6 +116,7 @@ async def ipc_service_request(
     response_timeout_seconds: float | None = None,
     *,
     type_override: str | None = None,
+    guarded_action_id: str | None = None,
 ) -> list[TextContent]:
     """Write an IPC service request and wait for the host's response.
 
@@ -135,7 +136,7 @@ async def ipc_service_request(
     Returns:
         MCP TextContent with the result or error message.
     """
-    request_id = uuid.uuid4().hex
+    request_id = guarded_action_id or uuid.uuid4().hex
     request_kind = type_override or f"service:{tool_name}"
     timeout_seconds = (
         response_timeout_seconds

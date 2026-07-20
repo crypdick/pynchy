@@ -88,8 +88,8 @@ class TestObserverPluginRuntimeTypes:
         observer.subscribe(EventBus())
 
     @pytest.mark.asyncio
-    async def test_sqlite_observer_ignores_trace_event_payloads(self):
-        """LiteLLM/Phoenix owns trace persistence; SQLite keeps operational events."""
+    async def test_sqlite_observer_keeps_only_bounded_trace_action_name(self):
+        """SQLite persists a tool name for Cop context but omits tool inputs."""
         bus = EventBus()
         observer = SqliteEventObserver()
         observer.subscribe(bus)
@@ -116,7 +116,11 @@ class TestObserverPluginRuntimeTypes:
                 )
             )
             await asyncio.sleep(0)
-            mock_store.assert_not_awaited()
+            mock_store.assert_awaited_once_with(
+                "agent_trace",
+                "g@g.us",
+                {"trace_type": "tool_use", "tool_name": "Bash"},
+            )
 
 
 @pytest.mark.asyncio

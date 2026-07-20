@@ -12,6 +12,7 @@ from conftest import init_test_database, make_host_action_catalog, make_settings
 from pynchy.capabilities import ApprovalMode
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
+from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.types import CapabilityRule, WorkspaceSecurity
 
 if TYPE_CHECKING:
@@ -46,18 +47,21 @@ def _write_pending(
     """Helper to write a pending approval file."""
     pending_dir = ipc_dir / group / "pending_approvals"
     pending_dir.mkdir(parents=True, exist_ok=True)
+    executable_request = {
+        "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
+        "request_id": request_id,
+        **request_data,
+    }
     data = {
         "request_id": request_id,
+        "guarded_action_id": request_id,
+        "request_payload_hash": str(request_payload_hash(executable_request)),
         "short_id": "ab",  # 2-char short_id (test fixture, not used by handler)
         "tool_name": tool_name,
         "source_group": group,
         "chat_jid": "j@g.us",
         "handler_type": handler_type,
-        "request_data": {
-            "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
-            "request_id": request_id,
-            **request_data,
-        },
+        "request_data": executable_request,
         "timestamp": "2026-02-24T12:00:00+00:00",
     }
     filepath = pending_dir / f"{request_id}.json"
@@ -69,8 +73,20 @@ def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: boo
     """Helper to write a decision file."""
     decisions_dir = ipc_dir / group / "approval_decisions"
     decisions_dir.mkdir(parents=True, exist_ok=True)
+    pending_path = ipc_dir / group / "pending_approvals" / f"{request_id}.json"
+    pending = (
+        json.loads(pending_path.read_text(encoding="utf-8"))
+        if pending_path.exists()
+        else {
+            "guarded_action_id": request_id,
+            "request_payload_hash": "orphan",
+        }
+    )
     data = {
         "request_id": request_id,
+        "guarded_action_id": pending["guarded_action_id"],
+        "request_payload_hash": pending["request_payload_hash"],
+        "source_group": group,
         "approved": approved,
         "decided_by": "testuser",
         "decided_at": "2026-02-24T12:01:00+00:00",
@@ -270,6 +286,60 @@ class TestProcessApprovalDecision:
         response = json.loads((ipc_dir / "grp/responses/policy-changed.json").read_text())
         assert "blocked by current policy" in response["error"]
 
+    @pytest.mark.asyncio
+    async def test_changed_payload_is_rejected_before_dispatch(self, ipc_dir: Path, settings):
+        """The approved payload cannot be changed while awaiting replay."""
+        pending_file = _write_pending(ipc_dir, "grp", "changed", "my_tool", {"arg": "safe"})
+        decision_file = _write_decision(ipc_dir, "grp", "changed", approved=True)
+        pending = json.loads(pending_file.read_text(encoding="utf-8"))
+        pending["request_data"]["arg"] = "changed-after-review"
+        pending_file.write_text(json.dumps(pending), encoding="utf-8")
+        handler = AsyncMock()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=handler),
+            ),
+        ):
+            await process_approval_decision(decision_file, "grp")
+
+        handler.assert_not_awaited()
+        response = json.loads((ipc_dir / "grp/responses/changed.json").read_text())
+        assert "payload changed" in response["error"]
+
+    @pytest.mark.asyncio
+    async def test_cross_workspace_decision_is_rejected(self, ipc_dir: Path, settings):
+        """A copied approval decision cannot authorize another workspace."""
+        _write_pending(ipc_dir, "grp", "cross-workspace", "my_tool", {})
+        decision_file = _write_decision(ipc_dir, "grp", "cross-workspace", approved=True)
+        decision = json.loads(decision_file.read_text(encoding="utf-8"))
+        decision["source_group"] = "another-workspace"
+        decision_file.write_text(json.dumps(decision), encoding="utf-8")
+        handler = AsyncMock()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=handler),
+            ),
+        ):
+            await process_approval_decision(decision_file, "grp")
+
+        handler.assert_not_awaited()
+        response = json.loads((ipc_dir / "grp/responses/cross-workspace.json").read_text())
+        assert "another workspace" in response["error"]
+
 
 class TestIpcApprovalDispatch:
     """Tests for handler_type="ipc" approval dispatch through the registry."""
@@ -305,7 +375,8 @@ class TestIpcApprovalDispatch:
         mock_dispatch.assert_awaited_once()
         call_args = mock_dispatch.call_args
         dispatched_data = call_args.args[0]
-        assert dispatched_data["_cop_approved"] is True
+        assert "_cop_approved" not in dispatched_data
+        assert isinstance(dispatched_data["_approval_receipt"], str)
         assert call_args.args[1] == "grp"  # source_group
         assert call_args.kwargs["is_admin"] is True
         assert call_args.kwargs["deps"] is mock_deps

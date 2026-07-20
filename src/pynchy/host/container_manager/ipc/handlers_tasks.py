@@ -72,7 +72,12 @@ async def _handle_schedule_task(
     is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
-    if not data.get("_cop_approved"):
+    receipt = await cop_gate_module.verify_approval_receipt(
+        "schedule_task", data, source_group, deps
+    )
+    if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        return
+    if receipt is not cop_gate_module.ReceiptVerification.VALID:
         prompt_preview = (data.get("prompt") or "")[:500]
         summary = (
             f"target={data.get('targetGroup')}, "
@@ -229,7 +234,12 @@ async def _handle_schedule_host_job(
         logger.warning("Unauthorized schedule_host_job attempt", source_group=source_group)
         return
 
-    if not data.get("_cop_approved"):
+    receipt = await cop_gate_module.verify_approval_receipt(
+        "schedule_host_job", data, source_group, deps
+    )
+    if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        return
+    if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary = (
             f"name={data.get('name')}, "
             f"command={data.get('command')}, "

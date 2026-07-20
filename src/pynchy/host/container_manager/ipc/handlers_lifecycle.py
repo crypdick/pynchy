@@ -144,7 +144,12 @@ async def _handle_sync_worktree_to_main(
 ) -> None:
     request_id = data.get("request_id", "")
 
-    if not data.get("_cop_approved"):
+    receipt = await cop_gate_module.verify_approval_receipt(
+        "sync_worktree_to_main", data, source_group, deps
+    )
+    if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        return
+    if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary = f"sync_worktree_to_main from '{source_group}'"
         allowed = await cop_gate_module.cop_gate(
             "sync_worktree_to_main",

@@ -249,8 +249,8 @@ async def test_script_mcp_allowed_by_cop(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_cop_approved_skips_gate(tmp_path):
-    """When _cop_approved=True, cop_gate is NOT called even for script MCP."""
+async def test_caller_asserted_cop_approval_is_ignored(tmp_path):
+    """A propagated boolean cannot bypass Cop for a script MCP."""
     tool = "my_script"
     _register_safe_gate(tool)
     mock_handler = AsyncMock(return_value={"result": "ok"})
@@ -276,7 +276,6 @@ async def test_cop_approved_skips_gate(tmp_path):
         data = _make_request(tool, _cop_approved=True, some_param="value")
         await dispatch(data, "test-ws", False, deps)
 
-    # cop_gate must NOT be called when _cop_approved is set
-    mock_cop.assert_not_called()
+    mock_cop.assert_called_once()
     # But the handler should still run
     mock_handler.assert_awaited_once()

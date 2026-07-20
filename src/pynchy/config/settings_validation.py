@@ -24,6 +24,7 @@ from pynchy.config.refs import parse_chat_ref
 from pynchy.config.scheduler_models import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     CanaryConfig,
 )
+from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 
 if TYPE_CHECKING:
     from pynchy.config.settings import Settings
@@ -120,7 +121,10 @@ def validate_canary_target_profile(
     if not canary.scenario_ids:
         raise ValueError("canary.scenario_ids is required when canaries are enabled")
 
-    declared = {spec.canary_scenario for spec in ACTION_SPECS if spec.canary_scenario is not None}
+    declared = {
+        *(spec.canary_scenario for spec in ACTION_SPECS if spec.canary_scenario is not None),
+        *SECURITY_CANARY_IDS,
+    }
     unknown = sorted(set(canary.scenario_ids) - declared)
     if unknown:
         raise ValueError(f"canary.scenario_ids includes unknown scenarios: {unknown}")

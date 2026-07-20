@@ -12,8 +12,8 @@ denial or descriptor removal.
 
 Two handler types are supported:
 - "service" (default): dispatches through plugin handlers (MCP service requests)
-- "ipc": dispatches through ipc._registry.dispatch() with _cop_approved=True
-  (host-mutating operations that went through cop_gate)
+- "ipc": dispatches through ipc._registry.dispatch() with a single-use,
+  payload-bound approval receipt (host-mutating operations from cop_gate)
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves approval decision paths at runtime.
 )
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     ApprovalMode,
@@ -33,10 +33,11 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves run
 )
 from pynchy.config import Settings, get_settings
 from pynchy.host.container_manager.action_intents import execute_action_intent
-from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_service import _get_action_catalog
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security import approval as security_approval
+from pynchy.host.container_manager.security.approval_binding import approval_binding_error
+from pynchy.host.container_manager.security.approved_ipc import execute_approved_ipc
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
@@ -47,9 +48,6 @@ from pynchy.host.container_manager.security.gate import (
 from pynchy.logger import logger
 from pynchy.state import approve_action_intent, deny_action_intent, fail_action_intent
 from pynchy.types import WorkspaceSecurity
-
-if TYPE_CHECKING:
-    from pynchy.host.container_manager.ipc.deps import IpcDeps
 
 
 @dataclass(frozen=True)
@@ -130,6 +128,22 @@ async def process_approval_decision(
         await asyncio.to_thread(_unlink_all_missing_ok, decision_file, pending_file)
         return
 
+    binding_error = approval_binding_error(
+        pending,
+        decision,
+        request_id=request_id,
+        source_group=source_group,
+    )
+    if binding_error is not None:
+        await _reject_invalid_approval_binding(
+            pending,
+            request_id=request_id,
+            source_group=source_group,
+            reason=binding_error,
+        )
+        await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
+        return
+
     context = _approval_decision_context(
         pending,
         decision,
@@ -139,6 +153,31 @@ async def process_approval_decision(
     )
     await _dispatch_approval_decision(context, deps)
     await asyncio.to_thread(_unlink_all_missing_ok, pending_file, decision_file)
+
+
+async def _reject_invalid_approval_binding(
+    pending: dict[str, Any],
+    *,
+    request_id: str,
+    source_group: str,
+    reason: str,
+) -> None:
+    if pending.get("handler_type") == "mcp_proxy":
+        security_approval.resolve_mcp_proxy_approval(request_id, approved=False)
+    await fail_action_intent(request_id, reason=reason)
+    await asyncio.to_thread(
+        write_ipc_response,
+        ipc_response_path(source_group, request_id),
+        {"error": f"Approval rejected: {reason}"},
+    )
+    await record_security_event(
+        chat_jid=str(pending.get("chat_jid") or "unknown"),
+        workspace=source_group,
+        tool_name=str(pending.get("tool_name") or "unknown"),
+        decision="approval_binding_rejected",
+        reason=reason,
+        request_id=request_id,
+    )
 
 
 def _approval_decision_context(
@@ -161,7 +200,7 @@ def _approval_decision_context(
         if action is not None
         else ()
     )
-    approved = decision.get("approved", False)
+    approved = decision.get("approved") is True
     decided_by = decision.get("decided_by")
     approver = decided_by if isinstance(decided_by, str) and decided_by else "user"
     decided_at = decision.get("decided_at")
@@ -221,9 +260,24 @@ async def _resolve_mcp_proxy_approval(context: _ApprovalDecisionContext) -> None
 async def _dispatch_approved_request(
     context: _ApprovalDecisionContext, deps: object | None
 ) -> None:
-    if context.handler_type == "ipc":
-        await _execute_ipc_approval(
-            context.request_data, context.source_group, context.request_id, deps
+    if context.handler_type in {"security_bash", "security_artifact"}:
+        await asyncio.to_thread(
+            write_ipc_response,
+            ipc_response_path(context.source_group, context.request_id),
+            {
+                "result": {
+                    "decision": "allow",
+                    "guarded_action_id": context.request_id,
+                }
+            },
+        )
+    elif context.handler_type == "ipc":
+        await execute_approved_ipc(
+            context.request_data,
+            context.source_group,
+            context.request_id,
+            context.tool_name,
+            deps,
         )
     else:
         if context.action is not None and context.action.action_intent is not None:
@@ -385,53 +439,3 @@ def _approval_replay_gate(settings: Settings, source_group: str) -> SecurityGate
         else WorkspaceSecurity()
     )
     return SecurityGate(security)
-
-
-async def _execute_ipc_approval(
-    request_data: dict[str, Any],
-    source_group: str,
-    request_id: str,
-    deps: object | None,
-) -> None:
-    """Dispatch an approved IPC request through the registry.
-
-    Sets _cop_approved=True on the request data so the handler skips
-    the cop_gate call on re-entry (prevents infinite approval loops).
-    Admin-only: host-mutating ops already passed admin checks before
-    cop_gate was invoked.
-    """
-    if deps is None:
-        logger.error(
-            "Cannot dispatch IPC approval without deps",
-            request_id=request_id,
-        )
-        await asyncio.to_thread(
-            write_ipc_response,
-            ipc_response_path(source_group, request_id),
-            {"error": "Internal error: IPC approval missing deps"},
-        )
-        return
-
-    try:
-        request_data["_cop_approved"] = True
-        await registry.dispatch(
-            request_data, source_group, is_admin=True, deps=cast("IpcDeps", deps)
-        )
-        # Note: the IPC handler writes its own response file on success.
-        # We write one here only on failure to ensure the container unblocks.
-        logger.info(
-            "Approved IPC request dispatched",
-            request_id=request_id,
-            task_type=request_data.get("type"),
-        )
-    except Exception as exc:  # noqa: BLE001, RUF100 - approved IPC dispatch is an IPC boundary.
-        logger.error(
-            "Approved IPC request failed",
-            request_id=request_id,
-            err=str(exc),
-        )
-        await asyncio.to_thread(
-            write_ipc_response,
-            ipc_response_path(source_group, request_id),
-            {"error": f"Execution failed: {exc}"},
-        )

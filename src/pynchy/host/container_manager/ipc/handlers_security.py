@@ -1,8 +1,8 @@
-"""IPC handler for bash security checks.
+"""IPC handlers for agent-tool security checks.
 
-Evaluates bash commands against taint state and the three-tier cascade
-(blacklist -> Cop -> human approval). Called by the container's
-BEFORE_TOOL_USE hook via IPC.
+The cross-tool artifact hook reports file-capable operations before execution,
+which establishes sticky workspace secret taint. Bash commands then run through
+the taint-aware command cascade (blacklist -> Cop -> human approval).
 """
 
 from __future__ import annotations
@@ -10,14 +10,21 @@ from __future__ import annotations
 from typing import Any
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
+from pynchy.host.container_manager.ipc.handlers_artifact_security import (
+    handle_artifact_security_check,
+)
 from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security.audit import record_security_event
-from pynchy.host.container_manager.security.cop import inspect_bash
+from pynchy.host.container_manager.security.cop import (
+    CopContextAvailability,
+    CopInspectionContext,
+    inspect_bash,
+    load_cop_inspection_context,
+)
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
     get_gate_for_group,
-    resolve_security,
 )
 from pynchy.logger import logger
 
@@ -85,18 +92,47 @@ def _is_network_command(command: str) -> bool:
     return first_token in _NETWORK_SINGLE
 
 
-async def _network_command_decision(command: str, *, both_tainted: bool) -> dict[str, str]:
+async def _network_command_decision(
+    command: str,
+    *,
+    both_tainted: bool,
+    inspection_context: CopInspectionContext | None,
+) -> dict[str, str]:
     if both_tainted:
         return _needs_human(f"Network command while corruption+secret tainted: {command[:200]}")
-    return await _cop_review(command, escalate_on_flag=False)
+    return await _cop_review(
+        command,
+        escalate_on_flag=False,
+        inspection_context=inspection_context,
+    )
 
 
-async def _grey_zone_decision(command: str, *, both_tainted: bool) -> dict[str, str]:
-    return await _cop_review(command, escalate_on_flag=both_tainted)
+async def _grey_zone_decision(
+    command: str,
+    *,
+    both_tainted: bool,
+    inspection_context: CopInspectionContext | None,
+) -> dict[str, str]:
+    return await _cop_review(
+        command,
+        escalate_on_flag=both_tainted,
+        inspection_context=inspection_context,
+    )
 
 
-async def _cop_review(command: str, *, escalate_on_flag: bool) -> dict[str, str]:
-    verdict = await inspect_bash(command)
+async def _cop_review(
+    command: str,
+    *,
+    escalate_on_flag: bool,
+    inspection_context: CopInspectionContext | None,
+) -> dict[str, str]:
+    verdict = await inspect_bash(command, inspection_context)
+    context_unavailable = (
+        inspection_context is not None
+        and inspection_context.availability is CopContextAvailability.UNAVAILABLE
+    )
+    if verdict.degraded or context_unavailable:
+        return _needs_human("Cop or bounded action context unavailable")
     if not verdict.flagged:
         return _allow()
     reason = verdict.reason or "Cop flagged command"
@@ -105,7 +141,11 @@ async def _cop_review(command: str, *, escalate_on_flag: bool) -> dict[str, str]
     return _deny(reason)
 
 
-async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict[str, str]:
+async def evaluate_bash_command(
+    gate: SecurityGate,
+    command: str,
+    inspection_context: CopInspectionContext | None = None,
+) -> dict[str, str]:
     """Evaluate a bash command against taint state and classification.
 
     Three-tier cascade:
@@ -128,10 +168,18 @@ async def evaluate_bash_command(gate: SecurityGate, command: str) -> dict[str, s
 
     # Tier 2: Network blacklist
     if _is_network_command(command):
-        return await _network_command_decision(command, both_tainted=both_tainted)
+        return await _network_command_decision(
+            command,
+            both_tainted=both_tainted,
+            inspection_context=inspection_context,
+        )
 
     # Tier 3: Grey zone -> Cop review
-    return await _grey_zone_decision(command, both_tainted=both_tainted)
+    return await _grey_zone_decision(
+        command,
+        both_tainted=both_tainted,
+        inspection_context=inspection_context,
+    )
 
 
 async def _handle_bash_security_check(
@@ -155,12 +203,26 @@ async def _handle_bash_security_check(
 
     gate = get_gate_for_group(source_group)
     if gate is None:
-        security = resolve_security(source_group, is_admin=is_admin)
-        gate = SecurityGate(security)
+        del is_admin
+        chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
+        reason = "No active security gate; Bash policy cannot be evaluated"
+        await record_security_event(
+            chat_jid=chat_jid,
+            workspace=source_group,
+            tool_name="Bash",
+            decision="bash_gate_unavailable",
+            reason=reason,
+            request_id=request_id,
+        )
+        write_ipc_response(
+            ipc_response_path(source_group, request_id),
+            {"result": {**_deny(reason), "guarded_action_id": request_id}},
+        )
+        return
 
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
-
-    decision = await evaluate_bash_command(gate, command)
+    inspection_context = await load_cop_inspection_context(chat_jid)
+    decision = await evaluate_bash_command(gate, command, inspection_context)
 
     if decision["decision"] == "needs_human":
         # Lazy import to avoid circular: security.approval -> ipc._write -> ipc.__init__ -> here
@@ -175,6 +237,7 @@ async def _handle_bash_security_check(
             source_group=source_group,
             chat_jid=chat_jid,
             request_data={"command": command},
+            handler_type="security_bash",
         )
 
         await deps.broadcast_to_channels(
@@ -206,8 +269,25 @@ async def _handle_bash_security_check(
     )
 
     response_path = ipc_response_path(source_group, request_id)
-    write_ipc_response(response_path, decision)
+    # Agent-side request/response IPC unwraps the public ``result`` field.
+    write_ipc_response(
+        response_path,
+        {"result": {**decision, "guarded_action_id": request_id}},
+    )
+
+
+async def _handle_security_check(
+    data: dict[str, Any],
+    source_group: str,
+    is_admin: bool,  # noqa: FBT001, RUF100 - registered prefix handler keeps the IPC dispatch contract.
+    deps: IpcDeps,
+) -> None:
+    """Dispatch a typed security request without tool-name assumptions."""
+    if data.get("type") == "security:artifact_check":
+        await handle_artifact_security_check(data, source_group, is_admin, deps)
+        return
+    await _handle_bash_security_check(data, source_group, is_admin, deps)
 
 
 # Register the prefix handler so all "security:*" IPC types route here.
-register_prefix("security:", _handle_bash_security_check)
+register_prefix("security:", _handle_security_check)

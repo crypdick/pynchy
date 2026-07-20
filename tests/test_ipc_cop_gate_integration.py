@@ -181,12 +181,13 @@ class TestSyncWorktreeCopGate:
 
         assert mock_cop.call_args.kwargs.get("request_id") == "req-42"
 
-    async def test_cop_approved_skips_gate(self, deps, tmp_path):
-        """When _cop_approved is set, cop_gate should not be called at all."""
+    async def test_caller_asserted_approval_does_not_skip_gate(self, deps, tmp_path):
+        """An untrusted caller boolean cannot bypass Cop inspection."""
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
                 new_callable=AsyncMock,
+                return_value=False,
             ) as mock_cop,
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
@@ -209,7 +210,7 @@ class TestSyncWorktreeCopGate:
                 deps,
             )
 
-        mock_cop.assert_not_called()
+        mock_cop.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -246,11 +247,12 @@ class TestRegisterGroupCopGate:
         assert "new@g.us" not in deps.workspaces()
         assert len(deps.registered) == 0
 
-    async def test_cop_approved_skips_gate(self, deps):
-        """When _cop_approved is set, cop_gate is not called."""
+    async def test_caller_asserted_approval_does_not_skip_gate(self, deps):
+        """An untrusted caller boolean cannot bypass Cop inspection."""
         with patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
+            return_value=False,
         ) as mock_cop:
             await dispatch(
                 {
@@ -266,9 +268,8 @@ class TestRegisterGroupCopGate:
                 deps,
             )
 
-        mock_cop.assert_not_called()
-        # Registration should proceed
-        assert "approved@g.us" in deps.workspaces()
+        mock_cop.assert_awaited_once()
+        assert "approved@g.us" not in deps.workspaces()
 
     async def test_summary_includes_key_fields(self, deps):
         """cop_gate summary should contain name, folder, and trigger."""
@@ -357,8 +358,8 @@ class TestCreatePeriodicAgentCopGate:
         assert "0 8 * * 1" in summary
         assert "weekly briefing" in summary
 
-    async def test_cop_approved_skips_gate(self, deps, tmp_path):
-        """When _cop_approved is set, cop_gate is not called."""
+    async def test_caller_asserted_approval_does_not_skip_gate(self, deps, tmp_path):
+        """An untrusted caller boolean cannot bypass Cop inspection."""
         mock_channel = AsyncMock()
         mock_channel.create_group = AsyncMock(return_value="agent@g.us")
         mock_channel.name = "main"
@@ -368,6 +369,7 @@ class TestCreatePeriodicAgentCopGate:
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
                 new_callable=AsyncMock,
+                return_value=False,
             ) as mock_cop,
             patch(
                 "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
@@ -394,10 +396,8 @@ class TestCreatePeriodicAgentCopGate:
                 deps,
             )
 
-        mock_cop.assert_not_called()
-        # Agent should have been created (task exists)
-        tasks = await get_all_tasks()
-        assert len(tasks) == 1
+        mock_cop.assert_awaited_once()
+        assert len(await get_all_tasks()) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -457,11 +457,12 @@ class TestScheduleTaskCopGate:
         assert "cron" in summary
         assert "delete all files" in summary
 
-    async def test_cop_approved_skips_gate(self, deps):
-        """When _cop_approved is set, cop_gate is not called."""
+    async def test_caller_asserted_approval_does_not_skip_gate(self, deps):
+        """An untrusted caller boolean cannot bypass Cop inspection."""
         with patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
+            return_value=False,
         ) as mock_cop:
             await dispatch(
                 {
@@ -477,9 +478,8 @@ class TestScheduleTaskCopGate:
                 deps,
             )
 
-        mock_cop.assert_not_called()
-        tasks = await get_all_tasks()
-        assert len(tasks) == 1
+        mock_cop.assert_awaited_once()
+        assert len(await get_all_tasks()) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -539,11 +539,12 @@ class TestScheduleHostJobCopGate:
         assert "pg_dump" in summary
         assert "interval" in summary
 
-    async def test_cop_approved_skips_gate(self, deps):
-        """When _cop_approved is set, cop_gate is not called."""
+    async def test_caller_asserted_approval_does_not_skip_gate(self, deps):
+        """An untrusted caller boolean cannot bypass Cop inspection."""
         with patch(
             "pynchy.host.container_manager.security.cop_gate.cop_gate",
             new_callable=AsyncMock,
+            return_value=False,
         ) as mock_cop:
             await dispatch(
                 {
@@ -559,6 +560,5 @@ class TestScheduleHostJobCopGate:
                 deps,
             )
 
-        mock_cop.assert_not_called()
-        jobs = await get_all_host_jobs()
-        assert len(jobs) == 1
+        mock_cop.assert_awaited_once()
+        assert len(await get_all_host_jobs()) == 0

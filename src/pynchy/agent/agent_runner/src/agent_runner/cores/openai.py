@@ -121,7 +121,23 @@ def _delete_patch_file(path: Path) -> None:
 class ContainerPatchEditor(ApplyPatchEditor):
     """Applies patches to files on the container filesystem."""
 
+    def __init__(self, before_tool_hooks: list[BeforeToolUseHook] | None = None) -> None:
+        self._before_tool_hooks = before_tool_hooks or []
+
+    async def _security_failure(self, op: ApplyPatchOperation) -> ApplyPatchResult | None:
+        tool_input = {"path": op.path, "diff": op.diff or ""}
+        for hook_fn in self._before_tool_hooks:
+            decision = await hook_fn("apply_patch", tool_input)
+            if not decision.allowed:
+                return ApplyPatchResult(
+                    status="failed",
+                    output=f"Patch blocked by security policy: {decision.reason}",
+                )
+        return None
+
     async def create_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
+        if failure := await self._security_failure(op):
+            return failure
         try:
             content = apply_diff("", op.diff or "", mode="create")
             await asyncio.to_thread(
@@ -134,6 +150,8 @@ class ContainerPatchEditor(ApplyPatchEditor):
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def update_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
+        if failure := await self._security_failure(op):
+            return failure
         try:
             updated = await asyncio.to_thread(
                 _update_patch_file,
@@ -147,6 +165,8 @@ class ContainerPatchEditor(ApplyPatchEditor):
             return ApplyPatchResult(status="failed", output=str(exc))
 
     async def delete_file(self, op: ApplyPatchOperation) -> ApplyPatchResult:
+        if failure := await self._security_failure(op):
+            return failure
         try:
             await asyncio.to_thread(_delete_patch_file, Path(op.path))
             return ApplyPatchResult(status="completed")
@@ -292,7 +312,7 @@ class OpenAIAgentCore:
                         before_tool_hooks=self._before_tool_hooks,
                     )
                 ),
-                ApplyPatchTool(editor=ContainerPatchEditor()),
+                ApplyPatchTool(editor=ContainerPatchEditor(self._before_tool_hooks)),
                 WebSearchTool(),
             ],
             mcp_servers=self._mcp_servers,

@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.host.container_manager.ipc.deps import IpcDeps
-from pynchy.host.container_manager.security.cop import CopVerdict
+from pynchy.host.container_manager.security.cop import (
+    CopContextAvailability,
+    CopInspectionContext,
+    CopVerdict,
+)
 from pynchy.host.container_manager.security.cop_gate import cop_gate
 from pynchy.types import OutboundEventType
 
@@ -19,6 +23,16 @@ def mock_deps():
     deps.broadcast_to_channels = AsyncMock()
     deps.broadcast_host_message = AsyncMock()
     return deps
+
+
+@pytest.fixture(autouse=True)
+def _available_context():
+    with patch(
+        "pynchy.host.container_manager.security.cop_gate.load_cop_inspection_context",
+        new_callable=AsyncMock,
+        return_value=CopInspectionContext(availability=CopContextAvailability.AVAILABLE),
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -189,3 +203,75 @@ async def test_cop_gate_notification_includes_reason(mock_deps):
     event = broadcast_call.args[1]
     assert event.type is OutboundEventType.APPROVAL
     assert "backdoor pattern detected" in event.content
+
+
+@pytest.mark.asyncio
+async def test_missing_context_requires_human_approval(mock_deps):
+    """Request-reply operations escalate when bounded context is unavailable."""
+    unavailable = CopInspectionContext(
+        availability=CopContextAvailability.UNAVAILABLE,
+        unavailable_reason="database unavailable",
+    )
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.load_cop_inspection_context",
+            new_callable=AsyncMock,
+            return_value=unavailable,
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
+            new_callable=AsyncMock,
+            return_value=CopVerdict(flagged=False),
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.record_security_event",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.create_pending_approval",
+            return_value="a1",
+        ) as create_pending,
+    ):
+        allowed = await cop_gate(
+            "sync_worktree_to_main",
+            "diff: fix typo",
+            {"type": "sync_worktree_to_main", "request_id": "guard-1"},
+            "admin-1",
+            mock_deps,
+            request_id="guard-1",
+        )
+
+    assert allowed is False
+    create_pending.assert_called_once()
+    assert mock_deps.broadcast_to_channels.call_args.args[1].type is OutboundEventType.APPROVAL
+
+
+@pytest.mark.asyncio
+async def test_degraded_cop_blocks_fire_and_forget(mock_deps):
+    """Fire-and-forget actions fail closed when Cop cannot inspect them."""
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
+            new_callable=AsyncMock,
+            return_value=CopVerdict(
+                flagged=False,
+                reason="No gateway available",
+                degraded=True,
+            ),
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.record_security_event",
+            new_callable=AsyncMock,
+        ),
+    ):
+        allowed = await cop_gate(
+            "register_group",
+            "name=test",
+            {"type": "register_group"},
+            "admin-1",
+            mock_deps,
+        )
+
+    assert allowed is False
+    event = mock_deps.broadcast_to_channels.call_args.args[1]
+    assert event.type is OutboundEventType.SYSTEM

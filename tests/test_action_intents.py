@@ -145,11 +145,19 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
         intent = await get_action_intent_by_request(request_id)
         assert intent is not None
         assert intent.status is ActionIntentStatus.AWAITING_APPROVAL
+        pending = json.loads(
+            (
+                settings.data_dir / "ipc/test-workspace/pending_approvals" / f"{request_id}.json"
+            ).read_text(encoding="utf-8")
+        )
         decision_path.parent.mkdir(parents=True, exist_ok=True)
         decision_path.write_text(
             json.dumps(
                 {
                     "request_id": request_id,
+                    "guarded_action_id": pending["guarded_action_id"],
+                    "request_payload_hash": pending["request_payload_hash"],
+                    "source_group": pending["source_group"],
                     "approved": True,
                     "decided_by": "test-user",
                     "decided_at": "2026-07-18T12:00:00+00:00",
