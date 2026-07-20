@@ -100,9 +100,11 @@ The host applies the global unauthenticated-client rate limit first, then a
 route-specific body-size and rate limit. It accepts a configured route only when
 its secret environment variable exists and its target is a known non-admin
 workspace. Schema-valid authenticated deliveries are deduplicated and durably
-admitted before the provider receives `200`. Routes can create isolated,
-corruption-tainted agent tasks or emit deterministic host notifications without an
-agent run. Provider input never grants authorization to execute work.
+admitted before the provider receives `200`. Routes declare whether authenticated
+provider context remains a public source. Public-source routes fence it and start
+the agent invocation corruption-tainted; trusted routes retain provenance without
+that taint. Routes can also emit deterministic host notifications without an agent
+run. Provider input cannot bypass a subsystem's explicit authorization gates.
 
 See [Linear](../integrations/linear.md#receive-linear-callbacks) for agent-task
 callbacks and [GitHub](../integrations/github.md) for direct PR notifications.

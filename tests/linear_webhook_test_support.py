@@ -101,6 +101,7 @@ def webhook_route() -> WebhookRoute:
         workspace=config.workspace,
         secret_env=config.secret_env,
         parse=partial(parse_linear_webhook, config=config),
+        public_source=False,
         routes_conversations=True,
     )
 

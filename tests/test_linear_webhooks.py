@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from typing import TYPE_CHECKING
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -51,8 +54,18 @@ from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
-from pynchy.plugins.integrations.linear_webhooks import parse_linear_webhook
-from pynchy.plugins.webhooks import WebhookAuthenticationError, WebhookConfigurationError
+from pynchy.plugins.integrations.linear_client import LinearError
+from pynchy.plugins.integrations.linear_webhooks import (
+    parse_linear_webhook,
+    prepare_linear_webhook_event,
+)
+from pynchy.plugins.integrations.linear_work_item_provider import LinearWorkspaceIssueError
+from pynchy.plugins.webhooks import (
+    WebhookAuthenticationError,
+    WebhookConfigurationError,
+    WebhookEvent,
+    WebhookProcessingError,
+)
 from pynchy.state import (
     get_all_tasks,
     get_conversation,
@@ -63,14 +76,27 @@ from pynchy.state import (
 )
 from pynchy.types import SessionId, WorkspaceProfile
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
 
 @pytest.fixture(autouse=True)
 async def _database() -> None:
     await init_test_database()
 
 
-@pytest.mark.parametrize("action", ["create", "update", "remove"])
-def test_every_comment_change_maps_to_fenced_issue_conversation(action: str) -> None:
+@pytest.mark.parametrize(
+    ("action", "activity"),
+    [
+        ("create", "new comment was posted"),
+        ("update", "comment was edited"),
+        ("remove", "comment was removed"),
+    ],
+)
+def test_every_comment_change_maps_to_concise_issue_conversation(
+    action: str,
+    activity: str,
+) -> None:
     now = datetime.now(UTC)
     raw_body, headers = _signed_request(_payload(now=now, action=action))
 
@@ -78,14 +104,14 @@ def test_every_comment_change_maps_to_fenced_issue_conversation(action: str) -> 
 
     assert event.subject_id == "issue-1"
     assert event.instructions is not None
-    assert "linear_get_issue" in event.instructions
-    assert "linear_list_todos" in event.instructions
-    assert "linear_submit_plan" in event.instructions
-    assert "linear_claim_work_item" in event.instructions
-    assert "does not grant execution authority" in event.instructions
+    assert activity in event.instructions
+    assert "take appropriate action" in event.instructions
     assert event.external_context is not None
-    assert event.external_context["action"] == action
-    assert event.external_context["comment_body"] == "please review this"
+    context_activity = {"create": "posted", "update": "edited", "remove": "removed"}[action]
+    assert f"Event: comment {context_activity}" in event.external_context
+    assert "Issue: PYN-1" in event.external_context
+    assert "Author: Example User" in event.external_context
+    assert "Comment:\nplease review this" in event.external_context
     assert event.conversation is not None
     assert event.conversation.subject.namespace == "linear:org-1:issue"
     assert event.conversation.subject.key == "issue-1"
@@ -121,10 +147,12 @@ def test_every_issue_change_targets_the_issue_conversation(
 
     assert event.instructions is not None
     assert event.external_context is not None
-    assert event.external_context["action"] == action
-    assert event.external_context["updated_fields"] == (
-        ["title"] if updated_from is not None else []
-    )
+    assert "take appropriate action" in event.instructions
+    assert f"Event: issue {action}" in event.external_context
+    assert "State: In Progress" in event.external_context
+    assert (
+        "Changed fields: title" if updated_from is not None else "Changed fields: none reported"
+    ) in event.external_context
     assert event.conversation is not None
     assert event.conversation.control_title == "[PYN-1] Webhook callbacks"
     assert event.conversation.control_closed is False
@@ -139,7 +167,7 @@ def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
         },
         profiles={"linear": ProfileConfig(tools=["linear"])},
         workspaces={"project": WorkspaceConfig(profiles=["linear"])},
-        tools={"linear": LinearTool(type="linear")},
+        tools={"linear": LinearTool(type="linear", public_source=False)},
     )
     with (
         patch(
@@ -172,6 +200,28 @@ def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
             )
         )
         assert route.routes_conversations is True
+        assert route.public_source is False
+        assert route.prepare_event is not None
+
+
+def test_plugin_route_preserves_public_linear_source_taint() -> None:
+    settings = make_settings(
+        plugins={
+            "linear": PluginConfig(
+                options={"webhook_routes": [{"name": "project", "workspace": "project"}]}
+            )
+        },
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"project": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear", public_source=True)},
+    )
+    with patch(
+        "pynchy.plugins.integrations.linear_webhooks.get_settings",
+        return_value=settings,
+    ):
+        route = LinearMcpPlugin().pynchy_webhook_routes()[0]
+
+    assert route.public_source is True
 
 
 def test_non_issue_or_comment_delivery_remains_durably_ignorable() -> None:
@@ -231,8 +281,12 @@ async def test_signed_delivery_bypasses_bearer_and_enters_one_issue_conversation
     assert not deps.dispatched
     assert len(deps.ingested) == 1
     message = deps.ingested[0]
-    assert "EXTERNAL_UNTRUSTED_CONTENT" in message.content
+    assert "EXTERNAL_UNTRUSTED_CONTENT" not in message.content
+    assert "A new comment was posted" in message.content
+    assert "Issue: PYN-1" in message.content
+    assert "Comment:\nplease review this" in message.content
     assert message.metadata["authenticated_external_route"] is True
+    assert message.metadata["public_source_input"] is False
     assert message.metadata["external_provider"] == "linear"
     receipt = await get_webhook_receipt("linear", "project", _DELIVERY_ID)
     assert receipt is not None
@@ -245,6 +299,151 @@ async def test_signed_delivery_bypasses_bearer_and_enters_one_issue_conversation
     assert conversation.subject.namespace == "linear:org-1:issue"
     assert binding.thread_jid == message.chat_jid
     assert binding.title == "[PYN-1] Linear issue"
+
+
+async def test_public_source_linear_route_keeps_comment_context_fenced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    await deps.persist_parent()
+    route = replace(_route(), public_source=True)
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(route,))
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        await _post_linear_event(client, _payload(now=datetime.now(UTC)))
+    finally:
+        await client.close()
+
+    message = deps.ingested[0]
+    assert "EXTERNAL_UNTRUSTED_CONTENT" in message.content
+    assert message.metadata["public_source_input"] is True
+
+
+async def test_route_preparation_can_ignore_an_off_board_issue_before_thread_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reject_delivery = True
+
+    async def reject(  # noqa: RUF029, RUF100 - webhook preparers are asynchronous callbacks.
+        event: WebhookEvent,
+    ) -> WebhookEvent:
+        if not reject_delivery:
+            return event
+        return replace(
+            event,
+            instructions=None,
+            external_context=None,
+            ignored_reason="issue_is_not_on_workspace_board",
+            conversation=None,
+        )
+
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    await deps.persist_parent()
+    route = replace(_route(), prepare_event=reject)
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(route,))
+    client = TestClient(TestServer(app))
+    event_payload = _payload(now=datetime.now(UTC))
+    await client.start_server()
+    try:
+        status, body = await _post_linear_event(client, event_payload)
+        reject_delivery = False
+        duplicate_status, duplicate = await _post_linear_event(client, event_payload)
+    finally:
+        await client.close()
+
+    assert status == 200
+    assert body == {"status": "ignored", "duplicate": False}
+    assert duplicate_status == 200
+    assert duplicate == {"status": "ignored", "duplicate": True}
+    assert not deps.ingested
+    assert not deps.channel.created
+
+
+@asynccontextmanager
+async def _linear_client_context() -> AsyncIterator[object]:
+    yield object()
+
+
+async def test_route_preparation_verifies_board_membership_before_dispatch() -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(now=now))
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    prepare = _route().prepare_event
+    assert prepare is None
+
+    settings = make_settings(
+        plugins={
+            "linear": PluginConfig(
+                options={"webhook_routes": [{"name": "project", "workspace": "project"}]}
+            )
+        },
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={"project": WorkspaceConfig(profiles=["linear"])},
+        tools={"linear": LinearTool(type="linear", public_source=False)},
+    )
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.linear_client",
+            return_value=_linear_client_context(),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+            new_callable=AsyncMock,
+            return_value=({"id": "issue-1"}, object()),
+        ) as workspace_issue,
+    ):
+        route = LinearMcpPlugin().pynchy_webhook_routes()[0]
+        assert route.prepare_event is not None
+        assert await route.prepare_event(event) == event
+
+    workspace_issue.assert_awaited_once_with(ANY, "project", "issue-1")
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (LinearWorkspaceIssueError("wrong board"), "ignored"),
+        (LinearError("provider unavailable"), "error"),
+    ],
+)
+async def test_route_preparation_distinguishes_off_board_from_provider_failure(
+    error: Exception,
+    expected: str,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(_payload(now=now))
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.linear_client",
+            return_value=_linear_client_context(),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+            new_callable=AsyncMock,
+            side_effect=error,
+        ),
+    ):
+        if expected == "error":
+            with pytest.raises(WebhookProcessingError, match=str(error)):
+                await prepare_linear_webhook_event(event, config=_config())
+            return
+        prepared = await prepare_linear_webhook_event(event, config=_config())
+
+    assert prepared.instructions is None
+    assert prepared.conversation is None
+    assert prepared.ignored_reason == "issue_is_not_on_workspace_board"
 
 
 async def test_same_issue_fifo_reuses_session_while_other_issue_runs_independently(

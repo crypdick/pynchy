@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, Protocol, runtime_checkable
@@ -154,6 +155,24 @@ async def _request_body(
     return web.json_response({"error": "webhook unavailable"}, status=503)
 
 
+async def _prepare_route_event(
+    route: WebhookRoute,
+    event: WebhookEvent,
+) -> WebhookEvent | web.Response:
+    """Apply one route-owned, read-only admission check on every delivery attempt."""
+    if route.prepare_event is None:
+        return event
+    try:
+        return await route.prepare_event(event)
+    except WebhookProcessingError as exc:
+        logger.warning(
+            "Authenticated webhook event preparation failed",
+            route=route.path,
+            reason=str(exc),
+        )
+        return web.json_response({"error": "webhook processing failed"}, status=503)
+
+
 async def _process_route_event(
     route: WebhookRoute,
     event: WebhookEvent,
@@ -193,17 +212,34 @@ def _parse_event(
         return web.json_response({"error": "invalid payload"}, status=400)
 
 
+async def _prepared_event_and_workspace(
+    request: web.Request,
+    ingress: WebhookIngress,
+    route: WebhookRoute,
+    body: tuple[bytes, str],
+    received_at: datetime,
+) -> tuple[WebhookEvent, WorkspaceProfile] | web.Response:
+    raw_body, secret = body
+    event = _parse_event(request, route, raw_body, secret, received_at)
+    if isinstance(event, web.Response):
+        return event
+    workspace = ingress.deps.get_workspace(route.workspace)
+    if workspace is None or workspace.is_admin:
+        logger.error("Webhook route lost its configured non-admin workspace", route=route.path)
+        return web.json_response({"error": "webhook route unavailable"}, status=503)
+    prepared_event = await _prepare_route_event(route, event)
+    if isinstance(prepared_event, web.Response):
+        return prepared_event
+    return prepared_event, workspace
+
+
 def _task_for_event(
     route: WebhookRoute,
     event: WebhookEvent,
     workspace: WorkspaceProfile,
     received_at: str,
 ) -> ScheduledTask | None:
-    if (
-        event.instructions is None
-        or event.external_context is None
-        or event.conversation is not None
-    ):
+    if event.instructions is None or event.conversation is not None:
         return None
     return ScheduledTask(
         id=f"webhook-{route.provider}-{route.name}-{event.delivery_id}",
@@ -215,17 +251,23 @@ def _task_for_event(
         context_mode="isolated",
         next_run=received_at,
         created_at=received_at,
-        input_source=f"webhook:{route.provider}",
+        input_source=(
+            f"webhook:{route.provider}" if route.public_source else f"trusted:{route.provider}"
+        ),
     )
 
 
 def _prompt_for_event(route: WebhookRoute, event: WebhookEvent) -> str:
     if event.instructions is None or event.external_context is None:
         raise ValueError("Actionable webhook event lost its prompt context")
-    external_context = fence_untrusted_content(
-        json.dumps(event.external_context, sort_keys=True, ensure_ascii=False),
-        source=f"{route.provider}-webhook",
-    )
+    external_context = event.external_context
+    if isinstance(external_context, Mapping):
+        external_context = json.dumps(external_context, sort_keys=True, ensure_ascii=False)
+    if route.public_source:
+        external_context = fence_untrusted_content(
+            external_context,
+            source=f"{route.provider}-webhook",
+        )
     return f"{event.instructions}\n\n{external_context}"
 
 
@@ -251,7 +293,7 @@ async def _dispatch_admitted_event(
     workspace: WorkspaceProfile,
 ) -> None:
     dispatcher = ingress.conversation_dispatcher
-    if event.conversation is not None:
+    if event.conversation is not None and admission.receipt.disposition == "routed":
         if dispatcher is None:
             raise RuntimeError("Routed webhook dispatcher disappeared after startup")
         conversation_id = await dispatcher.admit(
@@ -277,16 +319,19 @@ async def handle_webhook(request: web.Request) -> web.Response:
     body_result = await _request_body(request, route)
     if isinstance(body_result, web.Response):
         return body_result
-    raw_body, secret = body_result
+    raw_body = body_result[0]
 
     received_at = datetime.now(UTC)
-    event = _parse_event(request, route, raw_body, secret, received_at)
-    if isinstance(event, web.Response):
-        return event
-    workspace = ingress.deps.get_workspace(route.workspace)
-    if workspace is None or workspace.is_admin:
-        logger.error("Webhook route lost its configured non-admin workspace", route=route.path)
-        return web.json_response({"error": "webhook route unavailable"}, status=503)
+    prepared = await _prepared_event_and_workspace(
+        request,
+        ingress,
+        route,
+        body_result,
+        received_at,
+    )
+    if isinstance(prepared, web.Response):
+        return prepared
+    event, workspace = prepared
 
     processing_response = await _process_route_event(route, event)
     if processing_response is not None:

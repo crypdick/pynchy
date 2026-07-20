@@ -184,9 +184,11 @@ async def _claimed_external_message(
     group: WorkspaceProfile,
     *,
     suffix: str,
+    provider: str = "matrix",
+    public_source_input: bool | None = None,
 ) -> tuple[NewMessage, ExternalDeliveryIdentity]:
     identity = ExternalDeliveryIdentity(
-        provider=ExternalProvider("matrix"),
+        provider=ExternalProvider(provider),
         route=ExternalRoute("personal:family"),
         delivery_id=ExternalDeliveryId(f"$event-{suffix}"),
     )
@@ -207,17 +209,20 @@ async def _claimed_external_message(
     )
     claim_id = ConversationClaimId(f"claim-{suffix}")
     assert await claim_next_conversation_delivery(admission.conversation.id, claim_id)
+    metadata: dict[str, object] = {
+        "authenticated_external_route": True,
+        "external_provider": provider,
+        "conversation_claim_id": claim_id,
+    }
+    if public_source_input is not None:
+        metadata["public_source_input"] = public_source_input
     message = _make_message(
         f"external input {suffix}",
         message_id=str(identity.delivery_id),
         chat_jid=jid,
         sender="@stranger:matrix.example.com",
         timestamp="2026-07-19T12:00:01+00:00",
-        metadata={
-            "authenticated_external_route": True,
-            "external_provider": "matrix",
-            "conversation_claim_id": claim_id,
-        },
+        metadata=metadata,
     )
     await store_message(message)
     return message, identity
@@ -1204,6 +1209,32 @@ class TestProcessGroupMessages:
         # Cursor rolls back so the DB (which still has "old-ts") stays consistent
         # with in-memory state. Messages will be re-processed on the next trigger.
         assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
+
+    @pytest.mark.asyncio
+    async def test_trusted_external_route_preserves_provenance_without_public_taint(
+        self,
+        tmp_path,
+    ):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: "old-ts"})
+        external, _identity = await _claimed_external_message(
+            jid,
+            group,
+            suffix="trusted-linear",
+            provider="linear",
+            public_source_input=False,
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(_P_MSGS_SINCE, new_callable=AsyncMock, return_value=[external]),
+            _patch_intercept(),
+            _patch_fmt_sdk(),
+        ):
+            assert await process_group_messages(deps, jid) is True
+
+        assert deps.run_agent.await_args.kwargs["input_source"] == "trusted:linear"
 
     @pytest.mark.asyncio
     async def test_agent_exception_preserves_routed_claim_for_durable_resume(self, tmp_path):

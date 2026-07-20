@@ -173,6 +173,8 @@ async def broadcast_agent_input(
 
     # Synthetic messages: broadcast to channels so users see what triggered the agent
     label = source_labels.get(source, source)
+    if source.startswith("trusted:"):
+        label = source.removeprefix("trusted:").title()
     for msg in messages:
         if not isinstance(msg, dict):
             continue

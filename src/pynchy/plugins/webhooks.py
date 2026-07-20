@@ -51,6 +51,9 @@ class WebhookConversation:
             raise ValueError("Webhook conversation control title cannot be blank")
 
 
+WebhookExternalContext = str | Mapping[str, object]
+
+
 @dataclass(frozen=True)
 class WebhookEvent:
     """Closed provider event admitted by a plugin-owned route parser.
@@ -58,7 +61,8 @@ class WebhookEvent:
     A provider parser chooses exactly one disposition: an isolated agent task,
     a routed conversation turn, a literal host notification, or an ignored
     delivery. Host notifications are for deterministic status updates only;
-    provider text must never become trusted agent instructions.
+    provider text stays separate from host instructions. The route's source-trust
+    declaration determines whether the host fences that context before dispatch.
     """
 
     delivery_id: str
@@ -67,7 +71,7 @@ class WebhookEvent:
     subject_id: str
     occurred_at: str
     instructions: str | None
-    external_context: Mapping[str, object] | None
+    external_context: WebhookExternalContext | None
     ignored_reason: str | None = None
     host_message: str | None = None
     conversation: WebhookConversation | None = None
@@ -91,6 +95,7 @@ class WebhookEvent:
 
 
 WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]
+WebhookEventPreparer = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
 WebhookEventProcessor = Callable[[WebhookEvent], Awaitable[None]]
 WebhookWorkspaceValidator = Callable[[WorkspaceProfile], str | None]
 
@@ -104,10 +109,16 @@ class WebhookRoute:
     workspace: str
     secret_env: str
     parse: WebhookParser
+    # NOTE: Update docs/plugins/hooks/webhooks.md and
+    # docs/architecture/security.md "Authenticated external routes" if this changes.
+    # Authentication proves provider origin. It does not decide whether text
+    # carried by that provider can contain attacker-controlled content.
+    public_source: bool = True
     validate_workspace: WebhookWorkspaceValidator | None = None
     max_body_bytes: int = 256 * 1024
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
+    prepare_event: WebhookEventPreparer | None = None
     process_event: WebhookEventProcessor | None = None
     routes_conversations: bool = False
 

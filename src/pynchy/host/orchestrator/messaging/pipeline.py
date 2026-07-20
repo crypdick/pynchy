@@ -101,14 +101,25 @@ def _turn_id_for_batch(messages: list[types.NewMessage]) -> str:
 
 def _input_source_for_batch(messages: list[types.NewMessage]) -> str:
     """Carry authenticated external provenance into sticky security taint."""
-    providers = {
+    public_providers = {
         str(metadata["external_provider"])
         for message in messages
         if (metadata := message.metadata or {})
         and metadata.get("authenticated_external_route") is True
+        and metadata.get("public_source_input", True) is True
         and isinstance(metadata.get("external_provider"), str)
     }
-    return f"external:{sorted(providers)[0]}" if providers else "user"
+    if public_providers:
+        return f"external:{sorted(public_providers)[0]}"
+    trusted_providers = {
+        str(metadata["external_provider"])
+        for message in messages
+        if (metadata := message.metadata or {})
+        and metadata.get("authenticated_external_route") is True
+        and metadata.get("public_source_input") is False
+        and isinstance(metadata.get("external_provider"), str)
+    }
+    return f"trusted:{sorted(trusted_providers)[0]}" if trusted_providers else "user"
 
 
 def _conversation_claim_for_batch(
