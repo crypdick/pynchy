@@ -15,6 +15,7 @@ from pynchy.config.models import (
     WorkspaceThreadConfig,
 )
 from pynchy.config.workspace_layout import WorkspaceMigrationConfig
+from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.host.orchestrator.workspace_config import reconcile_workspaces
 from pynchy.host.orchestrator.workspace_threads import (
     WorkspaceThreadAction,
@@ -277,3 +278,60 @@ async def test_active_legacy_scheduled_task_blocks_retirement(monkeypatch, tmp_p
 
     unregister.assert_not_awaited()
     assert old_root.jid in registered
+
+
+@pytest.mark.asyncio
+async def test_confirmed_admin_legacy_workspace_and_child_thread_retire(
+    monkeypatch, tmp_path
+) -> None:
+    await init_test_database()
+    settings = make_settings(
+        profiles={"relationship": ProfileConfig()},
+        workspaces={
+            "relationships": WorkspaceConfig(
+                profiles=["relationship"],
+                threads=[WorkspaceThreadConfig(name="family")],
+            )
+        },
+        workspace_migrations={
+            "discord-admin": WorkspaceMigrationConfig(
+                target_workspace="relationships",
+                target_thread="family",
+                inbound_retargeted=True,
+                scheduled_jobs_retargeted=True,
+                retire_legacy_workspace=True,
+            )
+        },
+        groups_dir=tmp_path / "groups",
+    )
+    monkeypatch.setattr(workspace_config, "get_settings", lambda: settings)
+    old_root = WorkspaceProfile(
+        jid="discord:channel:discord-admin",
+        name="Discord Admin",
+        folder="discord-admin",
+        trigger="@Pynchy",
+        added_at=datetime.now(UTC).isoformat(),
+        is_admin=True,
+    )
+    old_child = WorkspaceProfile(
+        jid="discord:channel:old-child",
+        name="Discord Admin/old-child",
+        folder=dynamic_thread_folder("discord-admin", "discord:channel:old-child"),
+        trigger="@Pynchy",
+        added_at=datetime.now(UTC).isoformat(),
+        is_admin=True,
+    )
+    parent = _parent()
+    registered = {
+        old_root.jid: old_root,
+        old_child.jid: old_child,
+        parent.jid: parent,
+    }
+    unregister = AsyncMock()
+
+    await reconcile_workspaces(registered, [], AsyncMock(), unregister_fn=unregister)
+
+    assert {call.args[0] for call in unregister.await_args_list} == {
+        old_root.jid,
+        old_child.jid,
+    }

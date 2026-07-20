@@ -283,17 +283,24 @@ async def _remove_orphaned_workspaces(
     unregister_fn: Callable[[str], Awaitable[None]] | None,
     retained_legacy_folders: set[str],
 ) -> None:
-    """Remove workspace registrations in the DB but not in config (admin exempt).
+    """Remove workspace registrations in the DB but not in config.
 
-    Admin workspaces are created dynamically at first boot without a config entry.
+    Admin workspaces are created dynamically at first boot without a config entry,
+    so they remain exempt unless an explicit migration has cleared its retirement
+    gates. Child threads of an explicitly retired admin root retire with it.
     """
     if unregister_fn is None:
         return
     config_folders = set(specs.keys())
+    retired_legacy_folders = set(get_settings().workspace_migrations) - retained_legacy_folders
     for jid, profile in list(workspaces.items()):
         if profile.folder in retained_legacy_folders:
             continue
-        if profile.folder in config_folders or profile.is_admin:
+        parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
+        explicitly_retired = (
+            profile.folder in retired_legacy_folders or parent_folder in retired_legacy_folders
+        )
+        if profile.folder in config_folders or (profile.is_admin and not explicitly_retired):
             continue
         if (
             conversation_id_from_folder(profile.folder) is not None
@@ -306,7 +313,6 @@ async def _remove_orphaned_workspaces(
                 jid=jid,
             )
             continue
-        parent_folder = _parent_folder_for_dynamic_thread(profile.folder)
         if parent_folder in config_folders:
             continue
         await unregister_fn(jid)
