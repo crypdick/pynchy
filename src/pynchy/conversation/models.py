@@ -30,9 +30,11 @@ def _require_text(value: str, field_name: str) -> None:
 class ConversationSubject:
     """Immutable external subject that owns one durable conversation.
 
-    ``namespace`` names the subject type, such as ``linear.issue``. ``key``
-    carries the provider's immutable subject key. Neither value represents a
-    delivery, a control thread, a scheduled task, or a mutable display title.
+    ``namespace`` scopes the subject type by provider and tenant or route, such
+    as ``linear:<tenant>:issue``. It must prevent identical provider keys from
+    aliasing across tenants or routes. ``key`` carries the provider's immutable
+    subject key. Neither value represents a delivery, control thread, scheduled
+    task, or mutable display title.
     """
 
     namespace: ConversationSubjectNamespace
