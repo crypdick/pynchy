@@ -27,7 +27,11 @@ from pynchy.conversation.models import (
 )
 from pynchy.plugins.integrations.linear_accounts import linear_account
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
-from pynchy.plugins.integrations.linear_boot import linear_workspace_enabled
+from pynchy.plugins.integrations.linear_boot import (
+    configured_linear_workspace_names,
+    linear_workspace_enabled,
+    workspace_for_linear_project,
+)
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
 from pynchy.plugins.integrations.linear_work_item_provider import (
@@ -69,7 +73,7 @@ class LinearWebhookRouteConfig(_LinearWebhookModel):
     model_config = {"extra": "forbid"}
 
     name: str
-    workspace: str
+    workspace: str | None = None
     tool: str = "linear"
     secret_env: str = "LINEAR_WEBHOOK_SECRET"  # noqa: S105, RUF100 - environment variable name, not a credential.
     organization_id: str | None = None
@@ -78,7 +82,7 @@ class LinearWebhookRouteConfig(_LinearWebhookModel):
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
 
-    @field_validator("name", "workspace", "tool", "secret_env")
+    @field_validator("name", "tool", "secret_env")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         if not value.strip():
@@ -340,17 +344,33 @@ def _issue_event(
     )
 
 
+async def _event_workspace(event: WebhookEvent, config: LinearWebhookRouteConfig) -> str:
+    async with linear_client(account_name=config.tool) as client:
+        if config.workspace is not None:
+            await workspace_issue(client, config.workspace, event.subject_id)
+            return config.workspace
+        issue = await client.get_issue(event.subject_id)
+        project = issue.get("project") if issue is not None else None
+        project_id = project.get("id") if isinstance(project, dict) else None
+        workspace = (
+            workspace_for_linear_project(project_id) if isinstance(project_id, str) else None
+        )
+        if workspace is None:
+            raise LinearWorkspaceIssueError("Linear issue is not on a managed workspace board")
+        return workspace
+
+
 async def prepare_linear_webhook_event(
     event: WebhookEvent,
     *,
     config: LinearWebhookRouteConfig,
+    public_source: bool = True,
 ) -> WebhookEvent:
     """Confirm workspace-board ownership before creating or waking an issue thread."""
     if event.instructions is None:
         return event
     try:
-        async with linear_client(account_name=config.tool) as client:
-            await workspace_issue(client, config.workspace, event.subject_id)
+        workspace = await _event_workspace(event, config)
     except LinearWorkspaceIssueError:
         return replace(
             event,
@@ -361,7 +381,16 @@ async def prepare_linear_webhook_event(
         )
     except (aiohttp.ClientError, LinearBoardError, LinearError, TimeoutError, ValueError) as exc:
         raise WebhookProcessingError(str(exc)) from exc
-    return event
+    if event.conversation is None:
+        return event
+    return replace(
+        event,
+        conversation=replace(
+            event.conversation,
+            workspace=workspace,
+            public_source=public_source,
+        ),
+    )
 
 
 def parse_linear_webhook(
@@ -431,8 +460,18 @@ def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
                 max_body_bytes=config.max_body_bytes,
                 rate_limit_requests=config.rate_limit_requests,
                 rate_limit_window_seconds=config.rate_limit_window_seconds,
-                prepare_event=partial(prepare_linear_webhook_event, config=config),
+                prepare_event=partial(
+                    prepare_linear_webhook_event,
+                    config=config,
+                    public_source=account.config.public_source is not False,
+                ),
                 routes_conversations=True,
+                candidate_workspaces=(
+                    configured_linear_workspace_names(config.tool)
+                    if config.workspace is None
+                    else ()
+                ),
+                allow_admin_workspaces=config.workspace is None,
             )
         )
     return tuple(routes)

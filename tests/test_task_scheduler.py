@@ -22,6 +22,8 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import CronJobConfig, SchedulerConfig
+from pynchy.config.jobs import JobConfig
+from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
@@ -43,6 +45,7 @@ from pynchy.types import (
     TaskRunLog,
     WorkspaceProfile,
 )
+from pynchy.utils import ShellResult
 
 TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 TEST_ERROR_MESSAGE = "Test error"
@@ -234,6 +237,9 @@ class MockSchedulerDeps:
 
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self.groups
+
+    async def register_workspace(self, profile: WorkspaceProfile) -> None:
+        self.groups[profile.jid] = profile
 
     async def broadcast_to_channels(self, jid: str, event) -> None:
         self.messages.append((jid, event))
@@ -992,6 +998,247 @@ class TestRunScheduledAgent:
             expected_folder,
             expected_folder,
         ]
+
+    @pytest.mark.asyncio
+    async def test_scoped_jobs_use_owner_policy_under_category_parent(self, mock_deps, tmp_path):
+        settings = make_settings(
+            groups_dir=tmp_path,
+            profiles={
+                "category": ProfileConfig(),
+                "fam": ProfileConfig(repo="crypdick/fam"),
+                "pynchy-dev": ProfileConfig(
+                    repo="crypdick/pynchy",
+                    execution_mode="host",
+                    cwd="/srv/pynchy",
+                    is_admin=True,
+                ),
+            },
+            workspaces={
+                "relationships": WorkspaceConfig(
+                    profiles=["category"],
+                    scopes=[{"workspace": "fam", "profiles": ["fam"]}],
+                ),
+                "admin": WorkspaceConfig(
+                    profiles=["category"],
+                    scopes=[{"workspace": "pynchy-dev", "profiles": ["pynchy-dev"]}],
+                ),
+            },
+            jobs={
+                "fam-check": JobConfig(schedule="0 8 * * *", workspace="fam", prompt="Check fam."),
+                "pynchy-check": JobConfig(
+                    schedule="0 9 * * *",
+                    workspace="pynchy-dev",
+                    prompt="Check Pynchy.",
+                ),
+            },
+        )
+        mock_deps.groups = {
+            "discord:channel:relationships": WorkspaceProfile(
+                jid="discord:channel:relationships",
+                name="Relationships",
+                folder="relationships",
+                trigger="@Pynchy",
+            ),
+            "discord:channel:admin": WorkspaceProfile(
+                jid="discord:channel:admin",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            ),
+        }
+        tasks = [
+            ScheduledTask(
+                id="fam-task",
+                group_folder="fam",
+                chat_jid="discord:channel:relationships",
+                prompt="Check fam.",
+                schedule_type="cron",
+                schedule_value="0 8 * * *",
+                context_mode="isolated",
+                config_job_name="fam-check",
+                derived_thread_name="fam | fam-check",
+            ),
+            ScheduledTask(
+                id="pynchy-task",
+                group_folder="pynchy-dev",
+                chat_jid="discord:channel:admin",
+                prompt="Check Pynchy.",
+                schedule_type="cron",
+                schedule_value="0 9 * * *",
+                context_mode="isolated",
+                config_job_name="pynchy-check",
+                derived_thread_name="pynchy-dev | pynchy-check",
+            ),
+        ]
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.config_job_execution.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.workspace_placement.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+        ):
+            for task in tasks:
+                assert await run_scheduled_agent(task, mock_deps) is True
+
+        assert mock_deps.thread_lookups == [
+            ("discord:channel:relationships", "fam | fam-check"),
+            ("discord:channel:admin", "pynchy-dev | pynchy-check"),
+        ]
+        assert mock_deps.agent_runs[0]["group"].folder.startswith("fam__thread_")
+        assert mock_deps.agent_runs[0]["group"].is_admin is False
+        assert mock_deps.agent_runs[1]["group"].folder.startswith("pynchy-dev__thread_")
+        assert mock_deps.agent_runs[1]["group"].is_admin is True
+        assert mock_deps.groups["discord:channel:scheduled-1"].folder.startswith("fam__thread_")
+        assert mock_deps.groups["discord:channel:scheduled-2"].folder.startswith(
+            "pynchy-dev__thread_"
+        )
+
+    @pytest.mark.asyncio
+    async def test_deterministic_scoped_job_registers_owner_thread_without_agent(
+        self, mock_deps, tmp_path
+    ):
+        settings = make_settings(
+            groups_dir=tmp_path,
+            profiles={
+                "category": ProfileConfig(),
+                "cron": ProfileConfig(skills=["scheduler-operations"]),
+            },
+            workspaces={
+                "ops": WorkspaceConfig(
+                    profiles=["category"],
+                    scopes=[{"workspace": "cron", "profiles": ["cron"]}],
+                )
+            },
+            jobs={
+                "watchdog": JobConfig(
+                    schedule="0 23 * * *",
+                    workspace="cron",
+                    agent=False,
+                    command="scripts/watchdog.py",
+                )
+            },
+        )
+        mock_deps.groups = {
+            "discord:channel:ops": WorkspaceProfile(
+                jid="discord:channel:ops",
+                name="Ops",
+                folder="ops",
+                trigger="@Pynchy",
+            )
+        }
+        task = ScheduledTask(
+            id="watchdog-task",
+            group_folder="cron",
+            chat_jid="discord:channel:ops",
+            prompt="",
+            schedule_type="cron",
+            schedule_value="0 23 * * *",
+            context_mode="isolated",
+            config_job_name="watchdog",
+            derived_thread_name="cron | watchdog",
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.config_job_execution.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.workspace_placement.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+                new_callable=AsyncMock,
+                return_value=ShellResult(returncode=0, stdout="watchdog ok", stderr=""),
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+        ):
+            assert await run_scheduled_agent(task, mock_deps) is True
+
+        assert mock_deps.agent_runs == []
+        assert mock_deps.thread_creations == [("discord:channel:ops", "cron | watchdog")]
+        assert mock_deps.host_messages == [("discord:channel:scheduled-1", "watchdog ok")]
+        assert mock_deps.groups["discord:channel:scheduled-1"].folder.startswith("cron__thread_")
+
+    @pytest.mark.asyncio
+    async def test_pre_run_false_gate_skips_before_thread_creation(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        sample_task.config_job_name = "gated-job"
+        sample_task.derived_thread_name = "test-group | gated-job"
+        mock_deps.groups["test-jid"] = sample_group
+        settings = make_settings(
+            groups_dir=tmp_path,
+            profiles={"test": ProfileConfig()},
+            workspaces={"test-group": WorkspaceConfig(profiles=["test"])},
+            jobs={
+                "gated-job": JobConfig(
+                    schedule="0 8 * * *",
+                    workspace="test-group",
+                    prompt="Act only when needed.",
+                    pre_run_command="scripts/gate.py",
+                )
+            },
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.config_job_execution.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.config_job_execution.run_shell_command",
+                new_callable=AsyncMock,
+                return_value=ShellResult(
+                    returncode=0,
+                    stdout='{"wakeAgent": false}',
+                    stderr="",
+                ),
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+        ):
+            assert await run_scheduled_agent(sample_task, mock_deps) is True
+
+        assert mock_deps.thread_lookups == []
+        assert mock_deps.thread_creations == []
+        assert mock_deps.agent_runs == []
 
     @pytest.mark.asyncio
     async def test_config_job_recreates_a_missing_derived_thread(

@@ -212,6 +212,7 @@ def _task_for_issue(
         next_run=occurred_at,
         created_at=occurred_at,
         input_source=f"{'external' if public_source else 'trusted'}:linear:{status}",
+        derived_thread_name=f"[{issue.identifier}] {issue.title}"[:100],
     )
 
 
@@ -260,6 +261,8 @@ def polling_boards(
     settings = get_settings()
     plugin = settings.plugins.get("linear")
     options = LinearPluginOptions.model_validate(plugin.options if plugin is not None else {})
+    if any(route.workspace is None for route in options.webhook_routes):
+        return {}
     routed = {route.workspace for route in options.webhook_routes}
     return {folder: board for folder, board in boards.items() if folder not in routed}
 

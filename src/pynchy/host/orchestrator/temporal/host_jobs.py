@@ -8,7 +8,9 @@ from pynchy.config import get_settings
 from pynchy.config.scheduler_models import (
     CronJobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
 )
-from pynchy.host.orchestrator.task_scheduler import resolve_cron_job_cwd
+from pynchy.host.orchestrator.config_job_execution import (
+    resolve_job_cwd as resolve_cron_job_cwd,
+)
 from pynchy.host.orchestrator.temporal.runtime_state import _record_activity_result
 from pynchy.logger import logger
 from pynchy.state import get_host_job_by_id, record_host_job_completion

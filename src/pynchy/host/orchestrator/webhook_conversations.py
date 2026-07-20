@@ -26,6 +26,7 @@ from pynchy.host.orchestrator.conversation_control import (
     ensure_conversation_workspace,
     sync_conversation_control_state,
 )
+from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
     WebhookEvent,
@@ -108,6 +109,9 @@ class WebhookConversationDispatcher:
         target = event.conversation
         if target is None:
             return None
+        workspace = target.workspace or route.workspace
+        if workspace is None:
+            raise RuntimeError("Routed webhook conversation has no workspace owner")
         identity = ExternalDeliveryIdentity(
             provider=ExternalProvider(route.provider),
             route=ExternalRoute(route.name),
@@ -116,14 +120,18 @@ class WebhookConversationDispatcher:
         admission = await admit_conversation_delivery(
             identity,
             target.subject,
-            GroupFolder(route.workspace),
+            GroupFolder(workspace),
             payload={
                 "prompt": prompt,
                 "control_title": target.control_title,
                 "control_closed": target.control_closed,
                 "event_type": event.event_type,
                 "event_action": event.action,
-                "public_source": route.public_source,
+                "public_source": (
+                    target.public_source
+                    if target.public_source is not None
+                    else route.public_source
+                ),
             },
         )
         return admission.conversation.id
@@ -189,9 +197,12 @@ class WebhookConversationDispatcher:
         conversation = await get_conversation(delivery.conversation_id)
         if conversation is None:
             raise RuntimeError("Routed webhook delivery references a missing conversation")
-        parent = self.deps.get_workspace(conversation.workspace)
-        if parent is None:
-            raise RuntimeError("Routed webhook conversation lost its parent workspace")
+        placement = resolve_workspace_placement(
+            self.deps.workspaces().values(),
+            conversation.workspace,
+        )
+        if placement is None:
+            raise RuntimeError("Routed webhook conversation lost its workspace placement")
         binding = await get_conversation_control_binding(conversation.id)
         title = binding.title if binding is not None else proposed_title
         closed = (
@@ -211,9 +222,10 @@ class WebhookConversationDispatcher:
             ),
             ConversationControlRequest(
                 conversation_id=conversation.id,
-                parent_workspace=conversation.workspace,
-                parent_jid=ChatJid(parent.jid),
+                parent_workspace=GroupFolder(placement.control_parent.folder),
+                parent_jid=ChatJid(placement.control_parent.jid),
                 title=title,
+                owner_workspace=conversation.workspace,
                 closed=closed,
             ),
         )

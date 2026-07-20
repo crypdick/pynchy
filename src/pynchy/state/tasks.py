@@ -31,6 +31,7 @@ def _row_to_task(row: Row) -> ScheduledTask:
         repo_access=row["repo_access"] or None,
         input_source=row["input_source"] or "scheduled_task",
         config_job_name=row["config_job_name"] or None,
+        derived_thread_name=row["derived_thread_name"] or None,
     )
 
 
@@ -57,8 +58,8 @@ async def create_task(task: ScheduledTask) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             repo_access, input_source, config_job_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repo_access, input_source, config_job_name, derived_thread_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -74,6 +75,7 @@ async def create_task(task: ScheduledTask) -> None:
             task.repo_access or None,
             task.input_source,
             task.config_job_name,
+            task.derived_thread_name,
         ),
     )
     await db.commit()
@@ -87,8 +89,8 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
         INSERT OR IGNORE INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, context_mode, next_run, status, created_at,
-             repo_access, input_source, config_job_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             repo_access, input_source, config_job_name, derived_thread_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -104,6 +106,7 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             task.repo_access,
             task.input_source,
             task.config_job_name,
+            task.derived_thread_name,
         ),
     )
     await db.commit()
@@ -149,6 +152,7 @@ _TASK_UPDATE_FIELDS = {
     "repo_access",
     "input_source",
     "config_job_name",
+    "derived_thread_name",
 }
 
 

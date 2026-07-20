@@ -104,6 +104,9 @@ def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
         def workspaces(self) -> dict[str, WorkspaceProfile]:
             return app.workspaces
 
+        async def register_workspace(self, profile: WorkspaceProfile) -> None:
+            await app.register_workspace(profile)
+
         @property
         def queue(self) -> GroupQueue:
             return app.queue

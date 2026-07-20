@@ -56,6 +56,7 @@ from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_webhooks import (
+    LinearWebhookRouteConfig,
     parse_linear_webhook,
     prepare_linear_webhook_event,
 )
@@ -215,13 +216,62 @@ def test_plugin_route_preserves_public_linear_source_taint() -> None:
         workspaces={"project": WorkspaceConfig(profiles=["linear"])},
         tools={"linear": LinearTool(type="linear", public_source=True)},
     )
-    with patch(
-        "pynchy.plugins.integrations.linear_webhooks.get_settings",
-        return_value=settings,
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=settings,
+        ),
     ):
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
 
     assert route.public_source is True
+
+
+def test_project_routed_route_declares_semantic_candidates_before_provider_boot() -> None:
+    settings = make_settings(
+        plugins={"linear": PluginConfig(options={"webhook_routes": [{"name": "managed-boards"}]})},
+        profiles={
+            "category": ProfileConfig(tools=["linear"]),
+            "fam": ProfileConfig(tools=["linear"], repo="crypdick/fam"),
+            "pynchy-dev": ProfileConfig(
+                tools=["linear"],
+                repo="crypdick/pynchy",
+                execution_mode="host",
+                cwd="/srv/pynchy",
+                is_admin=True,
+            ),
+        },
+        workspaces={
+            "relationships": WorkspaceConfig(
+                profiles=["category"],
+                scopes=[{"workspace": "fam", "profiles": ["fam"]}],
+            ),
+            "admin": WorkspaceConfig(
+                profiles=["category"],
+                scopes=[{"workspace": "pynchy-dev", "profiles": ["pynchy-dev"]}],
+            ),
+        },
+        tools={"linear": LinearTool(type="linear", public_source=False)},
+    )
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=settings,
+        ),
+    ):
+        route = LinearMcpPlugin().pynchy_webhook_routes()[0]
+
+    assert route.workspace is None
+    assert {"fam", "pynchy-dev"} <= set(route.candidate_workspaces)
+    assert route.allow_admin_workspaces is True
 
 
 def test_each_route_uses_its_named_account_trust() -> None:
@@ -491,10 +541,58 @@ async def test_route_preparation_verifies_board_membership_before_dispatch() -> 
     ):
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
         assert route.prepare_event is not None
-        assert await route.prepare_event(event) == event
+        prepared = await route.prepare_event(event)
+        assert prepared.conversation is not None
+        assert prepared.conversation.workspace == "project"
+        assert prepared.conversation.public_source is False
 
     workspace_issue.assert_awaited_once_with(ANY, "project", "issue-1")
     client_factory.assert_called_once_with(account_name="linear")
+
+
+async def test_project_route_selects_issue_workspace_instead_of_ingress_scope() -> None:
+    now = datetime.now(UTC)
+    config = LinearWebhookRouteConfig(name="all-boards")
+    raw_body, headers = _signed_request(_payload(now=now))
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=config)
+    client = AsyncMock()
+    client.get_issue.return_value = {
+        "id": "issue-1",
+        "project": {"id": "project-fam"},
+    }
+
+    @asynccontextmanager
+    async def client_context() -> AsyncIterator[object]:
+        yield client
+
+    settings = make_settings(
+        profiles={"fam": ProfileConfig(tools=["linear"])},
+        workspaces={"fam": WorkspaceConfig(profiles=["fam"])},
+        tools={"linear": LinearTool(type="linear", public_source=False)},
+    )
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.linear_client",
+            return_value=client_context(),
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.workspace_for_linear_project",
+            return_value="fam",
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.get_settings",
+            return_value=settings,
+        ),
+    ):
+        prepared = await prepare_linear_webhook_event(
+            event,
+            config=config,
+            public_source=False,
+        )
+
+    assert prepared.conversation is not None
+    assert prepared.conversation.workspace == "fam"
+    assert prepared.conversation.public_source is False
 
 
 @pytest.mark.parametrize(

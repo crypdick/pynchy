@@ -10,10 +10,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 from asyncio.subprocess import PIPE
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
     Callable,
     Coroutine,
+    Mapping,
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -137,6 +139,7 @@ async def run_shell_command(
     *,
     cwd: str,
     timeout_seconds: int | float = 600,
+    env: Mapping[str, str] | None = None,
 ) -> ShellResult:
     """Run a shell command asynchronously with timeout and structured result.
 
@@ -146,6 +149,7 @@ async def run_shell_command(
         process = await asyncio.create_subprocess_shell(
             command,
             cwd=cwd,
+            env={**os.environ, **env} if env is not None else None,
             stdout=PIPE,
             stderr=PIPE,
         )

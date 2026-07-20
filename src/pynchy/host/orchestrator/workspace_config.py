@@ -169,7 +169,12 @@ def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
         if runtime_restriction is not None
         else _parent_folder_for_dynamic_thread(group_folder)
     )
-    spec = specs.get(parent_folder or group_folder)
+    policy_folder = parent_folder or group_folder
+    spec = specs.get(policy_folder)
+    if spec is None:
+        semantic = get_settings().workspace_config(policy_folder)
+        if semantic is not None:
+            return semantic
     if spec is None:
         return None
     config = spec.config
@@ -291,7 +296,7 @@ async def _remove_orphaned_workspaces(
     """
     if unregister_fn is None:
         return
-    config_folders = set(specs.keys())
+    config_folders = {*specs, *get_settings().workspace_names()}
     retired_legacy_folders = set(get_settings().workspace_migrations) - retained_legacy_folders
     for jid, profile in list(workspaces.items()):
         if profile.folder in retained_legacy_folders:

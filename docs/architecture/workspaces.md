@@ -2,7 +2,11 @@
 
 How managed workspace definitions work under the hood. Use this page to build plugins that ship preconfigured agents — periodic code reviewers, monitoring bots, or anything that should "just work" after installation.
 
-Workspaces are configured chat roots. A workspace binds a channel chat to profiles. Dynamic conversations under that root, such as Discord threads, get their own isolated runtime folders and always inherit the parent chat's complete resolved configuration. Pynchy resolves a generated thread folder back to its parent before selecting profiles, so a thread-local workspace entry cannot override the parent.
+Workspaces are policy owners. A root workspace binds a channel chat to profiles.
+A semantic workspace scope binds its own profiles to a physical root without
+requiring another Discord channel. Dynamic conversations get isolated runtime
+folders and inherit their policy owner, which may differ from the Discord
+category that physically contains them.
 
 ## What Workspace Specs Do
 
@@ -12,10 +16,35 @@ At startup, Pynchy **reconciles** workspace specs against the database, creating
 
 Workspace specs can also declare named child threads. The reconciler creates
 or reuses each thread below its configured root, then registers a dynamic
-workspace with the parent's complete profile. It requires a channel to support
+workspace. A thread without `workspace` keeps the legacy behavior and inherits
+the root's complete profile. A semantic thread names `workspace` and `profiles`
+to own distinct policy. It requires a channel to support
 thread lookup as well as creation; creation without lookup would make startup
 non-idempotent. The thread reconciler supports a dry-run mode that returns its
 planned actions without changing a channel or runtime registration.
+
+Use `scopes` when many logical owners share one visible category:
+
+```toml
+[workspaces.relationships]
+profiles = ["relationships"]
+
+[[workspaces.relationships.scopes]]
+workspace = "fam"
+profiles = ["fam"]
+
+[workspaces.admin]
+profiles = ["admin"]
+
+[[workspaces.admin.scopes]]
+workspace = "pynchy-dev"
+profiles = ["pynchy-dev"]
+```
+
+Here, Fam work is physically placed below `relationships` but uses only the
+`fam` policy. Pynchy development is placed below `admin` and retains the
+`pynchy-dev` profile's admin and host-execution settings. Category membership
+never grants a semantic child the category's broader policy.
 
 ## Config Merging
 
@@ -70,6 +99,8 @@ Each scheduled run resolves the target workspace's current effective model. To c
 |-------|------|-------------|
 | `profiles` | `list[str]` | Profile names from `[profiles.*]`, applied in order |
 | `model` | `str` | Optional model override; takes precedence over profile and global agent models |
+| `threads` | `list[table]` | Durable child threads; add `workspace` and `profiles` for a semantic policy owner |
+| `scopes` | `list[table]` | Semantic policy owners physically placed below this root without a static child thread |
 
 ## Profile Config Fields
 
@@ -99,8 +130,9 @@ always choices update the workspace's first profile: grants are stored in its
 `skills` list and denials in `denied_skills`. Pynchy synchronizes that resolved
 selection into the next session's skill registry; a denied skill is never
 injected, including when `skills = ["learned"]` or `skills = ["*"]` would
-otherwise select it. Dynamic Discord threads use their parent workspace's
-configuration for both the catalog and persistent choice.
+otherwise select it. Dynamic Discord threads use their policy owner's
+configuration for both the catalog and persistent choice. An unowned manual
+thread inherits its physical parent for backward compatibility.
 
 ---
 

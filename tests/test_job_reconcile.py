@@ -112,6 +112,74 @@ class TestJobReconcile:
         assert task.chat_jid == "discord:channel:relationships"
         assert task.config_job_name == "fam_daily_checkin"
 
+    async def test_scoped_jobs_bind_policy_owner_to_its_physical_parent(
+        self, db, monkeypatch, tmp_path
+    ):
+        settings = make_settings(
+            groups_dir=tmp_path / "groups",
+            profiles={
+                "category": ProfileConfig(),
+                "fam": ProfileConfig(repo="crypdick/fam"),
+                "pynchy-dev": ProfileConfig(
+                    repo="crypdick/pynchy",
+                    execution_mode="host",
+                    cwd="/srv/pynchy",
+                    is_admin=True,
+                ),
+            },
+            workspaces={
+                "relationships": WorkspaceConfig(
+                    profiles=["category"],
+                    scopes=[{"workspace": "fam", "profiles": ["fam"]}],
+                ),
+                "admin": WorkspaceConfig(
+                    profiles=["category"],
+                    scopes=[{"workspace": "pynchy-dev", "profiles": ["pynchy-dev"]}],
+                ),
+            },
+            jobs={
+                "fam-check": JobConfig(
+                    schedule="0 8 * * *",
+                    workspace="fam",
+                    prompt="Check fam.",
+                ),
+                "pynchy-check": JobConfig(
+                    schedule="0 9 * * *",
+                    workspace="pynchy-dev",
+                    prompt="Check Pynchy.",
+                ),
+            },
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.workspace_config.get_settings", lambda: settings
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.workspace_placement.get_settings", lambda: settings
+        )
+        registered = {
+            "discord:channel:relationships": WorkspaceProfile(
+                jid="discord:channel:relationships",
+                name="Relationships",
+                folder="relationships",
+                trigger="@Pynchy",
+            ),
+            "discord:channel:admin": WorkspaceProfile(
+                jid="discord:channel:admin",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            ),
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        tasks = {task.group_folder: task for task in await get_all_tasks()}
+        assert tasks["fam"].chat_jid == "discord:channel:relationships"
+        assert tasks["fam"].derived_thread_name == "fam | fam-check"
+        assert tasks["pynchy-dev"].chat_jid == "discord:channel:admin"
+        assert tasks["pynchy-dev"].derived_thread_name == "pynchy-dev | pynchy-check"
+
     async def test_one_time_agent_job_creates_once_task(self, db, monkeypatch, tmp_path):
         run_at = "2026-07-08T18:30:00-07:00"
         self._patch_settings(

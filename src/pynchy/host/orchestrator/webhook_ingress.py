@@ -18,6 +18,7 @@ from pynchy.host.orchestrator.webhook_conversations import (
     ConversationWebhookDeps,
     WebhookConversationDispatcher,
 )
+from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
@@ -65,6 +66,19 @@ class WebhookIngress:
 webhook_ingress_key: web.AppKey[WebhookIngress] = web.AppKey("webhook_ingress")
 
 
+def _resolve_route_workspace(
+    deps: WebhookIngressDeps,
+    workspace_name: str,
+) -> WorkspaceProfile | None:
+    workspace = deps.get_workspace(workspace_name)
+    if workspace is not None:
+        return workspace
+    if not isinstance(deps, ConversationWebhookDeps):
+        return None
+    placement = resolve_workspace_placement(deps.workspaces().values(), workspace_name)
+    return placement.owner if placement is not None else None
+
+
 def build_webhook_ingress(
     deps: WebhookIngressDeps,
     routes: tuple[WebhookRoute, ...],
@@ -73,19 +87,24 @@ def build_webhook_ingress(
     # NOTE: Update docs/usage/control-plane.md "Provider-authenticated webhooks"
     # and docs/architecture/security.md "HTTP Control Plane" with this boundary.
     for route in routes:
-        workspace = deps.get_workspace(route.workspace)
-        if workspace is None:
-            raise WebhookConfigurationError(
-                f"Webhook route {route.path} names unknown workspace {route.workspace!r}"
-            )
-        if workspace.is_admin:
-            raise WebhookConfigurationError(
-                f"Webhook route {route.path} cannot target admin workspace {route.workspace!r}"
-            )
-        if route.validate_workspace is not None:
-            reason = route.validate_workspace(workspace)
-            if reason is not None:
-                raise WebhookConfigurationError(f"Webhook route {route.path} {reason}")
+        workspace_names = (
+            *((route.workspace,) if route.workspace is not None else ()),
+            *route.candidate_workspaces,
+        )
+        for workspace_name in dict.fromkeys(workspace_names):
+            workspace = _resolve_route_workspace(deps, workspace_name)
+            if workspace is None:
+                raise WebhookConfigurationError(
+                    f"Webhook route {route.path} names unknown workspace {workspace_name!r}"
+                )
+            if workspace.is_admin and not route.allow_admin_workspaces:
+                raise WebhookConfigurationError(
+                    f"Webhook route {route.path} cannot target admin workspace {workspace_name!r}"
+                )
+            if route.validate_workspace is not None:
+                reason = route.validate_workspace(workspace)
+                if reason is not None:
+                    raise WebhookConfigurationError(f"Webhook route {route.path} {reason}")
         if route.routes_conversations and not isinstance(deps, ConversationWebhookDeps):
             raise WebhookConfigurationError(
                 f"Webhook route {route.path} requires conversation runtime capabilities"
@@ -218,29 +237,50 @@ async def _prepared_event_and_workspace(
     route: WebhookRoute,
     body: tuple[bytes, str],
     received_at: datetime,
-) -> tuple[WebhookEvent, WorkspaceProfile] | web.Response:
+) -> tuple[WebhookEvent, WorkspaceProfile | None] | web.Response:
     raw_body, secret = body
     event = _parse_event(request, route, raw_body, secret, received_at)
     if isinstance(event, web.Response):
         return event
-    workspace = ingress.deps.get_workspace(route.workspace)
-    if workspace is None or workspace.is_admin:
-        logger.error("Webhook route lost its configured non-admin workspace", route=route.path)
-        return web.json_response({"error": "webhook route unavailable"}, status=503)
     prepared_event = await _prepare_route_event(route, event)
     if isinstance(prepared_event, web.Response):
         return prepared_event
+    target_workspace = (
+        prepared_event.conversation.workspace
+        if prepared_event.conversation is not None
+        and prepared_event.conversation.workspace is not None
+        else route.workspace
+    )
+    workspace = (
+        _resolve_route_workspace(ingress.deps, target_workspace) if target_workspace else None
+    )
+    if target_workspace is not None and workspace is None:
+        logger.error("Webhook route lost its resolved workspace", route=route.path)
+        return web.json_response({"error": "webhook route unavailable"}, status=503)
+    if workspace is not None and workspace.is_admin and not route.allow_admin_workspaces:
+        logger.error("Webhook route resolved a forbidden admin workspace", route=route.path)
+        return web.json_response({"error": "webhook route unavailable"}, status=503)
+    if (
+        prepared_event.conversation is not None
+        and prepared_event.conversation.workspace is not None
+        and prepared_event.conversation.workspace not in route.candidate_workspaces
+        and prepared_event.conversation.workspace != route.workspace
+    ):
+        logger.error("Webhook route resolved an undeclared workspace", route=route.path)
+        return web.json_response({"error": "webhook route unavailable"}, status=503)
     return prepared_event, workspace
 
 
 def _task_for_event(
     route: WebhookRoute,
     event: WebhookEvent,
-    workspace: WorkspaceProfile,
+    workspace: WorkspaceProfile | None,
     received_at: str,
 ) -> ScheduledTask | None:
     if event.instructions is None or event.conversation is not None:
         return None
+    if workspace is None:
+        raise RuntimeError("Actionable webhook event has no resolved workspace")
     return ScheduledTask(
         id=f"webhook-{route.provider}-{route.name}-{event.delivery_id}",
         group_folder=workspace.folder,
@@ -257,13 +297,19 @@ def _task_for_event(
     )
 
 
+def _event_public_source(route: WebhookRoute, event: WebhookEvent) -> bool:
+    if event.conversation is not None and event.conversation.public_source is not None:
+        return event.conversation.public_source
+    return route.public_source
+
+
 def _prompt_for_event(route: WebhookRoute, event: WebhookEvent) -> str:
     if event.instructions is None or event.external_context is None:
         raise ValueError("Actionable webhook event lost its prompt context")
     external_context = event.external_context
     if isinstance(external_context, Mapping):
         external_context = json.dumps(external_context, sort_keys=True, ensure_ascii=False)
-    if route.public_source:
+    if _event_public_source(route, event):
         external_context = fence_untrusted_content(
             external_context,
             source=f"{route.provider}-webhook",
@@ -290,7 +336,7 @@ async def _dispatch_admitted_event(
     route: WebhookRoute,
     event: WebhookEvent,
     admission: WebhookAdmission,
-    workspace: WorkspaceProfile,
+    workspace: WorkspaceProfile | None,
 ) -> None:
     dispatcher = ingress.conversation_dispatcher
     if event.conversation is not None and admission.receipt.disposition == "routed":
@@ -305,7 +351,7 @@ async def _dispatch_admitted_event(
             await dispatcher.wake(conversation_id)
     if admission.created and admission.task is not None:
         ingress.deps.dispatch_scheduled_task(admission.task)
-    if admission.created and event.host_message is not None:
+    if admission.created and event.host_message is not None and workspace is not None:
         await ingress.deps.broadcast_host_message(workspace.jid, event.host_message)
 
 
@@ -352,7 +398,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
         provider=route.provider,
         route=route.name,
         delivery_id=event.delivery_id,
-        workspace=route.workspace,
+        workspace=workspace.folder if workspace is not None else "unrouted",
         event_type=event.event_type,
         event_action=event.action,
         subject_id=event.subject_id,

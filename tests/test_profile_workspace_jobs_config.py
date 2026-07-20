@@ -194,6 +194,69 @@ def test_agent_job_workspace_can_use_a_profile_shared_by_other_roots() -> None:
     assert settings.jobs["fam_daily_checkin"].workspace == "relationships"
 
 
+def test_workspace_scopes_keep_policy_separate_from_discord_parent() -> None:
+    settings = _settings(
+        profiles={
+            "relationships": ProfileConfig(),
+            "fam": ProfileConfig(repo="crypdick/fam"),
+            "pynchy-dev": ProfileConfig(
+                repo="crypdick/pynchy",
+                execution_mode="host",
+                cwd="/srv/pynchy",
+                is_admin=True,
+            ),
+        },
+        workspaces={
+            "relationships": {
+                "profiles": ["relationships"],
+                "scopes": [{"workspace": "fam", "profiles": ["fam"]}],
+            },
+            "admin": {
+                "profiles": ["relationships"],
+                "scopes": [{"workspace": "pynchy-dev", "profiles": ["pynchy-dev"]}],
+            },
+        },
+        jobs={
+            "fam-check": {
+                "schedule": "0 8 * * *",
+                "workspace": "fam",
+                "prompt": "Check the family board.",
+            },
+            "pynchy-check": {
+                "schedule": "0 9 * * *",
+                "workspace": "pynchy-dev",
+                "prompt": "Check the Pynchy board.",
+            },
+        },
+    )
+
+    fam = settings.resolved_workspace_config("fam")
+    pynchy_dev = settings.resolved_workspace_config("pynchy-dev")
+
+    assert settings.workspace_parent("fam") == "relationships"
+    assert settings.workspace_parent("pynchy-dev") == "admin"
+    assert fam is not None
+    assert fam.repo == ["crypdick/fam"]
+    assert fam.execution_mode == "container"
+    assert pynchy_dev is not None
+    assert pynchy_dev.repo == ["crypdick/pynchy"]
+    assert pynchy_dev.execution_mode == "host"
+    assert pynchy_dev.is_admin is True
+
+
+def test_deterministic_workspace_job_supports_interval_schedule() -> None:
+    job = JobConfig(
+        enabled=True,
+        interval_minutes=360,
+        workspace="admin",
+        agent=False,
+        command="scripts/check.sh",
+    )
+
+    assert job.is_deterministic is True
+    assert job.interval_minutes == 360
+
+
 def test_agent_job_requires_workspace_selector() -> None:
     with pytest.raises(ValidationError, match="agent jobs require workspace"):
         JobConfig(
@@ -327,7 +390,7 @@ def test_host_execution_mode_requires_cwd() -> None:
 
 
 def test_job_requires_exactly_one_schedule_shape() -> None:
-    with pytest.raises(ValidationError, match="exactly one of schedule or at"):
+    with pytest.raises(ValidationError, match="exactly one of schedule, interval_minutes, or at"):
         JobConfig(
             enabled=True,
             schedule="0 8 * * *",

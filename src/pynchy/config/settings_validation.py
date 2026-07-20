@@ -24,6 +24,7 @@ from pynchy.config.refs import parse_chat_ref
 from pynchy.config.scheduler_models import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     CanaryConfig,
 )
+from pynchy.config.workspace_layout import semantic_workspace_configs
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 
 if TYPE_CHECKING:
@@ -67,19 +68,29 @@ def validate_profile_references(
                     f"'{profile_name}'. Available: {list(profiles.keys())}"
                 )
                 raise ValueError(message)
+    semantic = semantic_workspace_configs(workspaces)
+    for folder, (_parent, thread) in semantic.items():
+        for profile_name in thread.profiles:
+            if profile_name not in profiles:
+                message = (
+                    f"workspaces.{folder}.profiles references unknown profile: "
+                    f"'{profile_name}'. Available: {list(profiles.keys())}"
+                )
+                raise ValueError(message)
+    workspace_names = {*workspaces, *semantic}
     for job_name, job in jobs.items():
-        _validate_job_reference(job_name, job, workspaces)
+        _validate_job_reference(job_name, job, workspace_names)
 
 
 def _validate_job_reference(
     job_name: str,
     job: JobConfig,
-    workspaces: dict[str, WorkspaceConfig],
+    workspace_names: set[str],
 ) -> None:
     """Validate one config job's explicit parent workspace binding."""
     if job.is_host:
         return
-    if job.workspace not in workspaces:
+    if job.workspace not in workspace_names:
         raise ValueError(f"jobs.{job_name}.workspace references unknown workspace: {job.workspace}")
 
 
@@ -124,7 +135,7 @@ def validate_route_references(settings: Settings) -> None:
             raise ValueError(f"routes.{route_name}.source references an unknown endpoint")
         if getattr(endpoint, "enabled", True) is not True:
             raise ValueError(f"routes.{route_name}.source references a disabled endpoint")
-        if route.workspace not in settings.workspaces:
+        if settings.workspace_config(route.workspace) is None:
             raise ValueError(f"routes.{route_name}.workspace references an unknown workspace")
         if route.source in used_sources:
             raise ValueError("One endpoint cannot map to multiple enabled routes")
@@ -209,10 +220,10 @@ def _validate_canary_target_values(
             value = getattr(canary, field_name)
             if not value.strip():
                 raise ValueError(f"canary.{display_name} is required for {scenario_id}")
-    if (
-        "linear.workspace.round.trip" in canary.scenario_ids
-        and canary.linear_workspace not in workspaces
-    ):
+    if "linear.workspace.round.trip" in canary.scenario_ids and canary.linear_workspace not in {
+        *workspaces,
+        *semantic_workspace_configs(workspaces),
+    }:
         raise ValueError(
             f"canary.linear_workspace references unknown workspace: {canary.linear_workspace}"
         )
@@ -240,6 +251,11 @@ def reject_claude_sdk_model_overrides(
         f"workspaces.{workspace_name}.model"
         for workspace_name, workspace in workspaces.items()
         if workspace.model is not None
+    )
+    override_paths.extend(
+        f"workspaces.{workspace_name}.model"
+        for workspace_name, (_parent, thread) in semantic_workspace_configs(workspaces).items()
+        if thread.model is not None
     )
     if not override_paths:
         return
