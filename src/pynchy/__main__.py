@@ -2,7 +2,6 @@
 
 Subcommands:
     pynchy              Run the service (default)
-    pynchy --tui        Attach TUI client to a running instance
     pynchy build        Build the container image
     pynchy doctor       Explain effective workspace host-action capabilities
 """
@@ -77,19 +76,6 @@ def _control_client_token(token_file: Path | None) -> str | None:
     return load_control_plane_client_token(
         token_env=_DEFAULT_CONTROL_TOKEN_ENV,
         token_file=token_file or _DEFAULT_CONTROL_TOKEN_FILE,
-    )
-
-
-def _tui(host: str | None, socket_path: Path | None, token_file: Path | None) -> None:
-    from pynchy.plugins.channels.tui.client import (  # noqa: PLC0415, RUF100 - TUI dependencies are only needed for --tui.
-        run_tui,
-    )
-
-    selected_host, selected_socket = _control_client_target(host, socket_path)
-    run_tui(
-        selected_host,
-        socket_path=selected_socket,
-        bearer_token=_control_client_token(token_file),
     )
 
 
@@ -290,9 +276,6 @@ def main() -> None:
         prog="pynchy",
         description="Personal AI assistant",
     )
-    parser.add_argument(
-        "--tui", action="store_true", help="Attach TUI client to a running pynchy instance"
-    )
     control_target = parser.add_mutually_exclusive_group()
     control_target.add_argument(
         "--host",
@@ -385,13 +368,7 @@ def main() -> None:
                 )
             )
         case _:
-            if args.tui:
-                host = args.host
-                if host is not None and ":" not in host.split("//")[-1]:
-                    host = f"{host}:{_DEFAULT_PORT}"
-                _tui(host=host, socket_path=args.socket, token_file=args.token_file)
-            else:
-                _run()
+            _run()
 
 
 if __name__ == "__main__":

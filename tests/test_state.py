@@ -507,11 +507,11 @@ class TestSenderFiltering:
             )
         )
         await _store_message_row_direct(
-            message_id="m-tui",
+            message_id="m-local",
             chat_jid="group@g.us",
-            sender="tui-user",
+            sender="local-user",
             sender_name="You",
-            content="tui message",
+            content="local message",
             timestamp="2024-01-01T00:00:02.000Z",
             is_from_me=False,
         )
@@ -558,7 +558,7 @@ class TestSenderFiltering:
         messages, _ = await get_new_messages(["group@g.us"], "2024-01-01T00:00:00.000Z")
         senders = {m.sender for m in messages}
         assert "123@s.whatsapp.net" in senders
-        assert "tui-user" in senders
+        assert "local-user" in senders
         assert "deploy" in senders
         assert "U07ABC123" in senders  # Slack user ID
         # Internal senders excluded
@@ -577,7 +577,7 @@ class TestSenderFiltering:
         messages = await get_messages_since("group@g.us", "2024-01-01T00:00:00.000Z")
         senders = {m.sender for m in messages}
         assert "123@s.whatsapp.net" in senders
-        assert "tui-user" in senders
+        assert "local-user" in senders
         assert "deploy" in senders
         assert "U07ABC123" in senders  # Slack user ID
         for internal in (

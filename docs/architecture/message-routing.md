@@ -2,7 +2,7 @@
 
 How messages flow from channels to agents and back. Read this to debug message delivery and reason about what the LLM sees in its context. For user-facing info on talking to your assistant (trigger words, message prefixes), see [Usage](../usage/index.md).
 
-Messages arrive from plugin-provided [channels](../channels/index.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
+Messages arrive from plugin-provided [channels](../channels/index.md) and all flow through the same routing code path.
 
 Authenticated provider events that retain context by immutable external subject
 use the separate [routed conversation foundation](conversation-routing.md).
@@ -21,7 +21,6 @@ The sender vocabulary in the database:
 |----------------|-----------------|-------------|
 | `host` | No | Pynchy process notifications (boot, deploy, errors) — user-only |
 | `bot` | Yes | Agent-core responses (`AssistantMessage`) |
-| `tui-user` | Yes | Messages from the TUI client (`UserMessage`) |
 | `command_output` | Yes | Tool/command results stored in DB |
 | `system_notice` | No | Ephemeral system notices (not stored in DB) |
 | `{channel_jid}` | Yes | Channel user messages — WhatsApp phone JID, `slack:<channel_id>`, etc. (`UserMessage`) |

@@ -47,7 +47,7 @@ cp config-examples/config.toml.EXAMPLE config.toml
 cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
 ```
 
-Follow [Channels](../channels/index.md) for Slack, Discord, or TUI setup. To
+Follow [Channels](../channels/index.md) for Slack or Discord setup. To
 use WhatsApp, authenticate from the server and scan its terminal QR code:
 
 ```bash
@@ -72,24 +72,12 @@ journalctl --user -u pynchy -f
 
 Use `config-examples/pynchy.service.EXAMPLE` as the unit-file reference.
 
-## Connect the TUI
-
-The local client prefers Pynchy's Unix socket:
-
-```bash
-uv run pynchy --tui
-```
-
-For remote access, bootstrap a bearer token and explicitly enable a public
-listener. Tailscale alone does not authorize the HTTP API; follow [Control plane
-access](../usage/control-plane.md#enable-remote-tui-access).
-
 ## Maintain and update the server
 
 Use your normal operating-system update policy. The optional templates in
 `config-examples/` install unattended upgrades and a daily Docker cleanup/reboot
 timer. Keep those live files under your own operational control.
 
-For remote source updates, enable deployment separately from public TUI access;
+For remote source updates, enable deployment separately from public diagnostic access;
 see [remote deployment](../usage/control-plane.md#enable-remote-deployment-separately).
 Pynchy validates imports and rolls back a failed deployment.

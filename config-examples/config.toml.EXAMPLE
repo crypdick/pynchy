@@ -62,7 +62,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 [server]
-# HTTP server port for TUI and deploy endpoint
+# HTTP server port for diagnostics, webhooks, and deployment
 # port = 8484
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@
 # Command Center
 # ─────────────────────────────────────────────────────────────────────────────
 # The command center is the dedicated, pynchy-managed connection used for
-# auto-creating chats (when needed). Set to "tui" for local-only mode.
+# auto-creating chats when no concrete chat binding exists.
 
 [command_center]
 # connection = "synapse"

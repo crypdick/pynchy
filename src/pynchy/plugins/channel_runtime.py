@@ -43,12 +43,12 @@ class ChannelPluginContext:
     speech_synthesizer: SpeechSynthesizer | None = None
 
 
-def default_channel_name() -> str:
-    """Return configured command-center channel, falling back to tui."""
+def default_channel_name() -> str | None:
+    """Return the explicitly configured command-center channel."""
     configured = get_settings().command_center.connection
     if configured:
         return configured.strip()
-    return "tui"
+    return None
 
 
 def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> list[Channel]:
@@ -71,17 +71,14 @@ def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> li
         )
         return channels
 
-    logger.warning(
-        "No channel plugins discovered; continuing in TUI-only mode. "
-        "Add [plugins.<name>] entries in config.toml to enable external channels."
-    )
+    logger.warning("No channel plugins discovered")
     return []
 
 
 def resolve_default_channel(channels: list[Channel]) -> Channel | None:
     """Resolve default channel by name from the loaded set."""
     wanted = default_channel_name()
-    if wanted.lower() == "tui" or not channels:
+    if wanted is None or not channels:
         return None
 
     for channel in channels:

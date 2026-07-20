@@ -351,24 +351,24 @@ def _prune_migration_backups(data_dir: Path) -> None:
 async def setup_admin_group(deps: StartupDeps, default_channel: object | None) -> None:
     """Create and register the first admin workspace.
 
-    If a default channel with ``create_group`` is available, provision a
-    channel-native group. Otherwise bootstrap a local TUI workspace so core
-    usage is never coupled to external channels.
+    The command-center channel must support group creation. Pynchy does not
+    synthesize a workspace without a real channel destination.
     """
     s = get_settings()
     group_name = s.agent.name.title()
     logger.info("No groups registered. Creating first admin workspace...", name=group_name)
 
-    jid = f"tui://{s.agent.name}"
-    if default_channel and hasattr(default_channel, "create_group"):
-        jid = await default_channel.create_group(group_name)
-        logger.info(
-            "Created first-run group via channel",
-            channel=default_channel.name,
-            jid=jid,
+    if default_channel is None or not hasattr(default_channel, "create_group"):
+        raise RuntimeError(
+            "First-run setup requires command_center.connection to select a "
+            "channel that supports chat creation"
         )
-    else:
-        logger.info("No channel group support found, creating TUI local workspace", jid=jid)
+    jid = await default_channel.create_group(group_name)
+    logger.info(
+        "Created first-run group via channel",
+        channel=default_channel.name,
+        jid=jid,
+    )
 
     # Create admin workspace with permissive security profile.
     # Admin group is fully trusted — auto-approve all tools.

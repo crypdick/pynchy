@@ -1,8 +1,7 @@
 """Broadcast consistency tests.
 
-Verifies that BOTH channel sends AND EventBus emissions carry matching,
-meaningful content for every trace event type. Catches divergence between
-the channel path and the TUI/SSE path.
+Verifies that channel sends and EventBus emissions carry matching,
+meaningful content for every trace event type.
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from pynchy.event_bus import AgentTraceEvent, MessageEvent
 from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.host.orchestrator.dep_factory import make_http_deps
 from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging.formatter import format_tool_preview
 from pynchy.state import store_message
@@ -482,51 +480,6 @@ class TestBroadcastConsistency:
         assert len(capture.messages) >= 1, "EventBus should receive MessageEvent for direct command"
         assert any("hello world" in m.content for m in capture.messages)
 
-    async def test_sse_bridge_propagates_traces(self, app: PynchyApp, tmp_path: Path):
-        """subscribe_events() callback should receive tool_use dicts (end-to-end TUI path)."""
-        received: list[dict[str, Any]] = []
-
-        async def sse_callback(data: dict[str, Any]) -> None:
-            await asyncio.sleep(0)
-            received.append(data)
-
-        # Wire up the SSE bridge like the HTTP server does
-        http_deps = make_http_deps(app)
-        unsub = http_deps.subscribe_events(sse_callback)
-
-        try:
-            _, _ = await _run_with_trace_sequence(
-                app,
-                tmp_path,
-                [
-                    {
-                        "type": "tool_use",
-                        "status": "success",
-                        "tool_name": "Bash",
-                        "tool_input": {"command": "date"},
-                    },
-                    {
-                        "type": "result",
-                        "status": "success",
-                        "result": "All done",
-                        "new_session_id": "s1",
-                    },
-                ],
-            )
-
-            await asyncio.sleep(0.1)
-
-            trace_events = [e for e in received if e.get("type") == "agent_trace"]
-            tool_events = [e for e in trace_events if e.get("trace_type") == "tool_use"]
-            assert len(tool_events) >= 1, (
-                f"Expected tool_use in SSE events, got trace types: "
-                f"{[e.get('trace_type') for e in trace_events]}"
-            )
-            assert tool_events[0]["tool_name"] == "Bash"
-            assert tool_events[0]["tool_input"] == {"command": "date"}
-        finally:
-            unsub()
-
 
 # ---------------------------------------------------------------------------
 # Tests: User message broadcast consistency
@@ -534,30 +487,7 @@ class TestBroadcastConsistency:
 
 
 class TestUserMessageBroadcast:
-    """Verify the relay boundary for user messages from each input surface."""
-
-    async def test_tui_message_is_visible_without_synthetic_attribution(self, app: PynchyApp):
-        """TUI input should reach physical chat without a synthetic ``[You]`` prefix."""
-        channel = FakeChannel()
-        app.channels = [channel]
-        capture = EventCapture(app.event_bus)
-
-        # Get the HTTP deps (which includes send_user_message)
-        http_deps = make_http_deps(app)
-
-        # Simulate a TUI user sending a message into a Discord-backed chat.
-        await http_deps.send_user_message("group@g.us", "Hello from TUI")
-        await capture.drain()
-
-        # 1. Message should be stored in DB (already tested by other tests)
-        # 2. EventBus should receive the message
-        assert len(capture.messages) == 1
-        assert capture.messages[0].content == "Hello from TUI"
-        assert capture.messages[0].sender_name == "You"
-        assert capture.messages[0].is_bot is False
-
-        # 3. The raw TUI message is visible externally, without ``[You]``.
-        assert channel.sent_messages == [("group@g.us", "Hello from TUI")]
+    """Verify the relay boundary for channel messages."""
 
     async def test_inbound_message_broadcasts_to_other_channels(self, app: PynchyApp):
         """Inbound messages from one channel should be broadcast to other channels."""

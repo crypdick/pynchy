@@ -77,8 +77,6 @@ Single source of truth for all pynchy work items.
 
 #### Bugs
 - [Slack shutdown race (recurrence)](3-ready/slack-shutdown-race.md) — `RuntimeError: Executor shutdown` during service restart. Commit `76065e0` cancels `_reconnect_task` in `disconnect()`, but orphaned aiohttp subtasks spawned by `connect()` still crash when the executor tears down. Follow-up commit `730e2a7` (guard reconnect against shutdown race) didn't fully resolve it either. Downstream: `Failed to resolve bot user ID (mention stripping disabled)` during reconnect. Needs deeper fix in `slack.py` reconnect path.
-- messaging desync — sometimes no response appears in TUI until a follow-up message is sent. Partially fixed (cursor advance bug, input pipeline unification), but full fix likely depends on per-channel bidirectional cursors (see [reliable-channel-messaging](2-planning/reliable-channel-messaging.md)).
-
 #### Docs updates
 - we've iterated on our plugin system but havent updated the docs of all the individual plugins to keep them up to date
 - we need to improve the docs on the plugins so that it says a bit about pynchy and links back to the main pynchy repo.

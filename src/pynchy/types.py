@@ -618,7 +618,7 @@ class Channel(Protocol):
     async def fetch_inbound_since(self, channel_jid: str, since: str) -> InboundFetchResult:
         """Fetch messages from channel API newer than ``since``.
 
-        Channels without server-side history (e.g. TUI, WhatsApp) return
+        Channels without server-side history (e.g. WhatsApp) return
         an empty result.  The reconciler resolves JIDs before calling —
         ``channel_jid`` is channel-native (e.g. ``slack:C123``).
         """

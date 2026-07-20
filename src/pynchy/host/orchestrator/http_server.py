@@ -1,15 +1,12 @@
-"""Embedded HTTP server for readiness, operator diagnostics, deploys, and TUI."""
+"""Embedded HTTP server for readiness, operator diagnostics, and deploys."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
 import time
-from collections.abc import (
-    Callable,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
-    Coroutine,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
-)
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from aiohttp import web
@@ -55,10 +52,7 @@ from pynchy.state import (
     list_action_intents,
     list_work_item_executions,
 )
-from pynchy.types import (
-    DeployClaimStatus,
-    NewMessage,  # noqa: TC001, RUF100 - beartype resolves HTTP dependency annotations at runtime.
-)
+from pynchy.types import DeployClaimStatus
 
 if TYPE_CHECKING:
     from aiohttp.web_app import Application as AiohttpApplication
@@ -66,6 +60,8 @@ else:
     AiohttpApplication = object
 
 _start_time = time.monotonic()
+_RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
+_RUNTIME_HARNESS_MESSAGE_PATH = "/__pynchy_runtime__/messages"
 
 # Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
 deps_key: web.AppKey[HttpDeps] = web.AppKey("deps")
@@ -93,36 +89,18 @@ class HttpDeps(Protocol):
 
     def admin_chat_jid(self) -> str: ...
 
-    def channels_connected(self) -> bool: ...
 
-    # --- TUI API deps ---
+@runtime_checkable
+class RuntimeHarnessIngress(Protocol):
+    """Test-only dependency that enters through the real inbound boundary."""
 
-    def get_groups(self) -> list[dict[str, Any]]: ...
-
-    async def get_messages(self, jid: str, limit: int) -> list[NewMessage]: ...
-
-    async def send_user_message(self, jid: str, content: str) -> None: ...
-
-    def subscribe_events(
-        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
-    ) -> Callable[[], None]: ...
-
-    async def get_periodic_agents(self) -> list[dict[str, Any]]: ...
-
-    def get_active_sessions(self) -> dict[str, str]: ...
-
-    def is_shutting_down(self) -> bool: ...
+    async def ingest_runtime_harness_message(self, jid: str, content: str) -> None: ...
 
 
 class HttpServerDeps(HttpDeps, WebhookIngressDeps, Protocol):
     """Full process dependencies used while starting the HTTP server."""
 
     def get_plugin_manager(self) -> object: ...
-
-
-# ------------------------------------------------------------------
-# Existing endpoints
-# ------------------------------------------------------------------
 
 
 async def _handle_health(request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
@@ -289,103 +267,18 @@ async def _handle_canary_runs(request: web.Request) -> web.Response:
     return web.json_response({"runs": [canary_run_to_dict(run) for run in runs]})
 
 
-# ------------------------------------------------------------------
-# TUI API endpoints
-# ------------------------------------------------------------------
-
-
-async def _handle_api_groups(request: web.Request) -> web.Response:  # noqa: RUF029, RUF100 - aiohttp route handlers are async.
-    """Return registered groups."""
-    deps: HttpDeps = request.app[deps_key]
-    return web.json_response(deps.get_groups())
-
-
-async def _handle_api_messages(request: web.Request) -> web.Response:
-    """Return chat history for a group."""
-    deps: HttpDeps = request.app[deps_key]
-    jid = request.query.get("jid", "")
-    if not jid:
-        return web.json_response({"error": "jid parameter required"}, status=400)
-    limit = int(request.query.get("limit", "50"))
-    messages = await deps.get_messages(jid, limit)
-    return web.json_response(
-        [
-            {
-                "sender_name": m.sender_name,
-                "content": m.content,
-                "timestamp": m.timestamp,
-                "is_from_me": m.is_from_me,
-            }
-            for m in messages
-        ]
-    )
-
-
-async def _handle_api_send(request: web.Request) -> web.Response:
-    """Send a message from the TUI client."""
-    deps: HttpDeps = request.app[deps_key]
+async def _handle_runtime_harness_message(request: web.Request) -> web.Response:
+    """Drive the real channel-ingress boundary in isolated runtime tests."""
     body = await request.json()
-    jid = body.get("jid", "")
-    content = body.get("content", "")
-    if not jid or not content:
-        return web.json_response({"error": "jid and content required"}, status=400)
-    await deps.send_user_message(jid, content)
-    return web.json_response({"status": "ok"})
-
-
-async def _stream_sse_events(
-    response: web.StreamResponse,
-    queue: asyncio.Queue[dict[str, Any]],
-    deps: HttpDeps,
-) -> None:
-    while True:
-        if deps.is_shutting_down():
-            return
-        try:
-            event = await asyncio.wait_for(queue.get(), timeout=0.2)
-        except TimeoutError:
-            continue
-        data = json.dumps(event)
-        await response.write(f"data: {data}\n\n".encode())
-
-
-async def _handle_api_events(request: web.Request) -> web.StreamResponse:
-    """SSE stream for real-time events (messages, agent activity)."""
-    deps: HttpDeps = request.app[deps_key]
-
-    response = web.StreamResponse(
-        status=200,
-        reason="OK",
-        headers={
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
-    await response.prepare(request)
-
-    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-
-    async def on_event(event: dict[str, Any]) -> None:
-        await queue.put(event)
-
-    unsubscribe = deps.subscribe_events(on_event)
-
-    try:
-        await _stream_sse_events(response, queue, deps)
-    except (asyncio.CancelledError, ConnectionResetError):
-        pass  # Client disconnected or request cancelled — clean up silently
-    finally:
-        unsubscribe()
-
-    return response
-
-
-async def _handle_api_periodic(request: web.Request) -> web.Response:
-    """Return periodic agent status."""
-    deps: HttpDeps = request.app[deps_key]
-    agents = await deps.get_periodic_agents()
-    return web.json_response(agents)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "request body must be an object"}, status=400)
+    jid = body.get("jid")
+    content = body.get("content")
+    if not isinstance(jid, str) or not jid or not isinstance(content, str) or not content:
+        return web.json_response({"error": "jid and content are required strings"}, status=400)
+    deps = cast("RuntimeHarnessIngress", request.app[deps_key])
+    await deps.ingest_runtime_harness_message(jid, content)
+    return web.json_response({"status": "accepted"})
 
 
 # ------------------------------------------------------------------
@@ -465,10 +358,9 @@ def create_http_app(
     app.router.add_get("/canaries/report", _handle_canary_report)
     app.router.add_get("/canaries/runs", _handle_canary_runs)
     app.router.add_post("/deploy", _handle_deploy)
-    app.router.add_get("/api/groups", _handle_api_groups)
-    app.router.add_get("/api/messages", _handle_api_messages)
-    app.router.add_post("/api/send", _handle_api_send)
-    app.router.add_get("/api/events", _handle_api_events)
-    app.router.add_get("/api/periodic", _handle_api_periodic)
+    if os.environ.get(_RUNTIME_HARNESS_ENV) == "1":
+        if not isinstance(deps, RuntimeHarnessIngress):
+            raise TypeError("Runtime harness HTTP dependencies do not provide message ingress")
+        app.router.add_post(_RUNTIME_HARNESS_MESSAGE_PATH, _handle_runtime_harness_message)
     install_webhook_ingress(app, webhook_ingress)
     return app

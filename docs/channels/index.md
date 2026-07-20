@@ -1,7 +1,7 @@
 # Channels
 
 Channels connect Pynchy to the conversations where you work. Built-in channels
-cover WhatsApp, Slack, Discord, and a local terminal UI; plugins can add more.
+cover WhatsApp, Slack, and Discord; plugins can add more.
 
 ## Choose a channel
 
@@ -10,7 +10,6 @@ cover WhatsApp, Slack, Discord, and a local terminal UI; plugins can add more.
 | [WhatsApp](whatsapp.md) | Talk through a linked personal device. |
 | [Slack](slack.md) | Work in Slack channels or DMs. |
 | [Discord](discord.md) | Use guild channels, threads, DMs, or a voice workspace. |
-| [TUI](tui.md) | Use Pynchy locally from a terminal. |
 
 For spoken Discord replies and inbound audio transcription, see [Voice and
 speech](voice-and-speech.md).
@@ -18,7 +17,7 @@ speech](voice-and-speech.md).
 ## Multi-channel sync
 
 All channels see the same messages. Send from WhatsApp, and the response also
-shows up in Slack and the TUI. You can start on your phone, continue at your
+shows up in Slack and Discord. You can start on your phone, continue at your
 desk, or watch agent activity from a different connected channel.
 
 Outbound messages route through one broadcast bus. Each channel maps its

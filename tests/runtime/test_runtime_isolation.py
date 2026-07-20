@@ -48,7 +48,7 @@ def test_second_runtime_has_its_own_database_and_docker_namespace(tmp_path: Path
     primary_namespace = _required_string(primary_state, "namespace")
     primary_agent_image = _required_string(primary_state, "agent_image")
     assert primary_agent_image.startswith(f"pynchy-runtime-agent:{primary_namespace}-")
-    primary_jid = _tui_jid(primary_state)
+    primary_jid = _runtime_jid(primary_state)
     response_text = _required_string(primary_state, "response_text")
     primary_marker = uuid4().hex
     primary_before = _response_count(messages(primary_state, primary_jid), response_text)
@@ -93,7 +93,7 @@ def test_second_runtime_has_its_own_database_and_docker_namespace(tmp_path: Path
         assert secondary_agent_image != primary_agent_image
         wait_for_ready(secondary_state)
 
-        secondary_jid = _tui_jid(secondary_state)
+        secondary_jid = _runtime_jid(secondary_state)
         secondary_history = messages(secondary_state, secondary_jid)
         assert all(
             item.get("content") != f"runtime isolation primary {primary_marker}"
@@ -163,10 +163,10 @@ def _secondary_environment() -> dict[str, str]:
     return environment
 
 
-def _tui_jid(state: dict[str, Any]) -> str:
+def _runtime_jid(state: dict[str, Any]) -> str:
     matching = [group.get("jid") for group in groups(state) if group.get("folder") == "pynchy"]
-    assert matching == ["tui://pynchy"]
-    return "tui://pynchy"
+    assert matching == ["runtime:pynchy"]
+    return "runtime:pynchy"
 
 
 def _response_count(history: list[dict[str, Any]], response_text: str) -> int:

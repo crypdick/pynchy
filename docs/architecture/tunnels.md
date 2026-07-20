@@ -7,7 +7,7 @@ Tunnels are pluggable. The built-in plugin detects Tailscale, but alternative pr
 
 ## What Tunnels Do
 
-Pynchy binds its HTTP control plane to loopback by default. Remote TUI or deployment
+Pynchy binds its HTTP control plane to loopback by default. Remote diagnostics or deployment
 access requires application-layer bearer authentication and an explicit public-bind
 option before a tunnel can reach port 8484. See
 [Control Plane Access](../usage/control-plane.md).

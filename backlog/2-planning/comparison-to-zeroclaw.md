@@ -43,7 +43,7 @@ provide independent semantic evidence.
 | Agent execution | Pluggable mature cores in per-workspace containers | Rust agent loop, named agents, subagents, runtime model switching | Preserve Pynchy's core boundary; add core-neutral delegation records, not another loop. |
 | Providers | LiteLLM routing, budgets, rate limits, credential isolation | Direct provider slots and runtime routing | Do not duplicate LiteLLM with direct provider ownership. |
 | Channels | Channel plugins, shared inbound audio transcription, text-centric outbound events | Thirty-plus adapters with uneven shipped support | Do not chase count. Build media/attachment primitives and add channels for real workflows. |
-| Control plane | HTTP/SSE and TUI; complete API binds to `0.0.0.0` behind network perimeter controls | Loopback default, public-bind and remote-admin opt-ins, pairing-derived auth, local IPC | Immediate Pynchy security gap. Add application-layer authentication and fail-closed posture. |
+| Control plane | Fail-closed HTTP diagnostics and deployment over loopback TCP plus a permission-restricted Unix socket | Loopback default, public-bind and remote-admin opt-ins, pairing-derived auth, local IPC | Pynchy now has the local and remote-authentication foundation; pairing remains a possible future enhancement. |
 | Plugins | Pluggy hooks; trusted Python entry points import into the host; several hooks return raw dictionaries | Permission manifests and WASM contracts, though disabled by default and not in release binaries | Add typed manifests and out-of-process execution for untrusted extensions; retain in-process Pluggy only for trusted code. |
 | Tools and MCP | Host-owned IPC, on-demand MCP containers, workspace grants, action coverage, canaries | Native tools, MCP, feature gates, deferred tool loading | Pynchy already has stronger semantic evidence. Consider deferred schemas only after prompt-budget measurement. |
 | Security | Container isolation, host-held credentials, source/secret/sink taint policy, clean-room admin policy | Command and path policy, pairing, OS sandboxing, OTP/estop, receipts | Preserve semantic policy; add control-plane authentication and durable action receipts. |
@@ -58,14 +58,15 @@ provide independent semantic evidence.
 
 ### Implemented foundation: fail closed at the HTTP control plane
 
-The HTTP surface includes messages, events, canaries, periodic jobs, and
-deployment. A network perimeter alone must not be its only protection.
+The HTTP surface includes status, capabilities, action/work-item records,
+canaries, webhooks, and deployment. A network perimeter alone must not be its
+only protection.
 
 - Bind HTTP to loopback by default.
-- Prefer a permission-restricted Unix socket for local TUI and CLI control,
+- Prefer a permission-restricted Unix socket for local CLI control,
   while retaining TCP loopback as the portable fallback.
-- Require pairing/bootstrap-derived bearer authentication for every remote
-  `/api/*` call.
+- Require bootstrap-derived bearer authentication for every remote diagnostic
+  or deployment call.
 - Separate `allow_public_bind` from `allow_remote_deploy`; require
   authentication for either remote posture.
 - Refuse public startup without authentication, rate-limit requests, and emit

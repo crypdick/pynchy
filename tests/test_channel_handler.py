@@ -253,9 +253,9 @@ class TestSendReactionToOutbound:
 
     @pytest.mark.asyncio
     async def test_skips_channels_without_send_reaction(self):
-        ch = _make_channel(name="tui", connected=True, has_reaction=False)
+        ch = _make_channel(name="plain", connected=True, has_reaction=False)
         deps = _make_deps([ch])
-        per_channel_ids = {"tui": "some-id"}
+        per_channel_ids = {"plain": "some-id"}
 
         await send_reaction_to_outbound(deps, "group@g.us", per_channel_ids, "zzz")
         # No error, no call

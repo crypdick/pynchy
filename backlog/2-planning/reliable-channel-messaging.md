@@ -34,7 +34,7 @@ Replace the two shared cursors with **per-channel, per-group, bidirectional curs
 
 ```sql
 CREATE TABLE IF NOT EXISTS channel_cursors (
-    channel_name  TEXT NOT NULL,   -- 'slack', 'whatsapp', 'tui', ...
+    channel_name  TEXT NOT NULL,   -- 'slack', 'whatsapp', 'discord', ...
     chat_jid      TEXT NOT NULL,   -- canonical group JID
     direction     TEXT NOT NULL,   -- 'inbound' or 'outbound'
     cursor_value  TEXT NOT NULL,   -- ISO timestamp (or channel-native token)
@@ -65,7 +65,7 @@ class Channel(Protocol):
     ) -> list[NewMessage]:
         """Fetch messages from channel API newer than `since`.
 
-        Channels without server-side history (e.g. TUI) return [].
+        Channels without server-side history return [].
         """
         ...
 
@@ -83,7 +83,6 @@ class Channel(Protocol):
 |---------|----------------------|-------------------|
 | **Slack** | `conversations.history` (existing logic refactored) | `conversations.history` check |
 | **WhatsApp** | neonize history API if available, else `return []` | `return True` (no server-side check) |
-| **TUI** | `return []` (reads DB directly via SSE) | `return True` (local delivery) |
 
 JID resolution moves **out of** the channel into the reconciler. Channels receive a resolved channel-native JID and don't need to understand the alias system.
 
@@ -192,7 +191,6 @@ Same pattern for `advance_cursors_atomic()` — all cursor advances for a proces
 - Add `channel_cursors`, `outbound_ledger`, `outbound_deliveries` tables via migration
 - Add DB functions: `get_channel_cursor()`, `set_channel_cursor()`, `advance_cursors_atomic()`, `record_outbound()`, `get_pending_outbound()`
 - Add `fetch_inbound_since()` and `confirm_outbound()` to `Channel` protocol in `types.py`
-- Implement no-op versions in TUI channel
 
 ### Phase 2: Inbound reconciliation
 - Refactor Slack `catch_up()` → `fetch_inbound_since()` (move JID resolution out)
