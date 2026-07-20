@@ -403,7 +403,7 @@ class TaskRunLog:
     task_id: str
     run_at: str
     duration_ms: int | float
-    status: Literal["success", "error"]
+    status: Literal["success", "error", "resumed"]
     result: str | None = None
     error: str | None = None
     temporal_workflow_id: str | None = None

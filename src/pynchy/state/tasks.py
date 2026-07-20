@@ -161,6 +161,28 @@ async def update_task(task_id: str, updates: dict[str, Any]) -> None:
     await _update_by_id("scheduled_tasks", task_id, updates, _TASK_UPDATE_FIELDS)
 
 
+async def resume_task(task_id: str) -> None:
+    """Reactivate a task and begin a fresh circuit-breaker failure window."""
+    now = datetime.now(UTC).isoformat()
+    async with atomic_write() as db:
+        await db.execute(
+            "UPDATE scheduled_tasks SET status = 'active' WHERE id = ?",
+            (task_id,),
+        )
+        await db.execute(
+            """
+            INSERT INTO task_run_logs (
+                task_id, run_at, duration_ms, status, result, error,
+                temporal_workflow_id, temporal_attempt, error_signature, escalation_reason
+            )
+            SELECT id, ?, 0, 'resumed', 'Task resumed', NULL, NULL, NULL, NULL, NULL
+            FROM scheduled_tasks
+            WHERE id = ?
+            """,
+            (now, task_id),
+        )
+
+
 async def rebind_task_root(task_id: str, *, group_folder: str, chat_jid: str) -> None:
     """Move a config task to a replacement root workspace."""
     db = _get_db()

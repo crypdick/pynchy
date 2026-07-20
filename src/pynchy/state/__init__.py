@@ -173,6 +173,7 @@ from pynchy.state.tasks import (
     log_task_run,
     rebind_task_root,
     record_task_completion,
+    resume_task,
     update_task,
 )
 from pynchy.state.webhook_models import WebhookAdmission, WebhookReceipt
@@ -303,6 +304,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "log_task_run",
     "record_task_completion",
     "rebind_task_root",
+    "resume_task",
     "update_task",
     # webhooks
     "WebhookAdmission",
