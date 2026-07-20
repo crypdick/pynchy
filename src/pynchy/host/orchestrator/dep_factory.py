@@ -7,7 +7,9 @@ the composite dependency objects that subsystems require.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.config import get_settings
@@ -22,14 +24,11 @@ from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.orchestrator import update_offer
 from pynchy.host.orchestrator.adapters import (
-    EventBusAdapter,
     GroupMetadataManager,
     GroupRegistrationManager,
     HostMessageBroadcaster,
     MessageBroadcaster,
-    PeriodicAgentManager,
     SessionManager,
-    UserMessageHandler,
     resolve_admin_notification_jid,
 )
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
@@ -52,6 +51,7 @@ from pynchy.host.orchestrator.temporal.scheduler import (
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
+from pynchy.types import NewMessage
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -172,34 +172,29 @@ async def _start_temporal_deploy(
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
-    session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
-    periodic_agent_manager = PeriodicAgentManager(app.workspaces)
-    user_message_handler = UserMessageHandler(
-        app.ingest_user_message,
-        lambda jid: _schedule_interactive_turn(app, jid),
-    )
-    event_adapter = EventBusAdapter(app.event_bus)
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
-        channels_connected = metadata_manager.channels_connected
-        get_groups = metadata_manager.get_groups
-        get_messages = user_message_handler.get_messages
-        send_user_message = user_message_handler.send_user_message
-        get_periodic_agents = periodic_agent_manager.get_periodic_agents
-        subscribe_events = event_adapter.subscribe_events
+
+        async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
+            await app.on_inbound(
+                jid,
+                NewMessage(
+                    id=f"runtime-{uuid4()}",
+                    chat_jid=jid,
+                    sender="runtime-user",
+                    sender_name="Runtime User",
+                    content=content,
+                    timestamp=datetime.now(UTC).isoformat(),
+                    is_from_me=False,
+                    metadata={"source": "runtime_harness"},
+                ),
+            )
 
         def admin_chat_jid(self) -> str:
             return resolve_admin_notification_jid(
                 app.workspaces, get_settings().notifications.admin_workspace
             )
-
-        def is_shutting_down(self) -> bool:
-            return app.is_shutting_down()
-
-        def get_active_sessions(self) -> dict[str, str]:
-            return session_manager.get_active_sessions(app.workspaces)
 
         def get_plugin_manager(self) -> object:
             if app.plugin_manager is None:
@@ -228,7 +223,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         app.workspaces, app.register_workspace, app.send_clear_confirmation
     )
     session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
+    metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
 
     class IpcDeps:
         broadcast_to_channels = broadcaster.broadcast_to_channels
@@ -264,7 +259,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
     session_manager = SessionManager(app.sessions, app.session_cleared)
-    metadata_manager = GroupMetadataManager(app.workspaces, app.channels, app.get_available_groups)
+    metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
 
     class _StatusDeps:
         def is_shutting_down(self) -> bool:

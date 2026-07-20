@@ -27,9 +27,9 @@ pytestmark = pytest.mark.runtime
 
 @pytest.mark.timeout(180)
 def test_interactive_container_turn_uses_gateway_and_reuses_its_ipc_session() -> None:
-    """A cold and warm TUI turn cross every deterministic runtime boundary."""
+    """Cold and warm turns cross every deterministic runtime boundary."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = _required_string(state, "response_text")
     before = _response_count(messages(state, jid), response_text)
     cold_marker = uuid4().hex
@@ -68,7 +68,7 @@ def test_interactive_container_turn_uses_gateway_and_reuses_its_ipc_session() ->
 def test_runtime_restart_preserves_history_and_accepts_a_fresh_turn() -> None:
     """A harness restart keeps SQLite history and restores the interactive path."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = _required_string(state, "response_text")
     before = _response_count(messages(state, jid), response_text)
     before_marker = uuid4().hex
@@ -125,7 +125,7 @@ def test_runtime_restart_preserves_history_and_accepts_a_fresh_turn() -> None:
 def test_interactive_container_turn_executes_a_scripted_patch_task() -> None:
     """A deterministic user request exercises model tool selection and workspace writes."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_PATCH_OK"
     proof_path = (
         Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-patch-proof.txt"
@@ -150,7 +150,7 @@ def test_interactive_container_turn_executes_a_scripted_patch_task() -> None:
 def test_interactive_container_turn_executes_a_scripted_shell_task() -> None:
     """A deterministic shell request writes only the group's mounted workspace."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_OK"
     proof_path = (
         Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-shell-proof.txt"
@@ -181,7 +181,7 @@ def test_interactive_container_turn_executes_a_scripted_shell_task() -> None:
 def test_interactive_container_turn_returns_scripted_shell_stdout() -> None:
     """A read-only shell task returns its stdout to the next agent turn."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_OUTPUT_OK"
     before = _response_count(messages(state, jid), response_text)
     marker = uuid4().hex
@@ -209,7 +209,7 @@ def test_interactive_container_turn_returns_scripted_shell_stdout() -> None:
 def test_interactive_container_turn_limits_shell_output() -> None:
     """A bounded diagnostic returns only its requested stdout prefix to the agent."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_LIMIT_OK"
     before = _response_count(messages(state, jid), response_text)
     marker = uuid4().hex
@@ -236,7 +236,7 @@ def test_interactive_container_turn_limits_shell_output() -> None:
 def test_interactive_container_turn_reports_shell_timeout() -> None:
     """An expired diagnostic reports a timeout outcome to the next agent turn."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_TIMEOUT_REPORTED"
     before = _response_count(messages(state, jid), response_text)
     marker = uuid4().hex
@@ -263,7 +263,7 @@ def test_interactive_container_turn_reports_shell_timeout() -> None:
 def test_interactive_container_turn_runs_chained_shell_diagnostics() -> None:
     """A dependent second diagnostic waits for the first tool result round."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_CHAIN_OK"
     before = _response_count(messages(state, jid), response_text)
     marker = uuid4().hex
@@ -297,7 +297,7 @@ def test_interactive_container_turn_runs_chained_shell_diagnostics() -> None:
 def test_interactive_container_turn_reports_shell_failure_details() -> None:
     """A failing diagnostic preserves stderr and its exit code for the agent."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_FAILURE_REPORTED"
     before = _response_count(messages(state, jid), response_text)
     marker = uuid4().hex
@@ -326,7 +326,7 @@ def test_interactive_container_turn_reports_shell_failure_details() -> None:
 def test_interactive_container_turn_returns_ordered_multi_command_output() -> None:
     """Two diagnostics return independent, ordered shell result entries."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_SHELL_MULTI_OK"
     before = _response_count(messages(state, jid), response_text)
     marker = uuid4().hex
@@ -354,7 +354,7 @@ def test_interactive_container_turn_returns_ordered_multi_command_output() -> No
 def test_interactive_container_turn_updates_an_existing_workspace_note() -> None:
     """An apply-patch update changes an existing file in the mounted workspace."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_PATCH_UPDATE_OK"
     target_path = (
         Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-patch-update.txt"
@@ -388,7 +388,7 @@ def test_interactive_container_turn_updates_an_existing_workspace_note() -> None
 def test_interactive_container_turn_deletes_an_obsolete_workspace_note() -> None:
     """An apply-patch deletion removes an existing file from the mounted workspace."""
     state = runtime_state()
-    jid = _tui_jid(state)
+    jid = _runtime_jid(state)
     response_text = "PYNCHY_RUNTIME_PATCH_DELETE_OK"
     target_path = (
         Path(__file__).resolve().parents[2] / "groups" / "pynchy" / "runtime-patch-delete.txt"
@@ -418,10 +418,10 @@ def test_interactive_container_turn_deletes_an_obsolete_workspace_note() -> None
         target_path.unlink(missing_ok=True)
 
 
-def _tui_jid(state: dict[str, Any]) -> str:
+def _runtime_jid(state: dict[str, Any]) -> str:
     matching = [group.get("jid") for group in groups(state) if group.get("folder") == "pynchy"]
-    assert matching == ["tui://pynchy"]
-    return "tui://pynchy"
+    assert matching == ["runtime:pynchy"]
+    return "runtime:pynchy"
 
 
 def _response_count(history: list[dict[str, Any]], response_text: str) -> int:

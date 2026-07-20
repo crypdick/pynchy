@@ -98,7 +98,7 @@ This report distinguishes three things throughout:
 | Execution boundary | Local terminal by default; Docker, SSH, Modal, Daytona, Singularity, and other backends optional | Container by default; direct host execution exists only as an explicit trusted workspace mode | Pynchy has the safer default. Do not change it to gain Hermes parity. |
 | Provider routing | Direct provider resolver, credential pools, several API modes | LiteLLM gateway with virtual keys and agent cores that do not receive provider secrets | Pynchy should retain the gateway boundary. Hermes's provider UX can inform diagnostics, not a parallel provider layer. |
 | Tools | Self-registering handlers grouped into toolsets, each with availability checks | MCP tools, IPC service handlers, skills, agent-core tools, and semantic action specifications | Hermes has a better availability presentation. Pynchy has better effect-level evidence. Combine the two. |
-| Channels | One gateway with many platform adapters and a feature matrix for media, threads, reactions, typing, and streaming | Channel plugins with a small protocol; Discord, Slack, TUI, and WhatsApp packages in the source tree. Discord now supports audio-attachment transcription and one configured voice workspace with host STT/local-TTS final replies. | Hermes is broader. Pynchy needs a stronger generic channel contract before extending its bounded Discord voice path or adding breadth. |
+| Channels | One gateway with many platform adapters and a feature matrix for media, threads, reactions, typing, and streaming | Channel plugins with a small protocol; Discord, Slack, and WhatsApp packages in the source tree. Discord now supports audio-attachment transcription and one configured voice workspace with host STT/local-TTS final replies. | Hermes is broader. Pynchy needs a stronger generic channel contract before extending its bounded Discord voice path or adding breadth. |
 | Sessions | SQLite plus FTS5, lineage, titles, cross-surface handoff, search, and export | Group-isolated core sessions, transcript archives on compaction, structured memory recall, and restart recovery | Hermes offers better user navigation. Pynchy offers stronger execution recovery and workspace isolation. |
 | Background work | Cron JSON, one-minute polling, process-local task execution; background delegation preserves completed results but cannot resume a running child | Temporal schedules and workflows, heartbeat-based activities, in-flight turn recovery, ordered delivery retries | Pynchy is materially stronger for durable work. Adopt Hermes's job composition UX on top of Temporal. |
 | Security | Approval modes, deny lists, user allowlists, optional sandboxes and network controls | Container/mount boundary, service trust policy, taint tracking, secrets scanning, approval state, audit, and capability policy | Pynchy has the more coherent security model. Hermes patterns must compose with it, never bypass it. |
@@ -405,7 +405,7 @@ Once WorkspaceCapabilitySnapshot exists, add a read-only Pynchy doctor:
 - Surface missing optional dependencies and stale canary evidence.
 - Show safe recovery commands or configuration paths without inspecting or
   printing secret values.
-- Emit human-readable text and stable JSON for TUI, CI, and support tools.
+- Emit human-readable text and stable JSON for CI and support tools.
 
 Doctor must not silently modify configuration, refresh credentials, start
 untrusted plugins, or restart the service. Status says what runs now; doctor

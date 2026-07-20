@@ -50,7 +50,7 @@ def test_load_channels_returns_empty_when_none_discovered() -> None:
     assert channels == []
 
 
-def test_resolve_default_channel_returns_none_for_tui_default() -> None:
+def test_resolve_default_channel_returns_none_without_configuration() -> None:
     assert channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")]) is None
 
 

@@ -11,20 +11,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves adapter annotations at runtime.
-    AgentActivityEvent,
-    AgentTraceEvent,
-    ChatClearedEvent,
-    EventBus,
-    MessageEvent,
-)
+from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.messaging.sender import broadcast
 from pynchy.logger import logger
-from pynchy.state import clear_session, get_all_tasks, get_chat_history
+from pynchy.state import clear_session
 from pynchy.types import (
     Channel,
     GroupFolder,
-    NewMessage,
     OutboundEvent,
     OutboundEventType,
     WorkspaceProfile,
@@ -272,87 +265,16 @@ class SessionManager:
         await clear_session(GroupFolder(group_folder))
 
 
-class EventBusAdapter:
-    """Provides event subscription with callback conversion."""
-
-    def __init__(self, event_bus: EventBus) -> None:
-        self.event_bus = event_bus
-
-    def subscribe_events(
-        self, callback: Callable[[dict[str, Any]], Awaitable[None]]
-    ) -> Callable[[], None]:
-        """Subscribe to all event types and convert to callback format.
-
-        Args:
-            callback: async function that receives event dict
-
-        Returns:
-            unsubscribe function to cancel all subscriptions
-        """
-        unsubs = []
-
-        async def on_msg(event: MessageEvent) -> None:
-            await callback(
-                {
-                    "type": "message",
-                    "chat_jid": event.chat_jid,
-                    "sender_name": event.sender_name,
-                    "content": event.content,
-                    "timestamp": event.timestamp,
-                    "is_bot": event.is_bot,
-                }
-            )
-
-        async def on_activity(event: AgentActivityEvent) -> None:
-            await callback(
-                {
-                    "type": "agent_activity",
-                    "chat_jid": event.chat_jid,
-                    "active": event.active,
-                }
-            )
-
-        async def on_trace(event: AgentTraceEvent) -> None:
-            await callback(
-                {
-                    "type": "agent_trace",
-                    "chat_jid": event.chat_jid,
-                    "trace_type": event.trace_type,
-                    **event.data,
-                }
-            )
-
-        async def on_clear(event: ChatClearedEvent) -> None:
-            await callback({"type": "chat_cleared", "chat_jid": event.chat_jid})
-
-        unsubs.append(self.event_bus.subscribe(MessageEvent, on_msg))
-        unsubs.append(self.event_bus.subscribe(AgentActivityEvent, on_activity))
-        unsubs.append(self.event_bus.subscribe(AgentTraceEvent, on_trace))
-        unsubs.append(self.event_bus.subscribe(ChatClearedEvent, on_clear))
-
-        def unsubscribe() -> None:
-            for unsub in unsubs:
-                unsub()
-
-        return unsubscribe
-
-
 class GroupMetadataManager:
     """Manages group chat metadata operations."""
 
     def __init__(
         self,
-        groups_dict: dict[str, WorkspaceProfile],
         channels: list[Channel],
         get_available_groups_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
     ) -> None:
-        self._groups = groups_dict
         self._channels = channels
         self._get_available_groups = get_available_groups_fn
-
-    def get_groups(self) -> list[dict[str, str]]:
-        """Return list of registered groups for API."""
-        return [{"jid": jid, "name": g.name, "folder": g.folder} for jid, g in self._groups.items()]
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get list of all available groups."""
@@ -367,72 +289,6 @@ class GroupMetadataManager:
     def channels(self) -> list[Channel]:
         """Return all channels."""
         return self._channels
-
-    def channels_connected(self) -> bool:
-        """Check if any channel is connected."""
-        return any(c.is_connected() for c in self._channels)
-
-
-class PeriodicAgentManager:
-    """Manages periodic agent configuration queries."""
-
-    def __init__(self, groups_dict: dict[str, WorkspaceProfile]) -> None:
-        self._groups = groups_dict
-
-    async def get_periodic_agents(self) -> list[dict[str, Any]]:
-        """Get status of scheduled agent tasks."""
-        groups_by_folder = {group.folder: group for group in self._groups.values()}
-        results = []
-        for task in await get_all_tasks():
-            if task.schedule_type != "cron":
-                continue
-            group = groups_by_folder.get(task.group_folder)
-            if group is None:
-                continue
-            results.append(
-                {
-                    "name": group.name,
-                    "folder": group.folder,
-                    "schedule": task.schedule_value,
-                    "context_mode": task.context_mode,
-                    "last_run": task.last_run,
-                    "next_run": None,
-                    "status": task.status,
-                }
-            )
-        return results
-
-
-class UserMessageHandler:
-    """Handles user message ingestion for TUI."""
-
-    def __init__(
-        self,
-        ingest_message_fn: Callable[..., Awaitable[None]],
-        enqueue_check_fn: Callable[[str], None],
-    ) -> None:
-        self._ingest_message = ingest_message_fn
-        self._enqueue_check = enqueue_check_fn
-
-    async def send_user_message(self, jid: str, content: str) -> None:
-        """Send a user message from the TUI."""
-        msg = NewMessage(
-            id=generate_message_id("tui"),
-            chat_jid=jid,
-            sender="tui-user",
-            sender_name="You",
-            content=content,
-            timestamp=datetime.now(UTC).isoformat(),
-            is_from_me=False,
-        )
-        # Store, emit, and visibly relay TUI input.  Its synthetic local "You"
-        # identity is not included in the physical-channel text.
-        await self._ingest_message(msg, source_channel="tui")
-        self._enqueue_check(jid)
-
-    async def get_messages(self, jid: str, limit: int) -> list[NewMessage]:
-        """Get chat history for a group."""
-        return await get_chat_history(jid, limit)
 
 
 class GroupRegistrationManager:

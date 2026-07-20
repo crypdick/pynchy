@@ -1,8 +1,8 @@
 # Control Plane Access
 
-Pynchy exposes operational status, chat history, event streaming, canary evidence,
-and deployment actions through one HTTP control plane. Use this guide to connect a
-local or remote TUI without exposing those operations to unauthenticated clients.
+Pynchy exposes operational status, capability snapshots, canary evidence, and
+deployment actions through one HTTP control plane. Use this guide to inspect a
+local or remote service without exposing those operations to unauthenticated clients.
 
 ## Local access
 
@@ -12,9 +12,8 @@ The default server starts two listeners:
 - `127.0.0.1:8484`, a loopback TCP fallback for platforms and clients that cannot
   use Unix sockets.
 
-`uv run pynchy --tui` and `uv run pynchy doctor` prefer the Unix socket when it
-exists, then fall back to loopback TCP. Pass `--socket <path>` to select a custom
-socket.
+`uv run pynchy doctor` prefers the Unix socket when it exists, then falls back
+to loopback TCP. Pass `--socket <path>` to select a custom socket.
 
 The Unix socket relies on filesystem permissions and accepts local control requests
 without a bearer token. Loopback TCP also accepts local requests without a token
@@ -26,9 +25,9 @@ until either remote-access option gets enabled.
 service manager or external load balancer can perform a readiness probe without
 receiving repository, channel, capability, or credential details.
 
-Use the authenticated `/status`, `/capabilities`, `/actions`, `/canaries/*`, and
-`/api/*` routes for operational details. `/actions` exposes external-write state
-without draft payloads; see [Action coverage](../architecture/action-coverage.md#transactional-external-actions)
+Use the authenticated `/status`, `/capabilities`, `/actions`, `/work-items`, and
+`/canaries/*` routes for operational details. `/actions` exposes external-write
+state without draft payloads; see [Action coverage](../architecture/action-coverage.md#transactional-external-actions)
 for its lifecycle. A remote posture requires authentication for every TCP route
 except `/health` and exact plugin-registered webhook POST paths, including unknown
 paths.
@@ -54,7 +53,7 @@ Keep the token out of `config.toml`, shell history, URLs, and query strings. A
 client can read a copied mode-`0600` token with `--token-file`; otherwise it reads
 `PYNCHY_CONTROL_TOKEN` and then `data/control-plane.token`.
 
-## Enable remote TUI access
+## Enable remote diagnostic access
 
 Remote access needs both an explicit public bind and the bearer token:
 
@@ -70,13 +69,10 @@ refuses either remote-access option when no bearer token exists or when the toke
 contains fewer than 32 bytes. Network ACLs and firewalls remain useful defense in
 depth, but they do not replace application authentication.
 
-Transfer the token to the client through an authenticated secret-sharing channel,
-store it in a mode-`0600` file, then connect:
-
-```bash
-uv run pynchy --token-file ~/.config/pynchy/control-plane.token \
-  --tui --host your-server:8484
-```
+Transfer the token to diagnostic clients through an authenticated secret-sharing
+channel and store it in a mode-`0600` file. The `pynchy doctor` command accepts
+`--token-file` and `--host`; HTTP clients send the same value in the
+`Authorization: Bearer <token>` header.
 
 Pynchy compares bearer tokens without timing-sensitive string equality. It applies
 a per-client fixed-window request limit before authentication so invalid tokens also

@@ -48,7 +48,7 @@ def generate_message_id(prefix: str = "") -> str:
     """Generate a unique message ID using millisecond timestamp.
 
     Args:
-        prefix: Optional prefix (e.g. "host", "tui", "sys-notice").
+        prefix: Optional prefix (e.g. "host" or "sys-notice").
                 When provided, the ID is ``{prefix}-{ms_timestamp}``.
                 When empty, returns just the ms timestamp string.
     """

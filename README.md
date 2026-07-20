@@ -68,7 +68,7 @@ Full documentation lives in the [documentation site](docs/index.md).
 ## FAQ
 
 **What messaging channels are supported?**
-WhatsApp, Slack, Discord, and the local TUI have first-party plugins. Channels are pluggable — write a [plugin](docs/plugins/index.md) to add another one.
+WhatsApp, Slack, and Discord have first-party plugins. Channels are pluggable — write a [plugin](docs/plugins/index.md) to add another one.
 
 **Why Apple Container instead of Docker?**
 On macOS, Apple Container is lightweight and optimized for Apple silicon. Docker works too and is used as a fallback. On Linux, Docker is the only option.

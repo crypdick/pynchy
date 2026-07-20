@@ -120,7 +120,7 @@ Handles operational notifications:
 
 - Stores the message with `message_type='host'`
 - Broadcasts to channels with 🏠 emoji
-- Emits an event for the TUI
+- Emits an event for operational observers
 - Never forwards the message to the LLM
 
 ### UserMessageHandler

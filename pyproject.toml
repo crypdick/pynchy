@@ -17,7 +17,6 @@ dependencies = [
     "pydantic-settings[toml]>=2.9",
     "structlog>=25.5.0",
     "temporalio>=1.30.0",
-    "textual>=7.5.0",
     "tomlkit>=0.13",
     "urllib3>=2.6.0",
     "watchdog>=6.0.0",
@@ -70,6 +69,7 @@ dev = [
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
     "pyupgrade>=3.21.2",
+    "rich>=14.3.3",
     "ruff>=0.15.20",
     "types-croniter>=6.2.3.20260704",
     "types-pyyaml>=6.0.12.20260518",
@@ -121,7 +121,7 @@ markers = [
     "action(*ids): semantic action IDs covered by this behavioral test",
     "live: live integration tests that require real service connections (deselected by default)",
     "runtime: deterministic full-stack runtime tests managed by scripts/runtime_harness.py (deselected by default)",
-    "parity: channel parity tests — verify output consistency across TUI, WhatsApp, and Slack",
+    "parity: channel parity tests — verify output consistency across built-in channels",
 ]
 filterwarnings = [
     # aiohttp request/application types subclass typing.MutableMapping[...] generics
@@ -275,7 +275,7 @@ show_error_codes = true
 pretty = true
 # Pragmatic exceptions for this project's frameworks:
 #   no-untyped-def/no-untyped-call — codebase is only partially annotated (ratchet later)
-#   attr-defined/union-attr/override — Textual widgets + pluggy hooks use dynamic attrs
+#   attr-defined/union-attr/override — pluggy hooks use dynamic attrs
 #   call-arg — Pydantic model constructors trip false positives
 disable_error_code = [
     "no-untyped-def",
@@ -343,8 +343,8 @@ exclude_lines = [
 
 # ─────────────────────────────────────────────────────────────────────────────
 # vulture — dead-code detection. Runs informationally (min_confidence 80).
-# `ignore_names` covers framework "magic" names: pluggy hooks, Textual handlers,
-# Pydantic config/validators.
+# `ignore_names` covers framework "magic" names: pluggy hooks and Pydantic
+# config/validators.
 # ─────────────────────────────────────────────────────────────────────────────
 [tool.vulture]
 min_confidence = 80
@@ -352,10 +352,6 @@ paths = ["src", "tests"]
 exclude = [".venv/"]
 ignore_names = [
     "pynchy_*",      # pluggy hook implementations (hookimpl-decorated)
-    "on_*",          # Textual message handlers
-    "watch_*",       # Textual reactive watchers
-    "action_*",      # Textual action methods
-    "compose",       # Textual compose()
     "model_config",  # Pydantic
     "field_validator",
     "model_validator",

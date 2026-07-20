@@ -1,1 +1,1 @@
-"""Channel plugins — Slack, WhatsApp, TUI."""
+"""Built-in channel plugins."""

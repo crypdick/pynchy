@@ -3,27 +3,17 @@
 Tests critical routing and broadcasting logic in adapters.py:
 - resolve_admin_notification_jid() — finding the configured notification target
 - HostMessageBroadcaster — dual store+broadcast with correct formatting
-- EventBusAdapter — event type conversion for SSE/TUI bridge
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from conftest import NullChannel
 
-from pynchy.event_bus import (
-    AgentActivityEvent,
-    AgentTraceEvent,
-    ChatClearedEvent,
-    EventBus,
-    MessageEvent,
-)
+from pynchy.event_bus import MessageEvent
 from pynchy.host.orchestrator.adapters import (
-    EventBusAdapter,
-    GroupMetadataManager,
     HostMessageBroadcaster,
     MessageBroadcaster,
     SessionManager,
@@ -273,135 +263,6 @@ class TestMessageBroadcaster:
 
 
 # ---------------------------------------------------------------------------
-# EventBusAdapter
-# ---------------------------------------------------------------------------
-
-
-class TestEventBusAdapter:
-    """Test event type conversion from typed events to callback dicts.
-
-    The EventBusAdapter bridges internal typed events to the HTTP/SSE API.
-    Wrong conversion means the TUI shows stale or incorrect data.
-    """
-
-    async def test_converts_message_event(self):
-        bus = EventBus()
-        adapter = EventBusAdapter(bus)
-        received: list[dict] = []
-
-        adapter.subscribe_events(lambda d: asyncio.coroutine(lambda: received.append(d))())
-
-        # Subscribe and emit
-        def callback(data: dict):
-            received.append(data)
-            return asyncio.sleep(0)
-
-        adapter.subscribe_events(callback)
-        bus.emit(
-            MessageEvent(
-                chat_jid="group@g.us",
-                sender_name="Alice",
-                content="hello",
-                timestamp="2024-01-01T00:00:00Z",
-                is_bot=False,
-            )
-        )
-        await asyncio.sleep(0.05)
-
-        msg_events = [e for e in received if e.get("type") == "message"]
-        assert len(msg_events) >= 1
-        event = msg_events[0]
-        assert event["chat_jid"] == "group@g.us"
-        assert event["sender_name"] == "Alice"
-        assert event["content"] == "hello"
-        assert event["is_bot"] is False
-
-    async def test_converts_agent_activity_event(self):
-        bus = EventBus()
-        adapter = EventBusAdapter(bus)
-        received: list[dict] = []
-
-        def callback(data: dict):
-            received.append(data)
-            return asyncio.sleep(0)
-
-        adapter.subscribe_events(callback)
-        bus.emit(AgentActivityEvent(chat_jid="group@g.us", active=True))
-        await asyncio.sleep(0.05)
-
-        activity_events = [e for e in received if e.get("type") == "agent_activity"]
-        assert len(activity_events) == 1
-        assert activity_events[0]["active"] is True
-
-    async def test_converts_agent_trace_event(self):
-        bus = EventBus()
-        adapter = EventBusAdapter(bus)
-        received: list[dict] = []
-
-        def callback(data: dict):
-            received.append(data)
-            return asyncio.sleep(0)
-
-        adapter.subscribe_events(callback)
-        bus.emit(
-            AgentTraceEvent(
-                chat_jid="group@g.us",
-                trace_type="tool_use",
-                data={"tool_name": "Bash", "tool_input": {"command": "ls"}},
-            )
-        )
-        await asyncio.sleep(0.05)
-
-        trace_events = [e for e in received if e.get("type") == "agent_trace"]
-        assert len(trace_events) == 1
-        assert trace_events[0]["trace_type"] == "tool_use"
-        # Data fields are spread into the event dict
-        assert trace_events[0]["tool_name"] == "Bash"
-
-    async def test_converts_chat_cleared_event(self):
-        bus = EventBus()
-        adapter = EventBusAdapter(bus)
-        received: list[dict] = []
-
-        def callback(data: dict):
-            received.append(data)
-            return asyncio.sleep(0)
-
-        adapter.subscribe_events(callback)
-        bus.emit(ChatClearedEvent(chat_jid="group@g.us"))
-        await asyncio.sleep(0.05)
-
-        clear_events = [e for e in received if e.get("type") == "chat_cleared"]
-        assert len(clear_events) == 1
-        assert clear_events[0]["chat_jid"] == "group@g.us"
-
-    async def test_unsubscribe_stops_receiving_events(self):
-        bus = EventBus()
-        adapter = EventBusAdapter(bus)
-        received: list[dict] = []
-
-        def callback(data: dict):
-            received.append(data)
-            return asyncio.sleep(0)
-
-        unsub = adapter.subscribe_events(callback)
-        unsub()
-
-        bus.emit(
-            MessageEvent(
-                chat_jid="group@g.us",
-                sender_name="Alice",
-                content="hello",
-                timestamp="2024-01-01T00:00:00Z",
-                is_bot=False,
-            )
-        )
-        await asyncio.sleep(0.05)
-
-        assert len(received) == 0
-
-
-# ---------------------------------------------------------------------------
 # SessionManager
 # ---------------------------------------------------------------------------
 
@@ -430,40 +291,3 @@ class TestSessionManager:
             await manager.clear_session("nonexistent")
 
         assert "nonexistent" in cleared
-
-
-# ---------------------------------------------------------------------------
-# GroupMetadataManager
-# ---------------------------------------------------------------------------
-
-
-class TestGroupMetadataManager:
-    """Test group metadata queries."""
-
-    def test_get_groups_returns_workspaces(self):
-        groups = {
-            "a@g.us": _group(jid="a@g.us", name="Alpha", folder="alpha"),
-            "b@g.us": _group(jid="b@g.us", name="Beta", folder="beta"),
-        }
-        manager = GroupMetadataManager(groups, [], AsyncMock())
-        result = manager.get_groups()
-
-        assert len(result) == 2
-        names = {g["name"] for g in result}
-        assert names == {"Alpha", "Beta"}
-
-    def test_channels_connected_returns_true_when_any_connected(self):
-        connected = FakeChannel(connected=True)
-        disconnected = FakeChannel(connected=False)
-        manager = GroupMetadataManager({}, [connected, disconnected], AsyncMock())
-        assert manager.channels_connected() is True
-
-    def test_channels_connected_returns_false_when_all_disconnected(self):
-        ch1 = FakeChannel(connected=False)
-        ch2 = FakeChannel(connected=False)
-        manager = GroupMetadataManager({}, [ch1, ch2], AsyncMock())
-        assert manager.channels_connected() is False
-
-    def test_channels_connected_returns_false_when_no_channels(self):
-        manager = GroupMetadataManager({}, [], AsyncMock())
-        assert manager.channels_connected() is False

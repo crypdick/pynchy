@@ -7,7 +7,7 @@ import hmac
 import json
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -28,10 +28,7 @@ from pynchy.plugins.webhooks import (
     WebhookRoute,
 )
 from pynchy.state import get_all_tasks, get_webhook_receipt, init_test_database
-from pynchy.types import NewMessage, ScheduledTask, WorkspaceProfile
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+from pynchy.types import ScheduledTask, WorkspaceProfile
 
 _SIGNING_KEY = "linear-webhook-test-signing-key-long-enough"
 _DELIVERY_ID = "234d1a4e-b617-4388-90fe-adc3633d6b72"
@@ -205,34 +202,6 @@ class _WebhookDeps:
 
     def admin_chat_jid(self) -> str:
         return "admin"
-
-    def channels_connected(self) -> bool:
-        return True
-
-    def get_groups(self) -> list[dict[str, Any]]:
-        return []
-
-    async def get_messages(self, jid: str, limit: int) -> list[NewMessage]:
-        del jid, limit
-        return []
-
-    async def send_user_message(self, jid: str, content: str) -> None:
-        del jid, content
-
-    def subscribe_events(
-        self, callback: Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
-    ) -> Callable[[], None]:
-        del callback
-        return lambda: None
-
-    async def get_periodic_agents(self) -> list[dict[str, Any]]:
-        return []
-
-    def get_active_sessions(self) -> dict[str, str]:
-        return {}
-
-    def is_shutting_down(self) -> bool:
-        return False
 
     def get_plugin_manager(self) -> object:
         return object()

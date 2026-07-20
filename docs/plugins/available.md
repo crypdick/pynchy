@@ -20,7 +20,6 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `codex` | Agent core | OpenAI Codex CLI core | Select with `[agent].default_core = "codex"` | [Agent cores](../usage/agent-cores.md) |
 | `discord` | Channel | Discord channel, including text and voice input | `uv sync --extra discord` and `[connections]` configuration | [Discord](../channels/discord.md) |
 | `slack` | Channel | Slack Socket Mode channel | `uv sync --extra slack` and `[connections]` configuration | [Slack](../channels/slack.md) |
-| `tui` | Channel | Local terminal UI over HTTP/SSE | No external credential | [Terminal UI](../channels/tui.md) |
 | `whatsapp` | Channel | WhatsApp channel through Neonize | `uv sync --extra whatsapp` and QR authentication | [WhatsApp](../channels/whatsapp.md) |
 | `pocket-tts` | Speech synthesizer | Local neural speech synthesis for spoken replies | Loopback Pocket TTS service | [Local speech synthesis](../usage/host-capabilities/local-speech.md) |
 | `tailscale` | Tunnel | Tailscale connectivity detection | `tailscale` CLI on the host | [Tunnels](../architecture/tunnels.md) |

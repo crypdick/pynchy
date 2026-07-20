@@ -99,6 +99,7 @@ def test_generated_runtime_config_is_deterministic_and_credential_free(
     assert 'default_core = "openai"' in config
     assert 'model = "pynchy-deterministic"' in config
     assert f'image = "pynchy-runtime-agent:{spec.namespace}-' in config
+    assert "[workspaces.pynchy]" in config
     assert state["model"] == "pynchy-deterministic"
     assert str(state["agent_image"]).startswith(f"pynchy-runtime-agent:{spec.namespace}-")
     assert isinstance(state["agent_source_digest"], str)
@@ -106,6 +107,7 @@ def test_generated_runtime_config_is_deterministic_and_credential_free(
     assert state["version"] == 2
     assert state["fake_container"] == spec.fake_container_name
     assert state["network"] == spec.network_name
+    assert state["database_path"] == str(root / "data" / "messages.db")
 
     generated = "\n".join(
         (root / filename).read_text(encoding="utf-8")

@@ -55,7 +55,7 @@ uv run pytest tests/test_reconciler.py tests/test_outbound.py
 | Work durability | Temporal schedules, retries, interrupted-turn, channel reconciliation, deploy, and canary workflows. | Gateway-owned SQLite cron, tasks, and recovery state. | Pynchy has the better substrate. Enrich its records; do not replace Temporal. |
 | Agent cores | Claude SDK/CLI, OpenAI, and Codex with generated core configuration and shared policy hooks. | Native runtime plus optional ACP/CLI harnesses and many providers. | Pynchy needs core-neutral contracts for capability truth and delegation. |
 | Plugin architecture | Pluggy hooks, static built-ins plus Python entry points; many hooks return raw `dict`s. | Manifest-first discovery, metadata snapshots, typed capability registry, runtime registration, diagnostics. | Adapt OpenClaw's metadata/control-plane split while keeping pluggy. |
-| Operator surface | TUI, `/health`, `/status`, canary reports, SQLite and Phoenix traces. | Gateway protocol, CLI doctor/status, task ledger, Control UI, native apps. | Pynchy has raw evidence, but needs productized operational records and query surfaces. |
+| Operator surface | `/health`, `/status`, canary reports, CLI doctor, SQLite, and Phoenix traces. | Gateway protocol, CLI doctor/status, task ledger, Control UI, native apps. | Pynchy has raw evidence, but needs productized operational records and query surfaces. |
 
 ## What Pynchy already does better
 
@@ -186,7 +186,7 @@ each teammate owns an isolated transcript and reports through this contract.
 restart recovery, and task notifications from the same task, cron, plugin,
 device, approval, and configuration records.
 
-**Pynchy state.** `/status`, canaries, TUI, SQLite events, and Phoenix are
+**Pynchy state.** `/status`, canaries, SQLite events, and Phoenix are
 strong raw surfaces. They do not yet make a single queryable model of current
 capabilities, task runs, approval/action state, delivery debt, MCP readiness,
 and channel health.
@@ -201,7 +201,7 @@ and channel health.
 
 Then add `pynchy doctor` for manifests, config, credential references, runtime
 availability, plugin compatibility, and canary evidence. Only after the model
-stabilizes should Pynchy choose a web control plane, richer TUI, or a native
+stabilizes should Pynchy choose a web control plane or a native
 companion.
 
 ### P1: Safe setup and secret onboarding
@@ -241,7 +241,7 @@ boundary. Do not begin with iOS/Android apps or a generic remote shell.
 ### P2: Select integrations by workflow, not ecosystem count
 
 OpenClaw supports far more channels and providers. Pynchy already covers
-Discord, Slack, WhatsApp, TUI, a host-only Matrix communications gateway,
+Discord, Slack, WhatsApp, a host-only Matrix communications gateway,
 calendar, Google Drive read access, Linear, Proton Mail read operations,
 browser/desktop control, X, notebooks, and a LiteLLM provider gateway.
 
@@ -271,7 +271,7 @@ still needs provenance, version pinning, review, and capability disclosure.
 OpenClaw's CLI, UI, doctor, recovery, and notifications use the same records.
 Pynchy should not create a second dashboard-specific state layer. Tables and
 APIs for capabilities, task runs, action intents, and delivery rows must be
-authoritative; TUI, HTTP, and chat notifications should render them.
+authoritative; HTTP and chat notifications should render them.
 
 ### Separate execution outcome from delivery outcome
 

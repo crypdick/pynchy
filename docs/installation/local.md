@@ -55,7 +55,7 @@ Install the WhatsApp extra only when you use WhatsApp:
 uv sync --extra whatsapp
 ```
 
-For Slack, Discord, or the local TUI, follow [Channels](../channels/index.md).
+For Slack or Discord, follow [Channels](../channels/index.md).
 
 ### Configure models and the gateway
 
@@ -88,8 +88,9 @@ single-host macOS Temporal service, see [Scheduled tasks](../usage/scheduled-tas
 uv run pynchy
 ```
 
-On its first run, Pynchy creates an admin workspace in the configured command
-center when possible. Otherwise, it starts with a local TUI workspace.
+On its first run, Pynchy creates an admin workspace through the configured
+command-center connection. Configure a creation-capable channel before starting
+with an empty workspace database.
 
 ### Authenticate WhatsApp
 
