@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,7 @@ from pynchy.state import (
     complete_conversation_delivery,
     get_conversation,
     get_conversation_control_binding,
+    get_webhook_receipt,
     resolve_conversation,
     set_conversation_session,
     set_workspace_profile,
@@ -72,25 +74,29 @@ def _delivery(delivery_id: str) -> ExternalDeliveryIdentity:
     )
 
 
-async def _record_receipt(identity: ExternalDeliveryIdentity, subject_key: str) -> None:
-    await admit_webhook_receipt(
-        WebhookReceipt(
-            provider=identity.provider,
-            route=identity.route,
-            delivery_id=identity.delivery_id,
-            workspace="triage",
-            event_type="Issue",
-            event_action="update",
-            subject_id=subject_key,
-            payload_sha256=f"sha-{identity.delivery_id}",
-            disposition="notified",
-            ignored_reason=None,
-            task_id=None,
-            occurred_at="2026-07-19T12:00:00+00:00",
-            received_at="2026-07-19T12:00:01+00:00",
-        ),
-        None,
+def _webhook_receipt(
+    identity: ExternalDeliveryIdentity,
+    subject_key: str,
+) -> WebhookReceipt:
+    return WebhookReceipt(
+        provider=identity.provider,
+        route=identity.route,
+        delivery_id=identity.delivery_id,
+        workspace="triage",
+        event_type="Issue",
+        event_action="update",
+        subject_id=subject_key,
+        payload_sha256=f"sha-{identity.delivery_id}",
+        disposition="notified",
+        ignored_reason=None,
+        task_id=None,
+        occurred_at="2026-07-19T12:00:00+00:00",
+        received_at="2026-07-19T12:00:01+00:00",
     )
+
+
+async def _record_receipt(identity: ExternalDeliveryIdentity, subject_key: str) -> None:
+    await admit_webhook_receipt(_webhook_receipt(identity, subject_key), None)
 
 
 async def _admit(
@@ -152,6 +158,26 @@ async def test_authenticated_deliveries_dedupe_and_join_by_stable_subject() -> N
             _subject("issue-2"),
             GroupFolder("triage"),
         )
+
+
+async def test_webhook_replay_rejects_conflicting_authenticated_bytes() -> None:
+    identity = _delivery("delivery-conflict")
+    receipt = _webhook_receipt(identity, "issue-1")
+    await admit_webhook_receipt(receipt, None)
+
+    with pytest.raises(ValueError, match="conflicting receipt evidence"):
+        await admit_webhook_receipt(
+            replace(receipt, payload_sha256="sha-different-authenticated-bytes"),
+            None,
+        )
+
+    retained = await get_webhook_receipt(
+        identity.provider,
+        identity.route,
+        identity.delivery_id,
+    )
+    assert retained is not None
+    assert retained.payload_sha256 == receipt.payload_sha256
 
 
 async def test_non_webhook_receipt_uses_the_same_provider_neutral_contract() -> None:
