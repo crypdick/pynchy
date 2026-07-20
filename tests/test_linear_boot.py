@@ -10,6 +10,7 @@ from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_boot import (
+    configured_linear_workspace_names,
     create_linear_workspace_todo,
     reconcile_linear_workspace_boards,
 )
@@ -124,6 +125,28 @@ async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypa
         "lin_synapse",
     ]
     assert reconcile_boards.await_count == 2
+
+
+async def test_project_routes_only_admit_discord_thread_parents(monkeypatch):
+    monkeypatch.delenv("LINEAR_API_KEY", raising=False)
+    settings = make_settings(
+        profiles={"linear": ProfileConfig(tools=["linear"])},
+        workspaces={
+            "general-voice": WorkspaceConfig(profiles=["linear"]),
+            "project": WorkspaceConfig(profiles=["linear"]),
+        },
+        tools={"linear": LinearTool(type="linear")},
+    )
+    voice = _workspace("general-voice", "General voice")
+    voice.jid = "discord:voice:general"
+    project = _workspace("project", "Project")
+    project.jid = "discord:channel:project"
+
+    with patch("pynchy.plugins.integrations.linear_boot.get_settings", return_value=settings):
+        await reconcile_linear_workspace_boards([voice, project])
+        candidates = configured_linear_workspace_names("linear")
+
+    assert candidates == ("project",)
 
 
 async def test_create_linear_workspace_todo_skips_when_api_key_missing(monkeypatch):
