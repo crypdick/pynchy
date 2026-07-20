@@ -50,8 +50,8 @@ def _host_direct_mcp_server_entry(server: dict[str, object]) -> dict[str, object
     """Build a local MCP-proxy entry for an agent executing on the host.
 
     The shared direct-server resolver deliberately uses the container-reachable
-    address. Host-direct agents run beside the MCP proxy, which binds only to
-    loopback, so route the same proxy URL through localhost instead.
+    address. Host-direct agents run beside the MCP proxy, so route the same
+    proxy URL through localhost instead of crossing the container bridge.
     """
     url = server.get("url")
     if not isinstance(url, str):

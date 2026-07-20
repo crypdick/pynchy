@@ -393,15 +393,18 @@ class TestResolveAllInstancesPortOffset:
                 },
             },
         )
-        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
 
         def close_background_task(coro, **_kwargs):
             coro.close()
             return MagicMock()
 
+        proxy_start = AsyncMock(return_value=0)
+        proxy = MagicMock()
+        proxy.start = proxy_start
+        proxy_factory = MagicMock(return_value=proxy)
         monkeypatch.setattr(
-            "pynchy.host.container_manager.mcp.manager.McpProxy.start",
-            AsyncMock(return_value=0),
+            "pynchy.host.container_manager.mcp.manager.McpProxy",
+            proxy_factory,
         )
         monkeypatch.setattr(
             "pynchy.host.container_manager.mcp.manager.sync_mcp_endpoints", AsyncMock()
@@ -418,7 +421,10 @@ class TestResolveAllInstancesPortOffset:
             close_background_task,
         )
 
+        manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
         await manager.sync()
+
+        proxy_factory.assert_called_once_with(host=settings.gateway.host)
 
         parent_ids = manager.get_workspace_instance_ids("admin")
         child_ids = manager.get_workspace_instance_ids("admin__thread_discord-channel-thread")
