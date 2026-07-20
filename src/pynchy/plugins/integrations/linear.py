@@ -16,7 +16,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
 )
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import aiohttp
 import pluggy
@@ -33,9 +33,9 @@ from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
 from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-
-if TYPE_CHECKING:
-    from pynchy.plugins.webhooks import WebhookRoute
+from pynchy.plugins.webhooks import (
+    WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
+)
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
