@@ -343,6 +343,8 @@ class InFlightTurn:
     claimed_at: str | None = None
     scheduled_base_chat_jid: str | None = None
     scheduled_thread_slot: int | None = None
+    conversation_claim_id: str | None = None
+    input_source: str = "user"
 
 
 @dataclass

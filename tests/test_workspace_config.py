@@ -15,7 +15,10 @@ from pydantic import ValidationError
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import WorkspaceConfig
 from pynchy.config.models import ProfileConfig
+from pynchy.conversation.models import ConversationId
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.workspace_config import (
+    RuntimeWorkspaceRestriction,
     add_workspace_to_toml,
     configure_plugin_workspaces,
     get_repo_access,
@@ -23,9 +26,16 @@ from pynchy.host.orchestrator.workspace_config import (
     load_resolved_config,
     load_workspace_config,
     reconcile_workspaces,
+    register_runtime_workspace_restriction,
     update_profile_skill_policy,
 )
-from pynchy.types import InboundFetchResult, OutboundEvent, WorkspaceProfile, WorkspaceSecurity
+from pynchy.types import (
+    CapabilityRule,
+    InboundFetchResult,
+    OutboundEvent,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 
 
 @dataclass
@@ -119,6 +129,9 @@ class TestLoadWorkspaceConfig:
 
 
 class TestLoadResolvedConfig:
+    def teardown_method(self):
+        workspace_config.clear_runtime_workspace_restrictions()
+
     def test_resolves_selected_profiles(self):
         s = _settings_with_workspaces(
             profiles={
@@ -134,6 +147,55 @@ class TestLoadResolvedConfig:
         assert resolved.prompts == ["base"]
         assert resolved.repo == ["owner/base", "owner/dev"]
         assert resolved.is_admin is True
+
+    def test_runtime_restrictions_cannot_weaken_parent_capabilities(self):
+        s = _settings_with_workspaces(
+            profiles={
+                "base": ProfileConfig(
+                    tools=["matrix_route_read", "matrix_route_send"],
+                    capabilities={
+                        "chat.matrix.*": {"decision": "deny"},
+                        "chat.matrix.route.send": {"decision": "needs_human"},
+                    },
+                )
+            },
+            workspaces={"support": WorkspaceConfig(profiles=["base"])},
+        )
+        register_runtime_workspace_restriction(
+            "support-conversation-conv_test",
+            RuntimeWorkspaceRestriction(
+                parent_workspace="support",
+                tools=("matrix_route_read",),
+                capabilities={
+                    "chat.matrix.route.read": CapabilityRule(decision="needs_human"),
+                    "chat.matrix.route.send": CapabilityRule(decision="allow"),
+                },
+            ),
+        )
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
+            resolved = load_resolved_config("support-conversation-conv_test")
+
+        assert resolved is not None
+        assert resolved.tools == ["matrix_route_read"]
+        assert resolved.capabilities["chat.matrix.route.read"].decision == "deny"
+        assert resolved.capabilities["chat.matrix.*"].decision == "deny"
+        assert resolved.capabilities["chat.matrix.route.send"].decision == "deny"
+
+    def test_stale_routed_workspace_cannot_inherit_parent_tools(self):
+        s = _settings_with_workspaces(
+            profiles={
+                "base": ProfileConfig(
+                    tools=["matrix_route_read", "matrix_route_send", "dangerous_parent_tool"]
+                )
+            },
+            workspaces={"support": WorkspaceConfig(profiles=["base"])},
+        )
+
+        folder = routed_conversation_folder("support", ConversationId("conv_stale"))
+        with patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s):
+            resolved = load_resolved_config(folder)
+
+        assert resolved is None
 
 
 class TestWorkspaceConfigModel:
@@ -289,3 +351,46 @@ async def test_reconcile_syncs_existing_profile_admin_and_contains_secrets():
     profile = workspaces["slack:CADMIN"]
     assert profile.is_admin is True
     assert profile.security.contains_secrets is True
+
+
+@pytest.mark.asyncio
+async def test_reconcile_prunes_stale_routed_registration_for_runtime_recreation():
+    s = make_settings(
+        profiles={"support": ProfileConfig()},
+        workspaces={"support": WorkspaceConfig(profiles=["support"])},
+    )
+    parent = WorkspaceProfile(
+        jid="discord:channel:support",
+        name="Support",
+        folder="support",
+        trigger="@pynchy",
+    )
+    stale = WorkspaceProfile(
+        jid="discord:channel:stale-route",
+        name="Support/Old route",
+        folder=routed_conversation_folder("support", ConversationId("conv_stale")),
+        trigger="@pynchy",
+    )
+    workspaces = {parent.jid: parent, stale.jid: stale}
+    unregister = AsyncMock()
+
+    with (
+        patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=s),
+        patch(
+            "pynchy.host.orchestrator.workspace_config.get_all_tasks",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "pynchy.host.orchestrator.workspace_registration.set_workspace_profile",
+            new_callable=AsyncMock,
+        ),
+    ):
+        await reconcile_workspaces(
+            workspaces,
+            [_FakeChannel()],
+            AsyncMock(),
+            unregister,
+        )
+
+    unregister.assert_awaited_once_with(stale.jid)

@@ -213,6 +213,25 @@ async def test_group_allowlist_allows_registered_workspace_channel():
     )
 
 
+async def test_registered_workspace_never_bypasses_configured_member_or_role_auth():
+    registered = {"discord:channel:runtime-thread": object()}
+    for member_policy in (
+        {"users": ["discord:allowed-user"]},
+        {"roles": ["role:allowed-role"]},
+    ):
+        guild = {"g1": {"require_mention": False, **member_policy}}
+
+        assert (
+            await _is_delivered(
+                _guild(channel_id="runtime-thread", author_id="intruder"),
+                group_policy="allowlist",
+                chat=guild,
+                workspaces=registered,
+            )
+            is False
+        )
+
+
 async def test_group_open_allows_mentioned_message_in_unconfigured_guild():
     assert await _is_delivered(_guild(mentions_bot=True), group_policy="open")
 

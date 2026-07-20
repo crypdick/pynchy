@@ -15,6 +15,7 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 | **Semantic Actions** | `pynchy_action_specs()` | Plugin-owned action IDs, surfaces, and evidence requirements | Host |
 | **Skill** | `pynchy_skill_paths()` | Agent instructions and capabilities (markdown) | Container |
 | **Channel** | `pynchy_create_channel()` | Communication platform (Telegram, Slack, Discord) | Host |
+| **Connection Runtime** | `pynchy_connection_runtime()` | Authenticated provider polling or subscription lifecycle | Host |
 | **Speech Synthesis** | `pynchy_speech_synthesizer()` | Final spoken replies for channels | Host |
 | **Container Runtime** | `pynchy_container_runtime()` | Container runtime implementation (Docker, Apple Container) | Host |
 | **Tunnel** | `pynchy_tunnel()` | Remote connectivity detection (Tailscale, Cloudflare, etc.) | Host |
@@ -48,6 +49,7 @@ All plugin Python code runs on the **host** during discovery. See [Security Mode
 | Category | Sandbox Level | Risk |
 |----------|--------------|------|
 | **Channel** | None — runs persistently in host process | Highest |
+| **Connection Runtime** | None — owns provider credentials and runs persistently | Highest |
 | **Speech Synthesis** | None — host-side model/service client | High |
 | **Container Runtime** | None — host-side process management | Highest |
 | **Tunnel** | None — host-side network detection | High |

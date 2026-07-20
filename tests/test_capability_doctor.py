@@ -34,7 +34,7 @@ def _payload() -> dict[str, object]:
         "workspace": "personal",
         "capabilities": [
             {
-                "id": "chat.matrix.message.send",
+                "id": "chat.matrix.route.send",
                 "status": "unavailable",
                 "reason": "Matrix gateway binary is unavailable",
                 "setup_hint": "Install the Matrix gateway.",
@@ -104,7 +104,7 @@ def test_doctor_renders_status_reason_and_remediation(monkeypatch, capsys, tmp_p
 
     assert exit_code == 0
     assert "Capabilities for personal:" in output
-    assert "[unavailable] chat.matrix.message.send - Matrix gateway binary is unavailable" in output
+    assert "[unavailable] chat.matrix.route.send - Matrix gateway binary is unavailable" in output
     assert "setup: Install the Matrix gateway." in output
     assert "recover: Check PYNCHY_MATRIX_GATEWAY." in output
 

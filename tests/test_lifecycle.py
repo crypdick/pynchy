@@ -4,21 +4,55 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock
 
+import pluggy
 import pytest
 from conftest import make_settings
 
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.plugins.connections import load_connection_runtimes
+from pynchy.plugins.hookspecs import PynchySpec
 from pynchy.state import get_chat_history, init_test_database
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+hookimpl = pluggy.HookimplMarker("pynchy")
+
 
 class StopAfterArgumentValidationError(Exception):
     """Sentinel raised once run_app reaches its first startup phase."""
+
+
+class _ConnectionRuntime:
+    def __init__(self, name: str, events: list[str], *, fail: bool = False) -> None:
+        self.name = name
+        self.events = events
+        self.fail = fail
+        self.ready = False
+
+    async def start(self, _context) -> None:
+        self.events.append(f"start:{self.name}")
+        self.ready = True
+        if self.fail:
+            raise RuntimeError(f"failed:{self.name}")
+
+    async def close(self) -> None:
+        self.events.append(f"close:{self.name}")
+        self.ready = False
+
+    def is_ready(self) -> bool:
+        return self.ready
+
+
+def _connection_plugin_manager(plugin: object) -> pluggy.PluginManager:
+    manager = pluggy.PluginManager("pynchy")
+    manager.add_hookspecs(PynchySpec)
+    manager.register(plugin)
+    return manager
 
 
 def _completed_awaitable(value: Any = None) -> Awaitable[Any]:
@@ -53,6 +87,65 @@ async def test_pynchyapp_startup_annotations_resolve() -> None:
     await app.set_memory_provider(None)
 
     assert app.session_cleared == {"admin"}
+
+
+@pytest.mark.asyncio
+async def test_connection_start_failure_closes_failing_and_prior_runtimes() -> None:
+    events: list[str] = []
+    app = PynchyApp()
+    first = _ConnectionRuntime("first", events)
+    failing = _ConnectionRuntime("failing", events, fail=True)
+    untouched = _ConnectionRuntime("untouched", events)
+    app.connection_runtime_owner.set([first, failing, untouched])
+
+    with pytest.raises(RuntimeError, match="failed:failing"):
+        await lifecycle.start_connection_runtimes(app)
+
+    assert events == [
+        "start:first",
+        "start:failing",
+        "close:failing",
+        "close:first",
+    ]
+    assert app.connection_runtime_owner.runtimes() == ()
+
+
+@pytest.mark.asyncio
+async def test_connection_self_partial_start_is_closed() -> None:
+    events: list[str] = []
+    app = PynchyApp()
+    failing = _ConnectionRuntime("failing", events, fail=True)
+    app.connection_runtime_owner.set([failing])
+
+    with pytest.raises(RuntimeError, match="failed:failing"):
+        await lifecycle.start_connection_runtimes(app)
+
+    assert events == ["start:failing", "close:failing"]
+    assert failing.is_ready() is False
+
+
+def test_connection_runtime_loader_rejects_invalid_contribution() -> None:
+    class InvalidPlugin:
+        @hookimpl
+        def pynchy_connection_runtime(self) -> object:
+            return object()
+
+    with pytest.raises(TypeError, match="ConnectionRuntime"):
+        load_connection_runtimes(_connection_plugin_manager(InvalidPlugin()))
+
+
+def test_connection_runtime_loader_rejects_duplicate_names() -> None:
+    class DuplicatePlugin:
+        @hookimpl
+        def pynchy_connection_runtime(self) -> tuple[_ConnectionRuntime, ...]:
+            events: list[str] = []
+            return (
+                _ConnectionRuntime("duplicate", events),
+                _ConnectionRuntime("duplicate", events),
+            )
+
+    with pytest.raises(ValueError, match="duplicate runtime names"):
+        load_connection_runtimes(_connection_plugin_manager(DuplicatePlugin()))
 
 
 @pytest.mark.asyncio
@@ -98,7 +191,9 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
 
     def fake_prepare_recovery() -> Awaitable[object]:
         recovery_order.append("prepare")
-        return _completed_awaitable(object())
+        return _completed_awaitable(
+            MagicMock(spec=lifecycle.startup_handler.InterruptedTurnRecovery)
+        )
 
     def fake_start_subsystems(*_args: Any) -> Awaitable[None]:
         recovery_order.append("start_worker")
@@ -176,7 +271,55 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_can_finish.set()
     await run_task
     assert shutdown_finished.is_set()
-    assert recovery_order == ["prepare", "confirm", "start_worker", "dispatch"]
+    assert recovery_order == ["prepare", "start_worker", "confirm", "dispatch"]
+
+
+@pytest.mark.asyncio
+async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_boundary(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    settings = make_settings(data_dir=tmp_path / "data")
+    settings.data_dir.mkdir(parents=True)
+    continuation_path = settings.data_dir / "deploy_continuation.json"
+    continuation_path.write_text("{}")
+    app = PynchyApp()
+    app.workspaces = {
+        "slack:C123": WorkspaceProfile(
+            jid="slack:C123",
+            name="Test",
+            folder="test",
+            trigger="always",
+        )
+    }
+    rollback_errors: list[Exception] = []
+
+    def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[Any]:
+        return _completed_awaitable({})
+
+    def fail_runtime_start(*_args: Any) -> Awaitable[None]:
+        return _failed_awaitable(RuntimeError("matrix runtime failed"))
+
+    def record_rollback(_path: Any, exc: Exception) -> Awaitable[None]:
+        rollback_errors.append(exc)
+        return _completed_awaitable()
+
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
+    monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
+    monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
+    monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
+    monkeypatch.setattr(lifecycle, "_start_subsystems", fail_runtime_start)
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "prepare_interrupted_turn_recovery",
+        noop_phase,
+    )
+    monkeypatch.setattr(lifecycle.startup_handler, "auto_rollback", record_rollback)
+
+    with pytest.raises(RuntimeError, match="matrix runtime failed"):
+        await lifecycle.run_app(app)
+
+    assert [str(exc) for exc in rollback_errors] == ["matrix runtime failed"]
 
 
 @pytest.mark.asyncio

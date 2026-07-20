@@ -1,9 +1,4 @@
-"""Host-side Matrix communications service handlers.
-
-The agent sees these through Pynchy's built-in stdio MCP server, rather than a
-second remote MCP server.  That keeps the Matrix session on the host and lets
-the normal IPC approval boundary intercept every external send.
-"""
+"""Route-scoped Matrix connection tools and plugin contributions."""
 
 from __future__ import annotations
 
@@ -11,9 +6,8 @@ import asyncio
 import json
 import os
 import shutil
-from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pluggy
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -34,6 +28,7 @@ from pynchy.capabilities import (
     CapabilityRequirementKind,
     HostActionAccess,
     HostActionDescriptor,
+    HostActionHandler,
     HostActionRegistration,
     HostToolName,
     IdempotencyContract,
@@ -41,153 +36,182 @@ from pynchy.capabilities import (
     ProbeStatus,
 )
 from pynchy.config import get_settings
+from pynchy.plugins.integrations.matrix_connection import MatrixConnectionRuntime, _validate_portal
 from pynchy.plugins.integrations.matrix_gateway_client import (
-    DEFAULT_GATEWAY_COMMAND,
     MatrixGatewayError,
+    MatrixRouteGateway,
     MatrixSendResult,
     create_matrix_gateway_client,
     json_result,
+    matrix_connection_state_dir,
 )
+from pynchy.plugins.integrations.matrix_route_registry import (
+    ActiveMatrixRoute,
+    get_active_matrix_route,
+)
+from pynchy.plugins.integrations.matrix_route_resolution import resolve_matrix_routes
+from pynchy.plugins.integrations.matrix_routing_config import (
+    MatrixConnectionConfig,
+)
+from pynchy.state import get_conversation_control_binding
 
 hookimpl = pluggy.HookimplMarker("pynchy")
-
 _MAX_LIST_LIMIT = 250
-type MatrixHandler = Callable[[dict[str, Any]], Awaitable[dict[str, object]]]
 
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class _ListMessagesArguments(_StrictModel):
-    """Arguments for Matrix message listing."""
-
-    room_id: str = Field(min_length=1)
+class _RouteReadArguments(_StrictModel):
     limit: int = Field(default=50, ge=1, le=_MAX_LIST_LIMIT)
 
-    @field_validator("room_id")
-    @classmethod
-    def _validate_room_id(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized or "\r" in normalized or "\n" in normalized:
-            raise ValueError("room_id must be a single non-empty line")
-        return normalized
 
-
-class _SendMessageArguments(_StrictModel):
-    """Arguments for one approval-gated external Matrix message."""
-
-    room_id: str = Field(min_length=1)
+class _RouteSendArguments(_StrictModel):
     body: str = Field(min_length=1)
-
-    @field_validator("room_id")
-    @classmethod
-    def _validate_room_id(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized or "\r" in normalized or "\n" in normalized:
-            raise ValueError("room_id must be a single non-empty line")
-        return normalized
 
     @field_validator("body")
     @classmethod
-    def _validate_body(cls, value: str) -> str:
+    def validate_body(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("body must not be empty")
         return value
 
 
-def _message_arguments(data: dict[str, Any]) -> _ListMessagesArguments:
-    return _ListMessagesArguments.model_validate(
-        {"room_id": data.get("room_id"), "limit": data.get("limit", 50)}
-    )
+class _RouteSendReceipt(_StrictModel):
+    """Agent-safe provider receipt without destination identifiers."""
+
+    event_id: str = Field(min_length=1)
 
 
-def _send_arguments(data: dict[str, Any]) -> _SendMessageArguments:
-    return _SendMessageArguments.model_validate(
-        {"room_id": data.get("room_id"), "body": data.get("body")}
-    )
+def _active_route(data: dict[str, Any]) -> ActiveMatrixRoute:
+    source_group = data.get("source_group")
+    if not isinstance(source_group, str) or not source_group:
+        raise ValueError("Matrix route tools require an active conversation workspace")
+    active = get_active_matrix_route(source_group)
+    if active is None:
+        raise ValueError("This workspace is not bound to a configured Matrix route")
+    return active
+
+
+def _gateway_for(active: ActiveMatrixRoute) -> MatrixRouteGateway:
+    command = os.environ.get(active.route.connection.gateway_command_env)
+    state_dir = matrix_connection_state_dir(get_settings().data_dir, active.route.connection_name)
+    return create_matrix_gateway_client(command, state_dir=state_dir)
+
+
+def _read_arguments(data: dict[str, Any]) -> _RouteReadArguments:
+    return _RouteReadArguments.model_validate({"limit": data.get("limit", 50)})
+
+
+def _send_arguments(data: dict[str, Any]) -> _RouteSendArguments:
+    return _RouteSendArguments.model_validate({"body": data.get("body")})
 
 
 def _send_message_draft(data: dict[str, Any]) -> ActionIntentDraft:
-    """Parse the exact message the approval and provider receipt will bind."""
+    """Bind approval to the current route, room, portal, thread, and body."""
+    active = _active_route(data)
+    if active.route.outbound == "read_only":
+        raise ValueError("Matrix route is read-only")
     arguments = _send_arguments(data)
     return ActionIntentDraft(
-        recipient=arguments.room_id,
-        payload={"room_id": arguments.room_id, "body": arguments.body},
-        summary=f"Send Matrix message to {arguments.room_id}",
+        recipient=f"matrix-route:{active.route.name}",
+        payload={
+            "connection": active.route.connection_name,
+            "route": active.route.name,
+            "conversation_id": active.conversation_id,
+            "approval_chat_jid": active.control_thread_jid,
+            "room_id": active.route.endpoint.room_id,
+            "portal": active.portal.model_dump(mode="json"),
+            "body": arguments.body,
+        },
+        summary=f"Send a Matrix reply on route {active.route.name}",
     )
 
 
 def _send_message_receipt(response: dict[str, Any]) -> ActionIntentReceipt:
-    """Turn the validated Matrix event identifier into a durable provider receipt."""
     raw_result = response.get("result")
     if not isinstance(raw_result, str):
         raise TypeError("Matrix send response omitted its serialized provider result")
-    result = MatrixSendResult.model_validate(json.loads(raw_result))
+    result = _RouteSendReceipt.model_validate(json.loads(raw_result))
     return ActionIntentReceipt(
         provider_request_id=result.event_id,
         receipt=result.model_dump(mode="json"),
     )
 
 
-def _workspace_enables_tool(data: dict[str, Any], tool_name: str) -> bool:
-    """Keep private Matrix access scoped to an explicitly configured workspace."""
-    source_group = data.get("source_group")
-    if not isinstance(source_group, str) or not source_group:
-        return False
+async def _current_active_route(data: dict[str, Any]) -> ActiveMatrixRoute:
+    active = _active_route(data)
+    binding = await get_conversation_control_binding(active.conversation_id)
+    if binding is None or binding.thread_jid != active.control_thread_jid:
+        raise ValueError("Matrix conversation control binding changed")
+    return active
+
+
+async def _handle_route_read(data: dict[str, Any]) -> dict[str, Any]:
+    """Read history from only the room bound to the active conversation."""
     try:
-        resolved = get_settings().resolved_workspace_config(source_group)
-    except ValueError:
-        return False
-    return resolved is not None and tool_name in resolved.tools
-
-
-def _only_in_enabled_workspace(tool_name: str, handler: MatrixHandler) -> MatrixHandler:
-    """Deny Matrix access outside a workspace that explicitly selected the tool."""
-
-    async def guarded(data: dict[str, Any]) -> dict[str, object]:
-        if not _workspace_enables_tool(data, tool_name):
-            return {"error": f"{tool_name} is not enabled for this workspace"}
-        return await handler(data)
-
-    return guarded
-
-
-async def _handle_list_chats(_data: dict[str, Any]) -> dict[str, object]:
-    """List Matrix rooms visible to the host-owned gateway session."""
-    try:
-        result = await asyncio.to_thread(create_matrix_gateway_client().list_chats)
-    except MatrixGatewayError as exc:
-        return {"error": str(exc)}
-    return {"result": json_result(cast("list[BaseModel]", result))}
-
-
-async def _handle_list_messages(data: dict[str, Any]) -> dict[str, object]:
-    """Read recent messages from one Matrix room without changing it."""
-    try:
-        arguments = _message_arguments(data)
-        result = await asyncio.to_thread(
-            create_matrix_gateway_client().list_messages,
-            room_id=arguments.room_id,
+        active = await _current_active_route(data)
+        arguments = _read_arguments(data)
+        client = _gateway_for(active)
+        await _revalidate_portal(active, client)
+        messages = await asyncio.to_thread(
+            client.list_messages,
+            room_id=active.route.endpoint.room_id,
             limit=arguments.limit,
         )
-    except (MatrixGatewayError, ValidationError) as exc:
-        return {"error": f"Invalid Matrix gateway tool arguments: {exc}"}
-    return {"result": json_result(cast("list[BaseModel]", result))}
+    except (MatrixGatewayError, ValidationError, ValueError) as exc:
+        return {"error": f"Matrix route read denied: {exc}"}
+    scoped = [
+        {
+            "event_id": message.event_id,
+            "sender": message.sender,
+            "origin_server_ts": message.origin_server_ts,
+            "body": message.body,
+        }
+        for message in messages
+    ]
+    return {"result": json.dumps(scoped, indent=2, sort_keys=True)}
 
 
-async def _handle_send_message(data: dict[str, Any]) -> dict[str, object]:
-    """Send a validated, approval-gated Matrix message as the gateway owner."""
+async def _revalidate_portal(
+    active: ActiveMatrixRoute,
+    client: MatrixRouteGateway,
+) -> None:
+    """Prove the live room and portal still match the registered route."""
+    assertion = await asyncio.to_thread(
+        client.room_assertion,
+        room_id=active.route.endpoint.room_id,
+    )
+    _validate_portal(active.route, assertion)
+    if assertion != active.portal:
+        raise MatrixGatewayError("Matrix route portal changed; refresh the conversation route")
+
+
+async def _send_route_message(active: ActiveMatrixRoute, body: str) -> MatrixSendResult:
+    client = _gateway_for(active)
+    await _revalidate_portal(active, client)
+    result = await asyncio.to_thread(
+        client.send_message,
+        room_id=active.route.endpoint.room_id,
+        body=body,
+    )
+    if result.room_id != active.route.endpoint.room_id:
+        raise MatrixGatewayError("Matrix gateway returned an unexpected destination")
+    return result
+
+
+async def _handle_route_send(data: dict[str, Any]) -> dict[str, Any]:
+    """Send only after rechecking the exact configured room and portal."""
     try:
+        active = await _current_active_route(data)
+        if active.route.outbound == "read_only":
+            return {"error": "Matrix route is read-only"}
         arguments = _send_arguments(data)
-        result = await asyncio.to_thread(
-            create_matrix_gateway_client().send_message,
-            room_id=arguments.room_id,
-            body=arguments.body,
-        )
-    except (MatrixGatewayError, ValidationError) as exc:
-        return {"error": f"Invalid Matrix gateway tool arguments: {exc}"}
-    return {"result": json_result(result)}
+        result = await _send_route_message(active, arguments.body)
+    except (MatrixGatewayError, ValidationError, ValueError) as exc:
+        return {"error": f"Matrix route send denied: {exc}"}
+    return {"result": json_result(_RouteSendReceipt(event_id=result.event_id))}
 
 
 def _gateway_executable_exists(command: str) -> bool:
@@ -197,23 +221,21 @@ def _gateway_executable_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-async def _probe_matrix_gateway(_context: CapabilityProbeContext) -> CapabilityProbeResult:
-    """Check only local executable readiness; never contact Matrix from status."""
-    command = os.environ.get("PYNCHY_MATRIX_GATEWAY", DEFAULT_GATEWAY_COMMAND)
-    available = await asyncio.to_thread(_gateway_executable_exists, command)
-    if available:
+async def _probe_matrix_gateway(context: CapabilityProbeContext) -> CapabilityProbeResult:
+    active = get_active_matrix_route(context.workspace)
+    if active is None:
+        return CapabilityProbeResult(ProbeStatus.DEGRADED, "No active Matrix route binding")
+    command = os.environ.get(active.route.connection.gateway_command_env, "pynchy-matrix-gateway")
+    if await asyncio.to_thread(_gateway_executable_exists, command):
         return CapabilityProbeResult(ProbeStatus.READY)
-    return CapabilityProbeResult(
-        ProbeStatus.UNAVAILABLE,
-        "Matrix gateway binary is unavailable; configure PYNCHY_MATRIX_GATEWAY",
-    )
+    return CapabilityProbeResult(ProbeStatus.UNAVAILABLE, "Matrix gateway binary is unavailable")
 
 
 def _matrix_action(
     action_id: str,
     tool_name: str,
     summary: str,
-    handler: MatrixHandler,
+    handler: HostActionHandler,
     *,
     access: HostActionAccess,
 ) -> HostActionDescriptor:
@@ -228,23 +250,21 @@ def _matrix_action(
                 CapabilityRequirement(
                     kind=CapabilityRequirementKind.WORKSPACE_TOOL,
                     name=tool_name,
-                    description=f"Enable the {tool_name} tool for this workspace.",
+                    description=f"Enable {tool_name} in the routed workspace profile.",
                 ),
                 CapabilityRequirement(
-                    kind=CapabilityRequirementKind.HOST_BINARY,
-                    name="PYNCHY_MATRIX_GATEWAY",
-                    description="Install the Matrix gateway or configure its executable path.",
+                    kind=CapabilityRequirementKind.CONFIG,
+                    name="matrix-route",
+                    description="Configure a named Matrix connection, endpoint, and exact route.",
                 ),
             ),
-            setup_hint="Follow the Matrix gateway setup guide and enable this tool in a profile.",
-            recovery_hint="Verify the gateway executable and Matrix device session.",
             documentation="docs/integrations/matrix-gateway.md",
             probe=_probe_matrix_gateway,
         ),
         tool_name=HostToolName(tool_name),
-        handler=_only_in_enabled_workspace(tool_name, handler),
+        handler=handler,
         access=access,
-        approval=ApprovalContract(),
+        approval=ApprovalContract(mandatory=access is HostActionAccess.WRITE),
         idempotency=IdempotencyContract(
             IdempotencyMode.NOT_REQUIRED
             if access is HostActionAccess.READ
@@ -257,7 +277,7 @@ def _matrix_action(
                 draft_from_request=_send_message_draft,
                 receipt_from_response=_send_message_receipt,
             )
-            if tool_name == "matrix_send_message"
+            if access is HostActionAccess.WRITE
             else None
         ),
     )
@@ -266,24 +286,17 @@ def _matrix_action(
 MATRIX_HOST_ACTIONS = HostActionRegistration(
     actions=(
         _matrix_action(
-            "chat.matrix.list",
-            "matrix_list_chats",
-            "List chats through the host-only Matrix communications gateway.",
-            _handle_list_chats,
+            "chat.matrix.route.read",
+            "matrix_route_read",
+            "Read messages from the Matrix route bound to this conversation.",
+            _handle_route_read,
             access=HostActionAccess.READ,
         ),
         _matrix_action(
-            "chat.matrix.message.list",
-            "matrix_list_messages",
-            "Read recent messages from one Matrix chat.",
-            _handle_list_messages,
-            access=HostActionAccess.READ,
-        ),
-        _matrix_action(
-            "chat.matrix.message.send",
-            "matrix_send_message",
-            "Send an approved message as the Matrix gateway owner.",
-            _handle_send_message,
+            "chat.matrix.route.send",
+            "matrix_route_send",
+            "Send an exactly approved reply on this conversation's Matrix route.",
+            _handle_route_send,
             access=HostActionAccess.WRITE,
         ),
     )
@@ -291,7 +304,22 @@ MATRIX_HOST_ACTIONS = HostActionRegistration(
 
 
 class MatrixGatewayPlugin:
-    """Expose host-only Matrix operations through Pynchy's IPC service boundary."""
+    """Provide Matrix connection runtimes and route-scoped host actions."""
+
+    @hookimpl
+    def pynchy_connection_runtime(self) -> tuple[MatrixConnectionRuntime, ...]:
+        settings = get_settings()
+        routes = resolve_matrix_routes(settings)
+        return tuple(
+            MatrixConnectionRuntime(
+                connection_name,
+                tuple(route for route in routes if route.connection_name == connection_name),
+                poll_interval_seconds=connection.poll_interval_seconds,
+            )
+            for connection_name, connection in settings.connections.items()
+            if isinstance(connection, MatrixConnectionConfig)
+            and any(route.connection_name == connection_name for route in routes)
+        )
 
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:

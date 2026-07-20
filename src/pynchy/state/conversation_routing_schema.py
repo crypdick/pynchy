@@ -9,6 +9,14 @@ CREATE TABLE IF NOT EXISTS external_receipts (
     received_at TEXT NOT NULL,
     PRIMARY KEY (provider, route, delivery_id)
 );
+
+CREATE TABLE IF NOT EXISTS external_provider_cursors (
+    provider TEXT NOT NULL,
+    connection_name TEXT NOT NULL,
+    cursor_value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (provider, connection_name)
+);
 INSERT OR IGNORE INTO external_receipts (
     provider, route, delivery_id, payload_sha256, received_at
 )
@@ -35,6 +43,7 @@ CREATE TABLE IF NOT EXISTS conversation_deliveries (
     conversation_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     received_at TEXT NOT NULL,
+    payload TEXT,
     claim_id TEXT,
     claimed_at TEXT,
     completed_at TEXT,

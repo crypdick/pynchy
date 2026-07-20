@@ -26,6 +26,7 @@ from pynchy.config.refs import parse_chat_ref, parse_connection_ref
 from pynchy.config.workspace_layout import (
     WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
 )
+from pynchy.plugins.integrations.matrix_routing_config import MatrixConnectionConfig
 
 # Reference strings whose well-formedness is proven by a validator. Carrying
 # the proof in a distinct type (per CONVENTIONS.md "Parse, don't validate") means
@@ -428,6 +429,7 @@ class WorkspaceConfig(_StrictModel):
     model: str | None = None
     chat: ValidatedChatRef | None = None
     proton_pass_env_file: str | None = None
+
     threads: list[WorkspaceThreadConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -448,6 +450,17 @@ class WorkspaceConfig(_StrictModel):
             msg = "proton_pass_env_file must be a non-empty relative path without '..'"
             raise ValueError(msg)
         return value
+
+
+class RouteConfig(_StrictModel):
+    """Provider-neutral placement and restriction for one exact endpoint."""
+
+    source: ValidatedChatRef
+    workspace: ValidatedWorkspaceName
+    activation: Literal["on_event", "on_demand"] | None = None
+    outbound: Literal["read_only", "approval_required"] | None = None
+    tools: tuple[ValidatedToolName, ...] | None = None
+    capabilities: dict[str, Literal["deny", "needs_human"]] = Field(default_factory=dict)
 
 
 class ReposConfig(_StrictModel):
@@ -556,9 +569,9 @@ ToolConfig = Annotated[
 ]
 
 
+ChannelConnectionConfig = SlackConnectionConfig | WhatsAppConnectionConfig | DiscordConnectionConfig
 ConnectionConfig = Annotated[
-    SlackConnectionConfig | WhatsAppConnectionConfig | DiscordConnectionConfig,
-    Field(discriminator="type"),
+    ChannelConnectionConfig | MatrixConnectionConfig, Field(discriminator="type")
 ]
 
 

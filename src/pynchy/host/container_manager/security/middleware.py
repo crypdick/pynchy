@@ -14,6 +14,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pynchy.capability_policy import (
+    capability_pattern_matches,
+    most_restrictive_capability_rule,
+)
 from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceSecurity
 
@@ -75,6 +79,10 @@ class SecurityPolicy:
     def notify_public_source_input(self) -> None:
         """Mark the invocation as having received provider-controlled input."""
         self._corruption_tainted = True
+
+    def notify_secret_source_input(self) -> None:
+        """Mark input itself as private data, independent of workspace files."""
+        self._secret_tainted = True
 
     def evaluate_read(self, service: str) -> PolicyDecision:
         """Evaluate a read operation on a service.
@@ -167,10 +175,11 @@ class SecurityPolicy:
         )
 
     def _matching_capability_rule(self, capability: str) -> CapabilityRule | None:
-        for candidate in _capability_candidates(capability):
-            if candidate in self._capabilities:
-                return self._capabilities[candidate]
-        return None
+        return most_restrictive_capability_rule(
+            rule
+            for pattern, rule in self._capabilities.items()
+            if capability_pattern_matches(pattern, capability)
+        )
 
     def _forbidden_write_decision(
         self,
@@ -220,13 +229,3 @@ class SecurityPolicy:
         if detected_secrets:
             reason_parts.append(f"secrets detected in payload ({', '.join(detected_secrets)})")
         return "; ".join(reason_parts) if reason_parts else None
-
-
-def _capability_candidates(capability: str) -> list[str]:
-    parts = [part for part in capability.split(".") if part]
-    if not parts:
-        return []
-
-    candidates = [".".join(parts)]
-    candidates.extend(".".join([*parts[:index], "*"]) for index in range(len(parts) - 1, 0, -1))
-    return candidates

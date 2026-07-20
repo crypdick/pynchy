@@ -182,6 +182,9 @@ class MockStatusDeps:
     def get_channel_status(self) -> dict[str, bool]:
         return self._channels
 
+    def get_connection_status(self) -> dict[str, bool]:
+        return {}
+
     def get_queue_snapshot(self) -> dict[str, Any]:
         return self._queue
 
@@ -1062,6 +1065,7 @@ class TestCollectStatus:
             "service",
             "deploy",
             "channels",
+            "connections",
             "gateway",
             "queue",
             "repos",

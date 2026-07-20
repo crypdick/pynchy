@@ -15,7 +15,7 @@ fit your environment.
 | Integration | What it does |
 |-------------|--------------|
 | [GitHub PR notifications](github.md) | Send signed pull-request events to their mapped workspace. |
-| [Matrix communications](matrix-gateway.md) | Read bridged chats and send approval-gated replies as the account owner. |
+| [Matrix communications](matrix-gateway.md) | Route exact bridged chats into durable conversations and send approval-gated replies. |
 | [Proton Mail](proton-mail.md) | Read and send mail through a host-side MCP server. |
 | [Slack MCP](slack-mcp.md) | Give agents read access to Slack through browser-session tokens. |
 | [X (Twitter)](x-integration.md) | Post and interact with X through browser automation. |

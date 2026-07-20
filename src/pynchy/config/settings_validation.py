@@ -107,6 +107,30 @@ def validate_workspace_chat_references(settings: Settings) -> None:
             raise ValueError(f"workspaces.{workspace_name}.chat {error}")
 
 
+def validate_route_references(settings: Settings) -> None:
+    """Ensure each route targets an existing endpoint and parent workspace."""
+    used_sources: set[str] = set()
+    for route_name, route in settings.routes.items():
+        parsed = parse_chat_ref(route.source)
+        if parsed is None:
+            raise ValueError(f"routes.{route_name}.source is not a chat endpoint reference")
+        connection = settings.connections.get(parsed.name)
+        if connection is None:
+            raise ValueError(f"routes.{route_name}.source references an unknown connection")
+        if connection.type != parsed.platform:
+            raise TypeError(f"routes.{route_name}.source platform does not match its connection")
+        endpoint = connection.chat.get(parsed.chat)
+        if endpoint is None:
+            raise ValueError(f"routes.{route_name}.source references an unknown endpoint")
+        if getattr(endpoint, "enabled", True) is not True:
+            raise ValueError(f"routes.{route_name}.source references a disabled endpoint")
+        if route.workspace not in settings.workspaces:
+            raise ValueError(f"routes.{route_name}.workspace references an unknown workspace")
+        if route.source in used_sources:
+            raise ValueError("One endpoint cannot map to multiple enabled routes")
+        used_sources.add(route.source)
+
+
 def validate_canary_target_profile(
     settings: _CanaryValidationSettings,
     expand_profile_names: Callable[[str], list[str]],

@@ -235,9 +235,11 @@ async def _handle_bash_security_check(
             request_id=request_id,
             tool_name="Bash",
             source_group=source_group,
-            chat_jid=chat_jid,
+            approval_chat_jid=chat_jid,
             request_data={"command": command},
             handler_type="security_bash",
+            corruption_tainted=gate.policy.corruption_tainted,
+            secret_tainted=gate.policy.secret_tainted,
         )
 
         await deps.broadcast_to_channels(

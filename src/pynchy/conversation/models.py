@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import NewType
+from typing import Any, NewType
 
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves model annotations at runtime.
     ChatJid,
@@ -101,6 +101,7 @@ class ConversationDelivery:
     conversation_id: ConversationId
     status: ConversationDeliveryStatus
     received_at: str
+    payload: dict[str, Any] | None = None
     claim_id: ConversationClaimId | None = None
     claimed_at: str | None = None
     completed_at: str | None = None

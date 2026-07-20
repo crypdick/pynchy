@@ -43,6 +43,8 @@ def _row_to_turn(row: Row) -> InFlightTurn:
         claimed_at=row["claimed_at"],
         scheduled_base_chat_jid=row["scheduled_base_chat_jid"],
         scheduled_thread_slot=row["scheduled_thread_slot"],
+        conversation_claim_id=row["conversation_claim_id"],
+        input_source=row["input_source"],
     )
 
 
@@ -55,8 +57,9 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             turn_id, chat_jid, group_folder, work_kind, input_messages,
             input_start_cursor, input_end_cursor, started_at, task_id,
             session_id, output_sent, interrupted_at, deploy_id, claimed_at,
-            scheduled_base_chat_jid, scheduled_thread_slot
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            scheduled_base_chat_jid, scheduled_thread_slot,
+            conversation_claim_id, input_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             turn.turn_id,
@@ -75,6 +78,8 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             turn.claimed_at,
             turn.scheduled_base_chat_jid,
             turn.scheduled_thread_slot,
+            turn.conversation_claim_id,
+            turn.input_source,
         ),
     )
     await db.commit()
@@ -206,8 +211,9 @@ async def complete_in_flight_turn(
     turn_id: str,
     *,
     last_agent_timestamps: dict[str, str] | None = None,
+    conversation_claim_id: str | None = None,
 ) -> None:
-    """Finalize a turn, atomically with its durable message cursor when provided."""
+    """Finalize a turn atomically with its cursor and routed-delivery claim."""
     async with atomic_write() as db:
         if last_agent_timestamps is not None:
             await db.execute(
@@ -215,3 +221,14 @@ async def complete_in_flight_turn(
                 ("last_agent_timestamp", json.dumps(last_agent_timestamps)),
             )
         await db.execute("DELETE FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
+        if conversation_claim_id is not None:
+            cursor = await db.execute(
+                """
+                UPDATE conversation_deliveries
+                SET status = 'completed', completed_at = ?
+                WHERE claim_id = ? AND status = 'claimed'
+                """,
+                (_timestamp(), conversation_claim_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Conversation delivery claim disappeared before turn completion")

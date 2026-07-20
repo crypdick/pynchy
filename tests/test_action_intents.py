@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,15 +29,34 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
+from pynchy.config.merge import ResolvedWorkspaceConfig
+from pynchy.conversation.models import (
+    ControlSurface,
+    ConversationControlBinding,
+    ConversationId,
+)
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.container_manager.action_intents import (
     execute_action_intent,
     prepare_action_intent,
 )
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
-from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
+from pynchy.host.container_manager.security.gate import SecurityGate, create_gate, destroy_gate
+from pynchy.host.container_manager.security.identity import request_payload_hash
 from pynchy.plugins.host_actions import HostActionCatalog
-from pynchy.plugins.integrations.matrix_gateway import MATRIX_HOST_ACTIONS
+from pynchy.plugins.integrations import matrix_gateway
+from pynchy.plugins.integrations.matrix_gateway_client import MatrixPortalAssertion
+from pynchy.plugins.integrations.matrix_route_registry import (
+    ActiveMatrixRoute,
+    bind_active_matrix_route,
+    clear_active_matrix_routes,
+)
+from pynchy.plugins.integrations.matrix_route_resolution import ResolvedMatrixRoute
+from pynchy.plugins.integrations.matrix_routing_config import (
+    MatrixConnectionConfig,
+    MatrixEndpointConfig,
+)
 from pynchy.state import (
     action_intent_to_dict,
     approve_action_intent,
@@ -41,15 +64,22 @@ from pynchy.state import (
     expire_action_intent,
     get_action_intent_by_request,
     init_test_database,
+    mark_action_intent_awaiting_approval,
     mark_action_intent_executing,
     recover_incomplete_action_intents,
 )
-from pynchy.types import ServiceTrustConfig, WorkspaceSecurity
+from pynchy.types import ChatJid, GroupFolder, ServiceTrustConfig, WorkspaceSecurity
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture(autouse=True)
 async def _database():
     await init_test_database()
+    clear_active_matrix_routes()
+    yield
+    clear_active_matrix_routes()
 
 
 def _transactional_action(handler: AsyncMock) -> HostActionDescriptor:
@@ -79,7 +109,7 @@ def _transactional_action(handler: AsyncMock) -> HostActionDescriptor:
             kind=CapabilityKind.HOST_ACTION,
             owner="tests",
             summary="Send a transactional test message.",
-            action_ids=(ActionId("chat.matrix.message.send"),),
+            action_ids=(ActionId("chat.matrix.route.send"),),
         ),
         tool_name=HostToolName("test_transactional_send"),
         handler=handler,
@@ -93,6 +123,193 @@ def _transactional_action(handler: AsyncMock) -> HostActionDescriptor:
             receipt_from_response=receipt_from_response,
         ),
     )
+
+
+_MATRIX_ROOM = "!family:matrix.example.com"
+_MATRIX_CONTROL = ChatJid("discord:channel:matrix-family")
+_MATRIX_CONVERSATION = ConversationId("conv_family")
+_MATRIX_FOLDER = routed_conversation_folder("support", _MATRIX_CONVERSATION)
+
+
+def _matrix_route(*, outbound: str = "approval_required") -> ResolvedMatrixRoute:
+    connection = MatrixConnectionConfig(
+        expected_user_id="@me:matrix.example.com",
+        chat={"family": MatrixEndpointConfig(room_id=_MATRIX_ROOM, title="Family")},
+    )
+    return ResolvedMatrixRoute(
+        name="family",
+        connection_name="personal-chats",
+        connection=connection,
+        endpoint_name="family",
+        endpoint=connection.chat["family"],
+        control_title="Family",
+        workspace="support",
+        activation="on_event",
+        outbound=outbound,  # type: ignore[arg-type]
+        tools=("matrix_route_read", "matrix_route_send"),
+        capabilities={},
+    )
+
+
+def _bind_matrix_route(*, outbound: str = "approval_required") -> None:
+    bind_active_matrix_route(
+        ActiveMatrixRoute(
+            workspace_folder=_MATRIX_FOLDER,
+            conversation_id=_MATRIX_CONVERSATION,
+            control_thread_jid=_MATRIX_CONTROL,
+            route=_matrix_route(outbound=outbound),
+            portal=MatrixPortalAssertion(
+                room_id=_MATRIX_ROOM,
+                owner_user_id="@me:matrix.example.com",
+                joined=True,
+            ),
+        )
+    )
+
+
+def _matrix_control_binding(*, thread_jid: ChatJid = _MATRIX_CONTROL) -> ConversationControlBinding:
+    return ConversationControlBinding(
+        conversation_id=_MATRIX_CONVERSATION,
+        surface=ControlSurface.DISCORD,
+        parent_workspace=GroupFolder("support"),
+        parent_jid=ChatJid("discord:channel:support"),
+        thread_jid=thread_jid,
+        title="Family",
+        updated_at=datetime.now(UTC).isoformat(),
+    )
+
+
+async def _write_matrix_approval(
+    tmp_path,
+    *,
+    request_id: str,
+    timestamp: str | None = None,
+) -> tuple[HostActionDescriptor, AsyncMock, dict[str, object], Path]:
+    _bind_matrix_route()
+    original = matrix_gateway.MATRIX_HOST_ACTIONS.action_for("matrix_route_send")
+    assert original is not None
+    provider_handler = AsyncMock(return_value={"result": "provider must not run"})
+    action = replace(original, handler=provider_handler)
+    request_data: dict[str, object] = {
+        "type": "service:matrix_route_send",
+        "request_id": request_id,
+        "source_group": _MATRIX_FOLDER,
+        "body": "private reply",
+    }
+    intent, replay = await prepare_action_intent(
+        action,
+        request_data,
+        workspace=_MATRIX_FOLDER,
+        chat_jid=str(_MATRIX_CONTROL),
+        request_id=request_id,
+    )
+    assert replay is None
+    assert intent is not None
+    await mark_action_intent_awaiting_approval(request_id, policy_decision="human required")
+    pending = {
+        "request_id": request_id,
+        "guarded_action_id": request_id,
+        "request_payload_hash": str(request_payload_hash(request_data)),
+        "short_id": "mx",
+        "tool_name": "matrix_route_send",
+        "source_group": _MATRIX_FOLDER,
+        "approval_chat_jid": str(_MATRIX_CONTROL),
+        "origin_conversation_id": str(_MATRIX_CONVERSATION),
+        "handler_type": "service",
+        "request_data": request_data,
+        "action_payload": intent.payload,
+        "action_payload_sha256": hashlib.sha256(
+            json.dumps(intent.payload, sort_keys=True).encode()
+        ).hexdigest(),
+        "timestamp": timestamp or datetime.now(UTC).isoformat(),
+        "expires_after_seconds": 300,
+        "approval_scope": "exact_request",
+        "corruption_tainted": False,
+        "secret_tainted": False,
+    }
+    pending_path = (
+        tmp_path / "approvals" / _MATRIX_FOLDER / "pending_approvals" / f"{request_id}.json"
+    )
+    pending_path.parent.mkdir(parents=True, exist_ok=True)
+    pending_path.write_text(json.dumps(pending), encoding="utf-8")
+    decision = {
+        "request_id": request_id,
+        "guarded_action_id": pending["guarded_action_id"],
+        "request_payload_hash": pending["request_payload_hash"],
+        "source_group": pending["source_group"],
+        "approved": True,
+        "decided_by": "operator",
+        "decided_at": datetime.now(UTC).isoformat(),
+    }
+    decision_path = (
+        tmp_path / "approvals" / _MATRIX_FOLDER / "approval_decisions" / f"{request_id}.json"
+    )
+    decision_path.parent.mkdir(parents=True, exist_ok=True)
+    decision_path.write_text(json.dumps(decision), encoding="utf-8")
+    return action, provider_handler, pending, decision_path
+
+
+def _resolved_matrix_workspace(*, tools: list[str] | None = None) -> ResolvedWorkspaceConfig:
+    return ResolvedWorkspaceConfig(
+        prompts=[],
+        skills=[],
+        tools=tools if tools is not None else ["matrix_route_read", "matrix_route_send"],
+        repo=[],
+        model=None,
+        execution_mode="container",
+        cwd=None,
+        is_admin=False,
+        contains_secrets=False,
+    )
+
+
+async def _process_matrix_approval(
+    tmp_path: Path,
+    action: HostActionDescriptor,
+    decision_path: Path,
+    *,
+    resolved_tools: list[str] | None = None,
+    binding: ConversationControlBinding | None = None,
+    binding_missing: bool = False,
+    policy_available: bool = True,
+) -> dict[str, object]:
+    settings = make_settings(data_dir=tmp_path)
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+            return_value=settings,
+        ),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
+            return_value=HostActionCatalog(actions=(action,)),
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
+            return_value=SecurityGate(WorkspaceSecurity()) if policy_available else None,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_replay."
+            "workspace_config.load_resolved_config",
+            return_value=(
+                _resolved_matrix_workspace(tools=resolved_tools) if policy_available else None
+            ),
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.approval_replay.get_conversation_control_binding",
+            new_callable=AsyncMock,
+            return_value=(
+                None
+                if binding_missing
+                else binding
+                if binding is not None
+                else _matrix_control_binding()
+            ),
+        ),
+    ):
+        await process_approval_decision(decision_path, _MATRIX_FOLDER)
+    response_path = tmp_path / "ipc" / _MATRIX_FOLDER / "responses" / decision_path.name
+    return json.loads(response_path.read_text(encoding="utf-8"))
 
 
 @pytest.mark.asyncio
@@ -122,7 +339,7 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
         "body": "private payload",
     }
     decision_path = (
-        tmp_path / "ipc" / "test-workspace" / "approval_decisions" / f"{request_id}.json"
+        tmp_path / "approvals" / "test-workspace" / "approval_decisions" / f"{request_id}.json"
     )
     try:
         with (
@@ -147,7 +364,9 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
         assert intent.status is ActionIntentStatus.AWAITING_APPROVAL
         pending = json.loads(
             (
-                settings.data_dir / "ipc/test-workspace/pending_approvals" / f"{request_id}.json"
+                settings.data_dir
+                / "approvals/test-workspace/pending_approvals"
+                / f"{request_id}.json"
             ).read_text(encoding="utf-8")
         )
         decision_path.parent.mkdir(parents=True, exist_ok=True)
@@ -171,7 +390,7 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
                 return_value=settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=HostActionCatalog(actions=(action,)),
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
@@ -185,6 +404,123 @@ async def test_human_approval_executes_exactly_one_transactional_provider_call(t
     assert intent.status is ActionIntentStatus.CONFIRMED
     assert intent.approver == "test-user"
     handler.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expired_matrix_approval_never_reaches_provider(tmp_path: Path) -> None:
+    request_id = "matrix-expired"
+    action, provider, _pending, decision = await _write_matrix_approval(
+        tmp_path,
+        request_id=request_id,
+        timestamp=(datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+    )
+
+    response = await _process_matrix_approval(tmp_path, action, decision)
+
+    provider.assert_not_awaited()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.FAILED
+    assert "expired" in str(response["error"]).lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tampering",
+    ["payload_hash", "durable_intent", "pending_conversation", "pending_chat"],
+)
+async def test_tampered_matrix_approval_evidence_never_reaches_provider(
+    tmp_path: Path,
+    tampering: str,
+) -> None:
+    request_id = f"matrix-tampered-{tampering}"
+    action, provider, pending, decision = await _write_matrix_approval(
+        tmp_path,
+        request_id=request_id,
+    )
+    pending_path = decision.parents[1] / "pending_approvals" / decision.name
+    if tampering == "payload_hash":
+        pending["action_payload_sha256"] = "0" * 64
+    elif tampering == "durable_intent":
+        altered = dict(pending["action_payload"])
+        altered["body"] = "replacement payload"
+        pending["action_payload"] = altered
+        pending["action_payload_sha256"] = hashlib.sha256(
+            json.dumps(altered, sort_keys=True).encode()
+        ).hexdigest()
+    elif tampering == "pending_conversation":
+        pending["origin_conversation_id"] = "different-conversation"
+    else:
+        pending["approval_chat_jid"] = "discord:channel:different-thread"
+    pending_path.write_text(json.dumps(pending), encoding="utf-8")
+
+    response = await _process_matrix_approval(tmp_path, action, decision)
+
+    provider.assert_not_awaited()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.FAILED
+    assert any(
+        word in str(response["error"]).lower()
+        for word in ("payload", "intent", "conversation", "destination")
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("binding_change", ["missing", "replaced"])
+async def test_changed_matrix_control_binding_never_reaches_provider(
+    tmp_path: Path,
+    binding_change: str,
+) -> None:
+    request_id = f"matrix-binding-{binding_change}"
+    action, provider, _pending, decision = await _write_matrix_approval(
+        tmp_path,
+        request_id=request_id,
+    )
+    replacement = _matrix_control_binding(thread_jid=ChatJid("discord:channel:replacement"))
+
+    response = await _process_matrix_approval(
+        tmp_path,
+        action,
+        decision,
+        binding=replacement,
+        binding_missing=binding_change == "missing",
+    )
+
+    provider.assert_not_awaited()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.FAILED
+    assert "binding changed" in str(response["error"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("policy_change", ["route_removed", "tool_removed", "read_only"])
+async def test_matrix_approval_rechecks_current_route_policy_before_provider(
+    tmp_path: Path,
+    policy_change: str,
+) -> None:
+    request_id = f"matrix-policy-{policy_change}"
+    action, provider, _pending, decision = await _write_matrix_approval(
+        tmp_path,
+        request_id=request_id,
+    )
+    if policy_change == "read_only":
+        _bind_matrix_route(outbound="read_only")
+
+    response = await _process_matrix_approval(
+        tmp_path,
+        action,
+        decision,
+        resolved_tools=(["matrix_route_read"] if policy_change == "tool_removed" else None),
+        policy_available=policy_change != "route_removed",
+    )
+
+    provider.assert_not_awaited()
+    intent = await get_action_intent_by_request(request_id)
+    assert intent is not None
+    assert intent.status is ActionIntentStatus.FAILED
+    assert "error" in response
 
 
 async def _prepared_approved_intent(action: HostActionDescriptor, request_id: str) -> None:
@@ -317,19 +653,3 @@ async def test_expired_approval_closes_unexecuted_action_intent():
 
     assert expired is not None
     assert expired.status is ActionIntentStatus.EXPIRED
-
-
-def test_matrix_send_declares_canonical_draft_and_event_receipt():
-    action = MATRIX_HOST_ACTIONS.action_for("matrix_send_message")
-    assert action is not None
-    assert action.action_intent is not None
-
-    draft = action.action_intent.draft_from_request(
-        {"room_id": "!friend:matrix.example.com", "body": "hello"}
-    )
-    receipt = action.action_intent.receipt_from_response(
-        {"result": '{"event_id":"$event","room_id":"!friend:matrix.example.com"}'}
-    )
-
-    assert draft.payload == {"room_id": "!friend:matrix.example.com", "body": "hello"}
-    assert receipt.provider_request_id == "$event"

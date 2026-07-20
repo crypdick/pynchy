@@ -157,6 +157,20 @@ class DiscordAccess:
             return self._decide_dm(ctx)
         return self._decide_guild(ctx)
 
+    def decide_registered_workspace(self, ctx: InboundContext) -> Decision:
+        """Authorize a known runtime destination without bypassing sender policy."""
+        if ctx.author_is_bot or ctx.is_dm or self._cfg.group_policy == "disabled":
+            return "deny"
+        guild = self._lookup_guild(ctx)
+        if guild is None:
+            # Runtime registration supplies the missing destination identity. With
+            # no matching guild config, there is no narrower member policy to apply.
+            return "allow"
+        channel = self._lookup_channel(guild, ctx)
+        if channel is not None and not channel.enabled:
+            return "deny"
+        return self._decide_member(ctx, guild, channel)
+
     def _decide_dm(self, ctx: InboundContext) -> Decision:
         policy = self._cfg.dm_policy
         if policy == "disabled":

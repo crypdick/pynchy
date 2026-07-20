@@ -1,7 +1,7 @@
 """Approval command handlers for the chat pipeline.
 
-Handles ``approve <id>``, ``deny <id>``, and ``pending`` commands by
-writing decision files that the IPC watcher picks up.
+Handles ``approve <id>``, ``deny <id>``, and ``pending`` commands using
+host-owned approval state that is never mounted into an agent runtime.
 """
 
 from __future__ import annotations
@@ -32,14 +32,10 @@ async def handle_approval_command(
     short_id: str,
     sender: str,
 ) -> None:
-    """Process an approve/deny command by writing a decision file.
-
-    The IPC watcher picks up the decision file and executes or
-    denies the pending request.
-    """
+    """Persist and immediately process an approve/deny command."""
     pending = find_pending_by_short_id(short_id)
 
-    if pending is None or pending.get("chat_jid") != chat_jid:
+    if pending is None or pending.get("approval_chat_jid") != chat_jid:
         await deps.broadcast_host_message(
             chat_jid,
             f"No pending approval found for ID: {short_id}",
@@ -61,7 +57,14 @@ async def handle_approval_command(
         "decided_at": datetime.now(UTC).isoformat(),
     }
 
-    write_json_atomic(decisions_dir / f"{request_id}.json", decision_data, indent=2)
+    decision_file = decisions_dir / f"{request_id}.json"
+    write_json_atomic(decision_file, decision_data, indent=2)
+
+    from pynchy.host.container_manager.ipc.handlers_approval import (  # noqa: PLC0415, RUF100 - lazy import avoids loading service dispatch until a human decides.
+        process_approval_decision,
+    )
+
+    await process_approval_decision(decision_file, source_group, deps=deps)
 
     verb = "Approved" if approved else "Denied"
     await deps.broadcast_host_message(
@@ -70,7 +73,7 @@ async def handle_approval_command(
     )
 
     logger.info(
-        "Approval decision written",
+        "Approval decision processed",
         request_id=request_id,
         action=action,
         decided_by=sender,

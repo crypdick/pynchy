@@ -59,6 +59,10 @@ class SecurityGate:
         """Forward initial public-source taint to the policy."""
         self._policy.notify_public_source_input()
 
+    def notify_secret_source_input(self) -> None:
+        """Forward conservative private-input taint to the policy."""
+        self._policy.notify_secret_source_input()
+
     def grant_session_tool_approval(self, tool_name: str) -> None:
         """Approve one opted-in host tool for this gate's session lifetime."""
         # Approval scope belongs to each tool: multi-step computer use should
@@ -85,8 +89,10 @@ def evaluate_host_action_policy(
         else gate.evaluate_write(action.service_name, data)
     )
     tool_name = str(action.tool_name)
-    needs_human = capability.needs_human or (
-        service.needs_human and not capability.overrides_human_approval
+    needs_human = (
+        capability.needs_human
+        or (service.needs_human and not capability.overrides_human_approval)
+        or action.approval.mandatory
     )
     approval_granted = (
         service.allowed
@@ -97,6 +103,8 @@ def evaluate_host_action_policy(
     reasons = [reason for reason in (capability.reason, service.reason) if reason]
     if capability.overrides_human_approval and service.needs_human:
         reasons.append("Human approval suppressed by explicit capability allow")
+    if action.approval.mandatory:
+        reasons.append("Host action requires exact human approval")
     if approval_granted:
         reasons.append(f"Session approval active for tool '{tool_name}'")
     return PolicyDecision(
@@ -120,11 +128,14 @@ def create_gate(
     security: WorkspaceSecurity,
     *,
     public_source_input: bool = False,
+    secret_source_input: bool = False,
 ) -> SecurityGate:
     """Create and register a SecurityGate for a container invocation."""
     gate = SecurityGate(security)
     if public_source_input:
         gate.notify_public_source_input()
+    if secret_source_input:
+        gate.notify_secret_source_input()
     _gates[source_group, invocation_ts] = gate
     return gate
 

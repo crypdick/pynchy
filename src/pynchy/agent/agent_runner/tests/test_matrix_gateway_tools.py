@@ -11,10 +11,11 @@ from agent_runner.agent_tools import list_tools
 async def test_matrix_gateway_tools_are_advertised() -> None:
     tools = {tool.name: tool for tool in await list_tools()}
 
-    assert set(tools) >= {
-        "matrix_list_chats",
-        "matrix_list_messages",
-        "matrix_send_message",
+    assert {name for name in tools if name.startswith("matrix_")} == {
+        "matrix_route_read",
+        "matrix_route_send",
     }
-    assert tools["matrix_send_message"].inputSchema["required"] == ["room_id", "body"]
-    assert "requires approval" in tools["matrix_send_message"].description
+    assert "room_id" not in tools["matrix_route_read"].inputSchema["properties"]
+    assert "room_id" not in tools["matrix_route_send"].inputSchema["properties"]
+    assert tools["matrix_route_send"].inputSchema["required"] == ["body"]
+    assert "requires human approval" in tools["matrix_route_send"].description

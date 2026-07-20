@@ -53,11 +53,11 @@ class TestCreatePendingApproval:
                 request_id="aabb001122334455",
                 tool_name="x_post",
                 source_group="personal",
-                chat_jid="group@g.us",
+                approval_chat_jid="group@g.us",
                 request_data={"type": "service:x_post", "text": "hello"},
             )
 
-        pending_dir = ipc_dir / "personal" / "pending_approvals"
+        pending_dir = ipc_dir.parent / "approvals" / "personal" / "pending_approvals"
         files = list(pending_dir.glob("*.json"))
         assert len(files) == 1
         assert files[0].name == "aabb001122334455.json"
@@ -67,7 +67,7 @@ class TestCreatePendingApproval:
             "request_id": "aabb001122334455",
             "tool_name": "x_post",
             "source_group": "personal",
-            "chat_jid": "group@g.us",
+            "approval_chat_jid": "group@g.us",
         }
         for field_name, expected_value in expected_fields.items():
             assert data[field_name] == expected_value
@@ -76,6 +76,8 @@ class TestCreatePendingApproval:
         assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789" for c in data["short_id"])
         assert data["request_data"]["text"] == "hello"
         assert "timestamp" in data
+        assert data["corruption_tainted"] is False
+        assert data["secret_tainted"] is False
 
     def test_atomic_write_no_tmp_left(self, ipc_dir: Path, settings):
         with patch(
@@ -85,11 +87,11 @@ class TestCreatePendingApproval:
                 request_id="abc123",
                 tool_name="test",
                 source_group="grp",
-                chat_jid="j@g.us",
+                approval_chat_jid="j@g.us",
                 request_data={},
             )
 
-        pending_dir = ipc_dir / "grp" / "pending_approvals"
+        pending_dir = ipc_dir.parent / "approvals" / "grp" / "pending_approvals"
         assert not list(pending_dir.glob("*.tmp"))
 
     def test_returns_short_id(self, ipc_dir: Path, settings):
@@ -100,7 +102,7 @@ class TestCreatePendingApproval:
                 request_id="aabb001122334455",
                 tool_name="x_post",
                 source_group="personal",
-                chat_jid="group@g.us",
+                approval_chat_jid="group@g.us",
                 request_data={},
             )
 
@@ -227,7 +229,9 @@ class TestSweepExpiredApprovals:
             )
 
             # Backdate the file
-            pending_file = ipc_dir / "grp" / "pending_approvals" / "req-old.json"
+            pending_file = (
+                ipc_dir.parent / "approvals" / "grp" / "pending_approvals" / "req-old.json"
+            )
             data = json.loads(pending_file.read_text())
             data["timestamp"] = (datetime.now(UTC) - timedelta(seconds=2)).isoformat()
             pending_file.write_text(json.dumps(data))
@@ -254,12 +258,14 @@ class TestSweepExpiredApprovals:
             expired = await sweep_expired_approvals()
 
         assert len(expired) == 0
-        assert (ipc_dir / "grp" / "pending_approvals" / "req-fresh.json").exists()
+        assert (
+            ipc_dir.parent / "approvals" / "grp" / "pending_approvals" / "req-fresh.json"
+        ).exists()
 
     @pytest.mark.asyncio
     async def test_cleans_orphaned_decisions(self, ipc_dir: Path, settings):
         # Create decision with no matching pending
-        decisions_dir = ipc_dir / "grp" / "approval_decisions"
+        decisions_dir = ipc_dir.parent / "approvals" / "grp" / "approval_decisions"
         decisions_dir.mkdir(parents=True)
         orphan = decisions_dir / "orphan-req.json"
         orphan.write_text(json.dumps({"request_id": "orphan-req", "approved": True}))

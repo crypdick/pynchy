@@ -111,7 +111,7 @@ def _response_path(tmp_path: Path, request_id: str) -> Path:
 
 
 def _pending_path(tmp_path: Path, request_id: str) -> Path:
-    return tmp_path / "ipc" / "mygroup" / "pending_approvals" / f"{request_id}.json"
+    return tmp_path / "approvals" / "mygroup" / "pending_approvals" / f"{request_id}.json"
 
 
 class TestApprovalE2E:
@@ -130,7 +130,7 @@ class TestApprovalE2E:
 
     @staticmethod
     def _approved_decision(tmp_path: Path) -> tuple[Path, dict[str, object]]:
-        decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
+        decisions_dir = tmp_path / "approvals" / "mygroup" / "approval_decisions"
         decision_files = list(decisions_dir.glob("*.json"))
         assert len(decision_files) == 1
         decision = json.loads(decision_files[0].read_text(encoding="utf-8"))
@@ -186,9 +186,15 @@ class TestApprovalE2E:
         approval_settings,
         short_id: str,
     ) -> None:
-        with patch(
-            "pynchy.host.container_manager.security.approval.get_settings",
-            return_value=approval_settings,
+        with (
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=approval_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
+                new_callable=AsyncMock,
+            ),
         ):
             await handle_approval_command(deps, "chat@g.us", "approve", short_id, "testuser")
 
@@ -210,7 +216,7 @@ class TestApprovalE2E:
                 return_value=approval_settings,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog("x_post", handler=mock_handler),
             ),
         ):
@@ -336,19 +342,27 @@ class TestApprovalE2E:
             await registry.dispatch(data, "mygroup", False, deps)
 
         # Read the actual short_id from the pending file
-        pending_path = tmp_path / "ipc" / "mygroup" / "pending_approvals" / "ccdd556677889900.json"
+        pending_path = (
+            tmp_path / "approvals" / "mygroup" / "pending_approvals" / "ccdd556677889900.json"
+        )
         pending_data = json.loads(pending_path.read_text(encoding="utf-8"))
         short_id = pending_data["short_id"]
 
         # Step 2: User denies
-        with patch(
-            "pynchy.host.container_manager.security.approval.get_settings",
-            return_value=approval_settings,
+        with (
+            patch(
+                "pynchy.host.container_manager.security.approval.get_settings",
+                return_value=approval_settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
+                new_callable=AsyncMock,
+            ),
         ):
             await handle_approval_command(deps, "chat@g.us", "deny", short_id, "testuser")
 
         # Step 3: IPC handler processes denial
-        decisions_dir = tmp_path / "ipc" / "mygroup" / "approval_decisions"
+        decisions_dir = tmp_path / "approvals" / "mygroup" / "approval_decisions"
         decision_files = list(decisions_dir.glob("*.json"))
 
         with (
@@ -415,7 +429,7 @@ class TestApprovalE2E:
         assert response_path.exists()
 
         # No pending approval created
-        pending_dir = tmp_path / "ipc" / "mygroup" / "pending_approvals"
+        pending_dir = tmp_path / "approvals" / "mygroup" / "pending_approvals"
         assert not pending_dir.exists() or not list(pending_dir.glob("*.json"))
 
         # No notification broadcast

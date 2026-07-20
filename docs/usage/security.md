@@ -100,6 +100,10 @@ capability status surface; MCP tool calls use
 `mcp.<tool-name>.<call-name>`. A trailing `.*` applies to all matching calls,
 such as `mcp.email.*`.
 
+Pynchy intersects every exact and wildcard rule that matches a capability. The
+most restrictive decision wins (`deny`, then `needs_human`, then `allow`), so a
+narrow child route cannot weaken a broader parent denial.
+
 Each decision has authoritative semantics:
 
 - `allow` permits the matching capability without human approval, including

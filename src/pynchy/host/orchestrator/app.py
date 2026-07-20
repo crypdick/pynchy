@@ -23,6 +23,7 @@ from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype re
 from pynchy.host.orchestrator import agent_runner, session_handler, update_offer
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
 from pynchy.host.orchestrator.messaging import (
     ask_user_handler,
     channel_handler,
@@ -56,6 +57,7 @@ from pynchy.state import (
     get_all_workspace_profiles,
     get_router_state,
     save_router_state_batch,
+    set_session,
     set_workspace_profile,
     store_message,
     store_message_direct,
@@ -63,8 +65,10 @@ from pynchy.state import (
 from pynchy.types import (
     Channel,
     ContainerOutput,
+    GroupFolder,
     NewMessage,
     OutboundEvent,
+    SessionId,
     WorkspaceProfile,
 )
 
@@ -92,6 +96,7 @@ class PynchyApp(ThreadRouting):
         self._memory: MemoryProvider | None = None
         self._speech_synthesizer: SpeechSynthesizer | None = None
         self._subsystem_tasks: list[object] = []
+        self.connection_runtime_owner = ConnectionRuntimeOwner()
         self.plugin_manager: pluggy.PluginManager | None = None
 
         # Shared broadcast infrastructure — single code path for all channel sends.
@@ -129,6 +134,11 @@ class PynchyApp(ThreadRouting):
 
     def add_subsystem_task(self, task: object) -> None:
         self._subsystem_tasks.append(task)
+
+    async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
+        """Attach a conversation-owned session to its current runtime placement."""
+        self.sessions[group_folder] = session_id
+        await set_session(GroupFolder(group_folder), session_id)
 
     async def cleanup_http_runner(self) -> None:
         if self._http_runner is None:
@@ -171,7 +181,10 @@ class PynchyApp(ThreadRouting):
 
     def mark_dispatched(self, chat_jid: str, timestamp: str) -> None:
         """Record the furthest message timestamp dispatched to an active container."""
-        self._dispatched_through[chat_jid] = timestamp
+        self._dispatched_through[chat_jid] = max(
+            self._dispatched_through.get(chat_jid, ""),
+            timestamp,
+        )
 
     def pop_dispatched(self, chat_jid: str, default: str) -> str:
         """Return and clear the in-memory dispatched timestamp for a chat."""

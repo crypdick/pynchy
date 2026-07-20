@@ -34,13 +34,8 @@ class IpcEventHandler(FileSystemEventHandler):
         try:
             relative = file_path.relative_to(self._ipc_base_dir)
             parts = relative.parts
-            # Expected: <group>/<messages|requests|output|approval_decisions>/<file>.json
-            if len(parts) == 3 and parts[1] in (
-                "messages",
-                "requests",
-                "output",
-                "approval_decisions",
-            ):
+            # Expected: <group>/<messages|requests|output>/<file>.json
+            if len(parts) == 3 and parts[1] in ("messages", "requests", "output"):
                 self._loop.call_soon_threadsafe(self._queue.put_nowait, file_path)
         except (ValueError, IndexError):
             pass  # File not under IPC base dir or malformed path — ignore

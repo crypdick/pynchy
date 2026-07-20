@@ -223,22 +223,16 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="proton.mail.round.trip",
     ),
     agent_action(
-        "chat.matrix.list",
+        "chat.matrix.route.read",
         "matrix-gateway",
-        "List chats through the host-only Matrix communications gateway.",
-        "matrix_list_chats",
+        "Read messages from this conversation's configured Matrix route.",
+        "matrix_route_read",
     ),
     agent_action(
-        "chat.matrix.message.list",
+        "chat.matrix.route.send",
         "matrix-gateway",
-        "Read recent messages from one Matrix chat.",
-        "matrix_list_messages",
-    ),
-    agent_action(
-        "chat.matrix.message.send",
-        "matrix-gateway",
-        "Send an approved message as the Matrix gateway owner.",
-        "matrix_send_message",
+        "Send an exactly approved reply on this conversation's Matrix route.",
+        "matrix_route_send",
     ),
     mcp_action(
         "calendar.google.calendar.list",
