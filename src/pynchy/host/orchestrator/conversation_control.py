@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -14,6 +15,7 @@ from pynchy.conversation.models import (
 from pynchy.host.orchestrator.threads import ensure_thread
 from pynchy.state import (
     get_conversation,
+    get_conversation_control_by_thread,
     get_workspace_profile,
     set_conversation_control_binding,
 )
@@ -65,22 +67,40 @@ async def ensure_conversation_control(
     ):
         raise ValueError("Conversation control parent must be a registered workspace root")
 
-    ensured = await ensure_thread(
-        channels,
-        request.parent_jid,
-        request.title,
-    )
-    if ensured.jid is None:
-        raise RuntimeError("Ensured conversation control returned no chat JID")
+    index = 1
+    while True:
+        title = request.title if index == 1 else f"{request.title} ({index})"
+        ensured = await ensure_thread(
+            channels,
+            request.parent_jid,
+            title,
+        )
+        if ensured.jid is None:
+            raise RuntimeError("Ensured conversation control returned no chat JID")
+        thread_jid = ChatJid(ensured.jid)
+        owner = await get_conversation_control_by_thread(thread_jid)
+        if owner is not None and owner.conversation_id != request.conversation_id:
+            index += 1
+            continue
 
-    binding = ConversationControlBinding(
-        conversation_id=request.conversation_id,
-        surface=ControlSurface.DISCORD,
-        parent_workspace=request.parent_workspace,
-        parent_jid=request.parent_jid,
-        thread_jid=ChatJid(ensured.jid),
-        title=request.title,
-        updated_at=datetime.now(UTC).isoformat(),
-    )
-    await set_conversation_control_binding(binding)
-    return EnsuredConversationControl(binding=binding, created=ensured.created)
+        binding = ConversationControlBinding(
+            conversation_id=request.conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=request.parent_workspace,
+            parent_jid=request.parent_jid,
+            thread_jid=thread_jid,
+            title=title,
+            updated_at=datetime.now(UTC).isoformat(),
+        )
+        try:
+            await set_conversation_control_binding(binding)
+        except sqlite3.IntegrityError:
+            # Another connection runtime may have claimed this readable name
+            # between lookup and persistence. Retry with the next readable
+            # suffix instead of exposing an internal conversation ID.
+            owner = await get_conversation_control_by_thread(thread_jid)
+            if owner is None or owner.conversation_id == request.conversation_id:
+                raise
+            index += 1
+            continue
+        return EnsuredConversationControl(binding=binding, created=ensured.created)

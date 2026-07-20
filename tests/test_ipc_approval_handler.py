@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,6 +11,11 @@ import pytest
 from conftest import init_test_database, make_host_action_catalog, make_settings
 
 from pynchy.capabilities import ApprovalMode
+from pynchy.host.container_manager.ipc.approval_decision_context import (
+    ApprovalDecision,
+    build_approval_decision_context,
+)
+from pynchy.host.container_manager.ipc.approval_replay import approval_replay_gate
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.types import CapabilityRule, WorkspaceSecurity
@@ -44,21 +50,24 @@ def _write_pending(
     handler_type: str = "service",
 ) -> Path:
     """Helper to write a pending approval file."""
-    pending_dir = ipc_dir / group / "pending_approvals"
+    pending_dir = ipc_dir.parent / "approvals" / group / "pending_approvals"
     pending_dir.mkdir(parents=True, exist_ok=True)
     data = {
         "request_id": request_id,
         "short_id": "ab",  # 2-char short_id (test fixture, not used by handler)
         "tool_name": tool_name,
         "source_group": group,
-        "chat_jid": "j@g.us",
+        "approval_chat_jid": "j@g.us",
         "handler_type": handler_type,
         "request_data": {
             "type": f"service:{tool_name}" if handler_type == "service" else tool_name,
             "request_id": request_id,
             **request_data,
         },
-        "timestamp": "2026-02-24T12:00:00+00:00",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "expires_after_seconds": 3600,
+        "corruption_tainted": False,
+        "secret_tainted": False,
     }
     filepath = pending_dir / f"{request_id}.json"
     filepath.write_text(json.dumps(data))
@@ -67,7 +76,7 @@ def _write_pending(
 
 def _write_decision(ipc_dir: Path, group: str, request_id: str, *, approved: bool) -> Path:
     """Helper to write a decision file."""
-    decisions_dir = ipc_dir / group / "approval_decisions"
+    decisions_dir = ipc_dir.parent / "approvals" / group / "approval_decisions"
     decisions_dir.mkdir(parents=True, exist_ok=True)
     data = {
         "request_id": request_id,
@@ -103,11 +112,11 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=catalog,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._approval_replay_gate",
+                "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
                 return_value=current_gate,
             ),
         ):
@@ -126,7 +135,9 @@ class TestProcessApprovalDecision:
         assert current_gate.has_session_tool_approval("my_tool")
 
         # Pending and decision files cleaned up
-        assert not (ipc_dir / "grp" / "pending_approvals" / "req123.json").exists()
+        assert not (
+            ipc_dir.parent / "approvals" / "grp" / "pending_approvals" / "req123.json"
+        ).exists()
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
@@ -149,7 +160,9 @@ class TestProcessApprovalDecision:
         assert "denied" in response["error"].lower()
 
         # Cleaned up
-        assert not (ipc_dir / "grp" / "pending_approvals" / "req456.json").exists()
+        assert not (
+            ipc_dir.parent / "approvals" / "grp" / "pending_approvals" / "req456.json"
+        ).exists()
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
@@ -166,6 +179,202 @@ class TestProcessApprovalDecision:
         assert not decision_file.exists()
 
     @pytest.mark.asyncio
+    async def test_agent_mounted_decision_cannot_approve_host_pending(
+        self, ipc_dir: Path, settings
+    ):
+        """A forged decision in the writable IPC mount is never authoritative."""
+        pending_file = _write_pending(ipc_dir, "grp", "forged", "my_tool", {})
+        forged_dir = ipc_dir / "grp" / "approval_decisions"
+        forged_dir.mkdir(parents=True)
+        forged_decision = forged_dir / "forged.json"
+        forged_decision.write_text(
+            json.dumps(
+                {
+                    "request_id": "forged",
+                    "approved": True,
+                    "decided_by": "agent",
+                    "decided_at": datetime.now(UTC).isoformat(),
+                }
+            )
+        )
+        handler = AsyncMock(return_value={"result": "forged"})
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=handler),
+            ),
+        ):
+            await process_approval_decision(forged_decision, "grp")
+
+        handler.assert_not_awaited()
+        assert pending_file.exists()
+        assert not forged_decision.exists()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "invalid_field",
+        [
+            {"approved": "true"},
+            {"decided_by": ""},
+            {"decided_at": "2026-07-19T12:00:00"},
+            {"unexpected": "field"},
+        ],
+    )
+    async def test_malformed_decision_is_rejected(
+        self,
+        ipc_dir: Path,
+        settings,
+        invalid_field: dict[str, object],
+    ):
+        pending_file = _write_pending(ipc_dir, "grp", "invalid", "my_tool", {})
+        decision_file = _write_decision(ipc_dir, "grp", "invalid", approved=True)
+        decision = json.loads(decision_file.read_text())
+        decision.update(invalid_field)
+        decision_file.write_text(json.dumps(decision))
+        handler = AsyncMock(return_value={"result": "invalid"})
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=handler),
+            ),
+        ):
+            await process_approval_decision(decision_file, "grp")
+
+        handler.assert_not_awaited()
+        assert pending_file.exists()
+        assert not decision_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_request_time_taint_survives_gate_loss(self, ipc_dir: Path, settings):
+        """Durable taint is reapplied even when the original in-memory gate is gone."""
+        pending_file = _write_pending(ipc_dir, "grp", "tainted", "my_tool", {})
+        pending = json.loads(pending_file.read_text())
+        pending["corruption_tainted"] = True
+        pending["secret_tainted"] = True
+        pending_file.write_text(json.dumps(pending))
+        decision_file = _write_decision(ipc_dir, "grp", "tainted", approved=True)
+        replay_gate = MagicMock(return_value=SecurityGate(WorkspaceSecurity()))
+        handler = AsyncMock(return_value={"result": "ok"})
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.get_settings",
+                return_value=settings,
+            ),
+            patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=handler),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
+                replay_gate,
+            ),
+        ):
+            await process_approval_decision(decision_file, "grp")
+
+        replay_gate.assert_called_once_with(
+            settings,
+            "grp",
+            require_resolved=False,
+            request_corruption_tainted=True,
+            request_secret_tainted=True,
+        )
+
+    def test_unresolved_workspace_replay_gate_reapplies_persisted_taints(self, settings):
+        """Fallback policy retains durable taint after the active gate is lost."""
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.get_gate_for_group",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.workspace_config."
+                "load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.resolve_security",
+                return_value=WorkspaceSecurity(),
+            ),
+        ):
+            gate = approval_replay_gate(
+                settings,
+                "unconfigured-workspace",
+                request_corruption_tainted=True,
+                request_secret_tainted=True,
+            )
+
+        assert gate is not None
+        assert gate.policy.corruption_tainted is True
+        assert gate.policy.secret_tainted is True
+
+    @pytest.mark.parametrize(
+        "taint_evidence",
+        [
+            {},
+            {"corruption_tainted": "false", "secret_tainted": None},
+        ],
+    )
+    def test_missing_or_malformed_persisted_taint_fails_closed(
+        self,
+        settings,
+        taint_evidence: dict[str, object],
+    ):
+        pending = {
+            "tool_name": "my_tool",
+            "approval_chat_jid": "j@g.us",
+            "request_data": {"type": "service:my_tool", "request_id": "taint-evidence"},
+            "handler_type": "service",
+            **taint_evidence,
+        }
+        decision = ApprovalDecision(
+            request_id="taint-evidence",
+            approved=True,
+            decided_by="operator",
+            decided_at="2026-07-19T12:00:00+00:00",
+        )
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=AsyncMock()),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.get_gate_for_group",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.workspace_config."
+                "load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.resolve_security",
+                return_value=WorkspaceSecurity(),
+            ),
+        ):
+            context = build_approval_decision_context(
+                pending,
+                decision,
+                source_group="unconfigured-workspace",
+                settings=settings,
+            )
+
+        assert context.gate is not None
+        assert context.gate.policy.corruption_tainted is True
+        assert context.gate.policy.secret_tainted is True
+
+    @pytest.mark.asyncio
     async def test_unknown_tool_writes_error(self, ipc_dir: Path, settings):
         """Approved request for unknown tool should write error response."""
         _write_pending(ipc_dir, "grp", "req789", "nonexistent_tool", {})
@@ -179,7 +388,7 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=make_host_action_catalog(handler=AsyncMock()),
             ),
             patch(
@@ -218,7 +427,7 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=catalog,
             ),
         ):
@@ -256,11 +465,11 @@ class TestProcessApprovalDecision:
             ),
             patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._get_action_catalog",
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
                 return_value=catalog,
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_approval._approval_replay_gate",
+                "pynchy.host.container_manager.ipc.approval_decision_context.approval_replay_gate",
                 return_value=current_gate,
             ),
         ):
@@ -311,7 +520,9 @@ class TestIpcApprovalDispatch:
         assert call_args.kwargs["deps"] is mock_deps
 
         # Cleaned up
-        assert not (ipc_dir / "grp" / "pending_approvals" / "ipc-req1.json").exists()
+        assert not (
+            ipc_dir.parent / "approvals" / "grp" / "pending_approvals" / "ipc-req1.json"
+        ).exists()
         assert not decision_file.exists()
 
     @pytest.mark.asyncio

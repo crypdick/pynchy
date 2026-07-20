@@ -43,6 +43,22 @@ async def get_conversation_control_binding(
     return _row_to_binding(row) if row is not None else None
 
 
+async def get_conversation_control_by_thread(
+    thread_jid: ChatJid,
+) -> ConversationControlBinding | None:
+    """Return the current binding that owns one operator thread."""
+    database = _get_db()
+    cursor = await database.execute(
+        """
+        SELECT * FROM conversation_control_bindings
+        WHERE surface = ? AND thread_jid = ?
+        """,
+        (ControlSurface.DISCORD.value, thread_jid),
+    )
+    row = await cursor.fetchone()
+    return _row_to_binding(row) if row is not None else None
+
+
 async def set_conversation_control_binding(
     binding: ConversationControlBinding,
 ) -> ConversationControlBinding:

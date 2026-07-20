@@ -186,7 +186,7 @@ class DiscordChannel:
         return self.access.decide(interaction_context(interaction)) == "allow"
 
     def allows_registered_workspace_jid(self, jid: str, *, is_dm: bool) -> bool:
-        """Return whether a runtime-registered workspace may bypass chat config."""
+        """Return whether runtime registration supplies this guild destination."""
         if is_dm or self._config.group_policy != "allowlist" or self.workspaces is None:
             return False
         return jid in self.workspaces()

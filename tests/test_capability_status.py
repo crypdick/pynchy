@@ -45,8 +45,8 @@ from pynchy.host.orchestrator.capability_status import (
 from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.types import CapabilityRule, WorkspaceProfile, WorkspaceSecurity
 
-_TOOL_NAME = "matrix_list_chats"
-_ACTION_ID = "chat.matrix.list"
+_TOOL_NAME = "matrix_route_read"
+_ACTION_ID = "chat.matrix.route.read"
 
 
 async def _handler(_data: dict) -> dict[str, object]:
@@ -194,7 +194,7 @@ async def test_profile_capability_denial_is_distinct_from_missing_config():
     resolved = await _resolved_status(settings=_settings(decision="deny"))
 
     assert resolved.status is CapabilityStatus.DENIED_BY_POLICY
-    assert resolved.reason == "Capability 'chat.matrix.list' denied by policy"
+    assert resolved.reason == "Capability 'chat.matrix.route.read' denied by policy"
 
 
 def _agentic_action_spec() -> ActionSpec:

@@ -199,7 +199,8 @@ async def prepare_host_direct_mcp_servers(
         group_folder,
         invocation_ts,
         security,
-        public_source_input=input_data.input_source.startswith("webhook:"),
+        public_source_input=input_data.input_source.startswith(("webhook:", "external:")),
+        secret_source_input=input_data.input_source == "external:matrix",
     )
     input_data.invocation_ts = invocation_ts
 

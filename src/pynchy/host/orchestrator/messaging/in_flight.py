@@ -77,6 +77,8 @@ class MessageTurnStart:
     task_id: str | None = None
     scheduled_base_chat_jid: str | None = None
     scheduled_thread_slot: int | None = None
+    conversation_claim_id: str | None = None
+    input_source: str = "user"
 
 
 async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
@@ -107,6 +109,8 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
         claimed_at=started_at,
         scheduled_base_chat_jid=scheduled_base_chat_jid,
         scheduled_thread_slot=scheduled_thread_slot,
+        conversation_claim_id=request.conversation_claim_id,
+        input_source=request.input_source,
     )
     await begin_in_flight_turn(turn)
     return turn
@@ -173,7 +177,7 @@ async def _run_resumed_agent(
             turn.chat_jid,
             [interrupted_resume_message(turn)],
             on_output,
-            input_source="deploy_continuation",
+            input_source=turn.input_source,
             turn_id=turn.turn_id,
         )
     finally:
@@ -236,9 +240,13 @@ async def resume_interrupted_message_turn(
             turn.chat_jid,
             turn.input_end_cursor,
             turn.turn_id,
+            conversation_claim_id=turn.conversation_claim_id,
         )
     else:
-        await complete_in_flight_turn(turn.turn_id)
+        await complete_in_flight_turn(
+            turn.turn_id,
+            conversation_claim_id=turn.conversation_claim_id,
+        )
 
     worktree_merge_module.background_merge_worktree(group)
     logger.info(

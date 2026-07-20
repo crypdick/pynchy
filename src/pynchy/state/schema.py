@@ -18,6 +18,7 @@ import aiosqlite
 from pynchy.logger import logger
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
 from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
+from pynchy.state.in_flight_turn_schema import IN_FLIGHT_TURN_SCHEMA
 from pynchy.state.task_schema_migrations import (
     clear_temporal_owned_next_runs,
     drop_derived_task_thread_columns,
@@ -149,29 +150,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     group_folder TEXT PRIMARY KEY,
     session_id TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS in_flight_turns (
-    turn_id TEXT PRIMARY KEY,
-    chat_jid TEXT NOT NULL,
-    group_folder TEXT NOT NULL,
-    work_kind TEXT NOT NULL,
-    input_messages TEXT NOT NULL,
-    input_start_cursor TEXT NOT NULL,
-    input_end_cursor TEXT NOT NULL,
-    started_at TEXT NOT NULL,
-    task_id TEXT,
-    session_id TEXT,
-    output_sent INTEGER NOT NULL DEFAULT 0,
-    interrupted_at TEXT,
-    deploy_id TEXT,
-    claimed_at TEXT,
-    scheduled_base_chat_jid TEXT,
-    scheduled_thread_slot INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_in_flight_turns_chat
-ON in_flight_turns(chat_jid, started_at);
-CREATE INDEX IF NOT EXISTS idx_in_flight_turns_task
-ON in_flight_turns(task_id, started_at);
-
 CREATE TABLE IF NOT EXISTS work_item_executions (
     id TEXT PRIMARY KEY,
     workspace TEXT NOT NULL,
@@ -289,6 +267,7 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     is_admin INTEGER DEFAULT 0
 );
 """
+    + IN_FLIGHT_TURN_SCHEMA
     + EXTERNAL_ROUTING_SCHEMA
     + ACTION_INTENT_SCHEMA
 )

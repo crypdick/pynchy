@@ -11,6 +11,7 @@ import json as json_mod
 from dataclasses import dataclass
 from typing import Any
 
+from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype resolves dataclass.
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ApprovalMode,
     HostActionDescriptor,
@@ -30,21 +31,26 @@ from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.gate import (
     SecurityGate,
+    build_workspace_security,
     evaluate_host_action_policy,
     get_gate_for_group,
     resolve_security,
 )
+from pynchy.host.orchestrator import workspace_config
 from pynchy.logger import logger
 from pynchy.plugins.host_actions import (
     HostActionCatalog,
     clear_host_action_catalog_cache,
     get_host_action_catalog,
 )
+from pynchy.plugins.integrations.matrix_route_registry import get_active_matrix_route
 from pynchy.state import (
     approve_action_intent,
     deny_action_intent,
+    get_conversation_control_by_thread,
     mark_action_intent_awaiting_approval,
 )
+from pynchy.types import ChatJid
 
 
 @dataclass(frozen=True)
@@ -64,6 +70,7 @@ class _ApprovalRequestContext:
     deps: IpcDeps
     gate: SecurityGate
     reason: str | None
+    intent: ActionIntent | None
 
 
 def _get_plugin_handlers() -> dict[str, HostActionHandler]:
@@ -103,17 +110,68 @@ def _service_request(data: dict[str, Any], source_group: str) -> _ServiceRequest
     )
 
 
-def _security_gate(source_group: str, *, is_admin: bool) -> SecurityGate:
+def _security_gate(source_group: str, *, is_admin: bool) -> SecurityGate | None:
+    """Resolve dispatch policy without dropping runtime route restrictions."""
     gate = get_gate_for_group(source_group)
     if gate is not None:
         return gate
 
-    security = resolve_security(source_group, is_admin=is_admin)
+    resolved = workspace_config.load_resolved_config(source_group)
+    if resolved is None:
+        if get_active_matrix_route(source_group) is not None:
+            return None
+        return SecurityGate(resolve_security(source_group, is_admin=is_admin))
+    security = build_workspace_security(get_settings(), resolved)
     logger.warning(
         "No SecurityGate for group, created ephemeral",
         source_group=source_group,
     )
     return SecurityGate(security)
+
+
+def _service_action_and_gate(
+    request: _ServiceRequest,
+    source_group: str,
+    *,
+    is_admin: bool,
+) -> tuple[HostActionDescriptor, SecurityGate] | None:
+    action = _get_action_catalog().action_for(request.tool_name)
+    if action is None:
+        logger.warning(
+            "Unknown service tool type",
+            tool_name=request.tool_name,
+            source_group=source_group,
+        )
+        _write_response(
+            source_group,
+            request.request_id,
+            {"error": f"Unknown service tool: {request.tool_name}"},
+        )
+        return None
+    active_route = get_active_matrix_route(source_group)
+    if active_route is not None:
+        resolved = workspace_config.load_resolved_config(source_group)
+        if resolved is None or request.tool_name not in resolved.tools:
+            logger.warning(
+                "Route-scoped service tool is not enabled for workspace",
+                tool_name=request.tool_name,
+                source_group=source_group,
+            )
+            _write_response(
+                source_group,
+                request.request_id,
+                {"error": f"Service tool is not enabled for this route: {request.tool_name}"},
+            )
+            return None
+    gate = _security_gate(source_group, is_admin=is_admin)
+    if gate is None:
+        _write_response(
+            source_group,
+            request.request_id,
+            {"error": "Workspace security policy is unavailable; refusing host action"},
+        )
+        return None
+    return action, gate
 
 
 async def _request_human_approval(
@@ -125,13 +183,18 @@ async def _request_human_approval(
         create_pending_approval,
     )
 
+    control = await get_conversation_control_by_thread(ChatJid(context.chat_jid))
     short_id = create_pending_approval(
         request_id=context.request.request_id,
         tool_name=context.request.tool_name,
         source_group=context.source_group,
-        chat_jid=context.chat_jid,
+        approval_chat_jid=context.chat_jid,
         request_data=context.data,
         expires_after_seconds=context.action.approval.expires_after_seconds,
+        origin_conversation_id=(str(control.conversation_id) if control is not None else None),
+        action_payload=(context.intent.payload if context.intent is not None else None),
+        corruption_tainted=context.gate.policy.corruption_tainted,
+        secret_tainted=context.gate.policy.secret_tainted,
     )
     if context.action.action_intent is not None:
         await mark_action_intent_awaiting_approval(
@@ -217,23 +280,18 @@ async def _handle_service_request(
     request = _service_request(data, source_group)
     if request is None:
         return
+    # The IPC envelope, not agent-controlled payload data, owns workspace
+    # identity for route resolution, draft creation, and policy evaluation.
+    data["source_group"] = source_group
 
-    action = _get_action_catalog().action_for(request.tool_name)
-
-    if action is None:
-        logger.warning(
-            "Unknown service tool type",
-            tool_name=request.tool_name,
-            source_group=source_group,
-        )
-        _write_response(
-            source_group,
-            request.request_id,
-            {"error": f"Unknown service tool: {request.tool_name}"},
-        )
+    action_and_gate = _service_action_and_gate(
+        request,
+        source_group,
+        is_admin=is_admin,
+    )
+    if action_and_gate is None:
         return
-
-    gate = _security_gate(source_group, is_admin=is_admin)
+    action, gate = action_and_gate
 
     # Find the chat_jid for this group (for audit logging)
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
@@ -296,6 +354,7 @@ async def _handle_service_request(
                 deps=deps,
                 gate=gate,
                 reason=decision.reason,
+                intent=intent,
             )
         )
         # No response file written — container blocks until human decides
@@ -337,7 +396,6 @@ async def _handle_service_request(
         source_group=source_group,
     )
 
-    data["source_group"] = source_group
     try:
         response = await execute_action_intent(action, data, request_id=request.request_id)
     except Exception as exc:  # noqa: BLE001, RUF100 - host action boundary must audit terminal failure before watcher recovery.

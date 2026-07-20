@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 else:
     Row = Any
 
-from pynchy.state.connection import _get_db
+from pynchy.state.connection import _get_db, atomic_write
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves state API annotations.
 )
@@ -106,6 +106,34 @@ async def message_exists(msg_id: str, chat_jid: str) -> bool:
         (msg_id, chat_jid),
     )
     return await cursor.fetchone() is not None
+
+
+async def mark_message_as_host(
+    message_id: str,
+    chat_jid: str,
+    *,
+    deferred_control: bool = False,
+) -> None:
+    """Persistently exclude one consumed human control message from agent context."""
+    async with atomic_write() as db:
+        metadata_cursor = await db.execute(
+            "SELECT metadata FROM messages WHERE id = ? AND chat_jid = ?",
+            (message_id, chat_jid),
+        )
+        row = await metadata_cursor.fetchone()
+        if row is None:
+            raise ValueError("Control message disappeared before it could be consumed")
+        metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+        if not isinstance(metadata, dict):
+            raise TypeError("Control message metadata has an invalid persisted shape")
+        if deferred_control:
+            metadata["deferred_host_control"] = True
+        cursor = await db.execute(
+            "UPDATE messages SET message_type = 'host', metadata = ? WHERE id = ? AND chat_jid = ?",
+            (json.dumps(metadata), message_id, chat_jid),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Control message disappeared before it could be consumed")
 
 
 async def get_new_messages(jids: list[str], last_timestamp: str) -> tuple[list[NewMessage], str]:

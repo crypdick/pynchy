@@ -84,6 +84,7 @@ class StatusDeps(Protocol):
 
     def is_shutting_down(self) -> bool: ...
     def get_channel_status(self) -> dict[str, bool]: ...
+    def get_connection_status(self) -> dict[str, bool]: ...
     def get_queue_snapshot(self) -> dict[str, Any]: ...
     def get_gateway_info(self) -> dict[str, Any]: ...
     def get_active_sessions_count(self) -> int: ...
@@ -108,6 +109,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
     # In-memory reads (instant)
     service = _collect_service(deps, start_time_monotonic)
     channels = deps.get_channel_status()
+    connections = deps.get_connection_status()
     queue = deps.get_queue_snapshot()
     groups = {
         "total": deps.get_workspace_count(),
@@ -142,6 +144,7 @@ async def collect_status(deps: StatusDeps, start_time_monotonic: float) -> dict[
         "service": service,
         "deploy": deploy,
         "channels": channels,
+        "connections": connections,
         "gateway": gateway,
         "queue": queue,
         "repos": repos,

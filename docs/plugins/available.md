@@ -39,7 +39,7 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `linear` | MCP server specification | Linear issue-tracking tools | `LINEAR_API_KEY` | [Linear](../integrations/linear.md) |
 | `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../integrations/github.md) |
 | `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../integrations/proton-mail.md) |
-| `matrix-gateway` | Service handler | Matrix gateway actions | Matrix gateway configuration | [Matrix gateway](../integrations/matrix-gateway.md) |
+| `matrix-gateway` | Connection runtime + service handler | Routed Matrix conversations and scoped actions | Named Matrix connection and routes | [Matrix gateway](../integrations/matrix-gateway.md) |
 | `notebook` | MCP server specification | Jupyter notebook execution server | `uv sync --extra notebook` | [Notebooks](../integrations/notebooks.md) |
 | `sqlite-observer` | Observer | Persists operational event summaries | No external dependency | [Observers](../architecture/observers.md) |
 | `sqlite-memory` | Memory backend | Per-workspace memory with FTS5 search | No external dependency | [Memory](../usage/memory.md) |

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import make_settings
@@ -44,10 +44,15 @@ class FakeDeps:
 class TestHandleApprovalCommand:
     @pytest.mark.asyncio
     async def test_writes_decision_file_on_approve(self, ipc_dir: Path, settings):
+        process_decision = AsyncMock()
         with (
             patch(
                 "pynchy.host.container_manager.security.approval.get_settings",
                 return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
+                process_decision,
             ),
         ):
             short_id = create_pending_approval(
@@ -56,7 +61,7 @@ class TestHandleApprovalCommand:
             deps = FakeDeps()
             await handle_approval_command(deps, "j@g.us", "approve", short_id, "testuser")
 
-        decisions_dir = ipc_dir / "grp" / "approval_decisions"
+        decisions_dir = ipc_dir.parent / "approvals" / "grp" / "approval_decisions"
         files = list(decisions_dir.glob("*.json"))
         assert len(files) == 1
 
@@ -64,13 +69,19 @@ class TestHandleApprovalCommand:
         assert data["approved"] is True
         assert data["decided_by"] == "testuser"
         assert data["request_id"] == "aabb001122334455"
+        process_decision.assert_awaited_once_with(files[0], "grp", deps=deps)
 
     @pytest.mark.asyncio
     async def test_writes_decision_file_on_deny(self, ipc_dir: Path, settings):
+        process_decision = AsyncMock()
         with (
             patch(
                 "pynchy.host.container_manager.security.approval.get_settings",
                 return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
+                process_decision,
             ),
         ):
             short_id = create_pending_approval(
@@ -79,7 +90,7 @@ class TestHandleApprovalCommand:
             deps = FakeDeps()
             await handle_approval_command(deps, "j@g.us", "deny", short_id, "testuser")
 
-        decisions_dir = ipc_dir / "grp" / "approval_decisions"
+        decisions_dir = ipc_dir.parent / "approvals" / "grp" / "approval_decisions"
         data = json.loads(next(iter(decisions_dir.glob("*.json"))).read_text())
         assert data["approved"] is False
 
@@ -103,15 +114,22 @@ class TestHandleApprovalCommand:
             deps = FakeDeps()
             await handle_approval_command(deps, "two@g.us", "approve", short_id, "testuser")
 
-        assert not list((ipc_dir / "grp" / "approval_decisions").glob("*.json"))
+        assert not list(
+            (ipc_dir.parent / "approvals" / "grp" / "approval_decisions").glob("*.json")
+        )
         assert "no pending" in deps.broadcast_messages[0][1].lower()
 
     @pytest.mark.asyncio
     async def test_confirmation_broadcast(self, ipc_dir: Path, settings):
+        process_decision = AsyncMock()
         with (
             patch(
                 "pynchy.host.container_manager.security.approval.get_settings",
                 return_value=settings,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_approval.process_approval_decision",
+                process_decision,
             ),
         ):
             short_id = create_pending_approval("aabb001122334455", "x_post", "grp", "j@g.us", {})

@@ -49,7 +49,7 @@ def test_capability_needs_human_matches_wildcard():
     assert decision.needs_human
 
 
-def test_capability_exact_rule_beats_wildcard():
+def test_capability_wildcard_deny_beats_exact_allow():
     policy = SecurityPolicy(
         WorkspaceSecurity(
             capabilities={
@@ -61,9 +61,9 @@ def test_capability_exact_rule_beats_wildcard():
 
     decision = policy.evaluate_capability("mcp.email.preview")
 
-    assert decision.allowed
+    assert not decision.allowed
     assert not decision.needs_human
-    assert decision.overrides_human_approval
+    assert not decision.overrides_human_approval
 
 
 def test_missing_capability_rule_is_neutral_not_an_approval_override():

@@ -16,6 +16,7 @@ import threading
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations at runtime.
 )
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves lifecycle annotations.
 from typing import Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
@@ -52,6 +53,7 @@ from pynchy.plugins.channel_runtime import (
     load_channels,
     resolve_default_channel,
 )
+from pynchy.plugins.connections import ConnectionRuntimeContext, load_connection_runtimes
 from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot, linear_decision_inbox
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
@@ -117,6 +119,7 @@ async def _cleanup_http_runner(app: PynchyApp) -> None:
 
 
 async def _close_runtime_resources(app: PynchyApp) -> None:
+    await app.connection_runtime_owner.close()
     await gateway_manager.stop_gateway()
     await app.close_observers()
     await app.close_memory_provider()
@@ -271,7 +274,32 @@ async def _reconcile_state(app: PynchyApp) -> dict[str, LinearWorkspaceBoard]:
 
     linear_boards = await linear_boot.reconcile_linear_workspace_boards(app.workspaces.values())
 
+    plugin_manager = _require_plugin_manager(app, "_reconcile_state")
+    app.connection_runtime_owner.set(load_connection_runtimes(plugin_manager))
+
     return dict(linear_boards)
+
+
+async def start_connection_runtimes(app: PynchyApp) -> None:
+    """Start provider polling only after recovery and dispatch are ready."""
+    context = ConnectionRuntimeContext(
+        channels=lambda: app.channels,
+        workspaces=lambda: app.workspaces,
+        register_workspace=app.register_workspace,
+        unregister_workspace=app.unregister_workspace,
+        bind_session=app.bind_routed_session,
+        ingest_message=app.on_inbound,
+    )
+    attempted_runtimes = []
+    try:
+        for runtime in app.connection_runtime_owner.runtimes():
+            attempted_runtimes.append(runtime)
+            await runtime.start(context)
+    except BaseException:
+        for runtime in reversed(attempted_runtimes):
+            await runtime.close()
+        app.connection_runtime_owner.set([])
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +338,7 @@ async def _start_subsystems(
     )
 
     app.queue.set_process_messages_fn(app.process_group_messages)
+    await start_connection_runtimes(app)
 
     plugin_manager = _require_plugin_manager(app, "_start_subsystems")
     tunnel_plugins.check_tunnels(plugin_manager)
@@ -330,6 +359,31 @@ async def _start_subsystems(
         public_bind=s.server.allow_public_bind,
         remote_deploy=s.server.allow_remote_deploy,
     )
+
+
+async def _prepare_state_and_subsystems(
+    app: PynchyApp,
+    continuation_path: Path,
+) -> startup_handler.InterruptedTurnRecovery:
+    """Start stateful runtime owners inside the deploy rollback boundary."""
+    try:
+        repo_groups = await _reconcile_state(app)
+        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
+        # Provider runtimes may wake orphaned deliveries prepared above, but
+        # interrupted durable turns must not be dispatched until every runtime
+        # that owns their route is ready.
+        await _start_subsystems(app, repo_groups)
+        await startup_handler.confirm_deploy_startup(interrupted_recovery)
+    except Exception as exc:  # noqa: BLE001, RUF100 - deploy rollback must cover every startup owner.
+        app.cancel_subsystem_tasks()
+        try:
+            await app.connection_runtime_owner.close()
+        except Exception:  # noqa: BLE001, RUF100 - preserve the startup error that triggers rollback.
+            logger.exception("Connection runtime cleanup failed during startup rollback")
+        if await asyncio.to_thread(continuation_path.exists):
+            await startup_handler.auto_rollback(continuation_path, exc)
+        raise
+    return interrupted_recovery
 
 
 # ---------------------------------------------------------------------------
@@ -384,10 +438,7 @@ async def run_app(app: PynchyApp) -> None:
         default_channel = resolve_default_channel(app.channels)
         await startup_handler.setup_admin_group(app, default_channel)
 
-    repo_groups = await _reconcile_state(app)
-    interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
-    await startup_handler.confirm_deploy_startup(interrupted_recovery)
-    await _start_subsystems(app, repo_groups)
+    interrupted_recovery = await _prepare_state_and_subsystems(app, continuation_path)
 
     await startup_handler.send_boot_notification(app)
     await app.catch_up_channels()

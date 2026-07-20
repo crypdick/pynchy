@@ -48,14 +48,17 @@ For how messages are typed and stored, see [Message types](message-types.md).
 
 Pynchy checkpoints an agent turn in SQLite before it invokes the agent runtime. The checkpoint
 records the original input boundary, work type, conversation session, and whether any output
-reached the user. A completed interactive turn advances its durable message cursor and removes
-the checkpoint in the same database transaction.
+reached the user. It also records the original input provenance and any routed-delivery claim
+that supplied the input. A completed interactive turn advances its durable message cursor,
+completes that routed claim, and removes the checkpoint in the same database transaction.
 
-Startup clears claims left by the stopped process before starting the Temporal worker. It then
-dispatches each surviving checkpoint through a stable recovery workflow. The recovery activity
-rehydrates the existing agent session and sends a continuation instruction that tells the agent
-to inspect its transcript and workspace, avoid repeating completed side effects, and finish the
-original request. Scheduled agent turns use the same checkpoint and claim mechanism.
+Startup releases only delivery claims with no surviving in-flight turn, then clears the stopped
+process's execution claims. Provider runtimes start before Pynchy dispatches each surviving
+checkpoint through a stable recovery workflow. The recovery activity rehydrates the existing
+agent session, reapplies the original input provenance, and sends a continuation instruction
+that tells the agent to inspect its transcript and workspace, avoid repeating completed side
+effects, and finish the original request. Scheduled agent turns use the same checkpoint and
+claim mechanism.
 
 A saved conversation session does not indicate running work. Idle conversations have no
 in-flight checkpoint, so a deploy or later restart does not wake them. SQLite remains the source

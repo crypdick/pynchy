@@ -20,14 +20,21 @@ import pynchy.config.access as config_access
 import pynchy.host.orchestrator.todos as todos
 import pynchy.plugins.integrations.linear_boot as linear_boot
 from pynchy.config import get_settings
-from pynchy.host.orchestrator.messaging.pipeline import (
+from pynchy.host.orchestrator.messaging.cursor import advance_cursor
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves routing annotations.
     MessageHandlerDeps,
-    _mark_dispatched,
+)
+from pynchy.host.orchestrator.messaging.host_controls import (
+    host_control_kind,
     intercept_special_command,
+    mark_dispatched,
+    reclassify_batch_host_controls,
+    turn_boundary_lock,
 )
 from pynchy.logger import logger
-from pynchy.state import get_messages_since, get_new_messages
+from pynchy.state import get_in_flight_turn_for_chat, get_messages_since, get_new_messages
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
+    InFlightWorkKind,
     NewMessage,
     OutboundEvent,
     OutboundEventType,
@@ -59,7 +66,7 @@ async def _route_incoming_group(
     if await _intercept_pending_command(deps, group_jid, group, all_pending):
         return
 
-    await _route_pending_messages(deps, group_jid, group, group_messages, all_pending)
+    await _route_pending_messages(deps, group_jid, group, all_pending)
 
 
 def _channel_plugin_name(deps: MessageHandlerDeps, group_jid: str) -> str | None:
@@ -73,9 +80,27 @@ def _allowed_group_messages(
     group_messages: list[NewMessage],
 ) -> list[NewMessage]:
     channel_plugin_name = _channel_plugin_name(deps, group_jid)
-    filtered_messages = config_access.filter_allowed_messages(
-        group_messages, group, channel_plugin_name
-    )
+    authenticated_external_ids = {
+        message.id
+        for message in group_messages
+        if (message.metadata or {}).get("authenticated_external_route") is True
+    }
+    channel_messages = [
+        message for message in group_messages if message.id not in authenticated_external_ids
+    ]
+    allowed_channel_ids = {
+        message.id
+        for message in config_access.filter_allowed_messages(
+            channel_messages, group, channel_plugin_name
+        )
+    }
+    # The marker bypasses only the control channel's sender allowlist. The
+    # provider body remains untrusted and taints the agent invocation.
+    filtered_messages = [
+        message
+        for message in group_messages
+        if message.id in authenticated_external_ids or message.id in allowed_channel_ids
+    ]
     if not filtered_messages:
         logger.info("route_trace", step="skip_all_filtered", group=group.name)
         return []
@@ -132,22 +157,125 @@ async def _intercept_pending_command(
         group=group.name,
         last_content=all_pending[-1].content[:50],
     )
-    if await intercept_special_command(deps, group_jid, group, all_pending[-1]):
+    control_result = await _intercept_host_control_batch(
+        deps,
+        group_jid,
+        group,
+        all_pending,
+    )
+    if control_result is not None:
+        return control_result
+    if not all_pending:
+        return True
+    last_message = all_pending[-1]
+    if await intercept_special_command(deps, group_jid, group, last_message):
         logger.info("route_trace", step="intercepted", group=group.name)
         return True
     logger.info("route_trace", step="not_intercepted", group=group.name)
     return False
 
 
+async def _intercept_host_control_batch(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    all_pending: list[NewMessage],
+) -> bool | None:
+    if not any(any(host_control_kind(message)) for message in all_pending):
+        return None
+    async with turn_boundary_lock(group_jid):
+        # This lock may have waited for the active turn to finalize. Refresh
+        # against the now-current cursor so an already-committed routed
+        # delivery cannot be forwarded into a duplicate agent turn.
+        all_pending[:] = await get_messages_since(
+            group_jid,
+            _routing_cursor(deps, group_jid),
+        )
+        if not any(any(host_control_kind(message)) for message in all_pending):
+            return True if not all_pending else None
+        active_turn = await get_in_flight_turn_for_chat(
+            group_jid,
+            {InFlightWorkKind.INTERACTIVE},
+        )
+        defer_lifecycle = (
+            active_turn is not None
+            or len([message for message in all_pending if message.sender != "system_notice"]) > 1
+        )
+        handled = await reclassify_batch_host_controls(
+            deps,
+            group_jid,
+            group,
+            all_pending,
+            defer_lifecycle=defer_lifecycle,
+        )
+        if not handled:
+            return None
+        has_deferred = any(
+            (message.metadata or {}).get("deferred_host_control") is True for message in all_pending
+        )
+        remaining_agent_input = any(
+            message.message_type != "host" and message.sender != "system_notice"
+            for message in all_pending
+        )
+        intercepted = False
+        if active_turn is not None and has_deferred:
+            deps.queue.enqueue_message_check(group_jid)
+            logger.info(
+                "route_trace",
+                step="active_deferred_control_consumed",
+                group=group.name,
+            )
+            intercepted = True
+        elif active_turn is not None:
+            mark_dispatched(deps, group_jid, all_pending[-1].timestamp)
+            if not remaining_agent_input:
+                logger.info(
+                    "route_trace",
+                    step="active_inline_control_consumed",
+                    group=group.name,
+                )
+                intercepted = True
+        elif not remaining_agent_input:
+            await _execute_deferred_controls_without_agent(
+                deps,
+                group_jid,
+                group,
+                all_pending,
+            )
+            intercepted = True
+        if not intercepted:
+            logger.info(
+                "route_trace",
+                step="batch_controls_consumed",
+                group=group.name,
+            )
+        return intercepted
+
+
+async def _execute_deferred_controls_without_agent(
+    deps: MessageHandlerDeps,
+    group_jid: str,
+    group: WorkspaceProfile,
+    messages: list[NewMessage],
+) -> None:
+    for message in messages:
+        if (message.metadata or {}).get("deferred_host_control") is True:
+            await intercept_special_command(deps, group_jid, group, message)
+    if messages:
+        await advance_cursor(deps, group_jid, messages[-1].timestamp)
+
+
 async def _route_pending_messages(
     deps: MessageHandlerDeps,
     group_jid: str,
     group: WorkspaceProfile,
-    group_messages: list[NewMessage],
     all_pending: list[NewMessage],
 ) -> None:
-    formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in all_pending)
-    last_content = all_pending[-1].content.strip()
+    agent_pending = [message for message in all_pending if message.message_type != "host"]
+    if not agent_pending:
+        return
+    formatted = "\n".join(f"{msg.sender_name}: {msg.content}" for msg in agent_pending)
+    last_content = agent_pending[-1].content.strip()
     is_btw = last_content.lower().startswith("btw ")
 
     if deps.queue.is_active_task(group_jid):
@@ -168,7 +296,7 @@ async def _route_pending_messages(
         await _forward_to_active_container(
             deps,
             group_jid,
-            all_pending,
+            agent_pending,
             last_content=last_content,
             is_btw=is_btw,
         )
@@ -178,7 +306,7 @@ async def _route_pending_messages(
     # False while one is active. Defer the pending input until Codex finishes
     # its current tool; on an idle group this is a harmless no-op.
     deps.queue.defer_interrupt_until_tool_result(group_jid)
-    await _start_new_interactive_turn(deps, group_jid, group, group_messages[0])
+    await _start_new_interactive_turn(deps, group_jid, group, agent_pending[0])
 
 
 async def _forward_to_active_container(
@@ -208,7 +336,7 @@ async def _forward_to_active_container(
     )
     last_msg = all_pending[-1]
     await deps.send_reaction_to_channels(group_jid, last_msg.id, last_msg.sender, "🦀")
-    _mark_dispatched(deps, group_jid, last_msg.timestamp)
+    mark_dispatched(deps, group_jid, last_msg.timestamp)
 
 
 async def _start_new_interactive_turn(

@@ -30,6 +30,7 @@ def _cleanup(monkeypatch: pytest.MonkeyPatch):
         security: WorkspaceSecurity,
         *,
         public_source_input: bool = False,
+        secret_source_input: bool = False,
     ) -> SecurityGate:
         created.append((source_group, invocation_ts))
         return original_create_gate(
@@ -37,6 +38,7 @@ def _cleanup(monkeypatch: pytest.MonkeyPatch):
             invocation_ts,
             security,
             public_source_input=public_source_input,
+            secret_source_input=secret_source_input,
         )
 
     monkeypatch.setitem(globals(), "create_gate", track_created_gate)
@@ -93,6 +95,28 @@ class TestSecurityGateCreation:
 
         assert gate.policy.corruption_tainted
         assert gate.evaluate_write("slack", {}).needs_cop
+
+    def test_private_external_input_gates_a_public_sink(self):
+        gate = create_gate(
+            "matrix-route",
+            1001.0,
+            _make_security(
+                slack=ServiceTrustConfig(
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=True,
+                    dangerous_writes=False,
+                )
+            ),
+            public_source_input=True,
+            secret_source_input=True,
+        )
+
+        decision = gate.evaluate_write("slack", {})
+        assert gate.policy.corruption_tainted is True
+        assert gate.policy.secret_tainted is True
+        assert decision.needs_cop is True
+        assert decision.needs_human is True
 
 
 class TestSecurityGateTaintPersistence:

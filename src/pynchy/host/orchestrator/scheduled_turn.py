@@ -290,6 +290,7 @@ async def _new_task_target(
                 task_id=request.task.id,
                 scheduled_base_chat_jid=request.task.chat_jid,
                 scheduled_thread_slot=slot,
+                input_source=request.task.input_source,
             )
         )
         return target
@@ -338,6 +339,7 @@ async def _config_job_task_target(
             input_end_cursor="",
             task_id=request.task.id,
             scheduled_base_chat_jid=request.task.chat_jid,
+            input_source=request.task.input_source,
         )
     )
     return target
@@ -399,7 +401,11 @@ async def _run_target_agent(run: _TargetAgentRun) -> None:
             on_output,
             is_scheduled_task=True,
             repo_access_override=None,
-            input_source=request.task.input_source,
+            input_source=(
+                request.resume_turn.input_source
+                if request.resume_turn is not None
+                else request.task.input_source
+            ),
             turn_id=run.turn_id,
         )
         if agent_result == "error":

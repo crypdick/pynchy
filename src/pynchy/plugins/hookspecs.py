@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pynchy.actions import ActionSpec
     from pynchy.capabilities import HostActionRegistration
     from pynchy.plugins.channel_runtime import ChannelPluginContext
+    from pynchy.plugins.connections import ConnectionRuntime
     from pynchy.plugins.memory import MemoryProvider
     from pynchy.plugins.observers import ObserverProvider
     from pynchy.plugins.runtimes.detection import RuntimeProvider
@@ -111,6 +112,17 @@ class PynchySpec:
         Returns:
             Channel instance implementing the Channel protocol, or None if this
             plugin doesn't provide channels
+        """
+
+    @hookspec
+    def pynchy_connection_runtime(
+        self,
+    ) -> ConnectionRuntime | tuple[ConnectionRuntime, ...] | None:
+        """Provide named external-provider connection runtimes.
+
+        Connection runtimes own authenticated provider identities, durable
+        polling or subscription lifecycles, and readiness. They do not become
+        operator channels, so ordinary agent output never routes to them.
         """
 
     @hookspec

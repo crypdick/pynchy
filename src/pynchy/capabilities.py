@@ -199,6 +199,7 @@ class ApprovalContract:
 
     mode: ApprovalMode = ApprovalMode.EXACT_REQUEST
     expires_after_seconds: int = 300
+    mandatory: bool = False
 
 
 @dataclass(frozen=True)

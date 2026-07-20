@@ -42,6 +42,7 @@ from pynchy.config.models import (
     NotificationsConfig,
     PluginConfig,
     ReposConfig,
+    RouteConfig,
     SecretsConfig,
     SecurityConfig,
     ToolConfig,
@@ -100,19 +101,23 @@ def _validated_command_center_connection(settings: Settings) -> None:
 
 def _validate_owner_aliases(settings: Settings) -> None:
     for connection_name, connection in settings.connections.items():
+        connection_security = getattr(connection, "security", None)
         _validate_owner_alias(
             connection_name,
             connection.type,
-            getattr(connection.security, "allowed_users", None)
-            if connection.security is not None
+            getattr(connection_security, "allowed_users", None)
+            if connection_security is not None
             else None,
             settings,
         )
         for chat_name, chat in getattr(connection, "chat", {}).items():
+            chat_security = getattr(chat, "security", None)
             _validate_owner_alias(
                 f"{connection_name}.chat.{chat_name}",
                 connection.type,
-                getattr(chat.security, "allowed_users", None) if chat.security else None,
+                getattr(chat_security, "allowed_users", None)
+                if chat_security is not None
+                else None,
                 settings,
             )
 
@@ -168,6 +173,7 @@ class Settings(BaseSettings):
     notifications: NotificationsConfig = NotificationsConfig()
     connection: ConnectionsConfig = ConnectionsConfig()
     connections: dict[str, ConnectionConfig] = {}
+    routes: dict[str, RouteConfig] = {}
     tools: dict[str, ToolConfig] = {}
     plugins: dict[str, PluginConfig] = {}
     security: SecurityConfig = SecurityConfig()
@@ -294,6 +300,7 @@ class Settings(BaseSettings):
         _validated_command_center_connection(self)
         _validate_owner_aliases(self)
         settings_validation.validate_workspace_chat_references(self)
+        settings_validation.validate_route_references(self)
         return self
 
     @model_validator(mode="after")
