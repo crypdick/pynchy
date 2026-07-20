@@ -17,11 +17,11 @@ import aiosqlite
 
 from pynchy.logger import logger
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
+from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
 from pynchy.state.task_schema_migrations import (
     clear_temporal_owned_next_runs,
     drop_derived_task_thread_columns,
 )
-from pynchy.state.webhook_schema import WEBHOOK_SCHEMA
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
 
@@ -289,7 +289,7 @@ CREATE TABLE IF NOT EXISTS registered_groups (
     is_admin INTEGER DEFAULT 0
 );
 """
-    + WEBHOOK_SCHEMA
+    + EXTERNAL_ROUTING_SCHEMA
     + ACTION_INTENT_SCHEMA
 )
 

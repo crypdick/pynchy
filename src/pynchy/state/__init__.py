@@ -57,9 +57,26 @@ from pynchy.state.chats import (
     update_chat_name,
 )
 from pynchy.state.connection import _get_db, close_test_database, init_database, init_test_database
+from pynchy.state.conversation_controls import (
+    get_conversation_control_binding,
+    set_conversation_control_binding,
+)
 from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
     store_conversation_event_pointer,
+)
+from pynchy.state.conversation_routing import (
+    admit_conversation_delivery,
+    claim_next_conversation_delivery,
+    complete_conversation_delivery,
+    get_conversation,
+    get_conversation_delivery,
+    get_conversation_for_subject,
+    prepare_conversation_delivery_recovery,
+    rebind_conversation_workspace,
+    release_conversation_delivery_claim,
+    resolve_conversation,
+    set_conversation_session,
 )
 from pynchy.state.deployments import (
     advance_deployment_baseline,
@@ -70,6 +87,7 @@ from pynchy.state.deployments import (
     initialize_deployment_state,
 )
 from pynchy.state.events import store_event
+from pynchy.state.external_deliveries import admit_external_delivery_receipt
 from pynchy.state.groups import (
     delete_workspace_profile,
     get_all_workspace_profiles,
@@ -191,6 +209,20 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     # conversation_events
     "get_conversation_event_pointers_since",
     "store_conversation_event_pointer",
+    # conversation_routing
+    "admit_conversation_delivery",
+    "claim_next_conversation_delivery",
+    "complete_conversation_delivery",
+    "get_conversation",
+    "get_conversation_control_binding",
+    "get_conversation_delivery",
+    "get_conversation_for_subject",
+    "prepare_conversation_delivery_recovery",
+    "rebind_conversation_workspace",
+    "release_conversation_delivery_claim",
+    "resolve_conversation",
+    "set_conversation_control_binding",
+    "set_conversation_session",
     # deployments
     "advance_deployment_baseline",
     "claim_deployment",
@@ -211,6 +243,8 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "record_outbound",
     # events
     "store_event",
+    # external_deliveries
+    "admit_external_delivery_receipt",
     # chats
     "get_all_chats",
     "get_chat_cleared_at",
