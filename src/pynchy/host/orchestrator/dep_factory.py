@@ -8,14 +8,11 @@ the composite dependency objects that subsystems require.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.config import get_settings
-from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
-    OnOutput,
-)
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
@@ -25,7 +22,6 @@ from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolve
 )
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
-from pynchy.host.orchestrator import update_offer
 from pynchy.host.orchestrator.adapters import (
     GroupMetadataManager,
     GroupRegistrationManager,
@@ -36,9 +32,6 @@ from pynchy.host.orchestrator.adapters import (
 )
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     PynchyApp,
-)
-from pynchy.host.orchestrator.concurrency import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
-    GroupQueue,
 )
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     HttpServerDeps,
@@ -59,7 +52,6 @@ from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves d
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
-    ContainerOutput,
     NewMessage,
     ScheduledTask,
     SessionId,
@@ -85,68 +77,14 @@ def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
 
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
-    """Create the dependency object for the task scheduler."""
-    broadcaster, host_broadcaster = _get_broadcasters(app)
+    """Return the app as the shared dependency object for Temporal activities.
 
-    class SchedulerDeps:
-        broadcast_host_message = host_broadcaster.broadcast_host_message
-        broadcast_system_notice = host_broadcaster.broadcast_system_notice
-        broadcast_to_channels = broadcaster.broadcast_to_channels
-
-        async def offer_update(self, chat_jid: str, commit_sha: str) -> bool:
-            return await update_offer.send_update_offer(
-                channels=app.channels,
-                broadcast_host_message=host_broadcaster.broadcast_host_message,
-                chat_jid=chat_jid,
-                commit_sha=commit_sha,
-            )
-
-        def workspaces(self) -> dict[str, WorkspaceProfile]:
-            return app.workspaces
-
-        async def register_workspace(self, profile: WorkspaceProfile) -> None:
-            await app.register_workspace(profile)
-
-        @property
-        def queue(self) -> GroupQueue:
-            return app.queue
-
-        @staticmethod
-        async def run_agent(  # noqa: PLR0913, RUF100 - adapter mirrors SchedulerDependencies.
-            group: WorkspaceProfile,
-            chat_jid: str,
-            messages: list[dict[str, Any]],
-            on_output: OnOutput | None = None,
-            extra_system_notices: list[str] | None = None,
-            *,
-            is_scheduled_task: bool = False,
-            repo_access_override: str | None = None,
-            input_source: str = "user",
-            turn_id: str | None = None,
-        ) -> str:
-            return await app.run_agent(
-                group,
-                chat_jid,
-                messages,
-                on_output=on_output,
-                extra_system_notices=extra_system_notices,
-                is_scheduled_task=is_scheduled_task,
-                repo_access_override=repo_access_override,
-                input_source=input_source,
-                turn_id=turn_id,
-            )
-
-        @staticmethod
-        async def handle_streamed_output(
-            chat_jid: str,
-            group: WorkspaceProfile,
-            result: ContainerOutput,
-            *,
-            turn_id: str | None = None,
-        ) -> bool:
-            return await app.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
-
-    return SchedulerDeps()
+    Temporal's scheduler worker also runs interactive, deploy, reconciliation,
+    and git-sync activities. Those activities deliberately share the app's live
+    workspace map and lifecycle state instead of receiving a scheduler-only
+    facade that can drift from the broader runtime contract.
+    """
+    return cast("SchedulerDependencies", app)
 
 
 async def _start_temporal_deploy(

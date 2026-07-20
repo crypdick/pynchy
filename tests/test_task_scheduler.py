@@ -235,6 +235,7 @@ class MockSchedulerDeps:
         # Configurable side effect for run_agent (to call on_output)
         self._run_agent_side_effect = None
 
+    @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self.groups
 
