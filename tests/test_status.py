@@ -207,6 +207,12 @@ class MockHttpDeps:
     async def broadcast_host_message(self, _jid: str, _text: str) -> None:
         return None
 
+    def get_workspace(self, _folder: str) -> None:
+        return None
+
+    def dispatch_scheduled_task(self, _task: ScheduledTask) -> None:
+        return None
+
     def admin_chat_jid(self) -> str:
         return "admin@g.us"
 
