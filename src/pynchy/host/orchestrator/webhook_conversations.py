@@ -123,6 +123,7 @@ class WebhookConversationDispatcher:
                 "control_closed": target.control_closed,
                 "event_type": event.event_type,
                 "event_action": event.action,
+                "public_source": route.public_source,
             },
         )
         return admission.conversation.id
@@ -177,10 +178,13 @@ class WebhookConversationDispatcher:
         prompt = payload.get("prompt")
         proposed_title = payload.get("control_title")
         proposed_closed = payload.get("control_closed")
+        public_source = payload.get("public_source", True)
         if not isinstance(prompt, str) or not isinstance(proposed_title, str):
             raise TypeError("Routed webhook delivery lost its host-parsed prompt")
         if proposed_closed is not None and not isinstance(proposed_closed, bool):
             raise TypeError("Routed webhook delivery lost its control lifecycle state")
+        if not isinstance(public_source, bool):
+            raise TypeError("Routed webhook delivery lost its source trust")
 
         conversation = await get_conversation(delivery.conversation_id)
         if conversation is None:
@@ -223,6 +227,7 @@ class WebhookConversationDispatcher:
             is_from_me=False,
             metadata={
                 "authenticated_external_route": True,
+                "public_source_input": public_source,
                 "external_provider": delivery.identity.provider,
                 "webhook_route": delivery.identity.route,
                 "conversation_id": conversation.id,

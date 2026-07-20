@@ -160,15 +160,24 @@ change if the Discord edit did not finish.
 
 Linear scopes webhook subscriptions to one team or all public teams, not to one
 Project. Point the subscription at the team that owns the Pynchy board. When that
-team contains other Projects, their events can wake the route too. Before acting,
-the conversation turn lists the workspace's complete Pynchy board and stops
-unless the event's issue belongs to that Project.
+team contains other Projects, their events can reach the route too. Before Pynchy
+creates or wakes a thread, the host fetches the issue and confirms that it belongs
+to the configured workspace Project. Off-board deliveries receive a durable
+ignored receipt and never enter an agent turn.
 
-The callback only asks Pynchy to inspect current state. `Ready for Planning`
-permits planning only. Execution still requires `linear_claim_work_item` to claim
-the exact `Human Approved` issue. A comment, issue edit, or Pynchy-authored state
-transition never grants execution authority by itself. Ordinary agent output
-stays in Discord; only an explicit Linear action mutates the issue.
+The selected Linear tool's `public_source` declaration also governs callback
+content. With `public_source = false`, a signed comment from the private board
+enters the issue conversation as trusted input. Pynchy receives a concise prompt
+such as “A new comment was posted on the Linear issue bound to this thread. Read
+it and take appropriate action,” followed by the comment. Set
+`public_source = true` when people you do not trust can comment; Pynchy then fences
+the callback text and starts the turn with public-source taint.
+
+Trusted comments can request ordinary responses and actions, but they do not
+replace the Linear workflow gates. `Ready for Planning` permits planning only.
+Execution still requires `linear_claim_work_item` to claim the exact
+`Human Approved` issue. Ordinary agent output stays in Discord; only an explicit
+Linear action mutates the issue.
 
 The route verifies Linear's HMAC-SHA256 signature against the raw request body,
 requires matching millisecond timestamps within 60 seconds, checks the optional
@@ -178,9 +187,8 @@ a durable receipt, then idempotently links to the issue's per-conversation FIFO
 before Pynchy returns `200` to Linear. A replay repairs a crash between those two
 writes without creating another turn. One issue processes deliveries in receipt
 order; successful turn finalization wakes the next queued delivery only after the
-claim and message cursor commit together. Each turn confirms workspace-board
-ownership, fetches the issue's current Linear state, and treats the callback body
-as untrusted context before deciding what to do.
+claim and message cursor commit together. The host repeats the read-only board
+membership check on delivery replay before it repairs or wakes the conversation.
 
 Linear recommends webhooks instead of API polling for update-driven integrations.
 When a Linear-enabled workspace has no webhook route, Pynchy keeps the approval

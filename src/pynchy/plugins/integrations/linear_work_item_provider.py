@@ -38,6 +38,10 @@ _HUMAN_APPROVAL_REQUIRED = "Linear work item must be Human Approved before Pynch
 _PLANNING_READY_REQUIRED = "Linear work item must be Ready for Planning before planning"
 
 
+class LinearWorkspaceIssueError(ValueError):
+    """The requested issue cannot participate in this workspace's Linear workflow."""
+
+
 @dataclass(frozen=True)
 class _WorkspaceContext:
     """Minimal board identity; the folder is Pynchy's canonical workspace key."""
@@ -255,10 +259,10 @@ async def workspace_issue(
     )
     issue = await client.get_issue(issue_id)
     if issue is None:
-        raise ValueError("Linear issue does not exist")
+        raise LinearWorkspaceIssueError("Linear issue does not exist")
     project = issue.get("project")
     if not isinstance(project, dict) or project.get("id") != board.project.get("id"):
-        raise ValueError(_WORKSPACE_ISSUE_REQUIRED)
+        raise LinearWorkspaceIssueError(_WORKSPACE_ISSUE_REQUIRED)
     return issue, board
 
 

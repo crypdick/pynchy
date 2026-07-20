@@ -115,6 +115,22 @@ async def test_hidden_learning_review_input_is_not_broadcast_or_traced():
     deps.emit.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_trusted_provider_input_uses_a_readable_source_label():
+    deps = _make_deps()
+    messages = [{"role": "user", "content": "A new comment was posted."}]
+
+    await broadcast_agent_input(
+        deps,
+        "discord:channel:linear-thread",
+        messages,
+        source="trusted:linear",
+    )
+
+    assert _get_broadcast_content(deps) == "» [Linear] A new comment was posted."
+    assert deps.emit.call_args.args[0].data["source"] == "trusted:linear"
+
+
 def _get_send_event(deps: MagicMock):
     """Extract the OutboundEvent from the last send_event call on the test channel."""
     return deps._test_channel.send_event.call_args[0][1]

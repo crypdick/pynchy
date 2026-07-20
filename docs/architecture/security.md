@@ -175,11 +175,14 @@ trusted.
 
 **Authenticated external routes.** A connection runtime may authenticate an
 external provider event before routing it into a non-admin conversation
-workspace. Authentication proves provider origin; it does not make the message
-trusted. Matrix route input starts the invocation both corruption-tainted and
-secret-source-tainted. It bypasses only ordinary channel sender allowlists.
-Host commands such as approval, denial, identity, and deploy commands are not
-parsed from the external message body.
+workspace. Authentication proves provider origin; the route's source-trust
+declaration decides whether the provider can carry attacker-controlled content.
+Public-source routes fence provider context and start the invocation
+corruption-tainted. Trusted routes retain provider provenance without adding
+public-source taint. Matrix route input always starts both corruption-tainted and
+secret-source-tainted. External input bypasses only ordinary channel sender
+allowlists. Host commands such as approval, denial, identity, and deploy commands
+are not parsed from an external message body, even on a trusted route.
 
 An operator can still approve or deny a pending action in the same Discord
 control thread while the routed agent turn is active. The host executes that

@@ -18,6 +18,7 @@ class ExamplePlugin:
             workspace="project",
             secret_env="EXAMPLE_WEBHOOK_SECRET",  # pragma: allowlist secret
             parse=parse_example,
+            public_source=True,
         )
 ```
 
@@ -29,8 +30,17 @@ URL-safe identifiers, and the target cannot be an admin workspace.
 Parse raw request bytes because signatures commonly cover the exact body.
 Authenticate before parsing; raise `WebhookAuthenticationError` for bad
 credentials or replay checks, and `WebhookPayloadError` only for an authenticated
-payload that fails its schema. Do not copy provider text into trusted task
-instructions. The host fences external context before building the task prompt.
+payload that fails its schema. Keep provider text in `external_context`, separate
+from host-authored instructions. A route can provide a concise, provider-rendered
+string or a mapping that the host serializes. `public_source=True` remains the safe
+default and makes the host fence that context. Set `public_source=False` only when
+every provider principal who can contribute the routed content belongs inside the
+workspace trust boundary.
+
+Use `prepare_event` for a read-only provider check that must run before receipt or
+conversation admission. The host runs preparation on delivery replays, so the
+callback must remain idempotent. Use `process_event` for an idempotent host effect
+that runs only before the first receipt admission.
 
 Set `routes_conversations=True` when actionable events target durable subjects.
 Return a `WebhookConversation` with an immutable `ConversationSubject` and a
