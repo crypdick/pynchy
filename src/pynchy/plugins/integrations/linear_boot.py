@@ -41,6 +41,8 @@ LINEAR_BOOT_TIMEOUT_SECONDS = 30
 @dataclass
 class _LinearBoardRegistry:
     boards: dict[str, LinearWorkspaceBoard] = field(default_factory=dict)
+    configured_workspaces: frozenset[str] = frozenset()
+    routable_workspaces: frozenset[str] = frozenset()
 
 
 _registry = _LinearBoardRegistry()
@@ -61,6 +63,12 @@ async def reconcile_linear_workspace_boards(
 ) -> dict[str, LinearWorkspaceBoard]:
     """Create missing Linear projects/states for registered Pynchy workspaces."""
     selected_workspaces = _linear_workspaces(workspaces)
+    _registry.configured_workspaces = frozenset(get_settings().workspace_names())
+    _registry.routable_workspaces = frozenset(
+        workspace.folder
+        for workspace in selected_workspaces
+        if workspace.jid.startswith("discord:channel:")
+    )
     if not selected_workspaces:
         _registry.boards = {}
         return {}
@@ -96,7 +104,7 @@ async def reconcile_linear_workspace_boards(
 
 
 def configured_linear_workspace_names(account_name: str) -> tuple[str, ...]:
-    """Return policy owners that select one exact Linear account."""
+    """Return thread-capable policy owners for one exact Linear account."""
     settings = get_settings()
     account = linear_account(account_name, settings)
     result: list[str] = []
@@ -104,7 +112,14 @@ def configured_linear_workspace_names(account_name: str) -> tuple[str, ...]:
         resolved = settings.resolved_workspace_config(workspace)
         if resolved is not None and account.name in resolved.tools:
             result.append(workspace)
-    return tuple(result)
+    configured = frozenset(settings.workspace_names())
+    if configured == _registry.configured_workspaces:
+        return tuple(
+            workspace for workspace in result if workspace in _registry.routable_workspaces
+        )
+    return tuple(
+        workspace for workspace in result if settings.workspace_parent(workspace) is not None
+    )
 
 
 def workspace_for_linear_project(project_id: str) -> str | None:
