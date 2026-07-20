@@ -869,20 +869,10 @@ class TestProcessGroupMessages:
 
             delivery = await get_conversation_delivery(identity)
             assert delivery is not None
-            assert delivery.status is ConversationDeliveryStatus.PENDING
+            assert delivery.status is ConversationDeliveryStatus.CLAIMED
+            assert delivery.claim_id == external.metadata["conversation_claim_id"]
             assert not deps.last_agent_timestamp.get(jid, "")
 
-            retry_claim = ConversationClaimId("claim-active-retry-second")
-            claimed = await claim_next_conversation_delivery(
-                delivery.conversation_id,
-                retry_claim,
-            )
-            assert claimed is not None
-            external.metadata = {
-                **(external.metadata or {}),
-                "conversation_claim_id": retry_claim,
-            }
-            await store_message(external)
             deps.run_agent = AsyncMock(return_value="success")
             assert await process_group_messages(deps, jid) is True
 

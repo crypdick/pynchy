@@ -57,7 +57,7 @@ from pynchy.utils import create_background_task
 if TYPE_CHECKING:
     from pynchy.host.container_manager import OnOutput
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import ContainerOutput, ScheduledTask, WorkspaceProfile
+    from pynchy.types import Channel, ContainerOutput, ScheduledTask, SessionId, WorkspaceProfile
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
@@ -212,6 +212,24 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
                 start_scheduled_agent_task_workflow(task),
                 name=f"webhook-task-{task.id[-36:]}",
             )
+
+        def channels(self) -> list[Channel]:
+            return app.channels
+
+        def workspaces(self) -> dict[str, WorkspaceProfile]:
+            return app.workspaces
+
+        async def register_workspace(self, profile: WorkspaceProfile) -> None:
+            await app.register_workspace(profile)
+
+        async def unregister_workspace(self, jid: str) -> None:
+            await app.unregister_workspace(jid)
+
+        async def bind_session(self, folder: str, session_id: SessionId) -> None:
+            await app.bind_routed_session(folder, session_id)
+
+        async def ingest_message(self, jid: str, message: NewMessage) -> None:
+            await app.on_inbound(jid, message)
 
     return HttpDeps()
 

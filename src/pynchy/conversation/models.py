@@ -116,6 +116,14 @@ class ConversationDeliveryAdmission:
     created: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationDeliveryCompletion:
+    """Identity needed to wake a completed delivery's pending sibling."""
+
+    identity: ExternalDeliveryIdentity
+    conversation_id: ConversationId
+
+
 class ControlSurface(StrEnum):
     """Human-facing channel for operating a routed conversation."""
 

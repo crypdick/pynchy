@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from pynchy.conversation.models import (
+    ConversationSubject,  # noqa: TC001, RUF100 - beartype resolves webhook targets.
+)
 from pynchy.logger import logger
 from pynchy.types import WorkspaceProfile
 
@@ -36,13 +39,25 @@ class WebhookProcessingError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class WebhookConversation:
+    """Provider-parsed placement for an actionable routed conversation event."""
+
+    subject: ConversationSubject
+    control_title: str
+
+    def __post_init__(self) -> None:
+        if not self.control_title.strip():
+            raise ValueError("Webhook conversation control title cannot be blank")
+
+
+@dataclass(frozen=True)
 class WebhookEvent:
     """Closed provider event admitted by a plugin-owned route parser.
 
     A provider parser chooses exactly one disposition: an isolated agent task,
-    a literal host notification, or an ignored delivery.  Host notifications
-    are for deterministic status updates only; provider text must never become
-    trusted agent instructions.
+    a routed conversation turn, a literal host notification, or an ignored
+    delivery. Host notifications are for deterministic status updates only;
+    provider text must never become trusted agent instructions.
     """
 
     delivery_id: str
@@ -54,6 +69,7 @@ class WebhookEvent:
     external_context: Mapping[str, object] | None
     ignored_reason: str | None = None
     host_message: str | None = None
+    conversation: WebhookConversation | None = None
 
     def __post_init__(self) -> None:
         if (self.instructions is None) != (self.external_context is None):
@@ -61,9 +77,16 @@ class WebhookEvent:
         actionable = bool(self.instructions) and self.external_context is not None
         if self.host_message is not None and not self.host_message.strip():
             raise ValueError("Webhook host notifications cannot be blank")
-        dispositions = (actionable, self.host_message is not None, bool(self.ignored_reason))
+        routed = actionable and self.conversation is not None
+        isolated = actionable and self.conversation is None
+        dispositions = (
+            isolated,
+            routed,
+            self.host_message is not None,
+            bool(self.ignored_reason),
+        )
         if sum(dispositions) != 1:
-            raise ValueError("Webhook event must be actionable, notified, or ignored")
+            raise ValueError("Webhook event must be isolated, routed, notified, or ignored")
 
 
 WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]
@@ -85,6 +108,7 @@ class WebhookRoute:
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
     process_event: WebhookEventProcessor | None = None
+    routes_conversations: bool = False
 
     @property
     def path(self) -> str:

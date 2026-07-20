@@ -26,7 +26,8 @@ from pynchy.conversation.models import (
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
-    ensure_conversation_control,
+    ConversationWorkspaceContext,
+    ensure_conversation_workspace,
 )
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
@@ -67,7 +68,7 @@ from pynchy.state import (
     resolve_conversation,
     set_external_provider_cursor,
 )
-from pynchy.types import CapabilityRule, ChatJid, GroupFolder, NewMessage, WorkspaceProfile
+from pynchy.types import CapabilityRule, ChatJid, GroupFolder, NewMessage
 from pynchy.utils import create_background_task
 
 if TYPE_CHECKING:
@@ -274,15 +275,6 @@ class MatrixConnectionRuntime:
         if parent is None:
             raise ValueError(f"Matrix route {route.name!r} workspace is not registered")
         conversation = await resolve_conversation(_subject(route), GroupFolder(route.workspace))
-        ensured = await ensure_conversation_control(
-            context.channels(),
-            ConversationControlRequest(
-                conversation_id=conversation.id,
-                parent_workspace=GroupFolder(route.workspace),
-                parent_jid=ChatJid(parent.jid),
-                title=route.control_title,
-            ),
-        )
         folder = routed_conversation_folder(route.workspace, conversation.id)
         capabilities = {
             capability: CapabilityRule(decision=decision)
@@ -296,64 +288,31 @@ class MatrixConnectionRuntime:
                 capabilities=capabilities,
             ),
         )
-        await self._register_control_workspace(
-            parent,
-            folder,
-            ensured.binding.thread_jid,
-            route.control_title,
+        ensured = await ensure_conversation_workspace(
+            ConversationWorkspaceContext(
+                channels=context.channels,
+                workspaces=context.workspaces,
+                register_workspace=context.register_workspace,
+                unregister_workspace=context.unregister_workspace,
+                bind_session=context.bind_session,
+            ),
+            ConversationControlRequest(
+                conversation_id=conversation.id,
+                parent_workspace=GroupFolder(route.workspace),
+                parent_jid=ChatJid(parent.jid),
+                title=route.control_title,
+            ),
         )
-        if conversation.session_id is not None:
-            await context.bind_session(folder, conversation.session_id)
         bind_active_matrix_route(
             ActiveMatrixRoute(
                 workspace_folder=folder,
                 conversation_id=conversation.id,
-                control_thread_jid=ensured.binding.thread_jid,
+                control_thread_jid=ensured.control.binding.thread_jid,
                 route=route,
                 portal=assertion,
             )
         )
         return conversation.id
-
-    async def _register_control_workspace(
-        self,
-        parent: WorkspaceProfile,
-        folder: str,
-        thread_jid: ChatJid,
-        title: str,
-    ) -> None:
-        context = self._require_context()
-        for jid, existing in list(context.workspaces().items()):
-            if existing.folder == folder and jid != thread_jid:
-                await context.unregister_workspace(jid)
-        profile = WorkspaceProfile(
-            jid=thread_jid,
-            name=f"{parent.name}/{title}",
-            folder=folder,
-            trigger=parent.trigger,
-            container_config=parent.container_config,
-            security=parent.security,
-            is_admin=False,
-            added_at=datetime.now(UTC).isoformat(),
-        )
-        current_profile = context.workspaces().get(thread_jid)
-        same_profile = current_profile is not None and (
-            current_profile.name,
-            current_profile.folder,
-            current_profile.trigger,
-            current_profile.container_config,
-            current_profile.security,
-            current_profile.is_admin,
-        ) == (
-            profile.name,
-            profile.folder,
-            profile.trigger,
-            profile.container_config,
-            profile.security,
-            profile.is_admin,
-        )
-        if not same_profile:
-            await context.register_workspace(profile)
 
     async def _wake_pending_routes(self) -> None:
         for route in self._routes:

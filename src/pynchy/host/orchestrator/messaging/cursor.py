@@ -5,6 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from pynchy.conversation.dispatch import notify_conversation_delivery_completed
+from pynchy.conversation.models import (
+    ConversationDeliveryCompletion,  # noqa: TC001, RUF100 - beartype resolves completion results.
+)
 from pynchy.state import complete_in_flight_turn
 
 
@@ -54,12 +58,12 @@ async def complete_turn_with_cursor(
     turn_id: str,
     *,
     conversation_claim_id: str | None = None,
-) -> None:
+) -> ConversationDeliveryCompletion | None:
     """Atomically persist a monotonic cursor, turn, and optional routed delivery."""
     previous_cursor = deps.last_agent_timestamp.get(chat_jid, "")
     deps.last_agent_timestamp[chat_jid] = _monotonic_cursor(previous_cursor, new_cursor)
     try:
-        await complete_in_flight_turn(
+        completed = await complete_in_flight_turn(
             turn_id,
             last_agent_timestamps=deps.last_agent_timestamp,
             conversation_claim_id=conversation_claim_id,
@@ -67,3 +71,6 @@ async def complete_turn_with_cursor(
     except Exception:  # noqa: BLE001, RUF100 - cursor persistence rolls back in-memory state.
         deps.last_agent_timestamp[chat_jid] = previous_cursor
         raise
+    if completed is not None:
+        await notify_conversation_delivery_completed(completed)
+    return completed

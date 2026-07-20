@@ -7,12 +7,16 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from aiohttp import web
 
 from pynchy.host.container_manager.security.fencing import fence_untrusted_content
 from pynchy.host.orchestrator.http_control import ClientAddress, RequestRateLimiter
+from pynchy.host.orchestrator.webhook_conversations import (
+    ConversationWebhookDeps,
+    WebhookConversationDispatcher,
+)
 from pynchy.logger import logger
 from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
@@ -23,10 +27,16 @@ from pynchy.plugins.webhooks import (
     WebhookRoute,
     validate_webhook_routes,
 )
-from pynchy.state import WebhookReceipt, admit_webhook_receipt, get_webhook_receipt
+from pynchy.state import (
+    WebhookAdmission,
+    WebhookReceipt,
+    admit_webhook_receipt,
+    get_webhook_receipt,
+)
 from pynchy.types import ScheduledTask, WorkspaceProfile
 
 
+@runtime_checkable
 class WebhookIngressDeps(Protocol):
     """Host capabilities required by provider webhook ingress."""
 
@@ -44,6 +54,7 @@ class WebhookIngress:
     deps: WebhookIngressDeps
     routes: dict[str, WebhookRoute]
     limiters: dict[str, RequestRateLimiter]
+    conversation_dispatcher: WebhookConversationDispatcher | None
 
     @property
     def public_paths(self) -> frozenset[str]:
@@ -74,7 +85,17 @@ def build_webhook_ingress(
             reason = route.validate_workspace(workspace)
             if reason is not None:
                 raise WebhookConfigurationError(f"Webhook route {route.path} {reason}")
+        if route.routes_conversations and not isinstance(deps, ConversationWebhookDeps):
+            raise WebhookConfigurationError(
+                f"Webhook route {route.path} requires conversation runtime capabilities"
+            )
     validated = validate_webhook_routes(routes)
+    conversation_routes = tuple(route for route in validated if route.routes_conversations)
+    dispatcher = (
+        WebhookConversationDispatcher(deps=deps, routes=conversation_routes)
+        if conversation_routes and isinstance(deps, ConversationWebhookDeps)
+        else None
+    )
     return WebhookIngress(
         deps=deps,
         routes={route.path: route for route in validated},
@@ -85,6 +106,7 @@ def build_webhook_ingress(
             )
             for route in validated
         },
+        conversation_dispatcher=dispatcher,
     )
 
 
@@ -136,10 +158,10 @@ async def _process_route_event(
     route: WebhookRoute,
     event: WebhookEvent,
 ) -> web.Response | None:
-    """Deduplicate or apply one route-owned trusted host effect before admission."""
+    """Apply one route-owned trusted host effect once before receipt admission."""
     existing = await get_webhook_receipt(route.provider, route.name, event.delivery_id)
     if existing is not None:
-        return web.json_response({"status": existing.disposition, "duplicate": True})
+        return None
     if route.process_event is None:
         return None
     try:
@@ -177,17 +199,17 @@ def _task_for_event(
     workspace: WorkspaceProfile,
     received_at: str,
 ) -> ScheduledTask | None:
-    if event.instructions is None or event.external_context is None:
+    if (
+        event.instructions is None
+        or event.external_context is None
+        or event.conversation is not None
+    ):
         return None
-    external_context = fence_untrusted_content(
-        json.dumps(event.external_context, sort_keys=True, ensure_ascii=False),
-        source=f"{route.provider}-webhook",
-    )
     return ScheduledTask(
         id=f"webhook-{route.provider}-{route.name}-{event.delivery_id}",
         group_folder=workspace.folder,
         chat_jid=workspace.jid,
-        prompt=f"{event.instructions}\n\n{external_context}",
+        prompt=_prompt_for_event(route, event),
         schedule_type="once",
         schedule_value=received_at,
         context_mode="isolated",
@@ -195,6 +217,54 @@ def _task_for_event(
         created_at=received_at,
         input_source=f"webhook:{route.provider}",
     )
+
+
+def _prompt_for_event(route: WebhookRoute, event: WebhookEvent) -> str:
+    if event.instructions is None or event.external_context is None:
+        raise ValueError("Actionable webhook event lost its prompt context")
+    external_context = fence_untrusted_content(
+        json.dumps(event.external_context, sort_keys=True, ensure_ascii=False),
+        source=f"{route.provider}-webhook",
+    )
+    return f"{event.instructions}\n\n{external_context}"
+
+
+async def _start_conversation_routes(app: web.Application) -> None:
+    ingress = app[webhook_ingress_key]
+    if ingress.conversation_dispatcher is not None:
+        await ingress.conversation_dispatcher.start()
+
+
+async def _stop_conversation_routes(  # noqa: RUF029, RUF100 - aiohttp cleanup hooks use an async callback contract.
+    app: web.Application,
+) -> None:
+    ingress = app[webhook_ingress_key]
+    if ingress.conversation_dispatcher is not None:
+        ingress.conversation_dispatcher.close()
+
+
+async def _dispatch_admitted_event(
+    ingress: WebhookIngress,
+    route: WebhookRoute,
+    event: WebhookEvent,
+    admission: WebhookAdmission,
+    workspace: WorkspaceProfile,
+) -> None:
+    dispatcher = ingress.conversation_dispatcher
+    if event.conversation is not None:
+        if dispatcher is None:
+            raise RuntimeError("Routed webhook dispatcher disappeared after startup")
+        conversation_id = await dispatcher.admit(
+            route,
+            event,
+            _prompt_for_event(route, event),
+        )
+        if conversation_id is not None:
+            await dispatcher.wake(conversation_id)
+    if admission.created and admission.task is not None:
+        ingress.deps.dispatch_scheduled_task(admission.task)
+    if admission.created and event.host_message is not None:
+        await ingress.deps.broadcast_host_message(workspace.jid, event.host_message)
 
 
 async def handle_webhook(request: web.Request) -> web.Response:
@@ -224,9 +294,11 @@ async def handle_webhook(request: web.Request) -> web.Response:
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)
-    disposition: Literal["accepted", "notified", "ignored"]
+    disposition: Literal["accepted", "routed", "notified", "ignored"]
     if task is not None:
         disposition = "accepted"
+    elif event.conversation is not None:
+        disposition = "routed"
     elif event.host_message is not None:
         disposition = "notified"
     else:
@@ -247,10 +319,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
         received_at=received_at_text,
     )
     admission = await admit_webhook_receipt(receipt, task)
-    if admission.created and admission.task is not None:
-        ingress.deps.dispatch_scheduled_task(admission.task)
-    if admission.created and event.host_message is not None:
-        await ingress.deps.broadcast_host_message(workspace.jid, event.host_message)
+    await _dispatch_admitted_event(ingress, route, event, admission, workspace)
     logger.info(
         "Webhook delivery admitted",
         provider=route.provider,
@@ -260,12 +329,22 @@ async def handle_webhook(request: web.Request) -> web.Response:
         duplicate=not admission.created,
     )
     return web.json_response(
-        {"status": admission.receipt.disposition, "duplicate": not admission.created}
+        {
+            "status": (
+                "accepted"
+                if admission.receipt.disposition == "routed"
+                else admission.receipt.disposition
+            ),
+            "duplicate": not admission.created,
+        }
     )
 
 
 def install_webhook_ingress(app: web.Application, ingress: WebhookIngress) -> None:
     """Register the validated ingress and its exact public POST paths."""
     app[webhook_ingress_key] = ingress
+    if ingress.conversation_dispatcher is not None:
+        app.on_startup.append(_start_conversation_routes)
+        app.on_cleanup.append(_stop_conversation_routes)
     for path in ingress.routes:
         app.router.add_post(path, handle_webhook)

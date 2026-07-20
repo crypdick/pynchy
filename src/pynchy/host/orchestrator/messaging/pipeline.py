@@ -62,7 +62,6 @@ from pynchy.logger import logger
 from pynchy.state import (
     clear_in_flight_turn,
     get_messages_since,
-    release_conversation_delivery_claim,
     release_in_flight_turn_claim,
 )
 
@@ -124,11 +123,6 @@ def _conversation_claim_for_batch(
     if len(claim_ids) > 1:
         raise RuntimeError("One agent turn cannot complete multiple conversation delivery claims")
     return ConversationClaimId(next(iter(claim_ids))) if claim_ids else None
-
-
-async def _release_conversation_claim(claim_id: str | None) -> None:
-    if claim_id is not None:
-        await release_conversation_delivery_claim(ConversationClaimId(claim_id))
 
 
 async def _announce_processing_start(
@@ -207,7 +201,9 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
 
         if clean_failure:
             await clear_in_flight_turn(request.turn_id)
-            await _release_conversation_claim(request.conversation_claim_id)
+            # The durable inbound message carries this exact claim token. Retain
+            # it so the next in-process attempt can finalize the same FIFO head;
+            # startup recovery returns claims without a surviving turn to pending.
             # A control classifier that was waiting for this lock now observes
             # no active turn and cannot add another active-boundary marker.
             request.deps.pop_dispatched(request.chat_jid, final_cursor)
@@ -430,7 +426,8 @@ async def process_group_messages(
         process_start = await _start_processing(deps, chat_jid, group, missed_messages)
     except BaseException:
         await clear_in_flight_turn(turn_id)
-        await _release_conversation_claim(turn.conversation_claim_id)
+        # Keep a routed claim attached to its durable input for the same retry
+        # semantics as a clean agent failure.
         raise
 
     async def on_output(result: types.ContainerOutput) -> None:

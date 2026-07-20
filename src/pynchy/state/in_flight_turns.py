@@ -6,6 +6,15 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from pynchy.conversation.models import (
+    ConversationDeliveryCompletion,
+    ConversationId,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalProvider,
+    ExternalRoute,
+)
+
 if TYPE_CHECKING:
     from aiosqlite import Row
 else:
@@ -212,7 +221,7 @@ async def complete_in_flight_turn(
     *,
     last_agent_timestamps: dict[str, str] | None = None,
     conversation_claim_id: str | None = None,
-) -> None:
+) -> ConversationDeliveryCompletion | None:
     """Finalize a turn atomically with its cursor and routed-delivery claim."""
     async with atomic_write() as db:
         if last_agent_timestamps is not None:
@@ -221,7 +230,19 @@ async def complete_in_flight_turn(
                 ("last_agent_timestamp", json.dumps(last_agent_timestamps)),
             )
         await db.execute("DELETE FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
+        completed: ConversationDeliveryCompletion | None = None
         if conversation_claim_id is not None:
+            claimed_cursor = await db.execute(
+                """
+                SELECT provider, route, delivery_id, conversation_id
+                FROM conversation_deliveries
+                WHERE claim_id = ? AND status = 'claimed'
+                """,
+                (conversation_claim_id,),
+            )
+            claimed = await claimed_cursor.fetchone()
+            if claimed is None:
+                raise ValueError("Conversation delivery claim disappeared before turn completion")
             cursor = await db.execute(
                 """
                 UPDATE conversation_deliveries
@@ -232,3 +253,12 @@ async def complete_in_flight_turn(
             )
             if cursor.rowcount != 1:
                 raise ValueError("Conversation delivery claim disappeared before turn completion")
+            completed = ConversationDeliveryCompletion(
+                identity=ExternalDeliveryIdentity(
+                    provider=ExternalProvider(claimed["provider"]),
+                    route=ExternalRoute(claimed["route"]),
+                    delivery_id=ExternalDeliveryId(claimed["delivery_id"]),
+                ),
+                conversation_id=ConversationId(claimed["conversation_id"]),
+            )
+        return completed
