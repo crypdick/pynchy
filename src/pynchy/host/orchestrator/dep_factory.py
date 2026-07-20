@@ -8,11 +8,14 @@ the composite dependency objects that subsystems require.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.config import get_settings
+from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    OnOutput,
+)
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
@@ -34,6 +37,9 @@ from pynchy.host.orchestrator.adapters import (
 from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     PynchyApp,
 )
+from pynchy.host.orchestrator.concurrency import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    GroupQueue,
+)
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     HttpServerDeps,
 )
@@ -51,13 +57,15 @@ from pynchy.host.orchestrator.temporal.scheduler import (
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.types import NewMessage
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
+    Channel,
+    ContainerOutput,
+    NewMessage,
+    ScheduledTask,
+    SessionId,
+    WorkspaceProfile,
+)
 from pynchy.utils import create_background_task
-
-if TYPE_CHECKING:
-    from pynchy.host.container_manager import OnOutput
-    from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.types import Channel, ContainerOutput, ScheduledTask, SessionId, WorkspaceProfile
 
 
 def _get_broadcasters(app: PynchyApp) -> tuple[MessageBroadcaster, HostMessageBroadcaster]:
