@@ -16,6 +16,7 @@ from typing import Any, Protocol, runtime_checkable
 from pynchy.config import get_settings
 from pynchy.host.container_manager.security.fencing import fence_untrusted_content
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves inbox annotations at runtime.
     LinearWorkspaceBoard,
     WorkspaceLike,
@@ -65,13 +66,17 @@ class _DecisionIssue:
     project_id: str
 
     @classmethod
-    def from_payload(cls, payload: object) -> _DecisionIssue:
+    def from_payload(cls, payload: object) -> _DecisionIssue | None:
         if not isinstance(payload, dict):
             raise TypeError("Linear decision inbox issue was not an object")
         state = payload.get("state")
         project = payload.get("project")
-        if not isinstance(state, dict) or not isinstance(project, dict):
-            raise TypeError("Linear decision inbox issue lacks state or project")
+        if not isinstance(state, dict):
+            raise TypeError("Linear decision inbox issue lacks state")
+        if project is None:
+            return None
+        if not isinstance(project, dict):
+            raise TypeError("Linear decision inbox issue project was not an object")
         return cls(
             id=_text(payload, "id"),
             identifier=_text(payload, "identifier"),
@@ -133,7 +138,9 @@ async def _list_state_issues(
         nodes = connection.get("nodes")
         if not isinstance(nodes, list):
             raise TypeError("Linear decision issue nodes were not an array")
-        issues.extend(_DecisionIssue.from_payload(node) for node in nodes)
+        issues.extend(
+            issue for node in nodes if (issue := _DecisionIssue.from_payload(node)) is not None
+        )
         after = _next_cursor(connection)
         if after is None:
             return issues
@@ -173,26 +180,27 @@ def _task_for_issue(
     workspace: WorkspaceLike,
     status: str,
     now: datetime,
+    *,
+    public_source: bool,
 ) -> ScheduledTask:
     occurred_at = now.astimezone(UTC).isoformat()
     digest = hashlib.sha256(f"{status}:{issue.id}:{issue.updated_at}".encode()).hexdigest()[:16]
     instructions = (
         _PLANNING_INSTRUCTIONS if status == READY_FOR_PLANNING_STATUS else _EXECUTION_INSTRUCTIONS
     )
-    context = fence_untrusted_content(
-        json.dumps(
-            {
-                "issue_id": issue.id,
-                "identifier": issue.identifier,
-                "title": issue.title,
-                "url": issue.url,
-                "observed_state": status,
-                "observed_updated_at": issue.updated_at,
-            },
-            sort_keys=True,
-        ),
-        source="linear-decision-inbox",
+    context = json.dumps(
+        {
+            "issue_id": issue.id,
+            "identifier": issue.identifier,
+            "title": issue.title,
+            "url": issue.url,
+            "observed_state": status,
+            "observed_updated_at": issue.updated_at,
+        },
+        sort_keys=True,
     )
+    if public_source:
+        context = fence_untrusted_content(context, source="linear-decision-inbox")
     return ScheduledTask(
         id=f"linear-{status.replace('_', '-')}-{issue.identifier.lower()}-{digest}",
         group_folder=workspace.folder,
@@ -203,7 +211,7 @@ def _task_for_issue(
         context_mode="isolated",
         next_run=occurred_at,
         created_at=occurred_at,
-        input_source=f"linear:{status}",
+        input_source=f"{'external' if public_source else 'trusted'}:linear:{status}",
         derived_thread_name=f"[{issue.identifier}] {issue.title}"[:100],
     )
 
@@ -214,6 +222,7 @@ async def reconcile_linear_decision_inbox(
     boards: Mapping[str, LinearWorkspaceBoard],
     *,
     now: datetime | None = None,
+    public_source: bool = True,
 ) -> list[ScheduledTask]:
     """Admit one isolated task for every newly observed actionable decision."""
     project_workspaces = _project_workspaces(workspaces, boards)
@@ -233,7 +242,13 @@ async def reconcile_linear_decision_inbox(
             workspace = project_workspaces.get(issue.project_id)
             if workspace is None or issue.state_id != state_id:
                 continue
-            task = _task_for_issue(issue, workspace, status, observed_at)
+            task = _task_for_issue(
+                issue,
+                workspace,
+                status,
+                observed_at,
+                public_source=public_source,
+            )
             if await create_task_if_absent(task):
                 created.append(task)
     return created
@@ -261,15 +276,40 @@ async def start_linear_decision_inbox_loop(
     if not fallback_boards:
         return
     while True:
-        try:
-            async with linear_client() as client:
-                created = await reconcile_linear_decision_inbox(
-                    client,
-                    workspaces.values(),
-                    fallback_boards,
+        created_count = 0
+        for account_name, account_boards in _boards_by_account(fallback_boards).items():
+            workspace = next(iter(account_boards))
+            account = linear_account_for_workspace(workspace)
+            if account is None or account.config.public_source == "forbidden":
+                continue
+            try:
+                async with linear_client(workspace=workspace) as client:
+                    created = await reconcile_linear_decision_inbox(
+                        client,
+                        workspaces.values(),
+                        account_boards,
+                        public_source=account.config.public_source is not False,
+                    )
+                created_count += len(created)
+            except Exception:  # noqa: BLE001, RUF100 - one optional account must not stop polling others.
+                logger.exception(
+                    "Linear decision inbox reconciliation failed",
+                    account=account_name,
+                    workspace=workspace,
                 )
-            if created:
-                logger.info("Linear decision tasks admitted", count=len(created))
-        except Exception:  # noqa: BLE001, RUF100 - long-lived optional integration boundary.
-            logger.exception("Linear decision inbox reconciliation failed")
+        if created_count:
+            logger.info("Linear decision tasks admitted", count=created_count)
         await asyncio.sleep(LINEAR_DECISION_POLL_SECONDS)
+
+
+def _boards_by_account(
+    boards: Mapping[str, LinearWorkspaceBoard],
+) -> dict[str, dict[str, LinearWorkspaceBoard]]:
+    """Partition boards by the account selected by their workspace."""
+    result: dict[str, dict[str, LinearWorkspaceBoard]] = {}
+    for workspace, board in boards.items():
+        account = linear_account_for_workspace(workspace)
+        if account is None:
+            continue
+        result.setdefault(account.name, {})[workspace] = board
+    return result

@@ -8,9 +8,9 @@ planning readiness, and human authorization to execute.
 
 ## Configure access
 
-Create a Linear personal API key, then store it in the host environment as
-`LINEAR_API_KEY`. Pynchy uses that key only as a credential; it does not grant
-workspace access to Linear tools by itself.
+Create a Linear personal API key, then store it in the host environment. The
+default account reads `LINEAR_API_KEY`. Pynchy uses the value only as a
+credential; it does not grant workspace access to Linear tools by itself.
 
 If the key can see multiple teams, set `LINEAR_TEAM_KEY` to the team key, team
 ID, or exact team name Pynchy should use:
@@ -20,26 +20,41 @@ LINEAR_API_KEY=lin_api_...
 LINEAR_TEAM_KEY=SYN
 ```
 
-Select the Linear capability through a profile. For Pynchy's workspace todo-board
-integration, declare a Linear tool and select it from the profile:
+Declare one named Linear tool per API key. The declaration is the account
+boundary: its API-key and team environment selectors travel with its
+`public_source`, `secret_data`, `public_sink`, and `dangerous_writes` policy.
+Select that exact account through the workspace profile:
+
+```bash
+LINEAR_SYNAPSE_API_KEY=lin_api_...
+LINEAR_SYNAPSE_TEAM_KEY=SYN
+```
 
 ```toml
-[tools.linear]
+[tools.linear_synapse]
 type = "linear"
+api_key_env = "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
+team_key_env = "LINEAR_SYNAPSE_TEAM_KEY"
 public_source = false
 secret_data = false
 public_sink = true
 dangerous_writes = false
 
 [profiles.project]
-tools = ["linear"]
+tools = ["linear_synapse"]
 
 [workspaces.code-improver]
 profiles = ["project"]
 ```
 
-To expose the Linear MCP tools directly to agents, select the plugin-provided
-MCP runtime by declaring and granting the `linear` tool:
+The same selection exposes a dedicated Linear MCP process to the agent. Pynchy
+maps the selected account's API key into that process as `LINEAR_API_KEY`; it
+does not inherit a different Linear account from the host. A workspace must
+select at most one Linear account because that account also owns its canonical
+todo board and host-side lifecycle actions.
+
+The conventional single-account form remains valid and uses
+`LINEAR_API_KEY` and `LINEAR_TEAM_KEY` by default:
 
 ```toml
 [tools.linear]
@@ -132,6 +147,7 @@ where Pynchy can create issue threads:
 [[plugins.linear.options.webhook_routes]]
 name = "code-improver"
 workspace = "code-improver"
+tool = "linear_synapse"
 secret_env = "LINEAR_WEBHOOK_SECRET"  # pragma: allowlist secret
 organization_id = "your-linear-organization-id"
 ```
@@ -183,13 +199,15 @@ registry. Off-board deliveries receive a durable ignored receipt and never enter
 an agent turn. Project-routed subscriptions replace per-workspace polling for all
 managed boards; fixed routes replace polling only for their named workspace.
 
-The selected Linear tool's `public_source` declaration also governs callback
-content. With `public_source = false`, a signed comment from the private board
-enters the issue conversation as trusted input. Pynchy receives a concise prompt
-such as “A new comment was posted on the Linear issue bound to this thread. Read
-it and take appropriate action,” followed by the comment. Set
-`public_source = true` when people you do not trust can comment; Pynchy then fences
-the callback text and starts the turn with public-source taint.
+The route's `tool` selects one exact Linear account. That account's
+`public_source` declaration governs callback content, and the host uses the same
+account's API key for the board-membership check. With `public_source = false`,
+a signed comment from the private board enters the issue conversation as trusted
+input. Pynchy receives a concise prompt such as “A new comment was posted on the
+Linear issue bound to this thread. Read it and take appropriate action,” followed
+by the comment. Set `public_source = true` on an account when people you do not
+trust can comment on boards visible to its key; Pynchy then fences callback text
+from routes using that account and starts those turns with public-source taint.
 
 Trusted comments can request ordinary responses and actions, but they do not
 replace the Linear workflow gates. `Ready for Planning` permits planning only.
@@ -213,11 +231,12 @@ When a Linear-enabled workspace has no webhook route, Pynchy keeps the approval
 workflow functional on a local-only host: once per minute, the host queries only
 the shared `Ready for Planning` and `Human Approved` states and admits one
 deterministic isolated task for each newly observed issue on a managed workspace
-Project. A planning task must persist its plan through `linear_submit_plan`; an
-execution task must claim the issue before it changes code. Configure a webhook
-route for lower latency and to wake on comments and other issue changes. Pynchy
-excludes webhook-routed workspaces from this fallback query so one workspace does
-not use both delivery paths.
+Project. Pynchy partitions these queries by account and applies each account's
+`public_source` declaration to the scheduled input. A planning task must persist
+its plan through `linear_submit_plan`; an execution task must claim the issue
+before it changes code. Configure a webhook route for lower latency and to wake
+on comments and other issue changes. Pynchy excludes webhook-routed workspaces
+from this fallback query so one workspace does not use both delivery paths.
 
 ## Schedule proactive proposals
 

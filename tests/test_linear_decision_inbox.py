@@ -141,8 +141,8 @@ async def test_reconcile_admits_each_human_decision_to_its_own_workspace_once() 
     assert duplicate == []
     assert {task.group_folder for task in created} == {"alpha", "beta"}
     assert {task.input_source for task in created} == {
-        "linear:ready_for_planning",
-        "linear:human_approved",
+        "external:linear:ready_for_planning",
+        "external:linear:human_approved",
     }
     assert all(task.context_mode == "isolated" for task in created)
     assert {task.derived_thread_name for task in created} == {
@@ -165,6 +165,46 @@ async def test_planning_task_requires_a_persisted_plan_without_execution_authori
     assert "Awaiting Plan Approval" in task.prompt
     assert "Do not claim or execute" in task.prompt
     assert "EXTERNAL_UNTRUSTED_CONTENT" in task.prompt
+
+
+async def test_private_account_decision_context_remains_trusted() -> None:
+    created = await reconcile_linear_decision_inbox(
+        _DecisionClient(),
+        [_Workspace("alpha", "Alpha", "linear:alpha")],
+        {"alpha": _board("project-alpha")},
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
+        public_source=False,
+    )
+
+    task = created[0]
+    assert task.input_source == "trusted:linear:ready_for_planning"
+    assert "EXTERNAL_UNTRUSTED_CONTENT" not in task.prompt
+
+
+async def test_reconcile_ignores_issues_without_a_project() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-ready"].insert(
+        0,
+        {
+            **_issue(
+                "issue-no-project",
+                "SYN-0",
+                "Not assigned to a project",
+                "state-ready",
+                "unused",
+            ),
+            "project": None,
+        },
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("alpha", "Alpha", "linear:alpha")],
+        {"alpha": _board("project-alpha")},
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
+    )
+
+    assert [task.group_folder for task in created] == ["alpha"]
 
 
 async def test_approved_task_requires_claim_before_execution() -> None:

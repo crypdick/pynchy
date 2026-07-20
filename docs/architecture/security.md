@@ -96,8 +96,10 @@ workspace and explicitly opt into admin candidates; the host checks the resolved
 owner against that allowlist for every delivery. Admin candidates still must pass
 the clean room's source-trust validation. The host then enforces bounded bodies,
 a second per-route rate limit, durable delivery-ID deduplication, and isolated
-task admission. Content declared `public_source = true` receives an untrusted
-input fence, and provider callbacks never bypass workflow authorization gates. See
+task admission. Each route resolves its provider account's data-flow declaration:
+public payloads are fenced, while content from a private account retains
+authenticated provenance without corruption taint. Neither form can bypass
+explicit execution gates. See
 [Provider-authenticated webhooks](../usage/control-plane.md#provider-authenticated-webhooks).
 
 `/health` deliberately exposes only a static readiness state. Detailed `/status`,

@@ -112,14 +112,14 @@ binding. If Discord no longer has that thread, reconciliation creates a
 replacement, moves the runtime workspace to the replacement JID, and rebinds
 the conversation's existing agent session.
 
-Before admission, the host fetches the current issue and rejects a delivery that
-does not belong to the route's workspace Project. The selected Linear tool's
-`public_source` declaration then controls prompt handling. A private source sends
-the parsed comment as trusted conversation input; a public source fences the same
-context and starts the invocation corruption-tainted. Both paths preserve a short,
-provider-owned wake-up prompt instead of asking the model to perform board
-membership checks. Explicit Linear lifecycle actions still enforce planning and
-execution workflow state.
+Before admission, the host uses the API key from the route's named Linear account
+to fetch the current issue and rejects a delivery that does not belong to the
+route's workspace Project. The same account declaration controls prompt handling.
+A private source sends the parsed comment as trusted conversation input; a public
+source fences the same context and starts the invocation corruption-tainted. Both
+paths preserve a short, provider-owned wake-up prompt instead of asking the model
+to perform board membership checks. Explicit Linear lifecycle actions still
+enforce planning and execution workflow state.
 
 The adapter maps the current Linear `Done` state to closed control intent and any
 other named issue state to open intent. Events without issue state, such as

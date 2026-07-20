@@ -19,13 +19,13 @@ import aiohttp
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from pynchy.config import get_settings
-from pynchy.config.models import LinearTool
 from pynchy.config.workspace_names import parent_workspace_name
 from pynchy.conversation.models import (
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
+from pynchy.plugins.integrations.linear_accounts import linear_account
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_boot import (
     configured_linear_workspace_names,
@@ -74,6 +74,7 @@ class LinearWebhookRouteConfig(_LinearWebhookModel):
 
     name: str
     workspace: str | None = None
+    tool: str = "linear"
     secret_env: str = "LINEAR_WEBHOOK_SECRET"  # noqa: S105, RUF100 - environment variable name, not a credential.
     organization_id: str | None = None
     timestamp_tolerance_seconds: int = 60
@@ -81,7 +82,7 @@ class LinearWebhookRouteConfig(_LinearWebhookModel):
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
 
-    @field_validator("name", "secret_env")
+    @field_validator("name", "tool", "secret_env")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         if not value.strip():
@@ -344,7 +345,7 @@ def _issue_event(
 
 
 async def _event_workspace(event: WebhookEvent, config: LinearWebhookRouteConfig) -> str:
-    async with linear_client() as client:
+    async with linear_client(account_name=config.tool) as client:
         if config.workspace is not None:
             await workspace_issue(client, config.workspace, event.subject_id)
             return config.workspace
@@ -363,6 +364,7 @@ async def prepare_linear_webhook_event(
     event: WebhookEvent,
     *,
     config: LinearWebhookRouteConfig,
+    public_source: bool = True,
 ) -> WebhookEvent:
     """Confirm workspace-board ownership before creating or waking an issue thread."""
     if event.instructions is None:
@@ -386,26 +388,9 @@ async def prepare_linear_webhook_event(
         conversation=replace(
             event.conversation,
             workspace=workspace,
-            public_source=_linear_source_trust(workspace) is not False,
+            public_source=public_source,
         ),
     )
-
-
-def _linear_source_trust(workspace_name: str) -> bool | Literal["forbidden"] | None:
-    settings = get_settings()
-    resolved = settings.resolved_workspace_config(workspace_name)
-    if resolved is None:
-        return None
-    declarations = {
-        tool.public_source
-        for tool_name in resolved.tools
-        if isinstance((tool := settings.tools.get(tool_name)), LinearTool)
-    }
-    if not declarations:
-        return None
-    if "forbidden" in declarations:
-        return "forbidden"
-    return True in declarations
 
 
 def parse_linear_webhook(
@@ -434,44 +419,59 @@ def parse_linear_webhook(
     )
 
 
-def _validate_linear_workspace(workspace: WorkspaceProfile) -> str | None:
+def _validate_linear_workspace(
+    workspace: WorkspaceProfile,
+    *,
+    config: LinearWebhookRouteConfig,
+) -> str | None:
     if not linear_workspace_enabled(workspace):
         return "requires its workspace to select a Linear tool"
     if not workspace.jid.startswith("discord:channel:"):
         return "requires a Discord guild-channel workspace for issue controls"
     if parent_workspace_name(workspace.folder) is not None:
         return "requires a registered workspace root instead of a child conversation"
-    if _linear_source_trust(workspace.folder) == "forbidden":
-        return "requires its Linear tool to permit source content"
+    settings = get_settings()
+    account = linear_account(config.tool, settings)
+    resolved = settings.resolved_workspace_config(workspace.folder)
+    if resolved is None or account.name not in resolved.tools:
+        return f"requires its workspace to select Linear account tool '{account.name}'"
+    if account.config.public_source == "forbidden":
+        return "requires its Linear account tool to permit source content"
     return None
 
 
 def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
     """Parse plugin options and return configured Linear webhook routes."""
-    plugin = get_settings().plugins.get("linear")
+    settings = get_settings()
+    plugin = settings.plugins.get("linear")
     options = LinearPluginOptions.model_validate(plugin.options if plugin is not None else {})
-    return tuple(
-        WebhookRoute(
-            provider="linear",
-            name=config.name,
-            workspace=config.workspace,
-            secret_env=config.secret_env,
-            parse=partial(parse_linear_webhook, config=config),
-            public_source=(
-                _linear_source_trust(config.workspace) is not False
-                if config.workspace is not None
-                else True
-            ),
-            validate_workspace=_validate_linear_workspace,
-            max_body_bytes=config.max_body_bytes,
-            rate_limit_requests=config.rate_limit_requests,
-            rate_limit_window_seconds=config.rate_limit_window_seconds,
-            prepare_event=partial(prepare_linear_webhook_event, config=config),
-            routes_conversations=True,
-            candidate_workspaces=(
-                configured_linear_workspace_names() if config.workspace is None else ()
-            ),
-            allow_admin_workspaces=config.workspace is None,
+    routes: list[WebhookRoute] = []
+    for config in options.webhook_routes:
+        account = linear_account(config.tool, settings)
+        routes.append(
+            WebhookRoute(
+                provider="linear",
+                name=config.name,
+                workspace=config.workspace,
+                secret_env=config.secret_env,
+                parse=partial(parse_linear_webhook, config=config),
+                public_source=account.config.public_source is not False,
+                validate_workspace=partial(_validate_linear_workspace, config=config),
+                max_body_bytes=config.max_body_bytes,
+                rate_limit_requests=config.rate_limit_requests,
+                rate_limit_window_seconds=config.rate_limit_window_seconds,
+                prepare_event=partial(
+                    prepare_linear_webhook_event,
+                    config=config,
+                    public_source=account.config.public_source is not False,
+                ),
+                routes_conversations=True,
+                candidate_workspaces=(
+                    configured_linear_workspace_names(config.tool)
+                    if config.workspace is None
+                    else ()
+                ),
+                allow_admin_workspaces=config.workspace is None,
+            )
         )
-        for config in options.webhook_routes
-    )
+    return tuple(routes)

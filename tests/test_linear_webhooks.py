@@ -274,6 +274,92 @@ def test_project_routed_route_declares_semantic_candidates_before_provider_boot(
     assert route.allow_admin_workspaces is True
 
 
+def test_each_route_uses_its_named_account_trust() -> None:
+    settings = make_settings(
+        plugins={
+            "linear": PluginConfig(
+                options={
+                    "webhook_routes": [
+                        {
+                            "name": "public",
+                            "workspace": "public-project",
+                            "tool": "linear_public",
+                        },
+                        {
+                            "name": "synapse",
+                            "workspace": "synapse-project",
+                            "tool": "linear_synapse",
+                        },
+                    ]
+                }
+            )
+        },
+        profiles={
+            "public": ProfileConfig(tools=["linear_public"]),
+            "synapse": ProfileConfig(tools=["linear_synapse"]),
+        },
+        workspaces={
+            "public-project": WorkspaceConfig(profiles=["public"]),
+            "synapse-project": WorkspaceConfig(profiles=["synapse"]),
+        },
+        tools={
+            "linear_public": LinearTool(type="linear", public_source=True),
+            "linear_synapse": LinearTool(type="linear", public_source=False),
+        },
+    )
+    with patch(
+        "pynchy.plugins.integrations.linear_webhooks.get_settings",
+        return_value=settings,
+    ):
+        routes = LinearMcpPlugin().pynchy_webhook_routes()
+
+    assert [(route.name, route.public_source) for route in routes] == [
+        ("public", True),
+        ("synapse", False),
+    ]
+
+
+def test_route_rejects_a_workspace_bound_to_another_linear_account() -> None:
+    settings = make_settings(
+        plugins={
+            "linear": PluginConfig(
+                options={
+                    "webhook_routes": [
+                        {
+                            "name": "synapse",
+                            "workspace": "project",
+                            "tool": "linear_synapse",
+                        }
+                    ]
+                }
+            )
+        },
+        profiles={"public": ProfileConfig(tools=["linear_public"])},
+        workspaces={"project": WorkspaceConfig(profiles=["public"])},
+        tools={
+            "linear_public": LinearTool(type="linear", public_source=True),
+            "linear_synapse": LinearTool(type="linear", public_source=False),
+        },
+    )
+    with (
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_boot.get_settings",
+            return_value=settings,
+        ),
+    ):
+        route = LinearMcpPlugin().pynchy_webhook_routes()[0]
+        validate = route.validate_workspace
+        assert validate is not None
+        error = validate(_WebhookDeps().workspace)
+
+    assert error is not None
+    assert "linear_synapse" in error
+
+
 def test_non_issue_or_comment_delivery_remains_durably_ignorable() -> None:
     now = datetime.now(UTC)
     raw_body, headers = _signed_request(
@@ -446,7 +532,7 @@ async def test_route_preparation_verifies_board_membership_before_dispatch() -> 
         patch(
             "pynchy.plugins.integrations.linear_webhooks.linear_client",
             return_value=_linear_client_context(),
-        ),
+        ) as client_factory,
         patch(
             "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
             new_callable=AsyncMock,
@@ -461,6 +547,7 @@ async def test_route_preparation_verifies_board_membership_before_dispatch() -> 
         assert prepared.conversation.public_source is False
 
     workspace_issue.assert_awaited_once_with(ANY, "project", "issue-1")
+    client_factory.assert_called_once_with(account_name="linear")
 
 
 async def test_project_route_selects_issue_workspace_instead_of_ingress_scope() -> None:
@@ -497,7 +584,11 @@ async def test_project_route_selects_issue_workspace_instead_of_ingress_scope() 
             return_value=settings,
         ),
     ):
-        prepared = await prepare_linear_webhook_event(event, config=config)
+        prepared = await prepare_linear_webhook_event(
+            event,
+            config=config,
+            public_source=False,
+        )
 
     assert prepared.conversation is not None
     assert prepared.conversation.workspace == "fam"

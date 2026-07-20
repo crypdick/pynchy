@@ -27,6 +27,7 @@ from pynchy.config.workspace_layout import (
     WorkspaceScopeConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
     WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
 )
+from pynchy.plugins.integrations.linear_config import LinearTool
 from pynchy.plugins.integrations.matrix_routing_config import MatrixConnectionConfig
 
 # Reference strings whose well-formedness is proven by a validator. Carrying
@@ -507,14 +508,6 @@ class _ToolTrustConfig(_StrictModel):
 class BuiltinTool(_ToolTrustConfig):
     type: Literal["builtin"]
     name: str | None = None
-
-
-class LinearTool(_ToolTrustConfig):
-    type: Literal["linear"]
-    workspace: str | None = None
-    api_key_env: str | None = None
-    project_per_workspace: bool | None = None
-    project_name_template: str | None = None
 
 
 class CalDAVTool(_ToolTrustConfig, CalDAVConfig):

@@ -66,6 +66,66 @@ async def test_reconcile_linear_workspace_boards_uses_env_defaults(monkeypatch):
     assert kwargs["team_key"] == "SYN"
 
 
+async def test_reconcile_groups_workspaces_by_named_account_credentials(monkeypatch):
+    monkeypatch.setenv("LINEAR_PUBLIC_KEY", "lin_public")
+    monkeypatch.setenv("LINEAR_PUBLIC_TEAM", "PUB")
+    monkeypatch.setenv("LINEAR_SYNAPSE_KEY", "lin_synapse")
+    monkeypatch.setenv("LINEAR_SYNAPSE_TEAM", "SYN")
+    fake_board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={},
+    )
+
+    def reconcile(_client, workspaces, *, team_key):
+        assert team_key in {"PUB", "SYN"}
+        return {workspace.folder: fake_board for workspace in workspaces}
+
+    settings = make_settings(
+        profiles={
+            "public": ProfileConfig(tools=["linear_public"]),
+            "synapse": ProfileConfig(tools=["linear_synapse"]),
+        },
+        workspaces={
+            "public-board": WorkspaceConfig(profiles=["public"]),
+            "synapse-board": WorkspaceConfig(profiles=["synapse"]),
+        },
+        tools={
+            "linear_public": LinearTool(
+                type="linear",
+                api_key_env="LINEAR_PUBLIC_KEY",  # pragma: allowlist secret
+                team_key_env="LINEAR_PUBLIC_TEAM",
+            ),
+            "linear_synapse": LinearTool(
+                type="linear",
+                api_key_env="LINEAR_SYNAPSE_KEY",  # pragma: allowlist secret
+                team_key_env="LINEAR_SYNAPSE_TEAM",
+            ),
+        },
+    )
+    with (
+        patch("pynchy.plugins.integrations.linear_boot.get_settings", return_value=settings),
+        patch("pynchy.plugins.integrations.linear_boot.LinearClient") as client_class,
+        patch(
+            "pynchy.plugins.integrations.linear_boot.reconcile_workspace_boards",
+            new=AsyncMock(side_effect=reconcile),
+        ) as reconcile_boards,
+    ):
+        result = await reconcile_linear_workspace_boards(
+            [
+                _workspace("public-board", "Public"),
+                _workspace("synapse-board", "Synapse"),
+            ]
+        )
+
+    assert set(result) == {"public-board", "synapse-board"}
+    assert [call.kwargs["api_key"] for call in client_class.call_args_list] == [
+        "lin_public",
+        "lin_synapse",
+    ]
+    assert reconcile_boards.await_count == 2
+
+
 async def test_create_linear_workspace_todo_skips_when_api_key_missing(monkeypatch):
     monkeypatch.delenv("LINEAR_API_KEY", raising=False)
 

@@ -9,9 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from conftest import make_settings
 from rich.console import Console
 from rich.traceback import Traceback
 
+from pynchy.config.models import LinearTool
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.integrations.linear import LinearClient, LinearError, LinearMcpPlugin, build_app
 
@@ -36,8 +38,20 @@ async def start_mcp_client() -> TestClient:
 class TestLinearMcpPlugin:
     def test_plugin_provides_script_mcp_server(self):
         plugin = LinearMcpPlugin()
+        settings = make_settings(
+            tools={
+                "linear": LinearTool(
+                    type="linear",
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=True,
+                    dangerous_writes=False,
+                )
+            }
+        )
 
-        spec = plugin.pynchy_mcp_server_spec()
+        with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
+            spec = plugin.pynchy_mcp_server_spec()[0]
 
         assert spec["name"] == "linear"
         assert spec["type"] == "script"
@@ -55,18 +69,74 @@ class TestLinearMcpPlugin:
         assert spec["transport"] == "streamable_http"
         assert spec["inject_workspace"] is True
         assert spec["env_forward"] == {
-            "LINEAR_API_KEY": "LINEAR_API_KEY"  # pragma: allowlist secret
+            "LINEAR_API_KEY": "LINEAR_API_KEY",  # pragma: allowlist secret
+            "LINEAR_TEAM_KEY": "LINEAR_TEAM_KEY",
         }
 
     def test_plugin_trust_defaults_allow_linear_task_writes(self):
         plugin = LinearMcpPlugin()
+        settings = make_settings(
+            tools={
+                "linear": LinearTool(
+                    type="linear",
+                    public_source=False,
+                    secret_data=False,
+                    public_sink=True,
+                    dangerous_writes=False,
+                )
+            }
+        )
 
-        trust = plugin.pynchy_mcp_server_spec()["trust"]
+        with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
+            trust = plugin.pynchy_mcp_server_spec()[0]["trust"]
 
         assert trust == {
             "public_source": False,
             "secret_data": False,
             "public_sink": True,
+            "dangerous_writes": False,
+        }
+
+    def test_plugin_isolates_named_accounts_and_their_trust(self):
+        plugin = LinearMcpPlugin()
+        settings = make_settings(
+            tools={
+                "linear_public": LinearTool(
+                    type="linear",
+                    api_key_env="LINEAR_PUBLIC_API_KEY",  # pragma: allowlist secret
+                    public_source=True,
+                    secret_data=False,
+                    public_sink=True,
+                    dangerous_writes=False,
+                ),
+                "linear_synapse": LinearTool(
+                    type="linear",
+                    api_key_env="LINEAR_SYNAPSE_API_KEY",  # pragma: allowlist secret
+                    public_source=False,
+                    secret_data=True,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
+            }
+        )
+
+        with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
+            specs = plugin.pynchy_mcp_server_spec()
+
+        assert [spec["name"] for spec in specs] == ["linear_public", "linear_synapse"]
+        assert (
+            specs[0]["env_forward"]["LINEAR_API_KEY"]  # pragma: allowlist secret
+            == "LINEAR_PUBLIC_API_KEY"  # pragma: allowlist secret
+        )
+        assert specs[0]["trust"]["public_source"] is True
+        assert (
+            specs[1]["env_forward"]["LINEAR_API_KEY"]  # pragma: allowlist secret
+            == "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
+        )
+        assert specs[1]["trust"] == {
+            "public_source": False,
+            "secret_data": True,
+            "public_sink": False,
             "dangerous_writes": False,
         }
 
