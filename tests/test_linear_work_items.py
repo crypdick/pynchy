@@ -136,7 +136,7 @@ def lifecycle(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeLinearState, dict[st
     client.query = state.query  # type: ignore[method-assign]
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_work_items.linear_client",
-        lambda: FakeLinearClientContext(client),
+        lambda **_kwargs: FakeLinearClientContext(client),
     )
 
     board = AsyncMock(return_value=_board())

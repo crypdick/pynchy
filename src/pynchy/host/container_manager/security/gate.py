@@ -190,17 +190,27 @@ def build_workspace_security(
     """Build dispatch-equivalent security from an already resolved workspace."""
 
     services: dict[str, ServiceTrustConfig] = {}
+    integration_services: dict[str, list[ServiceTrustConfig]] = {}
     tools = settings.tools
     for tool_name in resolved.tools:
         tool = tools.get(tool_name)
         if tool is None:
             continue
-        services[tool_name] = ServiceTrustConfig(
+        trust = ServiceTrustConfig(
             public_source=tool.public_source,
             secret_data=tool.secret_data,
             public_sink=tool.public_sink,
             dangerous_writes=tool.dangerous_writes,
         )
+        services[tool_name] = trust
+        if tool.type not in {"builtin", "mcp"}:
+            integration_services.setdefault(tool.type, []).append(trust)
+
+    # Built-in host actions use stable integration service names while their
+    # credential-bearing tool names are operator-defined.
+    for service_name, declarations in integration_services.items():
+        if len(declarations) == 1:
+            services[service_name] = declarations[0]
 
     return WorkspaceSecurity(
         services=services,

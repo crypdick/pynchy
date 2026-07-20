@@ -92,8 +92,10 @@ Webhook POST paths replace the bearer token with provider-owned authentication;
 for example, Linear signs the raw body with a per-subscription secret. Startup
 rejects missing secrets, duplicate paths, unknown workspaces, and admin-workspace
 targets. The host then enforces bounded bodies, a second per-route rate limit,
-durable delivery-ID deduplication, and isolated one-time task admission. Provider
-payloads are fenced as untrusted input and cannot authorize execution. See
+durable delivery-ID deduplication, and isolated one-time task admission. Each
+route resolves its provider account's data-flow declaration: public payloads are
+fenced, while content from a private account retains authenticated provenance
+without corruption taint. Neither form can bypass explicit execution gates. See
 [Provider-authenticated webhooks](../usage/control-plane.md#provider-authenticated-webhooks).
 
 `/health` deliberately exposes only a static readiness state. Detailed `/status`,

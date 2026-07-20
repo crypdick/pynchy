@@ -7,7 +7,6 @@ avoid a plugin -> webhook -> boot import cycle.
 
 from __future__ import annotations
 
-import os
 from collections.abc import (
     Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
@@ -16,9 +15,12 @@ from dataclasses import dataclass
 import aiohttp
 
 from pynchy.config import get_settings
-from pynchy.config.models import LinearTool
 from pynchy.host.orchestrator.workspace_config import static_workspace_folder
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_accounts import (
+    LinearAccount,
+    linear_account_for_workspace,
+)
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     WorkspaceTodoProposal,
@@ -41,6 +43,7 @@ class _LinearWorkspaceContext:
     folder: str
     name: str
     jid: str
+    account: LinearAccount
 
 
 async def reconcile_linear_workspace_boards(
@@ -50,22 +53,32 @@ async def reconcile_linear_workspace_boards(
     selected_workspaces = _linear_workspaces(workspaces)
     if not selected_workspaces:
         return {}
-    api_key = os.environ.get("LINEAR_API_KEY")
-    if not api_key:
-        return {}
-
-    timeout = aiohttp.ClientTimeout(total=LINEAR_BOOT_TIMEOUT_SECONDS)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        client = LinearClient(api_key=api_key, session=session)
-        try:
-            boards = await reconcile_workspace_boards(
-                client,
-                selected_workspaces,
-                team_key=os.environ.get("LINEAR_TEAM_KEY"),
-            )
-        except Exception as exc:  # noqa: BLE001, RUF100 - Linear is optional at boot.
-            logger.warning("Linear workspace board reconciliation failed", err=str(exc))
-            return {}
+    boards: dict[str, LinearWorkspaceBoard] = {}
+    for account_name in dict.fromkeys(context.account.name for context in selected_workspaces):
+        account_workspaces = [
+            context for context in selected_workspaces if context.account.name == account_name
+        ]
+        account = account_workspaces[0].account
+        api_key = account.api_key
+        if not api_key:
+            continue
+        timeout = aiohttp.ClientTimeout(total=LINEAR_BOOT_TIMEOUT_SECONDS)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            client = LinearClient(api_key=api_key, session=session, team_key=account.team_key)
+            try:
+                boards.update(
+                    await reconcile_workspace_boards(
+                        client,
+                        account_workspaces,
+                        team_key=account.team_key,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001, RUF100 - one optional account must not block startup.
+                logger.warning(
+                    "Linear workspace board reconciliation failed",
+                    account=account_name,
+                    err=str(exc),
+                )
     logger.info("Linear workspace boards reconciled", count=len(boards))
     return boards
 
@@ -88,14 +101,17 @@ def _linear_workspace_context(workspace: WorkspaceProfile) -> _LinearWorkspaceCo
     resolved = settings.resolved_workspace_config(folder)
     if resolved is None:
         return None
-    has_linear = any(
-        isinstance(settings.tools.get(tool_name), LinearTool) for tool_name in resolved.tools
-    )
-    if not has_linear:
+    account = linear_account_for_workspace(folder, settings)
+    if account is None:
         return None
 
     name = workspace.name if folder == workspace.folder else folder.replace("-", " ").title()
-    return _LinearWorkspaceContext(folder=folder, name=name, jid=workspace.jid)
+    return _LinearWorkspaceContext(
+        folder=folder,
+        name=name,
+        jid=workspace.jid,
+        account=account,
+    )
 
 
 def linear_workspace_enabled(workspace: WorkspaceProfile) -> bool:
@@ -112,19 +128,23 @@ async def create_linear_workspace_todo(
     if context is None:
         return None
 
-    api_key = os.environ.get("LINEAR_API_KEY")
+    api_key = context.account.api_key
     if not api_key:
         return None
 
     timeout = aiohttp.ClientTimeout(total=LINEAR_BOOT_TIMEOUT_SECONDS)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        client = LinearClient(api_key=api_key, session=session)
+        client = LinearClient(
+            api_key=api_key,
+            session=session,
+            team_key=context.account.team_key,
+        )
         try:
             issue = await create_workspace_todo(
                 client,
                 context,
                 WorkspaceTodoProposal(title=title),
-                team_key=os.environ.get("LINEAR_TEAM_KEY"),
+                team_key=context.account.team_key,
                 status=READY_FOR_PLANNING_STATUS,
             )
         except Exception as exc:  # noqa: BLE001, RUF100 - local todo capture still succeeds even if Linear fails.

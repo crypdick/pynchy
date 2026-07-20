@@ -24,6 +24,7 @@ from pynchy.plugins.integrations.caldav import (
     _handle_list_calendars,
 )
 from pynchy.plugins.integrations.linear import LinearClient, WorkspaceContext
+from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (
     WorkspaceTodoProposal,
     create_workspace_todo,
@@ -366,9 +367,15 @@ def _configured_proton_mail_client() -> ProtonMailClient:
 
 @asynccontextmanager
 async def _linear_client() -> AsyncIterator[LinearClient]:
-    token = os.environ.get("LINEAR_API_KEY")
+    workspace = get_settings().canary.linear_workspace
+    account = linear_account_for_workspace(workspace)
+    if account is None:
+        raise CanaryServiceError("Linear canary workspace does not select a Linear account")
+    token = account.api_key
     if not token:
-        raise CanaryServiceError("Linear API key is not available to the canary runner")
+        raise CanaryServiceError(
+            f"{account.config.api_key_env} is not available to the canary runner"
+        )
     timeout = aiohttp.ClientTimeout(total=_LINEAR_TIMEOUT_SECONDS)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         yield LinearClient(api_key=token, session=session)

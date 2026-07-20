@@ -19,13 +19,13 @@ import aiohttp
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from pynchy.config import get_settings
-from pynchy.config.models import LinearTool
 from pynchy.config.workspace_names import parent_workspace_name
 from pynchy.conversation.models import (
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
+from pynchy.plugins.integrations.linear_accounts import linear_account
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_boot import linear_workspace_enabled
 from pynchy.plugins.integrations.linear_client import LinearError
@@ -70,6 +70,7 @@ class LinearWebhookRouteConfig(_LinearWebhookModel):
 
     name: str
     workspace: str
+    tool: str = "linear"
     secret_env: str = "LINEAR_WEBHOOK_SECRET"  # noqa: S105, RUF100 - environment variable name, not a credential.
     organization_id: str | None = None
     timestamp_tolerance_seconds: int = 60
@@ -77,7 +78,7 @@ class LinearWebhookRouteConfig(_LinearWebhookModel):
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
 
-    @field_validator("name", "workspace", "secret_env")
+    @field_validator("name", "workspace", "tool", "secret_env")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         if not value.strip():
@@ -348,7 +349,7 @@ async def prepare_linear_webhook_event(
     if event.instructions is None:
         return event
     try:
-        async with linear_client() as client:
+        async with linear_client(account_name=config.tool) as client:
             await workspace_issue(client, config.workspace, event.subject_id)
     except LinearWorkspaceIssueError:
         return replace(
@@ -361,23 +362,6 @@ async def prepare_linear_webhook_event(
     except (aiohttp.ClientError, LinearBoardError, LinearError, TimeoutError, ValueError) as exc:
         raise WebhookProcessingError(str(exc)) from exc
     return event
-
-
-def _linear_source_trust(workspace_name: str) -> bool | Literal["forbidden"] | None:
-    settings = get_settings()
-    resolved = settings.resolved_workspace_config(workspace_name)
-    if resolved is None:
-        return None
-    declarations = {
-        tool.public_source
-        for tool_name in resolved.tools
-        if isinstance((tool := settings.tools.get(tool_name)), LinearTool)
-    }
-    if not declarations:
-        return None
-    if "forbidden" in declarations:
-        return "forbidden"
-    return True in declarations
 
 
 def parse_linear_webhook(
@@ -406,36 +390,49 @@ def parse_linear_webhook(
     )
 
 
-def _validate_linear_workspace(workspace: WorkspaceProfile) -> str | None:
+def _validate_linear_workspace(
+    workspace: WorkspaceProfile,
+    *,
+    config: LinearWebhookRouteConfig,
+) -> str | None:
     if not linear_workspace_enabled(workspace):
         return "requires its workspace to select a Linear tool"
     if not workspace.jid.startswith("discord:channel:"):
         return "requires a Discord guild-channel workspace for issue controls"
     if parent_workspace_name(workspace.folder) is not None:
         return "requires a registered workspace root instead of a child conversation"
-    if _linear_source_trust(workspace.folder) == "forbidden":
-        return "requires its Linear tool to permit source content"
+    settings = get_settings()
+    account = linear_account(config.tool, settings)
+    resolved = settings.resolved_workspace_config(workspace.folder)
+    if resolved is None or account.name not in resolved.tools:
+        return f"requires its workspace to select Linear account tool '{account.name}'"
+    if account.config.public_source == "forbidden":
+        return "requires its Linear account tool to permit source content"
     return None
 
 
 def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
     """Parse plugin options and return configured Linear webhook routes."""
-    plugin = get_settings().plugins.get("linear")
+    settings = get_settings()
+    plugin = settings.plugins.get("linear")
     options = LinearPluginOptions.model_validate(plugin.options if plugin is not None else {})
-    return tuple(
-        WebhookRoute(
-            provider="linear",
-            name=config.name,
-            workspace=config.workspace,
-            secret_env=config.secret_env,
-            parse=partial(parse_linear_webhook, config=config),
-            public_source=_linear_source_trust(config.workspace) is not False,
-            validate_workspace=_validate_linear_workspace,
-            max_body_bytes=config.max_body_bytes,
-            rate_limit_requests=config.rate_limit_requests,
-            rate_limit_window_seconds=config.rate_limit_window_seconds,
-            prepare_event=partial(prepare_linear_webhook_event, config=config),
-            routes_conversations=True,
+    routes: list[WebhookRoute] = []
+    for config in options.webhook_routes:
+        account = linear_account(config.tool, settings)
+        routes.append(
+            WebhookRoute(
+                provider="linear",
+                name=config.name,
+                workspace=config.workspace,
+                secret_env=config.secret_env,
+                parse=partial(parse_linear_webhook, config=config),
+                public_source=account.config.public_source is not False,
+                validate_workspace=partial(_validate_linear_workspace, config=config),
+                max_body_bytes=config.max_body_bytes,
+                rate_limit_requests=config.rate_limit_requests,
+                rate_limit_window_seconds=config.rate_limit_window_seconds,
+                prepare_event=partial(prepare_linear_webhook_event, config=config),
+                routes_conversations=True,
+            )
         )
-        for config in options.webhook_routes
-    )
+    return tuple(routes)

@@ -22,7 +22,9 @@ import aiohttp
 import pluggy
 from aiohttp import web
 
+from pynchy.config import get_settings
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_accounts import configured_linear_accounts
 from pynchy.plugins.integrations.linear_boards import (
     WorkspaceTodoProposal,
     create_workspace_todo,
@@ -62,33 +64,43 @@ class LinearMcpPlugin:
     """Register the built-in Linear script MCP server."""
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
-        return {
-            "name": "linear",
-            "type": "script",
-            "command": "uv",
-            "args": [
-                "run",
-                "python",
-                "-m",
-                "pynchy.plugins.integrations.linear",
-                "--port",
-                "{port}",
-                "--workspace",
-                "{workspace}",
-            ],
-            "port": DEFAULT_PORT,
-            "transport": "streamable_http",
-            "idle_timeout": 600,
-            "inject_workspace": True,
-            "env_forward": {"LINEAR_API_KEY": "LINEAR_API_KEY"},  # pragma: allowlist secret
-            "trust": {
-                "public_source": False,
-                "secret_data": False,
-                "public_sink": True,
-                "dangerous_writes": False,
-            },
-        }
+    def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
+        """Create one isolated MCP server definition per configured account."""
+        return [
+            {
+                "name": account.name,
+                "type": "script",
+                "command": "uv",
+                "args": [
+                    "run",
+                    "python",
+                    "-m",
+                    "pynchy.plugins.integrations.linear",
+                    "--port",
+                    "{port}",
+                    "--workspace",
+                    "{workspace}",
+                ],
+                "port": DEFAULT_PORT,
+                "transport": "streamable_http",
+                "idle_timeout": 600,
+                "inject_workspace": True,
+                # Empty static values prevent an account-specific process from
+                # inheriting a different account's conventional host variables.
+                "env": {"LINEAR_API_KEY": "", "LINEAR_TEAM_KEY": ""},
+                "env_forward": {
+                    "LINEAR_API_KEY": account.config.api_key_env,
+                    "LINEAR_TEAM_KEY": account.config.team_key_env,
+                },
+                "trust": {
+                    "public_source": account.config.public_source,
+                    "secret_data": account.config.secret_data,
+                    "public_sink": account.config.public_sink,
+                    "dangerous_writes": account.config.dangerous_writes,
+                },
+            }
+            for account in configured_linear_accounts(get_settings())
+        ]
 
     @hookimpl
     def pynchy_service_handler(self, computer_use_backends: tuple[object, ...]) -> object:

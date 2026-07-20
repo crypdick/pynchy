@@ -39,6 +39,7 @@ class LinearClient:
         api_key: str,
         session: object,
         endpoint: str = LINEAR_API_URL,
+        team_key: str | None = None,
     ) -> None:
         # aiohttp requires a string header value, while rich tracebacks
         # render frame locals with repr(). Keeping the semantic secret wrapper
@@ -46,6 +47,12 @@ class LinearClient:
         self._api_key = _AuthorizationSecret(api_key)
         self._session = session
         self._endpoint = endpoint
+        self._team_key = team_key
+
+    @property
+    def team_key(self) -> str | None:
+        """Return the team selector paired with this client's credential."""
+        return self._team_key
 
     async def query(self, query: str, **variables: object) -> dict[str, Any]:
         payload = {"query": query, "variables": variables}
