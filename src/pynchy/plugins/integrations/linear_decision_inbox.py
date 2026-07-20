@@ -66,13 +66,17 @@ class _DecisionIssue:
     project_id: str
 
     @classmethod
-    def from_payload(cls, payload: object) -> _DecisionIssue:
+    def from_payload(cls, payload: object) -> _DecisionIssue | None:
         if not isinstance(payload, dict):
             raise TypeError("Linear decision inbox issue was not an object")
         state = payload.get("state")
         project = payload.get("project")
-        if not isinstance(state, dict) or not isinstance(project, dict):
-            raise TypeError("Linear decision inbox issue lacks state or project")
+        if not isinstance(state, dict):
+            raise TypeError("Linear decision inbox issue lacks state")
+        if project is None:
+            return None
+        if not isinstance(project, dict):
+            raise TypeError("Linear decision inbox issue project was not an object")
         return cls(
             id=_text(payload, "id"),
             identifier=_text(payload, "identifier"),
@@ -134,7 +138,9 @@ async def _list_state_issues(
         nodes = connection.get("nodes")
         if not isinstance(nodes, list):
             raise TypeError("Linear decision issue nodes were not an array")
-        issues.extend(_DecisionIssue.from_payload(node) for node in nodes)
+        issues.extend(
+            issue for node in nodes if (issue := _DecisionIssue.from_payload(node)) is not None
+        )
         after = _next_cursor(connection)
         if after is None:
             return issues
