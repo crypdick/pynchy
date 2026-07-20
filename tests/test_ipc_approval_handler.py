@@ -11,6 +11,11 @@ import pytest
 from conftest import init_test_database, make_host_action_catalog, make_settings
 
 from pynchy.capabilities import ApprovalMode
+from pynchy.host.container_manager.ipc.approval_decision_context import (
+    ApprovalDecision,
+    build_approval_decision_context,
+)
+from pynchy.host.container_manager.ipc.approval_replay import approval_replay_gate
 from pynchy.host.container_manager.ipc.handlers_approval import process_approval_decision
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.types import CapabilityRule, WorkspaceSecurity
@@ -285,6 +290,89 @@ class TestProcessApprovalDecision:
             request_corruption_tainted=True,
             request_secret_tainted=True,
         )
+
+    def test_unresolved_workspace_replay_gate_reapplies_persisted_taints(self, settings):
+        """Fallback policy retains durable taint after the active gate is lost."""
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.get_gate_for_group",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.workspace_config."
+                "load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.resolve_security",
+                return_value=WorkspaceSecurity(),
+            ),
+        ):
+            gate = approval_replay_gate(
+                settings,
+                "unconfigured-workspace",
+                request_corruption_tainted=True,
+                request_secret_tainted=True,
+            )
+
+        assert gate is not None
+        assert gate.policy.corruption_tainted is True
+        assert gate.policy.secret_tainted is True
+
+    @pytest.mark.parametrize(
+        "taint_evidence",
+        [
+            {},
+            {"corruption_tainted": "false", "secret_tainted": None},
+        ],
+    )
+    def test_missing_or_malformed_persisted_taint_fails_closed(
+        self,
+        settings,
+        taint_evidence: dict[str, object],
+    ):
+        pending = {
+            "tool_name": "my_tool",
+            "approval_chat_jid": "j@g.us",
+            "request_data": {"type": "service:my_tool", "request_id": "taint-evidence"},
+            "handler_type": "service",
+            **taint_evidence,
+        }
+        decision = ApprovalDecision(
+            request_id="taint-evidence",
+            approved=True,
+            decided_by="operator",
+            decided_at="2026-07-19T12:00:00+00:00",
+        )
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.approval_decision_context._get_action_catalog",
+                return_value=make_host_action_catalog("my_tool", handler=AsyncMock()),
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.get_gate_for_group",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.workspace_config."
+                "load_resolved_config",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.approval_replay.resolve_security",
+                return_value=WorkspaceSecurity(),
+            ),
+        ):
+            context = build_approval_decision_context(
+                pending,
+                decision,
+                source_group="unconfigured-workspace",
+                settings=settings,
+            )
+
+        assert context.gate is not None
+        assert context.gate.policy.corruption_tainted is True
+        assert context.gate.policy.secret_tainted is True
 
     @pytest.mark.asyncio
     async def test_unknown_tool_writes_error(self, ipc_dir: Path, settings):

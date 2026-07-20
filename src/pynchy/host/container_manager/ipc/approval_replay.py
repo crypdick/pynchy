@@ -137,8 +137,9 @@ def approval_replay_gate(
     if resolved is None:
         if require_resolved:
             return None
-        return active_gate or SecurityGate(resolve_security(source_group))
-    gate = SecurityGate(build_workspace_security(settings, resolved))
+        gate = active_gate or SecurityGate(resolve_security(source_group))
+    else:
+        gate = SecurityGate(build_workspace_security(settings, resolved))
     if request_corruption_tainted or (
         active_gate is not None and active_gate.policy.corruption_tainted
     ):
