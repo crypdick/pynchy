@@ -49,7 +49,9 @@ Once agent execution begins, the in-flight turn durably owns the delivery claim.
 An agent or finalization exception retains both records for semantic recovery;
 only explicit abandonment returns the delivery to `pending`. Successful
 finalization advances the message cursor, removes the turn, and marks the
-delivery `completed` in one transaction.
+delivery `completed` in one transaction. After that commit, a process-local
+provider callback can claim and inject the next sibling. Callback failure never
+rolls back the completed turn; startup scans the durable FIFO again.
 
 Startup returns only orphan claims with no surviving in-flight turn to
 `pending`. Sequence numbers remain unchanged, so an orphaned FIFO head gets
@@ -80,6 +82,33 @@ This layer provides persistence, typed identities, claims, sessions, and control
 reconciliation. Provider plugins still decide how an authenticated event maps to
 an immutable subject and when to enqueue agent execution. The generic layer does
 not perform provider writes or interpret provider payloads.
+
+## Linear Issue Webhooks
+
+The built-in Linear webhook adapter maps each authenticated `Comment` or `Issue`
+event to `linear:<organization-id>:issue` plus the immutable Linear issue ID.
+The webhook receipt retains the delivery UUID, while the conversation delivery
+stores only the host-parsed prompt, readable control title, and closed event
+metadata needed to wake the agent. Raw provider shapes do not cross the routing
+boundary.
+
+Webhook admission persists the receipt before linking the FIFO delivery. An
+exact provider replay always attempts the link again, which repairs a crash
+between those writes. Duplicate delivery IDs reuse the existing FIFO entry.
+Separate issue subjects can hold claims concurrently; deliveries for one issue
+wait behind its claimed FIFO head.
+
+The adapter places the stable routed workspace behind a Discord child thread of
+the configured Linear workspace. A first callback derives a title such as
+`[PYN-123] Repair scheduler`. Later callbacks retain the persisted title and
+binding. If Discord no longer has that thread, reconciliation creates a
+replacement, moves the runtime workspace to the replacement JID, and rebinds
+the conversation's existing agent session.
+
+Linear callback content carries public-source taint and enters a fenced context
+block. The turn re-fetches current Linear state before acting. Neither the
+callback nor a Discord message grants planning or execution authority; explicit
+Linear actions still enforce the provider workflow state.
 
 ## Matrix Routes
 

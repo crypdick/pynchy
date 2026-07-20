@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves context callbacks.
+    Awaitable,
+    Callable,
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -12,6 +16,7 @@ from pynchy.conversation.models import (
     ConversationControlBinding,
     ConversationId,
 )
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.threads import ensure_thread
 from pynchy.state import (
     get_conversation,
@@ -19,7 +24,7 @@ from pynchy.state import (
     get_workspace_profile,
     set_conversation_control_binding,
 )
-from pynchy.types import Channel, ChatJid, GroupFolder
+from pynchy.types import Channel, ChatJid, GroupFolder, SessionId, WorkspaceProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +47,36 @@ class EnsuredConversationControl:
 
     binding: ConversationControlBinding
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationWorkspaceContext:
+    """Host callbacks needed to place one routed conversation workspace."""
+
+    channels: Callable[[], list[Channel]]
+    workspaces: Callable[[], dict[str, WorkspaceProfile]]
+    register_workspace: Callable[[WorkspaceProfile], Awaitable[None]]
+    unregister_workspace: Callable[[str], Awaitable[None]]
+    bind_session: Callable[[str, SessionId], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class EnsuredConversationWorkspace:
+    """Stable runtime workspace and replaceable human-facing control."""
+
+    profile: WorkspaceProfile
+    control: EnsuredConversationControl
+
+
+def _workspace_shape(profile: WorkspaceProfile) -> tuple[object, ...]:
+    return (
+        profile.name,
+        profile.folder,
+        profile.trigger,
+        profile.container_config,
+        profile.security,
+        profile.is_admin,
+    )
 
 
 async def ensure_conversation_control(
@@ -104,3 +139,47 @@ async def ensure_conversation_control(
             index += 1
             continue
         return EnsuredConversationControl(binding=binding, created=ensured.created)
+
+
+async def ensure_conversation_workspace(
+    context: ConversationWorkspaceContext,
+    request: ConversationControlRequest,
+) -> EnsuredConversationWorkspace:
+    """Place one stable conversation runtime behind its current Discord thread."""
+    parent = next(
+        (
+            profile
+            for profile in context.workspaces().values()
+            if profile.folder == request.parent_workspace
+        ),
+        None,
+    )
+    if parent is None or parent.jid != request.parent_jid:
+        raise ValueError("Conversation control parent workspace is not registered")
+
+    control = await ensure_conversation_control(context.channels(), request)
+    conversation = await get_conversation(request.conversation_id)
+    if conversation is None:
+        raise RuntimeError("Conversation disappeared while placing its workspace")
+    folder = routed_conversation_folder(request.parent_workspace, conversation.id)
+
+    for jid, existing in list(context.workspaces().items()):
+        if existing.folder == folder and jid != control.binding.thread_jid:
+            await context.unregister_workspace(jid)
+
+    profile = WorkspaceProfile(
+        jid=control.binding.thread_jid,
+        name=f"{parent.name}/{control.binding.title}",
+        folder=folder,
+        trigger=parent.trigger,
+        container_config=parent.container_config,
+        security=parent.security,
+        is_admin=False,
+        added_at=datetime.now(UTC).isoformat(),
+    )
+    current = context.workspaces().get(profile.jid)
+    if current is None or _workspace_shape(current) != _workspace_shape(profile):
+        await context.register_workspace(profile)
+    if conversation.session_id is not None:
+        await context.bind_session(folder, conversation.session_id)
+    return EnsuredConversationWorkspace(profile=profile, control=control)

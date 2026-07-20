@@ -106,8 +106,10 @@ agent's completion claim.
 
 ## Receive Linear callbacks
 
-Pynchy can turn Linear comments and issue changes into isolated, one-time agent
-tasks. Configure one route per Linear webhook subscription:
+Pynchy can route Linear comments and issue changes into durable issue
+conversations. Configure one route per Linear webhook subscription. The named
+workspace must select a Linear tool and point to a Discord guild channel where
+Pynchy can create issue threads:
 
 ```toml
 [[plugins.linear.options.webhook_routes]]
@@ -136,31 +138,41 @@ provision TLS or a public hostname. Linear requires a public, non-localhost
 HTTPS URL; see the [Linear webhook documentation](https://linear.app/developers/webhooks).
 
 Every schema-valid `create`, `update`, or `remove` delivery for a `Comment` or
-`Issue` starts a task. Comments do not need to mention `@pynchy`. Pynchy also
-wakes for its own issue transitions, such as `In Progress`, `Awaiting Review`,
-and `Done`; durable
-delivery IDs prevent duplicate tasks, while the current workflow state prevents
-the callback from granting new authority.
+`Issue` enters the issue's conversation. Comments do not need to mention
+`@pynchy`. Pynchy uses the immutable Linear issue ID for conversation identity,
+so comments and edits for one issue reuse one agent session and one Discord
+thread. Different issues can run concurrently. Durable delivery IDs prevent
+duplicate turns.
+
+Pynchy creates a readable thread title such as `[PYN-123] Repair scheduler`
+without using that mutable title as identity. If the thread disappears, the next
+delivery creates a replacement and rebinds the existing issue conversation and
+session. Messages that people send in the Discord thread join that same context;
+they do not become Linear comments automatically.
 
 Linear scopes webhook subscriptions to one team or all public teams, not to one
 Project. Point the subscription at the team that owns the Pynchy board. When that
 team contains other Projects, their events can wake the route too. Before acting,
-the task lists the workspace's complete Pynchy board and stops unless the event's
-issue belongs to that Project.
+the conversation turn lists the workspace's complete Pynchy board and stops
+unless the event's issue belongs to that Project.
 
 The callback only asks Pynchy to inspect current state. `Ready for Planning`
 permits planning only. Execution still requires `linear_claim_work_item` to claim
 the exact `Human Approved` issue. A comment, issue edit, or Pynchy-authored state
-transition never grants execution authority by itself.
+transition never grants execution authority by itself. Ordinary agent output
+stays in Discord; only an explicit Linear action mutates the issue.
 
 The route verifies Linear's HMAC-SHA256 signature against the raw request body,
 requires matching millisecond timestamps within 60 seconds, checks the optional
 organization ID, and deduplicates the `Linear-Delivery` UUID. The signing secret
 never enters the agent container. Each schema-valid authenticated delivery leaves
-a durable receipt; each actionable delivery atomically creates one persistent task
-before Pynchy returns `200` to Linear. The task confirms workspace-board ownership,
-fetches the issue's current Linear state, and treats the callback body as untrusted
-context before deciding what to do.
+a durable receipt, then idempotently links to the issue's per-conversation FIFO
+before Pynchy returns `200` to Linear. A replay repairs a crash between those two
+writes without creating another turn. One issue processes deliveries in receipt
+order; successful turn finalization wakes the next queued delivery only after the
+claim and message cursor commit together. Each turn confirms workspace-board
+ownership, fetches the issue's current Linear state, and treats the callback body
+as untrusted context before deciding what to do.
 
 Linear recommends webhooks instead of API polling for update-driven integrations.
 When a Linear-enabled workspace has no webhook route, Pynchy keeps the approval
