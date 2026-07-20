@@ -314,6 +314,31 @@ class TestEnsureWorkspaceBoard:
 
         assert client.updated_projects == []
 
+    async def test_workspace_marker_does_not_match_a_longer_workspace_name(self):
+        client = FakeLinearClient()
+        client.projects.extend(
+            [
+                {
+                    "id": "project-general",
+                    "name": "General",
+                    "url": "https://linear.app/acme/project/general",
+                    "description": "Managed by Pynchy.\n\npynchy.workspace=general\n",
+                },
+                {
+                    "id": "project-general-voice",
+                    "name": "General Voice",
+                    "url": "https://linear.app/acme/project/general-voice",
+                    "description": "Managed by Pynchy.\n\npynchy.workspace=general-voice\n",
+                },
+            ]
+        )
+        workspace = WorkspaceStub(folder="general", name="General")
+
+        board = await provision_workspace_board(client, workspace, team_key=None)
+
+        assert board.project["id"] == "project-general"
+        assert client.updated_projects == []
+
     async def test_adopts_existing_project_by_name_with_workspace_marker(self):
         client = FakeLinearClient()
         client.projects.append(

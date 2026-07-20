@@ -45,7 +45,8 @@ def todo_description(workspace: WorkspaceIdentity, details: str | None = None) -
 
 
 def project_matches_workspace(project_description: object, workspace: WorkspaceIdentity) -> bool:
-    return workspace_marker(workspace) in str(project_description or "")
+    marker = workspace_marker(workspace)
+    return marker in {line.strip() for line in str(project_description or "").splitlines()}
 
 
 def _looks_like_repo_slug_display(name: str) -> bool:
