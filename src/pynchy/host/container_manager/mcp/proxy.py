@@ -458,7 +458,8 @@ class McpProxy:
     through a single endpoint.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, host: str = "localhost") -> None:
+        self._host = host
         self._runner: web.AppRunner | None = None
         self._port: int = 0
 
@@ -495,11 +496,11 @@ class McpProxy:
         )
         self._runner = web.AppRunner(app)
         await self._runner.setup()
-        site = web.TCPSite(self._runner, "localhost", port)
+        site = web.TCPSite(self._runner, self._host, port)
         await site.start()
         # Extract the actual bound port from the public runner address list.
         self._port = _runner_port(self._runner)
-        logger.info("MCP proxy started", port=self._port)
+        logger.info("MCP proxy started", host=self._host, port=self._port)
         return self._port
 
     async def stop(self) -> None:

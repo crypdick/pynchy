@@ -151,7 +151,7 @@ class McpManager:
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
         self._idle_task: asyncio.Task[None] | None = None
         self._warm_task: asyncio.Task[None] | None = None
-        self._proxy = McpProxy()
+        self._proxy = McpProxy(host=settings.gateway.host)
         self._proxy_port: int = 0
 
     @property
