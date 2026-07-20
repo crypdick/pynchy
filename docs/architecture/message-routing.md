@@ -4,6 +4,9 @@ How messages flow from channels to agents and back. Read this to debug message d
 
 Messages arrive from plugin-provided [channels](../channels/index.md) (WhatsApp, Slack, TUI, etc.) and all flow through the same routing code path.
 
+Authenticated provider events that retain context by immutable external subject
+use the separate [routed conversation foundation](conversation-routing.md).
+
 ## Chat History And Trace History
 
 SQLite chat history stores channel-visible messages and operational notices.

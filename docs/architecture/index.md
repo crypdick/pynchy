@@ -40,6 +40,7 @@ graph TB
 | [Container isolation](container-isolation.md) | Mounts, runtime plugins, environment variables |
 | [IPC](ipc.md) | File-based communication between containers and host |
 | [Message routing](message-routing.md) | Routing behavior, transparent token stream |
+| [Routed conversations](conversation-routing.md) | Stable external subjects, FIFO delivery claims, and replaceable Discord controls |
 | [Message types](message-types.md) | Type system, storage, SDK integration |
 | [Git sync](git-sync.md) | Coordinated worktree sync, host-mediated merges |
 | [Security](security.md) | Trust model, security boundaries, credential handling |

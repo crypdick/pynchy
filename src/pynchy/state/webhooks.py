@@ -120,6 +120,30 @@ async def admit_webhook_receipt(
             await _insert_task(database, task)
         await database.execute(
             """
+            INSERT OR IGNORE INTO external_receipts (
+                provider, route, delivery_id, payload_sha256, received_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                receipt.provider,
+                receipt.route,
+                receipt.delivery_id,
+                receipt.payload_sha256,
+                receipt.received_at,
+            ),
+        )
+        receipt_cursor = await database.execute(
+            """
+            SELECT payload_sha256 FROM external_receipts
+            WHERE provider = ? AND route = ? AND delivery_id = ?
+            """,
+            (receipt.provider, receipt.route, receipt.delivery_id),
+        )
+        external_receipt = await receipt_cursor.fetchone()
+        if external_receipt is None or external_receipt["payload_sha256"] != receipt.payload_sha256:
+            raise ValueError("Webhook delivery identity has conflicting receipt evidence")
+        await database.execute(
+            """
             INSERT INTO webhook_receipts (
                 provider, route, delivery_id, workspace, event_type, event_action,
                 subject_id, payload_sha256, disposition, ignored_reason, task_id,

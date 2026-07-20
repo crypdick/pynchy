@@ -22,6 +22,7 @@ from pynchy.state import (
     complete_deployment,
     get_active_task_for_group,
     get_messages_since,
+    prepare_conversation_delivery_recovery,
     prepare_in_flight_turn_recovery,
 )
 from pynchy.types import DeployRevision, InFlightTurn, WorkspaceProfile, WorkspaceSecurity
@@ -238,6 +239,7 @@ async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
     if continuation:
         _prune_migration_backups(get_settings().data_dir)
     deploy_id = commit_sha if isinstance(commit_sha, str) and commit_sha != "unknown" else None
+    await prepare_conversation_delivery_recovery()
     interrupted_turns = await prepare_in_flight_turn_recovery(deploy_id)
     commit_text = commit_sha if isinstance(commit_sha, str) else "unknown"
     prompt_text = resume_prompt if isinstance(resume_prompt, str) else default_prompt
