@@ -270,11 +270,9 @@ class GroupMetadataManager:
 
     def __init__(
         self,
-        groups_dict: dict[str, WorkspaceProfile],
         channels: list[Channel],
         get_available_groups_fn: Callable[[], Awaitable[list[dict[str, Any]]]],
     ) -> None:
-        self._groups = groups_dict
         self._channels = channels
         self._get_available_groups = get_available_groups_fn
 
@@ -291,10 +289,6 @@ class GroupMetadataManager:
     def channels(self) -> list[Channel]:
         """Return all channels."""
         return self._channels
-
-    def channels_connected(self) -> bool:
-        """Check if any channel is connected."""
-        return any(c.is_connected() for c in self._channels)
 
 
 class GroupRegistrationManager:

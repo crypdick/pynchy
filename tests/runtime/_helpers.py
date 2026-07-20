@@ -42,7 +42,7 @@ def json_request(
     body: dict[str, object] | None = None,
     headers: dict[str, str] | None = None,
 ) -> Any:
-    """Make a loopback JSON request to the runtime's public HTTP API."""
+    """Make a loopback JSON request to the harness-owned HTTP surface."""
     request = Request(  # noqa: S310 - tests receive only harness-owned loopback URLs.
         url,
         data=json.dumps(body).encode("utf-8") if body is not None else None,
