@@ -97,7 +97,7 @@ pre_merge = [
     "uv run python scripts/runtime_harness.py run -- uv run pytest -o addopts='' -n 0 -m runtime",
     # The allocated runtime values are required above, but ordinary unit tests
     # deliberately assert the default host resource names and ports.
-    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx pre-commit run --all-files",
+    "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx prek run --all-files",
 ]
 post_merge = [
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run pytest",
