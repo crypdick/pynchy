@@ -438,20 +438,3 @@ async def release_conversation_delivery_claim(
         if row is None:
             raise RuntimeError("Conversation delivery disappeared while releasing its claim")
         return _row_to_delivery(row)
-
-
-async def prepare_conversation_delivery_recovery() -> int:
-    """Release only claims that have no surviving durable agent turn."""
-    async with atomic_write() as database:
-        cursor = await database.execute(
-            """
-            UPDATE conversation_deliveries
-            SET status = 'pending', claim_id = NULL, claimed_at = NULL
-            WHERE status = 'claimed'
-              AND NOT EXISTS (
-                  SELECT 1 FROM in_flight_turns
-                  WHERE in_flight_turns.conversation_claim_id = conversation_deliveries.claim_id
-              )
-            """
-        )
-        return cursor.rowcount

@@ -53,10 +53,17 @@ delivery `completed` in one transaction. After that commit, a process-local
 provider callback can claim and inject the next sibling. Callback failure never
 rolls back the completed turn; startup scans the durable FIFO again.
 
-Startup returns only orphan claims with no surviving in-flight turn to
-`pending`. Sequence numbers remain unchanged, so an orphaned FIFO head gets
-claimed again before later deliveries. Claims referenced by surviving turns
-stay claimed until those turns resume. An idle conversation carries no claim.
+A context reset commits the control thread's clear boundary together with its
+conversation state. It removes the routed session and completes pending work,
+plus orphan claims without a surviving turn, received at or before that
+boundary. Deliveries received after the boundary remain pending and start with
+fresh agent context after the reset acknowledgement.
+
+Startup applies the same clear-boundary repair before returning other orphan
+claims to `pending`. Sequence numbers remain unchanged, so a retryable FIFO
+head gets claimed again before later deliveries. Claims referenced by surviving
+turns stay claimed until those turns resume. An idle conversation carries no
+claim.
 
 Cursor advancement is a separate provider concern. A polling adapter commits
 its continuation cursor only after it has validated the whole page and durably
