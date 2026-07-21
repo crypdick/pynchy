@@ -32,7 +32,7 @@ from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
 class _WorkspaceSpecHooks:
     """The pluggy hook subset used to collect plugin workspace specifications."""
 
-    pynchy_workspace_spec: Callable[[], list[dict[str, object]]]
+    pynchy_workspace_spec: Callable[[], list[object]]
 
 
 class _FakePM(pluggy.PluginManager):

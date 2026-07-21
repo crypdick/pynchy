@@ -53,11 +53,11 @@ class TestLinearMcpPlugin:
         with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
             spec = plugin.pynchy_mcp_server_spec()[0]
 
-        assert spec["name"] == "linear"
-        assert spec["type"] == "script"
-        assert spec["command"] == "uv"
-        assert spec["args"][:2] == ["run", "python"]
-        assert spec["args"][2:] == [
+        assert spec.name == "linear"
+        assert spec.config.type == "script"
+        assert spec.config.command == "uv"
+        assert spec.config.args[:2] == ["run", "python"]
+        assert spec.config.args[2:] == [
             "-m",
             "pynchy.plugins.integrations.linear",
             "--port",
@@ -65,10 +65,10 @@ class TestLinearMcpPlugin:
             "--workspace",
             "{workspace}",
         ]
-        assert spec["port"] == 8474
-        assert spec["transport"] == "streamable_http"
-        assert spec["inject_workspace"] is True
-        assert spec["env_forward"] == {
+        assert spec.config.port == 8474
+        assert spec.config.transport == "streamable_http"
+        assert spec.config.inject_workspace is True
+        assert spec.config.env_forward == {
             "LINEAR_API_KEY": "LINEAR_API_KEY",  # pragma: allowlist secret
             "LINEAR_TEAM_KEY": "LINEAR_TEAM_KEY",
         }
@@ -88,14 +88,13 @@ class TestLinearMcpPlugin:
         )
 
         with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
-            trust = plugin.pynchy_mcp_server_spec()[0]["trust"]
+            trust = plugin.pynchy_mcp_server_spec()[0].trust
 
-        assert trust == {
-            "public_source": False,
-            "secret_data": False,
-            "public_sink": True,
-            "dangerous_writes": False,
-        }
+        assert trust is not None
+        assert trust.public_source is False
+        assert trust.secret_data is False
+        assert trust.public_sink is True
+        assert trust.dangerous_writes is False
 
     def test_plugin_isolates_named_accounts_and_their_trust(self):
         plugin = LinearMcpPlugin()
@@ -123,22 +122,22 @@ class TestLinearMcpPlugin:
         with patch("pynchy.plugins.integrations.linear.get_settings", return_value=settings):
             specs = plugin.pynchy_mcp_server_spec()
 
-        assert [spec["name"] for spec in specs] == ["linear_public", "linear_synapse"]
+        assert [spec.name for spec in specs] == ["linear_public", "linear_synapse"]
         assert (
-            specs[0]["env_forward"]["LINEAR_API_KEY"]  # pragma: allowlist secret
+            specs[0].config.env_forward["LINEAR_API_KEY"]  # pragma: allowlist secret
             == "LINEAR_PUBLIC_API_KEY"  # pragma: allowlist secret
         )
-        assert specs[0]["trust"]["public_source"] is True
+        assert specs[0].trust is not None
+        assert specs[0].trust.public_source is True
         assert (
-            specs[1]["env_forward"]["LINEAR_API_KEY"]  # pragma: allowlist secret
+            specs[1].config.env_forward["LINEAR_API_KEY"]  # pragma: allowlist secret
             == "LINEAR_SYNAPSE_API_KEY"  # pragma: allowlist secret
         )
-        assert specs[1]["trust"] == {
-            "public_source": False,
-            "secret_data": True,
-            "public_sink": False,
-            "dangerous_writes": False,
-        }
+        assert specs[1].trust is not None
+        assert specs[1].trust.public_source is False
+        assert specs[1].trust.secret_data is True
+        assert specs[1].trust.public_sink is False
+        assert specs[1].trust.dangerous_writes is False
 
     def test_plugin_is_registered(self):
         pm = get_plugin_manager()

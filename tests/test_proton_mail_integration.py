@@ -84,11 +84,11 @@ async def _start_mcp_client(stub: StubProtonMailClient) -> TestClient:
 
 class TestProtonMailMcpPlugin:
     def test_plugin_provides_script_mcp_server(self):
-        spec = proton_mail.ProtonMailMcpPlugin().pynchy_mcp_server_spec()
+        spec = proton_mail.ProtonMailMcpPlugin().pynchy_mcp_server_spec()[0]
 
-        assert spec["name"] == "proton-mail"
-        assert spec["type"] == "script"
-        assert spec["args"] == [
+        assert spec.name == "proton-mail"
+        assert spec.config.type == "script"
+        assert spec.config.args == [
             "run",
             "python",
             "-m",
@@ -96,12 +96,11 @@ class TestProtonMailMcpPlugin:
             "--port",
             "{port}",
         ]
-        assert spec["trust"] == {
-            "public_source": True,
-            "secret_data": True,
-            "public_sink": True,
-            "dangerous_writes": True,
-        }
+        assert spec.trust is not None
+        assert spec.trust.public_source is True
+        assert spec.trust.secret_data is True
+        assert spec.trust.public_sink is True
+        assert spec.trust.dangerous_writes is True
 
     def test_plugin_is_registered(self):
         plugin = get_plugin_manager().get_plugin("builtin-proton-mail")

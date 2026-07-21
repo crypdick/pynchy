@@ -419,8 +419,6 @@ def test_host_job_is_selected_by_workspace_magic_word() -> None:
     assert job.is_host is True
     assert job.command == "scripts/backup_runtime_dbs.sh"
     assert job.quiet_on_success is True
-    assert settings.cron_jobs["backup-runtime-dbs"].command == "scripts/backup_runtime_dbs.sh"
-    assert settings.cron_jobs["backup-runtime-dbs"].quiet_on_success is True
 
 
 def test_agent_job_requires_prompt_or_prompt_file() -> None:

@@ -16,9 +16,8 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from pynchy import state
-from pynchy.config import access
 from pynchy.logger import logger
-from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent, WorkspaceProfile
+from pynchy.types import Channel, ChannelName, ChatJid, OutboundEvent
 
 
 @runtime_checkable
@@ -27,9 +26,6 @@ class BusDeps(Protocol):
 
     @property
     def channels(self) -> list[Channel]: ...
-
-    @property
-    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -74,33 +70,6 @@ async def _mark_error(ledger_id: int | None, channel_name: str, error: str) -> N
 
 
 # ---------------------------------------------------------------------------
-# Channel ownership helpers
-# ---------------------------------------------------------------------------
-
-
-def _channel_allows_outbound(deps: BusDeps, chat_jid: str, channel_name: str) -> bool:
-    """Check whether the workspace is bound to this channel.
-
-    The sender is permissive at the schema layer and only enforces channel
-    ownership mapping.
-    """
-    group = _find_workspace_by_jid(deps, chat_jid)
-    if group is None:
-        return True
-
-    expected = access.resolve_workspace_connection_name(group.folder)
-    return not (expected and expected != channel_name)
-
-
-def _find_workspace_by_jid(deps: BusDeps, chat_jid: str) -> object | None:
-    """Find workspace profile by canonical JID."""
-    workspaces = deps.workspaces
-    if not workspaces:
-        return None
-    return workspaces.get(chat_jid)
-
-
-# ---------------------------------------------------------------------------
 # Target resolution — single implementation for channel filtering
 # ---------------------------------------------------------------------------
 
@@ -121,8 +90,6 @@ def _resolve_send_targets(
         if not ch.is_connected():
             continue
         if skip_channel and ch.name == skip_channel:
-            continue
-        if not _channel_allows_outbound(deps, chat_jid, ch.name):
             continue
         target_jid = resolve_target_jid(chat_jid, ch)
         if not target_jid:
@@ -247,8 +214,6 @@ def _resolve_stream_targets(
         ch_name = ch.name
         msg_id = stream_message_ids.get(ch_name)
         if not msg_id or not hasattr(ch, "update_event"):
-            continue
-        if not _channel_allows_outbound(deps, chat_jid, ch_name):
             continue
         target_jid = resolve_target_jid(chat_jid, ch)
         if not target_jid:

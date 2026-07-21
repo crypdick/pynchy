@@ -5,8 +5,8 @@ from __future__ import annotations
 from temporalio import activity
 
 from pynchy.config import get_settings
-from pynchy.config.scheduler_models import (
-    CronJobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
+from pynchy.config.jobs import (
+    JobConfig,  # noqa: TC001, RUF100 - beartype resolves config host-job annotations at runtime.
 )
 from pynchy.host.orchestrator.config_job_execution import (
     resolve_job_cwd as resolve_cron_job_cwd,
@@ -41,8 +41,8 @@ async def run_database_host_job(job_id: str) -> str:
 @activity.defn(name="run_config_host_cron_job")
 async def run_config_host_cron_job(job_name: str) -> str:
     """Temporal activity that runs one enabled config-backed host cron job."""
-    job = get_settings().cron_jobs.get(job_name)
-    if job is None or not job.enabled:
+    job = get_settings().jobs.get(job_name)
+    if job is None or not job.is_host or not job.enabled:
         logger.info("Temporal config host cron job skipped", job=job_name)
         _record_activity_result(job_name, "skipped")
         return "skipped"
@@ -56,8 +56,10 @@ async def run_config_host_cron_job(job_name: str) -> str:
     return "completed"
 
 
-async def _run_config_host_cron_job(job_name: str, job: CronJobConfig) -> None:
+async def _run_config_host_cron_job(job_name: str, job: JobConfig) -> None:
     """Run a config-backed host cron job and surface shell failures to Temporal."""
+    if job.command is None or job.schedule is None:
+        raise RuntimeError(f"validated host job {job_name!r} is incomplete")
     command_cwd = resolve_cron_job_cwd(job.cwd)
     logger.info(
         "Running config host cron job",
@@ -68,9 +70,9 @@ async def _run_config_host_cron_job(job_name: str, job: CronJobConfig) -> None:
     result = await run_shell_command(
         job.command,
         cwd=command_cwd,
-        timeout_seconds=job.timeout_seconds,
+        timeout_seconds=job.timeout_seconds or 600,
     )
-    if not (job.quiet_on_success and result.returncode == 0):
+    if not (job.quiet_on_success is True and result.returncode == 0):
         log_shell_result(result, label="Config host cron job", job=job_name)
     _raise_for_failed_command(result, job_name)
 

@@ -15,6 +15,7 @@ from conftest import make_settings
 from pynchy.config import PluginConfig
 from pynchy.event_bus import AgentTraceEvent, EventBus, MessageEvent
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.observers import attach_observers
 from pynchy.plugins.observers.sqlite_observer.observer import SqliteEventObserver
 
@@ -40,12 +41,12 @@ class TestInRepoPluginDiscovery:
             pm = get_plugin_manager()
 
         cores = pm.hook.pynchy_agent_core_info()
-        names = [c["name"] for c in cores]
+        names = [core.name for core in cores]
         assert "claude" in names
         assert "openai" in names
 
-        claude = next(c for c in cores if c["name"] == "claude")
-        assert claude["module"] == "agent_runner.cores.claude"
+        claude = next(core for core in cores if core.name == "claude")
+        assert claude.module == "agent_runner.cores.claude"
 
     def test_tunnel_plugin_available(self):
         """Tailscale tunnel plugin provides a valid provider."""
@@ -141,7 +142,14 @@ class TestSlackPluginFunctionality:
         mock_settings.connections = {}
 
         with patch("pynchy.plugins.channels.slack.get_settings", return_value=mock_settings):
-            channels = pm.hook.pynchy_create_channel(context=MagicMock())
+            channels = pm.hook.pynchy_create_channel(
+                context=ChannelPluginContext(
+                    on_message_callback=MagicMock(),
+                    on_chat_metadata_callback=MagicMock(),
+                    workspaces=MagicMock(return_value={}),
+                    send_message=MagicMock(),
+                )
+            )
 
         # Slack should return None when no connections configured
         slack_channels = [

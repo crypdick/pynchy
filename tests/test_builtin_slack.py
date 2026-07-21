@@ -12,6 +12,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.models import CommandCenterConfig, SlackConnectionConfig
+from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.channels.slack import (
     SlackChannel,
     SlackChannelPlugin,
@@ -24,6 +25,15 @@ SLACK_BOT_VALUE = "xoxb-fake"
 SLACK_APP_VALUE = "xapp-fake"
 SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
+
+
+def _plugin_context() -> ChannelPluginContext:
+    return ChannelPluginContext(
+        on_message_callback=MagicMock(),
+        on_chat_metadata_callback=MagicMock(),
+        workspaces=MagicMock(return_value={}),
+        send_message=MagicMock(),
+    )
 
 
 class _FakeSlackClient:
@@ -397,7 +407,7 @@ class TestSlackInboundBoundary:
 class TestSlackChannelPlugin:
     def test_returns_none_when_no_tokens(self) -> None:
         plugin = SlackChannelPlugin()
-        context = MagicMock()
+        context = _plugin_context()
 
         with patch("pynchy.plugins.channels.slack.get_settings") as mock_settings:
             mock_settings.return_value = make_settings(connections={})
@@ -408,7 +418,7 @@ class TestSlackChannelPlugin:
 
     def test_returns_channel_when_tokens_present(self) -> None:
         plugin = SlackChannelPlugin()
-        context = MagicMock()
+        context = _plugin_context()
 
         with (
             patch("pynchy.plugins.channels.slack.get_settings") as mock_settings,

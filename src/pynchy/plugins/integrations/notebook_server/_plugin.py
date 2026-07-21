@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 try:
     import pluggy
+
+    from pynchy.plugins.contracts import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation on the host.
+        McpServerSpec,
+    )
 
     hookimpl = pluggy.HookimplMarker("pynchy")
 except ModuleNotFoundError:
@@ -17,17 +19,25 @@ except ModuleNotFoundError:
 
 class NotebookServerPlugin:
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
-        return {
-            "name": "notebook",
-            "type": "docker",
-            "image": "pynchy-mcp-notebook:latest",
-            "dockerfile": "src/pynchy/agent/mcp/notebook.Dockerfile",
-            "args": ["--workspace-dir", "/workspace"],
-            "port": 8460,
-            "extra_ports": [8888],
-            "transport": "streamable_http",
-            "idle_timeout": 1800,  # 30 min - MCP manager stops idle containers
-            "inject_workspace": True,  # auto-scope notebooks per workspace
-            "volumes": ["groups/{workspace}:/workspace"],
-        }
+    def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
+        # Keep host-only imports inside the hook. The notebook image copies this
+        # package without Pynchy so it can run the MCP server independently.
+        from pynchy.config.mcp import McpServerConfig  # noqa: PLC0415, RUF100
+
+        return (
+            McpServerSpec(
+                name="notebook",
+                config=McpServerConfig(
+                    type="docker",
+                    image="pynchy-mcp-notebook:latest",
+                    dockerfile="src/pynchy/agent/mcp/notebook.Dockerfile",
+                    args=["--workspace-dir", "/workspace"],
+                    port=8460,
+                    extra_ports=[8888],
+                    transport="streamable_http",
+                    idle_timeout=1800,
+                    inject_workspace=True,
+                    volumes=["groups/{workspace}:/workspace"],
+                ),
+            ),
+        )

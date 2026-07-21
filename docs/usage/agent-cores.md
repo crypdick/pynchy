@@ -34,7 +34,7 @@ cwd = "/path/to/workspace"
 profiles = ["local-admin"]
 ```
 
-`execution_mode = "host"` runs the selected agent core as a host child process in `cwd`. It does not mount workspace directories, create IPC directories, expose Pynchy's built-in MCP server, or apply the container sandbox. Model routing still comes from the selected core and LiteLLM config.
+`execution_mode = "host"` runs the selected agent core as a host child process in `cwd`. It does not mount workspace directories or apply the container sandbox. It retains Pynchy's built-in MCP server and the shared tool-hook roster through group-scoped host IPC. Model routing still comes from the selected core and LiteLLM config.
 
 Host execution requires an admin workspace and an explicit `cwd`.
 
@@ -131,7 +131,7 @@ All built-in cores share the `BEFORE_TOOL_USE` hook pipeline. Built-in security 
 
 **WebFetch removal.** The `WebFetch` tool is gone from both cores. Web access goes through the Playwright browser MCP server, which is gated by the standard tool trust policy.
 
-**Extensibility.** Plugins can register their own `BEFORE_TOOL_USE` hooks — a module exporting `before_tool_use(tool_name, tool_input)` that returns a `HookDecision`. See the [Plugin Authoring Guide](../plugins/index.md).
+**Extensibility.** Plugins register lifecycle modules through `pynchy_agent_hook_specs`. A module can export `before_tool_use(tool_name, tool_input)` and return a `HookDecision`. See [Agent core and lifecycle hooks](../plugins/hooks/agent-cores.md#pynchy_agent_hook_specs).
 
 ## LLM Gateway
 

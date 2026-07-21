@@ -32,8 +32,8 @@ EmitEventFn = Callable[..., None]
 class MessageBroadcaster:
     """Broadcasts messages to all connected channels.
 
-    Satisfies the ``BusDeps`` protocol from ``messaging.bus`` so that
-    ``broadcast_to_channels`` delegates to the single ``bus.broadcast()``
+    Satisfies the ``BusDeps`` protocol from ``messaging.sender`` so that
+    ``broadcast_to_channels`` delegates to the single ``sender.broadcast()``
     code path (JID resolution, ownership check, error handling).
 
     Uses a callable for channel list so the broadcaster always reads the
@@ -43,18 +43,12 @@ class MessageBroadcaster:
     def __init__(
         self,
         channels: Callable[[], list[Channel]] | list[Channel],
-        workspaces: Callable[[], dict[str, WorkspaceProfile]]
-        | dict[str, WorkspaceProfile]
-        | None = None,
     ) -> None:
         # Accept either a list or a callable returning a list.
         # Callable form ensures the broadcaster always reads the current channels
         # (important when the channel list may be swapped, e.g. in tests).
         self._get_channels: Callable[[], list[Channel]] = (
             channels if callable(channels) else lambda: channels
-        )
-        self._get_workspaces: Callable[[], dict[str, WorkspaceProfile]] = (
-            workspaces if callable(workspaces) else lambda: workspaces or {}
         )
 
     # -- BusDeps protocol implementation --
@@ -63,11 +57,6 @@ class MessageBroadcaster:
     def channels(self) -> list[Channel]:
         """Return current channel list (satisfies BusDeps protocol)."""
         return self._get_channels()
-
-    @property
-    def workspaces(self) -> dict[str, WorkspaceProfile]:
-        """Return current workspaces dict (satisfies BusDeps protocol)."""
-        return self._get_workspaces()
 
     # -- Broadcast methods --
 

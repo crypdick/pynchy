@@ -8,12 +8,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pluggy
 
+    from pynchy.plugins.contracts import AgentHookSpec
+
 from pynchy.config import get_settings
 from pynchy.host.container_manager.credentials import write_env_file
 from pynchy.host.container_manager.security.mount_security import validate_additional_mounts
 from pynchy.host.git_ops.repo import RepoContext, repo_container_path
 from pynchy.host.learning.mirror import prepare_vault_mount_root
 from pynchy.host.learning.skill_activation import prepare_agent_homes
+from pynchy.plugins.agent_hooks import agent_hook_mounts
 from pynchy.types import VolumeMount, WorkspaceProfile
 
 
@@ -25,6 +28,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     repo_ctx: RepoContext | None = None,
     worktree_path: Path | None = None,
     repo_mounts: list[tuple[RepoContext, Path]] | None = None,
+    agent_hooks: tuple[AgentHookSpec, ...] = (),
 ) -> list[VolumeMount]:
     """Build the mount list for a container invocation.
 
@@ -35,6 +39,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
         repo_ctx: Single resolved repo, paired with ``worktree_path`` when provided
         worktree_path: Single worktree path, paired with ``repo_ctx`` when provided
         repo_mounts: Resolved repo/worktree pairs for every configured repo
+        agent_hooks: Trusted lifecycle hook modules to mount read-only
 
     Returns:
         List of volume mounts for the container
@@ -58,6 +63,7 @@ def build_volume_mounts(  # noqa: PLR0913, RUF100 - orchestration entry point wi
     _add_workspace_mounts(mounts, group_dir, effective_repo_mounts)
     mounts.append(VolumeMount(str(agent_homes.claude_home), "/home/agent/.claude", readonly=False))
     mounts.append(VolumeMount(str(agent_homes.codex_home), "/home/agent/.codex", readonly=False))
+    mounts.extend(agent_hook_mounts(agent_hooks))
 
     _add_ipc_mount(mounts, s.data_dir, group.folder)
 

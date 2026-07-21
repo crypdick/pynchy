@@ -18,6 +18,9 @@ from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 from pynchy.logger import logger
+from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+    ChannelPluginContext,
+)
 from pynchy.types import (
     NewMessage,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
@@ -44,7 +47,7 @@ def _public_module() -> _SlackPublicModule:
 
 
 def _channel_context(
-    context: object | None,
+    context: ChannelPluginContext | None,
 ) -> (
     tuple[
         Callable[[str, NewMessage], None],
@@ -58,16 +61,12 @@ def _channel_context(
     """Return the callbacks SlackChannel needs, or ``None`` when unavailable."""
     if context is None:
         return None
-    on_message = getattr(context, "on_message_callback", None)
-    on_metadata = getattr(context, "on_chat_metadata_callback", None)
-    if on_message is None or on_metadata is None:
-        return None
     return (
-        on_message,
-        on_metadata,
-        getattr(context, "on_reaction_callback", None),
-        getattr(context, "on_ask_user_answer_callback", None),
-        getattr(context, "on_approval_decision_callback", None),
+        context.on_message_callback,
+        context.on_chat_metadata_callback,
+        context.on_reaction_callback,
+        context.on_ask_user_answer_callback,
+        context.on_approval_decision_callback,
     )
 
 
@@ -132,7 +131,9 @@ class SlackChannelPlugin:
     """Built-in plugin that activates when Slack tokens are configured."""
 
     @hookimpl
-    def pynchy_create_channel(self, context: object | None) -> list[SlackChannel] | None:
+    def pynchy_create_channel(
+        self, context: ChannelPluginContext | None
+    ) -> list[SlackChannel] | None:
         settings = _public_module().get_settings()
         configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "slack"}
         if not configs:

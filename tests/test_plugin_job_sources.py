@@ -11,6 +11,7 @@ from conftest import make_settings
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator.job_sources import configure_plugin_jobs
+from pynchy.plugins.contracts import JobSpec
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _Hooks:
-    pynchy_job_specs: Callable[[], list[tuple[dict[str, object], ...]]]
+    pynchy_job_specs: Callable[[], list[tuple[JobSpec, ...]]]
 
 
 @dataclass(frozen=True)
@@ -32,24 +33,24 @@ def test_plugin_jobs_join_native_agent_and_deterministic_paths() -> None:
         workspaces={"fam": WorkspaceConfig(profiles=["fam"])},
     )
     specs = (
-        {
-            "name": "vault-agent",
-            "config": {
-                "schedule": "0 8 * * *",
-                "workspace": "fam",
-                "prompt": "Review fam.",
-                "pre_run_command": "scripts/gate.py",
-            },
-        },
-        {
-            "name": "vault-shell",
-            "config": {
-                "interval_minutes": 360,
-                "workspace": "fam",
-                "agent": False,
-                "command": "scripts/remind.py",
-            },
-        },
+        JobSpec(
+            name="vault-agent",
+            config=JobConfig(
+                schedule="0 8 * * *",
+                workspace="fam",
+                prompt="Review fam.",
+                pre_run_command="scripts/gate.py",
+            ),
+        ),
+        JobSpec(
+            name="vault-shell",
+            config=JobConfig(
+                interval_minutes=360,
+                workspace="fam",
+                agent=False,
+                command="scripts/remind.py",
+            ),
+        ),
     )
     plugin_manager = _PluginManager(hook=_Hooks(pynchy_job_specs=lambda: [specs]))
 
@@ -62,7 +63,6 @@ def test_plugin_jobs_join_native_agent_and_deterministic_paths() -> None:
     assert settings.jobs["vault-agent"].pre_run_command == "scripts/gate.py"
     assert settings.jobs["vault-shell"].is_deterministic is True
     assert settings.jobs["vault-shell"].interval_minutes == 360
-    assert "vault-shell" not in settings.cron_jobs
 
 
 def test_user_job_wins_over_plugin_registry_entry() -> None:
@@ -80,14 +80,14 @@ def test_user_job_wins_over_plugin_registry_entry() -> None:
         hook=_Hooks(
             pynchy_job_specs=lambda: [
                 (
-                    {
-                        "name": "same-name",
-                        "config": {
-                            "schedule": "0 8 * * *",
-                            "workspace": "fam",
-                            "prompt": "Plugin prompt.",
-                        },
-                    },
+                    JobSpec(
+                        name="same-name",
+                        config=JobConfig(
+                            schedule="0 8 * * *",
+                            workspace="fam",
+                            prompt="Plugin prompt.",
+                        ),
+                    ),
                 )
             ]
         )
@@ -111,14 +111,14 @@ def test_user_replacement_survives_plugin_reconfiguration() -> None:
         hook=_Hooks(
             pynchy_job_specs=lambda: [
                 (
-                    {
-                        "name": "same-name",
-                        "config": {
-                            "schedule": "0 8 * * *",
-                            "workspace": "fam",
-                            "prompt": "Plugin prompt.",
-                        },
-                    },
+                    JobSpec(
+                        name="same-name",
+                        config=JobConfig(
+                            schedule="0 8 * * *",
+                            workspace="fam",
+                            prompt="Plugin prompt.",
+                        ),
+                    ),
                 )
             ]
         )

@@ -10,6 +10,7 @@ from conftest import make_settings
 from pynchy.host.container_manager.mounts import build_volume_mounts
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.agent_cores.codex import CodexAgentCorePlugin
+from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.types import WorkspaceProfile
 
 
@@ -27,13 +28,11 @@ def test_codex_plugin_info_structure() -> None:
     """The built-in plugin advertises the Codex CLI-backed core."""
     info = CodexAgentCorePlugin().pynchy_agent_core_info()
 
-    assert info == {
-        "name": "codex",
-        "module": "agent_runner.cores.codex",
-        "class_name": "CodexCLIAgentCore",
-        "packages": [],
-        "host_source_path": None,
-    }
+    assert info == AgentCoreSpec(
+        name="codex",
+        module="agent_runner.cores.codex",
+        class_name="CodexCLIAgentCore",
+    )
 
 
 def test_codex_plugin_registered_via_static_registry() -> None:
@@ -42,7 +41,7 @@ def test_codex_plugin_registered_via_static_registry() -> None:
         pm = get_plugin_manager()
 
     plugin_names = [pm.get_name(p) for p in pm.get_plugins()]
-    core_names = [c["name"] for c in pm.hook.pynchy_agent_core_info()]
+    core_names = [core.name for core in pm.hook.pynchy_agent_core_info()]
 
     assert "builtin-codex" in plugin_names
     assert "codex" in core_names

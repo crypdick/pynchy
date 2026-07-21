@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pluggy
 
+from pynchy.plugins.contracts import AgentCoreSpec
+
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
@@ -22,12 +24,11 @@ class OpenAIAgentCorePlugin:
     """
 
     @hookimpl
-    def pynchy_agent_core_info(self) -> dict[str, str | list[str] | None]:
+    def pynchy_agent_core_info(self) -> AgentCoreSpec:
         """Provide OpenAI agent core information."""
-        return {
-            "name": "openai",
-            "module": "agent_runner.cores.openai",
-            "class_name": "OpenAIAgentCore",
-            "packages": ["openai-agents>=0.1.0"],
-            "host_source_path": None,
-        }
+        return AgentCoreSpec(
+            name="openai",
+            module="agent_runner.cores.openai",
+            class_name="OpenAIAgentCore",
+            packages=("openai-agents>=0.1.0",),
+        )

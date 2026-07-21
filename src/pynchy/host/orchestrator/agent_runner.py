@@ -56,6 +56,7 @@ from pynchy.host.orchestrator.host_execution import (
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
+from pynchy.plugins.agent_hooks import collect_agent_hook_specs, host_agent_hook_configs
 from pynchy.state import clear_session
 from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
 
@@ -139,32 +140,14 @@ def build_container_input(
     *,
     is_scheduled_task: bool = False,
 ) -> ContainerInput:
-    """Build a ContainerInput from the pre-container result.
-
-    Shared by cold start and scheduled task paths to avoid duplicating
-    the field mapping.
-    """
-    resolved_turn_id = ctx.turn_id or new_turn_id()
-    agent_core_config = dict(_agent_core_config_from_settings(group.folder) or {})
-    metadata = dict(agent_core_config.get("metadata") or {})
-    metadata.update(_turn_metadata(resolved_turn_id, chat_jid, group.folder))
-    agent_core_config["metadata"] = metadata
-    return ContainerInput(
-        messages=messages,
-        turn_id=resolved_turn_id,
-        session_id=ctx.session_id,
-        group_folder=group.folder,
-        chat_jid=chat_jid,
-        is_admin=ctx.is_admin,
-        system_notices=ctx.system_notices or None,
+    """Build a runner input through this module's patchable settings seam."""
+    return _preflight.build_container_input(
+        messages,
+        ctx,
+        chat_jid,
+        group,
+        agent_core_config=agent_core_config_from_settings(get_settings(), group.folder),
         is_scheduled_task=is_scheduled_task,
-        input_source=ctx.input_source,
-        repo_access=ctx.repo_access,
-        repo_accesses=ctx.repo_accesses,
-        system_prompt_append=ctx.system_prompt_append,
-        agent_core_module=ctx.agent_core_module,
-        agent_core_class=ctx.agent_core_class,
-        agent_core_config=agent_core_config,
     )
 
 
@@ -441,6 +424,9 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
             chat_jid,
             group,
             is_scheduled_task=is_scheduled_task,
+        )
+        input_data.plugin_hooks = host_agent_hook_configs(
+            collect_agent_hook_specs(deps.plugin_manager)
         )
         await _prepare_host_direct_mcp_servers(
             input_data,

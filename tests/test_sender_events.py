@@ -32,7 +32,6 @@ def _make_channel(name: str, jid_prefix: str = "slack:"):
 def _make_deps(channels):
     deps = MagicMock()
     type(deps).channels = PropertyMock(return_value=channels)
-    type(deps).workspaces = PropertyMock(return_value={})
     return deps
 
 

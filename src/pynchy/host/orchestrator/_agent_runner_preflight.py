@@ -9,6 +9,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 import pynchy.config.prompts as prompt_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
+from pynchy.conversation.events import new_turn_id
 from pynchy.conversation.workspaces import conversation_id_from_folder
 from pynchy.host.container_manager import (
     OnOutput,
@@ -26,7 +27,13 @@ from pynchy.state import (
     set_session,
     update_in_flight_session,
 )
-from pynchy.types import ContainerOutput, GroupFolder, SessionId, WorkspaceProfile
+from pynchy.types import (
+    ContainerInput,
+    ContainerOutput,
+    GroupFolder,
+    SessionId,
+    WorkspaceProfile,
+)
 
 
 @dataclass
@@ -59,6 +66,48 @@ class PreContainerSetupRequest:
     input_source: str
     is_scheduled_task: bool
     repo_access_override: str | None
+
+
+def _turn_metadata(turn_id: str, chat_jid: str, group_folder: str) -> dict[str, str]:
+    return {
+        "pynchy_turn_id": turn_id,
+        "pynchy_chat_jid": chat_jid,
+        "pynchy_group_folder": group_folder,
+    }
+
+
+def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire inputs keep this boundary inspectable.
+    messages: list[dict[str, Any]],
+    ctx: PreContainerResult,
+    chat_jid: str,
+    group: WorkspaceProfile,
+    *,
+    agent_core_config: dict[str, Any] | None,
+    is_scheduled_task: bool = False,
+) -> ContainerInput:
+    """Build the runner input shared by host, container, and scheduled paths."""
+    resolved_turn_id = ctx.turn_id or new_turn_id()
+    resolved_core_config = dict(agent_core_config or {})
+    metadata = dict(resolved_core_config.get("metadata") or {})
+    metadata.update(_turn_metadata(resolved_turn_id, chat_jid, group.folder))
+    resolved_core_config["metadata"] = metadata
+    return ContainerInput(
+        messages=messages,
+        turn_id=resolved_turn_id,
+        session_id=ctx.session_id,
+        group_folder=group.folder,
+        chat_jid=chat_jid,
+        is_admin=ctx.is_admin,
+        system_notices=ctx.system_notices or None,
+        is_scheduled_task=is_scheduled_task,
+        input_source=ctx.input_source,
+        repo_access=ctx.repo_access,
+        repo_accesses=ctx.repo_accesses,
+        system_prompt_append=ctx.system_prompt_append,
+        agent_core_module=ctx.agent_core_module,
+        agent_core_class=ctx.agent_core_class,
+        agent_core_config=resolved_core_config,
+    )
 
 
 @runtime_checkable

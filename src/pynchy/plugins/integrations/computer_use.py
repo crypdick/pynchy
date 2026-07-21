@@ -101,7 +101,9 @@ def _plugin_config() -> ComputerUseRouterConfig:
     return ComputerUseRouterConfig.model_validate(options)
 
 
-def _backend_catalog(candidates: tuple[object, ...]) -> dict[str, ComputerUseBackend]:
+def _backend_catalog(
+    candidates: tuple[ComputerUseBackend, ...],
+) -> dict[str, ComputerUseBackend]:
     catalog: dict[str, ComputerUseBackend] = {}
     for candidate in candidates:
         if not isinstance(candidate, ComputerUseBackend):
@@ -243,7 +245,7 @@ class ComputerUsePlugin:
     @hookimpl
     def pynchy_service_handler(
         self,
-        computer_use_backends: tuple[object, ...],
+        computer_use_backends: tuple[ComputerUseBackend, ...],
     ) -> HostActionRegistration:
         config = self._config or _plugin_config()
         backends = _backend_catalog(computer_use_backends)

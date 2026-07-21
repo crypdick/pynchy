@@ -15,7 +15,7 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 
 | Category | Hooks |
 |----------|-------|
-| [Agent cores](agent-cores.md) | `pynchy_agent_core_info` |
+| [Agent cores and lifecycle hooks](agent-cores.md) | `pynchy_agent_core_info`, `pynchy_agent_hook_specs` |
 | [Host services](host-services.md) | `pynchy_service_handler`, `pynchy_computer_use_backend`, `pynchy_action_specs` |
 | [Skills](skills.md) | `pynchy_skill_paths` |
 | [Channels and speech](channels.md) | `pynchy_create_channel`, `pynchy_speech_synthesizer` |

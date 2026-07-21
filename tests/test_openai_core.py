@@ -41,11 +41,11 @@ class TestOpenAIPluginInfo:
         plugin = OpenAIAgentCorePlugin()
         info = plugin.pynchy_agent_core_info()
 
-        assert info["name"] == "openai"
-        assert info["module"] == "agent_runner.cores.openai"
-        assert info["class_name"] == "OpenAIAgentCore"
-        assert "openai-agents" in info["packages"][0]
-        assert info["host_source_path"] is None
+        assert info.name == "openai"
+        assert info.module == "agent_runner.cores.openai"
+        assert info.class_name == "OpenAIAgentCore"
+        assert "openai-agents" in info.packages[0]
+        assert info.host_source_path is None
 
     def test_plugin_registered_via_auto_discovery(self):
         """OpenAI plugin is auto-discovered alongside Claude plugin."""
@@ -53,7 +53,7 @@ class TestOpenAIPluginInfo:
             pm = get_plugin_manager()
         cores = pm.hook.pynchy_agent_core_info()
 
-        names = [c["name"] for c in cores]
+        names = [core.name for core in cores]
         assert "claude" in names
         assert "openai" in names
 
@@ -63,13 +63,13 @@ class TestOpenAIPluginInfo:
             pm = get_plugin_manager()
         cores = pm.hook.pynchy_agent_core_info()
 
-        openai_core = next((c for c in cores if c["name"] == "openai"), None)
+        openai_core = next((core for core in cores if core.name == "openai"), None)
         assert openai_core is not None
-        assert openai_core["class_name"] == "OpenAIAgentCore"
+        assert openai_core.class_name == "OpenAIAgentCore"
 
-        claude_core = next((c for c in cores if c["name"] == "claude"), None)
+        claude_core = next((core for core in cores if core.name == "claude"), None)
         assert claude_core is not None
-        assert claude_core["class_name"] == "ClaudeAgentCore"
+        assert claude_core.class_name == "ClaudeAgentCore"
 
 
 # ---------------------------------------------------------------------------

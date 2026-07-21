@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from conftest import make_settings
 
-from pynchy.config import CronJobConfig, SchedulerConfig
+from pynchy.config import SchedulerConfig
 from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
@@ -53,10 +53,10 @@ AGENT_FAILED_MESSAGE = "Agent failed"
 
 
 @contextlib.contextmanager
-def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, cron_jobs=None):
+def _patch_settings(*, poll_interval: float = 5.0, groups_dir=None, jobs=None):
     overrides = {
         "scheduler": SchedulerConfig(poll_interval=poll_interval),
-        "cron_jobs": cron_jobs or {},
+        "jobs": jobs or {},
     }
     if groups_dir is not None:
         overrides["groups_dir"] = groups_dir
@@ -1798,16 +1798,17 @@ class TestRunScheduledAgent:
         assert "API Error: 429" in logged_runs[0].error
 
 
-class TestHostCronJobs:
+class TestHostJobs:
     @pytest.mark.asyncio
     async def test_configured_host_cron_jobs_are_not_spawned_by_scheduler(
         self, tmp_path, monkeypatch
     ):
         with (
             _patch_settings(
-                cron_jobs={
-                    "rebuild_container": CronJobConfig(
+                jobs={
+                    "rebuild_container": JobConfig(
                         schedule="0 5 * * *",
+                        workspace="host",
                         command="./src/pynchy/agent/build.sh",
                     )
                 },
@@ -1826,9 +1827,10 @@ class TestHostCronJobs:
     async def test_skips_disabled_host_cron_job(self, monkeypatch):
         with (
             _patch_settings(
-                cron_jobs={
-                    "disabled_job": CronJobConfig(
+                jobs={
+                    "disabled_job": JobConfig(
                         schedule="0 5 * * *",
+                        workspace="host",
                         command="echo hello",
                         enabled=False,
                     )

@@ -64,6 +64,7 @@ from pynchy.host.orchestrator.agent_runner import (
     run_agent,
     session_tracking_output_handler,
 )
+from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.types import (
     ContainerInput,
     ContainerOutput,
@@ -1678,8 +1679,10 @@ class TestResolveAgentCore:
         class FakeHook:
             def pynchy_agent_core_info(self):
                 return [
-                    {"name": "openai", "module": "cores.openai", "class_name": "OpenAICore"},
-                    {"name": "claude", "module": "cores.claude_v2", "class_name": "ClaudeV2Core"},
+                    AgentCoreSpec(name="openai", module="cores.openai", class_name="OpenAICore"),
+                    AgentCoreSpec(
+                        name="claude", module="cores.claude_v2", class_name="ClaudeV2Core"
+                    ),
                 ]
 
         class FakePM(pluggy.PluginManager):
@@ -1700,8 +1703,8 @@ class TestResolveAgentCore:
         class FakeHook:
             def pynchy_agent_core_info(self):
                 return [
-                    {"name": "openai", "module": "cores.openai", "class_name": "OpenAICore"},
-                    {"name": "gemini", "module": "cores.gemini", "class_name": "GeminiCore"},
+                    AgentCoreSpec(name="openai", module="cores.openai", class_name="OpenAICore"),
+                    AgentCoreSpec(name="gemini", module="cores.gemini", class_name="GeminiCore"),
                 ]
 
         class FakePM(pluggy.PluginManager):
@@ -1722,8 +1725,8 @@ class TestResolveAgentCore:
         class FakeHook:
             def pynchy_agent_core_info(self):
                 return [
-                    {"name": "openai", "module": "cores.openai", "class_name": "OpenAICore"},
-                    {"name": "custom", "module": "cores.custom", "class_name": "CustomCore"},
+                    AgentCoreSpec(name="openai", module="cores.openai", class_name="OpenAICore"),
+                    AgentCoreSpec(name="custom", module="cores.custom", class_name="CustomCore"),
                 ]
 
         class FakePM(pluggy.PluginManager):

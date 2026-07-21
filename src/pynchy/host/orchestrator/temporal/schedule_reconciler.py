@@ -156,15 +156,17 @@ async def _reconcile_config_cron_schedules(
 ) -> None:
     client_any = cast("Any", client)
     settings_any = cast("Any", settings)
-    for job_name, cron_job in settings_any.cron_jobs.items():
-        if not cron_job.enabled:
+    for job_name, job in settings_any.jobs.items():
+        if not job.is_host or not job.enabled:
             continue
+        if job.schedule is None:
+            raise RuntimeError(f"validated host job {job_name!r} has no schedule")
         schedule_id = config_host_cron_schedule_id(job_name)
         desired_schedule_ids.add(schedule_id)
         await _upsert_schedule(
             client_any,
             schedule_id,
-            schedule_for_config_host_cron(job_name, cron_job.schedule),
+            schedule_for_config_host_cron(job_name, job.schedule),
         )
 
 

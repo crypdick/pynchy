@@ -10,6 +10,7 @@ from conftest import make_settings
 
 from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.contracts import AgentCoreSpec
 
 
 @pytest.fixture(autouse=True)
@@ -45,10 +46,10 @@ class TestPluginManager:
             },
         }
         for core_name, expected_fields in expected_cores.items():
-            core = next((candidate for candidate in cores if candidate["name"] == core_name), None)
+            core = next((candidate for candidate in cores if candidate.name == core_name), None)
             assert core is not None
             for field_name, expected_value in expected_fields.items():
-                assert core[field_name] == expected_value
+                assert getattr(core, field_name) == expected_value
 
     def test_plugin_manager_has_hookspecs(self):
         """Plugin manager has all expected hook specifications."""
@@ -56,6 +57,7 @@ class TestPluginManager:
 
         # Verify all hooks are available
         assert hasattr(pm.hook, "pynchy_agent_core_info")
+        assert hasattr(pm.hook, "pynchy_agent_hook_specs")
         assert hasattr(pm.hook, "pynchy_skill_paths")
         assert hasattr(pm.hook, "pynchy_create_channel")
         assert hasattr(pm.hook, "pynchy_workspace_spec")
@@ -100,22 +102,20 @@ class TestCustomPluginRegistration:
         class CustomCorePlugin:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "custom",
-                    "module": "custom.core",
-                    "class_name": "CustomCore",
-                    "packages": [],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(
+                    name="custom",
+                    module="custom.core",
+                    class_name="CustomCore",
+                )
 
         pm = get_plugin_manager()
         pm.register(CustomCorePlugin(), name="custom-plugin")
 
         cores = pm.hook.pynchy_agent_core_info()
-        custom_core = next((c for c in cores if c["name"] == "custom"), None)
+        custom_core = next((core for core in cores if core.name == "custom"), None)
 
         assert custom_core is not None
-        assert custom_core["module"] == "custom.core"
+        assert custom_core.module == "custom.core"
 
     def test_register_skill_plugin(self):
         """Register a custom skill plugin."""
@@ -146,13 +146,7 @@ class TestCustomPluginRegistration:
         class MultiPlugin:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "multi",
-                    "module": "multi.core",
-                    "class_name": "MultiCore",
-                    "packages": [],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(name="multi", module="multi.core", class_name="MultiCore")
 
             @hookimpl
             def pynchy_skill_paths(self):
@@ -163,7 +157,7 @@ class TestCustomPluginRegistration:
 
         # Plugin appears in both hooks
         cores = pm.hook.pynchy_agent_core_info()
-        multi_core = next((c for c in cores if c["name"] == "multi"), None)
+        multi_core = next((core for core in cores if core.name == "multi"), None)
         assert multi_core is not None
 
         skill_path_lists = pm.hook.pynchy_skill_paths()
@@ -181,24 +175,12 @@ class TestHookCalling:
         class Plugin1:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "core1",
-                    "module": "m1",
-                    "class_name": "C1",
-                    "packages": [],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(name="core1", module="m1", class_name="C1")
 
         class Plugin2:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "core2",
-                    "module": "m2",
-                    "class_name": "C2",
-                    "packages": [],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(name="core2", module="m2", class_name="C2")
 
         pm = get_plugin_manager()
         pm.register(Plugin1(), name="plugin1")
@@ -208,7 +190,7 @@ class TestHookCalling:
 
         # Results from all plugins (including built-in Claude and OpenAI)
         assert len(cores) >= 4
-        names = [c["name"] for c in cores]
+        names = [core.name for core in cores]
         assert "core1" in names
         assert "core2" in names
         assert "claude" in names
@@ -232,20 +214,14 @@ class TestHookCalling:
         class BlockablePlugin:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "blockable",
-                    "module": "m",
-                    "class_name": "C",
-                    "packages": [],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(name="blockable", module="m", class_name="C")
 
         pm = get_plugin_manager()
         pm.register(BlockablePlugin(), name="blockable-plugin")
 
         # Before blocking
         cores_before = pm.hook.pynchy_agent_core_info()
-        names_before = [c["name"] for c in cores_before]
+        names_before = [core.name for core in cores_before]
         assert "blockable" in names_before
 
         # Block the plugin
@@ -253,7 +229,7 @@ class TestHookCalling:
 
         # After blocking
         cores_after = pm.hook.pynchy_agent_core_info()
-        names_after = [c["name"] for c in cores_after]
+        names_after = [core.name for core in cores_after]
         assert "blockable" not in names_after
 
 

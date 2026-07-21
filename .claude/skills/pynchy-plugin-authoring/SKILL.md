@@ -56,6 +56,7 @@ Plugin Authoring Checklist
 - `pynchy_action_specs`: Semantic action contracts
 - `pynchy_skill_paths`: Skill directories mounted into container
 - `pynchy_agent_core_info`: Agent core implementation metadata
+- `pynchy_agent_hook_specs`: Trusted agent lifecycle hook modules
 - `pynchy_container_runtime`: Host container runtime provider
 - `pynchy_tunnel`: Host tunnel provider
 - `pynchy_connection_runtime`: Long-lived authenticated connection runtime

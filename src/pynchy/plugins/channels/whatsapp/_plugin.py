@@ -15,6 +15,10 @@ from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 from pynchy.logger import logger
+from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
+    ChannelPluginContext,
+)
+from pynchy.types import Channel  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 _DUPLICATE_AUTH_DB_PATH = (
@@ -25,7 +29,7 @@ _DUPLICATE_AUTH_DB_PATH = (
 
 @runtime_checkable
 class _WhatsAppPublicModule(Protocol):
-    WhatsAppChannel: Callable[..., object]
+    WhatsAppChannel: Callable[..., Channel]
 
     def get_settings(self) -> Settings: ...
 
@@ -38,7 +42,7 @@ class WhatsAppPlugin:
     """Plugin implementing selected pynchy hooks."""
 
     @hookimpl
-    def pynchy_create_channel(self, context: object | None) -> list[object] | None:
+    def pynchy_create_channel(self, context: ChannelPluginContext | None) -> list[Channel] | None:
         public = _public_module()
         s: Settings = public.get_settings()
         configs = {name: cfg for name, cfg in s.connections.items() if cfg.type == "whatsapp"}
@@ -47,13 +51,7 @@ class WhatsAppPlugin:
             return None
         if context is None:
             return None
-        on_message = getattr(context, "on_message_callback", None)
-        on_chat_metadata = getattr(context, "on_chat_metadata_callback", None)
-        workspaces = getattr(context, "workspaces", None)
-        if on_message is None or on_chat_metadata is None or workspaces is None:
-            return None
-        on_ask_user_answer = getattr(context, "on_ask_user_answer_callback", None)
-        channels: list[object] = []
+        channels: list[Channel] = []
         seen_paths: dict[str, str] = {}
         channel_cls = public.WhatsAppChannel
         for name, cfg in configs.items():
@@ -78,10 +76,10 @@ class WhatsAppPlugin:
                 channel_cls(
                     connection_name=connection_name,
                     auth_db_path=str(auth_db_path),
-                    on_message=on_message,
-                    on_chat_metadata=on_chat_metadata,
-                    workspaces=workspaces,
-                    on_ask_user_answer=on_ask_user_answer,
+                    on_message=context.on_message_callback,
+                    on_chat_metadata=context.on_chat_metadata_callback,
+                    workspaces=context.workspaces,
+                    on_ask_user_answer=context.on_ask_user_answer_callback,
                 )
             )
         return channels

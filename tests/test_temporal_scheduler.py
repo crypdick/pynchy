@@ -27,12 +27,12 @@ import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
 from pynchy.config import (
     CanaryConfig,
-    CronJobConfig,
     ProfileConfig,
     RepoConfig,
     SchedulerConfig,
     WorkspaceConfig,
 )
+from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ReposConfig
 from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
@@ -513,7 +513,7 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
         monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
@@ -538,7 +538,7 @@ class TestTemporalSchedulerRuntime:
         self, monkeypatch, temporal_task
     ):
         """Config jobs remain serial while retaining one pending run."""
-        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
         temporal_task.config_job_name = "fam_daily_checkin"
 
@@ -562,7 +562,7 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, cron_jobs={})
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
         monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
@@ -604,7 +604,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[host_job])
         )
-        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, cron_jobs={})
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
         monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
@@ -640,7 +640,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[host_job])
         )
-        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
         monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
@@ -667,9 +667,10 @@ class TestTemporalSchedulerRuntime:
         settings = make_settings(
             timezone="UTC",
             scheduler=SchedulerConfig(),
-            cron_jobs={
-                "backup_db": CronJobConfig(
+            jobs={
+                "backup_db": JobConfig(
                     schedule="15 3 * * *",
+                    workspace="host",
                     command="scripts/backup_runtime_dbs.sh",
                 )
             },
@@ -704,7 +705,7 @@ class TestTemporalSchedulerRuntime:
                 target_profile="external-canary",
                 schedule="30 4 * * *",
             ),
-            cron_jobs={},
+            jobs={},
         )
         monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
@@ -722,9 +723,10 @@ class TestTemporalSchedulerRuntime:
     async def test_quiet_success_config_host_job_suppresses_success_output_log(self, monkeypatch):
 
         settings = make_settings(
-            cron_jobs={
-                "backup_db": CronJobConfig(
+            jobs={
+                "backup_db": JobConfig(
                     schedule="15 3 * * *",
+                    workspace="host",
                     command="scripts/backup_runtime_dbs.sh",
                     quiet_on_success=True,
                 )
@@ -748,9 +750,10 @@ class TestTemporalSchedulerRuntime:
     @pytest.mark.asyncio
     async def test_failed_config_host_job_fails_its_temporal_activity(self, monkeypatch):
         settings = make_settings(
-            cron_jobs={
-                "backup_db": CronJobConfig(
+            jobs={
+                "backup_db": JobConfig(
                     schedule="15 3 * * *",
+                    workspace="host",
                     command="scripts/backup_runtime_dbs.sh",
                 )
             },
@@ -781,7 +784,7 @@ class TestTemporalSchedulerRuntime:
             project_root=tmp_path / "pynchy",
             timezone="UTC",
             scheduler=SchedulerConfig(),
-            cron_jobs={},
+            jobs={},
             repos=ReposConfig(overrides={"owner/project": RepoConfig(path=str(repo_root))}),
             profiles={"worker": ProfileConfig(repo="owner/project")},
             workspaces={"worker": WorkspaceConfig(profiles=["worker"])},
@@ -823,7 +826,7 @@ class TestTemporalSchedulerRuntime:
                 git_sync_interval_seconds=120,
                 channel_reconciliation_interval_seconds=180,
             ),
-            cron_jobs={},
+            jobs={},
         )
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
@@ -853,7 +856,7 @@ class TestTemporalSchedulerRuntime:
             project_root=repos_root / "project",
             timezone="UTC",
             scheduler=SchedulerConfig(),
-            cron_jobs={},
+            jobs={},
             repos=ReposConfig(root=repos_root),
             profiles={"worker": ProfileConfig(repo="owner/project")},
             workspaces={"worker": WorkspaceConfig(profiles=["worker"])},
@@ -878,7 +881,7 @@ class TestTemporalSchedulerRuntime:
             deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
         )
         runtime.client = client
-        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), cron_jobs={})
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
         monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
         monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)

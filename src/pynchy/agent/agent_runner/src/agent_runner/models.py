@@ -84,6 +84,7 @@ class ContainerInput:
     agent_core_module: str = "agent_runner.cores.openai"
     agent_core_class: str = "OpenAIAgentCore"
     agent_core_config: dict[str, Any] | None = None
+    plugin_hooks: list[dict[str, str]] = dataclasses.field(default_factory=list)
     system_prompt_append: str | None = None
     mcp_gateway_url: str | None = None
     mcp_gateway_key: str | None = None

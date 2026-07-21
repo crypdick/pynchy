@@ -6,31 +6,19 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from pynchy.config import get_settings
-from pynchy.config.jobs import JobConfig
-from pynchy.config.scheduler_models import CronJobConfig
+from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves function annotations at runtime.
+    JobConfig,
+)
 from pynchy.logger import logger
+from pynchy.plugins.contracts import JobSpec
 
 
 @dataclass
 class _PluginJobState:
     jobs: dict[str, JobConfig] = field(default_factory=dict)
-    cron_jobs: dict[str, CronJobConfig] = field(default_factory=dict)
 
 
 _state = _PluginJobState()
-
-
-def _host_cron(job_name: str, job: JobConfig) -> CronJobConfig:
-    if job.schedule is None or job.command is None:
-        raise ValueError(f"plugin host job {job_name!r} requires schedule and command")
-    return CronJobConfig(
-        enabled=job.enabled,
-        schedule=job.schedule,
-        command=job.command,
-        cwd=job.cwd,
-        timeout_seconds=job.timeout_seconds or 600,
-        quiet_on_success=job.quiet_on_success or False,
-    )
 
 
 def _validate_workspace_references(job_name: str, job: JobConfig) -> None:
@@ -46,27 +34,21 @@ def _clear_previous_contributions() -> None:
     for name, job in _state.jobs.items():
         if settings.jobs.get(name) == job:
             settings.jobs.pop(name)
-    for name, cron_job in _state.cron_jobs.items():
-        if settings.cron_jobs.get(name) == cron_job:
-            settings.cron_jobs.pop(name)
     _state.jobs.clear()
-    _state.cron_jobs.clear()
 
 
 def _install_plugin_spec(spec: object, configured_names: set[str]) -> None:
-    if not isinstance(spec, dict):
+    if not isinstance(spec, JobSpec):
         logger.warning("Ignoring malformed plugin job spec", spec_type=type(spec).__name__)
         return
-    raw_name = spec.get("name")
-    config = spec.get("config")
-    if not isinstance(raw_name, str) or not raw_name.strip() or not isinstance(config, dict):
-        logger.warning("Ignoring malformed plugin job spec", spec=spec)
+    name = spec.name.strip()
+    if not name:
+        logger.warning("Ignoring unnamed plugin job spec")
         return
-    name = raw_name.strip()
     if name in configured_names:
         return
     try:
-        job = JobConfig.model_validate(config)
+        job = spec.config
         _validate_workspace_references(name, job)
     except (TypeError, ValueError) as exc:
         logger.warning("Ignoring invalid plugin job spec", job=name, err=str(exc))
@@ -75,10 +57,6 @@ def _install_plugin_spec(spec: object, configured_names: set[str]) -> None:
     settings.jobs[name] = job
     _state.jobs[name] = job
     configured_names.add(name)
-    if job.is_host:
-        cron_job = _host_cron(name, job)
-        settings.cron_jobs[name] = cron_job
-        _state.cron_jobs[name] = cron_job
 
 
 def configure_plugin_jobs(plugin_manager: object | None) -> None:

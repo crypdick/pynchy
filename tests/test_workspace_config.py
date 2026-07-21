@@ -29,6 +29,7 @@ from pynchy.host.orchestrator.workspace_config import (
     register_runtime_workspace_restriction,
     update_profile_skill_policy,
 )
+from pynchy.plugins.contracts import WorkspaceSpec
 from pynchy.types import (
     CapabilityRule,
     InboundFetchResult,
@@ -42,7 +43,7 @@ from pynchy.types import (
 class _WorkspaceSpecHooks:
     """The pluggy hook subset used to collect plugin workspace specifications."""
 
-    pynchy_workspace_spec: Callable[[], list[dict[str, object]]]
+    pynchy_workspace_spec: Callable[[], list[object]]
 
 
 class _FakePM(pluggy.PluginManager):
@@ -112,10 +113,10 @@ class TestLoadWorkspaceConfig:
         fake_pm = _FakePM(
             _WorkspaceSpecHooks(
                 pynchy_workspace_spec=lambda: [
-                    {
-                        "folder": "code-improver",
-                        "config": {"profiles": ["worker"]},
-                    }
+                    WorkspaceSpec(
+                        folder="code-improver",
+                        config=WorkspaceConfig(profiles=["worker"]),
+                    )
                 ]
             )
         )
