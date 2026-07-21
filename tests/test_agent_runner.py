@@ -564,6 +564,14 @@ class TestBuildCoreConfig:
         config = build_core_config(ci)
         assert config.extra == {"model": "opus"}
 
+    def test_plugin_hooks_passed_through(self, tmp_path):
+        hook_path = tmp_path / "audit.py"
+        ci = self._make_input(plugin_hooks=[{"name": "audit", "module_path": str(hook_path)}])
+
+        config = build_core_config(ci)
+
+        assert config.plugin_hooks == [{"name": "audit", "module_path": str(hook_path)}]
+
     def test_turn_metadata_added_to_extra_config(self):
         ci = self._make_input(turn_id="turn_1", agent_core_config={"model": "opus"})
         config = build_core_config(ci)
@@ -606,6 +614,7 @@ class TestBuildHostCoreConfig:
 
     def test_host_core_uses_real_cwd_and_pynchy_mcp(self, monkeypatch, tmp_path):
         ipc_dir = tmp_path / "ipc"
+        hook_path = tmp_path / "audit.py"
         monkeypatch.setenv("PYNCHY_IPC_DIR", str(ipc_dir))
         ci = ContainerInput(
             messages=[],
@@ -618,6 +627,7 @@ class TestBuildHostCoreConfig:
             agent_core_module="agent_runner.cores.codex",
             agent_core_class="CodexCLIAgentCore",
             agent_core_config={"approval_policy": "never"},
+            plugin_hooks=[{"name": "audit", "module_path": str(hook_path)}],
         )
 
         config = build_host_core_config(ci, cwd="/workspace/project")
@@ -638,11 +648,8 @@ class TestBuildHostCoreConfig:
             "PYNCHY_IS_SCHEDULED_TASK": "0",
             "PYNCHY_IPC_DIR": str(ipc_dir),
         }
-        assert config.plugin_hooks == []
-        assert config.extra == {
-            "approval_policy": "never",
-            "pynchy_hooks_enabled": False,
-        }
+        assert config.plugin_hooks == [{"name": "audit", "module_path": str(hook_path)}]
+        assert config.extra == {"approval_policy": "never"}
 
     def test_host_core_routes_direct_mcp_servers_through_local_proxy(self):
         ci = ContainerInput(

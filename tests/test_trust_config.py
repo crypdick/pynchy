@@ -9,6 +9,7 @@ import pluggy
 from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
+from pynchy.plugins.contracts import McpServerSpec
 from pynchy.types import ServiceTrustConfig
 
 
@@ -32,22 +33,27 @@ def _make_instance(server_name: str) -> McpInstance:
 
 class TestPluginTrustExtraction:
     def test_extract_trust_from_plugin_spec(self):
-        """Plugin specs with 'trust' should have it extracted before McpServerConfig validation."""
+        """Typed plugin trust defaults remain separate from server runtime config."""
         hook = MagicMock()
         hook.pynchy_mcp_server_spec.return_value = [
-            {
-                "name": "browser",
-                "command": "npx",
-                "args": ["@anthropic-ai/playwright-mcp"],
-                "port": 9100,
-                "transport": "streamable_http",
-                "trust": {
-                    "public_source": True,
-                    "secret_data": False,
-                    "public_sink": False,
-                    "dangerous_writes": False,
-                },
-            }
+            (
+                McpServerSpec(
+                    name="browser",
+                    config=McpServerConfig(
+                        type="script",
+                        command="npx",
+                        args=["@anthropic-ai/playwright-mcp"],
+                        port=9100,
+                        transport="streamable_http",
+                    ),
+                    trust=ServiceTrustConfig(
+                        public_source=True,
+                        secret_data=False,
+                        public_sink=False,
+                        dangerous_writes=False,
+                    ),
+                ),
+            )
         ]
         fake_pm = _FakePM(hook)
 
@@ -58,16 +64,21 @@ class TestPluginTrustExtraction:
         assert trust_defaults["browser"].secret_data is False
 
     def test_spec_without_trust_has_no_default(self):
-        """Specs without a trust key should not appear in trust_defaults."""
+        """Specs without trust defaults should not appear in trust_defaults."""
         hook = MagicMock()
         hook.pynchy_mcp_server_spec.return_value = [
-            {
-                "name": "notebook",
-                "command": "uv",
-                "args": ["run", "notebook.py"],
-                "port": 8888,
-                "transport": "streamable_http",
-            }
+            (
+                McpServerSpec(
+                    name="notebook",
+                    config=McpServerConfig(
+                        type="script",
+                        command="uv",
+                        args=["run", "notebook.py"],
+                        port=8888,
+                        transport="streamable_http",
+                    ),
+                ),
+            )
         ]
         fake_pm = _FakePM(hook)
 
@@ -75,18 +86,23 @@ class TestPluginTrustExtraction:
         assert "notebook" in servers
         assert "notebook" not in trust_defaults
 
-    def test_trust_not_passed_to_model_validate(self):
-        """The trust key must be popped before McpServerConfig.model_validate (extra=forbid)."""
+    def test_trust_is_not_part_of_runtime_config(self):
+        """Trust metadata does not leak into the strict MCP runtime model."""
         hook = MagicMock()
         hook.pynchy_mcp_server_spec.return_value = [
-            {
-                "name": "risky",
-                "command": "node",
-                "args": ["server.js"],
-                "port": 3000,
-                "transport": "sse",
-                "trust": {"public_source": True},
-            }
+            (
+                McpServerSpec(
+                    name="risky",
+                    config=McpServerConfig(
+                        type="script",
+                        command="node",
+                        args=["server.js"],
+                        port=3000,
+                        transport="sse",
+                    ),
+                    trust=ServiceTrustConfig(public_source=True),
+                ),
+            )
         ]
         fake_pm = _FakePM(hook)
 
@@ -98,21 +114,21 @@ class TestPluginTrustExtraction:
         """Multiple specs: some with trust, some without."""
         hook = MagicMock()
         hook.pynchy_mcp_server_spec.return_value = [
-            {
-                "name": "a",
-                "command": "cmd_a",
-                "args": [],
-                "port": 9001,
-                "transport": "sse",
-                "trust": {"public_source": True, "dangerous_writes": True},
-            },
-            {
-                "name": "b",
-                "command": "cmd_b",
-                "args": [],
-                "port": 9002,
-                "transport": "sse",
-            },
+            (
+                McpServerSpec(
+                    name="a",
+                    config=McpServerConfig(
+                        type="script", command="cmd_a", port=9001, transport="sse"
+                    ),
+                    trust=ServiceTrustConfig(public_source=True, dangerous_writes=True),
+                ),
+                McpServerSpec(
+                    name="b",
+                    config=McpServerConfig(
+                        type="script", command="cmd_b", port=9002, transport="sse"
+                    ),
+                ),
+            )
         ]
         fake_pm = _FakePM(hook)
 

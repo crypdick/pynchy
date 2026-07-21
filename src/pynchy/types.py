@@ -494,6 +494,7 @@ class ContainerInput:
     agent_core_module: str = "agent_runner.cores.openai"  # Module path for agent core
     agent_core_class: str = "OpenAIAgentCore"  # Class name for agent core
     agent_core_config: dict[str, Any] | None = None  # Core-specific settings
+    plugin_hooks: list[dict[str, str]] = field(default_factory=list)
     system_prompt_append: str | None = None  # Resolved prompts for agent system prompt
     invocation_ts: float = 0.0  # Monotonic timestamp of container spawn (for SecurityGate keying)
     mcp_gateway_url: str | None = None  # LiteLLM MCP gateway URL (SSE transport)

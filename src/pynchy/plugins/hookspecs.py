@@ -14,7 +14,15 @@ if TYPE_CHECKING:
     from pynchy.actions import ActionSpec
     from pynchy.capabilities import HostActionRegistration
     from pynchy.plugins.channel_runtime import ChannelPluginContext
+    from pynchy.plugins.computer_use import ComputerUseBackend
     from pynchy.plugins.connections import ConnectionRuntime
+    from pynchy.plugins.contracts import (
+        AgentCoreSpec,
+        AgentHookSpec,
+        JobSpec,
+        McpServerSpec,
+        WorkspaceSpec,
+    )
     from pynchy.plugins.memory import MemoryProvider
     from pynchy.plugins.observers import ObserverProvider
     from pynchy.plugins.runtimes.detection import RuntimeProvider
@@ -66,21 +74,22 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_agent_core_info(self) -> dict[str, object]:
+    def pynchy_agent_core_info(self) -> AgentCoreSpec:
         """Provide agent core implementation info.
 
         The agent core is the LLM framework that powers the agent (Claude SDK,
-        OpenAI, Ollama, etc.). The returned dict provides everything needed to
+        OpenAI, Ollama, etc.). The returned specification provides everything needed to
         instantiate the core inside the container.
+        """
+        raise NotImplementedError
 
-        Returns:
-            Dict with keys:
-                - name: Core identifier (e.g., "claude", "openai")
-                - module: Fully qualified module path (e.g., "agent_runner.cores.claude")
-                - class_name: Class name to instantiate (e.g., "ClaudeAgentCore")
-                - packages: List of pip packages to install in container (e.g., ["openai>=1.0.0"])
-                - host_source_path: Optional path to plugin source on host
-                  (for mounting into container)
+    @hookspec
+    def pynchy_agent_hook_specs(self) -> tuple[AgentHookSpec, ...]:
+        """Provide trusted agent lifecycle hook modules.
+
+        Pynchy mounts each module read-only for container execution and passes
+        the same module to direct-host runners. Built-in security hooks always
+        run before plugin-provided ``before_tool_use`` handlers.
         """
         raise NotImplementedError
 
@@ -137,7 +146,7 @@ class PynchySpec:
     @hookspec
     def pynchy_service_handler(
         self,
-        computer_use_backends: tuple[object, ...],
+        computer_use_backends: tuple[ComputerUseBackend, ...],
     ) -> HostActionRegistration:
         """Provide host-side service tool handlers.
 
@@ -157,7 +166,7 @@ class PynchySpec:
     # Provider selection stays separate from the policy surface so every host
     # platform can retain one policy contract with its own backend.
     @hookspec
-    def pynchy_computer_use_backend(self) -> object:
+    def pynchy_computer_use_backend(self) -> ComputerUseBackend:
         """Provide a platform-specific implementation of the computer-use contract.
 
         The backend-neutral ``computer_use`` service owns policy and audit dispatch.
@@ -208,54 +217,34 @@ class PynchySpec:
         """
 
     @hookspec
-    def pynchy_mcp_server_spec(self) -> dict[str, object] | list[dict[str, object]]:
+    def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         """Provide an MCP server specification.
 
         Plugin-provided MCP servers are merged with config.toml definitions.
         Config.toml always wins if both define the same server name.
 
-        Returns:
-            Dict with keys:
-                - name: Server identifier (used as the mcp_servers key)
-                - type: "docker", "script", or "url" (default "script")
-                - image: Docker image name (required for type="docker")
-                - dockerfile: Relative path to local Dockerfile — when set,
-                  the MCP manager auto-builds the image (optional)
-                - command: Executable to run (e.g., "uv", "python") — for type="script"
-                - args: Command arguments (list of strings)
-                - port: HTTP port the server listens on
-                - extra_ports: Additional ports to publish (e.g., [8888] for JupyterLab)
-                - transport: MCP transport type (default "streamable_http")
-                - idle_timeout: Seconds before auto-stop (default 600)
-                - env: Static env vars (optional)
-                - env_forward: Host-to-subprocess env var mapping (optional)
-                - volumes: Volume mounts as "host_path:container_path" strings;
-                  supports ``{key}`` placeholders expanded from instance kwargs
+        Each contribution owns a name, parsed ``McpServerConfig``, and trust
+        defaults. User config wins on name collisions.
         """
         raise NotImplementedError
 
     @hookspec
-    def pynchy_workspace_spec(self) -> dict[str, object]:
+    def pynchy_workspace_spec(self) -> WorkspaceSpec:
         """Provide a managed workspace definition.
 
         Workspace plugins can ship periodic agents or preconfigured workspaces
         without requiring users to copy `[workspaces.*]` blocks manually.
 
-        Returns:
-            Dict with keys:
-                - folder: Workspace folder name (e.g., "code-improver")
-                - config: dict matching the WorkspaceConfig schema
-                  (profiles, model, and optional chat binding)
+        The contribution carries a folder and parsed ``WorkspaceConfig``.
         """
         raise NotImplementedError
 
     @hookspec
-    def pynchy_job_specs(self) -> tuple[dict[str, object], ...]:
+    def pynchy_job_specs(self) -> tuple[JobSpec, ...]:
         """Provide config-backed scheduled jobs from an external registry.
 
-        Each mapping contains ``name`` and ``config``. The config follows the
-        core ``JobConfig`` schema; user ``[jobs.*]`` declarations win on name
-        collisions.
+        Each contribution carries a name and parsed ``JobConfig``; user
+        ``[jobs.*]`` declarations win on name collisions.
         """
         raise NotImplementedError
 

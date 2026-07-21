@@ -101,9 +101,7 @@ class PynchyApp(ThreadRouting):
 
         # Shared broadcast infrastructure — single code path for all channel sends.
         # Uses lambda so broadcaster always reads current self.channels reference.
-        self._broadcaster = MessageBroadcaster(
-            lambda: self.channels, workspaces=lambda: self.workspaces
-        )
+        self._broadcaster = MessageBroadcaster(lambda: self.channels)
         self._host_broadcaster = self._make_host_broadcaster()
 
     @property

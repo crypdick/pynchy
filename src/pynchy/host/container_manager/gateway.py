@@ -32,9 +32,12 @@ Implementation lives in:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
+from pynchy.config.mcp import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+    McpServerConfig,
+)
 from pynchy.config.models import McpTool
 
 if TYPE_CHECKING:
@@ -46,7 +49,10 @@ from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
 )
 from pynchy.logger import logger
-from pynchy.types import ServiceTrustConfig
+from pynchy.plugins.contracts import McpServerSpec
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+    ServiceTrustConfig,
+)
 
 _GATEWAY_MASTER_KEY_REQUIRED_ERROR = (
     "GATEWAY__MASTER_KEY is required when using LiteLLM mode. Set it in .env."
@@ -142,56 +148,38 @@ def _required_litellm_models(
 
 def collect_plugin_mcp_servers(
     plugin_manager: pluggy.PluginManager | None,
-) -> tuple[dict[str, Any], dict[str, ServiceTrustConfig]]:
+) -> tuple[dict[str, McpServerConfig], dict[str, ServiceTrustConfig]]:
     """Collect MCP server specs from plugins.
 
     Returns ``(server_configs, trust_defaults)``.
 
-    The ``trust`` key is popped from each spec *before* ``McpServerConfig``
-    validation because that model uses ``extra="forbid"``.  Trust metadata
-    is returned separately so callers can flow it into the proxy's trust map.
+    Trust metadata is returned separately so callers can flow it into the
+    proxy's trust map.
     """
     if plugin_manager is None:
         return {}, {}
 
-    from pynchy.config.mcp import (  # noqa: PLC0415, RUF100 - defer MCP model import until plugin specs are collected
-        McpServerConfig,
-    )
-
     result: dict[str, McpServerConfig] = {}
     trust_defaults: dict[str, ServiceTrustConfig] = {}
 
-    for raw in plugin_manager.hook.pynchy_mcp_server_spec():
-        # Plugins can return a single dict or a list of dicts
-        specs = raw if isinstance(raw, list) else [raw]
-        for spec in specs:
-            if not isinstance(spec, dict):
+    for contribution in plugin_manager.hook.pynchy_mcp_server_spec():
+        if not isinstance(contribution, tuple):
+            logger.warning(
+                "Ignoring invalid MCP server plugin contribution",
+                result_type=type(contribution).__name__,
+            )
+            continue
+        for spec in contribution:
+            if not isinstance(spec, McpServerSpec):
                 logger.warning(
                     "Ignoring invalid MCP server plugin spec",
                     spec_type=type(spec).__name__,
                 )
                 continue
-
-            name = spec.pop("name", None)
-            if not isinstance(name, str):
-                logger.warning("Ignoring MCP server plugin spec without name", spec=spec)
-                continue
-
-            # Extract trust before McpServerConfig validation (extra="forbid")
-            trust = spec.pop("trust", None)
-
-            try:
-                config = McpServerConfig.model_validate({"type": "script", **spec})
-            except (ValueError, TypeError) as exc:
-                logger.warning("Invalid MCP server config from plugin", name=name, err=str(exc))
-                continue
-
-            result[name] = config
-
-            if trust and isinstance(trust, dict):
-                trust_defaults[name] = ServiceTrustConfig(**trust)
-
-            logger.info("Collected plugin MCP server spec", name=name)
+            result[spec.name] = spec.config
+            if spec.trust is not None:
+                trust_defaults[spec.name] = spec.trust
+            logger.info("Collected plugin MCP server spec", name=spec.name)
 
     return result, trust_defaults
 

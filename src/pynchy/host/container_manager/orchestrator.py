@@ -25,6 +25,8 @@ from pynchy.host.git_ops.repo import (
     RepoContext,  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
 )
 from pynchy.logger import logger
+from pynchy.plugins.agent_hooks import collect_agent_hook_specs, container_agent_hook_configs
+from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.plugins.runtimes import system_checks
 from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves container orchestration signatures at runtime.
@@ -87,16 +89,20 @@ def resolve_agent_core(plugin_manager: pluggy.PluginManager | None) -> tuple[str
     module = "agent_runner.cores.openai"
     class_name = "OpenAIAgentCore"
     if plugin_manager:
-        cores = plugin_manager.hook.pynchy_agent_core_info()
+        cores = [
+            core
+            for core in plugin_manager.hook.pynchy_agent_core_info()
+            if isinstance(core, AgentCoreSpec)
+        ]
         core_info = next(
-            (c for c in cores if c["name"] == get_settings().agent.default_core),
+            (core for core in cores if core.name == get_settings().agent.default_core),
             None,
         )
         if core_info is None and cores:
             core_info = cores[0]
         if core_info:
-            module = core_info["module"]
-            class_name = core_info["class_name"]
+            module = core_info.module
+            class_name = core_info.class_name
     return module, class_name
 
 
@@ -194,11 +200,14 @@ async def _spawn_container(
 
     # --- Build mounts ---
     phase_start = time.monotonic()
+    agent_hooks = collect_agent_hook_specs(plugin_manager)
+    input_data.plugin_hooks = container_agent_hook_configs(agent_hooks)
     mounts = build_volume_mounts(
         group,
         is_admin=input_data.is_admin,
         plugin_manager=plugin_manager,
         repo_mounts=repo_mounts,
+        agent_hooks=agent_hooks,
     )
     mounts_ms = (time.monotonic() - phase_start) * 1000
 

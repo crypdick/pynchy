@@ -14,13 +14,16 @@ import pluggy
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
+from pynchy.config.mcp import McpServerConfig
 from pynchy.logger import logger
+from pynchy.plugins.contracts import McpServerSpec
 from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailClient,
     ProtonMailDelivery,
     ProtonMailError,
     create_proton_mail_client,
 )
+from pynchy.types import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -155,31 +158,30 @@ class ProtonMailMcpPlugin:
     """Register a host-side MCP server for Proton Mail through local Bridge."""
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict[str, object]:
+    def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         # Mail delivery and deletion must remain usable operationally; declare their
         # external, irreversible effects so Pynchy's normal approval gate protects them.
-        return {
-            "name": "proton-mail",
-            "type": "script",
-            "command": "uv",
-            "args": [
-                "run",
-                "python",
-                "-m",
-                "pynchy.plugins.integrations.proton_mail",
-                "--port",
-                "{port}",
-            ],
-            "port": DEFAULT_PORT,
-            "transport": "streamable_http",
-            "idle_timeout": 600,
-            "trust": {
-                "public_source": True,
-                "secret_data": True,
-                "public_sink": True,
-                "dangerous_writes": True,
-            },
-        }
+        return (
+            McpServerSpec(
+                name="proton-mail",
+                config=McpServerConfig(
+                    type="script",
+                    command="uv",
+                    args=[
+                        "run",
+                        "python",
+                        "-m",
+                        "pynchy.plugins.integrations.proton_mail",
+                        "--port",
+                        "{port}",
+                    ],
+                    port=DEFAULT_PORT,
+                    transport="streamable_http",
+                    idle_timeout=600,
+                ),
+                trust=ServiceTrustConfig(),
+            ),
+        )
 
 
 def build_app(

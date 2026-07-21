@@ -41,7 +41,6 @@ def _make_channel(
 def _make_deps(channels: list | None = None) -> MagicMock:
     deps = MagicMock()
     deps.channels = channels or []
-    deps.workspaces = {}
     return deps
 
 

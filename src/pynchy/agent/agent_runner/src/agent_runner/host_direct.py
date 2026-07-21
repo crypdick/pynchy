@@ -22,10 +22,7 @@ from agent_runner.registry import create_agent_core
 
 def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> AgentCoreConfig:
     """Build core config for direct host execution."""
-    extra = {
-        **(container_input.agent_core_config or {}),
-        "pynchy_hooks_enabled": False,
-    }
+    extra = dict(container_input.agent_core_config or {})
     mcp_servers: dict[str, dict[str, object]] = {"pynchy": _host_pynchy_mcp_server(container_input)}
     for server in container_input.mcp_direct_servers or []:
         name = server.get("name")
@@ -41,7 +38,7 @@ def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> Agen
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=container_input.system_prompt_append,
         mcp_servers=mcp_servers,
-        plugin_hooks=[],
+        plugin_hooks=container_input.plugin_hooks,
         extra=extra,
     )
 

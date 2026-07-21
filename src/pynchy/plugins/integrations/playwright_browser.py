@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 import pluggy
+
+from pynchy.config.mcp import McpServerConfig
+from pynchy.plugins.contracts import McpServerSpec
+from pynchy.types import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -41,7 +44,7 @@ class PlaywrightBrowserPlugin:
     """Playwright browser plugin — wraps playwright-mcp for agent browser control."""
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> dict[str, Any]:
+    def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         """Register playwright-mcp as a script-type MCP server.
 
         The ``{port}`` placeholder is expanded at launch time to each
@@ -49,20 +52,25 @@ class PlaywrightBrowserPlugin:
         ``_resolve_all_instances``).  This lets multiple workspaces
         each run their own Playwright process without port conflicts.
         """
-        return {
-            "name": "browser",
-            "command": "npx",
-            "args": _browser_mcp_args(),
-            "port": _BROWSER_MCP_PORT,
-            "transport": "streamable_http",
-            "idle_timeout": 300,
-            "trust": {
-                "public_source": True,
-                "secret_data": False,
-                "public_sink": False,
-                "dangerous_writes": False,
-            },
-        }
+        return (
+            McpServerSpec(
+                name="browser",
+                config=McpServerConfig(
+                    type="script",
+                    command="npx",
+                    args=_browser_mcp_args(),
+                    port=_BROWSER_MCP_PORT,
+                    transport="streamable_http",
+                    idle_timeout=300,
+                ),
+                trust=ServiceTrustConfig(
+                    public_source=True,
+                    secret_data=False,
+                    public_sink=False,
+                    dangerous_writes=False,
+                ),
+            ),
+        )
 
     @hookimpl
     def pynchy_skill_paths(self) -> list[str]:

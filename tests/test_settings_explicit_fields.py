@@ -30,7 +30,6 @@ class TestExplicitFieldValidation:
         )
 
         assert settings.jobs["nightly"].enabled is True
-        assert settings.cron_jobs["nightly"].enabled is True
 
     def test_accepts_defaulted_agent_mapping(self) -> None:
         settings = validate_settings_mapping(

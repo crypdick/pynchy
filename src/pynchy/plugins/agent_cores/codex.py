@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pluggy
 
+from pynchy.plugins.contracts import AgentCoreSpec
+
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
@@ -17,12 +19,10 @@ class CodexAgentCorePlugin:
     """Built-in plugin for the Codex CLI agent core."""
 
     @hookimpl
-    def pynchy_agent_core_info(self) -> dict[str, str | list[str] | None]:
+    def pynchy_agent_core_info(self) -> AgentCoreSpec:
         """Provide Codex CLI agent core information."""
-        return {
-            "name": "codex",
-            "module": "agent_runner.cores.codex",
-            "class_name": "CodexCLIAgentCore",
-            "packages": [],
-            "host_source_path": None,
-        }
+        return AgentCoreSpec(
+            name="codex",
+            module="agent_runner.cores.codex",
+            class_name="CodexCLIAgentCore",
+        )

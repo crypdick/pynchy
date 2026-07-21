@@ -151,7 +151,6 @@ def make_settings(**overrides):
         "security": SecurityConfig(),
         "command_center": CommandCenterConfig(),
         "plugins": {},
-        "cron_jobs": {},
         "jobs": {},
     }
     defaults.update(overrides)

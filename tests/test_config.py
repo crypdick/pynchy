@@ -7,10 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
 from conftest import make_settings
 
-from pynchy.config import CronJobConfig
 from pynchy.host.orchestrator.messaging.commands import (
     is_context_reset,
     is_end_session,
@@ -389,24 +387,3 @@ class TestDetectTimezone:
             patch("pynchy.config.settings.os.readlink", side_effect=FileNotFoundError),
         ):
             assert make_settings().timezone == "UTC"
-
-
-class TestCronJobConfig:
-    def test_valid_cron_job(self):
-        cfg = CronJobConfig(schedule="0 5 * * *", command="./src/pynchy/agent/build.sh")
-        assert cfg.schedule == "0 5 * * *"
-        assert cfg.command == "./src/pynchy/agent/build.sh"
-        assert cfg.timeout_seconds == 600
-        assert cfg.enabled is True
-
-    def test_rejects_invalid_schedule(self):
-        with pytest.raises(ValueError, match="Invalid cron expression"):
-            CronJobConfig(schedule="not a cron", command="echo hi")
-
-    def test_rejects_empty_command(self):
-        with pytest.raises(ValueError, match="command cannot be empty"):
-            CronJobConfig(schedule="0 5 * * *", command="   ")
-
-    def test_rejects_non_positive_timeout(self):
-        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
-            CronJobConfig(schedule="0 5 * * *", command="echo hi", timeout_seconds=0)

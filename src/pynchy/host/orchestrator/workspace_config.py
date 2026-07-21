@@ -29,7 +29,9 @@ from pynchy.config.jobs import (
 from pynchy.config.merge import (
     ResolvedWorkspaceConfig,  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
 )
-from pynchy.config.models import WorkspaceConfig
+from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves workspace config annotations at runtime.
+    WorkspaceConfig,
+)
 from pynchy.config.toml_io import mutate_config_toml
 from pynchy.config.workspace_names import dynamic_thread_folder as _dynamic_thread_folder
 from pynchy.config.workspace_names import parent_workspace_name
@@ -42,6 +44,7 @@ from pynchy.host.orchestrator.workspace_registration import (
 )
 from pynchy.host.orchestrator.workspace_threads import reconcile_workspace_threads
 from pynchy.logger import logger
+from pynchy.plugins.contracts import WorkspaceSpec
 from pynchy.state import (
     get_all_tasks,
     update_task,
@@ -51,13 +54,6 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace 
     Channel,
     WorkspaceProfile,
 )
-
-
-@dataclass(frozen=True)
-class WorkspaceSpec:
-    """Resolved workspace definition."""
-
-    config: WorkspaceConfig
 
 
 @dataclass
@@ -122,23 +118,10 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
         return
 
     for spec in plugin_manager.hook.pynchy_workspace_spec():
-        if not isinstance(spec, dict):
+        if not isinstance(spec, WorkspaceSpec):
             logger.warning("Ignoring invalid workspace plugin spec", spec_type=type(spec).__name__)
             continue
-
-        folder = spec.get("folder")
-        config_data = spec.get("config")
-        if not isinstance(folder, str) or not isinstance(config_data, dict):
-            logger.warning("Ignoring malformed workspace plugin spec", spec=spec)
-            continue
-
-        try:
-            parsed = WorkspaceConfig.model_validate(config_data)
-        except (ValueError, TypeError) as exc:
-            logger.warning("Invalid workspace config from plugin", folder=folder, err=str(exc))
-            continue
-
-        _state.plugin_workspace_specs[folder] = WorkspaceSpec(config=parsed)
+        _state.plugin_workspace_specs[spec.folder] = spec
 
 
 def _workspace_specs() -> dict[str, WorkspaceSpec]:
@@ -149,7 +132,7 @@ def _workspace_specs() -> dict[str, WorkspaceSpec]:
     s = get_settings()
     merged = dict(_state.plugin_workspace_specs)
     for folder, cfg in s.workspaces.items():
-        merged[folder] = WorkspaceSpec(config=cfg)
+        merged[folder] = WorkspaceSpec(folder=folder, config=cfg)
     return merged
 
 

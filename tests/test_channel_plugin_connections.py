@@ -76,6 +76,7 @@ neonize_jid.Jid2String = lambda jid: getattr(jid, "value", "")
 neonize_jid.build_jid = lambda *parts: parts
 
 from pynchy.plugins.channels.whatsapp import WhatsAppPlugin  # noqa: E402
+from pynchy.types import Channel  # noqa: E402
 
 
 def _context(*, speech_synthesizer: Any | None = None) -> ChannelPluginContext:
@@ -163,6 +164,7 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
 
 
 def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:
+    channel = MagicMock(spec=Channel)
     settings = make_settings(
         project_root=tmp_path,
         data_dir=tmp_path / "data",
@@ -174,10 +176,13 @@ def test_whatsapp_plugin_uses_flat_connection_name_and_type(tmp_path) -> None:
 
     with (
         patch("pynchy.plugins.channels.whatsapp.get_settings", return_value=settings),
-        patch("pynchy.plugins.channels.whatsapp.WhatsAppChannel") as channel_cls,
+        patch(
+            "pynchy.plugins.channels.whatsapp.WhatsAppChannel",
+            return_value=channel,
+        ) as channel_cls,
     ):
         channels = WhatsAppPlugin().pynchy_create_channel(context=_context())
 
-    assert channels == [channel_cls.return_value]
+    assert channels == [channel]
     channel_cls.assert_called_once()
     assert channel_cls.call_args.kwargs["connection_name"] == "phone"

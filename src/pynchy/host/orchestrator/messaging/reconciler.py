@@ -81,21 +81,8 @@ class ReconcilerDeps(Protocol):
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
 
-def _should_skip_pair(
-    ch: Channel, canonical_jid: str, group: WorkspaceProfile | None, now: datetime
-) -> bool:
-    """Gate a (channel, jid) pair: connection mismatch, non-ownership, or cooldown."""
-    if group is not None:
-        expected = access.resolve_workspace_connection_name(group.folder)
-        if expected and expected != ch.name:
-            logger.debug(
-                "connection_gate_skip",
-                channel=ch.name,
-                canonical_jid=canonical_jid,
-                expected=expected,
-            )
-            return True
-
+def _should_skip_pair(ch: Channel, canonical_jid: str, now: datetime) -> bool:
+    """Gate a (channel, jid) pair on ownership and cooldown."""
     if not ch.owns_jid(canonical_jid):
         logger.debug("jid_ownership_skip", channel=ch.name, canonical_jid=canonical_jid)
         return True
@@ -298,7 +285,7 @@ async def _reconcile_channel_pair(
     now: datetime,
 ) -> tuple[int, int] | None:
     group = deps.workspaces.get(canonical_jid)
-    if _should_skip_pair(ch, canonical_jid, group, now):
+    if _should_skip_pair(ch, canonical_jid, now):
         return None
 
     target_jid = canonical_jid

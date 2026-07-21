@@ -7,6 +7,7 @@ import pluggy
 import pytest
 
 from pynchy.plugins import get_plugin_manager
+from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.types import ContainerInput
 
 # Add container agent_runner to path for testing
@@ -217,12 +218,12 @@ class TestAgentCorePlugin:
         assert len(cores) >= 2
 
         # Verify Claude plugin is registered
-        claude_core = next((c for c in cores if c["name"] == "claude"), None)
+        claude_core = next((core for core in cores if core.name == "claude"), None)
         assert claude_core is not None
-        assert claude_core["module"] == "agent_runner.cores.claude"
-        assert claude_core["class_name"] == "ClaudeAgentCore"
-        assert claude_core["packages"] == []
-        assert claude_core["host_source_path"] is None
+        assert claude_core.module == "agent_runner.cores.claude"
+        assert claude_core.class_name == "ClaudeAgentCore"
+        assert claude_core.packages == ()
+        assert claude_core.host_source_path is None
 
     def test_custom_plugin_registration(self):
         """Test registering a custom agent core plugin."""
@@ -231,23 +232,21 @@ class TestAgentCorePlugin:
         class TestCorePlugin:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "test-core",
-                    "module": "test_module.core",
-                    "class_name": "TestAgentCore",
-                    "packages": [],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(
+                    name="test-core",
+                    module="test_module.core",
+                    class_name="TestAgentCore",
+                )
 
         pm = get_plugin_manager()
         pm.register(TestCorePlugin(), name="test-plugin")
 
         cores = pm.hook.pynchy_agent_core_info()
-        test_core = next((c for c in cores if c["name"] == "test-core"), None)
+        test_core = next((core for core in cores if core.name == "test-core"), None)
 
         assert test_core is not None
-        assert test_core["module"] == "test_module.core"
-        assert test_core["class_name"] == "TestAgentCore"
+        assert test_core.module == "test_module.core"
+        assert test_core.class_name == "TestAgentCore"
 
     def test_plugin_with_packages(self):
         """Test plugin returning container packages."""
@@ -256,19 +255,18 @@ class TestAgentCorePlugin:
         class OpenAICorePlugin:
             @hookimpl
             def pynchy_agent_core_info(self):
-                return {
-                    "name": "openai",
-                    "module": "pynchy_core_openai.core",
-                    "class_name": "OpenAIAgentCore",
-                    "packages": ["openai>=1.0.0"],
-                    "host_source_path": None,
-                }
+                return AgentCoreSpec(
+                    name="openai",
+                    module="pynchy_core_openai.core",
+                    class_name="OpenAIAgentCore",
+                    packages=("openai>=1.0.0",),
+                )
 
         pm = get_plugin_manager()
         pm.register(OpenAICorePlugin(), name="openai-plugin")
 
         cores = pm.hook.pynchy_agent_core_info()
-        openai_core = next((c for c in cores if c["name"] == "openai"), None)
+        openai_core = next((core for core in cores if core.name == "openai"), None)
 
         assert openai_core is not None
-        assert openai_core["packages"] == ["openai>=1.0.0"]
+        assert openai_core.packages == ("openai>=1.0.0",)

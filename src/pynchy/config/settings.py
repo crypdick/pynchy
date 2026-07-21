@@ -53,7 +53,6 @@ from pynchy.config.profiles import (
 from pynchy.config.scheduler_models import (
     CanaryConfig,
     CommandWordsConfig,
-    CronJobConfig,
     IntervalsConfig,
     QueueConfig,
     SchedulerConfig,
@@ -165,7 +164,6 @@ class Settings(BaseSettings):
     commands: CommandWordsConfig = CommandWordsConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     canary: CanaryConfig = CanaryConfig()
-    cron_jobs: dict[str, CronJobConfig] = {}  # internal adapter for host [jobs.<job_name>]
     jobs: dict[str, JobConfig] = {}
     intervals: IntervalsConfig = IntervalsConfig()
     queue: QueueConfig = QueueConfig()
@@ -249,32 +247,6 @@ class Settings(BaseSettings):
         settings_validation.reject_claude_sdk_model_overrides(
             agent=self.agent, profiles=self.profiles, workspaces=self.workspaces
         )
-        return self
-
-    @model_validator(mode="after")
-    def _derive_host_cron_jobs(self) -> Settings:
-        """Adapt [jobs.*] host entries to the existing Temporal host-cron path."""
-        derived = dict(self.cron_jobs)
-        for job_name, job in self.jobs.items():
-            if not job.is_host:
-                continue
-            schedule = job.schedule
-            command = job.command
-            if schedule is None:
-                message = f"host job {job_name!r} requires schedule"
-                raise ValueError(message)
-            if command is None:
-                message = f"host job {job_name!r} requires command"
-                raise ValueError(message)
-            derived[job_name] = CronJobConfig(
-                enabled=job.enabled,
-                schedule=schedule,
-                command=command,
-                cwd=job.cwd,
-                timeout_seconds=job.timeout_seconds or 600,
-                quiet_on_success=job.quiet_on_success or False,
-            )
-        self.cron_jobs = derived
         return self
 
     @model_validator(mode="after")

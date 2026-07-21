@@ -8,7 +8,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from pynchy.config.access import resolve_workspace_connection_name
 from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
@@ -274,15 +273,6 @@ async def on_inbound(deps: SessionDeps, _jid: str, msg: NewMessage) -> None:
     # owns this workspace.
     group = deps.workspaces.get(msg.chat_jid)
     if group and source_channel:
-        expected = resolve_workspace_connection_name(group.folder)
-        if expected and expected != source_channel:
-            logger.debug(
-                "Ignoring inbound from non-owning channel",
-                channel=source_channel,
-                expected=expected,
-                chat_jid=msg.chat_jid,
-            )
-            return
         create_background_task(
             send_reaction_to_channels(deps, msg.chat_jid, msg.id, msg.sender, "eyes"),
             name=f"read-receipt-{msg.id}",

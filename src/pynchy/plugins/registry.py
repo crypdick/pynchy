@@ -9,7 +9,7 @@ Usage:
     from pynchy.plugins import get_plugin_manager
 
     pm = get_plugin_manager()
-    cores = pm.hook.pynchy_agent_core_info()  # List of agent core dicts
+    cores = pm.hook.pynchy_agent_core_info()  # List of AgentCoreSpec objects
     channels = pm.hook.pynchy_create_channel(context=ctx)  # All matching channels
 """
 

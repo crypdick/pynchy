@@ -26,7 +26,12 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves the
     HostActionRegistration,
 )
 from pynchy.config import get_settings
+from pynchy.config.mcp import McpServerConfig
 from pynchy.logger import logger
+from pynchy.plugins.computer_use import (  # noqa: TC001, RUF100 - beartype resolves the hook parameter annotation at runtime.
+    ComputerUseBackend,
+)
+from pynchy.plugins.contracts import McpServerSpec
 from pynchy.plugins.integrations.linear_accounts import configured_linear_accounts
 from pynchy.plugins.integrations.linear_boards import (
     WorkspaceTodoProposal,
@@ -41,6 +46,7 @@ from pynchy.plugins.integrations.linear_work_item_actions import host_action_reg
 from pynchy.plugins.webhooks import (
     WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
 )
+from pynchy.types import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -67,47 +73,49 @@ class LinearMcpPlugin:
     """Register the built-in Linear script MCP server."""
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
+    def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         """Create one isolated MCP server definition per configured account."""
-        return [
-            {
-                "name": account.name,
-                "type": "script",
-                "command": "uv",
-                "args": [
-                    "run",
-                    "python",
-                    "-m",
-                    "pynchy.plugins.integrations.linear",
-                    "--port",
-                    "{port}",
-                    "--workspace",
-                    "{workspace}",
-                ],
-                "port": DEFAULT_PORT,
-                "transport": "streamable_http",
-                "idle_timeout": 600,
-                "inject_workspace": True,
-                # Empty static values prevent an account-specific process from
-                # inheriting a different account's conventional host variables.
-                "env": {"LINEAR_API_KEY": "", "LINEAR_TEAM_KEY": ""},
-                "env_forward": {
-                    "LINEAR_API_KEY": account.config.api_key_env,
-                    "LINEAR_TEAM_KEY": account.config.team_key_env,
-                },
-                "trust": {
-                    "public_source": account.config.public_source,
-                    "secret_data": account.config.secret_data,
-                    "public_sink": account.config.public_sink,
-                    "dangerous_writes": account.config.dangerous_writes,
-                },
-            }
+        return tuple(
+            McpServerSpec(
+                name=account.name,
+                config=McpServerConfig(
+                    type="script",
+                    command="uv",
+                    args=[
+                        "run",
+                        "python",
+                        "-m",
+                        "pynchy.plugins.integrations.linear",
+                        "--port",
+                        "{port}",
+                        "--workspace",
+                        "{workspace}",
+                    ],
+                    port=DEFAULT_PORT,
+                    transport="streamable_http",
+                    idle_timeout=600,
+                    inject_workspace=True,
+                    # Empty static values prevent an account-specific process from
+                    # inheriting a different account's conventional host variables.
+                    env={"LINEAR_API_KEY": "", "LINEAR_TEAM_KEY": ""},
+                    env_forward={
+                        "LINEAR_API_KEY": account.config.api_key_env,
+                        "LINEAR_TEAM_KEY": account.config.team_key_env,
+                    },
+                ),
+                trust=ServiceTrustConfig(
+                    public_source=account.config.public_source,
+                    secret_data=account.config.secret_data,
+                    public_sink=account.config.public_sink,
+                    dangerous_writes=account.config.dangerous_writes,
+                ),
+            )
             for account in configured_linear_accounts(get_settings())
-        ]
+        )
 
     @hookimpl
     def pynchy_service_handler(
-        self, computer_use_backends: tuple[object, ...]
+        self, computer_use_backends: tuple[ComputerUseBackend, ...]
     ) -> HostActionRegistration:
         """Keep durable work-item lifecycle writes in the host process."""
         del computer_use_backends

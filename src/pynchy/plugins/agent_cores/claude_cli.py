@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pluggy
 
+from pynchy.plugins.contracts import AgentCoreSpec
+
 hookimpl = pluggy.HookimplMarker("pynchy")
 
 
@@ -25,12 +27,10 @@ class ClaudeCLIAgentCorePlugin:
     """
 
     @hookimpl
-    def pynchy_agent_core_info(self) -> dict[str, str | list[str] | None]:
+    def pynchy_agent_core_info(self) -> AgentCoreSpec:
         """Provide Claude CLI agent core information."""
-        return {
-            "name": "claude-cli",
-            "module": "agent_runner.cores.claude_cli",
-            "class_name": "ClaudeCLIAgentCore",
-            "packages": [],
-            "host_source_path": None,
-        }
+        return AgentCoreSpec(
+            name="claude-cli",
+            module="agent_runner.cores.claude_cli",
+            class_name="ClaudeCLIAgentCore",
+        )

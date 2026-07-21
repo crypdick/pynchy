@@ -25,6 +25,8 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
+from pynchy.config.mcp import McpServerConfig
+from pynchy.plugins.contracts import McpServerSpec
 from pynchy.plugins.integrations.google_setup._handler import handle_setup_google
 
 hookimpl = pluggy.HookimplMarker("pynchy")
@@ -39,26 +41,30 @@ class GoogleMcpPlugin:
     """
 
     @hookimpl
-    def pynchy_mcp_server_spec(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "name": "gdrive",
-                "type": "docker",
-                "image": "pynchy-mcp-gdrive:latest",
-                "dockerfile": "src/pynchy/agent/mcp/gdrive.Dockerfile",
-                "port": 3100,
-                "transport": "streamable_http",
-                "env": {"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
-            },
-            {
-                "name": "gcal",
-                "type": "docker",
-                "image": "pynchy-mcp-gcal:latest",
-                "dockerfile": "src/pynchy/agent/mcp/gcal.Dockerfile",
-                "port": 3200,
-                "transport": "streamable_http",
-            },
-        ]
+    def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
+        return (
+            McpServerSpec(
+                name="gdrive",
+                config=McpServerConfig(
+                    type="docker",
+                    image="pynchy-mcp-gdrive:latest",
+                    dockerfile="src/pynchy/agent/mcp/gdrive.Dockerfile",
+                    port=3100,
+                    transport="streamable_http",
+                    env={"GDRIVE_OAUTH_PATH": "/home/chrome/gcp-oauth.keys.json"},
+                ),
+            ),
+            McpServerSpec(
+                name="gcal",
+                config=McpServerConfig(
+                    type="docker",
+                    image="pynchy-mcp-gcal:latest",
+                    dockerfile="src/pynchy/agent/mcp/gcal.Dockerfile",
+                    port=3200,
+                    transport="streamable_http",
+                ),
+            ),
+        )
 
 
 class GoogleSetupPlugin:
