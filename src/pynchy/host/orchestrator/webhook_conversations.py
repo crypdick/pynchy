@@ -98,7 +98,7 @@ class WebhookConversationDispatcher:
             provider = ExternalProvider(route.provider)
             route_id = ExternalRoute(route.name)
             for conversation_id in await list_route_conversation_ids(provider, route_id):
-                await self._restore_runtime_workspace_policy(conversation_id)
+                await self._restore_runtime_workspace(conversation_id)
             for conversation_id in await list_idle_conversation_ids(provider, route_id):
                 await self._sync_control_state(route, conversation_id)
             pending = await list_pending_conversation_ids(
@@ -269,11 +269,11 @@ class WebhookConversationDispatcher:
             },
         )
 
-    async def _restore_runtime_workspace_policy(
+    async def _restore_runtime_workspace(
         self,
         conversation_id: ConversationId,
     ) -> None:
-        """Restore fail-closed generated policy before interrupted-turn recovery."""
+        """Restore a bound routed workspace before channel messages can arrive."""
         conversation = await get_conversation(conversation_id)
         if conversation is None:
             raise RuntimeError("Routed webhook delivery references a missing conversation")
@@ -293,6 +293,33 @@ class WebhookConversationDispatcher:
             conversation.workspace,
             placement.owner.folder,
         )
+        binding = await get_conversation_control_binding(conversation.id)
+        if binding is None:
+            return
+        try:
+            await ensure_conversation_workspace(
+                ConversationWorkspaceContext(
+                    channels=self.deps.channels,
+                    workspaces=self.deps.workspaces,
+                    register_workspace=self.deps.register_workspace,
+                    unregister_workspace=self.deps.unregister_workspace,
+                    bind_session=self.deps.bind_session,
+                ),
+                ConversationControlRequest(
+                    conversation_id=conversation.id,
+                    parent_workspace=binding.parent_workspace,
+                    parent_jid=binding.parent_jid,
+                    title=binding.title,
+                    owner_workspace=conversation.workspace,
+                    closed=binding.closed,
+                ),
+            )
+        except Exception:  # noqa: BLE001, RUF100 - one stale provider control must not prevent webhook startup.
+            logger.exception(
+                "Routed webhook workspace registration recovery failed",
+                conversation_id=conversation_id,
+                workspace=conversation.workspace,
+            )
 
     def _register_runtime_workspace_policy(
         self,

@@ -19,11 +19,13 @@ from linear_webhook_test_support import (
     webhook_route,
 )
 
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.state import (
     complete_in_flight_turn,
     get_conversation_control_binding,
+    get_workspace_profile,
     init_test_database,
 )
 
@@ -120,7 +122,7 @@ async def test_done_closes_comment_preserves_and_non_done_reopens_thread(
         await client.close()
 
 
-async def test_startup_reconciles_completed_done_delivery_after_callback_gap(
+async def test_startup_restores_completed_conversation_workspace_and_closed_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
@@ -140,14 +142,23 @@ async def test_startup_reconciles_completed_done_delivery_after_callback_gap(
     finally:
         await client.close()
 
+    restarted_harness = LinearWebhookHarness()
+    restarted_harness.channel = harness.channel
     restarted = create_http_app(
-        harness,
+        restarted_harness,
         runtime=public_runtime(),
         webhook_routes=(webhook_route(),),
     )
     restarted_client = TestClient(TestServer(restarted))
     await restarted_client.start_server()
     try:
-        assert harness.channel.closed[message.chat_jid] is True
+        assert restarted_harness.channel.closed[message.chat_jid] is True
+        restored = restarted_harness.workspace_map.get(message.chat_jid)
+        assert restored is not None
+        assert restored.folder == routed_conversation_folder(
+            "project",
+            message.metadata["conversation_id"],
+        )
+        assert await get_workspace_profile(message.chat_jid) == restored
     finally:
         await restarted_client.close()
