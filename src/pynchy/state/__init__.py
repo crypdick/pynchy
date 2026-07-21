@@ -67,6 +67,7 @@ from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
     store_conversation_event_pointer,
 )
+from pynchy.state.conversation_recovery import prepare_conversation_delivery_recovery
 from pynchy.state.conversation_routing import (
     admit_conversation_delivery,
     claim_next_conversation_delivery,
@@ -75,7 +76,6 @@ from pynchy.state.conversation_routing import (
     get_conversation_delivery,
     get_conversation_for_subject,
     list_pending_conversation_ids,
-    prepare_conversation_delivery_recovery,
     rebind_conversation_workspace,
     release_conversation_delivery_claim,
     resolve_conversation,

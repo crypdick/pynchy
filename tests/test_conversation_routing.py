@@ -4,15 +4,23 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from conftest import init_test_database, make_settings
 
+from pynchy.conversation.dispatch import (
+    register_conversation_delivery_waker,
+    unregister_conversation_delivery_waker,
+)
 from pynchy.conversation.models import (
+    ControlSurface,
     ConversationClaimId,
+    ConversationControlBinding,
     ConversationDeliveryAdmission,
+    ConversationDeliveryCompletion,
     ConversationDeliveryStatus,
+    ConversationId,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
@@ -26,6 +34,7 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ensure_conversation_control,
 )
+from pynchy.host.orchestrator.session_handler import send_clear_confirmation
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
 from pynchy.state import (
     WebhookReceipt,
@@ -36,12 +45,18 @@ from pynchy.state import (
     complete_conversation_delivery,
     get_conversation,
     get_conversation_control_binding,
+    get_conversation_delivery,
     get_webhook_receipt,
+    prepare_conversation_delivery_recovery,
     resolve_conversation,
+    set_chat_cleared_at,
+    set_conversation_control_binding,
     set_conversation_session,
     set_workspace_profile,
+    store_chat_metadata,
 )
 from pynchy.types import (
+    Channel,
     ChatJid,
     GroupFolder,
     InboundFetchResult,
@@ -52,6 +67,9 @@ from pynchy.types import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pynchy.event_bus import Event
+    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 
 @pytest.fixture(autouse=True)
@@ -77,6 +95,8 @@ def _delivery(delivery_id: str) -> ExternalDeliveryIdentity:
 def _webhook_receipt(
     identity: ExternalDeliveryIdentity,
     subject_key: str,
+    *,
+    received_at: str = "2026-07-19T12:00:01+00:00",
 ) -> WebhookReceipt:
     return WebhookReceipt(
         provider=identity.provider,
@@ -91,7 +111,7 @@ def _webhook_receipt(
         ignored_reason=None,
         task_id=None,
         occurred_at="2026-07-19T12:00:00+00:00",
-        received_at="2026-07-19T12:00:01+00:00",
+        received_at=received_at,
     )
 
 
@@ -103,13 +123,36 @@ async def _admit(
     delivery_id: str,
     subject_key: str,
     workspace: str = "triage",
+    *,
+    received_at: str = "2026-07-19T12:00:01+00:00",
 ) -> ConversationDeliveryAdmission:
     identity = _delivery(delivery_id)
-    await _record_receipt(identity, subject_key)
+    await admit_webhook_receipt(
+        _webhook_receipt(identity, subject_key, received_at=received_at),
+        None,
+    )
     return await admit_conversation_delivery(
         identity,
         _subject(subject_key),
         GroupFolder(workspace),
+    )
+
+
+async def _bind_control_thread(
+    conversation_id: ConversationId,
+    thread_jid: ChatJid,
+) -> None:
+    await store_chat_metadata(thread_jid, "2026-07-19T12:00:00+00:00")
+    await set_conversation_control_binding(
+        ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("triage"),
+            parent_jid=ChatJid("discord:channel:triage"),
+            thread_jid=thread_jid,
+            title="[SYN-9] Reset delivery ordering",
+            updated_at="2026-07-19T12:00:00+00:00",
+        )
     )
 
 
@@ -261,6 +304,159 @@ async def test_claims_serialize_one_conversation_but_not_different_subjects(
     assert completed.status is ConversationDeliveryStatus.COMPLETED
     assert claimed_a2 is not None
     assert claimed_a2.identity == second.delivery.identity
+
+
+async def test_clear_boundary_retires_older_work_and_forgets_routed_session() -> None:
+    thread_jid = ChatJid("discord:channel:thread-reset")
+    conversation = await resolve_conversation(_subject("issue-reset"), GroupFolder("triage"))
+    await _bind_control_thread(conversation.id, thread_jid)
+    await set_conversation_session(conversation.id, SessionId("stale-session"))
+    claimed = await _admit(
+        "delivery-reset-claimed",
+        "issue-reset",
+        received_at="2098-12-31T23:59:57+00:00",
+    )
+    pending_before = await _admit(
+        "delivery-reset-pending-before",
+        "issue-reset",
+        received_at="2098-12-31T23:59:58+00:00",
+    )
+    pending_after = await _admit(
+        "delivery-reset-pending-after",
+        "issue-reset",
+        received_at="2099-01-01T00:00:01+00:00",
+    )
+    assert await claim_next_conversation_delivery(
+        conversation.id,
+        ConversationClaimId("claim-orphaned-by-reset"),
+    )
+
+    completions = await set_chat_cleared_at(thread_jid, "2099-01-01T00:00:00+00:00")
+
+    routed = await get_conversation(conversation.id)
+    retired_claim = await get_conversation_delivery(claimed.delivery.identity)
+    retired_pending = await get_conversation_delivery(pending_before.delivery.identity)
+    retained_pending = await get_conversation_delivery(pending_after.delivery.identity)
+    assert routed is not None
+    assert routed.session_id is None
+    assert retired_claim is not None
+    assert retired_claim.status is ConversationDeliveryStatus.COMPLETED
+    assert retired_pending is not None
+    assert retired_pending.status is ConversationDeliveryStatus.COMPLETED
+    assert retained_pending is not None
+    assert retained_pending.status is ConversationDeliveryStatus.PENDING
+    assert [completion.conversation_id for completion in completions] == [conversation.id]
+
+
+async def test_startup_recovery_repairs_legacy_reset_orphan() -> None:
+    thread_jid = ChatJid("discord:channel:thread-recovery")
+    conversation = await resolve_conversation(
+        _subject("issue-reset-recovery"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(conversation.id, thread_jid)
+    await set_chat_cleared_at(thread_jid, "2099-01-01T00:00:00+00:00")
+
+    # Reconstruct state left by the pre-fix reset race: a stale routed session,
+    # one orphaned claim, and an older pending sibling behind the clear boundary.
+    await set_conversation_session(conversation.id, SessionId("legacy-stale-session"))
+    claimed = await _admit(
+        "delivery-recovery-claimed",
+        "issue-reset-recovery",
+        received_at="2098-12-31T23:59:57+00:00",
+    )
+    pending_before = await _admit(
+        "delivery-recovery-pending-before",
+        "issue-reset-recovery",
+        received_at="2098-12-31T23:59:58+00:00",
+    )
+    pending_after = await _admit(
+        "delivery-recovery-pending-after",
+        "issue-reset-recovery",
+        received_at="2099-01-01T00:00:01+00:00",
+    )
+    assert await claim_next_conversation_delivery(
+        conversation.id,
+        ConversationClaimId("legacy-orphaned-claim"),
+    )
+
+    recovered = await prepare_conversation_delivery_recovery()
+
+    routed = await get_conversation(conversation.id)
+    retired_claim = await get_conversation_delivery(claimed.delivery.identity)
+    retired_pending = await get_conversation_delivery(pending_before.delivery.identity)
+    retained_pending = await get_conversation_delivery(pending_after.delivery.identity)
+    assert recovered == 2
+    assert routed is not None
+    assert routed.session_id is None
+    assert retired_claim is not None
+    assert retired_claim.status is ConversationDeliveryStatus.COMPLETED
+    assert retired_pending is not None
+    assert retired_pending.status is ConversationDeliveryStatus.COMPLETED
+    assert retained_pending is not None
+    assert retained_pending.status is ConversationDeliveryStatus.PENDING
+
+
+class _ClearConfirmationDeps:
+    def __init__(self) -> None:
+        self.sessions: dict[str, str] = {}
+        self.session_cleared: set[str] = set()
+        self.last_agent_timestamp: dict[str, str] = {}
+        self.queue = cast("GroupQueue", object())
+        self.channels: list[Channel] = []
+        self.workspaces: dict[str, WorkspaceProfile] = {}
+        self.events: list[str] = []
+
+    async def register_workspace(self, profile: WorkspaceProfile) -> None:
+        self.workspaces[profile.jid] = profile
+
+    async def save_state(self) -> None: ...
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
+        assert chat_jid == "discord:channel:thread-reset-wake"
+        assert text == "🗑️"
+        self.events.append("ack")
+
+    def emit(self, _event: Event) -> None:
+        self.events.append("cleared")
+
+
+async def test_reset_ack_precedes_wake_for_delivery_after_clear_boundary() -> None:
+    thread_jid = ChatJid("discord:channel:thread-reset-wake")
+    conversation = await resolve_conversation(
+        _subject("issue-reset-wake"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(conversation.id, thread_jid)
+    await _admit(
+        "delivery-reset-wake-before",
+        "issue-reset-wake",
+        received_at="2026-07-19T12:00:01+00:00",
+    )
+    retained = await _admit(
+        "delivery-reset-wake-after",
+        "issue-reset-wake",
+        received_at="9999-01-01T00:00:00+00:00",
+    )
+    deps = _ClearConfirmationDeps()
+    owner = object()
+
+    async def wake_next(_completion: ConversationDeliveryCompletion) -> None:
+        claimed = await claim_next_conversation_delivery(
+            conversation.id,
+            ConversationClaimId("claim-after-reset-ack"),
+        )
+        assert claimed is not None
+        assert claimed.identity == retained.delivery.identity
+        deps.events.append("wake")
+
+    register_conversation_delivery_waker("linear", owner, wake_next)
+    try:
+        await send_clear_confirmation(deps, thread_jid)
+    finally:
+        unregister_conversation_delivery_waker("linear", owner)
+
+    assert deps.events == ["cleared", "ack", "wake"]
 
 
 class _DiscordThreadChannel:

@@ -4,14 +4,117 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pynchy.state.connection import _get_db
+from pynchy.conversation.models import (
+    ConversationDeliveryCompletion,
+    ConversationId,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalProvider,
+    ExternalRoute,
+)
+from pynchy.state.connection import _get_db, atomic_write
 
 
-async def set_chat_cleared_at(chat_jid: str, timestamp: str) -> None:
-    """Mark a chat as cleared at the given timestamp. Messages before this are hidden."""
-    db = _get_db()
-    await db.execute("UPDATE chats SET cleared_at = ? WHERE jid = ?", (timestamp, chat_jid))
-    await db.commit()
+async def set_chat_cleared_at(
+    chat_jid: str,
+    timestamp: str,
+) -> tuple[ConversationDeliveryCompletion, ...]:
+    """Commit a chat clear boundary and retire routed work hidden behind it.
+
+    A routed control thread owns session state and a provider FIFO in addition
+    to ordinary chat history. Those records must cross the clear boundary in
+    the same transaction; otherwise a delivery claimed between turn completion
+    and the reset can become invisible to polling while still blocking its
+    pending siblings.
+    """
+    async with atomic_write() as database:
+        await database.execute(
+            "UPDATE chats SET cleared_at = ? WHERE jid = ?",
+            (timestamp, chat_jid),
+        )
+        binding_cursor = await database.execute(
+            """
+            SELECT conversation_id FROM conversation_control_bindings
+            WHERE thread_jid = ?
+            """,
+            (chat_jid,),
+        )
+        binding = await binding_cursor.fetchone()
+        if binding is None:
+            return ()
+
+        conversation_id = ConversationId(binding["conversation_id"])
+        await database.execute(
+            """
+            UPDATE routed_conversations
+            SET session_id = NULL, updated_at = ?
+            WHERE id = ?
+            """,
+            (timestamp, conversation_id),
+        )
+        candidates_cursor = await database.execute(
+            """
+            SELECT provider, route, delivery_id
+            FROM conversation_deliveries
+            WHERE conversation_id = ?
+              AND julianday(received_at) <= julianday(?)
+              AND (
+                  status = 'pending'
+                  OR (
+                      status = 'claimed'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM in_flight_turns
+                          WHERE in_flight_turns.conversation_claim_id =
+                              conversation_deliveries.claim_id
+                      )
+                  )
+              )
+            ORDER BY sequence
+            """,
+            (conversation_id, timestamp),
+        )
+        candidates = await candidates_cursor.fetchall()
+        if not candidates:
+            return ()
+        await database.execute(
+            """
+            UPDATE conversation_deliveries
+            SET status = 'completed', completed_at = ?
+            WHERE conversation_id = ?
+              AND julianday(received_at) <= julianday(?)
+              AND (
+                  status = 'pending'
+                  OR (
+                      status = 'claimed'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM in_flight_turns
+                          WHERE in_flight_turns.conversation_claim_id =
+                              conversation_deliveries.claim_id
+                      )
+                  )
+              )
+            """,
+            (timestamp, conversation_id, timestamp),
+        )
+
+        completions: list[ConversationDeliveryCompletion] = []
+        seen_routes: set[tuple[str, str]] = set()
+        for row in candidates:
+            route_key = (row["provider"], row["route"])
+            if route_key in seen_routes:
+                continue
+            seen_routes.add(route_key)
+            completions.append(
+                ConversationDeliveryCompletion(
+                    identity=ExternalDeliveryIdentity(
+                        provider=ExternalProvider(row["provider"]),
+                        route=ExternalRoute(row["route"]),
+                        delivery_id=ExternalDeliveryId(row["delivery_id"]),
+                    ),
+                    conversation_id=conversation_id,
+                )
+            )
+        return tuple(completions)
 
 
 async def get_chat_cleared_at(chat_jid: str) -> str | None:

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.config.access import resolve_workspace_connection_name
+from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops._worktree_merge import background_merge_worktree
@@ -150,10 +151,14 @@ async def send_clear_confirmation(
     """Set cleared_at, store and broadcast a system confirmation."""
     # Mark clear boundary — messages before this are hidden
     cleared_ts = datetime.now(UTC).isoformat()
-    await set_chat_cleared_at(chat_jid, cleared_ts)
+    completions = await set_chat_cleared_at(chat_jid, cleared_ts)
     deps.emit(ChatClearedEvent(chat_jid=chat_jid))
 
-    await _send_command_confirmation(deps, chat_jid, source_message, "🗑️")
+    try:
+        await _send_command_confirmation(deps, chat_jid, source_message, "🗑️")
+    finally:
+        for completion in completions:
+            await notify_conversation_delivery_completed(completion)
 
 
 async def _send_command_confirmation(
