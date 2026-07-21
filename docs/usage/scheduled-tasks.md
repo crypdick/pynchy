@@ -221,7 +221,7 @@ To back up runtime databases with SQLite-safe snapshots, run:
 scripts/backup_runtime_dbs.sh
 ```
 
-The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `~/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups` by default and prunes backups older than 30 days. To run it daily on macOS:
+The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `~/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups` by default and prunes backups older than 30 days. It briefly unloads the `com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads it again. This prevents the online SQLite backup from blocking Temporal writes and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and `PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd identifiers. To run it daily on macOS:
 
 ```bash
 cp launchd/com.pynchy.backup.plist ~/Library/LaunchAgents/com.pynchy.backup.plist
