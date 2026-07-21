@@ -26,7 +26,7 @@ from pynchy.types import ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 # CalDAV service handlers are exposed through the plugin's public tool contract —
 # the same registry the IPC service dispatcher consumes. Resolve them here rather
 # than importing the private handler functions, so tests drive the public surface.
-_CALDAV_TOOLS = CalDAVMcpServerPlugin().pynchy_service_handler()["tools"]
+_CALDAV_TOOLS = CalDAVMcpServerPlugin().pynchy_service_handler().handlers
 _handle_list_calendars = _CALDAV_TOOLS["list_calendars"]
 _handle_list_calendar = _CALDAV_TOOLS["list_calendar"]
 _handle_create_event = _CALDAV_TOOLS["create_event"]

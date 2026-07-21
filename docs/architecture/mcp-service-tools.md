@@ -42,9 +42,9 @@ def pynchy_action_specs(self) -> tuple[ActionSpec, ...]:
 
 Each handler receives the full IPC request dict and returns `{"result": ...}` on success or `{"error": "..."}` on failure.
 
-At startup, Pynchy composes built-in and plugin `ActionSpec` values, parses
-legacy handler mappings, and rejects unknown actions, duplicate capability or
-tool IDs, and write actions without idempotency or terminal audit contracts.
+At startup, Pynchy composes built-in and plugin `ActionSpec` values, validates
+typed host-action registrations, and rejects unknown actions, duplicate
+capability or tool IDs, and write actions without idempotency or terminal audit contracts.
 The existing `SecurityPolicy` remains the authority: `/status` and
 `/capabilities` are diagnostic snapshots, while every dispatch and approved
 replay checks current policy again.
@@ -52,7 +52,7 @@ replay checks current policy again.
 The hook registers the host half of a tool. Its in-container IPC proxy must be
 present in the selected agent image; host plugins are not imported into an
 already-running agent container. See the [host-service hook reference](../plugins/hooks/host-services.md#pynchy_service_handler)
-for the full descriptor shape and legacy-adapter rules.
+for the full descriptor shape.
 
 ## Built-in Handlers
 

@@ -3,9 +3,25 @@
 from __future__ import annotations
 
 from functools import cache
+from typing import Any
 
 import pluggy
 
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionHandler,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
 from pynchy.logger import logger
 
 from .backend import SqliteMemoryBackend
@@ -13,6 +29,7 @@ from .backend import SqliteMemoryBackend
 __all__ = ["SqliteMemoryPlugin"]
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+type _ActionDefinition = tuple[str, str, str, HostActionAccess, HostActionHandler]
 _DEFAULT_CATEGORY = "core"
 _DEFAULT_LIMIT = 5
 
@@ -27,7 +44,7 @@ def _get_backend() -> SqliteMemoryBackend:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_save_memory(data: dict[str, object]) -> dict[str, object]:
+async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -54,7 +71,7 @@ async def _handle_save_memory(data: dict[str, object]) -> dict[str, object]:
     return {"result": result}
 
 
-async def _handle_recall_memories(data: dict[str, object]) -> dict[str, object]:
+async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -79,7 +96,7 @@ async def _handle_recall_memories(data: dict[str, object]) -> dict[str, object]:
     return {"result": {"memories": results, "count": len(results)}}
 
 
-async def _handle_forget_memory(data: dict[str, object]) -> dict[str, object]:
+async def _handle_forget_memory(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -93,7 +110,7 @@ async def _handle_forget_memory(data: dict[str, object]) -> dict[str, object]:
     return {"result": result}
 
 
-async def _handle_list_memories(data: dict[str, object]) -> dict[str, object]:
+async def _handle_list_memories(data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -109,6 +126,67 @@ async def _handle_list_memories(data: dict[str, object]) -> dict[str, object]:
     return {"result": {"memories": results, "count": len(results)}}
 
 
+_MEMORY_ACTIONS: tuple[_ActionDefinition, ...] = (
+    (
+        "save_memory",
+        "memory.save",
+        "Create or update a memory in this workspace's isolated store.",
+        HostActionAccess.WRITE,
+        _handle_save_memory,
+    ),
+    (
+        "recall_memories",
+        "memory.recall",
+        "Search this workspace's isolated memories.",
+        HostActionAccess.READ,
+        _handle_recall_memories,
+    ),
+    (
+        "forget_memory",
+        "memory.forget",
+        "Delete a memory from this workspace's isolated store.",
+        HostActionAccess.WRITE,
+        _handle_forget_memory,
+    ),
+    (
+        "list_memories",
+        "memory.list",
+        "List keys in this workspace's isolated memory store.",
+        HostActionAccess.READ,
+        _handle_list_memories,
+    ),
+)
+
+
+def _memory_action(definition: _ActionDefinition) -> HostActionDescriptor:
+    tool_name, action_id, summary, access, handler = definition
+    return HostActionDescriptor(
+        capability=CapabilityDescriptor(
+            id=CapabilityId(action_id),
+            kind=CapabilityKind.HOST_ACTION,
+            owner="sqlite-memory",
+            summary=summary,
+            action_ids=(ActionId(action_id),),
+            documentation="docs/usage/memory.md",
+        ),
+        tool_name=HostToolName(tool_name),
+        handler=handler,
+        access=access,
+        approval=ApprovalContract(),
+        idempotency=IdempotencyContract(
+            IdempotencyMode.NOT_REQUIRED
+            if access is HostActionAccess.READ
+            else IdempotencyMode.IPC_REQUEST_ID
+        ),
+        audit=AuditContract(),
+    )
+
+
+MEMORY_HOST_ACTIONS = HostActionRegistration(
+    actions=tuple(_memory_action(action) for action in _MEMORY_ACTIONS)
+)
+
+
 class SqliteMemoryPlugin:
     """Plugin providing SQLite FTS5-backed persistent memory."""
 
@@ -119,12 +197,5 @@ class SqliteMemoryPlugin:
         return backend
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, object]:
-        return {
-            "tools": {
-                "save_memory": _handle_save_memory,
-                "recall_memories": _handle_recall_memories,
-                "forget_memory": _handle_forget_memory,
-                "list_memories": _handle_list_memories,
-            },
-        }
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return MEMORY_HOST_ACTIONS

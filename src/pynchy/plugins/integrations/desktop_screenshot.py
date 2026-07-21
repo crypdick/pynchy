@@ -14,10 +14,26 @@ from typing import Any
 import aiohttp
 import pluggy
 
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionHandler,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
 from pynchy.config import get_settings
 from pynchy.host.container_manager import gateway
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+type _ActionDefinition = tuple[str, str, str, HostActionHandler]
 
 _SCREENSHOT_BIN = "/usr/sbin/screencapture"
 _CONTAINER_SCREENSHOT_DIR = "/workspace/ipc/screenshots"
@@ -314,14 +330,52 @@ async def _handle_analyze_screenshot(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_SCREENSHOT_ACTIONS: tuple[_ActionDefinition, ...] = (
+    (
+        "take_screenshot",
+        "desktop.screenshot.capture",
+        "Capture the host desktop into this workspace's screenshot directory.",
+        _handle_take_screenshot,
+    ),
+    (
+        "analyze_screenshot",
+        "desktop.screenshot.analyze",
+        "Analyze one workspace desktop screenshot with the configured vision model.",
+        _handle_analyze_screenshot,
+    ),
+)
+
+
+def _screenshot_action(definition: _ActionDefinition) -> HostActionDescriptor:
+    tool_name, action_id, summary, handler = definition
+    return HostActionDescriptor(
+        capability=CapabilityDescriptor(
+            id=CapabilityId(action_id),
+            kind=CapabilityKind.HOST_ACTION,
+            owner="desktop-screenshot",
+            summary=summary,
+            action_ids=(ActionId(action_id),),
+            documentation="docs/usage/host-capabilities/desktop-screenshots.md",
+        ),
+        tool_name=HostToolName(tool_name),
+        handler=handler,
+        # Both operations acquire workspace-scoped data; neither mutates an
+        # external provider or public sink.
+        access=HostActionAccess.READ,
+        approval=ApprovalContract(),
+        idempotency=IdempotencyContract(IdempotencyMode.NOT_REQUIRED),
+        audit=AuditContract(),
+    )
+
+
+DESKTOP_SCREENSHOT_HOST_ACTIONS = HostActionRegistration(
+    actions=tuple(_screenshot_action(action) for action in _SCREENSHOT_ACTIONS)
+)
+
+
 class DesktopScreenshotPlugin:
     """Expose a macOS desktop screenshot service tool."""
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, Any]:
-        return {
-            "tools": {
-                "take_screenshot": _handle_take_screenshot,
-                "analyze_screenshot": _handle_analyze_screenshot,
-            }
-        }
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return DESKTOP_SCREENSHOT_HOST_ACTIONS

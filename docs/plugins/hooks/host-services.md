@@ -38,8 +38,7 @@ should reuse approval until the session ends.
 
 The handler runs in the host process through IPC, not inside an agent container.
 Pynchy rechecks capability policy and tool trust at dispatch. New plugins should
-return `HostActionRegistration`; the older `{"tools": ...}` adapter remains only
-for registered action surfaces.
+return `HostActionRegistration`; startup rejects raw handler mappings.
 
 For each new semantic action, also implement [`pynchy_action_specs`](#pynchy_action_specs).
 

@@ -22,6 +22,9 @@ import aiohttp
 import pluggy
 from aiohttp import web
 
+from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
+    HostActionRegistration,
+)
 from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_accounts import configured_linear_accounts
@@ -103,7 +106,9 @@ class LinearMcpPlugin:
         ]
 
     @hookimpl
-    def pynchy_service_handler(self, computer_use_backends: tuple[object, ...]) -> object:
+    def pynchy_service_handler(
+        self, computer_use_backends: tuple[object, ...]
+    ) -> HostActionRegistration:
         """Keep durable work-item lifecycle writes in the host process."""
         del computer_use_backends
         return host_action_registration()

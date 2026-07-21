@@ -12,6 +12,8 @@ from unittest.mock import Mock
 
 import pytest
 
+from pynchy.actions import ACTION_SPECS
+from pynchy.capabilities import validate_host_action_descriptors
 from pynchy.plugins.integrations.google_setup import (
     GoogleSetupPlugin,
     run_oauth_flow,
@@ -327,8 +329,27 @@ def _google_setup_tool(monkeypatch: pytest.MonkeyPatch, profile: str):
         return FakeSettings()
 
     monkeypatch.setattr("pynchy.config.get_settings", fake_get_settings)
-    tools = GoogleSetupPlugin().pynchy_service_handler()["tools"]
+    tools = GoogleSetupPlugin().pynchy_service_handler().handlers
     return tools[f"setup_google_{profile}"]
+
+
+def test_google_setup_registration_has_one_valid_capability_per_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSettings:
+        chrome_profiles = ["personal", "work profile"]
+
+    monkeypatch.setattr("pynchy.config.get_settings", FakeSettings)
+
+    registration = GoogleSetupPlugin().pynchy_service_handler()
+    capability_ids = [str(action.capability.id) for action in registration.actions]
+
+    assert set(registration.handlers) == {
+        "setup_google_personal",
+        "setup_google_work profile",
+    }
+    assert len(capability_ids) == len(set(capability_ids)) == 2
+    assert validate_host_action_descriptors(registration.actions, ACTION_SPECS) == ()
 
 
 def _keys_file(tmp_path: Path) -> Path:

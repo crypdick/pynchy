@@ -68,7 +68,6 @@ class DescriptorOrigin(StrEnum):
     """How a descriptor entered the host-action catalog."""
 
     EXPLICIT = "explicit"
-    LEGACY_ADAPTER = "legacy_adapter"
 
 
 class HostActionAccess(StrEnum):
@@ -248,6 +247,11 @@ class HostActionRegistration:
             (action for action in self.actions if action.tool_name == tool_name),
             None,
         )
+
+    @property
+    def handlers(self) -> dict[str, HostActionHandler]:
+        """Return the registered handlers keyed by host tool name."""
+        return {str(action.tool_name): action.handler for action in self.actions}
 
 
 @dataclass(frozen=True)

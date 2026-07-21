@@ -33,7 +33,7 @@ class TestMemoryProvider:
         """SqliteMemoryPlugin returns all four tool handlers."""
         plugin = SqliteMemoryPlugin()
         result = plugin.pynchy_service_handler()
-        tools = result["tools"]
+        tools = result.handlers
         assert "save_memory" in tools
         assert "recall_memories" in tools
         assert "forget_memory" in tools
@@ -54,7 +54,7 @@ class TestMcpHandlers:
         mock.name = "sqlite"
         with patch("pynchy.plugins.memory.sqlite_memory._plugin._get_backend", return_value=mock):
             self.mock_backend = mock
-            self.tools = SqliteMemoryPlugin().pynchy_service_handler()["tools"]
+            self.tools = SqliteMemoryPlugin().pynchy_service_handler().handlers
             yield
 
     async def test_save_requires_source_group(self):
