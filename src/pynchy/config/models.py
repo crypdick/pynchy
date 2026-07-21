@@ -105,6 +105,7 @@ ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
 ValidatedWorkspaceName = Annotated[WorkspaceName, AfterValidator(_validated_name)]
 ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
 CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
+CopWireApi = Literal["messages", "responses"]
 
 CONTAINER_REACHABLE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - agent containers must reach the host gateway through the configured container_host.
 
@@ -554,6 +555,7 @@ class SecurityConfig(_StrictModel):
     # NOTE: Update docs/usage/security.md § Agent Tool Gating if you change
     # the Cop model selection contract.
     cop_model: str | None = None
+    cop_wire_api: CopWireApi = "messages"
     # NOTE: Update docs/architecture/security.md § 2 (Mount Security → Default
     # Blocked Patterns) if you change this list — it restates these values in prose.
     blocked_patterns: list[str] = [

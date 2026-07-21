@@ -267,11 +267,13 @@ LiteLLM gateway:
 ```toml
 [security]
 cop_model = "gpt-5.3-codex-spark"
+cop_wire_api = "responses"
 ```
 
 Without `cop_model`, the Cop uses `[agent].model`, then its built-in fallback
-when the agent model is unset. For technical details, see [Agent Tool Security
-Gate](../architecture/security.md#5b-agent-tool-security-gate).
+when the agent model is unset. Set `cop_wire_api` to `responses` for LiteLLM
+routes declared with `mode: responses`; its default, `messages`, supports
+Anthropic Messages routes. For technical details, see [Agent Tool Security Gate](../architecture/security.md#5b-agent-tool-security-gate).
 
 ## Host-Mutating Operations
 

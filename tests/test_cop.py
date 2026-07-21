@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -65,7 +66,44 @@ def _mock_aiohttp_session(
     async def _session_ctx(*_args, **_kwargs):
         yield mock_session
 
-    return patch("pynchy.host.container_manager.security.cop.aiohttp.ClientSession", _session_ctx)
+    return patch(
+        "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+        _session_ctx,
+    )
+
+
+def _mock_aiohttp_responses_session(
+    response_text: str,
+    *,
+    captured_bodies: list[dict[str, object]] | None = None,
+    captured_urls: list[str] | None = None,
+):
+    """Return a Responses SSE session containing one model output."""
+    event = json.dumps({"type": "response.output_text.delta", "delta": response_text})
+    body = f"data: {event}\n\ndata: [DONE]\n\n"
+    mock_resp = AsyncMock()
+    mock_resp.raise_for_status = lambda: None
+    mock_resp.text = AsyncMock(return_value=body)
+
+    @asynccontextmanager
+    async def _post(url, **kwargs):
+        if captured_urls is not None:
+            captured_urls.append(url)
+        if captured_bodies is not None:
+            captured_bodies.append(kwargs["json"])
+        yield mock_resp
+
+    mock_session = AsyncMock()
+    mock_session.post = _post
+
+    @asynccontextmanager
+    async def _session_ctx(*_args, **_kwargs):
+        yield mock_session
+
+    return patch(
+        "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession",
+        _session_ctx,
+    )
 
 
 @pytest.mark.asyncio
@@ -211,7 +249,7 @@ async def test_cop_error_returns_degraded_verdict_without_raw_error():
         yield mock_session
 
     session_patch = patch(
-        "pynchy.host.container_manager.security.cop.aiohttp.ClientSession", _session_ctx
+        "pynchy.host.container_manager.security.cop_client.aiohttp.ClientSession", _session_ctx
     )
 
     with (
@@ -322,13 +360,17 @@ async def test_bash_sends_taint_facts_and_uses_configured_cop_model():
     )
     settings = MagicMock()
     settings.security.cop_model = "configured-cop-model"
+    settings.security.cop_wire_api = "messages"
     settings.agent.model = "configured-agent-model"
     with (
         patch(
             "pynchy.host.container_manager.gateway.get_gateway",
             return_value=_fake_gateway(),
         ),
-        patch("pynchy.host.container_manager.security.cop.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.get_settings",
+            return_value=settings,
+        ),
         _mock_aiohttp_session(
             '{"decision": "escalate", "reason": "Sensitive network operation"}',
             captured_bodies=bodies,
@@ -349,13 +391,17 @@ async def test_cop_model_falls_back_to_configured_agent_model():
     bodies: list[dict[str, object]] = []
     settings = MagicMock()
     settings.security.cop_model = None
+    settings.security.cop_wire_api = "messages"
     settings.agent.model = "configured-agent-model"
     with (
         patch(
             "pynchy.host.container_manager.gateway.get_gateway",
             return_value=_fake_gateway(),
         ),
-        patch("pynchy.host.container_manager.security.cop.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.get_settings",
+            return_value=settings,
+        ),
         _mock_aiohttp_session(
             '{"decision": "approve", "reason": "Routine local action"}',
             captured_bodies=bodies,
@@ -364,3 +410,45 @@ async def test_cop_model_falls_back_to_configured_agent_model():
         await inspect_bash("git status")
 
     assert bodies[0]["model"] == "configured-agent-model"
+
+
+@pytest.mark.asyncio
+async def test_cop_uses_responses_wire_api_for_codex_model():
+    """Responses routes receive typed input and their SSE output is parsed."""
+    bodies: list[dict[str, object]] = []
+    urls: list[str] = []
+    settings = MagicMock()
+    settings.security.cop_model = "gpt-5.3-codex-spark"
+    settings.security.cop_wire_api = "responses"
+    settings.agent.model = "configured-agent-model"
+    with (
+        patch(
+            "pynchy.host.container_manager.gateway.get_gateway",
+            return_value=_fake_gateway(),
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_client.get_settings",
+            return_value=settings,
+        ),
+        _mock_aiohttp_responses_session(
+            '{"decision": "approve", "reason": "Routine inspection"}',
+            captured_bodies=bodies,
+            captured_urls=urls,
+        ),
+    ):
+        verdict = await inspect_bash("git status --short")
+
+    assert verdict.decision is CopCommandDecision.APPROVE
+    assert urls == ["http://localhost:4010/v1/responses"]
+    assert bodies[0]["model"] == "gpt-5.3-codex-spark"
+    assert bodies[0]["stream"] is True
+    assert bodies[0]["input"] == [
+        {
+            "role": "developer",
+            "content": [{"type": "input_text", "text": ANY}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": ANY}],
+        },
+    ]

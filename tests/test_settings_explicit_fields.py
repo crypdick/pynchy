@@ -41,7 +41,15 @@ class TestExplicitFieldValidation:
 
     def test_accepts_dedicated_cop_model(self) -> None:
         settings = validate_settings_mapping(
-            {"security": {"cop_model": "gpt-5.3-codex-spark"}},
+            {
+                "security": {
+                    "cop_model": "gpt-5.3-codex-spark",
+                    "cop_wire_api": "responses",
+                }
+            },
         )
 
-        assert settings.security == SecurityConfig(cop_model="gpt-5.3-codex-spark")
+        assert settings.security == SecurityConfig(
+            cop_model="gpt-5.3-codex-spark",
+            cop_wire_api="responses",
+        )
