@@ -104,7 +104,7 @@ You have persistent memory tools for storing and recalling information across se
 
 Categories: *core* (permanent facts, default), *daily* (session context), *conversation* (auto-archived).
 
-The `conversations/` folder still contains historical archives for backward compatibility.
+Session compaction writes a Markdown archive to `conversations/` and a searchable structured copy to memory.
 
 ## Deploying Changes
 

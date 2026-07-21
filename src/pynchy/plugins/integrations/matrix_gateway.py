@@ -18,6 +18,7 @@ from pynchy.capabilities import (
     ActionIntentDraft,
     ActionIntentReceipt,
     ApprovalContract,
+    ApprovalTrigger,
     AuditContract,
     CapabilityDescriptor,
     CapabilityId,
@@ -264,7 +265,13 @@ def _matrix_action(
         tool_name=HostToolName(tool_name),
         handler=handler,
         access=access,
-        approval=ApprovalContract(mandatory=access is HostActionAccess.WRITE),
+        approval=ApprovalContract(
+            trigger=(
+                ApprovalTrigger.ALWAYS
+                if access is HostActionAccess.WRITE
+                else ApprovalTrigger.SERVICE_POLICY
+            )
+        ),
         idempotency=IdempotencyContract(
             IdempotencyMode.NOT_REQUIRED
             if access is HostActionAccess.READ

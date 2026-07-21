@@ -32,7 +32,6 @@ from pynchy.config.models import (
     AgentConfig,
     CommandCenterConfig,
     ConnectionConfig,
-    ConnectionsConfig,
     ContainerConfig,
     GatewayConfig,
     LearningConfig,
@@ -172,7 +171,6 @@ class Settings(BaseSettings):
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
     notifications: NotificationsConfig = NotificationsConfig()
-    connection: ConnectionsConfig = ConnectionsConfig()
     connections: dict[str, ConnectionConfig] = {}
     routes: dict[str, RouteConfig] = {}
     tools: dict[str, ToolConfig] = {}

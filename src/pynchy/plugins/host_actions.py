@@ -10,7 +10,6 @@ from pynchy.actions import ACTION_SPECS, ActionSpec, validate_action_specs
 from pynchy.capabilities import (
     CapabilityCatalogError,
     HostActionDescriptor,
-    HostActionHandler,
     HostActionRegistration,
     validate_host_action_descriptors,
 )
@@ -35,11 +34,6 @@ class HostActionCatalog:
     def action_for(self, tool_name: str) -> HostActionDescriptor | None:
         return next((action for action in self.actions if action.tool_name == tool_name), None)
 
-    @property
-    def handlers(self) -> dict[str, HostActionHandler]:
-        """Return handlers keyed by host tool name."""
-        return {str(action.tool_name): action.handler for action in self.actions}
-
 
 @dataclass
 class _CatalogState:
@@ -54,7 +48,7 @@ def get_host_action_catalog(
     *,
     action_specs: tuple[ActionSpec, ...] | None = None,
 ) -> HostActionCatalog:
-    """Collect, parse, validate, and cache the effective host-action catalog."""
+    """Collect, validate, and cache the effective host-action catalog."""
     if pm is None and action_specs is None and _state.catalog is not None:
         return _state.catalog
     plugin_manager = pm or get_plugin_manager()

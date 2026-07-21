@@ -21,6 +21,7 @@ from pynchy.config.mcp import (
     McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
 )
 from pynchy.host.container_manager.docker import (
+    HealthCheckRequest,
     ensure_image,
     ensure_network,
     is_container_running,
@@ -97,11 +98,13 @@ async def ensure_script_running(instance: McpInstance) -> None:
     health_url = f"http://localhost:{instance.port}"
     try:
         await wait_healthy(
-            instance.instance_id,
-            health_url,
-            any_non_5xx=True,
-            process=instance.process,
-            health_timeout_seconds=instance.server_config.startup_timeout_seconds,
+            HealthCheckRequest(
+                container_name=instance.instance_id,
+                url=health_url,
+                any_non_5xx=True,
+                process=instance.process,
+                health_timeout_seconds=instance.server_config.startup_timeout_seconds,
+            )
         )
     except (TimeoutError, RuntimeError):
         logger.error(
@@ -279,10 +282,12 @@ def _docker_health_url(instance: McpInstance) -> str:
 async def _wait_for_docker_health(instance: McpInstance) -> None:
     try:
         await wait_healthy(
-            instance.container_name,
-            _docker_health_url(instance),
-            any_non_5xx=True,
-            health_timeout_seconds=instance.server_config.startup_timeout_seconds,
+            HealthCheckRequest(
+                container_name=instance.container_name,
+                url=_docker_health_url(instance),
+                any_non_5xx=True,
+                health_timeout_seconds=instance.server_config.startup_timeout_seconds,
+            )
         )
     except (TimeoutError, RuntimeError) as exc:
         log_result = await run_docker("logs", "--tail", "50", instance.container_name, check=False)

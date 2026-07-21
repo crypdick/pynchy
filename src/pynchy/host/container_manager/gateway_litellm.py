@@ -33,6 +33,7 @@ from urllib.parse import urlparse, urlunparse
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import (
+    HealthCheckRequest,
     docker_available,
     ensure_image,
     ensure_network,
@@ -466,11 +467,13 @@ class LiteLLMGateway:
         )  # fmt: skip
 
         await wait_healthy(
-            self._litellm_container,
-            f"http://localhost:{self.port}/health/readiness",
-            health_timeout_seconds=_HEALTH_TIMEOUT,
-            poll_interval=_HEALTH_POLL_INTERVAL,
-            headers={"Authorization": f"Bearer {self.key}"},
+            HealthCheckRequest(
+                container_name=self._litellm_container,
+                url=f"http://localhost:{self.port}/health/readiness",
+                health_timeout_seconds=_HEALTH_TIMEOUT,
+                poll_interval=_HEALTH_POLL_INTERVAL,
+                headers={"Authorization": f"Bearer {self.key}"},
+            )
         )
 
         logger.info(

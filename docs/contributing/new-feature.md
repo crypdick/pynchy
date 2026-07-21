@@ -72,7 +72,7 @@ has already stopped its live resources; inspect its logs and data, then run `sto
 setup:
 
 ```bash
-uv run python scripts/new_feature_sandbox.py exec -- \
+uv run python scripts/runtime_harness.py exec -- \
   uv run pytest -o addopts='' -n 0 -m runtime
 ```
 
@@ -108,8 +108,8 @@ generated `.env` and `config.toml` let commands run normally from the feature wo
 Inspect or restart the sandbox from its worktree:
 
 ```bash
-uv run python scripts/new_feature_sandbox.py status
-uv run python scripts/new_feature_sandbox.py restart
+uv run python scripts/runtime_harness.py status
+uv run python scripts/runtime_harness.py restart
 ```
 
 ## Merge and remove a feature

@@ -15,7 +15,6 @@ from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ApprovalMode,
     HostActionDescriptor,
-    HostActionHandler,
 )
 from pynchy.config import get_settings
 from pynchy.config.models import McpTool
@@ -71,11 +70,6 @@ class _ApprovalRequestContext:
     gate: SecurityGate
     reason: str | None
     intent: ActionIntent | None
-
-
-def _get_plugin_handlers() -> dict[str, HostActionHandler]:
-    """Return handlers keyed by tool name from the typed catalog."""
-    return get_host_action_catalog().handlers
 
 
 def _get_action_catalog() -> HostActionCatalog:

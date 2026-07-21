@@ -92,7 +92,9 @@ async def test_x_session_setup_uses_resolved_display_executables(
         await asyncio.sleep(0)
         return {"result": {"status": "ok", "novnc_url": novnc_url}}
 
-    setup_tool = XIntegrationPlugin().pynchy_service_handler().handlers["setup_x_session"]
+    action = XIntegrationPlugin().pynchy_service_handler().action_for("setup_x_session")
+    assert action is not None
+    setup_tool = action.handler
     setup_handler = getattr(
         setup_tool,
         "__wrapped__",

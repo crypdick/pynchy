@@ -50,14 +50,24 @@ Plugin Authoring Checklist
 ## Hook Map
 
 - `pynchy_create_channel`: Host-side channel instance
-- `pynchy_service_handler`: Host-side service tool handlers (IPC dispatch)
+- `pynchy_speech_synthesizer`: Shared speech output provider
+- `pynchy_service_handler`: Typed host actions (IPC dispatch)
+- `pynchy_computer_use_backend`: Computer-use provider
+- `pynchy_action_specs`: Semantic action contracts
 - `pynchy_skill_paths`: Skill directories mounted into container
 - `pynchy_agent_core_info`: Agent core implementation metadata
 - `pynchy_container_runtime`: Host container runtime provider
-- `pynchy_workspace_spec`: Managed workspace/task definitions (e.g., periodic agents)
+- `pynchy_tunnel`: Host tunnel provider
+- `pynchy_connection_runtime`: Long-lived authenticated connection runtime
+- `pynchy_observer`: Host event observer
+- `pynchy_memory`: Memory backend
+- `pynchy_webhook_routes`: Authenticated webhook routes
+- `pynchy_mcp_server_spec`: MCP server template
+- `pynchy_workspace_spec`: Managed workspace definitions
+- `pynchy_job_specs`: Config-backed jobs
 
 Hook reference:
-- `docs/plugins/hooks.md`
+- `docs/plugins/hooks/index.md`
 
 ## Config-Managed Plugin Registration
 
@@ -98,6 +108,6 @@ For the full risk-by-category breakdown, see [Plugin Security](../../../docs/plu
 
 - Plugin overview: `docs/plugins/index.md`
 - Plugin quickstart (creation guide): `docs/plugins/quickstart.md`
-- Hook reference: `docs/plugins/hooks.md`
+- Hook reference: `docs/plugins/hooks/index.md`
 - Packaging guidance: `docs/plugins/packaging.md`
 - Available plugin registry: `docs/plugins/available.md`

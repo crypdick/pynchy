@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -181,14 +180,6 @@ class FakeProcess:
         self._returncode: int | None = None
         self._wait_event = asyncio.Event()
         self.pid = 12345
-
-    def feed_output(self, output: dict[str, Any]) -> None:
-        """Feed a single container output event via stdout (legacy, unused).
-
-        Output is now file-based IPC; this method exists only for backward
-        compatibility in live test fixtures that haven't been updated yet.
-        """
-        self.stdout.feed_data(json.dumps(output).encode())
 
     def finish(self) -> None:
         self._returncode = 0

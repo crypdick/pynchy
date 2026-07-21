@@ -97,8 +97,8 @@ delivery is therefore not an open gap.
 **Implemented foundation.** Pynchy now owns immutable `CapabilityDescriptor`
 and `HostActionDescriptor` types, validates host-action completeness at
 startup, resolves workspace status, and exposes it through `pynchy doctor`,
-`/capabilities`, and `/status`. Matrix supplies explicit descriptors; a strict
-legacy adapter keeps existing service handlers on the same catalog.
+`/capabilities`, and `/status`. Every first-party host-service plugin supplies
+explicit descriptors, and startup rejects raw handler mappings.
 
 **Remaining gap.** Agent-core, MCP-server, workspace, and channel hooks still
 need owned boundary types. Pynchy also cannot inspect a third-party plugin's

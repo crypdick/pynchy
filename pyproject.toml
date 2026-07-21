@@ -90,11 +90,11 @@ default_agent = "codex"
 push = false
 setup = [
     "uv sync --locked",
-    "uv run python scripts/new_feature_sandbox.py setup",
+    "uv run python scripts/runtime_harness.py setup",
 ]
 pre_merge = [
-    "uv run python scripts/new_feature_sandbox.py stop",
-    "uv run python scripts/new_feature_sandbox.py run -- uv run pytest -o addopts='' -n 0 -m runtime",
+    "uv run python scripts/runtime_harness.py stop",
+    "uv run python scripts/runtime_harness.py run -- uv run pytest -o addopts='' -n 0 -m runtime",
     # The allocated runtime values are required above, but ordinary unit tests
     # deliberately assert the default host resource names and ports.
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uvx pre-commit run --all-files",
@@ -103,7 +103,7 @@ post_merge = [
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run pytest",
     "unset SERVER__PORT GATEWAY__PORT NEW_FEATURE_TEMPORAL_PORT PYNCHY_RUNTIME_NAMESPACE; uv run --directory src/pynchy/agent/agent_runner --locked pytest",
 ]
-teardown = ["uv run python scripts/new_feature_sandbox.py stop"]
+teardown = ["uv run python scripts/runtime_harness.py stop"]
 
 [tool.new-feature.env]
 SERVER__PORT = { allocate = "port", min = 18484, max = 18583 }

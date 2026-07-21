@@ -11,6 +11,7 @@ from conftest import make_settings
 from pydantic import SecretStr
 
 from pynchy.config.models import AgentConfig, GatewayConfig, ProfileConfig, WorkspaceConfig
+from pynchy.host.container_manager.docker import HealthCheckRequest
 from pynchy.host.container_manager.gateway import (
     BuiltinGateway,
     LiteLLMGateway,
@@ -388,8 +389,10 @@ class TestLiteLLMGatewayStart:
         assert "postgresql://" in litellm_run
         assert "LITELLM_SALT_KEY=" in litellm_run
         assert "--network pynchy-litellm-net" in litellm_run
-        assert wait_healthy_mock.await_args.args[1] == "http://localhost:4000/health/readiness"
-        assert isinstance(wait_healthy_mock.await_args.kwargs["health_timeout_seconds"], float)
+        request = wait_healthy_mock.await_args.args[0]
+        assert isinstance(request, HealthCheckRequest)
+        assert request.url == "http://localhost:4000/health/readiness"
+        assert isinstance(request.health_timeout_seconds, float)
 
     @pytest.fixture
     def litellm_config(self, tmp_path: Path) -> Path:

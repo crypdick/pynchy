@@ -77,7 +77,9 @@ async def test_refresh_slack_tokens_persists_tokens_from_the_authenticated_sessi
         AsyncMock(return_value={"xoxc": "xoxc-test", "xoxd": "xoxd-test"}),
     )
 
-    handler = SlackTokenExtractorPlugin().pynchy_service_handler().handlers["refresh_slack_tokens"]
+    action = SlackTokenExtractorPlugin().pynchy_service_handler().action_for("refresh_slack_tokens")
+    assert action is not None
+    handler = action.handler
     response = await handler(
         {
             "workspace_name": "acme",
@@ -119,7 +121,9 @@ async def test_setup_slack_session_timeout_returns_novnc_url(
         type("_PlaywrightModule", (), {"async_playwright": fake_async_playwright}),
     )
 
-    handler = SlackTokenExtractorPlugin().pynchy_service_handler().handlers["setup_slack_session"]
+    action = SlackTokenExtractorPlugin().pynchy_service_handler().action_for("setup_slack_session")
+    assert action is not None
+    handler = action.handler
     response = await handler(
         {
             "workspace_name": "acme",

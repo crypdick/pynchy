@@ -147,7 +147,7 @@ class CapabilityRule:
 # NOTE: Update docs/architecture/security.md § 5 (Service Trust Policy) and
 # docs/usage/security.md (Four Properties Per Service) if you change these
 # properties or their defaults — both restate this model in prose.
-@dataclass
+@dataclass(frozen=True)
 class ServiceTrustConfig:
     """Four trust properties per service — the user-facing security model.
 

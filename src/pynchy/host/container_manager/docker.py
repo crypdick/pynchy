@@ -120,16 +120,7 @@ async def stop_container(name: str, *, stop_timeout_seconds: int = 5) -> None:
     await run_docker("rm", "-f", name, check=False)
 
 
-async def wait_healthy(  # noqa: PLR0913, RUF100 - shared health probe accepts both call styles and the request object.
-    request_or_container_name: HealthCheckRequest | str,
-    url: str | None = None,
-    *,
-    health_timeout_seconds: float = 90,
-    poll_interval: float = 1.0,
-    headers: dict[str, str] | None = None,
-    any_non_5xx: bool = False,
-    process: subprocess.Popen[bytes] | None = None,
-) -> None:
+async def wait_healthy(request: HealthCheckRequest) -> None:
     """Poll an HTTP endpoint until it responds healthy, or raise on timeout.
 
     Args:
@@ -137,22 +128,6 @@ async def wait_healthy(  # noqa: PLR0913, RUF100 - shared health probe accepts b
             healthy. When *True* any status below 500 is accepted — useful for
             servers that don't expose a dedicated health endpoint.
     """
-    if isinstance(request_or_container_name, HealthCheckRequest):
-        request = request_or_container_name
-    else:
-        if url is None:
-            msg = "wait_healthy() missing url for legacy call signature"
-            raise TypeError(msg)
-        request = HealthCheckRequest(
-            container_name=request_or_container_name,
-            url=url,
-            health_timeout_seconds=health_timeout_seconds,
-            poll_interval=poll_interval,
-            headers=headers,
-            any_non_5xx=any_non_5xx,
-            process=process,
-        )
-
     start = time.monotonic()
     loop = asyncio.get_running_loop()
     deadline = loop.time() + request.health_timeout_seconds

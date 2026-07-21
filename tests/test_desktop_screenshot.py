@@ -24,8 +24,10 @@ class _FakeProcess:
         return b"", self._stderr
 
 
-def _handler():
-    return DesktopScreenshotPlugin().pynchy_service_handler().handlers["take_screenshot"]
+def _handler(tool_name: str = "take_screenshot"):
+    action = DesktopScreenshotPlugin().pynchy_service_handler().action_for(tool_name)
+    assert action is not None
+    return action.handler
 
 
 def test_desktop_screenshot_plugin_is_registered() -> None:
@@ -34,8 +36,8 @@ def test_desktop_screenshot_plugin_is_registered() -> None:
 
     assert "builtin-desktop-screenshot" in [pm.get_name(p) for p in pm.get_plugins()]
     registration = pm.get_plugin("builtin-desktop-screenshot").pynchy_service_handler()
-    assert "take_screenshot" in registration.handlers
-    assert "analyze_screenshot" in registration.handlers
+    assert registration.action_for("take_screenshot") is not None
+    assert registration.action_for("analyze_screenshot") is not None
 
 
 @pytest.mark.asyncio
@@ -176,7 +178,7 @@ async def test_take_screenshot_returns_command_failure(tmp_path: Path) -> None:
 @pytest.mark.action("desktop.screenshot.analyze")
 @pytest.mark.asyncio
 async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: Path) -> None:
-    handler = DesktopScreenshotPlugin().pynchy_service_handler().handlers["analyze_screenshot"]
+    handler = _handler("analyze_screenshot")
     settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="gpt-5.5"))
     screenshot = tmp_path / "ipc" / "admin" / "screenshots" / "screen.png"
     screenshot.parent.mkdir(parents=True)
@@ -210,7 +212,7 @@ async def test_analyze_screenshot_calls_gateway_with_workspace_image(tmp_path: P
 
 @pytest.mark.asyncio
 async def test_analyze_screenshot_rejects_image_path_outside_workspace(tmp_path: Path) -> None:
-    handler = DesktopScreenshotPlugin().pynchy_service_handler().handlers["analyze_screenshot"]
+    handler = _handler("analyze_screenshot")
     settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="gpt-5.5"))
     outside = tmp_path / "ipc" / "other" / "screenshots" / "screen.png"
     outside.parent.mkdir(parents=True)
@@ -232,7 +234,7 @@ async def test_analyze_screenshot_rejects_image_path_outside_workspace(tmp_path:
 
 @pytest.mark.asyncio
 async def test_analyze_screenshot_defaults_to_latest_workspace_png(tmp_path: Path) -> None:
-    handler = DesktopScreenshotPlugin().pynchy_service_handler().handlers["analyze_screenshot"]
+    handler = _handler("analyze_screenshot")
     settings = make_settings(data_dir=tmp_path, agent=AgentConfig(model="gpt-5.5"))
     screenshot_dir = tmp_path / "ipc" / "admin" / "screenshots"
     screenshot_dir.mkdir(parents=True)

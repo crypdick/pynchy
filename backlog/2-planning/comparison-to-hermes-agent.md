@@ -180,9 +180,10 @@ aggressive automatic skill mutation would make that debt worse, not better.
 
 Pynchy now owns immutable capability and host-action descriptors, validates
 their ActionSpec, approval, idempotency, and audit contracts at startup, and
-resolves workspace-specific status for operator diagnostics. The first Matrix
-slice exposes those results through `pynchy doctor`, `/capabilities`, and
-`/status` while keeping `SecurityPolicy` authoritative at dispatch time. See
+resolves workspace-specific status for operator diagnostics. All first-party
+host-service plugins now use that typed boundary; `pynchy doctor`,
+`/capabilities`, and `/status` expose the results while keeping
+`SecurityPolicy` authoritative at dispatch time. See
 [Action coverage](../../docs/architecture/action-coverage.md#host-action-descriptors-and-capability-status).
 
 The remaining cross-plugin descriptor and pre-import metadata work belongs to
