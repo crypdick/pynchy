@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit hook to fix placement of ``from __future__ import annotations``.
+"""Prek hook to fix placement of ``from __future__ import annotations``.
 
 Philosophy: PEP 563 deferred evaluation of annotations enables cleaner type
 hints (no forward-reference strings, union syntax with ``|``, etc.).  This
@@ -12,7 +12,7 @@ Behaviour:
   uv PEP-723 script metadata block, and module docstring.
 - If the import is not at that point, removes it and re-inserts it.
 - Preserves CRLF vs LF line endings.
-- Exits 1 if any file was modified (so pre-commit stops for re-staging).
+- Exits 1 if any file was modified (so prek stops for re-staging).
 
 Exit codes:
   0 - No changes needed
@@ -186,7 +186,7 @@ def main(argv: list[str]) -> int:
         )
         for p in changed:
             print(f"  {p}")
-        # Non-zero so pre-commit stops and user can re-stage
+        # Non-zero so prek stops and the user can re-stage
         return 1
     return 0
 

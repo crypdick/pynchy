@@ -10,7 +10,7 @@ Keyword hit. The user might have expressed a coding preference or taste.
 
 Reminder: always do the following when the user expresses a code preference that should be enforced going forward. Determine whether it can be codified as:
 
-1. **A pre-commit hook script** — if it's about code patterns that can be detected statically (e.g., "don't use bare except", "avoid print statements"). Create or update a script in `scripts/pre_commit_hooks/` and wire it into `.pre-commit-config.yaml`.
+1. **A prek hook script** — if it's about code patterns that can be detected statically (e.g., "don't use bare except", "avoid print statements"). Create or update a script in `scripts/prek_hooks/` and wire it into `prek.toml`.
 
 2. **A hookify rule** — if it's about Claude's behavior during sessions (e.g., "don't create utils.py files", "always use NewType for IDs"). Create a `.claude/hookify.{name}.md` rule.
 

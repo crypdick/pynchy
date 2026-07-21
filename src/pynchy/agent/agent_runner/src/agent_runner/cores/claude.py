@@ -14,7 +14,14 @@ from claude_agent_sdk import (
     HookContext,
     HookMatcher,
 )
-from claude_agent_sdk.types import McpServerConfig, SdkPluginConfig, SystemPromptPreset
+from claude_agent_sdk.types import (
+    HookCallback,
+    HookInput,
+    HookJSONOutput,
+    McpServerConfig,
+    SdkPluginConfig,
+    SystemPromptPreset,
+)
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 from agent_runner.hooks import (
@@ -39,7 +46,7 @@ from .claude_messages import (
 from .tools import BUILTIN_ALLOWED_TOOLS, DISALLOWED_TOOLS
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable
+    from collections.abc import AsyncIterator
 
 _CLAUDE_CORE_NOT_STARTED = "ClaudeAgentCore not started (call start() first)"
 
@@ -55,10 +62,7 @@ def _log(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _create_pre_compact_hook() -> Callable[
-    [dict[str, Any], str | None, HookContext],
-    Awaitable[dict[str, Any]],
-]:
+def _create_pre_compact_hook() -> HookCallback:
     """Create a PreCompact hook that archives the transcript.
 
     The claude-cli core wires the same archival via a ``PreCompact`` command
@@ -66,13 +70,16 @@ def _create_pre_compact_hook() -> Callable[
     """
 
     async def hook(
-        input_data: dict[str, Any],
+        input_data: HookInput,
         _tool_use_id: str | None,
         _context: HookContext,
-    ) -> dict[str, Any]:
+    ) -> HookJSONOutput:
+        # Registration fixes this callback to PreCompact; the SDK exposes one
+        # union callback type for every hook event.
+        payload = cast("dict[str, Any]", input_data)
         await archive_transcript(
-            input_data.get("transcript_path", ""),
-            input_data.get("session_id", ""),
+            payload.get("transcript_path", ""),
+            payload.get("session_id", ""),
         )
         return {}
 
@@ -86,7 +93,7 @@ def _create_pre_compact_hook() -> Callable[
 
 def _wrap_before_tool_use(
     hook_fn: BeforeToolUseHook,
-) -> Callable[[dict[str, Any], str | None, HookContext], Awaitable[dict[str, Any]]]:
+) -> HookCallback:
     """Wrap a BEFORE_TOOL_USE hook as a Claude SDK PreToolUse hook.
 
     Our agnostic hooks have signature (tool_name, tool_input) -> HookDecision.
@@ -94,12 +101,15 @@ def _wrap_before_tool_use(
     """
 
     async def wrapper(
-        input_data: dict[str, Any],
+        input_data: HookInput,
         _tool_use_id: str | None,
         _context: HookContext,
-    ) -> dict[str, Any]:
-        tool_name = input_data.get("tool_name", "")
-        tool_input = input_data.get("tool_input", {})
+    ) -> HookJSONOutput:
+        # Registration fixes this callback to PreToolUse; the SDK exposes one
+        # union callback type for every hook event.
+        payload = cast("dict[str, Any]", input_data)
+        tool_name = payload["tool_name"]
+        tool_input = payload["tool_input"]
         decision = await hook_fn(tool_name, tool_input)
         if not decision.allowed:
             return {

@@ -72,6 +72,6 @@ uv run mkdocs build --strict
 
 ## Link Checking
 
-Link validation runs automatically in pre-commit hooks. If docs have broken links, the commit will fail.
+Link validation runs automatically in prek hooks. If docs have broken links, the commit will fail.
 
 To manually check: `uv run mkdocs build --strict`

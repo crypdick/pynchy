@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.host.git_ops import merge_and_push_worktree, merge_worktree
+from pynchy.host.git_ops import install_repo_hooks, merge_and_push_worktree, merge_worktree
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.worktree import (
     WorktreeError,
@@ -64,6 +64,53 @@ def _make_project(tmp_path: Path, origin: Path) -> Path:
     _git(project, "config", "user.email", "test@test.com")
     _git(project, "config", "user.name", "Test")
     return project
+
+
+@pytest.mark.parametrize(
+    ("config_name", "runner"),
+    [
+        ("prek.toml", "prek"),
+        (".pre-commit-config.yaml", "pre-commit"),
+        (".pre-commit-config.yml", "pre-commit"),
+    ],
+)
+def test_install_repo_hooks_uses_declared_runner(
+    tmp_path: Path,
+    config_name: str,
+    runner: str,
+) -> None:
+    (tmp_path / config_name).write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(tmp_path)
+
+    run.assert_called_once_with(
+        ["uv", "tool", "run", runner, "install"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+
+def test_install_repo_hooks_prefers_prek(tmp_path: Path) -> None:
+    (tmp_path / "prek.toml").write_text("")
+    (tmp_path / ".pre-commit-config.yaml").write_text("")
+
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        install_repo_hooks(tmp_path)
+
+    assert run.call_args.args[0] == ["uv", "tool", "run", "prek", "install"]
+
+
+def test_install_repo_hooks_skips_repositories_without_config(tmp_path: Path) -> None:
+    with patch("pynchy.host.git_ops.worktree.subprocess.run") as run:
+        install_repo_hooks(tmp_path)
+
+    run.assert_not_called()
 
 
 @pytest.fixture

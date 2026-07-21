@@ -13,6 +13,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "deptry>=0.25.1",
     "mypy>=2.1.0",
     "pytest>=9.0.0",
     "pytest-asyncio>=0.24.0",
@@ -144,6 +145,10 @@ max-complexity = 15
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.deptry]
+known_first_party = ["agent_runner"]
+package_module_name_map = { "openai-agents" = "agents" }
 
 [tool.pytest.ini_options]
 # Keep this nested project and its tests out of Python packages. Otherwise

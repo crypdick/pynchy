@@ -35,7 +35,7 @@ from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 from .openai_shell import make_shell_executor
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AbstractAsyncContextManager, AsyncIterator, Callable
 
     from agent_runner.hooks import BeforeToolUseHook
 
@@ -327,7 +327,10 @@ class OpenAIAgentCore:
 
         # Enter MCP server async contexts
         for server in self._mcp_servers:
-            await self._mcp_stack.enter_async_context(server)
+            # The SDK implements __aenter__/__aexit__ without return annotations,
+            # so its published type does not satisfy the protocol statically.
+            context_manager = cast("AbstractAsyncContextManager[MCPServer]", server)
+            await self._mcp_stack.enter_async_context(context_manager)
 
         # Build system instructions
         instructions = (
@@ -385,17 +388,20 @@ class OpenAIAgentCore:
             else self._make_agent(model)
         )
 
-        kwargs: dict[str, object] = {
-            "previous_response_id": self._previous_response_id,
-            "auto_previous_response_id": True,
-        }
+        run_config = None
         if metadata := _metadata_as_strings(self.config.extra.get("metadata")):
-            kwargs["run_config"] = RunConfig(
+            run_config = RunConfig(
                 model_settings=ModelSettings(metadata=metadata),
                 trace_metadata=metadata,
             )
 
-        result = Runner.run_streamed(agent, input=prompt, **kwargs)
+        result = Runner.run_streamed(
+            agent,
+            input=prompt,
+            run_config=run_config,
+            previous_response_id=self._previous_response_id,
+            auto_previous_response_id=True,
+        )
 
         async for event in result.stream_events():
             agent_event: AgentEvent | None = None

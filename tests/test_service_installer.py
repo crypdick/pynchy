@@ -387,6 +387,7 @@ class TestInstallSystemdService:
         content = unit_file.read_text()
         assert "Description=Pynchy personal assistant" in content
         assert f"WorkingDirectory={tmp_path}" in content
+        assert "ExecStartPre=/usr/local/bin/uv tool run prek install" in content
         assert "ExecStart=/usr/local/bin/uv run pynchy" in content
         assert "Restart=always" in content
         assert "RestartSec=10" in content

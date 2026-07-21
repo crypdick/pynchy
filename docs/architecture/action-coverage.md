@@ -182,7 +182,7 @@ uv run pytest --action-coverage
 ```
 
 The repository gate fails when a built-in action has no marked test or when a
-test uses an unknown built-in action ID. Pre-commit runs the same command.
+test uses an unknown built-in action ID. Prek runs the same command.
 Third-party packages must apply the same `assess_hermetic_coverage` contract to
 their contributed specifications in their own CI. Mark tests that prove the
 action's behavior; do not add a marker to a test that only checks tool

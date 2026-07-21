@@ -524,7 +524,7 @@ def is_test_file(file_path: Path) -> bool:
 
 
 def main(argv: list[str]) -> int:
-    """Run the private test-boundary check for the pre-commit filenames."""
+    """Run the private test-boundary check for filenames supplied by prek."""
     parser = argparse.ArgumentParser(
         description="Forbid tests crossing private first-party boundaries"
     )

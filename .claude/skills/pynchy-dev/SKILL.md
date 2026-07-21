@@ -1,6 +1,6 @@
 ---
 name: Pynchy Development
-description: Use when running pynchy locally — running the app, tests, linting, formatting, pre-commit hooks, or rebuilding the agent container. Also use when determining whether you're on the live Pynchy host or a local machine, and for debugging agent behavior-- session transcript branching, inspecting message history and agent traces in SQLite, pytest hangs, or diagnosing known codebase issues.
+description: Use when running pynchy locally — running the app, tests, linting, formatting, prek hooks, or rebuilding the agent container. Also use when determining whether you're on the live Pynchy host or a local machine, and for debugging agent behavior-- session transcript branching, inspecting message history and agent traces in SQLite, pytest hangs, or diagnosing known codebase issues.
 ---
 
 # Pynchy Development
@@ -18,7 +18,7 @@ uv run pynchy            # Run the app
 uv run pytest tests/     # Run tests
 uv run ruff check --fix src/  # Lint + autofix
 uv run ruff format src/       # Format
-uvx pre-commit run --all-files  # Run all pre-commit hooks
+uvx prek run --all-files  # Run all repository hooks
 ./src/pynchy/agent/build.sh     # Rebuild agent container
 ```
 

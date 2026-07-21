@@ -17,6 +17,12 @@ if TYPE_CHECKING:
 SdkMapping = dict[str, object]
 ToolPayload = object
 
+
+def _nonempty_string(value: object) -> str | None:
+    """Return a non-empty string or None for an untyped SDK value."""
+    return value if isinstance(value, str) and value else None
+
+
 # ---------------------------------------------------------------------------
 # SDK object normalization
 # ---------------------------------------------------------------------------
@@ -135,7 +141,9 @@ def extract_tool_call(item: object) -> tuple[str, ToolPayload]:
 
     # Type-specific extraction based on raw_type
     raw_map = _as_mapping(raw)
-    raw_type: str | None = (raw_map.get("type") if raw_map else None) or getattr(raw, "type", None)
+    raw_type = _nonempty_string(raw_map.get("type") if raw_map else None) or _nonempty_string(
+        getattr(raw, "type", None)
+    )
 
     tool_name, tool_input = _extract_by_raw_type(raw_type, raw, raw_map, tool_name, tool_input)
 
@@ -167,7 +175,7 @@ def extract_tool_result(item: object) -> tuple[str, str]:
         or raw_map.get("id")
         or ""
     )
-    return tool_result_id, str(output) if output else ""
+    return str(tool_result_id) if tool_result_id else "", str(output) if output else ""
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +234,8 @@ def _extract_function_or_mcp_call(
     tool_input: ToolPayload,
 ) -> tuple[str | None, ToolPayload]:
     if tool_name in _UNKNOWN_NAMES:
-        tool_name = (raw_map.get("name") if raw_map and raw_map.get("name") else None) or getattr(
-            raw, "name", None
+        tool_name = _nonempty_string(raw_map.get("name") if raw_map else None) or _nonempty_string(
+            getattr(raw, "name", None)
         )
     if tool_input is None and raw_map:
         tool_input = raw_map.get("arguments") or raw_map.get("input")
@@ -347,7 +355,7 @@ def _guess_from_type_name(raw: object, raw_type: str | None) -> str:
         return "apply_patch"
     if "search" in raw_type_name:
         return "web_search"
-    return raw_type or getattr(raw, "type", None) or "unknown_tool"
+    return raw_type or _nonempty_string(getattr(raw, "type", None)) or "unknown_tool"
 
 
 def _guess_from_input(tool_input: ToolPayload) -> str:

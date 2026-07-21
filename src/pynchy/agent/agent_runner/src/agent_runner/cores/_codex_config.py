@@ -58,6 +58,13 @@ def _append_mapping_table(lines: list[str], name: str, values: dict[str, object]
         lines.append(f"{_toml_key(str(key))} = {_toml_value(str(value))}")
 
 
+def _mapping_value(value: object) -> dict[str, object] | None:
+    """Parse an untyped MCP field into the string-keyed mapping shape we emit."""
+    if not isinstance(value, dict):
+        return None
+    return {str(key): nested_value for key, nested_value in value.items()}
+
+
 def _mcp_server_lines(name: str, spec: dict[str, object]) -> list[str]:
     """Render one Pynchy MCP server spec as Codex ``config.toml``."""
     server = f"mcp_servers.{_toml_key(name)}"
@@ -83,11 +90,17 @@ def _mcp_server_lines(name: str, spec: dict[str, object]) -> list[str]:
     if spec.get("auth_value_env") and spec.get("bearer_token_env_var") is None:
         lines.append(f"bearer_token_env_var = {_toml_value(spec['auth_value_env'])}")
 
-    _append_mapping_table(lines, f"{server}.env", spec.get("env"))
+    _append_mapping_table(lines, f"{server}.env", _mapping_value(spec.get("env")))
     _append_mapping_table(
-        lines, f"{server}.http_headers", spec.get("http_headers") or spec.get("headers")
+        lines,
+        f"{server}.http_headers",
+        _mapping_value(spec.get("http_headers") or spec.get("headers")),
     )
-    _append_mapping_table(lines, f"{server}.env_http_headers", spec.get("env_http_headers"))
+    _append_mapping_table(
+        lines,
+        f"{server}.env_http_headers",
+        _mapping_value(spec.get("env_http_headers")),
+    )
 
     return lines
 

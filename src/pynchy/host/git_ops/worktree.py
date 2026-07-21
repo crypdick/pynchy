@@ -15,7 +15,7 @@ Merge and push operations live in ``_worktree_merge.py``.
 from __future__ import annotations
 
 import shutil
-import subprocess  # noqa: S404, RUF100 - worktree helper uses fixed no-shell uv/pre-commit argv.
+import subprocess  # noqa: S404, RUF100 - worktree helper uses fixed no-shell hook-runner argv.
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves worktree signatures at runtime.
 )
@@ -196,20 +196,31 @@ def _create_new_worktree(
     return WorktreeResult(path=worktree_path)
 
 
-def install_pre_commit_hooks(repo_root: Path) -> None:
-    """Ensure pre-commit hooks are installed in the repo's .git/hooks/.
+def install_repo_hooks(repo_root: Path) -> None:
+    """Install the repository's declared hook runner into its shared Git directory.
 
-    Git worktrees share hooks from the main repo, so installing once covers
-    all agent workspaces. The generated hook script falls back to ``pre-commit``
-    on PATH when the configured venv isn't available (e.g. inside containers).
+    Git worktrees share hooks from the main repository, so one installation
+    covers every agent workspace. Prefer native ``prek.toml`` when present;
+    support pre-commit configuration for repositories Pynchy does not control.
     """
-    config = repo_root / ".pre-commit-config.yaml"
-    if not config.exists():
+    runner = next(
+        (
+            candidate_runner
+            for config_name, candidate_runner in (
+                ("prek.toml", "prek"),
+                (".pre-commit-config.yaml", "pre-commit"),
+                (".pre-commit-config.yml", "pre-commit"),
+            )
+            if (repo_root / config_name).exists()
+        ),
+        None,
+    )
+    if runner is None:
         return
 
     try:
-        result = subprocess.run(
-            ["uv", "run", "pre-commit", "install"],  # noqa: S607, RUF100 - uv is the trusted project tool runner and argv is fixed.
+        result = subprocess.run(  # noqa: S603, RUF100 - runner comes from the fixed config-to-runner table above.
+            ["uv", "tool", "run", runner, "install"],  # noqa: S607, RUF100 - uv is the trusted tool runner.
             cwd=str(repo_root),
             capture_output=True,
             text=True,
@@ -217,17 +228,19 @@ def install_pre_commit_hooks(repo_root: Path) -> None:
             check=False,
         )
         if result.returncode == 0:
-            logger.info("Pre-commit hooks installed", repo=str(repo_root))
+            logger.info("Repository hooks installed", repo=str(repo_root), runner=runner)
         else:
             logger.warning(
-                "pre-commit install failed (workspace unaffected)",
+                "Repository hook install failed (workspace unaffected)",
                 repo=str(repo_root),
+                runner=runner,
                 stderr=result.stderr.strip(),
             )
     except (OSError, subprocess.SubprocessError) as exc:
         logger.warning(
-            "pre-commit install error (workspace unaffected)",
+            "Repository hook install error (workspace unaffected)",
             repo=str(repo_root),
+            runner=runner,
             err=str(exc),
         )
 
@@ -361,7 +374,7 @@ def _prepare_repo_for_startup(
         return False
 
     run_git("worktree", "prune", cwd=repo_ctx.root)
-    install_pre_commit_hooks(repo_ctx.root)
+    install_repo_hooks(repo_ctx.root)
     if repo_ctx.root.resolve() == project_root.resolve():
         _migrate_old_worktrees(repo_ctx, old_base)
     return True

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit hook to enforce timeless comments.
+"""Prek hook to enforce timeless comments.
 
 Philosophy: Comments should describe *what* code does and *why*, not narrate
 repository history. Temporal language that centers chronology instead of
