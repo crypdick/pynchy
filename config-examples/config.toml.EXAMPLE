@@ -455,6 +455,7 @@
 # from the mount-allowlist.toml file.
 
 # [security]
+# cop_model = "gpt-5.3-codex-spark" # Optional dedicated LiteLLM route for Cop inspection
 # blocked_patterns = [".ssh", ".gnupg", ".gpg", ".aws", ...]
 
 # ─────────────────────────────────────────────────────────────────────────────
