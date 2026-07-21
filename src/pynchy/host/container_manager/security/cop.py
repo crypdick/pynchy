@@ -425,7 +425,7 @@ async def _request_inspection(
         raise CopUnavailableError("No gateway available")
 
     settings = get_settings()
-    model = settings.agent.model or _DEFAULT_COP_MODEL
+    model = settings.security.cop_model or settings.agent.model or _DEFAULT_COP_MODEL
     url = f"http://localhost:{gateway.port}/v1/messages"
     headers = {
         "x-api-key": gateway.key,

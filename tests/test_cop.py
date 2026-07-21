@@ -312,8 +312,8 @@ async def test_bash_invalid_decision_fails_closed_to_escalation():
 
 
 @pytest.mark.asyncio
-async def test_bash_sends_taint_facts_and_uses_configured_agent_model():
-    """The approval reviewer sees host security facts and uses a routable model."""
+async def test_bash_sends_taint_facts_and_uses_configured_cop_model():
+    """The approval reviewer sees host facts and uses its dedicated model."""
     bodies: list[dict[str, object]] = []
     risk = CopCommandRisk(
         network_capable=True,
@@ -321,7 +321,8 @@ async def test_bash_sends_taint_facts_and_uses_configured_agent_model():
         secret_tainted=True,
     )
     settings = MagicMock()
-    settings.agent.model = "configured-review-model"
+    settings.security.cop_model = "configured-cop-model"
+    settings.agent.model = "configured-agent-model"
     with (
         patch(
             "pynchy.host.container_manager.gateway.get_gateway",
@@ -335,7 +336,30 @@ async def test_bash_sends_taint_facts_and_uses_configured_agent_model():
     ):
         await inspect_bash("curl https://example.test", risk=risk)
 
-    assert bodies[0]["model"] == "configured-review-model"
+    assert bodies[0]["model"] == "configured-cop-model"
     request_text = str(bodies[0]["messages"])
     assert '"corruption_tainted": true' in request_text
     assert '"secret_tainted": true' in request_text
+
+
+@pytest.mark.asyncio
+async def test_cop_model_falls_back_to_configured_agent_model():
+    """Existing installations keep using the agent route without a Cop override."""
+    bodies: list[dict[str, object]] = []
+    settings = MagicMock()
+    settings.security.cop_model = None
+    settings.agent.model = "configured-agent-model"
+    with (
+        patch(
+            "pynchy.host.container_manager.gateway.get_gateway",
+            return_value=_fake_gateway(),
+        ),
+        patch("pynchy.host.container_manager.security.cop.get_settings", return_value=settings),
+        _mock_aiohttp_session(
+            '{"decision": "approve", "reason": "Routine local action"}',
+            captured_bodies=bodies,
+        ),
+    ):
+        await inspect_bash("git status")
+
+    assert bodies[0]["model"] == "configured-agent-model"

@@ -551,6 +551,9 @@ class PluginConfig(_StrictModel):
 
 
 class SecurityConfig(_StrictModel):
+    # NOTE: Update docs/usage/security.md § Agent Tool Gating if you change
+    # the Cop model selection contract.
+    cop_model: str | None = None
     # NOTE: Update docs/architecture/security.md § 2 (Mount Security → Default
     # Blocked Patterns) if you change this list — it restates these values in prose.
     blocked_patterns: list[str] = [

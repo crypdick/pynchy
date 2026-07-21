@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pynchy.config.jobs import JobConfig
-from pynchy.config.models import AgentConfig
+from pynchy.config.models import AgentConfig, SecurityConfig
 from pynchy.config.settings import validate_settings_mapping
 
 
@@ -38,3 +38,10 @@ class TestExplicitFieldValidation:
         )
 
         assert settings.agent == AgentConfig(default_core="openai")
+
+    def test_accepts_dedicated_cop_model(self) -> None:
+        settings = validate_settings_mapping(
+            {"security": {"cop_model": "gpt-5.3-codex-spark"}},
+        )
+
+        assert settings.security == SecurityConfig(cop_model="gpt-5.3-codex-spark")

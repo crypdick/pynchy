@@ -260,7 +260,18 @@ that exact command and does not grant future commands. If the Cop fails, returns
 an invalid verdict, or cannot load bounded intent context, Pynchy asks you
 instead.
 
-No config needed — the agent tool gate is always active. For technical details, see [Agent Tool Security Gate](../architecture/security.md#5b-agent-tool-security-gate).
+The agent tool gate stays active without configuration. To route Cop inspections
+through a separate low-latency model, configure a model name exposed by your
+LiteLLM gateway:
+
+```toml
+[security]
+cop_model = "gpt-5.3-codex-spark"
+```
+
+Without `cop_model`, the Cop uses `[agent].model`, then its built-in fallback
+when the agent model is unset. For technical details, see [Agent Tool Security
+Gate](../architecture/security.md#5b-agent-tool-security-gate).
 
 ## Host-Mutating Operations
 
