@@ -20,11 +20,17 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
     sync_conversation_control_state,
+)
+from pynchy.host.orchestrator.workspace_config import (
+    RuntimeWorkspaceRestriction,
+    register_runtime_workspace_restriction,
+    unregister_runtime_workspace_restriction,
 )
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
@@ -39,6 +45,7 @@ from pynchy.state import (
     get_conversation_control_binding,
     list_idle_conversation_ids,
     list_pending_conversation_ids,
+    list_route_conversation_ids,
     release_conversation_delivery_claim,
 )
 from pynchy.types import (
@@ -77,6 +84,11 @@ class WebhookConversationDispatcher:
     deps: ConversationWebhookDeps
     routes: tuple[WebhookRoute, ...]
     owner: object = field(default_factory=object)
+    _runtime_workspace_folders: set[str] = field(
+        default_factory=set,
+        compare=False,
+        repr=False,
+    )
 
     async def start(self) -> None:
         """Register completion wakes and recover pending deliveries."""
@@ -85,6 +97,8 @@ class WebhookConversationDispatcher:
         for route in self.routes:
             provider = ExternalProvider(route.provider)
             route_id = ExternalRoute(route.name)
+            for conversation_id in await list_route_conversation_ids(provider, route_id):
+                await self._restore_runtime_workspace_policy(conversation_id)
             for conversation_id in await list_idle_conversation_ids(provider, route_id):
                 await self._sync_control_state(route, conversation_id)
             pending = await list_pending_conversation_ids(
@@ -98,6 +112,9 @@ class WebhookConversationDispatcher:
         """Remove this HTTP runtime's process-local completion callbacks."""
         for provider in {route.provider for route in self.routes}:
             unregister_conversation_delivery_waker(provider, self.owner)
+        for folder in self._runtime_workspace_folders:
+            unregister_runtime_workspace_restriction(folder)
+        self._runtime_workspace_folders.clear()
 
     async def admit(
         self,
@@ -203,6 +220,11 @@ class WebhookConversationDispatcher:
         )
         if placement is None:
             raise RuntimeError("Routed webhook conversation lost its workspace placement")
+        self._register_runtime_workspace_policy(
+            conversation.id,
+            conversation.workspace,
+            placement.owner.folder,
+        )
         binding = await get_conversation_control_binding(conversation.id)
         title = binding.title if binding is not None else proposed_title
         closed = (
@@ -246,3 +268,41 @@ class WebhookConversationDispatcher:
                 "conversation_claim_id": claim_id,
             },
         )
+
+    async def _restore_runtime_workspace_policy(
+        self,
+        conversation_id: ConversationId,
+    ) -> None:
+        """Restore fail-closed generated policy before interrupted-turn recovery."""
+        conversation = await get_conversation(conversation_id)
+        if conversation is None:
+            raise RuntimeError("Routed webhook delivery references a missing conversation")
+        placement = resolve_workspace_placement(
+            self.deps.workspaces().values(),
+            conversation.workspace,
+        )
+        if placement is None:
+            logger.warning(
+                "Routed webhook conversation lost its workspace policy",
+                conversation_id=conversation_id,
+                workspace=conversation.workspace,
+            )
+            return
+        self._register_runtime_workspace_policy(
+            conversation.id,
+            conversation.workspace,
+            placement.owner.folder,
+        )
+
+    def _register_runtime_workspace_policy(
+        self,
+        conversation_id: ConversationId,
+        workspace: GroupFolder,
+        policy_owner: str,
+    ) -> None:
+        folder = routed_conversation_folder(workspace, conversation_id)
+        register_runtime_workspace_restriction(
+            folder,
+            RuntimeWorkspaceRestriction(parent_workspace=policy_owner),
+        )
+        self._runtime_workspace_folders.add(folder)

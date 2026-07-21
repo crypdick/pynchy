@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from conftest import make_settings
 from linear_webhook_test_support import (
     DELIVERY_ID,
     SIGNING_KEY,
@@ -19,18 +20,24 @@ from linear_webhook_test_support import (
     webhook_route,
 )
 
+from pynchy.config import WorkspaceConfig
+from pynchy.config.models import ProfileConfig
 from pynchy.conversation.models import (
+    ConversationClaimId,
     ExternalDeliveryId,
     ExternalDeliveryIdentity,
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.plugins.integrations.linear_webhooks import parse_linear_webhook
 from pynchy.state import (
     WebhookReceipt,
     admit_conversation_delivery,
     admit_webhook_receipt,
+    claim_next_conversation_delivery,
     init_test_database,
 )
 from pynchy.types import GroupFolder
@@ -91,6 +98,14 @@ async def test_http_startup_wakes_pending_linear_conversation_delivery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
+    settings = make_settings(
+        profiles={"project": ProfileConfig(repo="owner/project")},
+        workspaces={"project": WorkspaceConfig(profiles=["project"])},
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.workspace_config.get_settings",
+        lambda: settings,
+    )
     now = datetime.now(UTC)
     body = payload(now=now)
     raw_body, headers = signed_request(body)
@@ -126,12 +141,76 @@ async def test_http_startup_wakes_pending_linear_conversation_delivery(
         webhook_routes=(webhook_route(),),
     )
     client = TestClient(TestServer(app))
+    folder = routed_conversation_folder("project", admission.conversation.id)
     await client.start_server()
     try:
         assert len(harness.ingested) == 1
+        resolved = load_resolved_config(folder)
+        assert resolved is not None
+        assert resolved.repo == ["owner/project"]
     finally:
         await client.close()
 
     message = harness.ingested[0]
     assert message.metadata["conversation_id"] == admission.conversation.id
     assert message.metadata["conversation_claim_id"]
+    assert load_resolved_config(folder) is None
+
+
+async def test_http_startup_restores_parent_policy_for_claimed_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
+    settings = make_settings(
+        profiles={"project": ProfileConfig(repo="owner/project")},
+        workspaces={"project": WorkspaceConfig(profiles=["project"])},
+    )
+    monkeypatch.setattr(
+        "pynchy.host.orchestrator.workspace_config.get_settings",
+        lambda: settings,
+    )
+    now = datetime.now(UTC)
+    body = payload(now=now)
+    raw_body, headers = signed_request(body)
+    event = parse_linear_webhook(
+        raw_body,
+        headers,
+        SIGNING_KEY,
+        now,
+        config=route_config(),
+    )
+    assert event.conversation is not None
+    await admit_webhook_receipt(_receipt(raw_body, now), None)
+    admission = await admit_conversation_delivery(
+        ExternalDeliveryIdentity(
+            provider=ExternalProvider("linear"),
+            route=ExternalRoute("project"),
+            delivery_id=ExternalDeliveryId(DELIVERY_ID),
+        ),
+        event.conversation.subject,
+        GroupFolder("project"),
+    )
+    assert await claim_next_conversation_delivery(
+        admission.conversation.id,
+        ConversationClaimId("surviving-claim"),
+    )
+    harness = LinearWebhookHarness()
+    await harness.persist_parent()
+    app = create_http_app(
+        harness,
+        runtime=public_runtime(),
+        webhook_routes=(webhook_route(),),
+    )
+    client = TestClient(TestServer(app))
+    folder = routed_conversation_folder("project", admission.conversation.id)
+
+    await client.start_server()
+    try:
+        resolved = load_resolved_config(folder)
+        assert resolved is not None
+        assert resolved.repo == ["owner/project"]
+        assert harness.ingested == []
+    finally:
+        await client.close()
+
+    assert load_resolved_config(folder) is None
