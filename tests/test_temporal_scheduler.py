@@ -1485,3 +1485,37 @@ class TestTemporalSchedulerRuntime:
             await env.shutdown()
 
         assert attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_config_host_job_failure_does_not_retry_side_effects(self):
+        """A config host command may retry only at its next schedule instant."""
+        attempts = 0
+        task_queue = f"pynchy-temporal-test-{uuid4()}"
+
+        @activity.defn(name="run_config_host_cron_job")
+        async def fail_host_job(_job_name: str) -> str:
+            nonlocal attempts
+            attempts += 1
+            await asyncio.sleep(0)
+            raise RuntimeError("expected command failure")
+
+        env = await WorkflowEnvironment.start_time_skipping()
+        try:
+            async with Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[temporal_workflows.ConfigHostCronWorkflow],
+                activities=[fail_host_job],
+                workflow_runner=temporal_scheduler.scheduler_workflow_runner(),
+            ):
+                with pytest.raises(WorkflowFailureError):
+                    await env.client.execute_workflow(
+                        temporal_workflows.ConfigHostCronWorkflow.run,
+                        "backup-db",
+                        id=f"pynchy-temporal-test-{uuid4()}",
+                        task_queue=task_queue,
+                    )
+        finally:
+            await env.shutdown()
+
+        assert attempts == 1
