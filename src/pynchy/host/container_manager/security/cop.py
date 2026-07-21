@@ -435,7 +435,9 @@ async def _request_inspection(
     body = {
         "model": model,
         "max_tokens": 200,
-        "temperature": 0.0,
+        # GPT-5 Codex routes reject non-default temperature values. Keeping
+        # this request provider-neutral lets LiteLLM apply each model's valid
+        # default instead of turning a security review into a degraded verdict.
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_content}],
     }
