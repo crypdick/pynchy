@@ -63,8 +63,12 @@ class SecurityPolicy:
     def secret_tainted(self) -> bool:
         return self._secret_tainted
 
-    def _get_trust(self, service: str) -> ServiceTrustConfig:
-        return self._services.get(service, _UNKNOWN_SERVICE)
+    def _get_trust(
+        self,
+        service: str,
+        default_trust: ServiceTrustConfig | None = None,
+    ) -> ServiceTrustConfig:
+        return self._services.get(service, default_trust or _UNKNOWN_SERVICE)
 
     def notify_file_access(self, *, credential_access: bool = False) -> None:
         """Called when the agent uses file-access tools (Read, Execute, Bash).
@@ -84,7 +88,11 @@ class SecurityPolicy:
         """Mark input itself as private data, independent of workspace files."""
         self._secret_tainted = True
 
-    def evaluate_read(self, service: str) -> PolicyDecision:
+    def evaluate_read(
+        self,
+        service: str,
+        default_trust: ServiceTrustConfig | None = None,
+    ) -> PolicyDecision:
         """Evaluate a read operation on a service.
 
         - forbidden -> blocked
@@ -92,7 +100,7 @@ class SecurityPolicy:
         - public_source=False -> no gating
         - secret_data=True -> secret taint set (always, on any read)
         """
-        trust = self._get_trust(service)
+        trust = self._get_trust(service, default_trust)
 
         if trust.public_source == "forbidden":
             return PolicyDecision(
@@ -144,14 +152,19 @@ class SecurityPolicy:
             needs_human=True,
         )
 
-    def evaluate_write(self, service: str, data: dict[str, Any]) -> PolicyDecision:
+    def evaluate_write(
+        self,
+        service: str,
+        data: dict[str, Any],
+        default_trust: ServiceTrustConfig | None = None,
+    ) -> PolicyDecision:
         """Evaluate a write operation on a service.
 
         Checks forbidden first, then derives gating from the matrix:
         - Cop: corruption_tainted (any write by potentially-hijacked agent)
         - Human: dangerous_writes=True OR (corruption + secret + public_sink)
         """
-        trust = self._get_trust(service)
+        trust = self._get_trust(service, default_trust)
         forbidden = self._forbidden_write_decision(service, trust)
         if forbidden is not None:
             return forbidden

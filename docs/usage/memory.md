@@ -60,6 +60,11 @@ When a session compacts (context gets too long), the agent archives the conversa
 
 The default backend uses **SQLite with FTS5 full-text search**.
 
+These tools operate on the workspace's isolated local store, so reads, saves,
+and deletions do not request automatic human approval. An operator can still
+set `memory.*` or an individual memory capability to `needs_human` or `deny` in
+the workspace profile.
+
 ### How Search Works
 
 `recall_memories` uses a two-tier strategy:

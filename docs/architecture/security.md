@@ -153,14 +153,22 @@ from service trust but cannot override a `"forbidden"` service property. A
 missing capability rule remains neutral. Approved replay also rechecks denial
 and descriptor availability.
 
-Each host-action plugin declares an approval scope in its `ApprovalContract`
-for requests whose resolved policy still requires a person. The default
-`exact_request` scope approves only the pending request, which suits one-shot
-effects such as sending one email. An opted-in `session_tool` scope grants that
-tool on the active container invocation's `SecurityGate`, which suits
-multi-step tools such as computer use. A session grant disappears when the
-container invocation ends, does not cover another tool, and cannot override a
-policy denial added before or after approval.
+Each host-action plugin declares an approval trigger and scope in its
+`ApprovalContract`. The default `service_policy` trigger combines capability
+rules with service trust. `capability_only` is reserved for bounded,
+workspace-local state: it suppresses automatic human gates from service trust
+and payload scanning, while explicit capability `needs_human` and `deny` rules,
+service prohibitions, and Cop review remain authoritative. `always` requires a
+person even when the other policies would allow the request.
+
+The default `exact_request` scope approves only the pending request, which
+suits one-shot effects such as sending one email. An opted-in `session_tool`
+scope grants that tool on the active container invocation's `SecurityGate`,
+which suits multi-step tools such as computer use. A session grant disappears
+when the container invocation ends, does not cover another tool, and cannot
+override a policy denial added before or after approval. A descriptor can also
+declare fallback service trust for a built-in provider; workspace configuration
+with the same service name takes precedence.
 
 Policy, approval, and terminal execution events use the existing security
 audit sink. Descriptor-backed events include `capability_id`, `action_ids`,
@@ -191,9 +199,9 @@ are not parsed from an external message body, even on a trusted route.
 An operator can still approve or deny a pending action in the same Discord
 control thread while the routed agent turn is active. The host executes that
 control message but excludes it from agent input. Lifecycle controls that would
-replace context run after the active turn commits. Matrix writes have a
-mandatory exact-request approval even when other service policy would allow the
-call. The approved replay must still match the conversation control binding,
+replace context run after the active turn commits. Matrix writes use the
+`always` trigger with exact-request scope even when other service policy would
+allow the call. The approved replay must still match the conversation control binding,
 unexpired action payload, current effective workspace policy, and live route
 portal.
 

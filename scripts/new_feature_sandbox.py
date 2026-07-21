@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compatibility entry point for a new-feature deterministic runtime."""
+"""Compatibility entry point for the deterministic runtime harness."""
 
 from __future__ import annotations
 

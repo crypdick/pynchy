@@ -14,7 +14,12 @@ from typing import Any
 
 import pynchy.config as pynchy_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.capabilities import ApprovalMode, HostActionAccess, HostActionDescriptor
+from pynchy.capabilities import (
+    ApprovalMode,
+    ApprovalTrigger,
+    HostActionAccess,
+    HostActionDescriptor,
+)
 from pynchy.config import Settings  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
 from pynchy.config.merge import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
     ResolvedWorkspaceConfig,
@@ -39,13 +44,22 @@ class SecurityGate:
         """Access the underlying SecurityPolicy (for taint inspection)."""
         return self._policy
 
-    def evaluate_read(self, service: str) -> PolicyDecision:
+    def evaluate_read(
+        self,
+        service: str,
+        default_trust: ServiceTrustConfig | None = None,
+    ) -> PolicyDecision:
         """Evaluate a read operation. Delegates to SecurityPolicy."""
-        return self._policy.evaluate_read(service)
+        return self._policy.evaluate_read(service, default_trust)
 
-    def evaluate_write(self, service: str, data: dict[str, Any]) -> PolicyDecision:
+    def evaluate_write(
+        self,
+        service: str,
+        data: dict[str, Any],
+        default_trust: ServiceTrustConfig | None = None,
+    ) -> PolicyDecision:
         """Evaluate a write operation. Delegates to SecurityPolicy."""
-        return self._policy.evaluate_write(service, data)
+        return self._policy.evaluate_write(service, data, default_trust)
 
     def evaluate_capability(self, capability: str) -> PolicyDecision:
         """Evaluate an explicit semantic capability."""
@@ -84,15 +98,20 @@ def evaluate_host_action_policy(
     if not capability.allowed:
         return capability
     service = (
-        gate.evaluate_read(action.service_name)
+        gate.evaluate_read(action.service_name, action.default_service_trust)
         if action.access is HostActionAccess.READ
-        else gate.evaluate_write(action.service_name, data)
+        else gate.evaluate_write(action.service_name, data, action.default_service_trust)
     )
     tool_name = str(action.tool_name)
+    trigger = action.approval.trigger
     needs_human = (
         capability.needs_human
-        or (service.needs_human and not capability.overrides_human_approval)
-        or action.approval.mandatory
+        or trigger is ApprovalTrigger.ALWAYS
+        or (
+            trigger is ApprovalTrigger.SERVICE_POLICY
+            and service.needs_human
+            and not capability.overrides_human_approval
+        )
     )
     approval_granted = (
         service.allowed
@@ -101,9 +120,15 @@ def evaluate_host_action_policy(
         and gate.has_session_tool_approval(tool_name)
     )
     reasons = [reason for reason in (capability.reason, service.reason) if reason]
-    if capability.overrides_human_approval and service.needs_human:
+    if (
+        trigger is ApprovalTrigger.SERVICE_POLICY
+        and capability.overrides_human_approval
+        and service.needs_human
+    ):
         reasons.append("Human approval suppressed by explicit capability allow")
-    if action.approval.mandatory:
+    if trigger is ApprovalTrigger.CAPABILITY_ONLY and service.needs_human:
+        reasons.append("Automatic service approval suppressed by host-action contract")
+    if trigger is ApprovalTrigger.ALWAYS:
         reasons.append("Host action requires exact human approval")
     if approval_granted:
         reasons.append(f"Session approval active for tool '{tool_name}'")

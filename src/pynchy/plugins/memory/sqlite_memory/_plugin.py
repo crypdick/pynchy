@@ -10,6 +10,7 @@ import pluggy
 from pynchy.actions import ActionId
 from pynchy.capabilities import (
     ApprovalContract,
+    ApprovalTrigger,
     AuditContract,
     CapabilityDescriptor,
     CapabilityId,
@@ -23,6 +24,7 @@ from pynchy.capabilities import (
     IdempotencyMode,
 )
 from pynchy.logger import logger
+from pynchy.types import ServiceTrustConfig
 
 from .backend import SqliteMemoryBackend
 
@@ -32,6 +34,12 @@ hookimpl = pluggy.HookimplMarker("pynchy")
 type _ActionDefinition = tuple[str, str, str, HostActionAccess, HostActionHandler]
 _DEFAULT_CATEGORY = "core"
 _DEFAULT_LIMIT = 5
+_MEMORY_TRUST = ServiceTrustConfig(
+    public_source=False,
+    secret_data=True,
+    public_sink=False,
+    dangerous_writes=False,
+)
 
 
 @cache
@@ -172,13 +180,15 @@ def _memory_action(definition: _ActionDefinition) -> HostActionDescriptor:
         tool_name=HostToolName(tool_name),
         handler=handler,
         access=access,
-        approval=ApprovalContract(),
+        approval=ApprovalContract(trigger=ApprovalTrigger.CAPABILITY_ONLY),
         idempotency=IdempotencyContract(
             IdempotencyMode.NOT_REQUIRED
             if access is HostActionAccess.READ
             else IdempotencyMode.IPC_REQUEST_ID
         ),
         audit=AuditContract(),
+        policy_service="sqlite-memory",
+        default_service_trust=_MEMORY_TRUST,
     )
 
 

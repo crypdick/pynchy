@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pytest
 from conftest import make_settings
 
-from pynchy.capabilities import HostActionAccess
+from pynchy.capabilities import ApprovalTrigger, HostActionAccess
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.conversation.models import ConversationId
 from pynchy.plugins import get_plugin_manager
@@ -290,7 +290,7 @@ def test_plugin_exposes_only_route_scoped_tools_and_write_is_mandatory_approval(
     send = registration.action_for("matrix_route_send")
     assert send is not None
     assert send.access is HostActionAccess.WRITE
-    assert send.approval.mandatory is True
+    assert send.approval.trigger is ApprovalTrigger.ALWAYS
     assert isinstance(
         get_plugin_manager().get_plugin("builtin-matrix-gateway"),
         matrix_gateway.MatrixGatewayPlugin,

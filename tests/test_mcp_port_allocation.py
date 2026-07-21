@@ -11,6 +11,7 @@ from conftest import make_settings
 from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.config.settings import validate_settings_mapping
+from pynchy.host.container_manager.docker import HealthCheckRequest
 from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
@@ -190,11 +191,14 @@ class TestDockerLifecycleHelpers:
             "--workspace",
             "research",
         )
-        assert wait_healthy_mock.await_args.args == ("pynchy-mcp-browser", "http://localhost:9100")
-        assert wait_healthy_mock.await_args.kwargs == {
-            "any_non_5xx": True,
-            "health_timeout_seconds": 5.0,
-        }
+        assert wait_healthy_mock.await_args.args == (
+            HealthCheckRequest(
+                container_name="pynchy-mcp-browser",
+                url="http://localhost:9100",
+                any_non_5xx=True,
+                health_timeout_seconds=5.0,
+            ),
+        )
 
     @pytest.mark.asyncio
     async def test_ensure_docker_running_omits_primary_publish_and_falls_back_to_container_url(
@@ -221,13 +225,13 @@ class TestDockerLifecycleHelpers:
             "img",
         )
         assert wait_healthy_mock.await_args.args == (
-            "pynchy-mcp-browser",
-            "http://pynchy-mcp-browser:8000",
+            HealthCheckRequest(
+                container_name="pynchy-mcp-browser",
+                url="http://pynchy-mcp-browser:8000",
+                any_non_5xx=True,
+                health_timeout_seconds=5.0,
+            ),
         )
-        assert wait_healthy_mock.await_args.kwargs == {
-            "any_non_5xx": True,
-            "health_timeout_seconds": 5.0,
-        }
 
     @pytest.mark.asyncio
     async def test_ensure_docker_running_captures_logs_before_removing_unhealthy_container(

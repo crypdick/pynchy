@@ -33,11 +33,12 @@ class TestMemoryProvider:
         """SqliteMemoryPlugin returns all four tool handlers."""
         plugin = SqliteMemoryPlugin()
         result = plugin.pynchy_service_handler()
-        tools = result.handlers
-        assert "save_memory" in tools
-        assert "recall_memories" in tools
-        assert "forget_memory" in tools
-        assert "list_memories" in tools
+        assert {str(action.tool_name) for action in result.actions} == {
+            "save_memory",
+            "recall_memories",
+            "forget_memory",
+            "list_memories",
+        }
 
 
 class TestMcpHandlers:
@@ -54,20 +55,25 @@ class TestMcpHandlers:
         mock.name = "sqlite"
         with patch("pynchy.plugins.memory.sqlite_memory._plugin._get_backend", return_value=mock):
             self.mock_backend = mock
-            self.tools = SqliteMemoryPlugin().pynchy_service_handler().handlers
+            self.registration = SqliteMemoryPlugin().pynchy_service_handler()
             yield
 
+    def _handler(self, tool_name: str):
+        action = self.registration.action_for(tool_name)
+        assert action is not None
+        return action.handler
+
     async def test_save_requires_source_group(self):
-        result = await self.tools["save_memory"]({"key": "k", "content": "c"})
+        result = await self._handler("save_memory")({"key": "k", "content": "c"})
         assert "error" in result
 
     async def test_save_requires_key_and_content(self):
-        result = await self.tools["save_memory"]({"source_group": "g"})
+        result = await self._handler("save_memory")({"source_group": "g"})
         assert "error" in result
 
     async def test_save_delegates_to_backend(self):
         self.mock_backend.save.return_value = {"key": "k", "status": "created"}
-        result = await self.tools["save_memory"](
+        result = await self._handler("save_memory")(
             {
                 "source_group": "g",
                 "key": "k",
@@ -85,16 +91,16 @@ class TestMcpHandlers:
         )
 
     async def test_recall_requires_source_group(self):
-        result = await self.tools["recall_memories"]({"query": "test"})
+        result = await self._handler("recall_memories")({"query": "test"})
         assert "error" in result
 
     async def test_recall_requires_query(self):
-        result = await self.tools["recall_memories"]({"source_group": "g"})
+        result = await self._handler("recall_memories")({"source_group": "g"})
         assert "error" in result
 
     async def test_recall_delegates_to_backend(self):
         self.mock_backend.recall.return_value = [{"key": "k", "content": "c"}]
-        result = await self.tools["recall_memories"](
+        result = await self._handler("recall_memories")(
             {
                 "source_group": "g",
                 "query": "test",
@@ -110,21 +116,21 @@ class TestMcpHandlers:
         )
 
     async def test_forget_requires_source_group(self):
-        result = await self.tools["forget_memory"]({"key": "k"})
+        result = await self._handler("forget_memory")({"key": "k"})
         assert "error" in result
 
     async def test_forget_delegates_to_backend(self):
         self.mock_backend.forget.return_value = {"removed": True}
-        result = await self.tools["forget_memory"]({"source_group": "g", "key": "k"})
+        result = await self._handler("forget_memory")({"source_group": "g", "key": "k"})
         assert result == {"result": {"removed": True}}
 
     async def test_list_requires_source_group(self):
-        result = await self.tools["list_memories"]({})
+        result = await self._handler("list_memories")({})
         assert "error" in result
 
     async def test_list_delegates_to_backend(self):
         self.mock_backend.list_keys.return_value = [{"key": "k1"}]
-        result = await self.tools["list_memories"]({"source_group": "g", "category": "core"})
+        result = await self._handler("list_memories")({"source_group": "g", "category": "core"})
         assert result["result"]["count"] == 1
         self.mock_backend.list_keys.assert_called_once_with(
             group_folder="g",

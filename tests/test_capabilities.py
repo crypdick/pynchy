@@ -11,6 +11,7 @@ import pytest
 from pynchy.actions import ACTION_SPECS, ActionId, ActionSpec, ActionSurface, ActionTransport
 from pynchy.capabilities import (
     ApprovalContract,
+    ApprovalTrigger,
     AuditContract,
     CapabilityCatalogError,
     CapabilityDescriptor,
@@ -33,7 +34,12 @@ from pynchy.plugins.host_actions import get_host_action_catalog
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
 from pynchy.plugins.integrations.matrix_gateway import MATRIX_HOST_ACTIONS
 from pynchy.plugins.memory.sqlite_memory import SqliteMemoryPlugin
-from pynchy.types import WorkspaceSecurity
+from pynchy.types import (
+    CapabilityDecision,
+    CapabilityRule,
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -157,16 +163,79 @@ def test_memory_registration_does_not_gate_reads_as_writes():
     assert catalog.action_for("forget_memory").access is HostActionAccess.WRITE
 
 
-def test_memory_recall_does_not_require_default_write_approval():
+@pytest.mark.parametrize(
+    ("tool_name", "payload"),
+    [
+        (
+            "save_memory",
+            {"key": "k", "content": "AKIAIOSFODNN7EXAMPLE"},  # pragma: allowlist secret
+        ),
+        ("recall_memories", {"query": "project"}),
+        ("forget_memory", {"key": "k"}),
+        ("list_memories", {}),
+    ],
+)
+def test_memory_actions_do_not_require_automatic_human_approval(
+    tool_name: str,
+    payload: dict[str, object],
+):
+    catalog = get_host_action_catalog(_plugin_manager(SqliteMemoryPlugin()))
+    gate = SecurityGate(WorkspaceSecurity())
+    action = catalog.action_for(tool_name)
+
+    assert action is not None
+    assert action.approval.trigger is ApprovalTrigger.CAPABILITY_ONLY
+    assert not evaluate_host_action_policy(action, gate, payload).needs_human
+
+
+def test_memory_recall_uses_declared_private_local_trust() -> None:
     catalog = get_host_action_catalog(_plugin_manager(SqliteMemoryPlugin()))
     gate = SecurityGate(WorkspaceSecurity())
     recall = catalog.action_for("recall_memories")
-    save = catalog.action_for("save_memory")
 
     assert recall is not None
+    decision = evaluate_host_action_policy(recall, gate, {"query": "project"})
+
+    assert not decision.needs_cop
+    assert not gate.policy.corruption_tainted
+    assert gate.policy.secret_tainted
+
+
+@pytest.mark.parametrize("decision", ["needs_human", "deny"])
+def test_explicit_memory_capability_policy_remains_authoritative(
+    decision: CapabilityDecision,
+) -> None:
+    catalog = get_host_action_catalog(_plugin_manager(SqliteMemoryPlugin()))
+    save = catalog.action_for("save_memory")
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            capabilities={"memory.save": CapabilityRule(decision=decision)},
+        )
+    )
+
     assert save is not None
-    assert evaluate_host_action_policy(recall, gate, {"query": "project"}).needs_human is False
-    assert evaluate_host_action_policy(save, gate, {"key": "k", "content": "v"}).needs_human
+    policy = evaluate_host_action_policy(save, gate, {"key": "k", "content": "v"})
+
+    assert policy.allowed is (decision != "deny")
+    assert policy.needs_human is (decision == "needs_human")
+
+
+def test_memory_contract_does_not_override_forbidden_service_policy() -> None:
+    catalog = get_host_action_catalog(_plugin_manager(SqliteMemoryPlugin()))
+    save = catalog.action_for("save_memory")
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            services={
+                "sqlite-memory": ServiceTrustConfig(dangerous_writes="forbidden"),
+            },
+        )
+    )
+
+    assert save is not None
+    policy = evaluate_host_action_policy(save, gate, {"key": "k", "content": "v"})
+
+    assert not policy.allowed
+    assert not policy.needs_human
 
 
 def test_plugin_can_contribute_action_spec_and_typed_host_action():

@@ -16,7 +16,6 @@ from pynchy.config.access import (
 from pynchy.config.models import (
     ChannelOverrideConfig,
     ConnectionChatConfig,
-    ConnectionsConfig,
     OwnerConfig,
     ProfileConfig,
     SlackConnectionConfig,
@@ -372,47 +371,7 @@ class TestChannelOverrideConfig:
             ChannelOverrideConfig(trigger="always")
 
 
-class TestConnectionsConfigGetConnection:
-    def test_slack_lookup(self):
-        slack_bot_env = "SLACK_BOT_ENV"
-        slack_app_env = "SLACK_APP_ENV"
-        connections = ConnectionsConfig(
-            slack={
-                "main": SlackConnectionConfig(
-                    bot_token_env=slack_bot_env,
-                    app_token_env=slack_app_env,
-                )
-            }
-        )
-        result = connections.get_connection("slack", "main")
-        assert isinstance(result, SlackConnectionConfig)
-        assert result.bot_token_env == slack_bot_env
-
-    def test_whatsapp_lookup(self, tmp_path):
-        connections = ConnectionsConfig(
-            whatsapp={"phone1": WhatsAppConnectionConfig(auth_db_path=str(tmp_path / "wa.db"))}
-        )
-        result = connections.get_connection("whatsapp", "phone1")
-        assert isinstance(result, WhatsAppConnectionConfig)
-        assert result.auth_db_path == str(tmp_path / "wa.db")
-
-    def test_unknown_platform_returns_none(self):
-        connections = ConnectionsConfig()
-        assert connections.get_connection("telegram", "main") is None
-
-    def test_unknown_name_returns_none(self):
-        slack_bot_env = "SLACK_BOT_ENV"
-        slack_app_env = "SLACK_APP_ENV"
-        connections = ConnectionsConfig(
-            slack={
-                "main": SlackConnectionConfig(
-                    bot_token_env=slack_bot_env,
-                    app_token_env=slack_app_env,
-                )
-            }
-        )
-        assert connections.get_connection("slack", "other") is None
-
+class TestConnectionConfig:
     def test_connection_chat_config_accepts_security_override(self):
         cfg = ConnectionChatConfig(security=ChannelOverrideConfig(allowed_users=["slack:U04ABC"]))
         assert cfg.security is not None

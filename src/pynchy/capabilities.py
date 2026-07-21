@@ -14,6 +14,9 @@ from enum import StrEnum
 from typing import Any, NewType
 
 from pynchy.actions import ActionId, ActionSpec, ActionTransport
+from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves descriptor annotations at runtime.
+    ServiceTrustConfig,
+)
 
 CapabilityId = NewType("CapabilityId", str)
 HostToolName = NewType("HostToolName", str)
@@ -64,12 +67,6 @@ class ProbeStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-class DescriptorOrigin(StrEnum):
-    """How a descriptor entered the host-action catalog."""
-
-    EXPLICIT = "explicit"
-
-
 class HostActionAccess(StrEnum):
     """Whether a host action reads provider state or can mutate it."""
 
@@ -82,6 +79,14 @@ class ApprovalMode(StrEnum):
 
     EXACT_REQUEST = "exact_request"
     SESSION_TOOL = "session_tool"
+
+
+class ApprovalTrigger(StrEnum):
+    """Policy inputs that can require human approval for a host action."""
+
+    SERVICE_POLICY = "service_policy"
+    CAPABILITY_ONLY = "capability_only"
+    ALWAYS = "always"
 
 
 class IdempotencyMode(StrEnum):
@@ -174,7 +179,6 @@ class CapabilityDescriptor:
     setup_hint: str | None = None
     recovery_hint: str | None = None
     documentation: str | None = None
-    origin: DescriptorOrigin = DescriptorOrigin.EXPLICIT
     probe: CapabilityProbe | None = field(default=None, compare=False, repr=False)
 
     def to_dict(self) -> dict[str, object]:
@@ -188,7 +192,6 @@ class CapabilityDescriptor:
             "setup_hint": self.setup_hint,
             "recovery_hint": self.recovery_hint,
             "documentation": self.documentation,
-            "origin": self.origin.value,
         }
 
 
@@ -197,8 +200,8 @@ class ApprovalContract:
     """How the existing approval state machine holds and replays an action."""
 
     mode: ApprovalMode = ApprovalMode.EXACT_REQUEST
+    trigger: ApprovalTrigger = ApprovalTrigger.SERVICE_POLICY
     expires_after_seconds: int = 300
-    mandatory: bool = False
 
 
 @dataclass(frozen=True)
@@ -228,6 +231,7 @@ class HostActionDescriptor:
     idempotency: IdempotencyContract
     audit: AuditContract
     policy_service: str | None = None
+    default_service_trust: ServiceTrustConfig | None = None
     action_intent: ActionIntentContract | None = None
 
     @property
@@ -247,11 +251,6 @@ class HostActionRegistration:
             (action for action in self.actions if action.tool_name == tool_name),
             None,
         )
-
-    @property
-    def handlers(self) -> dict[str, HostActionHandler]:
-        """Return the registered handlers keyed by host tool name."""
-        return {str(action.tool_name): action.handler for action in self.actions}
 
 
 @dataclass(frozen=True)
@@ -377,22 +376,6 @@ def _action_spec_errors(
                 f"{capability_id}: ActionSpec {action_id} does not expose tool {tool_name}"
             )
     return errors
-
-
-def action_specs_for_host_tool(
-    tool_name: str,
-    action_specs: Iterable[ActionSpec],
-) -> tuple[ActionSpec, ...]:
-    """Return semantic actions whose agent-tool surface exposes ``tool_name``."""
-    return tuple(
-        spec
-        for spec in action_specs
-        if any(
-            surface.transport is ActionTransport.AGENT_TOOL
-            and _surface_matches_tool(surface.name, tool_name)
-            for surface in spec.surfaces
-        )
-    )
 
 
 def _surface_matches_tool(surface_name: str, tool_name: str) -> bool:

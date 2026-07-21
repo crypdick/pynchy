@@ -32,12 +32,15 @@ def pynchy_service_handler(self) -> HostActionRegistration:
 
 `CapabilityDescriptor` owns operator-facing identity, requirements, probes, and
 documentation. `HostActionDescriptor` owns dispatch metadata, approval,
-idempotency, and audit. `ApprovalContract()` grants one approval for an exact
-request; use `ApprovalMode.SESSION_TOOL` only for a multi-step workflow that
-should reuse approval until the session ends.
+idempotency, audit, and optional fallback service trust. `ApprovalContract()`
+uses service policy to decide whether an exact request needs approval. Use
+`ApprovalMode.SESSION_TOOL` only for a multi-step workflow that should reuse
+approval until the session ends. `ApprovalTrigger.CAPABILITY_ONLY` is reserved
+for bounded workspace-local state; explicit capability policy and service
+prohibitions still apply. `ApprovalTrigger.ALWAYS` makes approval unconditional.
 
 The handler runs in the host process through IPC, not inside an agent container.
-Pynchy rechecks capability policy and tool trust at dispatch. New plugins should
+Pynchy rechecks capability policy and tool trust at dispatch. Plugins must
 return `HostActionRegistration`; startup rejects raw handler mappings.
 
 For each new semantic action, also implement [`pynchy_action_specs`](#pynchy_action_specs).

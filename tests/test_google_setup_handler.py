@@ -329,8 +329,9 @@ def _google_setup_tool(monkeypatch: pytest.MonkeyPatch, profile: str):
         return FakeSettings()
 
     monkeypatch.setattr("pynchy.config.get_settings", fake_get_settings)
-    tools = GoogleSetupPlugin().pynchy_service_handler().handlers
-    return tools[f"setup_google_{profile}"]
+    action = GoogleSetupPlugin().pynchy_service_handler().action_for(f"setup_google_{profile}")
+    assert action is not None
+    return action.handler
 
 
 def test_google_setup_registration_has_one_valid_capability_per_profile(
@@ -344,7 +345,7 @@ def test_google_setup_registration_has_one_valid_capability_per_profile(
     registration = GoogleSetupPlugin().pynchy_service_handler()
     capability_ids = [str(action.capability.id) for action in registration.actions]
 
-    assert set(registration.handlers) == {
+    assert {str(action.tool_name) for action in registration.actions} == {
         "setup_google_personal",
         "setup_google_work profile",
     }

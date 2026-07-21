@@ -541,18 +541,15 @@ class TestOnAskUserAnswerCallback:
 # ---------------------------------------------------------------------------
 
 
-def _extract_action_handler(
-    mock_app: _FakeSlackApp, *, pattern: re.Pattern | None = None
-) -> object | None:
+def _extract_action_handler(mock_app: _FakeSlackApp, *, pattern: re.Pattern) -> object | None:
     """Extract the handler function registered via ``@app.action(pattern)``.
 
     On a MagicMock, ``@app.action(pattern)`` is called once per handler
     registration.  Each call passes the regex pattern; the returned decorator
     is then called with the handler function.
 
-    When *pattern* is given, find the ``@app.action(pat)`` call whose first
+    Find the ``@app.action(pat)`` call whose first
     positional arg matches ``pattern``, then return the handler.
-    When *pattern* is ``None``, return the last registered handler (legacy).
     """
     # Each call to mock_app.action(pat) is recorded in call_args_list.
     # The decorator returned each time is the *same* return_value mock,
@@ -563,9 +560,6 @@ def _extract_action_handler(
 
     if not handler_calls:
         return None
-
-    if pattern is None:
-        return handler_calls[-1][0][0]
 
     # Match the pattern arg of each @app.action(pat) call to find the index
     for idx, call in enumerate(action_calls):

@@ -1,7 +1,7 @@
 """Tests for Discord connection config models.
 
 Discord config mirrors the Slack connection shape
-(``[connection.discord.<name>]`` with ``chat.<guild>`` subsections) but adds a
+(``[connections.<name>]`` with ``chat.<guild>`` subsections) but adds a
 DM policy, an allowlist, and a nested ``channels`` map under each guild, since
 one Discord guild channel can host many threads that inherit its config.
 """
@@ -12,12 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from pynchy.config import Settings
-from pynchy.config.models import (
-    ConnectionsConfig,
-    DiscordConnectionConfig,
-    ProfileConfig,
-    WorkspaceConfig,
-)
+from pynchy.config.models import DiscordConnectionConfig, ProfileConfig, WorkspaceConfig
 
 DISCORD_BOT_ENV = "DISCORD_BOT_ENV"
 
@@ -124,12 +119,6 @@ def test_channel_require_mention_defaults_to_none_for_inheritance():
     assert cfg.chat["g"].channels["c"].require_mention is None
 
 
-def test_connections_config_exposes_discord():
-    conns = ConnectionsConfig(discord={"mybot": {"bot_token_env": DISCORD_BOT_ENV}})
-    assert "mybot" in conns.discord
-    assert conns.get_connection("discord", "mybot").bot_token_env == DISCORD_BOT_ENV
-
-
 def test_discord_connection_ack_emoji_defaults_to_lobster():
     cfg = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV)
     assert cfg.processing_ack_emoji == "🦞"
@@ -138,11 +127,6 @@ def test_discord_connection_ack_emoji_defaults_to_lobster():
 def test_discord_connection_ack_emoji_can_be_disabled():
     cfg = DiscordConnectionConfig(bot_token_env=DISCORD_BOT_ENV, processing_ack_emoji=None)
     assert cfg.processing_ack_emoji is None
-
-
-def test_get_connection_returns_none_for_missing_discord():
-    conns = ConnectionsConfig()
-    assert conns.get_connection("discord", "nope") is None
 
 
 def test_settings_accept_discord_connection_with_workspace_profile():
