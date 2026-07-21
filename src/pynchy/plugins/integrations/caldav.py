@@ -25,12 +25,30 @@ from typing import Any
 
 import pluggy
 
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    CapabilityRequirement,
+    CapabilityRequirementKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionHandler,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
 from pynchy.config import get_settings
 from pynchy.config.caldav import CalDAVConfig, CalDAVServerConfig
 from pynchy.config.models import CalDAVTool
 from pynchy.plugins.integrations._service import service_tool
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+type _ActionDefinition = tuple[str, str, str, HostActionAccess, HostActionHandler]
 
 # ---------------------------------------------------------------------------
 # CalDAV helpers
@@ -290,18 +308,76 @@ async def _handle_delete_event(data: dict[str, Any]) -> dict[str, Any]:  # noqa:
 # ---------------------------------------------------------------------------
 
 
+_CALDAV_ACTIONS: tuple[_ActionDefinition, ...] = (
+    (
+        "list_calendars",
+        "calendar.calendar.list",
+        "Discover calendars available through CalDAV.",
+        HostActionAccess.READ,
+        _handle_list_calendars,
+    ),
+    (
+        "list_calendar",
+        "calendar.event.list",
+        "List CalDAV events in a date range.",
+        HostActionAccess.READ,
+        _handle_list_calendar,
+    ),
+    (
+        "create_event",
+        "calendar.event.create",
+        "Create a CalDAV event.",
+        HostActionAccess.WRITE,
+        _handle_create_event,
+    ),
+    (
+        "delete_event",
+        "calendar.event.delete",
+        "Delete a CalDAV event.",
+        HostActionAccess.WRITE,
+        _handle_delete_event,
+    ),
+)
+
+
+def _caldav_action(definition: _ActionDefinition) -> HostActionDescriptor:
+    tool_name, action_id, summary, access, handler = definition
+    return HostActionDescriptor(
+        capability=CapabilityDescriptor(
+            id=CapabilityId(action_id),
+            kind=CapabilityKind.HOST_ACTION,
+            owner="caldav",
+            summary=summary,
+            action_ids=(ActionId(action_id),),
+            requirements=(
+                CapabilityRequirement(
+                    kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                    name="caldav",
+                    description="Enable the CalDAV integration for this workspace.",
+                ),
+            ),
+            documentation="docs/usage/security.md",
+        ),
+        tool_name=HostToolName(tool_name),
+        handler=handler,
+        access=access,
+        approval=ApprovalContract(),
+        idempotency=IdempotencyContract(
+            IdempotencyMode.NOT_REQUIRED
+            if access is HostActionAccess.READ
+            else IdempotencyMode.IPC_REQUEST_ID
+        ),
+        audit=AuditContract(),
+        policy_service="caldav",
+    )
+
+
+CALDAV_HOST_ACTIONS = HostActionRegistration(
+    actions=tuple(_caldav_action(action) for action in _CALDAV_ACTIONS)
+)
+
+
 class CalDAVMcpServerPlugin:
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, Any]:
-        return {
-            "tools": {
-                "list_calendars": _handle_list_calendars,
-                "list_calendar": _handle_list_calendar,
-                "create_event": _handle_create_event,
-                "delete_event": _handle_delete_event,
-            },
-            # The mapping registration adapter treats unlisted tools as writes.
-            # Calendar discovery/event listing are read-only and cron reviews
-            # cannot answer an otherwise unnecessary approval prompt.
-            "read_tools": ("list_calendars", "list_calendar"),
-        }
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return CALDAV_HOST_ACTIONS

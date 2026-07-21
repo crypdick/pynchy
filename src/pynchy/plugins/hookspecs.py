@@ -138,7 +138,7 @@ class PynchySpec:
     def pynchy_service_handler(
         self,
         computer_use_backends: tuple[object, ...],
-    ) -> HostActionRegistration | dict[str, object]:
+    ) -> HostActionRegistration:
         """Provide host-side service tool handlers.
 
         Host-side handlers process IPC service requests from container MCP tools.
@@ -150,8 +150,7 @@ class PynchySpec:
                 compose computer-use providers omit this argument.
 
         Returns:
-            A typed HostActionRegistration. Raw ``{"tools": ...}`` mappings
-            are parsed only when ActionSpec entries cover every tool.
+            A typed host-action registration.
         """
         raise NotImplementedError
 

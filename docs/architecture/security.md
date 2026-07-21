@@ -142,10 +142,8 @@ A payload secrets scanner (`detect-secrets`) also runs on outbound writes. If it
 
 **Typed host-action boundary.** Service plugins register immutable
 `HostActionDescriptor` values. Startup rejects duplicate capability or tool
-IDs, missing semantic `ActionSpec` links, and write descriptors without the
-existing IPC idempotency and terminal-audit contracts. Legacy handler
-dictionaries are accepted only when an effective `ActionSpec` already exposes
-the tool; unknown tools fail startup.
+IDs, missing semantic `ActionSpec` links, raw handler mappings, and write
+descriptors without the existing IPC idempotency and terminal-audit contracts.
 
 Descriptors do not define a second permission system. The capability snapshot
 shown by `/capabilities` and `/status` is read-only diagnostic state.

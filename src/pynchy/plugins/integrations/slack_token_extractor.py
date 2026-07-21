@@ -28,6 +28,23 @@ from typing import TYPE_CHECKING, Any
 
 import pluggy
 
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    CapabilityRequirement,
+    CapabilityRequirementKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionHandler,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
 from pynchy.logger import logger
 from pynchy.plugins.integrations.browser import (
     check_browser_plugin_deps,
@@ -43,6 +60,7 @@ if TYPE_CHECKING:
     import subprocess
 
 hookimpl = pluggy.HookimplMarker("pynchy")
+type _ActionDefinition = tuple[str, str, str, HostActionHandler]
 
 _NOT_LOGGED_IN_ERROR = (
     "Not logged in — persistent session expired or never set up. "
@@ -324,12 +342,56 @@ def _with_optional_novnc_url(payload: dict[str, Any], novnc_url: str | None) -> 
 check_browser_plugin_deps("setup_slack_session")
 
 
+_SLACK_TOKEN_ACTIONS: tuple[_ActionDefinition, ...] = (
+    (
+        "refresh_slack_tokens",
+        "integration.slack.tokens.refresh",
+        "Refresh Slack browser tokens and persist them in the host environment file.",
+        _handle_refresh_slack_tokens,
+    ),
+    (
+        "setup_slack_session",
+        "integration.slack.session.setup",
+        "Create a persistent Slack browser session through interactive login.",
+        _handle_setup_slack_session,
+    ),
+)
+
+
+def _slack_token_action(definition: _ActionDefinition) -> HostActionDescriptor:
+    tool_name, action_id, summary, handler = definition
+    return HostActionDescriptor(
+        capability=CapabilityDescriptor(
+            id=CapabilityId(action_id),
+            kind=CapabilityKind.HOST_ACTION,
+            owner="slack-token-extractor",
+            summary=summary,
+            action_ids=(ActionId(action_id),),
+            requirements=(
+                CapabilityRequirement(
+                    kind=CapabilityRequirementKind.WORKSPACE_TOOL,
+                    name="slack_token_extractor",
+                    description="Enable the Slack token extractor for this workspace.",
+                ),
+            ),
+            documentation="docs/integrations/slack-mcp.md",
+        ),
+        tool_name=HostToolName(tool_name),
+        handler=handler,
+        access=HostActionAccess.WRITE,
+        approval=ApprovalContract(),
+        idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),
+        audit=AuditContract(),
+        policy_service="slack_token_extractor",
+    )
+
+
+SLACK_TOKEN_HOST_ACTIONS = HostActionRegistration(
+    actions=tuple(_slack_token_action(action) for action in _SLACK_TOKEN_ACTIONS)
+)
+
+
 class SlackTokenExtractorPlugin:
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, Any]:
-        return {
-            "tools": {
-                "refresh_slack_tokens": _handle_refresh_slack_tokens,
-                "setup_slack_session": _handle_setup_slack_session,
-            },
-        }
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return SLACK_TOKEN_HOST_ACTIONS

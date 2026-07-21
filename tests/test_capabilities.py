@@ -16,7 +16,6 @@ from pynchy.capabilities import (
     CapabilityDescriptor,
     CapabilityId,
     CapabilityKind,
-    DescriptorOrigin,
     HostActionAccess,
     HostActionDescriptor,
     HostActionRegistration,
@@ -25,10 +24,16 @@ from pynchy.capabilities import (
     IdempotencyMode,
     validate_host_action_descriptors,
 )
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    evaluate_host_action_policy,
+)
 from pynchy.plugins.hookspecs import PynchySpec
 from pynchy.plugins.host_actions import get_host_action_catalog
 from pynchy.plugins.integrations.caldav import CalDAVMcpServerPlugin
 from pynchy.plugins.integrations.matrix_gateway import MATRIX_HOST_ACTIONS
+from pynchy.plugins.memory.sqlite_memory import SqliteMemoryPlugin
+from pynchy.types import WorkspaceSecurity
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -121,25 +126,20 @@ def test_write_actions_require_idempotency_and_terminal_audit():
     assert "chat.matrix.route.send: write action requires terminal audit outcomes" in errors
 
 
-def test_legacy_registration_is_parsed_through_action_specs():
-    class LegacyPlugin:
+def test_mapping_service_registration_is_rejected():
+    class MappingPlugin:
         @hookimpl
         def pynchy_service_handler(self) -> dict[str, object]:
-            return {
-                "tools": {"matrix_route_read": _handler},
-                "read_tools": ("matrix_route_read",),
-            }
+            return {"tools": {"matrix_route_read": _handler}}
 
-    catalog = get_host_action_catalog(_plugin_manager(LegacyPlugin()))
-    action = catalog.action_for("matrix_route_read")
-
-    assert action is not None
-    assert action.capability.origin is DescriptorOrigin.LEGACY_ADAPTER
-    assert action.capability.action_ids == (ActionId("chat.matrix.route.read"),)
-    assert action.access is HostActionAccess.READ
+    with pytest.raises(
+        CapabilityCatalogError,
+        match="pynchy_service_handler must return HostActionRegistration",
+    ):
+        get_host_action_catalog(_plugin_manager(MappingPlugin()))
 
 
-def test_caldav_legacy_registration_classifies_list_tools_as_read_only():
+def test_caldav_registration_classifies_list_tools_as_read_only():
     catalog = get_host_action_catalog(_plugin_manager(CalDAVMcpServerPlugin()))
 
     assert catalog.action_for("list_calendars").access is HostActionAccess.READ
@@ -148,17 +148,25 @@ def test_caldav_legacy_registration_classifies_list_tools_as_read_only():
     assert catalog.action_for("delete_event").access is HostActionAccess.WRITE
 
 
-def test_legacy_registration_without_semantic_action_fails_closed():
-    class UnknownPlugin:
-        @hookimpl
-        def pynchy_service_handler(self) -> dict[str, object]:
-            return {"tools": {"unregistered_host_tool": _handler}}
+def test_memory_registration_does_not_gate_reads_as_writes():
+    catalog = get_host_action_catalog(_plugin_manager(SqliteMemoryPlugin()))
 
-    with pytest.raises(
-        CapabilityCatalogError,
-        match="unregistered_host_tool has no matching semantic ActionSpec",
-    ):
-        get_host_action_catalog(_plugin_manager(UnknownPlugin()))
+    assert catalog.action_for("recall_memories").access is HostActionAccess.READ
+    assert catalog.action_for("list_memories").access is HostActionAccess.READ
+    assert catalog.action_for("save_memory").access is HostActionAccess.WRITE
+    assert catalog.action_for("forget_memory").access is HostActionAccess.WRITE
+
+
+def test_memory_recall_does_not_require_default_write_approval():
+    catalog = get_host_action_catalog(_plugin_manager(SqliteMemoryPlugin()))
+    gate = SecurityGate(WorkspaceSecurity())
+    recall = catalog.action_for("recall_memories")
+    save = catalog.action_for("save_memory")
+
+    assert recall is not None
+    assert save is not None
+    assert evaluate_host_action_policy(recall, gate, {"query": "project"}).needs_human is False
+    assert evaluate_host_action_policy(save, gate, {"key": "k", "content": "v"}).needs_human
 
 
 def test_plugin_can_contribute_action_spec_and_typed_host_action():

@@ -61,7 +61,7 @@ class _FakePage:
 
 
 def _handler(tool_name: str) -> Callable[[dict[str, Any]], Any]:
-    return XIntegrationPlugin().pynchy_service_handler()["tools"][tool_name]
+    return XIntegrationPlugin().pynchy_service_handler().handlers[tool_name]
 
 
 def _action_handler(handler: Callable[[dict[str, Any]], Any]) -> Callable[[dict[str, Any]], Any]:

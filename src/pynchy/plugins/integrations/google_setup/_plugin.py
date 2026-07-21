@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import pluggy
 
 import pynchy.config as pynchy_config
+from pynchy.actions import ActionId
+from pynchy.capabilities import (
+    ApprovalContract,
+    AuditContract,
+    CapabilityDescriptor,
+    CapabilityId,
+    CapabilityKind,
+    CapabilityRequirement,
+    CapabilityRequirementKind,
+    HostActionAccess,
+    HostActionDescriptor,
+    HostActionHandler,
+    HostActionRegistration,
+    HostToolName,
+    IdempotencyContract,
+    IdempotencyMode,
+)
 from pynchy.plugins.integrations.google_setup._handler import handle_setup_google
 
 hookimpl = pluggy.HookimplMarker("pynchy")
@@ -52,14 +70,53 @@ class GoogleSetupPlugin:
     """
 
     @hookimpl
-    def pynchy_service_handler(self) -> dict[str, Any]:
-        tools: dict[str, Any] = {}
-        for profile in pynchy_config.get_settings().chrome_profiles:
-            # Closure captures profile by value via default arg
-            async def _handler(data: dict[str, Any], _profile: str = profile) -> dict[str, Any]:
-                data["chrome_profile"] = _profile
-                return await handle_setup_google(data)
+    def pynchy_service_handler(self) -> HostActionRegistration:
+        return HostActionRegistration(
+            actions=tuple(
+                _profile_setup_action(profile)
+                for profile in pynchy_config.get_settings().chrome_profiles
+            )
+        )
 
-            tools[f"setup_google_{profile}"] = _handler
 
-        return {"tools": tools}
+def _profile_setup_action(profile: str) -> HostActionDescriptor:
+    tool_name = f"setup_google_{profile}"
+    return HostActionDescriptor(
+        capability=CapabilityDescriptor(
+            id=_profile_capability_id(profile),
+            kind=CapabilityKind.HOST_ACTION,
+            owner="google-setup",
+            summary=f"Set up Google services for browser profile {profile!r}.",
+            action_ids=(ActionId("integration.google.profile.setup"),),
+            requirements=(
+                CapabilityRequirement(
+                    kind=CapabilityRequirementKind.CONFIG,
+                    name=f"chrome_profiles.{profile}",
+                    description=f"Declare the {profile!r} Chrome profile in host configuration.",
+                ),
+            ),
+            documentation="docs/integrations/google/index.md",
+        ),
+        tool_name=HostToolName(tool_name),
+        handler=_profile_handler(profile),
+        access=HostActionAccess.WRITE,
+        approval=ApprovalContract(),
+        idempotency=IdempotencyContract(IdempotencyMode.IPC_REQUEST_ID),
+        audit=AuditContract(),
+    )
+
+
+def _profile_handler(profile: str) -> HostActionHandler:
+    async def handle(data: dict[str, Any]) -> dict[str, Any]:
+        data["chrome_profile"] = profile
+        return await handle_setup_google(data)
+
+    return handle
+
+
+def _profile_capability_id(profile: str) -> CapabilityId:
+    # Profile names can contain characters that capability IDs reject. A hash
+    # keeps each configured profile stable and collision-resistant without
+    # weakening the capability ID grammar.
+    digest = hashlib.sha256(profile.encode()).hexdigest()[:12]
+    return CapabilityId(f"integration.google.profile.setup.profile-{digest}")
