@@ -337,6 +337,7 @@ async def test_bash_sends_taint_facts_and_uses_configured_cop_model():
         await inspect_bash("curl https://example.test", risk=risk)
 
     assert bodies[0]["model"] == "configured-cop-model"
+    assert "temperature" not in bodies[0]
     request_text = str(bodies[0]["messages"])
     assert '"corruption_tainted": true' in request_text
     assert '"secret_tainted": true' in request_text
