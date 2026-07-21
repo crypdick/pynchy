@@ -325,6 +325,22 @@ async def list_pending_conversation_ids(
     return tuple(ConversationId(row["conversation_id"]) for row in await cursor.fetchall())
 
 
+async def list_route_conversation_ids(
+    provider: ExternalProvider,
+    route: ExternalRoute,
+) -> tuple[ConversationId, ...]:
+    """Return every durable conversation admitted through one exact route."""
+    cursor = await _get_db().execute(
+        """
+        SELECT DISTINCT conversation_id FROM conversation_deliveries
+        WHERE provider = ? AND route = ?
+        ORDER BY conversation_id
+        """,
+        (provider, route),
+    )
+    return tuple(ConversationId(row["conversation_id"]) for row in await cursor.fetchall())
+
+
 async def claim_next_conversation_delivery(
     conversation_id: ConversationId,
     claim_id: ConversationClaimId,
