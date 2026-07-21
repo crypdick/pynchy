@@ -1,6 +1,6 @@
-"""Tests for the private first-party test-boundary pre-commit check."""
+"""Tests for the private first-party test-boundary prek check."""
 
-from scripts.pre_commit_hooks.check_private_test_imports import (
+from scripts.prek_hooks.check_private_test_imports import (
     PrivateTestViolation,
     find_private_test_violations,
     unbaselined_violations,

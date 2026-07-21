@@ -56,14 +56,14 @@ def _matches_hint(value: object, hint: object) -> bool:
         return True
     origin = get_origin(hint)
     if origin is None:
-        return isinstance(value, hint)
+        return isinstance(hint, type) and isinstance(value, hint)
     if _is_union_origin(origin):
         return _matches_union_hint(value, hint)
     if origin is list:
         return _matches_list_hint(value, hint)
     if origin is dict:
         return _matches_dict_hint(value, hint)
-    return isinstance(value, origin)
+    return isinstance(origin, type) and isinstance(value, origin)
 
 
 @dataclass

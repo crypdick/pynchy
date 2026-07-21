@@ -123,7 +123,7 @@ new-feature teardown <slug>
 
 Merge stops the development sandbox, starts a fresh deterministic runtime from the current
 worktree, and runs the runtime suite. Its harness always stops live runtime resources before
-pre-commit hooks run. It then performs a no-commit merge into `main` and runs both Pynchy and
+prek hooks run. It then performs a no-commit merge into `main` and runs both Pynchy and
 agent-runner tests against the integrated tree. A failed check aborts the merge; runtime logs and
 data remain available for diagnosis. Merge does not push `main`, so deployment remains an explicit
 operator action.

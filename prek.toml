@@ -1,0 +1,189 @@
+# Run with:      uvx prek run --all-files
+# Install hooks: uvx prek install
+
+minimum_prek_version = "0.3.2"
+default_language_version.python = "python3"
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "check-json" },
+    { id = "check-toml" },
+    { id = "check-yaml" },
+    { id = "check-merge-conflict" },
+    { id = "detect-private-key" },
+    { id = "check-added-large-files", args = ["--maxkb=500"] },
+    { id = "check-case-conflict" },
+    { id = "check-symlinks" },
+    { id = "destroyed-symlinks" },
+    { id = "fix-byte-order-marker" },
+    { id = "mixed-line-ending" },
+    { id = "check-executables-have-shebangs" },
+    { id = "check-shebang-scripts-are-executable" },
+]
+
+[[repos]]
+repo = "https://github.com/Yelp/detect-secrets"
+rev = "v1.5.0"
+hooks = [
+    { id = "detect-secrets", args = ["--baseline", ".secrets.baseline"], exclude = "uv\\.lock" },
+]
+
+[[repos]]
+repo = "https://github.com/henryiii/validate-pyproject-schema-store"
+rev = "2026.07.08"
+hooks = [
+    { id = "validate-pyproject" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "Ruff check"
+entry = "uv run ruff check --fix --quiet"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "Ruff format"
+entry = "uv run ruff format --quiet"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "fix-future-annotations"
+name = "Fix 'from __future__ import annotations' placement"
+entry = "uv run python scripts/prek_hooks/fix_future_annotations.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "pyupgrade"
+name = "Upgrade syntax to target Python version"
+entry = "uv run pyupgrade --py313-plus"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "flynt"
+name = "Convert to f-strings"
+entry = "uv run flynt --line-length=100"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-print-statements"
+name = "Ban print() in favor of structured logging"
+entry = "uv run python scripts/prek_hooks/check_print_statements.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-exception-handling"
+name = "Ban bare/broad exception handling"
+entry = "uv run python scripts/prek_hooks/check_exception_handling.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-file-length"
+name = "Enforce 400-logical-line file budget"
+entry = "uv run python scripts/prek_hooks/check_file_length.py"
+language = "system"
+types = ["python"]
+files = "^src/"
+
+[[repos.hooks]]
+id = "vulture"
+name = "Detect dead code"
+entry = "uv run vulture src tests --min-confidence 80"
+language = "system"
+pass_filenames = false
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-timeless-comments"
+name = "Flag temporal language in comments"
+entry = "uv run python scripts/prek_hooks/check_timeless_comments.py"
+language = "system"
+types = ["python"]
+files = "^src/"
+
+[[repos.hooks]]
+id = "check-private-test-imports"
+name = "Forbid private first-party test imports"
+entry = "uv run python scripts/prek_hooks/check_private_test_imports.py --package pynchy --package agent_runner --package scripts"
+language = "system"
+types = ["python"]
+files = "(^tests/|^src/pynchy/agent/agent_runner/tests/)"
+
+[[repos.hooks]]
+id = "check-test-simple-namespace"
+name = "Ban SimpleNamespace in tests"
+entry = "uv run python scripts/prek_hooks/check_test_simple_namespace.py"
+language = "system"
+types = ["python"]
+files = "(^tests/|/tests/)"
+
+[[repos.hooks]]
+id = "deptry-host"
+name = "Check host dependency declarations"
+entry = "uv run deptry src/pynchy"
+language = "system"
+pass_filenames = false
+types = ["python"]
+
+[[repos.hooks]]
+id = "deptry-agent-runner"
+name = "Check agent-runner dependency declarations"
+entry = "env -u VIRTUAL_ENV uv run --directory src/pynchy/agent/agent_runner deptry ."
+language = "system"
+pass_filenames = false
+files = "^src/pynchy/agent/agent_runner/"
+
+[[repos.hooks]]
+id = "mypy"
+name = "Strict host type check"
+entry = "uv run mypy src tests"
+language = "system"
+pass_filenames = false
+types = ["python"]
+verbose = true
+
+[[repos.hooks]]
+id = "mypy-agent-runner"
+name = "Strict agent-runner type check"
+entry = "env -u VIRTUAL_ENV uv run --directory src/pynchy/agent/agent_runner mypy src tests"
+language = "system"
+pass_filenames = false
+files = "^src/pynchy/agent/agent_runner/"
+verbose = true
+
+[[repos.hooks]]
+id = "mkdocs-linkcheck"
+name = "Check documentation links"
+entry = "uv run mkdocs build --strict"
+language = "system"
+pass_filenames = false
+files = "^(docs/|mkdocs\\.yml)"
+
+[[repos.hooks]]
+id = "pytest"
+name = "Run host tests with semantic and branch coverage"
+entry = "uv run pytest --action-coverage --cov=pynchy --cov-report=term-missing"
+language = "system"
+pass_filenames = false
+files = "^(src/|tests/)"
+
+[[repos.hooks]]
+id = "pytest-agent-runner"
+name = "Run agent-runner tests"
+entry = "env -u VIRTUAL_ENV uv run --directory src/pynchy/agent/agent_runner pytest"
+language = "system"
+pass_filenames = false
+files = "^src/pynchy/agent/agent_runner/"

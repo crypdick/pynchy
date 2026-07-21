@@ -34,7 +34,7 @@ from pynchy.host.git_ops.worktree import (
     WorktreeError,
     WorktreeResult,
     ensure_worktree,
-    install_pre_commit_hooks,
+    install_repo_hooks,
     reconcile_worktrees_at_startup,
 )
 
@@ -54,7 +54,7 @@ __all__ = [
     "git_env_with_token",
     "host_notify_worktree_updates",
     "host_sync_worktree",
-    "install_pre_commit_hooks",
+    "install_repo_hooks",
     "is_repo_dirty",
     "merge_and_push_worktree",
     "merge_worktree",

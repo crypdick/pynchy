@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import sys
+from typing import Any, TypedDict, Unpack
 
 from .core import AgentCore, AgentCoreConfig, AgentEvent
 from .ipc import (
@@ -56,9 +57,11 @@ def build_sdk_messages(messages: list[dict[str, object]]) -> str:
 
     lines = []
     for msg in messages:
-        sender_name = escape_xml(msg.get("sender_name", "Unknown"))
+        sender = msg.get("sender_name", "Unknown")
+        sender_name = escape_xml(sender if isinstance(sender, str) else "Unknown")
         timestamp = msg.get("timestamp", "")
-        content = escape_xml(msg.get("content", ""))
+        raw_content = msg.get("content", "")
+        content = escape_xml(raw_content if isinstance(raw_content, str) else "")
         metadata = msg.get("metadata")
         if metadata is not None:
             metadata_json = escape_xml(json.dumps(metadata, ensure_ascii=False, sort_keys=True))
@@ -99,7 +102,11 @@ def _built_in_mcp_server(container_input: ContainerInput) -> dict[str, object]:
 def _direct_mcp_server_entry(server: dict[str, object]) -> dict[str, object]:
     """Normalize a direct MCP server config for the agent core."""
     transport = server.get("transport", "sse")
-    url = server["url"]
+    url = server.get("url")
+    if not isinstance(transport, str):
+        raise TypeError("Direct MCP server transport must be a string")
+    if not isinstance(url, str):
+        raise TypeError("Direct MCP server URL must be a string")
     match transport:
         case "sse":
             normalized_url = f"{url}/sse"
@@ -201,7 +208,19 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 # ---------------------------------------------------------------------------
 
 
-def _success_output(output_type: str, **kwargs: object) -> ContainerOutput:
+class _SuccessOutputFields(TypedDict, total=False):
+    thinking: str | None
+    tool_name: str | None
+    tool_input: dict[str, Any] | None
+    text: str | None
+    system_subtype: str | None
+    system_data: dict[str, Any] | None
+    tool_result_id: str | None
+    tool_result_content: str | None
+    tool_result_is_error: bool | None
+
+
+def _success_output(output_type: str, **kwargs: Unpack[_SuccessOutputFields]) -> ContainerOutput:
     """Build a successful non-result container output."""
     return ContainerOutput(status="success", type=output_type, **kwargs)
 

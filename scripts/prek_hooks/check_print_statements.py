@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit hook to detect print() calls and unstructured logging in production code.
+"""Prek hook to detect print() calls and unstructured logging in production code.
 
 Philosophy: Production code should use structured logging (the ``logging``
 module) instead of ``print()``.  When using a logger, prefer parameterised

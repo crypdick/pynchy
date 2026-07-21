@@ -45,7 +45,7 @@ def find_simple_namespace_uses(source: str) -> list[int]:
 
 
 def main(filenames: list[str] | None = None) -> int:
-    """Print policy violations for the test files passed by pre-commit."""
+    """Print policy violations for the test files passed by prek."""
     paths = [Path(name) for name in (filenames if filenames is not None else sys.argv[1:])]
     violations = 0
     for path in paths:

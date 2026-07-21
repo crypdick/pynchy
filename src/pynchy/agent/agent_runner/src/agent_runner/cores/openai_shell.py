@@ -28,7 +28,8 @@ def make_shell_executor(
             return _failure_result("Shell tool request missing commands.")
 
         command = " && ".join(command_list)
-        timeout_ms = _field(action, "timeout_ms") or _field(data, "timeout_ms") or 120_000
+        raw_timeout_ms = _field(action, "timeout_ms") or _field(data, "timeout_ms")
+        timeout_ms = raw_timeout_ms if isinstance(raw_timeout_ms, int | float) else 120_000
         timeout_s = timeout_ms / 1000
         max_output_length = _field(action, "max_output_length") or _field(data, "max_output_length")
 

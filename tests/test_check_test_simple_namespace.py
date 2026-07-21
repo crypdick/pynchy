@@ -1,6 +1,6 @@
-"""Unit tests for the test-data-shape pre-commit check."""
+"""Unit tests for the test-data-shape prek check."""
 
-from scripts.pre_commit_hooks.check_test_simple_namespace import find_simple_namespace_uses
+from scripts.prek_hooks.check_test_simple_namespace import find_simple_namespace_uses
 
 
 def test_reports_direct_and_aliased_imports() -> None:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit hook to detect overly broad exception handling.
+"""Prek hook to detect overly broad exception handling.
 
 Philosophy: Do not use overly permissive exception handling that swallows
 errors. Prefer to fail fast and fix the root cause rather than masking the

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit hook to enforce file length limits.
+"""Prek hook to enforce file length limits.
 
 Philosophy: Large files are harder to understand, test, and review.  Keeping
 files under a logical-line budget encourages modularity and separation of

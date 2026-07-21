@@ -1,1 +1,0 @@
-../god/CLAUDE.md
