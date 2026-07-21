@@ -141,7 +141,7 @@ curl -s "http://$PYNCHY_HOST:${PYNCHY_PORT:-8484}/status" | python3 -m json.tool
 
 ## Runtime DB Backups
 
-macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into iCloud Drive by default.
+macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into iCloud Drive by default. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
 
 Live service:
 
