@@ -456,6 +456,7 @@
 
 # [security]
 # cop_model = "gpt-5.3-codex-spark" # Optional dedicated LiteLLM route for Cop inspection
+# cop_wire_api = "responses"         # Use for LiteLLM routes with mode: responses
 # blocked_patterns = [".ssh", ".gnupg", ".gpg", ".aws", ...]
 
 # ─────────────────────────────────────────────────────────────────────────────

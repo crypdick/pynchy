@@ -17,10 +17,10 @@ import json as _json
 from dataclasses import dataclass
 from enum import StrEnum
 
-import aiohttp
-
-from pynchy.config import get_settings
-from pynchy.host.container_manager import gateway as gateway_manager
+from pynchy.host.container_manager.security.cop_client import (
+    CopGatewayUnavailableError,
+    request_inspection,
+)
 from pynchy.logger import logger
 from pynchy.state import RecentSecurityContext, load_recent_security_context
 
@@ -104,10 +104,6 @@ class CopCommandRisk:
     network_capable: bool
     corruption_tainted: bool
     secret_tainted: bool
-
-
-class CopUnavailableError(RuntimeError):
-    """The configured LLM gateway cannot serve a Cop request."""
 
 
 # -- System prompts for asymmetric inspection --
@@ -221,8 +217,6 @@ Respond with exactly one JSON object (no markdown, no explanation):
 {"decision": "approve|deny|escalate", "reason": "brief explanation"}\
 """
 
-_DEFAULT_COP_MODEL = "claude-haiku-4-5-20251001"
-
 
 async def inspect_outbound(
     operation: str,
@@ -276,7 +270,7 @@ async def inspect_bash(
     """
     context = f"bash:{command[:100]}"
     try:
-        result = await _request_inspection(
+        result = await request_inspection(
             system_prompt=_BASH_SYSTEM_PROMPT,
             user_content=_command_review_content(command, inspection_context, risk),
         )
@@ -388,7 +382,7 @@ async def _run_inspection(
     user_content: str,
     context: str,
 ) -> CopVerdict:
-    result = await _request_inspection(system_prompt=system_prompt, user_content=user_content)
+    result = await request_inspection(system_prompt=system_prompt, user_content=user_content)
     flagged = result.get("flagged")
     if not isinstance(flagged, bool):
         raise TypeError("Cop verdict omitted its flagged decision")
@@ -409,57 +403,6 @@ async def _run_inspection(
 
 
 def _cop_failure_reason(exc: Exception) -> str:
-    if isinstance(exc, CopUnavailableError):
+    if isinstance(exc, CopGatewayUnavailableError):
         return str(exc)
     return f"Cop unavailable: {type(exc).__name__}"
-
-
-async def _request_inspection(
-    *,
-    system_prompt: str,
-    user_content: str,
-) -> dict[str, object]:
-    """Call the configured gateway and parse one JSON inspection result."""
-    gateway = gateway_manager.get_gateway()
-    if gateway is None:
-        raise CopUnavailableError("No gateway available")
-
-    settings = get_settings()
-    model = settings.security.cop_model or settings.agent.model or _DEFAULT_COP_MODEL
-    url = f"http://localhost:{gateway.port}/v1/messages"
-    headers = {
-        "x-api-key": gateway.key,
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01",
-    }
-    body = {
-        "model": model,
-        "max_tokens": 200,
-        # GPT-5 Codex routes reject non-default temperature values. Keeping
-        # this request provider-neutral lets LiteLLM apply each model's valid
-        # default instead of turning a security review into a degraded verdict.
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_content}],
-    }
-
-    async with (
-        aiohttp.ClientSession() as session,
-        session.post(url, headers=headers, json=body) as resp,
-    ):
-        resp.raise_for_status()
-        data = await resp.json()
-
-    content = data.get("content") if isinstance(data, dict) else None
-    first_content = content[0] if isinstance(content, list) and content else None
-    text = first_content.get("text") if isinstance(first_content, dict) else None
-    if not isinstance(text, str):
-        raise TypeError("Cop response omitted text content")
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3].strip()
-    result = _json.loads(text)
-    if not isinstance(result, dict) or not all(isinstance(key, str) for key in result):
-        raise ValueError("Cop response must be a JSON object")
-    return result
