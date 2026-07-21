@@ -230,6 +230,10 @@ class ConfigHostCronWorkflow:
                 "run_config_host_cron_job",
                 job_name,
                 start_to_close_timeout=timedelta(hours=12),
+                # A shell command may have changed external state before it
+                # fails or the worker stops. The next scheduled occurrence is
+                # the retry boundary, just as it is for database host jobs.
+                retry_policy=RetryPolicy(maximum_attempts=1),
             ),
         )
 
