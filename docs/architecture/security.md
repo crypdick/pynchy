@@ -259,15 +259,22 @@ Pipelines and chains are split into segments; one network-capable segment makes 
 | Taint State | Network Command | Unknown Command |
 |---|---|---|
 | No taint | Allow | Allow |
-| Corruption only | Cop review | Cop review |
-| Corruption + secret | Human approval required | Cop review (human if Cop flags) |
+| Corruption only | Cop triage | Cop triage |
+| Corruption + secret | Cop triage | Cop triage |
 
-The Cop is the same LLM-based inspector used for host-mutating operations. If the Cop flags a command in a dual-tainted session, the decision escalates to human approval. The 300-second approval timeout matches the existing service approval flow.
+The command Cop returns one of three verdicts for the exact command. It approves
+commands that clearly match current user intent and have bounded, low-risk data
+flow. It denies commands that clearly conflict with that intent or create an
+unacceptable security risk. It escalates ambiguous commands to human approval.
+Corruption and secret taint remain trusted host facts in the review packet, so a
+network-capable command in a dual-tainted session receives the most cautious
+review. Cop approval never creates a reusable grant. The 300-second approval
+timeout matches the existing service approval flow.
 
 **Degraded behavior.** Deterministic blocking rules run locally. If the host
 cannot record and retain an artifact notification, the artifact hook fails
-closed. Cop or bounded-context loss on request-reply operations requires human
-approval; fire-and-forget host mutations remain blocked.
+closed. Invalid Cop output, Cop failure, or bounded-context loss during command
+review requires human approval. Fire-and-forget host mutations remain blocked.
 
 ### 5c. Host-Mutating Operations (Cop Gate)
 

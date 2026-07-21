@@ -17,6 +17,8 @@ from pynchy.host.container_manager.ipc.registry import register_prefix
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.host.container_manager.security.cop import (
+    CopCommandDecision,
+    CopCommandRisk,
     CopContextAvailability,
     CopInspectionContext,
     inspect_bash,
@@ -92,53 +94,24 @@ def _is_network_command(command: str) -> bool:
     return first_token in _NETWORK_SINGLE
 
 
-async def _network_command_decision(
-    command: str,
-    *,
-    both_tainted: bool,
-    inspection_context: CopInspectionContext | None,
-) -> dict[str, str]:
-    if both_tainted:
-        return _needs_human(f"Network command while corruption+secret tainted: {command[:200]}")
-    return await _cop_review(
-        command,
-        escalate_on_flag=False,
-        inspection_context=inspection_context,
-    )
-
-
-async def _grey_zone_decision(
-    command: str,
-    *,
-    both_tainted: bool,
-    inspection_context: CopInspectionContext | None,
-) -> dict[str, str]:
-    return await _cop_review(
-        command,
-        escalate_on_flag=both_tainted,
-        inspection_context=inspection_context,
-    )
-
-
 async def _cop_review(
     command: str,
     *,
-    escalate_on_flag: bool,
     inspection_context: CopInspectionContext | None,
+    risk: CopCommandRisk,
 ) -> dict[str, str]:
-    verdict = await inspect_bash(command, inspection_context)
+    verdict = await inspect_bash(command, inspection_context, risk)
     context_unavailable = (
         inspection_context is not None
         and inspection_context.availability is CopContextAvailability.UNAVAILABLE
     )
     if verdict.degraded or context_unavailable:
         return _needs_human("Cop or bounded action context unavailable")
-    if not verdict.flagged:
-        return _allow()
-    reason = verdict.reason or "Cop flagged command"
-    if escalate_on_flag:
-        return _needs_human(reason)
-    return _deny(reason)
+    if verdict.decision is CopCommandDecision.APPROVE:
+        return {**_allow(), "reason": verdict.reason, "reviewed_by": "cop"}
+    if verdict.decision is CopCommandDecision.DENY:
+        return {**_deny(verdict.reason), "reviewed_by": "cop"}
+    return {**_needs_human(verdict.reason), "reviewed_by": "cop"}
 
 
 async def evaluate_bash_command(
@@ -164,21 +137,15 @@ async def evaluate_bash_command(
     if not policy.corruption_tainted and not policy.secret_tainted:
         return _allow()
 
-    both_tainted = policy.corruption_tainted and policy.secret_tainted
-
-    # Tier 2: Network blacklist
-    if _is_network_command(command):
-        return await _network_command_decision(
-            command,
-            both_tainted=both_tainted,
-            inspection_context=inspection_context,
-        )
-
-    # Tier 3: Grey zone -> Cop review
-    return await _grey_zone_decision(
+    # Tiers 2 and 3: the Cop sees the host-owned classification and taint facts.
+    return await _cop_review(
         command,
-        both_tainted=both_tainted,
         inspection_context=inspection_context,
+        risk=CopCommandRisk(
+            network_capable=_is_network_command(command),
+            corruption_tainted=policy.corruption_tainted,
+            secret_tainted=policy.secret_tainted,
+        ),
     )
 
 
@@ -243,7 +210,13 @@ async def _handle_bash_security_check(
         )
 
         await deps.broadcast_to_channels(
-            chat_jid, approval_event("Bash", {"command": command}, short_id)
+            chat_jid,
+            approval_event(
+                "Bash",
+                {"command": command},
+                short_id,
+                preface=f"[Cop escalated: {decision.get('reason', 'uncertain command')}]",
+            ),
         )
 
         await record_security_event(
@@ -263,7 +236,11 @@ async def _handle_bash_security_check(
         chat_jid=chat_jid,
         workspace=source_group,
         tool_name="Bash",
-        decision=decision["decision"],
+        decision=(
+            f"cop_{'approved' if decision['decision'] == 'allow' else 'denied'}"
+            if decision.get("reviewed_by") == "cop"
+            else decision["decision"]
+        ),
         corruption_tainted=gate.policy.corruption_tainted,
         secret_tainted=gate.policy.secret_tainted,
         reason=decision.get("reason"),
@@ -271,10 +248,11 @@ async def _handle_bash_security_check(
     )
 
     response_path = ipc_response_path(source_group, request_id)
+    wire_decision = {key: value for key, value in decision.items() if key != "reviewed_by"}
     # Agent-side request/response IPC unwraps the public ``result`` field.
     write_ipc_response(
         response_path,
-        {"result": {**decision, "guarded_action_id": request_id}},
+        {"result": {**wire_decision, "guarded_action_id": request_id}},
     )
 
 

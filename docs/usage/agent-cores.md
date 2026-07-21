@@ -127,7 +127,7 @@ in Codex. Other models and accounts can expose a different subset.
 
 All built-in cores share the `BEFORE_TOOL_USE` hook pipeline. Built-in security hooks run first; plugin-provided hooks run after.
 
-**Agent tool security gate.** File and shell operations pass through one semantic gate before execution. File-capable tools establish workspace taint, deterministic hazards get blocked locally, and network-capable commands remain subject to Cop review or human approval. CLI hook payload errors, built-in gate exceptions, and unavailable Bash policy responses deny the tool call. See [Agent Tool Gating](security.md#agent-tool-gating).
+**Agent tool security gate.** File and shell operations pass through one semantic gate before execution. File-capable tools establish workspace taint, deterministic hazards get blocked locally, and the Cop approves, denies, or escalates tainted network-capable commands. CLI hook payload errors, built-in gate exceptions, and unavailable Bash policy responses deny the tool call. See [Agent Tool Gating](security.md#agent-tool-gating).
 
 **WebFetch removal.** The `WebFetch` tool is gone from both cores. Web access goes through the Playwright browser MCP server, which is gated by the standard tool trust policy.
 

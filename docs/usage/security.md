@@ -252,10 +252,13 @@ checks do not change skill admission.
 **Network commands are gated when tainted.** Commands like `curl`, `wget`, `python`, `ssh`, `pip install`, and similar network-capable tools are checked against the session's taint state:
 
 - **No taint** — the command runs. Nothing sensitive to exfiltrate.
-- **Corruption tainted only** — the Cop (LLM-based inspector) reviews the command. If the Cop flags it, the command is denied.
-- **Both corruption and secret tainted** — the command requires human approval, same as the lethal trifecta gate for service writes.
+- **Any taint** — the Cop compares the exact command with current user intent and trusted host security facts. It approves clear low-risk matches, denies clear unsafe or unrelated commands, and sends ambiguous decisions to you.
 
-**Unknown commands get Cop review.** Commands not on either list go to the Cop for inspection. If the Cop flags the command and both taint flags are set, the decision escalates to human approval.
+**Unknown commands get the same Cop triage.** Commands not on either list go to
+the Cop with their classification and taint facts. A Cop approval covers only
+that exact command and does not grant future commands. If the Cop fails, returns
+an invalid verdict, or cannot load bounded intent context, Pynchy asks you
+instead.
 
 No config needed — the agent tool gate is always active. For technical details, see [Agent Tool Security Gate](../architecture/security.md#5b-agent-tool-security-gate).
 
