@@ -7,6 +7,7 @@ from collections.abc import (
     Awaitable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
     Callable,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
 )
+from datetime import UTC, datetime
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves Temporal reconciler annotations at runtime.
 )
@@ -52,6 +53,10 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal r
 )
 
 _TEMPORAL_SCHEDULER_RUNTIME_NOT_STARTED = "Temporal scheduler runtime has not been started"
+_ONE_SHOT_WORKFLOW_PREFIX_BY_TYPE = {
+    ScheduledAgentTaskWorkflow.__name__: "pynchy-agent-task-",
+    DatabaseHostJobWorkflow.__name__: "pynchy-host-job-",
+}
 
 
 async def reconcile_temporal_schedules(
@@ -67,6 +72,7 @@ async def reconcile_temporal_schedules(
     settings = cast("Any", get_settings_fn())
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
+    desired_once_workflow_ids = _desired_once_workflow_ids(tasks, host_jobs)
 
     await _reconcile_builtin_schedules(client, settings, desired_schedule_ids)
     await _reconcile_external_repo_sync_schedules(client, settings, desired_schedule_ids)
@@ -74,7 +80,19 @@ async def reconcile_temporal_schedules(
     await _reconcile_host_job_schedules(runtime, client, host_jobs, desired_schedule_ids)
     await _reconcile_config_cron_schedules(client, settings, desired_schedule_ids)
 
+    await _cancel_stale_delayed_workflows(client, desired_once_workflow_ids)
     await _delete_stale_schedules(client, desired_schedule_ids)
+
+
+def _desired_once_workflow_ids(tasks: list[ScheduledTask], host_jobs: list[HostJob]) -> set[str]:
+    """Return delayed workflow IDs still owned by database rows.
+
+    Inactive rows remain owners: their workflows enforce pause or disable semantics
+    when they eventually run, and reconciliation may later reactivate the same row.
+    """
+    return {agent_task_workflow_id(task) for task in tasks if task.schedule_type == "once"} | {
+        database_host_job_workflow_id(job) for job in host_jobs if job.schedule_type == "once"
+    }
 
 
 async def _reconcile_builtin_schedules(
@@ -215,6 +233,31 @@ async def _upsert_schedule(client: object, schedule_id: str, schedule: Schedule)
             raise
         handle = client_any.get_schedule_handle(schedule_id)
         await handle.update(lambda _input: ScheduleUpdate(schedule=schedule))
+
+
+async def _cancel_stale_delayed_workflows(client: object, desired_workflow_ids: set[str]) -> None:
+    """Cancel future one-shot workflows that lack a database owner."""
+    client_any = cast("Any", client)
+    workflow_iter: object = client_any.list_workflows('ExecutionStatus = "Running"')
+    if inspect.isawaitable(workflow_iter):
+        workflow_iter = await cast("Any", workflow_iter)
+    now = datetime.now(UTC)
+    async for execution in cast("Any", workflow_iter):
+        workflow_id = execution.id
+        expected_prefix = _ONE_SHOT_WORKFLOW_PREFIX_BY_TYPE.get(execution.workflow_type)
+        if expected_prefix is None or not workflow_id.startswith(expected_prefix):
+            continue
+        if workflow_id in desired_workflow_ids:
+            continue
+        execution_time = execution.execution_time
+        if execution_time is None or execution_time <= now:
+            continue
+        handle = client_any.get_workflow_handle(workflow_id, run_id=execution.run_id)
+        try:
+            await handle.cancel()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
 
 
 async def _delete_stale_schedules(client: object, desired_schedule_ids: set[str]) -> None:

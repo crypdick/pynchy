@@ -11,6 +11,7 @@ from conftest import init_test_database
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.orchestrator.temporal.host_jobs import run_database_host_job
+from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
     create_host_job,
     get_host_job_by_id,
@@ -172,6 +173,77 @@ class TestHostJobScheduling:
         assert job is not None
         assert job.last_run is None
         assert job.next_run is None
+
+    @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
+    async def test_temporal_database_host_job_skips_a_stale_once_workflow(
+        self, mock_shell, monkeypatch, tmp_path
+    ):
+        """A rescheduled row cannot run from its previous delayed workflow."""
+        due_at = "2026-12-31T23:59:59+00:00"
+        await create_host_job(
+            {
+                "id": "job-stale",
+                "name": "stale-job",
+                "command": "echo should-not-run",
+                "schedule_type": "once",
+                "schedule_value": due_at,
+                "next_run": due_at,
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+                "created_by": "admin-1",
+                "cwd": str(tmp_path),
+                "timeout_seconds": 60,
+                "enabled": True,
+            }
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.temporal.runtime_state.activity.info",
+            lambda: TemporalActivityInfo(workflow_id="pynchy-host-job-job-stale-old-time"),
+        )
+
+        result = await run_database_host_job("job-stale")
+
+        assert result == "skipped"
+        mock_shell.assert_not_awaited()
+        job = await get_host_job_by_id("job-stale")
+        assert job is not None
+        assert job.status == "active"
+        assert job.last_run is None
+
+    @patch("pynchy.host.orchestrator.temporal.host_jobs.run_shell_command")
+    async def test_temporal_database_host_job_skips_once_workflow_after_cron_conversion(
+        self, mock_shell, monkeypatch, tmp_path
+    ):
+        """A delayed one-shot cannot execute a row converted to recurring work."""
+        await create_host_job(
+            {
+                "id": "job-converted",
+                "name": "converted-job",
+                "command": "echo should-not-run",
+                "schedule_type": "cron",
+                "schedule_value": "0 3 * * *",
+                "next_run": "2026-12-31T03:00:00+00:00",
+                "status": "active",
+                "created_at": datetime.now(UTC).isoformat(),
+                "created_by": "admin-1",
+                "cwd": str(tmp_path),
+                "timeout_seconds": 60,
+                "enabled": True,
+            }
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.temporal.runtime_state.activity.info",
+            lambda: TemporalActivityInfo(workflow_id="pynchy-host-job-job-converted-old-time"),
+        )
+
+        result = await run_database_host_job("job-converted")
+
+        assert result == "skipped"
+        mock_shell.assert_not_awaited()
+        job = await get_host_job_by_id("job-converted")
+        assert job is not None
+        assert job.status == "active"
+        assert job.last_run is None
 
     async def test_host_job_validates_invalid_cron(self, mock_ipc_deps):
         """Host job creation rejects invalid cron expressions."""

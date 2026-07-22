@@ -11,7 +11,13 @@ from pynchy.config.jobs import (
 from pynchy.host.orchestrator.config_job_execution import (
     resolve_job_cwd as resolve_cron_job_cwd,
 )
-from pynchy.host.orchestrator.temporal.runtime_state import _record_activity_result
+from pynchy.host.orchestrator.temporal.runtime_state import (
+    _activity_workflow_id,
+    _record_activity_result,
+)
+from pynchy.host.orchestrator.temporal.schedules import (
+    is_stale_database_host_job_once_workflow,
+)
 from pynchy.logger import logger
 from pynchy.state import get_host_job_by_id, record_host_job_completion
 from pynchy.types import (
@@ -26,6 +32,15 @@ async def run_database_host_job(job_id: str) -> str:
     job = await get_host_job_by_id(job_id)
     if job is None or job.status != "active" or not job.enabled:
         logger.info("Temporal database host job skipped", job_id=job_id)
+        _record_activity_result(job_id, "skipped")
+        return "skipped"
+    activity_workflow_id = _activity_workflow_id()
+    if activity_workflow_id is not None and is_stale_database_host_job_once_workflow(
+        job, activity_workflow_id
+    ):
+        # The workflow ID versions delayed one-shot definitions. Reconciliation
+        # cancels stale runs best-effort; this guard closes the due-time race.
+        logger.info("Stale Temporal database host job skipped", job_id=job_id)
         _record_activity_result(job_id, "skipped")
         return "skipped"
 

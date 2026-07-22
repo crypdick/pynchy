@@ -13,6 +13,7 @@ import pytest
 from conftest import make_settings
 from temporalio import activity
 from temporalio.client import ScheduleOverlapPolicy, WorkflowFailureError
+from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -102,6 +103,16 @@ class _ScheduleListEntry:
     id: str
 
 
+@dataclass(frozen=True)
+class _WorkflowListEntry:
+    """The Temporal workflow-list subset the reconciler reads."""
+
+    id: str
+    run_id: str
+    workflow_type: str
+    execution_time: datetime | None
+
+
 class FakeScheduleHandle:
     def __init__(self, schedule_id: str):
         self.schedule_id = schedule_id
@@ -116,12 +127,28 @@ class FakeScheduleHandle:
         self.deleted = True
 
 
+class FakeWorkflowHandle:
+    def __init__(self, workflow_id: str, run_id: str):
+        self.workflow_id = workflow_id
+        self.run_id = run_id
+        self.cancelled = False
+        self.cancel_error = None
+
+    async def cancel(self):
+        if self.cancel_error is not None:
+            raise self.cancel_error
+        self.cancelled = True
+
+
 class FakeScheduleClient:
     def __init__(self):
         self.created_schedules = []
         self.started_workflows = []
         self.handles = {}
         self.schedule_ids = []
+        self.workflow_executions = []
+        self.workflow_handles = {}
+        self.workflow_query = None
 
     async def create_schedule(self, schedule_id, schedule, **kwargs):
         self.created_schedules.append((schedule_id, schedule, kwargs))
@@ -132,6 +159,15 @@ class FakeScheduleClient:
 
     def list_schedules(self):
         return _ScheduleIterator(self.schedule_ids)
+
+    def list_workflows(self, query):
+        self.workflow_query = query
+        return _WorkflowIterator(self.workflow_executions)
+
+    def get_workflow_handle(self, workflow_id, *, run_id=None):
+        assert run_id is not None
+        key = (workflow_id, run_id)
+        return self.workflow_handles.setdefault(key, FakeWorkflowHandle(*key))
 
     async def start_workflow(self, workflow, *posargs, **kwargs):
         assert len(posargs) <= 1
@@ -159,6 +195,21 @@ class _ScheduleIterator:
         except StopIteration:
             raise StopAsyncIteration from None
         return _ScheduleListEntry(id=schedule_id)
+
+
+class _WorkflowIterator:
+    def __init__(self, executions):
+        self._executions = iter(executions)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        await asyncio.sleep(0)
+        try:
+            return next(self._executions)
+        except StopIteration:
+            raise StopAsyncIteration from None
 
 
 @pytest.fixture
@@ -625,6 +676,149 @@ class TestTemporalSchedulerRuntime:
         assert kwargs["id"].startswith("pynchy-host-job-host-job-one-")
         assert kwargs["task_queue"] == "pynchy-test"
         assert 0 < kwargs["start_delay"].total_seconds() <= 300
+
+    @pytest.mark.asyncio
+    async def test_reconcile_cancels_only_orphaned_future_one_shot_workflows(
+        self, monkeypatch, temporal_task
+    ):
+        due_at = datetime.now(UTC) + timedelta(minutes=5)
+        temporal_task.schedule_type = "once"
+        temporal_task.schedule_value = due_at.isoformat()
+        paused_host_job = HostJob(
+            id="paused host job",
+            name="backup",
+            command="scripts/backup_runtime_dbs.sh",
+            schedule_type="once",
+            schedule_value=due_at.isoformat(),
+            created_by="admin-1",
+            status="paused",
+            enabled=False,
+        )
+        desired_task_id = temporal_schedules.agent_task_workflow_id(temporal_task)
+        desired_host_id = temporal_schedules.database_host_job_workflow_id(paused_host_job)
+        executions = [
+            _WorkflowListEntry(
+                id=desired_task_id,
+                run_id="desired-task-run",
+                workflow_type="ScheduledAgentTaskWorkflow",
+                execution_time=due_at,
+            ),
+            _WorkflowListEntry(
+                id=desired_host_id,
+                run_id="desired-host-run",
+                workflow_type="DatabaseHostJobWorkflow",
+                execution_time=due_at,
+            ),
+            _WorkflowListEntry(
+                id="pynchy-host-job-deleted-row-old-time",
+                run_id="orphan-run",
+                workflow_type="DatabaseHostJobWorkflow",
+                execution_time=due_at,
+            ),
+            _WorkflowListEntry(
+                id="pynchy-agent-task-already-due-old-time",
+                run_id="due-run",
+                workflow_type="ScheduledAgentTaskWorkflow",
+                execution_time=datetime.now(UTC) - timedelta(seconds=1),
+            ),
+            _WorkflowListEntry(
+                id="pynchy-agent-task-foreign",
+                run_id="foreign-run",
+                workflow_type="InteractiveMessageWorkflow",
+                execution_time=due_at,
+            ),
+        ]
+        client = FakeScheduleClient()
+        client.workflow_executions = executions
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
+        )
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "get_all_host_jobs",
+            AsyncMock(return_value=[paused_host_job]),
+        )
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert client.workflow_query == 'ExecutionStatus = "Running"'
+        cancelled_keys = {
+            key for key, handle in client.workflow_handles.items() if handle.cancelled
+        }
+        assert cancelled_keys == {("pynchy-host-job-deleted-row-old-time", "orphan-run")}
+
+    @pytest.mark.asyncio
+    async def test_reconcile_cancels_a_previous_timestamp_for_an_existing_once_task(
+        self, monkeypatch, temporal_task
+    ):
+        due_at = datetime.now(UTC) + timedelta(minutes=5)
+        temporal_task.schedule_type = "once"
+        temporal_task.schedule_value = due_at.isoformat()
+        stale_workflow_id = "pynchy-agent-task-task-with-spaces-previous-time"
+        client = FakeScheduleClient()
+        client.workflow_executions = [
+            _WorkflowListEntry(
+                id=stale_workflow_id,
+                run_id="stale-run",
+                workflow_type="ScheduledAgentTaskWorkflow",
+                execution_time=due_at,
+            )
+        ]
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert client.workflow_handles[stale_workflow_id, "stale-run"].cancelled is True
+        assert client.started_workflows[0][2]["id"] == temporal_schedules.agent_task_workflow_id(
+            temporal_task
+        )
+
+    @pytest.mark.asyncio
+    async def test_reconcile_ignores_an_orphan_that_disappears_before_cancel(self, monkeypatch):
+        due_at = datetime.now(UTC) + timedelta(minutes=5)
+        workflow_id = "pynchy-agent-task-deleted-row-old-time"
+        run_id = "missing-run"
+        client = FakeScheduleClient()
+        client.workflow_executions = [
+            _WorkflowListEntry(
+                id=workflow_id,
+                run_id=run_id,
+                workflow_type="ScheduledAgentTaskWorkflow",
+                execution_time=due_at,
+            )
+        ]
+        handle = client.get_workflow_handle(workflow_id, run_id=run_id)
+        handle.cancel_error = RPCError("missing", RPCStatusCode.NOT_FOUND, b"")
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
+        )
+        runtime.client = client
+        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=SchedulerConfig(), jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert handle.cancelled is False
 
     @pytest.mark.asyncio
     async def test_reconcile_creates_temporal_schedule_for_database_host_job(self, monkeypatch):
@@ -1398,6 +1592,65 @@ class TestTemporalSchedulerRuntime:
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["last_workflow_id"] == "workflow-skipped"
         assert status["last_result"] == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_run_scheduled_agent_activity_skips_a_stale_once_workflow(
+        self, monkeypatch, temporal_task
+    ):
+        temporal_task.schedule_type = "once"
+        temporal_task.schedule_value = "2026-12-31T23:59:59+00:00"
+        run_scheduled_agent = AsyncMock()
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "get_task_by_id",
+            AsyncMock(return_value=temporal_task),
+        )
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "run_scheduled_agent",
+            run_scheduled_agent,
+        )
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="pynchy-agent-task-old-definition"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+
+        result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
+        assert result == "skipped"
+        run_scheduled_agent.assert_not_awaited()
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "pynchy-agent-task-old-definition"
+        assert status["last_result"] == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_run_scheduled_agent_activity_skips_once_workflow_after_cron_conversion(
+        self, monkeypatch, temporal_task
+    ):
+        run_scheduled_agent = AsyncMock()
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "get_task_by_id",
+            AsyncMock(return_value=temporal_task),
+        )
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "run_scheduled_agent",
+            run_scheduled_agent,
+        )
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="pynchy-agent-task-old-once-definition"),
+        )
+
+        result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
+        assert temporal_task.schedule_type == "cron"
+        assert result == "skipped"
+        run_scheduled_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_retries_failed_runner(
