@@ -253,9 +253,27 @@ class TestLinearClient:
         assert result["identifier"] == "PYN-1"
         assert result["url"] == "https://linear.app/acme/issue/PYN-1"
         _, kwargs = client.query.call_args
-        assert kwargs["team_id"] == "team-1"
-        assert kwargs["title"] == "Track tasks"
-        assert kwargs["description"] == "Create task tracker"
+        assert kwargs["input"] == {
+            "teamId": "team-1",
+            "title": "Track tasks",
+            "description": "Create task tracker",
+        }
+
+    async def test_create_issue_omits_absent_optional_fields(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(
+            return_value={
+                "issueCreate": {
+                    "success": True,
+                    "issue": {"id": "issue-1", "identifier": "PYN-1"},
+                }
+            }
+        )
+
+        await client.create_issue(team_id="team-1", title="Track tasks")
+
+        _, kwargs = client.query.call_args
+        assert kwargs["input"] == {"teamId": "team-1", "title": "Track tasks"}
 
     async def test_get_issue_returns_none_after_canary_cleanup(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())
