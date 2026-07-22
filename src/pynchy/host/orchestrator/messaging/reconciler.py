@@ -259,9 +259,12 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     now = datetime.now(UTC)
     recovered = 0
     retried = 0
+    # A cycle's candidate set is immutable because ingress may register
+    # dynamic thread workspaces during pair reconciliation.
+    canonical_jids = tuple(deps.workspaces)
 
     for ch in deps.channels:
-        for canonical_jid in deps.workspaces:
+        for canonical_jid in canonical_jids:
             pair_result = await _reconcile_channel_pair(deps, ch, canonical_jid, now)
             if pair_result is None:
                 continue
