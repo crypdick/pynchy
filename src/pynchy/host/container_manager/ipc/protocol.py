@@ -51,6 +51,7 @@ TIER2_TYPES = frozenset(
         "register_group",
         "create_periodic_agent",
         "messaging_source_health",
+        "task_status",
         # Persistent learned-skill decisions use a host-only user approval record.
         "skill_access:policy",
         # Lifecycle: still carries data, will be reviewed later
@@ -86,7 +87,7 @@ READ_ONLY_REQUEST_PREFIXES = (
     "service:recall_",
     "skill_access:",
 )
-READ_ONLY_REQUEST_TYPES = frozenset({"messaging_source_health"})
+READ_ONLY_REQUEST_TYPES = frozenset({"messaging_source_health", "task_status"})
 
 
 def validate_signal(data: dict[str, Any]) -> str | None:

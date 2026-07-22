@@ -10,6 +10,7 @@ from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
 
 from . import _ipc
+from ._ipc_request import ipc_service_request
 from ._registry import ToolEntry, register, tool, tool_error
 
 if TYPE_CHECKING:
@@ -330,8 +331,9 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
 @tool(
     "list_tasks",
     (
-        "List all scheduled tasks (both agent tasks and host "
-        "jobs). Each entry is labelled [agent] or [host]. "
+        "Read current scheduled-work health for agent tasks and host jobs, including "
+        "status, last results, recent failure summaries, Temporal next-run times, and "
+        "orchestration errors. "
         "From admin: shows all tasks across all groups. "
         "From other groups: shows only that group's agent tasks."
     ),
@@ -340,13 +342,30 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
 async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
     _arguments: dict[str, Any],
 ) -> list[TextContent]:
+    live_result = await ipc_service_request(
+        "list_tasks",
+        {},
+        response_timeout_seconds=10,
+        type_override="task_status",
+    )
+    if live_result and not live_result[0].text.startswith("Error:"):
+        return live_result
+
     tasks_file = _ipc.get_agent_tool_runtime().ipc_dir / "current_tasks.json"
 
     try:
         if not tasks_file.exists():
-            return [TextContent(type="text", text="No scheduled tasks found.")]
+            fallback = "No scheduled-task snapshot is available."
+        else:
+            fallback = _list_tasks_text(tasks_file)[0].text
 
-        return _list_tasks_text(tasks_file)
+        live_error = live_result[0].text if live_result else "Error: empty host response"
+        return [
+            TextContent(
+                type="text",
+                text=f"{live_error}\nSnapshot fallback (run health unavailable):\n{fallback}",
+            )
+        ]
     except (OSError, json.JSONDecodeError, KeyError) as exc:
         return [TextContent(type="text", text=f"Error reading tasks: {exc}")]
 
