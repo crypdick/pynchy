@@ -46,6 +46,48 @@ async def test_search_skills_returns_matching_catalog_entries(tmp_path: Path, mo
 
 @pytest.mark.asyncio
 @pytest.mark.action("skill.catalog.search")
+async def test_search_skills_matches_live_operations_morphology(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "skills"
+    _write_skill(
+        root,
+        "agent-harness-operations",
+        "Use when inspecting, operating, or improving the Pynchy agent harness.",
+    )
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+
+    result = await call_tool("search_skills", {"query": "Pynchy operations inspection"})
+
+    assert "agent-harness-operations" in result[0].text
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
+async def test_search_skills_requires_every_normalized_term(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "skills"
+    _write_skill(
+        root,
+        "agent-harness-operations",
+        "Use when inspecting, operating, or improving the Pynchy agent harness.",
+    )
+    _write_skill(root, "pynchy-release-notes", "Read Pynchy release notes.")
+    _write_skill(
+        root,
+        "industrial-inspection",
+        "Use when inspecting and operating industrial machinery.",
+    )
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+
+    result = await call_tool("search_skills", {"query": "Pynchy operations inspection"})
+
+    assert "agent-harness-operations" in result[0].text
+    assert "pynchy-release-notes" not in result[0].text
+    assert "industrial-inspection" not in result[0].text
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
 async def test_search_skills_ignores_legacy_profile_catalog(tmp_path: Path, monkeypatch) -> None:
     global_root = tmp_path / "global-skills"
     legacy_profile_root = tmp_path / "profile-skills"

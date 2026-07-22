@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,9 @@ from ._registry import tool, tool_error
 _SKILL_ROOT_ENV = "PYNCHY_SKILLS_ROOT"
 _MAX_SEARCH_RESULTS = 12
 _MAX_SKILL_CONTENT_CHARS = 40_000
+_SEARCH_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+_SEARCH_SUFFIXES = ("ions", "ion", "ing")
+_MIN_SEARCH_STEM_LENGTH = 5
 
 
 def _skill_dirs() -> dict[str, Path]:
@@ -60,13 +64,31 @@ def _skill_summary(skill_name: str, skill_dir: Path) -> str:
     return skill_name
 
 
+def _search_stem(token: str) -> str:
+    """Normalize the narrow noun/gerund variants common in skill descriptions."""
+    for suffix in _SEARCH_SUFFIXES:
+        stem = token.removesuffix(suffix)
+        if stem != token and len(stem) >= _MIN_SEARCH_STEM_LENGTH:
+            return stem
+    return token
+
+
+def _search_tokens(text: str) -> list[str]:
+    return _SEARCH_TOKEN_PATTERN.findall(text.casefold())
+
+
 def _matching_skills(query: str) -> list[tuple[str, str]]:
-    query_terms = [part for part in query.lower().split() if part]
+    query_terms = _search_tokens(query)
+    if not query_terms:
+        return []
     matches: list[tuple[str, str]] = []
     for name, skill_dir in _skill_dirs().items():
         summary = _skill_summary(name, skill_dir)
-        searchable = summary.lower()
-        if all(term in searchable for term in query_terms):
+        searchable = summary.casefold()
+        searchable_stems = {_search_stem(token) for token in _search_tokens(searchable)}
+        if all(
+            term in searchable or _search_stem(term) in searchable_stems for term in query_terms
+        ):
             matches.append((name, summary))
     return matches[:_MAX_SEARCH_RESULTS]
 
