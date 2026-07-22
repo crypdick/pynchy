@@ -314,18 +314,39 @@ class TestListTasks:
         request.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_returns_live_structured_status(self, monkeypatch):
+    async def test_returns_compact_complete_live_status(self, monkeypatch):
         live_status = {
             "tasks": [
                 {
                     "id": "t1",
+                    "group": "admin",
+                    "schedule_type": "cron",
+                    "schedule_value": "0 9 * * *",
                     "status": "paused",
                     "next_run": None,
                     "last_result": "Blocked: provider unavailable",
-                    "run_health": {"consecutive_failures": 2},
+                    "orchestration": {
+                        "state": "unavailable",
+                        "error": "Temporal unavailable",
+                    },
+                    "run_health": {
+                        "last_status": "error",
+                        "consecutive_failures": 2,
+                    },
                 }
             ],
-            "host_jobs": [],
+            "host_jobs": [
+                {
+                    "id": "h1",
+                    "name": "backup",
+                    "schedule_type": "cron",
+                    "schedule_value": "0 1 * * *",
+                    "status": "active",
+                    "enabled": True,
+                    "next_run": "2026-07-23T08:00:00+00:00",
+                    "orchestration": {"state": "scheduled", "error": None},
+                }
+            ],
         }
         request = AsyncMock(
             return_value=[TextContent(type="text", text=json.dumps(live_status, indent=2))]
@@ -336,13 +357,53 @@ class TestListTasks:
         )
 
         result = await call_tool("list_tasks", {})
-        assert json.loads(result[0].text) == live_status
+        text = result[0].text
+        assert "Agent tasks (1)" in text
+        assert "t1 | group=admin | schedule=cron:0 9 * * * | status=paused | next=-" in text
+        assert "result=Blocked: provider unavailable" in text
+        assert "consecutive_failures=2" in text
+        assert "orchestration_error=Temporal unavailable" in text
+        assert "Database host jobs (1)" in text
+        assert "h1 | name=backup" in text
+        assert len(text) < len(json.dumps(live_status, indent=2))
         request.assert_awaited_once_with(
             "list_tasks",
             {},
             response_timeout_seconds=10,
             type_override="task_status",
         )
+
+    @pytest.mark.asyncio
+    async def test_live_status_bounds_long_results_without_dropping_tasks(self, monkeypatch):
+        tasks = [
+            {
+                "id": f"task-{index}",
+                "group": "admin",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "status": "active",
+                "next_run": "2026-07-23T16:00:00+00:00",
+                "last_result": f"result-{index} " + ("x" * 1000),
+                "orchestration": {"state": "scheduled", "error": None},
+                "run_health": {"last_status": "success", "consecutive_failures": 0},
+            }
+            for index in range(40)
+        ]
+        live_status = {"tasks": tasks, "host_jobs": []}
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            AsyncMock(
+                return_value=[TextContent(type="text", text=json.dumps(live_status, indent=2))]
+            ),
+        )
+
+        result = await call_tool("list_tasks", {})
+
+        text = result[0].text
+        assert "Agent tasks (40)" in text
+        assert "task-0" in text
+        assert "task-39" in text
+        assert len(text) < 16_000
 
     @pytest.mark.asyncio
     async def test_admin_snapshot_fallback_sees_all_tasks(self, monkeypatch, tmp_path):
