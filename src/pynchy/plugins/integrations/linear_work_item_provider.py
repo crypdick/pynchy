@@ -18,8 +18,10 @@ from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
 from pynchy.plugins.integrations.linear_statuses import (
     AWAITING_PLAN_APPROVAL_STATUS,
+    AWAITING_REVIEW_STATUS,
     HUMAN_APPROVED_STATUS,
     READY_FOR_PLANNING_STATUS,
+    TERMINAL_STATE_TYPES,
 )
 from pynchy.state import (
     WorkItemClaimRequest,
@@ -202,6 +204,24 @@ async def move_unlinked_work_item(
     if status not in board.states:
         raise ValueError(f"Unknown Pynchy todo status: {status}")
     return await update_issue_state(client, issue_id, state_id(board.states[status]))
+
+
+async def submit_unlinked_work_item_for_review(
+    client: LinearClient,
+    workspace: str,
+    issue_id: str,
+) -> dict[str, Any]:
+    """Move verified existing work to review without inventing an execution claim."""
+    issue, board = await workspace_issue(client, workspace, issue_id)
+    state = issue.get("state")
+    if not isinstance(state, dict):
+        raise TypeError("Linear issue state was not an object")
+    if state.get("type") in TERMINAL_STATE_TYPES:
+        raise ValueError("A terminal Linear work item cannot re-enter Awaiting Review")
+    target_state_id = state_id(board.states[AWAITING_REVIEW_STATUS])
+    if state_id(issue) == target_state_id:
+        return issue
+    return await update_issue_state(client, issue_id, target_state_id)
 
 
 async def submit_work_item_plan(

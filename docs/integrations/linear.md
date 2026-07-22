@@ -108,16 +108,16 @@ Linear holds the complete planning and authorization state:
 | `Awaiting Plan Approval` | The issue description contains a concrete Pynchy plan, but execution lacks approval | Agent through `linear_submit_plan` |
 | `Human Approved` | A human explicitly authorized execution | Human |
 | `In Progress` | Pynchy claimed the approved item and started work | Pynchy lifecycle |
-| `Awaiting Review` | Pynchy opened a GitHub pull request and linked it to the execution | Pynchy lifecycle |
+| `Awaiting Review` | The agent reports the requested outcome complete and awaits human acceptance | Agent through `linear_await_review_work_item` |
 | `Blocked` | Execution needs intervention | Pynchy lifecycle |
-| `Done` | The linked GitHub pull request merged | Authenticated GitHub webhook |
+| `Done` | A human or trusted domain-specific verifier accepted the outcome | Human or authenticated provider webhook |
 | `Rejected` | A human declined the proposal | Human |
 
 `Ready for Planning` never authorizes execution. Pynchy can claim only a
 `Human Approved` item. Agent tools cannot set `Ready for Planning`,
 `Human Approved`, `Done`, or `Rejected`; change the human decision states in
-Linear. Pynchy reserves `Done` for merge evidence from GitHub rather than an
-agent's completion claim.
+Linear. An agent reports completion through `Awaiting Review`; it cannot accept
+its own work by moving the item to `Done`.
 
 ## Receive Linear callbacks
 
@@ -215,6 +215,11 @@ Execution still requires `linear_claim_work_item` to claim the exact
 `Human Approved` issue. Ordinary agent output stays in Discord; only an explicit
 Linear action mutates the issue.
 
+An authenticated Issue callback showing `Done` also completes a linked Pynchy
+execution that was waiting in `Awaiting Review`. This supports human acceptance
+for any kind of work. A linked GitHub pull request remains an optional automated
+acceptance path for development work.
+
 The route verifies Linear's HMAC-SHA256 signature against the raw request body,
 requires matching millisecond timestamps within 60 seconds, checks the optional
 organization ID, and deduplicates the `Linear-Delivery` UUID. The signing secret
@@ -288,7 +293,7 @@ them when an agent starts or finishes work from a workspace board:
 |------|---------|
 | `linear_submit_plan` | Writes a concrete Markdown plan into a `Ready for Planning` issue and atomically moves it to `Awaiting Plan Approval`; it never authorizes execution. |
 | `linear_claim_work_item` | Claims a `Human Approved` issue for the current Pynchy execution and moves it to `In Progress`. |
-| `linear_await_review_work_item` | Moves a claimed item to `Awaiting Review`, records a summary, and links its GitHub pull-request URL. |
+| `linear_await_review_work_item` | Reports a completed outcome with a summary and optional evidence. It moves linked work or verified existing unlinked work to `Awaiting Review`; a pull-request URL is optional. |
 | `linear_block_work_item` | Moves a claimed item to Blocked and records the blocker. |
 | `linear_handoff_work_item` | Moves a claimed item to Blocked, records the next owner, and releases Pynchy's claim. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider outcome by checking Linear instead of retrying the mutation blindly. |
@@ -308,13 +313,23 @@ existing execution record instead of creating duplicate work. Review
 submission, blocking, and handoff act only on that linked execution. A handoff
 releases the claim so another owner can pick the item up deliberately.
 
-When the implementation is ready, call `linear_await_review_work_item` with the
-canonical `https://github.com/<owner>/<repository>/pull/<number>` URL. The claim
-stays active while the issue is in `Awaiting Review`. If that repository's
-[GitHub webhook route](github.md) maps to the same workspace, an authenticated
-merged-PR delivery moves the linked issue to `Done` and releases the claim.
-Opening the PR, converting it from draft, or closing it without merging does not
-complete the work item.
+When the requested outcome is ready, call `linear_await_review_work_item` with a
+concise summary and any relevant evidence. The tool accepts receipts, documents,
+artifact references, test results, and other domain-specific evidence. Include a
+canonical `https://github.com/<owner>/<repository>/pull/<number>` URL only when
+development work produced a pull request.
+
+The same tool can reconcile an unlinked issue when the agent verifies that the
+requested outcome already exists. It moves the issue directly to `Awaiting
+Review` without inventing a claim or pull request. This transition reports an
+existing result; it does not authorize new execution or bypass `Human Approved`.
+
+A linked execution stays active while the issue remains in `Awaiting Review`.
+Moving the issue to `Done` in Linear records human acceptance and releases that
+execution. For a linked pull request whose repository maps to the same workspace,
+an authenticated merged-PR delivery can perform the same acceptance transition
+automatically. Opening the PR, converting it from draft, or closing it without
+merging does not complete the work item.
 
 If a network failure happens after Pynchy sends a Linear mutation, Pynchy marks
 the transition unknown. Use `linear_reconcile_work_item` to inspect provider

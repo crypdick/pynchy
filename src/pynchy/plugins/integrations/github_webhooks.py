@@ -20,7 +20,7 @@ from pynchy.config import get_settings
 from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
 from pynchy.plugins.integrations.linear_board_payloads import LinearBoardPayloadError
 from pynchy.plugins.integrations.linear_client import LinearError
-from pynchy.plugins.integrations.linear_work_items import complete_merged_pull_request
+from pynchy.plugins.integrations.linear_work_item_completion import complete_merged_pull_request
 from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
     WebhookEvent,

@@ -166,7 +166,7 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action(
         "linear.workitem.review",
         "linear",
-        "Submit a Pynchy-linked Linear work item for review with its pull request.",
+        "Submit completed linked or existing Linear work for human review.",
         "linear_await_review_work_item",
     ),
     agent_action(

@@ -55,6 +55,7 @@ from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.plugins.integrations.linear_client import LinearError
+from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRouteConfig,
     parse_linear_webhook,
@@ -107,6 +108,7 @@ def test_every_comment_change_maps_to_concise_issue_conversation(
     assert event.instructions is not None
     assert activity in event.instructions
     assert "take appropriate action" in event.instructions
+    assert "linear_await_review_work_item" in event.instructions
     assert event.external_context is not None
     context_activity = {"create": "posted", "update": "edited", "remove": "removed"}[action]
     assert f"Event: comment {context_activity}" in event.external_context
@@ -149,6 +151,7 @@ def test_every_issue_change_targets_the_issue_conversation(
     assert event.instructions is not None
     assert event.external_context is not None
     assert "take appropriate action" in event.instructions
+    assert "linear_await_review_work_item" in event.instructions
     assert f"Event: issue {action}" in event.external_context
     assert "State: In Progress" in event.external_context
     assert (
@@ -157,6 +160,37 @@ def test_every_issue_change_targets_the_issue_conversation(
     assert event.conversation is not None
     assert event.conversation.control_title == "[PYN-1] Webhook callbacks"
     assert event.conversation.control_closed is False
+
+
+async def test_done_issue_update_completes_reviewed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Reviewed outcome",
+                "state": {"id": "state-done", "name": "Done"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(event, conversation=replace(event.conversation, workspace="project"))
+    complete = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.complete_reviewed_work_item",
+        complete,
+    )
+
+    await process_linear_webhook_event(event)
+
+    complete.assert_awaited_once_with("project", "issue-1", _DELIVERY_ID)
 
 
 def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
@@ -183,6 +217,7 @@ def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
         validate = route.validate_workspace
         assert validate is not None
+        assert route.process_event is not None
         assert validate(_WebhookDeps().workspace) is None
         assert "Discord guild-channel" in validate(
             WorkspaceProfile(

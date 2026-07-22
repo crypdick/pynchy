@@ -13,7 +13,10 @@ from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRe
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
-from pynchy.plugins.integrations.linear_work_items import complete_merged_pull_request
+from pynchy.plugins.integrations.linear_work_item_completion import (
+    complete_merged_pull_request,
+    complete_reviewed_work_item,
+)
 from pynchy.state import (
     begin_in_flight_turn,
     get_active_work_item_execution,
@@ -138,6 +141,10 @@ def lifecycle(monkeypatch: pytest.MonkeyPatch) -> tuple[FakeLinearState, dict[st
         "pynchy.plugins.integrations.linear_work_items.linear_client",
         lambda **_kwargs: FakeLinearClientContext(client),
     )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_completion.linear_client",
+        lambda **_kwargs: FakeLinearClientContext(client),
+    )
 
     board = AsyncMock(return_value=_board())
     monkeypatch.setattr(
@@ -213,6 +220,82 @@ async def test_review_submission_links_pr_and_keeps_claim_until_merge(lifecycle)
 
     assert completed is not None
     assert completed.status.value == "completed"
+    assert await get_active_work_item_execution("issue-1") is None
+
+
+async def test_linked_non_code_work_can_await_review_without_a_pull_request(lifecycle):
+    _client, handlers = lifecycle
+    await _call(handlers, "linear_claim_work_item", "claim-1", issue_id="issue-1")
+
+    result = await _call(
+        handlers,
+        "linear_await_review_work_item",
+        "review-1",
+        issue_id="issue-1",
+        summary="Purchased the approved equipment.",
+        evidence_refs=["linear-attachment:receipt-1"],
+    )
+
+    work_item = result["result"]["work_item"]
+    assert work_item["status"] == "awaiting_review"
+    assert work_item["summary"] == "Purchased the approved equipment."
+    assert work_item["evidence_refs"] == ["linear-attachment:receipt-1"]
+
+
+async def test_existing_unlinked_work_moves_directly_to_awaiting_review(lifecycle):
+    client, handlers = lifecycle
+    client.issue["state"] = _state("state-awaiting-plan-approval")
+
+    result = await _call(
+        handlers,
+        "linear_await_review_work_item",
+        "review-1",
+        issue_id="issue-1",
+        summary="Verified the requested behavior already exists.",
+        evidence_refs=["commit:abc123", "test:linear-webhooks"],
+    )
+
+    assert result["result"]["issue"]["state"]["name"] == "Awaiting Review"
+    assert result["result"]["review"] == {
+        "summary": "Verified the requested behavior already exists.",
+        "evidence_refs": ["commit:abc123", "test:linear-webhooks"],
+    }
+    assert await get_active_work_item_execution("issue-1") is None
+
+
+async def test_existing_terminal_work_cannot_reenter_review(lifecycle):
+    client, handlers = lifecycle
+    client.issue["state"] = _state("state-done")
+
+    result = await _call(
+        handlers,
+        "linear_await_review_work_item",
+        "review-1",
+        issue_id="issue-1",
+        summary="Do not reopen completed work.",
+    )
+
+    assert result == {"error": "A terminal Linear work item cannot re-enter Awaiting Review"}
+
+
+async def test_linear_done_update_completes_linked_non_code_execution(lifecycle):
+    client, handlers = lifecycle
+    await _call(handlers, "linear_claim_work_item", "claim-1", issue_id="issue-1")
+    await _call(
+        handlers,
+        "linear_await_review_work_item",
+        "review-1",
+        issue_id="issue-1",
+        summary="Purchased the approved equipment.",
+        evidence_refs=["linear-attachment:receipt-1"],
+    )
+    client.issue["state"] = _state("state-done")
+
+    completed = await complete_reviewed_work_item("pynchy", "issue-1", "delivery-1")
+
+    assert completed is not None
+    assert completed.status.value == "completed"
+    assert completed.evidence_refs == ("linear-attachment:receipt-1",)
     assert await get_active_work_item_execution("issue-1") is None
 
 
