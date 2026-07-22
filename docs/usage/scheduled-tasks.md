@@ -225,13 +225,24 @@ To back up runtime databases with SQLite-safe snapshots, run:
 scripts/backup_runtime_dbs.sh
 ```
 
-The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `~/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups` by default and prunes backups older than 30 days. It briefly unloads the `com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads it again. This prevents the online SQLite backup from blocking Temporal writes and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and `PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd identifiers. To run it daily on macOS:
+The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default and prunes backups older than 30 days. It briefly unloads the `com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads it again. This prevents the online SQLite backup from blocking Temporal writes and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and `PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd identifiers.
+
+For host-loss protection, set both `PYNCHY_BACKUP_REMOTE_HOST` and `PYNCHY_BACKUP_REMOTE_DIR`. The script creates SQLite snapshots in `PYNCHY_BACKUP_STAGING_DIR`, transfers them with `rsync`, verifies `SHA256SUMS` on the remote host, and only then renames the hidden partial directory to its final timestamp. Set `PYNCHY_BACKUP_SSH_KEY` when the scheduled job needs a dedicated noninteractive key. Remote hosts must provide `ssh`, `rsync`, and `sha256sum`:
+
+```bash
+PYNCHY_BACKUP_REMOTE_HOST=backup@example-nas \
+PYNCHY_BACKUP_REMOTE_DIR=/srv/backups/pynchy-runtime-dbs \
+PYNCHY_BACKUP_SSH_KEY="$HOME/.ssh/pynchy_backup_ed25519" \
+scripts/backup_runtime_dbs.sh
+```
+
+To run a remote backup daily on macOS:
 
 ```bash
 cp launchd/com.pynchy.backup.plist ~/Library/LaunchAgents/com.pynchy.backup.plist
 ```
 
-Before loading the plist, replace `$HOME` with your absolute home directory and `$PYNCHY_PROJECT_ROOT` with the absolute path to this checkout.
+Before loading the plist, replace `$HOME` and `$PYNCHY_PROJECT_ROOT` with absolute paths, and replace `$PYNCHY_BACKUP_REMOTE_HOST` and `$PYNCHY_BACKUP_REMOTE_DIR` with the remote SSH host and absolute destination. Ensure the host key is already trusted and the configured key works with `BatchMode=yes`.
 
 ```bash
 plutil -lint ~/Library/LaunchAgents/com.pynchy.backup.plist

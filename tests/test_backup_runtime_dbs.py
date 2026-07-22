@@ -34,10 +34,29 @@ def _fake_launchctl(fake_bin: Path) -> Path:
     return calls
 
 
+def _fake_ssh(fake_bin: Path) -> Path:
+    calls = fake_bin / "ssh.calls"
+    executable = fake_bin / "ssh"
+    executable.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "$*" >> "$FAKE_SSH_CALLS"\n'
+        'while [[ "$1" == -* ]]; do\n'
+        '  if [[ "$1" == -o || "$1" == -i ]]; then shift 2; else shift; fi\n'
+        "done\n"
+        "shift\n"
+        'exec /bin/bash -c "$*"\n',
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return calls
+
+
 def _run_backup(
     tmp_path: Path,
     *,
     sqlite3_executable: Path | None = None,
+    remote: bool = False,
+    remote_checksum_failure: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     data_dir = tmp_path / "data"
     backup_dir = tmp_path / "backups"
@@ -61,6 +80,19 @@ def _run_backup(
         "PYNCHY_BACKUP_DIR": str(backup_dir),
         "PYNCHY_DATA_DIR": str(data_dir),
     }
+    if remote:
+        ssh_calls = _fake_ssh(fake_bin)
+        environment |= {
+            "FAKE_SSH_CALLS": str(ssh_calls),
+            "PYNCHY_BACKUP_REMOTE_HOST": "backup-host",
+            "PYNCHY_BACKUP_REMOTE_DIR": str(tmp_path / "remote"),
+            "PYNCHY_BACKUP_STAGING_DIR": str(tmp_path / "staging"),
+        }
+        environment.pop("PYNCHY_BACKUP_DIR")
+        if remote_checksum_failure:
+            fake_sha256sum = fake_bin / "sha256sum"
+            fake_sha256sum.write_text("#!/usr/bin/env bash\nexit 24\n", encoding="utf-8")
+            fake_sha256sum.chmod(0o755)
     result = subprocess.run(  # noqa: S603 - fixed script path with isolated test inputs.
         [BASH, SCRIPT],
         check=False,
@@ -112,3 +144,48 @@ def test_backup_restarts_temporal_when_snapshot_fails(tmp_path: Path) -> None:
         f"bootstrap gui/{os.getuid()} "
         f"{tmp_path}/home/Library/LaunchAgents/com.pynchy.temporal.plist"
     )
+
+
+def test_remote_backup_verifies_then_publishes_snapshot(tmp_path: Path) -> None:
+    result, _, _ = _run_backup(tmp_path, remote=True)
+
+    assert result.returncode == 0, result.stderr
+    remote_root = tmp_path / "remote"
+    snapshots = [path for path in remote_root.iterdir() if not path.name.startswith(".partial-")]
+    assert len(snapshots) == 1
+    assert {path.name for path in snapshots[0].iterdir()} == {*DATABASES, "SHA256SUMS"}
+    assert list((tmp_path / "staging").iterdir()) == []
+    ssh_calls = (tmp_path / "bin" / "ssh.calls").read_text(encoding="utf-8")
+    assert "sha256sum -c SHA256SUMS" in ssh_calls
+    assert "-name '20*T*Z'" in ssh_calls
+
+
+def test_remote_backup_requires_both_remote_settings(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    environment = os.environ | {
+        "PYNCHY_DATA_DIR": str(data_dir),
+        "PYNCHY_BACKUP_REMOTE_HOST": "backup-host",
+    }
+
+    result = subprocess.run(  # noqa: S603 - fixed script path with isolated test inputs.
+        [BASH, SCRIPT],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert result.returncode == 2
+    assert "must be set together" in result.stderr
+
+
+def test_remote_backup_does_not_publish_failed_checksum(tmp_path: Path) -> None:
+    result, _, _ = _run_backup(tmp_path, remote=True, remote_checksum_failure=True)
+
+    assert result.returncode == 24
+    remote_root = tmp_path / "remote"
+    assert not [path for path in remote_root.iterdir() if not path.name.startswith(".partial-")]
+    assert [path for path in remote_root.iterdir() if path.name.startswith(".partial-")]
+    assert list((tmp_path / "staging").iterdir())
+    assert "Remote partial backup may remain" in result.stderr
