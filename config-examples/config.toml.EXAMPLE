@@ -176,6 +176,12 @@
 # bot_token_env = "DISCORD_BOT_TOKEN"
 # application_id = "123456789012345678"
 
+# Optional read-only aggregate metadata from personal messaging collectors.
+# Pynchy reads timestamps and collector state only, never senders or bodies.
+# [messaging_source_health]
+# data_dir = "/path/to/host-local/messaging-metadata"
+# stale_after_hours = 24
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Plugin Overrides
 # ─────────────────────────────────────────────────────────────────────────────

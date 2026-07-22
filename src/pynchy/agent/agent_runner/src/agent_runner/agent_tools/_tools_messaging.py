@@ -14,11 +14,12 @@ from ._registry import tool
 @tool(
     "messaging_source_health",
     (
-        "Read current health and latest Pynchy-ingested inbound timestamps for messaging "
-        "sources. Use this instead of inspecting host environment variables or opening "
-        "provider applications. This tool never reads message bodies, opens conversations, "
-        "or changes provider read state. Sources outside configured Pynchy connections are "
-        "reported as not_established."
+        "Read current health and latest inbound timestamps for Pynchy messaging runtimes "
+        "and configured host-local aggregate sources. Use this instead of inspecting host "
+        "environment variables, invoking sibling messaging utilities, or opening provider "
+        "applications. This tool never reads sender identities or message bodies, opens "
+        "conversations, or changes provider read state. Its latest_inbound field identifies "
+        "the newest body-free timestamp across returned sources."
     ),
     {
         "type": "object",
@@ -29,7 +30,7 @@ from ._registry import tool
                 "description": (
                     "Optional connection names or provider types to inspect, such as "
                     "whatsapp, signal, or google_messages. Omit to inspect every configured "
-                    "Pynchy connection."
+                    "Pynchy connection and supported host-local aggregate source."
                 ),
             }
         },
