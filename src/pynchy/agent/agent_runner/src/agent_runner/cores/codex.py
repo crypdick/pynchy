@@ -25,6 +25,14 @@ from ._codex_config import (
     gateway_base_url_from_env,
     write_codex_config,
 )
+from ._codex_event_parsing import (
+    file_change_input,
+    file_change_result,
+    item_command,
+    item_id,
+    item_is_error,
+    item_text,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -92,49 +100,6 @@ def _configured_model(extra: dict[str, object]) -> str | None:
 def _configured_model_reasoning_effort(extra: dict[str, object]) -> str | None:
     effort = extra.get("model_reasoning_effort")
     return effort if isinstance(effort, str) else None
-
-
-def _item_text(item: dict[str, object]) -> str:
-    """Extract display text from common Codex JSONL item shapes."""
-    text = item.get("text") or item.get("message") or item.get("summary") or item.get("output")
-    if isinstance(text, str):
-        return text
-    if isinstance(text, list):
-        return "\n".join(
-            str(part.get("text", part)) if isinstance(part, dict) else str(part) for part in text
-        )
-    return ""
-
-
-def _command_string(value: object, joiner: str) -> str:
-    if isinstance(value, list):
-        return joiner.join(str(part) for part in value)
-    if value is not None:
-        return str(value)
-    return ""
-
-
-def _action_command(action: dict[str, object]) -> str:
-    commands = _command_string(action.get("commands"), " && ")
-    if commands:
-        return commands
-    return _command_string(action.get("command"), " ")
-
-
-def _item_command(item: dict[str, object]) -> str:
-    command = _command_string(item.get("command") or item.get("cmd"), " ")
-    if command:
-        return command
-    action = item.get("action")
-    return _action_command(action) if isinstance(action, dict) else ""
-
-
-def _item_id(item: dict[str, object]) -> str:
-    return str(item.get("id") or item.get("call_id") or item.get("callId") or "")
-
-
-def _item_is_error(item: dict[str, object]) -> bool:
-    return bool(item.get("is_error") or item.get("isError"))
 
 
 class CodexCLIAgentCore:
@@ -375,26 +340,29 @@ class CodexCLIAgentCore:
         if item_type in {"command_execution", "command"}:
             return self._map_command_item(event_type, item)
 
+        if item_type == "file_change":
+            return self._map_file_change_item(event_type, item)
+
         if item_type in {"mcp_tool_call", "tool_call", "function_call"}:
             return self._map_tool_call_item(event_type, item, str(item_type))
 
         return []
 
     def _map_agent_message_item(self, item: dict[str, object]) -> list[AgentEvent]:
-        text = _item_text(item)
+        text = item_text(item)
         if not text:
             return []
         self._last_agent_message = text
         return [AgentEvent(type="text", data={"text": text})]
 
     def _map_reasoning_item(self, item: dict[str, object]) -> list[AgentEvent]:
-        text = _item_text(item)
+        text = item_text(item)
         if not text:
             return []
         return [AgentEvent(type="thinking", data={"thinking": text})]
 
     def _map_command_item(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
-        command = _item_command(item)
+        command = item_command(item)
         if event_type == "item.started":
             return [
                 AgentEvent(
@@ -406,12 +374,32 @@ class CodexCLIAgentCore:
             AgentEvent(
                 type="tool_result",
                 data={
-                    "tool_result_id": _item_id(item),
-                    "tool_result_content": _item_text(item),
-                    "tool_result_is_error": _item_is_error(item),
+                    "tool_result_id": item_id(item),
+                    "tool_result_content": item_text(item),
+                    "tool_result_is_error": item_is_error(item),
                 },
             )
         ]
+
+    def _map_file_change_item(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
+        tool_use = AgentEvent(
+            type="tool_use",
+            data={"tool_name": "apply_patch", "tool_input": file_change_input(item)},
+        )
+        if event_type == "item.started":
+            return [tool_use]
+        tool_result = AgentEvent(
+            type="tool_result",
+            data={
+                "tool_result_id": item_id(item),
+                "tool_result_content": file_change_result(item),
+                "tool_result_is_error": item_is_error(item),
+            },
+        )
+        # `codex exec --json` emits successful file changes only as a completed
+        # item, so synthesize the missing start before its result. A future
+        # started item still maps normally without duplicating either event.
+        return [tool_use, tool_result]
 
     def _map_tool_call_item(
         self, event_type: str, item: dict[str, object], fallback_name: str
@@ -421,6 +409,7 @@ class CodexCLIAgentCore:
             or item.get("toolName")
             or item.get("name")
             or item.get("function_name")
+            or item.get("tool")
             or fallback_name
         )
         tool_input = self._tool_input(item)
@@ -435,9 +424,9 @@ class CodexCLIAgentCore:
             AgentEvent(
                 type="tool_result",
                 data={
-                    "tool_result_id": _item_id(item),
-                    "tool_result_content": _item_text(item),
-                    "tool_result_is_error": _item_is_error(item),
+                    "tool_result_id": item_id(item),
+                    "tool_result_content": item_text(item),
+                    "tool_result_is_error": item_is_error(item),
                 },
             )
         ]
@@ -448,6 +437,9 @@ class CodexCLIAgentCore:
             with contextlib.suppress(json.JSONDecodeError):
                 tool_input = json.loads(tool_input)
         if isinstance(tool_input, dict):
+            server = item.get("server")
+            if isinstance(server, str) and server:
+                return {**tool_input, "server": server}
             return tool_input
         return {"input": tool_input}
 

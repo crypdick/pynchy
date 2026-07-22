@@ -3,8 +3,8 @@
 The event observation system — how Pynchy emits events and how plugins subscribe to persist or process them. Use this page to build monitoring, analytics, or debugging tools for your Pynchy installation.
 
 Observers are pluggable. The built-in observer stores operational events to
-SQLite. Durable LLM trace and conversation-history payloads are exported by the
-LiteLLM gateway to Phoenix, not duplicated in SQLite.
+SQLite, including a bounded evidence projection for live agent traces. The
+LiteLLM gateway exports complete LLM request and response traces to Phoenix.
 
 ## Event Bus
 
@@ -44,9 +44,17 @@ Multiple observers can coexist — each subscribes independently to the event bu
 Persists operational events to a dedicated `events` table in the main SQLite database.
 
 **What it stores:** message summaries, agent activity, and chat-clear events.
-Message content is truncated to 500 characters. It deliberately does not store
-`AgentTraceEvent` payloads; Phoenix is the source of truth for thinking, tool,
-prompt, response, token, and cost traces.
+Message content is truncated to 500 characters. For `AgentTraceEvent`, SQLite
+stores tool names, bounded tool inputs, bounded tool results, and bounded text.
+The observer removes control characters, replaces detected credentials and
+personal identifiers with irreversible redaction markers, limits collection
+depth and size, and omits payload bodies for thinking, system, and input trace
+types. The security Cop reads only the projected tool names, not tool inputs or
+results.
+
+Use this SQLite projection for a bounded operational evidence packet. Use
+Phoenix when debugging requires complete thinking, prompt, response, token,
+cost, or provider-request traces.
 
 **Indexes:** event type, chat JID, and timestamp — for querying event history by group or time range.
 
