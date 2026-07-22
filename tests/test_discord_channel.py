@@ -390,6 +390,17 @@ async def test_creates_child_thread_for_scheduled_task():
 
 
 @pytest.mark.asyncio
+async def test_reports_whether_resolved_target_can_host_child_threads():
+    ch = _channel()
+    parent = _FakeThreadParent()
+    child = _FakeThread(id=456)
+    ch.resolve_channel = AsyncMock(side_effect=[parent, child])  # type: ignore[method-assign]
+
+    assert await ch.supports_child_threads("discord:channel:123") is True
+    assert await ch.supports_child_threads("discord:channel:456") is False
+
+
+@pytest.mark.asyncio
 async def test_adds_configured_default_to_child_thread():
     ch = _channel(
         config=DiscordConnectionConfig(

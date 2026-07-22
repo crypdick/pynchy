@@ -8,6 +8,7 @@ import aiosqlite
 import pytest
 
 from pynchy.state import (
+    begin_in_flight_turn,
     clear_session,
     create_host_job,
     create_task,
@@ -19,6 +20,7 @@ from pynchy.state import (
     get_all_workspace_profiles,
     get_chat_history,
     get_host_job_by_id,
+    get_in_flight_turn_for_task,
     get_last_group_sync,
     get_latest_inbound_timestamp,
     get_messages_since,
@@ -50,6 +52,8 @@ from pynchy.state import (
 from pynchy.state.connection import atomic_write
 from pynchy.state.schema import create_schema
 from pynchy.types import (
+    InFlightTurn,
+    InFlightWorkKind,
     NewMessage,
     ScheduledTask,
     ServiceTrustConfig,
@@ -836,6 +840,29 @@ class TestTaskAdvanced:
     async def test_get_active_task_for_group_returns_none(self):
         task = await get_active_task_for_group("nonexistent")
         assert task is None
+
+    async def test_delete_task_clears_unfinished_checkpoint(self):
+        task = replace(self._TASK_TEMPLATE, id="cancelled-task", next_run=None)
+        await create_task(task)
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="cancelled-turn",
+                chat_jid=task.chat_jid,
+                group_folder=task.group_folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[{"content": task.prompt}],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2024-01-01T00:00:00Z",
+                task_id=task.id,
+                scheduled_base_chat_jid=task.chat_jid,
+                scheduled_thread_slot=0,
+            )
+        )
+
+        await delete_task(task.id)
+
+        assert await get_in_flight_turn_for_task(task.id) is None
 
     async def test_update_task_ignores_disallowed_fields(self):
         await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))

@@ -33,6 +33,7 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import (
     LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
+from pynchy.host.orchestrator.scheduled_targeting import ScheduledTargetBusyError
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     run_scheduled_agent,
@@ -89,6 +90,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     safe_workflow_fragment,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
+    SCHEDULED_TARGET_DEFERRED,
     CanaryRunWorkflow,
     ChannelReconciliationWorkflow,
     ConfigHostCronWorkflow,
@@ -252,6 +254,14 @@ async def run_scheduled_agent_task(task_id: str) -> str:
                 task,
                 cast("SchedulerDependencies", _require_scheduler_deps()),
             )
+    except ScheduledTargetBusyError:
+        logger.info(
+            "Scheduled task target reserved without child-thread support; deferring",
+            task_id=task.id,
+            group=task.group_folder,
+        )
+        _record_activity_result(task_id, "deferred")
+        return SCHEDULED_TARGET_DEFERRED
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise

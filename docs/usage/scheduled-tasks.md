@@ -30,7 +30,7 @@ and can run concurrently.
 
 Temporal buffers one overlapping occurrence for a config-backed job. The next run waits for the current one, then runs in the same task thread; Pynchy never creates a numbered spillover thread for that job. This requires a channel with child-thread support. Pynchy records an error instead of moving the run to another target when the root channel cannot create threads.
 
-Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy, they retain the existing numbered-child-thread behavior. Each agent task uses an isolated runtime folder. If its workspace profile selects a repo, worktree commits merge and push after a successful run.
+Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy and can host child conversations, Pynchy uses a numbered child thread. When the selected chat cannot host children, Pynchy durably defers the run until the reservation clears instead of sharing or rerouting the conversation. Canceling a task also clears its unfinished checkpoint so it cannot retain that reservation. Each agent task uses an isolated runtime folder. If its workspace profile selects a repo, worktree commits merge and push after a successful run.
 
 For a periodic review that turns evidence into approval-gated work proposals,
 see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-proposals).
@@ -187,7 +187,7 @@ The `/status` endpoint includes a `temporal` section:
 | `worker_running` | Whether this Pynchy process has an active Temporal worker |
 | `last_workflow_id` | Most recent scheduled-work workflow started or handled by this process |
 | `last_task_id` | Scheduled task or host job ID for the most recent workflow event |
-| `last_result` | `started`, `already_started`, `completed`, `skipped`, or `error` |
+| `last_result` | `started`, `already_started`, `completed`, `deferred`, `skipped`, or `error` |
 | `last_error` | Last scheduler dispatch or activity error, if any |
 
 ### Single-host macOS service

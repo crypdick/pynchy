@@ -12,13 +12,23 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.conversation.events import new_turn_id
-from pynchy.host.container_manager import OnOutput, get_session
+from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
+    OnOutput,
+)
 from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 from pynchy.host.orchestrator.config_job_execution import derived_thread_name
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
     begin_message_turn,
     interrupted_resume_message,
+)
+from pynchy.host.orchestrator.scheduled_targeting import (
+    ScheduledTargetBusyError,
+    active_parent_participant_ids,
+    base_channel_is_reserved,
+    numbered_slot_is_reserved,
+    thread_is_reserved,
+    thread_name,
 )
 from pynchy.host.orchestrator.threads import (
     EnsuredThread,  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
@@ -33,7 +43,6 @@ from pynchy.state import (
 )
 from pynchy.types import (
     ContainerOutput,
-    GroupFolder,
     InFlightTurn,
     InFlightWorkKind,
     ScheduledTask,
@@ -53,6 +62,8 @@ class ScheduledTurnQueue(Protocol):
 class ScheduledTurnDeps(Protocol):
     @property
     def queue(self) -> ScheduledTurnQueue: ...
+
+    async def supports_thread_creation(self, parent_jid: str) -> bool: ...
 
     async def create_thread(
         self,
@@ -177,53 +188,6 @@ def _task_agent_messages(request: TaskAgentRequest) -> list[dict[str, Any]]:
     )
 
 
-def _parent_session_is_live(task: ScheduledTask) -> bool:
-    session = get_session(GroupFolder(task.group_folder))
-    return session is not None and session.is_alive
-
-
-def _base_channel_is_reserved(task: ScheduledTask, turns: list[InFlightTurn]) -> bool:
-    return _parent_session_is_live(task) or any(turn.chat_jid == task.chat_jid for turn in turns)
-
-
-def _numbered_slot_is_reserved(
-    task: ScheduledTask,
-    slot: int,
-    turns: list[InFlightTurn],
-) -> bool:
-    return any(
-        turn.scheduled_base_chat_jid == task.chat_jid and turn.scheduled_thread_slot == slot
-        for turn in turns
-    )
-
-
-def _thread_is_reserved(child_jid: str, task: ScheduledTask, turns: list[InFlightTurn]) -> bool:
-    if any(turn.chat_jid == child_jid for turn in turns):
-        return True
-    session = get_session(GroupFolder(dynamic_thread_folder(task.group_folder, child_jid)))
-    return session is not None and session.is_alive
-
-
-def _thread_name(task: ScheduledTask, slot: int) -> str:
-    return f"{task.group_folder}-{slot}"
-
-
-def _active_parent_participant_ids(
-    task: ScheduledTask,
-    turns: list[InFlightTurn],
-) -> tuple[str, ...]:
-    """Return identifiers of humans whose active turn reserved the parent chat."""
-    participant_ids: set[str] = set()
-    for turn in turns:
-        if turn.chat_jid != task.chat_jid or turn.work_kind is not InFlightWorkKind.INTERACTIVE:
-            continue
-        for message in turn.input_messages:
-            sender = message.get("sender")
-            if isinstance(sender, str) and sender:
-                participant_ids.add(sender)
-    return tuple(sorted(participant_ids))
-
-
 async def _new_task_target(
     request: TaskAgentRequest,
     turn_id: str,
@@ -234,21 +198,28 @@ async def _new_task_target(
         if request.task.derived_thread_name is not None or request.task.config_job_name is not None:
             return await _derived_thread_task_target(request, turn_id, input_messages)
         turns = await get_in_flight_turns()
-        if not _base_channel_is_reserved(request.task, turns):
+        if not base_channel_is_reserved(request.task, turns):
             slot = 0
             target = _ScheduledTaskTarget(request.task, request.group, thread_slot=slot)
+        elif not await request.deps.supports_thread_creation(request.task.chat_jid):
+            # NOTE: Update docs/usage/scheduled-tasks.md § Agent Tasks if this
+            # isolation behavior changes. Reusing or rerouting a reserved target
+            # can interleave output with its durable in-flight owner.
+            raise ScheduledTargetBusyError(
+                "Scheduled task target is reserved and cannot host child threads"
+            )
         else:
             slot = 1
-            participant_ids = _active_parent_participant_ids(request.task, turns)
-            while _numbered_slot_is_reserved(request.task, slot, turns):
+            participant_ids = active_parent_participant_ids(request.task, turns)
+            while numbered_slot_is_reserved(request.task, slot, turns):
                 slot += 1
-            name = _thread_name(request.task, slot)
+            name = thread_name(request.task, slot)
             child_jid = await request.deps.find_thread(request.task.chat_jid, name)
-            while child_jid and _thread_is_reserved(child_jid, request.task, turns):
+            while child_jid and thread_is_reserved(child_jid, request.task, turns):
                 slot += 1
-                while _numbered_slot_is_reserved(request.task, slot, turns):
+                while numbered_slot_is_reserved(request.task, slot, turns):
                     slot += 1
-                name = _thread_name(request.task, slot)
+                name = thread_name(request.task, slot)
                 child_jid = await request.deps.find_thread(request.task.chat_jid, name)
             if child_jid is None:
                 child_jid = await request.deps.create_thread(
@@ -458,6 +429,8 @@ async def run_task_agent(request: TaskAgentRequest) -> tuple[str, str | None, st
         )
     except asyncio.CancelledError:
         interrupted = True
+        raise
+    except ScheduledTargetBusyError:
         raise
     except Exception as exc:  # noqa: BLE001, RUF100 - agent invocation returns task errors.
         state.error = str(exc)
