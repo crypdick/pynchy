@@ -250,9 +250,6 @@ class NullIpcDeps:
     def channels(self) -> list:
         return []
 
-    def connection_statuses(self) -> dict[str, bool]:
-        return {}
-
     async def trigger_deploy(self, previous_sha, *, rebuild=True) -> None: ...
 
 

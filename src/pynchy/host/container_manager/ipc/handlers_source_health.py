@@ -75,6 +75,21 @@ def _owned_workspace_jids(channel: Channel, deps: IpcDeps) -> tuple[str, ...]:
     return tuple(jid for jid in deps.workspaces() if channel.owns_jid(jid))
 
 
+def _connection_statuses(deps: IpcDeps) -> dict[str, bool]:
+    """Read optional connection-runtime status without widening the core IPC contract."""
+    status_getter = getattr(deps, "connection_statuses", None)
+    if not callable(status_getter):
+        return {}
+    statuses = status_getter()
+    if not isinstance(statuses, dict):
+        return {}
+    return {
+        name: ready
+        for name, ready in statuses.items()
+        if isinstance(name, str) and isinstance(ready, bool)
+    }
+
+
 async def _channel_source(
     name: str,
     provider: str,
@@ -177,7 +192,7 @@ async def _handle_messaging_source_health(
 
     connections = dict(get_settings().connections)
     channels = tuple(deps.channels())
-    connection_statuses = deps.connection_statuses()
+    connection_statuses = _connection_statuses(deps)
     sources: list[dict[str, object]] = []
     for requested_name, configured_name in _selected_sources(requested, connections):
         if configured_name is None:
