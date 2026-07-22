@@ -11,7 +11,8 @@ import asyncio
 import contextlib
 import json
 import os
-from asyncio.subprocess import PIPE
+import signal
+from asyncio.subprocess import PIPE, Process
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
     Callable,
     Coroutine,
@@ -134,6 +135,19 @@ class ShellResult:
     start_error: str | None = None
 
 
+async def _kill_shell_process_group(process: Process) -> None:
+    """Kill a shell command and every descendant left in its process group."""
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+    with contextlib.suppress(Exception):
+        await process.communicate()
+
+
 async def run_shell_command(
     command: str,
     *,
@@ -152,6 +166,7 @@ async def run_shell_command(
             env={**os.environ, **env} if env is not None else None,
             stdout=PIPE,
             stderr=PIPE,
+            start_new_session=True,
         )
     except OSError as exc:
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
@@ -162,12 +177,13 @@ async def run_shell_command(
             timeout=timeout_seconds,
         )
     except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-        with contextlib.suppress(Exception):
-            await process.communicate()
+        await _kill_shell_process_group(process)
         return ShellResult(returncode=None, stdout="", stderr="", timed_out=True)
+    except asyncio.CancelledError:
+        await _kill_shell_process_group(process)
+        raise
     except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - start_error is surfaced by the caller.
+        await _kill_shell_process_group(process)
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
 
     return ShellResult(

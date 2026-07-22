@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
+import sys
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,9 +15,42 @@ from pynchy.utils import (
     compute_next_run,
     create_background_task,
     generate_message_id,
+    run_shell_command,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 INTENTIONAL_FAILURE_MESSAGE = "intentional failure"
+
+
+async def _wait_for_process_exit(pid: int) -> None:
+    """Wait briefly for the OS to reap a killed test subprocess."""
+    for _ in range(200):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        await asyncio.sleep(0.01)
+    pytest.fail(f"subprocess {pid} survived shell command cleanup")
+
+
+def _pid_recording_command(pid_file: Path) -> str:
+    script = (
+        f"import os, time; open({str(pid_file)!r}, 'w').write(str(os.getpid())); time.sleep(60)"
+    )
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+
+
+async def _wait_for_pid_file(pid_file: Path) -> int:
+    for _ in range(200):
+        try:
+            contents = await asyncio.to_thread(pid_file.read_text, encoding="utf-8")
+        except FileNotFoundError:
+            await asyncio.sleep(0.01)
+            continue
+        return int(contents)
+    pytest.fail("subprocess did not record its PID")
 
 
 class TestGenerateMessageId:
@@ -216,3 +253,38 @@ class TestCreateBackgroundTask:
 
         task = create_background_task(noop())
         await task  # Should complete without error
+
+
+class TestRunShellCommand:
+    """Shell command cleanup must include every descendant process."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_kills_descendant_process(self, tmp_path: Path):
+        pid_file = tmp_path / "timeout-child.pid"
+
+        result = await run_shell_command(
+            _pid_recording_command(pid_file),
+            cwd=str(tmp_path),
+            timeout_seconds=1,
+        )
+
+        assert result.timed_out is True
+        await _wait_for_process_exit(await _wait_for_pid_file(pid_file))
+
+    @pytest.mark.asyncio
+    async def test_cancellation_kills_descendant_process(self, tmp_path: Path):
+        pid_file = tmp_path / "cancelled-child.pid"
+        command_task = asyncio.create_task(
+            run_shell_command(
+                _pid_recording_command(pid_file),
+                cwd=str(tmp_path),
+                timeout_seconds=60,
+            )
+        )
+        child_pid = await _wait_for_pid_file(pid_file)
+
+        command_task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await command_task
+        await _wait_for_process_exit(child_pid)
