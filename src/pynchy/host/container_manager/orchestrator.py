@@ -176,19 +176,19 @@ async def _spawn_container(
     if input_data.repo_accesses:
         from pynchy.host.git_ops.repo import (  # noqa: PLC0415, RUF100 - git worktree setup is only needed for repo-enabled spawns.
             get_repo_context,
-            resolve_repos_for_group,
         )
         from pynchy.host.git_ops.worktree import (  # noqa: PLC0415, RUF100 - git worktree setup is only needed for repo-enabled spawns.
             ensure_worktree,
         )
 
-        repo_contexts = resolve_repos_for_group(group.folder)
-        if not repo_contexts:
-            repo_contexts = [
-                repo_ctx
-                for slug in input_data.repo_accesses
-                if (repo_ctx := get_repo_context(slug)) is not None
-            ]
+        # Preflight resolves workspace defaults or an invocation-specific override
+        # into this semantic mount scope. Re-reading the workspace here would widen
+        # an explicitly scoped scheduled task back to every configured repository.
+        repo_contexts = [
+            repo_ctx
+            for slug in input_data.repo_accesses
+            if (repo_ctx := get_repo_context(slug)) is not None
+        ]
         for repo_ctx in repo_contexts:
             wt_result = ensure_worktree(group.folder, repo_ctx)
             repo_mounts.append((repo_ctx, wt_result.path))

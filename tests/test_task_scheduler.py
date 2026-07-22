@@ -716,10 +716,10 @@ class TestRunScheduledAgent:
         assert await get_in_flight_turn_for_task(sample_task.id) is None
 
     @pytest.mark.asyncio
-    async def test_scheduled_agent_resolves_workspace_repo_config(
+    async def test_scheduled_agent_honors_explicit_task_repo_access(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Scheduled agents use workspace profile repos, not stale task repo state."""
+        """A task-scoped repo reaches the public agent runner as an override."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.repo_access = "owner/pynchy"
 
@@ -733,6 +733,27 @@ class TestRunScheduledAgent:
                 ):
                     with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
+
+        assert len(mock_deps.agent_runs) == 1
+        assert mock_deps.agent_runs[0]["repo_access_override"] == "owner/pynchy"
+
+    @pytest.mark.asyncio
+    async def test_scheduled_agent_without_task_repo_uses_workspace_defaults(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """An absent task scope preserves the runner's workspace-default behavior."""
+        mock_deps.groups["test-jid"] = sample_group
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert len(mock_deps.agent_runs) == 1
         assert mock_deps.agent_runs[0]["repo_access_override"] is None
