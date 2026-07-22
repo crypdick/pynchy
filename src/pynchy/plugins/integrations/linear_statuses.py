@@ -27,7 +27,8 @@ AGENT_SETTABLE_STATUSES = frozenset(
 )
 TERMINAL_STATE_TYPES = frozenset({"completed", "canceled"})
 
-# NOTE: Keep docs/integrations/linear.md and the agent-runner Linear tool schemas in sync.
+# NOTE: Keep docs/integrations/linear.md, linear_tools.py, and the agent-runner
+# Linear tool schemas in sync.
 LINEAR_TODO_STATUSES: dict[str, TodoStatusSpec] = {
     AGENT_PROPOSED_STATUS: TodoStatusSpec("Agent Proposed", "backlog", 10.0, "#8A8F98"),
     READY_FOR_PLANNING_STATUS: TodoStatusSpec("Ready for Planning", "unstarted", 20.0, "#F2C94C"),

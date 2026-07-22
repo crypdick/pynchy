@@ -64,9 +64,10 @@ def tool_specs() -> list[dict[str, Any]]:
         {
             "name": "linear_create_todo",
             "description": (
-                "Propose a Linear work item for this Pynchy workspace. "
+                "Propose a Linear work item that the agent originated for this Pynchy workspace. "
                 "The item starts in Agent Proposed and may include evidence and acceptance "
-                "criteria; this tool cannot assert human approval."
+                "criteria. Do not use this for work explicitly requested in the current human "
+                "message; use linear_create_requested_todo instead."
             ),
             "inputSchema": {
                 "type": "object",

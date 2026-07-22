@@ -13,6 +13,7 @@ from typing import Any
 
 from pynchy.host.orchestrator.workspace_config import static_workspace_folder
 from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
+from pynchy.plugins.integrations.linear_boards import WorkspaceTodoProposal
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import (
     AGENT_SETTABLE_STATUSES,
@@ -20,6 +21,7 @@ from pynchy.plugins.integrations.linear_statuses import (
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     claim_work_item,
+    create_requested_work_item,
     linear_client,
     move_unlinked_work_item,
     reconcile_work_item,
@@ -37,6 +39,7 @@ from pynchy.state import (
     list_work_item_executions,
 )
 from pynchy.types import (
+    InFlightTurn,
     WorkItemExecution,
     WorkItemExecutionStatus,
 )
@@ -47,6 +50,13 @@ _SUMMARY_REQUIRED = "summary is required"
 _BLOCKER_REQUIRED = "reason is required"
 _HANDOFF_REQUIRED = "owner is required"
 _PLAN_REQUIRED = "plan is required"
+_DIRECT_USER_TURN_REQUIRED = (
+    "A current direct user turn is required to create a Ready for Planning item"
+)
+_AUTHORIZATION_QUOTE_REQUIRED = (
+    "authorization_quote must exactly quote a current direct user message"
+)
+_PRIORITY_INVALID = "priority must be an integer from 0 through 4"
 _ACTIVE_EXECUTION_REQUIRED = "No active Pynchy execution owns this Linear work item"
 _UNKNOWN_TRANSITION_REQUIRED = "No uncertain work-item transition needs reconciliation"
 _AGENT_SETTABLE_STATUS_ERROR = "Agents may move unlinked Linear items only to: {statuses}"
@@ -80,6 +90,41 @@ async def handle_list_work_items(data: dict[str, Any]) -> dict[str, object]:
             "work_items": [work_item_execution_to_dict(item) for item in work_items],
         }
     }
+
+
+async def handle_create_requested_todo(data: dict[str, Any]) -> dict[str, object]:
+    """Create planning work only when the current direct user turn requested it."""
+    source_group = _source_group(data)
+    workspace = static_workspace_folder(source_group)
+    authorization_quote = _required_str(
+        data,
+        "authorization_quote",
+        _AUTHORIZATION_QUOTE_REQUIRED,
+    ).strip()
+    # Tool wording is not proof of human intent. Bind planning authorization to
+    # the host-owned turn and its complete inbound message.
+    turn = await get_in_flight_turn_for_group(source_group)
+    if turn is None or turn.input_source != "user":
+        return {"error": _DIRECT_USER_TURN_REQUIRED}
+    if not _turn_contains_authorization_quote(turn, authorization_quote):
+        return {"error": _AUTHORIZATION_QUOTE_REQUIRED}
+
+    proposal = WorkspaceTodoProposal(
+        title=_required_str(data, "title", "title is required").strip(),
+        description=_optional_str(data, "description"),
+        priority=_optional_priority(data),
+    )
+    try:
+        async with linear_client(workspace=workspace) as client:
+            created = await create_requested_work_item(
+                client,
+                workspace,
+                turn.chat_jid,
+                proposal,
+            )
+    except (LinearError, ValueError) as exc:
+        return {"error": str(exc)}
+    return {"result": {"issue": _issue_projection(created)}}
 
 
 async def handle_claim_work_item(data: dict[str, Any]) -> dict[str, object]:
@@ -292,7 +337,11 @@ async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
 
 
 def _workspace(data: dict[str, Any]) -> str:
-    return static_workspace_folder(_required_str(data, "source_group", _WORKSPACE_REQUIRED))
+    return static_workspace_folder(_source_group(data))
+
+
+def _source_group(data: dict[str, Any]) -> str:
+    return _required_str(data, "source_group", _WORKSPACE_REQUIRED)
 
 
 def _required_str(data: dict[str, Any], key: str, error: str) -> str:
@@ -305,6 +354,24 @@ def _required_str(data: dict[str, Any], key: str, error: str) -> str:
 def _optional_str(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _optional_priority(data: dict[str, Any]) -> int | None:
+    value = data.get("priority")
+    if value is None:
+        return None
+    if type(value) is not int or not 0 <= value <= 4:
+        raise ValueError(_PRIORITY_INVALID)
+    return value
+
+
+def _turn_contains_authorization_quote(turn: InFlightTurn, quote: str) -> bool:
+    return any(
+        message.get("message_type") == "user"
+        and isinstance(content := message.get("content"), str)
+        and quote == content.strip()
+        for message in turn.input_messages
+    )
 
 
 def _evidence_refs(data: dict[str, Any]) -> tuple[str, ...]:

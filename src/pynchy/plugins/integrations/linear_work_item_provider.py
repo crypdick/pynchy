@@ -13,7 +13,12 @@ from pynchy.plugins.integrations.linear_accounts import (
     linear_account,
     linear_account_for_workspace,
 )
-from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard, require_workspace_board
+from pynchy.plugins.integrations.linear_boards import (
+    LinearWorkspaceBoard,
+    WorkspaceTodoProposal,
+    create_workspace_todo,
+    require_workspace_board,
+)
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
 from pynchy.plugins.integrations.linear_statuses import (
@@ -111,6 +116,26 @@ def linear_client(
     if account is None:
         raise ValueError(f"Workspace '{workspace}' does not select a Linear account")
     return LinearClientContext(account)
+
+
+async def create_requested_work_item(
+    client: LinearClient,
+    workspace: str,
+    chat_jid: str,
+    proposal: WorkspaceTodoProposal,
+) -> dict[str, Any]:
+    """Create a human-requested item at the planning gate for one workspace."""
+    return await create_workspace_todo(
+        client,
+        _WorkspaceContext(
+            folder=workspace,
+            name=_workspace_name(workspace),
+            jid=chat_jid,
+        ),
+        proposal,
+        team_key=client.team_key,
+        status=READY_FOR_PLANNING_STATUS,
+    )
 
 
 async def claim_work_item(

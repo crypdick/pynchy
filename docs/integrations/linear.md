@@ -92,10 +92,12 @@ workspace marker and never create or repair provider resources. Missing or
 duplicate projects fail closed so a transient or ambiguous provider response
 cannot silently create another board.
 
-When a user sends `todo ...` while a workspace task is running, a Linear-enabled
-workspace creates the issue in `Ready for Planning` without writing a second
-local todo. Workspaces without Linear keep the local todo path. Agent-created
-workspace items start in `Agent Proposed`.
+When a user explicitly requests work in a direct conversation, the agent can
+create the issue in `Ready for Planning` by quoting the authorizing message.
+Pynchy verifies the full message against the durable current user turn. The same state
+applies when a user sends `todo ...` while a workspace task runs. Workspaces
+without Linear keep the local todo path. Agent-created workspace items start in
+`Agent Proposed`.
 
 ## Approval workflow
 
@@ -114,10 +116,12 @@ Linear holds the complete planning and authorization state:
 | `Rejected` | A human declined the proposal | Human |
 
 `Ready for Planning` never authorizes execution. Pynchy can claim only a
-`Human Approved` item. Agent tools cannot set `Ready for Planning`,
-`Human Approved`, `Done`, or `Rejected`; change the human decision states in
-Linear. An agent reports completion through `Awaiting Review`; it cannot accept
-its own work by moving the item to `Done`.
+`Human Approved` item. The provenance-checked `linear_create_requested_todo`
+tool can create a new item at `Ready for Planning`; generic agent tools cannot
+move an existing item into that state. Agent tools cannot set `Human Approved`,
+`Done`, or `Rejected`; change those human decision states in Linear. An agent
+reports completion through `Awaiting Review`; it cannot accept its own work by
+moving the item to `Done`.
 
 ## Receive Linear callbacks
 
@@ -284,13 +288,14 @@ The built-in MCP server provides planning and browsing tools:
 | `linear_get_issue` | Gets one issue by its stable Linear ID. |
 | `linear_create_issue` | Creates an issue with `team_id`, `title`, and optional `description`, `project_id`, and `label_ids`. It cannot choose an approval-bearing workflow state. |
 | `linear_list_todos` | Lists open Linear todo issues for the current Pynchy workspace. |
-| `linear_create_todo` | Creates a workspace work item in `Agent Proposed`, with an optional Markdown description and Linear priority. |
+| `linear_create_todo` | Creates an agent-originated workspace work item in `Agent Proposed`, with an optional Markdown description and Linear priority. |
 
 Pynchy exposes lifecycle tools through its built-in agent tools MCP server. Use
 them when an agent starts or finishes work from a workspace board:
 
 | Tool | Purpose |
 |------|---------|
+| `linear_create_requested_todo` | Creates a `Ready for Planning` item from an explicit request in the current direct human turn. It requires the full authorizing message and never authorizes execution. |
 | `linear_submit_plan` | Writes a concrete Markdown plan into a `Ready for Planning` issue and atomically moves it to `Awaiting Plan Approval`; it never authorizes execution. |
 | `linear_claim_work_item` | Claims a `Human Approved` issue for the current Pynchy execution and moves it to `In Progress`. |
 | `linear_await_review_work_item` | Reports a completed outcome with a summary and optional evidence. It moves linked work or verified existing unlinked work to `Awaiting Review`; a pull-request URL is optional. |

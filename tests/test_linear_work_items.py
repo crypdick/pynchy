@@ -33,6 +33,7 @@ class FakeLinearState:
 
     issue: dict[str, Any]
     fail_after_update: bool = False
+    created_issue_count: int = 0
 
     async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
         return deepcopy(self.issue) if issue_id == self.issue["id"] else None
@@ -40,6 +41,19 @@ class FakeLinearState:
     async def query(self, _query: str, **variables: object) -> dict[str, Any]:
         if "state_id" not in variables:
             raise AssertionError("test client only supports issue state updates")
+        if "issueCreate" in _query:
+            self.created_issue_count += 1
+            self.issue = {
+                "id": f"issue-{self.created_issue_count}",
+                "identifier": f"PYN-{self.created_issue_count}",
+                "title": variables["title"],
+                "url": f"https://linear.app/example/issue/PYN-{self.created_issue_count}",
+                "description": variables.get("description"),
+                "updatedAt": "2026-07-18T17:00:00+00:00",
+                "state": _state(str(variables["state_id"])),
+                "project": {"id": "project-1", "name": "Pynchy"},
+            }
+            return {"issueCreate": {"success": True, "issue": deepcopy(self.issue)}}
         self.issue["state"] = _state(str(variables["state_id"]))
         if "description" in variables:
             self.issue["description"] = variables["description"]
@@ -162,6 +176,105 @@ async def _call(
     **arguments: object,
 ) -> dict[str, object]:
     return await handlers[tool]({"source_group": "pynchy", "request_id": request_id, **arguments})
+
+
+async def _begin_direct_turn(
+    content: str,
+    *,
+    group_folder: str = "pynchy",
+    input_source: str = "user",
+) -> None:
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="turn-request",
+            chat_jid="pynchy@example.test",
+            group_folder=group_folder,
+            work_kind=InFlightWorkKind.INTERACTIVE,
+            input_messages=[
+                {
+                    "message_type": "user",
+                    "sender": "operator",
+                    "sender_name": "Operator",
+                    "content": content,
+                }
+            ],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at="2026-07-18T17:00:00+00:00",
+            input_source=input_source,
+        )
+    )
+
+
+@pytest.mark.action("linear.todo.request")
+async def test_direct_user_request_creates_ready_for_planning_item_in_parent_workspace(
+    lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    state, handlers = lifecycle
+    source_group = "pynchy__thread_discord-channel-123"
+    request = "Please implement durable Android automation for Wellhub."
+    await _begin_direct_turn(request, group_folder=source_group)
+    board = AsyncMock(return_value=_board())
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_boards.require_workspace_board",
+        board,
+    )
+
+    result = await handlers["linear_create_requested_todo"](
+        {
+            "source_group": source_group,
+            "request_id": "request-1",
+            "title": "Create Wellhub Android automation",
+            "description": "Use the existing Android MCP guidance.",
+            "priority": 3,
+            "authorization_quote": request,
+        }
+    )
+
+    assert result["result"]["issue"]["state"]["name"] == "Ready for Planning"
+    assert state.created_issue_count == 1
+    assert state.issue["title"] == "Create Wellhub Android automation"
+    workspace = board.await_args.args[1]
+    assert workspace.folder == "pynchy"
+    assert workspace.jid == "pynchy@example.test"
+
+
+async def test_requested_todo_rejects_non_direct_turn(lifecycle):
+    state, handlers = lifecycle
+    request = "Create a follow-up issue for this finding."
+    await _begin_direct_turn(request, input_source="scheduled_task")
+
+    result = await _call(
+        handlers,
+        "linear_create_requested_todo",
+        "request-1",
+        title="Follow up on the finding",
+        authorization_quote=request,
+    )
+
+    assert result == {
+        "error": "A current direct user turn is required to create a Ready for Planning item"
+    }
+    assert state.created_issue_count == 0
+
+
+async def test_requested_todo_rejects_partial_quote_from_current_user_message(lifecycle):
+    state, handlers = lifecycle
+    await _begin_direct_turn("Please implement an unrelated feature.")
+
+    result = await _call(
+        handlers,
+        "linear_create_requested_todo",
+        "request-1",
+        title="Implement an unrelated feature",
+        authorization_quote="implement an unrelated feature",
+    )
+
+    assert result == {
+        "error": "authorization_quote must exactly quote a current direct user message"
+    }
+    assert state.created_issue_count == 0
 
 
 @pytest.mark.action("linear.workitem.claim")
