@@ -94,26 +94,24 @@ docker logs pynchy-litellm --since 30m 2>&1 | tail -100
 When multiple `model_list` entries share the same `model_name` (e.g. two `anthropic/*` entries with different API keys), LiteLLM's router distributes requests across them. When one fails, two mechanisms handle failover:
 
 1. **Retries** (`num_retries`): On failure, the router retries the request on a different deployment within the same model group.
-2. **Cooldowns** (`allowed_fails` + `cooldown_time`): After enough consecutive failures, a deployment is temporarily removed from rotation.
+2. **Cooldowns** (`cooldown_time`): LiteLLM decides when to remove an unhealthy deployment from rotation, then keeps it out for the configured duration.
 
-### `allowed_fails` semantics (not obvious)
+Retries cannot provide failover when a model group contains only one deployment. Keep `num_retries: 0` for that topology unless another client-independent reason requires repeated calls to the same upstream.
 
-The cooldown check is `fails > allowed_fails`. This means:
+### Why `allowed_fails` stays unset
 
-| `allowed_fails` | Failures before cooldown | Notes |
-|---|---|---|
-| `0` | 1st failure triggers cooldown | **Too aggressive** — startup probes can cool down healthy deployments |
-| `1` | 2nd failure triggers cooldown | **Recommended** — tolerates one transient error |
-| `3` (old default) | 4th failure triggers cooldown | Too many wasted requests before the dead key is removed |
+Leave `allowed_fails` unset for the normal Pynchy configuration. LiteLLM's topology-aware policy avoids cooling the only deployment in a model group for ordinary retryable failures. It can cool a failing deployment more aggressively when the group has an alternate route.
+
+Setting a non-default `allowed_fails` value opts into a fixed failure counter instead. For example, `allowed_fails: 1` cools a deployment after its second eligible failure during the counter window. On a single-deployment model group, one client reconnect sequence can then turn a transient upstream overload into a full `cooldown_time` outage.
 
 ### Startup health probes (the hidden gotcha)
 
 At startup, LiteLLM runs internal health probes against all deployments. These probes are real API calls (tagged `litellm-internal-health-check`) that:
 - Test model availability by calling small requests against various model names
-- Count toward the `allowed_fails` failure counter
+- Count toward a fixed `allowed_fails` failure counter when configured
 - Can mark deployments as unhealthy if they fail
 
-**Impact**: If a deployment has an invalid or exhausted key, the startup probe fails and that deployment is immediately cooled down. If `allowed_fails=0` or a transient rate limit hits the healthy key during the probe burst, ALL deployments can be cooled down simultaneously, leaving zero healthy endpoints.
+**Impact**: Health probes can report a deployment as unhealthy even when proxy readiness succeeds. Avoid fixed, aggressive `allowed_fails` thresholds that can turn transient probe or provider failures into a cooldown for every deployment in a model group.
 
 ### Zombie deployments (filtered by pynchy)
 
@@ -135,10 +133,13 @@ Removing model entry with placeholder api_key  model_id=anthropic-employee2  var
 ```yaml
 router_settings:
   routing_strategy: usage-based-routing
-  num_retries: 3
-  allowed_fails: 1
+  # One deployment per model_name: retries have no alternate route.
+  num_retries: 0
+  # Intentionally omit allowed_fails to preserve topology-aware cooldowns.
   cooldown_time: 600  # 10 min
 ```
+
+When a model group has multiple deployments, increase `num_retries` to the desired number of failover attempts. `cooldown_time` controls the exclusion duration after LiteLLM decides to cool a deployment; it does not force a cooldown by itself.
 
 ### Diagnosing failover issues
 
