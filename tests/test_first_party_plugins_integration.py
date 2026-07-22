@@ -13,7 +13,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config import PluginConfig
-from pynchy.event_bus import AgentTraceEvent, EventBus, MessageEvent
+from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.observers import attach_observers
@@ -89,39 +89,87 @@ class TestObserverPluginRuntimeTypes:
         observer.subscribe(EventBus())
 
     @pytest.mark.asyncio
-    async def test_sqlite_observer_keeps_only_bounded_trace_action_name(self):
-        """SQLite persists a tool name for Cop context but omits tool inputs."""
+    async def test_sqlite_observer_persists_bounded_trace_evidence(self):
+        """SQLite keeps useful trace evidence without persisting detected private data."""
         bus = EventBus()
         observer = SqliteEventObserver()
         observer.subscribe(bus)
 
         with patch("pynchy.state.store_event", new_callable=AsyncMock) as mock_store:
             bus.emit(
-                MessageEvent(
-                    chat_jid="g@g.us",
-                    sender_name="bot",
-                    content="hello",
-                    timestamp="2026-07-07T00:00:00Z",
-                    is_bot=True,
-                )
-            )
-            await asyncio.sleep(0)
-            mock_store.assert_awaited_once()
-
-            mock_store.reset_mock()
-            bus.emit(
                 AgentTraceEvent(
                     chat_jid="g@g.us",
                     trace_type="tool_use",
-                    data={"tool_name": "Bash", "tool_input": {"command": "date"}},
+                    data={
+                        "tool_name": "Bash",
+                        "tool_input": {
+                            "command": "read account for private@example.test",
+                            "cwd": "/workspace/project",
+                        },
+                    },
                 )
             )
             await asyncio.sleep(0)
             mock_store.assert_awaited_once_with(
                 "agent_trace",
                 "g@g.us",
-                {"trace_type": "tool_use", "tool_name": "Bash"},
+                {
+                    "trace_type": "tool_use",
+                    "tool_name": "Bash",
+                    "tool_input": {
+                        "command": "[redacted sensitive data: email]",
+                        "cwd": "/workspace/project",
+                    },
+                },
             )
+
+            mock_store.reset_mock()
+            credential = "-".join(("xoxb", "1" * 12, "2" * 12, "a" * 24))
+            bus.emit(
+                AgentTraceEvent(
+                    chat_jid="g@g.us",
+                    trace_type="tool_result",
+                    data={"tool_use_id": "call-2", "content": credential, "is_error": False},
+                )
+            )
+            await asyncio.sleep(0)
+            secret_payload = mock_store.await_args.args[2]
+            assert secret_payload["content"] == "[redacted secret-bearing trace content]"
+            assert credential not in str(secret_payload)
+
+            mock_store.reset_mock()
+            bus.emit(
+                AgentTraceEvent(
+                    chat_jid="g@g.us",
+                    trace_type="tool_result",
+                    data={"tool_use_id": "call-1", "content": "ok", "is_error": False},
+                )
+            )
+            await asyncio.sleep(0)
+            mock_store.assert_awaited_once_with(
+                "agent_trace",
+                "g@g.us",
+                {
+                    "trace_type": "tool_result",
+                    "tool_use_id": "call-1",
+                    "content": "ok",
+                    "is_error": False,
+                },
+            )
+
+            mock_store.reset_mock()
+            bus.emit(
+                AgentTraceEvent(
+                    chat_jid="g@g.us",
+                    trace_type="text",
+                    data={"text": "final answer" + ("x" * 8_000)},
+                )
+            )
+            await asyncio.sleep(0)
+            payload = mock_store.await_args.args[2]
+            assert payload["trace_type"] == "text"
+            assert str(payload["text"]).startswith("final answer")
+            assert len(str(payload["text"])) == 6_000
 
 
 @pytest.mark.asyncio

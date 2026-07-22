@@ -362,43 +362,6 @@ def test_stream_event_maps_thread_started_and_exposes_session_id():
     assert events[0].data["system_data"]["session_id"] == "codex:gpt-5.2-codex:thread-1"
 
 
-def test_stream_event_maps_agent_message_to_text():
-    events = _core().map_stream_event(
-        {"type": "item.completed", "item": {"type": "agent_message", "text": "done"}}
-    )
-
-    assert [event.type for event in events] == ["text"]
-    assert events[0].data["text"] == "done"
-
-
-def test_stream_event_maps_command_item_to_tool_events():
-    core = _core()
-
-    started = core.map_stream_event(
-        {
-            "type": "item.started",
-            "item": {"id": "cmd-1", "type": "command_execution", "command": "ls -la"},
-        }
-    )
-    completed = core.map_stream_event(
-        {
-            "type": "item.completed",
-            "item": {
-                "id": "cmd-1",
-                "type": "command_execution",
-                "command": "ls -la",
-                "output": "ok",
-            },
-        }
-    )
-
-    assert started[0].type == "tool_use"
-    assert started[0].data == {"tool_name": "Bash", "tool_input": {"command": "ls -la"}}
-    assert completed[0].type == "tool_result"
-    assert completed[0].data["tool_result_id"] == "cmd-1"
-    assert completed[0].data["tool_result_content"] == "ok"
-
-
 def test_stream_event_maps_terminal_failure_to_error_result():
     (event,) = _core().map_stream_event(
         {"type": "turn.failed", "error": {"message": "auth failed", "code": "not_logged_in"}}

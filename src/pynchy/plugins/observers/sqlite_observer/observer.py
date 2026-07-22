@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
+from dataclasses import dataclass
 
 from pynchy import state
 from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
@@ -17,7 +18,81 @@ from pynchy.event_bus import (  # noqa: TC001, RUF100 - beartype resolves these 
     EventBus,
     MessageEvent,
 )
+from pynchy.host.container_manager.security.llm_redaction import irreversibly_redact
+from pynchy.host.container_manager.security.secrets_scanner import scan_payload_for_secrets
 from pynchy.logger import logger
+
+_TRACE_CHAR_LIMIT = 6_000
+_TRACE_COLLECTION_LIMIT = 20
+_TRACE_DEPTH_LIMIT = 4
+_TOOL_NAME_LIMIT = 100
+_REDACTED_TRACE_PLACEHOLDER = "[redacted secret-bearing trace content]"
+
+
+@dataclass
+class _TraceBudget:
+    remaining: int = _TRACE_CHAR_LIMIT
+
+    def text(self, raw: str) -> str:
+        normalized = "".join(
+            char if char in {"\n", "\t"} or ord(char) >= 32 else " " for char in raw
+        )
+        redacted = irreversibly_redact(normalized)
+        if redacted == normalized and scan_payload_for_secrets(normalized).secrets_found:
+            redacted = _REDACTED_TRACE_PLACEHOLDER
+        projected = redacted[: self.remaining]
+        self.remaining -= len(projected)
+        return projected
+
+
+def _bounded_trace_value(value: object, budget: _TraceBudget, depth: int = 0) -> object:
+    if budget.remaining <= 0:
+        projected: object = ""
+    elif isinstance(value, str):
+        projected = budget.text(value)
+    elif value is None or isinstance(value, (bool, int, float)):
+        projected = value
+    elif depth >= _TRACE_DEPTH_LIMIT:
+        projected = budget.text(str(value))
+    elif isinstance(value, list):
+        projected = [
+            _bounded_trace_value(item, budget, depth + 1)
+            for item in value[:_TRACE_COLLECTION_LIMIT]
+            if budget.remaining > 0
+        ]
+    elif isinstance(value, dict):
+        projected_mapping: dict[str, object] = {}
+        for raw_key, item in list(value.items())[:_TRACE_COLLECTION_LIMIT]:
+            if budget.remaining <= 0:
+                break
+            key = budget.text(str(raw_key))
+            projected_mapping[key] = _bounded_trace_value(item, budget, depth + 1)
+        projected = projected_mapping
+    else:
+        projected = budget.text(str(value))
+    return projected
+
+
+def _trace_payload(event: AgentTraceEvent) -> dict[str, object]:
+    """Build the bounded, irreversibly redacted SQLite evidence projection."""
+    payload: dict[str, object] = {"trace_type": event.trace_type}
+    budget = _TraceBudget()
+    if event.trace_type == "tool_use":
+        tool_name = event.data.get("tool_name")
+        if isinstance(tool_name, str) and tool_name:
+            payload["tool_name"] = budget.text(tool_name)[:_TOOL_NAME_LIMIT]
+        payload["tool_input"] = _bounded_trace_value(event.data.get("tool_input", {}), budget)
+    elif event.trace_type == "tool_result":
+        payload.update(
+            {
+                "tool_use_id": _bounded_trace_value(event.data.get("tool_use_id", ""), budget),
+                "content": _bounded_trace_value(event.data.get("content", ""), budget),
+                "is_error": bool(event.data.get("is_error", False)),
+            }
+        )
+    elif event.trace_type == "text":
+        payload["text"] = _bounded_trace_value(event.data.get("text", ""), budget)
+    return payload
 
 
 class SqliteEventObserver:
@@ -64,13 +139,10 @@ class SqliteEventObserver:
         )
 
     async def _on_trace(self, event: AgentTraceEvent) -> None:
-        """Persist only the semantic action name needed by bounded Cop context."""
-        payload: dict[str, object] = {"trace_type": event.trace_type}
-        if event.trace_type == "tool_use":
-            tool_name = event.data.get("tool_name")
-            if isinstance(tool_name, str) and tool_name:
-                payload["tool_name"] = tool_name[:100]
-        await self._store("agent_trace", event.chat_jid, payload)
+        """Persist a safe projection for Cop context and live evidence review."""
+        # NOTE: Update docs/architecture/observers.md § Built-in: sqlite-observer
+        # when changing this durable trace projection.
+        await self._store("agent_trace", event.chat_jid, _trace_payload(event))
 
     async def _on_clear(self, event: ChatClearedEvent) -> None:
         await self._store("chat_cleared", event.chat_jid, {})
