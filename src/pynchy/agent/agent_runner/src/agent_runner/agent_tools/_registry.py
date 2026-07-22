@@ -8,19 +8,20 @@ from typing import Any
 
 from mcp.types import CallToolResult, TextContent, Tool
 
+StructuredToolResult = tuple[list[TextContent], dict[str, Any]]
+HandlerResult = list[TextContent] | CallToolResult | StructuredToolResult
+Handler = Callable[..., Awaitable[HandlerResult]]
+
 
 @dataclass
 class ToolEntry:
     """A registered tool with its definition and handler."""
 
     definition: Callable[[], Tool | None]
-    handler: Callable[..., Awaitable[list[TextContent] | CallToolResult]]
+    handler: Handler
 
 
 _TOOLS: dict[str, ToolEntry] = {}
-
-
-Handler = Callable[..., Awaitable[list[TextContent] | CallToolResult]]
 
 
 def register(name: str, entry: ToolEntry) -> None:
@@ -112,7 +113,7 @@ def tool_error(msg: str) -> CallToolResult:
     )
 
 
-def get_handler(name: str) -> Callable[..., Awaitable[list[TextContent] | CallToolResult]] | None:
+def get_handler(name: str) -> Handler | None:
     """Look up the handler for a tool name."""
     entry = _TOOLS.get(name)
     return entry.handler if entry else None
