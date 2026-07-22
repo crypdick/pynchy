@@ -8,8 +8,10 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
+from mcp.types import TextContent
 
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
@@ -297,22 +299,57 @@ class TestListTasks:
     """Test list_tasks tool behavior."""
 
     @pytest.mark.asyncio
-    async def test_no_tasks_file(self, tmp_path):
+    async def test_no_tasks_file_uses_explicit_snapshot_fallback(self, monkeypatch, tmp_path):
+        request = AsyncMock(
+            return_value=[TextContent(type="text", text="Error: host status unavailable")]
+        )
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            request,
+        )
 
         result = await call_tool("list_tasks", {})
-        assert isinstance(result, list)
-        assert "no" in result[0].text.lower()
+        assert "host status unavailable" in result[0].text
+        assert "No scheduled-task snapshot is available" in result[0].text
+        request.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_empty_task_list(self, tmp_path):
+    async def test_returns_live_structured_status(self, monkeypatch):
+        live_status = {
+            "tasks": [
+                {
+                    "id": "t1",
+                    "status": "paused",
+                    "next_run": None,
+                    "last_result": "Blocked: provider unavailable",
+                    "run_health": {"consecutive_failures": 2},
+                }
+            ],
+            "host_jobs": [],
+        }
+        request = AsyncMock(
+            return_value=[TextContent(type="text", text=json.dumps(live_status, indent=2))]
+        )
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            request,
+        )
 
-        tasks_file = tmp_path / "current_tasks.json"
-        tasks_file.write_text("[]")
         result = await call_tool("list_tasks", {})
-        assert "no" in result[0].text.lower()
+        assert json.loads(result[0].text) == live_status
+        request.assert_awaited_once_with(
+            "list_tasks",
+            {},
+            response_timeout_seconds=10,
+            type_override="task_status",
+        )
 
     @pytest.mark.asyncio
-    async def test_admin_sees_all_tasks(self, tmp_path):
+    async def test_admin_snapshot_fallback_sees_all_tasks(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            AsyncMock(return_value=[TextContent(type="text", text="Error: timed out")]),
+        )
 
         tasks = [
             {
@@ -340,7 +377,11 @@ class TestListTasks:
         assert "t2" in text
 
     @pytest.mark.asyncio
-    async def test_non_admin_sees_own_tasks_only(self, tmp_path):
+    async def test_non_admin_snapshot_fallback_sees_own_tasks_only(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            AsyncMock(return_value=[TextContent(type="text", text="Error: timed out")]),
+        )
 
         tasks = [
             {

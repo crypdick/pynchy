@@ -169,6 +169,11 @@ def host_agent_env_vars(
 ) -> dict[str, str]:
     env = build_agent_env_vars(is_admin=is_admin, group_folder=group_folder)
     s = get_settings()
+    # Direct-host CLI hooks are fresh subprocesses, separate from the Pynchy MCP
+    # process configured in host_direct. They therefore need the workspace
+    # identity in their inherited environment as well as the group-scoped IPC path.
+    env["PYNCHY_GROUP_FOLDER"] = group_folder
+    env["PYNCHY_IS_ADMIN"] = "1" if is_admin else "0"
     env["PYNCHY_IPC_DIR"] = str(s.data_dir / "ipc" / group_folder)
     if codex_home is not None:
         env["CODEX_HOME"] = str(codex_home)
