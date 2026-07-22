@@ -40,6 +40,7 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `github` | Webhook route | Direct read-only PR notifications | A public HTTPS endpoint plus one repository-to-workspace route | [GitHub PR notifications](../integrations/github.md) |
 | `proton-mail` | MCP server specification | Proton Mail tools | Proton Mail Bridge setup | [Proton Mail](../integrations/proton-mail.md) |
 | `matrix-gateway` | Connection runtime + service handler | Routed Matrix conversations and scoped actions | Named Matrix connection and routes | [Matrix gateway](../integrations/matrix-gateway.md) |
+| `marketplace-health` | Service handler | Aggregate marketplace counts and mail-reader health | Host-owned action ledger and Proton Mail tool | [Marketplace health](../integrations/marketplace-health.md) |
 | `notebook` | MCP server specification | Jupyter notebook execution server | `uv sync --extra notebook` | [Notebooks](../integrations/notebooks.md) |
 | `sqlite-observer` | Observer | Persists operational event summaries | No external dependency | [Observers](../architecture/observers.md) |
 | `sqlite-memory` | Memory backend | Per-workspace memory with FTS5 search | No external dependency | [Memory](../usage/memory.md) |

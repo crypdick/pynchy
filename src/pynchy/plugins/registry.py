@@ -128,6 +128,11 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "matrix-gateway",
     ),
     (
+        "pynchy.plugins.integrations.marketplace_health",
+        "MarketplaceHealthPlugin",
+        "marketplace-health",
+    ),
+    (
         "pynchy.plugins.integrations.notebook_server",
         "NotebookServerPlugin",
         "notebook",

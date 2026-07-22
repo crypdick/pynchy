@@ -223,6 +223,12 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="proton.mail.round.trip",
     ),
     agent_action(
+        "marketplace.health.read",
+        "marketplace-health",
+        "Read aggregate marketplace decision counts and reader health.",
+        "marketplace_health_snapshot",
+    ),
+    agent_action(
         "chat.matrix.route.read",
         "matrix-gateway",
         "Read messages from this conversation's configured Matrix route.",
