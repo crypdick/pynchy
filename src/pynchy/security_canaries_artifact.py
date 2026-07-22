@@ -68,6 +68,9 @@ class _SecurityCanaryDeps:
     def channels(self) -> list[Channel]:
         return []
 
+    def connection_statuses(self) -> dict[str, bool]:
+        return {}
+
     async def trigger_deploy(self, _previous_sha: str, *, rebuild: bool = True) -> None:
         del rebuild
 

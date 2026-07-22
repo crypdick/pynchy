@@ -8,6 +8,7 @@ import pynchy.host.container_manager.ipc.handlers_lifecycle
 import pynchy.host.container_manager.ipc.handlers_security
 import pynchy.host.container_manager.ipc.handlers_service
 import pynchy.host.container_manager.ipc.handlers_skills
+import pynchy.host.container_manager.ipc.handlers_source_health
 import pynchy.host.container_manager.ipc.handlers_tasks
 from pynchy.host.container_manager.ipc.deps import IpcDeps
 from pynchy.host.container_manager.ipc.registry import dispatch

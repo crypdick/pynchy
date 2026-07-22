@@ -212,6 +212,9 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         def get_active_sessions(self) -> dict[str, str]:
             return session_manager.get_active_sessions(app.workspaces)
 
+        def connection_statuses(self) -> dict[str, bool]:
+            return app.connection_runtime_owner.status()
+
         async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(
                 host_broadcaster=host_broadcaster,

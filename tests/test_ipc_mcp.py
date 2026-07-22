@@ -594,6 +594,7 @@ class TestListToolsVisibility:
         tool_names = [t.name for t in tools]
         for expected in [
             "send_message",
+            "messaging_source_health",
             "schedule_task",
             "list_tasks",
             "pause_task",

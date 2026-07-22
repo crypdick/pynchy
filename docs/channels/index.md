@@ -37,6 +37,19 @@ enabled = false
 If a channel's dependencies are unavailable or its configuration is missing,
 Pynchy skips it at startup.
 
+## Inspect source health
+
+Agents can call `messaging_source_health` to inspect current readiness and the
+latest Pynchy-ingested inbound timestamp for configured messaging sources. The
+tool reads host-owned runtime state and aggregate SQLite timestamps. It doesn't
+open provider conversations, read message bodies, or change provider read
+state.
+
+Pass connection names or provider types to inspect specific sources. Pynchy
+returns `not_established` when no configured connection matches a requested
+source. This result defines the coverage limit; it doesn't imply that an
+unconfigured provider works or fails outside Pynchy.
+
 ## Command center
 
 The command center selects which configured connection creates workspaces when
