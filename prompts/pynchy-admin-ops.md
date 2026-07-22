@@ -178,6 +178,20 @@ The directory will appear at `/workspace/extra/webapp` in that group's container
 
 Read `/danger/raw-host-repos/crypdick/pynchy/data/registered_groups.json` and format it nicely.
 
+## Scheduled Work Status
+
+For requests to list or audit scheduled tasks and host jobs, including paused
+work, recent failures, missing next-run times, scheduler errors, or
+failure-shaped result text, call `mcp__pynchy__list_tasks` first and treat its
+read-only live response as authoritative. If an applicable skill must be read,
+read it once, then use this native tool as the inventory source and answer
+immediately from the result.
+
+Do not use Bash, SQLite, Temporal CLI, logs, configuration files, or `/status`
+to rederive the same inventory. If the native tool returns an error or states a
+visibility limitation, report that bounded limitation instead of probing host
+state through another path.
+
 ## Scheduling for Other Groups
 
 When scheduling tasks for other groups, use the `target_group` parameter with the group's folder name from `registered_groups.json`:
