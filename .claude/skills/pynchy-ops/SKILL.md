@@ -141,21 +141,23 @@ curl -s "http://$PYNCHY_HOST:${PYNCHY_PORT:-8484}/status" | python3 -m json.tool
 
 ## Runtime DB Backups
 
-macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into iCloud Drive by default. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
+macOS deployments can use `scripts/backup_runtime_dbs.sh` for SQLite-safe runtime DB snapshots. It backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default or into the explicitly configured SSH destination. Remote backups stage locally, verify checksums on the destination, and publish atomically. The script briefly unloads and reloads the Temporal LaunchAgent around the `temporal.db` snapshot; never run an online SQLite backup against the active Temporal development server because a write collision can leave its transaction state wedged.
 
 Live service:
 
 | Item | Value |
 |------|-------|
 | LaunchAgent | `~/Library/LaunchAgents/com.pynchy.backup.plist` |
-| Destination | `~/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups` |
+| Destination | `PYNCHY_BACKUP_REMOTE_HOST:PYNCHY_BACKUP_REMOTE_DIR` from the LaunchAgent |
+| Retention | Newest `PYNCHY_BACKUP_KEEP_COUNT` generations, also bounded by `PYNCHY_BACKUP_KEEP_DAYS` |
 | Logs | `~/Library/Logs/pynchy/backup.log`, `~/Library/Logs/pynchy/backup.err.log` |
 
 Safe checks:
 
 ```bash
 ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy.backup'
-ssh "$PYNCHY_HOST" 'ls -lt ~/Library/Mobile\ Documents/com~apple~CloudDocs/PynchyBackups | head'
+ssh "$PYNCHY_HOST" 'launchctl print gui/$(id -u)/com.pynchy.backup | grep PYNCHY_BACKUP_'
+ssh "$PYNCHY_HOST" 'tail -n 50 ~/Library/Logs/pynchy/backup.log'
 ssh "$PYNCHY_HOST" 'tail -n 50 ~/Library/Logs/pynchy/backup.err.log'
 ```
 

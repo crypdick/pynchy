@@ -57,6 +57,8 @@ def _run_backup(
     sqlite3_executable: Path | None = None,
     remote: bool = False,
     remote_checksum_failure: bool = False,
+    existing_remote_snapshots: int = 0,
+    existing_local_snapshots: int = 0,
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     data_dir = tmp_path / "data"
     backup_dir = tmp_path / "backups"
@@ -65,6 +67,12 @@ def _run_backup(
     plist = home / "Library" / "LaunchAgents" / "com.pynchy.temporal.plist"
     data_dir.mkdir()
     fake_bin.mkdir()
+    if existing_local_snapshots:
+        backup_dir.mkdir()
+        for index in range(existing_local_snapshots):
+            snapshot = backup_dir / f"202601{index + 1:02d}T010101Z"
+            snapshot.mkdir()
+            (snapshot / "evidence.db").write_text(str(index), encoding="utf-8")
     plist.parent.mkdir(parents=True)
     plist.write_text("plist", encoding="utf-8")
     for name in DATABASES:
@@ -79,14 +87,22 @@ def _run_backup(
         "FAKE_LAUNCHCTL_CALLS": str(calls),
         "PYNCHY_BACKUP_DIR": str(backup_dir),
         "PYNCHY_DATA_DIR": str(data_dir),
+        "PYNCHY_BACKUP_KEEP_COUNT": "7",
     }
     if remote:
         ssh_calls = _fake_ssh(fake_bin)
+        remote_root = tmp_path / "remote"
+        remote_root.mkdir()
+        for index in range(existing_remote_snapshots):
+            snapshot = remote_root / f"202601{index + 1:02d}T010101Z"
+            snapshot.mkdir()
+            (snapshot / "evidence.db").write_text(str(index), encoding="utf-8")
         environment |= {
             "FAKE_SSH_CALLS": str(ssh_calls),
             "PYNCHY_BACKUP_REMOTE_HOST": "backup-host",
-            "PYNCHY_BACKUP_REMOTE_DIR": str(tmp_path / "remote"),
+            "PYNCHY_BACKUP_REMOTE_DIR": str(remote_root),
             "PYNCHY_BACKUP_STAGING_DIR": str(tmp_path / "staging"),
+            "PYNCHY_BACKUP_KEEP_COUNT": "7",
         }
         environment.pop("PYNCHY_BACKUP_DIR")
         if remote_checksum_failure:
@@ -146,6 +162,15 @@ def test_backup_restarts_temporal_when_snapshot_fails(tmp_path: Path) -> None:
     )
 
 
+def test_local_backup_keeps_only_newest_configured_generations(tmp_path: Path) -> None:
+    result, backup_dir, _ = _run_backup(tmp_path, existing_local_snapshots=8)
+
+    assert result.returncode == 0, result.stderr
+    snapshots = sorted(backup_dir.iterdir(), reverse=True)
+    assert len(snapshots) == 7
+    assert snapshots[-1].name == "20260103T010101Z"
+
+
 def test_remote_backup_verifies_then_publishes_snapshot(tmp_path: Path) -> None:
     result, _, _ = _run_backup(tmp_path, remote=True)
 
@@ -157,7 +182,16 @@ def test_remote_backup_verifies_then_publishes_snapshot(tmp_path: Path) -> None:
     assert list((tmp_path / "staging").iterdir()) == []
     ssh_calls = (tmp_path / "bin" / "ssh.calls").read_text(encoding="utf-8")
     assert "sha256sum -c SHA256SUMS" in ssh_calls
-    assert "-name '20*T*Z'" in ssh_calls
+
+
+def test_remote_backup_keeps_only_newest_configured_generations(tmp_path: Path) -> None:
+    result, _, _ = _run_backup(tmp_path, remote=True, existing_remote_snapshots=8)
+
+    assert result.returncode == 0, result.stderr
+    snapshots = sorted((tmp_path / "remote").iterdir(), reverse=True)
+    assert len(snapshots) == 7
+    assert snapshots[0].name.startswith("2026")
+    assert snapshots[-1].name == "20260103T010101Z"
 
 
 def test_remote_backup_requires_both_remote_settings(tmp_path: Path) -> None:

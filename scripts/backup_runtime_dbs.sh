@@ -10,6 +10,7 @@ REMOTE_ROOT="${PYNCHY_BACKUP_REMOTE_DIR:-}"
 SSH_KEY="${PYNCHY_BACKUP_SSH_KEY:-}"
 STAGING_ROOT="${PYNCHY_BACKUP_STAGING_DIR:-$REPO_ROOT/data/backup-staging}"
 KEEP_DAYS="${PYNCHY_BACKUP_KEEP_DAYS:-30}"
+KEEP_COUNT="${PYNCHY_BACKUP_KEEP_COUNT:-0}"
 TEMPORAL_LABEL="${PYNCHY_TEMPORAL_LABEL:-com.pynchy.temporal}"
 TEMPORAL_PLIST="${PYNCHY_TEMPORAL_PLIST:-$HOME/Library/LaunchAgents/$TEMPORAL_LABEL.plist}"
 
@@ -21,6 +22,10 @@ fi
 
 if [[ ! "$KEEP_DAYS" =~ ^[0-9]+$ ]]; then
   echo "PYNCHY_BACKUP_KEEP_DAYS must be a non-negative integer" >&2
+  exit 2
+fi
+if [[ ! "$KEEP_COUNT" =~ ^[0-9]+$ ]]; then
+  echo "PYNCHY_BACKUP_KEEP_COUNT must be a non-negative integer" >&2
   exit 2
 fi
 
@@ -74,6 +79,71 @@ fi
 
 run_remote() {
   "${ssh_command[@]}" "$REMOTE_HOST" "$1"
+}
+
+remove_snapshot_tree() {
+  root=$1
+  snapshot=$2
+  name=${snapshot##*/}
+  parent=${snapshot%/*}
+
+  if [[ "$parent" != "$root" || ! "$name" =~ ^20[0-9]{6}T[0-9]{6}Z$ ]]; then
+    echo "Refusing unsafe snapshot removal: $snapshot" >&2
+    return 2
+  fi
+
+  find "$snapshot" -type f -exec rm {} \;
+  find "$snapshot" -type l -exec rm {} \;
+  find "$snapshot" -depth -type d -exec rmdir {} \;
+}
+
+prune_snapshot_root() {
+  root=$1
+  keep_days=$2
+  keep_count=$3
+
+  while IFS= read -r snapshot; do
+    remove_snapshot_tree "$root" "$snapshot"
+  done < <(
+    find "$root" \
+      -mindepth 1 \
+      -maxdepth 1 \
+      -type d \
+      -name '20*T*Z' \
+      -mtime "+$keep_days" \
+      -print \
+      | sort
+  )
+
+  if [[ "$keep_count" == 0 ]]; then
+    return 0
+  fi
+
+  retained=0
+  while IFS= read -r snapshot; do
+    retained=$((retained + 1))
+    if ((retained > keep_count)); then
+      remove_snapshot_tree "$root" "$snapshot"
+    fi
+  done < <(
+    find "$root" \
+      -mindepth 1 \
+      -maxdepth 1 \
+      -type d \
+      -name '20*T*Z' \
+      -print \
+      | sort -r
+  )
+}
+
+prune_remote_backups() {
+  {
+    declare -f remove_snapshot_tree
+    declare -f prune_snapshot_root
+    # shellcheck disable=SC2016  # Expand positional arguments in the remote shell.
+    echo 'prune_snapshot_root "$1" "$2" "$3"'
+  } | "${ssh_command[@]}" "$REMOTE_HOST" \
+    bash -s -- "$REMOTE_ROOT" "$KEEP_DAYS" "$KEEP_COUNT"
 }
 
 resume_temporal() {
@@ -194,7 +264,7 @@ if [[ "$remote_mode" == true ]]; then
   rm -rf -- "$staging_dir"
   trap - EXIT
 
-  if ! run_remote "find $REMOTE_ROOT -mindepth 1 -maxdepth 1 -type d -name '20*T*Z' -mtime +$KEEP_DAYS -exec rm -rf -- {} +"; then
+  if ! prune_remote_backups; then
     echo "Warning: remote backup retention prune failed for $REMOTE_HOST:$REMOTE_ROOT" >&2
   fi
   echo "Backed up runtime DBs to $REMOTE_HOST:$remote_dest"
@@ -204,13 +274,7 @@ fi
 mv "$staging_dir" "$dest_dir"
 trap - EXIT
 
-if ! find "$BACKUP_ROOT" \
-  -mindepth 1 \
-  -maxdepth 1 \
-  -type d \
-  -name '20*T*Z' \
-  -mtime "+$KEEP_DAYS" \
-  -exec rm -rf {} +; then
+if ! prune_snapshot_root "$BACKUP_ROOT" "$KEEP_DAYS" "$KEEP_COUNT"; then
   echo "Warning: backup retention prune failed for $BACKUP_ROOT" >&2
 fi
 

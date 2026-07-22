@@ -225,9 +225,9 @@ To back up runtime databases with SQLite-safe snapshots, run:
 scripts/backup_runtime_dbs.sh
 ```
 
-The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default and prunes backups older than 30 days. It briefly unloads the `com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads it again. This prevents the online SQLite backup from blocking Temporal writes and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and `PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd identifiers.
+The script backs up `messages.db`, `memories.db`, `neonize.db`, and `temporal.db` into `data/backups` by default and prunes backups older than 30 days. Set `PYNCHY_BACKUP_KEEP_COUNT` to a positive integer to also cap the number of retained generations; `0` leaves the count uncapped. The launchd template keeps the newest seven generations. It briefly unloads the `com.pynchy.temporal` LaunchAgent while snapshotting `temporal.db`, then loads it again. This prevents the online SQLite backup from blocking Temporal writes and leaves other Pynchy components running. Set `PYNCHY_TEMPORAL_LABEL` and `PYNCHY_TEMPORAL_PLIST` when the deployment uses different launchd identifiers.
 
-For host-loss protection, set both `PYNCHY_BACKUP_REMOTE_HOST` and `PYNCHY_BACKUP_REMOTE_DIR`. The script creates SQLite snapshots in `PYNCHY_BACKUP_STAGING_DIR`, transfers them with `rsync`, verifies `SHA256SUMS` on the remote host, and only then renames the hidden partial directory to its final timestamp. Set `PYNCHY_BACKUP_SSH_KEY` when the scheduled job needs a dedicated noninteractive key. Remote hosts must provide `ssh`, `rsync`, and `sha256sum`:
+For host-loss protection, set both `PYNCHY_BACKUP_REMOTE_HOST` and `PYNCHY_BACKUP_REMOTE_DIR`. The script creates SQLite snapshots in `PYNCHY_BACKUP_STAGING_DIR`, transfers them with `rsync`, verifies `SHA256SUMS` on the remote host, and only then renames the hidden partial directory to its final timestamp. Set `PYNCHY_BACKUP_SSH_KEY` when the scheduled job needs a dedicated noninteractive key. Remote hosts must provide `bash`, `rsync`, and `sha256sum`:
 
 ```bash
 PYNCHY_BACKUP_REMOTE_HOST=backup@example-nas \
