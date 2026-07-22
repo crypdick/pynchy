@@ -12,6 +12,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from . import _ipc
 from ._ipc_request import ipc_service_request
 from ._registry import ToolEntry, register, tool, tool_error
+from ._task_status_format import compact_live_task_status
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -325,15 +326,14 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
     return None
 
 
-# -- list_tasks --
-
-
 @tool(
     "list_tasks",
     (
-        "Read current scheduled-work health for agent tasks and host jobs, including "
+        "Read a complete bounded snapshot of current scheduled-work health for agent "
+        "tasks and host jobs, including "
         "status, last results, recent failure summaries, Temporal next-run times, and "
         "orchestration errors. "
+        "Call once and answer directly without loading skills or re-querying host state. "
         "From admin: shows all tasks across all groups. "
         "From other groups: shows only that group's agent tasks."
     ),
@@ -349,7 +349,12 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
         type_override="task_status",
     )
     if live_result and not live_result[0].text.startswith("Error:"):
-        return live_result
+        return [
+            TextContent(
+                type="text",
+                text=compact_live_task_status(live_result[0].text),
+            )
+        ]
 
     tasks_file = _ipc.get_agent_tool_runtime().ipc_dir / "current_tasks.json"
 

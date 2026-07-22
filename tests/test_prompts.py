@@ -74,5 +74,7 @@ def test_admin_prompt_routes_scheduled_work_reads_to_native_tool() -> None:
     assert result is not None
     assert "mcp__pynchy__list_tasks" in result
     assert "Do not use Bash" in result
-    assert "immediately from the result" in result
+    assert "Answer immediately" in result
     assert "visibility limitation" in result
+    assert "Do not discover, load, or read skills" in result
+    assert "call `mcp__pynchy__list_tasks` once" in result
