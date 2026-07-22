@@ -4,21 +4,77 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DATA_DIR="${PYNCHY_DATA_DIR:-$REPO_ROOT/data}"
-BACKUP_ROOT="${PYNCHY_BACKUP_DIR:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups}"
+BACKUP_ROOT="${PYNCHY_BACKUP_DIR:-$REPO_ROOT/data/backups}"
+REMOTE_HOST="${PYNCHY_BACKUP_REMOTE_HOST:-}"
+REMOTE_ROOT="${PYNCHY_BACKUP_REMOTE_DIR:-}"
+SSH_KEY="${PYNCHY_BACKUP_SSH_KEY:-}"
+STAGING_ROOT="${PYNCHY_BACKUP_STAGING_DIR:-$REPO_ROOT/data/backup-staging}"
 KEEP_DAYS="${PYNCHY_BACKUP_KEEP_DAYS:-30}"
 TEMPORAL_LABEL="${PYNCHY_TEMPORAL_LABEL:-com.pynchy.temporal}"
 TEMPORAL_PLIST="${PYNCHY_TEMPORAL_PLIST:-$HOME/Library/LaunchAgents/$TEMPORAL_LABEL.plist}"
+
+if [[ -n "$REMOTE_HOST" && -z "$REMOTE_ROOT" ]] \
+  || [[ -z "$REMOTE_HOST" && -n "$REMOTE_ROOT" ]]; then
+  echo "PYNCHY_BACKUP_REMOTE_HOST and PYNCHY_BACKUP_REMOTE_DIR must be set together" >&2
+  exit 2
+fi
+
+if [[ ! "$KEEP_DAYS" =~ ^[0-9]+$ ]]; then
+  echo "PYNCHY_BACKUP_KEEP_DAYS must be a non-negative integer" >&2
+  exit 2
+fi
+
+remote_mode=false
+if [[ -n "$REMOTE_HOST" ]]; then
+  remote_mode=true
+  if [[ ! "$REMOTE_HOST" =~ ^[A-Za-z0-9_.:@-]+$ ]]; then
+    echo "PYNCHY_BACKUP_REMOTE_HOST contains unsupported characters" >&2
+    exit 2
+  fi
+  if [[ ! "$REMOTE_ROOT" =~ ^/[A-Za-z0-9_./-]+$ ]] \
+    || [[ "$REMOTE_ROOT" == "/" ]] \
+    || [[ "$REMOTE_ROOT" == *"/../"* ]] \
+    || [[ "$REMOTE_ROOT" == */.. ]] \
+    || [[ "$REMOTE_ROOT" == *"/./"* ]] \
+    || [[ "$REMOTE_ROOT" == */. ]]; then
+    echo "PYNCHY_BACKUP_REMOTE_DIR must be a safe absolute path below /" >&2
+    exit 2
+  fi
+  if [[ -n "$SSH_KEY" && ! -f "$SSH_KEY" ]]; then
+    echo "PYNCHY_BACKUP_SSH_KEY does not exist: $SSH_KEY" >&2
+    exit 2
+  fi
+fi
 
 if [[ -z "$BACKUP_ROOT" || "$BACKUP_ROOT" == "/" || "$BACKUP_ROOT" == "$HOME" ]]; then
   echo "Refusing unsafe backup root: $BACKUP_ROOT" >&2
   exit 2
 fi
+if [[ "$remote_mode" == true ]] \
+  && [[ -z "$STAGING_ROOT" || "$STAGING_ROOT" == "/" || "$STAGING_ROOT" == "$HOME" ]]; then
+  echo "Refusing unsafe backup staging root: $STAGING_ROOT" >&2
+  exit 2
+fi
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dest_dir="$BACKUP_ROOT/$timestamp"
-staging_dir="$BACKUP_ROOT/.partial-$timestamp-$$"
+if [[ "$remote_mode" == true ]]; then
+  staging_dir="$STAGING_ROOT/.partial-$timestamp-$$"
+else
+  staging_dir="$BACKUP_ROOT/.partial-$timestamp-$$"
+fi
 launchd_domain="gui/$(id -u)"
 temporal_restart_pending=false
+remote_partial=""
+
+ssh_command=(ssh -o BatchMode=yes)
+if [[ -n "$SSH_KEY" ]]; then
+  ssh_command+=(-o IdentitiesOnly=yes -o IdentityAgent=none -i "$SSH_KEY")
+fi
+
+run_remote() {
+  "${ssh_command[@]}" "$REMOTE_HOST" "$1"
+}
 
 resume_temporal() {
   if [[ "$temporal_restart_pending" != true ]]; then
@@ -40,6 +96,9 @@ finish_after_error() {
   fi
   if [[ -d "$staging_dir" ]]; then
     echo "Incomplete backup retained at $staging_dir" >&2
+  fi
+  if [[ -n "$remote_partial" ]]; then
+    echo "Remote partial backup may remain at $REMOTE_HOST:$remote_partial" >&2
   fi
   exit "$status"
 }
@@ -75,7 +134,11 @@ quiesce_temporal() {
   return 1
 }
 
-mkdir -p "$BACKUP_ROOT"
+if [[ "$remote_mode" == true ]]; then
+  mkdir -p "$STAGING_ROOT"
+else
+  mkdir -p "$BACKUP_ROOT"
+fi
 mkdir "$staging_dir"
 trap finish_after_error EXIT
 
@@ -105,6 +168,37 @@ if command -v shasum >/dev/null 2>&1; then
     cd "$staging_dir"
     shasum -a 256 ./*.db > SHA256SUMS
   )
+elif command -v sha256sum >/dev/null 2>&1; then
+  (
+    cd "$staging_dir"
+    sha256sum ./*.db > SHA256SUMS
+  )
+else
+  echo "Cannot create backup manifest: shasum or sha256sum is required" >&2
+  exit 1
+fi
+
+if [[ "$remote_mode" == true ]]; then
+  remote_partial="$REMOTE_ROOT/.partial-$timestamp-$$"
+  remote_dest="$REMOTE_ROOT/$timestamp"
+  run_remote "mkdir -p $REMOTE_ROOT && test ! -e $remote_partial && test ! -e $remote_dest && mkdir $remote_partial"
+
+  rsync_shell="ssh -o BatchMode=yes"
+  if [[ -n "$SSH_KEY" ]]; then
+    printf -v quoted_ssh_key '%q' "$SSH_KEY"
+    rsync_shell+=" -o IdentitiesOnly=yes -o IdentityAgent=none -i $quoted_ssh_key"
+  fi
+  rsync -a -e "$rsync_shell" -- "$staging_dir/" "$REMOTE_HOST:$remote_partial/"
+  run_remote "cd $remote_partial && sha256sum -c SHA256SUMS && cd $REMOTE_ROOT && mv .partial-$timestamp-$$ $timestamp"
+  remote_partial=""
+  rm -rf -- "$staging_dir"
+  trap - EXIT
+
+  if ! run_remote "find $REMOTE_ROOT -mindepth 1 -maxdepth 1 -type d -name '20*T*Z' -mtime +$KEEP_DAYS -exec rm -rf -- {} +"; then
+    echo "Warning: remote backup retention prune failed for $REMOTE_HOST:$REMOTE_ROOT" >&2
+  fi
+  echo "Backed up runtime DBs to $REMOTE_HOST:$remote_dest"
+  exit 0
 fi
 
 mv "$staging_dir" "$dest_dir"

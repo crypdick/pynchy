@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Replace $HOME and $PYNCHY_PROJECT_ROOT with absolute paths before installing;
+<!-- Replace every $PLACEHOLDER with an absolute deployment value before installing;
      launchd does not expand shell variables in plist string values. -->
 <plist version="1.0">
 <dict>
@@ -21,8 +21,14 @@
     </dict>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>PYNCHY_BACKUP_DIR</key>
-        <string>$HOME/Library/Mobile Documents/com~apple~CloudDocs/PynchyBackups</string>
+        <key>PYNCHY_BACKUP_REMOTE_HOST</key>
+        <string>$PYNCHY_BACKUP_REMOTE_HOST</string>
+        <key>PYNCHY_BACKUP_REMOTE_DIR</key>
+        <string>$PYNCHY_BACKUP_REMOTE_DIR</string>
+        <key>PYNCHY_BACKUP_SSH_KEY</key>
+        <string>$HOME/.ssh/pynchy_backup_ed25519</string>
+        <key>PYNCHY_BACKUP_STAGING_DIR</key>
+        <string>$PYNCHY_PROJECT_ROOT/data/backup-staging</string>
         <key>PYNCHY_BACKUP_KEEP_DAYS</key>
         <string>30</string>
     </dict>
