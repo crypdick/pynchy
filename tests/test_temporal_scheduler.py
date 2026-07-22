@@ -39,7 +39,13 @@ from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
-from pynchy.state import init_test_database, initialize_deployment_state
+from pynchy.state import (
+    begin_in_flight_turn,
+    claim_in_flight_turn,
+    get_in_flight_turn,
+    init_test_database,
+    initialize_deployment_state,
+)
 from pynchy.types import (
     CanaryOutcome,
     CanaryRun,
@@ -47,6 +53,8 @@ from pynchy.types import (
     DeployClaimStatus,
     DeployRevision,
     HostJob,
+    InFlightTurn,
+    InFlightWorkKind,
     ScheduledTask,
     WorkspaceProfile,
 )
@@ -1117,6 +1125,70 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_interrupted.run_interrupted_agent_turn("turn-123")
 
         assert result == temporal_workflows.CONTINUE_AFTER_SAFE_INTERRUPT
+
+    @pytest.mark.asyncio
+    async def test_cancelled_interrupted_turn_activity_releases_durable_claim(self, monkeypatch):
+        await init_test_database()
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-cancelled",
+                chat_jid="slack:C123",
+                group_folder="admin",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"sender_name": "User", "content": "finish the job"}],
+                input_start_cursor="old",
+                input_end_cursor="new",
+                started_at="2026-07-22T03:43:18+00:00",
+                interrupted_at="2026-07-22T03:51:57+00:00",
+                deploy_id="deploy-sha",
+            )
+        )
+        monkeypatch.setattr(
+            temporal_interrupted,
+            "_dispatch_interrupted_turn",
+            AsyncMock(side_effect=asyncio.CancelledError),
+        )
+        temporal_scheduler.bind_scheduler_deps(object())
+
+        with pytest.raises(asyncio.CancelledError):
+            await temporal_interrupted.run_interrupted_agent_turn("turn-cancelled")
+
+        checkpoint = await get_in_flight_turn("turn-cancelled")
+        assert checkpoint is not None
+        assert checkpoint.claimed_at is None
+        assert await claim_in_flight_turn("turn-cancelled") is True
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_task_id"] == "turn-cancelled"
+        assert status["last_result"] == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_failed_interrupted_turn_activity_releases_durable_claim(self, monkeypatch):
+        await init_test_database()
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-failed",
+                chat_jid="slack:C123",
+                group_folder="admin",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"sender_name": "User", "content": "finish the job"}],
+                input_start_cursor="old",
+                input_end_cursor="new",
+                started_at="2026-07-22T03:43:18+00:00",
+            )
+        )
+        monkeypatch.setattr(
+            temporal_interrupted,
+            "_dispatch_interrupted_turn",
+            AsyncMock(side_effect=RuntimeError("resume failed")),
+        )
+        temporal_scheduler.bind_scheduler_deps(object())
+
+        with pytest.raises(RuntimeError, match="resume failed"):
+            await temporal_interrupted.run_interrupted_agent_turn("turn-failed")
+
+        checkpoint = await get_in_flight_turn("turn-failed")
+        assert checkpoint is not None
+        assert checkpoint.claimed_at is None
 
     @pytest.mark.asyncio
     async def test_run_deploy_activity_builds_then_finalizes(self, monkeypatch):
