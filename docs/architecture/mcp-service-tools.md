@@ -49,6 +49,12 @@ The existing `SecurityPolicy` remains the authority: `/status` and
 `/capabilities` are diagnostic snapshots, while every dispatch and approved
 replay checks current policy again.
 
+The built-in MCP proxy advertises a stable tool schema, so the host treats the
+resolved workspace profile as authoritative at dispatch. It rejects an omitted
+workspace-tool requirement before policy can create a human approval. Approved
+replay performs the same check, which prevents an old approval from restoring a
+capability removed from the workspace profile.
+
 The hook registers the host half of a tool. Its in-container IPC proxy must be
 present in the selected agent image; host plugins are not imported into an
 already-running agent container. See the [host-service hook reference](../plugins/hooks/host-services.md#pynchy_service_handler)

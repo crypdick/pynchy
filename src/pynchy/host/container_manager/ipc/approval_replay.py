@@ -10,6 +10,7 @@ from typing import Any
 
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
     HostActionDescriptor,
+    missing_workspace_tool,
 )
 from pynchy.config import Settings  # noqa: TC001, RUF100 - beartype resolves policy annotations.
 from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves evidence annotations.
@@ -55,10 +56,16 @@ async def approval_replay_validation_error(
     """Recheck exact payload, expiry, policy, and conversation presentation."""
     if context.handler_type == "service" and context.gate is None:
         return "effective routed workspace policy is unavailable"
-    if context.handler_type == "service" and context.origin_conversation_id is not None:
+    if context.handler_type == "service":
         resolved = workspace_config.load_resolved_config(context.source_group)
-        if resolved is None or context.tool_name not in resolved.tools:
+        if context.origin_conversation_id is not None and resolved is None:
             return "host tool is no longer enabled for this routed workspace"
+        if (
+            resolved is not None
+            and context.action is not None
+            and (missing_tool := missing_workspace_tool(context.action, resolved.tools)) is not None
+        ):
+            return f"host tool {missing_tool} is no longer enabled for this workspace"
     time_error = _approval_time_error(context)
     if time_error is not None:
         return time_error

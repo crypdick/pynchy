@@ -15,6 +15,7 @@ from pynchy.action_intents import ActionIntent  # noqa: TC001, RUF100 - beartype
 from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
     ApprovalMode,
     HostActionDescriptor,
+    missing_workspace_tool,
 )
 from pynchy.config import get_settings
 from pynchy.config.models import McpTool
@@ -142,21 +143,45 @@ def _service_action_and_gate(
             {"error": f"Unknown service tool: {request.tool_name}"},
         )
         return None
+    resolved = workspace_config.load_resolved_config(source_group)
     active_route = get_active_matrix_route(source_group)
-    if active_route is not None:
-        resolved = workspace_config.load_resolved_config(source_group)
-        if resolved is None or request.tool_name not in resolved.tools:
-            logger.warning(
-                "Route-scoped service tool is not enabled for workspace",
-                tool_name=request.tool_name,
-                source_group=source_group,
-            )
-            _write_response(
-                source_group,
-                request.request_id,
-                {"error": f"Service tool is not enabled for this route: {request.tool_name}"},
-            )
-            return None
+    if active_route is not None and resolved is None:
+        logger.warning(
+            "Route-scoped service tool policy is unavailable",
+            tool_name=request.tool_name,
+            source_group=source_group,
+        )
+        _write_response(
+            source_group,
+            request.request_id,
+            {"error": f"Service tool is not enabled for this route: {request.tool_name}"},
+        )
+        return None
+    if (
+        resolved is not None
+        and (missing_tool := missing_workspace_tool(action, resolved.tools)) is not None
+    ):
+        # Host dispatch is authoritative even though the built-in MCP proxy
+        # advertises a stable tool schema to every agent runtime.
+        logger.warning(
+            "Service tool capability is not enabled for workspace",
+            tool_name=request.tool_name,
+            required_tool=missing_tool,
+            source_group=source_group,
+        )
+        _write_response(
+            source_group,
+            request.request_id,
+            {"error": f"Service tool is not enabled for this route: {request.tool_name}"}
+            if active_route is not None
+            else {
+                "error": (
+                    "Host capability unavailable: "
+                    f"Tool {missing_tool} is not enabled for this workspace"
+                )
+            },
+        )
+        return None
     gate = _security_gate(source_group, is_admin=is_admin)
     if gate is None:
         _write_response(

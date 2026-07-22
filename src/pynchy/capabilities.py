@@ -253,6 +253,20 @@ class HostActionRegistration:
         )
 
 
+def missing_workspace_tool(
+    action: HostActionDescriptor,
+    enabled_tools: Iterable[str],
+) -> str | None:
+    """Return the first workspace-tool prerequisite omitted by the active profile."""
+    enabled = frozenset(enabled_tools)
+    required = tuple(
+        requirement.name
+        for requirement in action.capability.requirements
+        if requirement.kind is CapabilityRequirementKind.WORKSPACE_TOOL
+    ) or (str(action.tool_name),)
+    return next((tool for tool in required if tool not in enabled), None)
+
+
 @dataclass(frozen=True)
 class ResolvedCapability:
     """Workspace-specific descriptor result for status and planning."""
