@@ -145,35 +145,31 @@ class LinearClient:
         state_id: str | None = None,
         label_ids: list[str] | None = None,
     ) -> dict[str, Any]:
+        issue_input: dict[str, object] = {
+            "teamId": team_id,
+            "title": title,
+        }
+        optional_fields = {
+            "description": description,
+            "projectId": project_id,
+            "stateId": state_id,
+            "labelIds": label_ids,
+        }
+        # Linear distinguishes omitted optional create fields from explicit nulls
+        # and rejects the latter with its generic "Argument Validation Error".
+        issue_input.update(
+            {key: value for key, value in optional_fields.items() if value is not None}
+        )
         data = await self.query(
             """
-            mutation CreateIssue(
-              $team_id: String!,
-              $title: String!,
-              $description: String,
-              $project_id: String,
-              $state_id: String,
-              $label_ids: [String!]
-            ) {
-              issueCreate(input: {
-                teamId: $team_id,
-                title: $title,
-                description: $description,
-                projectId: $project_id,
-                stateId: $state_id,
-                labelIds: $label_ids
-              }) {
+            mutation CreateIssue($input: IssueCreateInput!) {
+              issueCreate(input: $input) {
                 success
                 issue { id identifier title url }
               }
             }
             """,
-            team_id=team_id,
-            title=title,
-            description=description,
-            project_id=project_id,
-            state_id=state_id,
-            label_ids=label_ids,
+            input=issue_input,
         )
         result = data.get("issueCreate")
         if not isinstance(result, dict) or not result.get("success"):
