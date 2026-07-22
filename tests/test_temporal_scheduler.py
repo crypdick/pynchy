@@ -1012,36 +1012,48 @@ class TestTemporalSchedulerRuntime:
             timedelta(minutes=5)
         )
 
-    @pytest.mark.asyncio
-    async def test_builtin_temporal_schedule_intervals_are_configurable(
-        self, monkeypatch, tmp_path
-    ):
-
-        client = FakeScheduleClient()
-        runtime = temporal_scheduler.TemporalSchedulerRuntime(
-            deps=NullSchedulerDeps(), scheduler_config=SchedulerConfig()
-        )
-        runtime.client = client
+    def test_poller_schedules_bound_default_catchup_to_their_intervals(self, monkeypatch):
         settings = make_settings(
-            project_root=tmp_path / "pynchy",
+            scheduler=SchedulerConfig(),
+            jobs={},
+        )
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        schedules = (
+            temporal_schedules.schedule_for_host_git_sync(),
+            temporal_schedules.schedule_for_external_git_sync("owner/project"),
+            temporal_schedules.schedule_for_channel_reconciliation(),
+        )
+
+        for schedule in schedules:
+            assert schedule.spec.intervals[0].every == timedelta(minutes=5)
+            assert schedule.policy.catchup_window == timedelta(minutes=5)
+
+    def test_poller_schedules_bound_custom_catchup_to_their_intervals(self, monkeypatch):
+        settings = make_settings(
             scheduler=SchedulerConfig(
                 git_sync_interval_seconds=120,
                 channel_reconciliation_interval_seconds=180,
             ),
             jobs={},
         )
-        monkeypatch.setattr(temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[]))
-        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
-        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
         monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
 
-        await runtime.reconcile_schedules()
-
-        schedules = {schedule_id: schedule for schedule_id, schedule, _ in client.created_schedules}
-        assert schedules["pynchy-git-sync-host"].spec.intervals[0].every == timedelta(seconds=120)
-        assert schedules["pynchy-channel-reconciliation"].spec.intervals[0].every == (
-            timedelta(seconds=180)
+        schedules = (
+            (temporal_schedules.schedule_for_host_git_sync(), timedelta(seconds=120)),
+            (
+                temporal_schedules.schedule_for_external_git_sync("owner/project"),
+                timedelta(seconds=120),
+            ),
+            (
+                temporal_schedules.schedule_for_channel_reconciliation(),
+                timedelta(seconds=180),
+            ),
         )
+
+        for schedule, interval in schedules:
+            assert schedule.spec.intervals[0].every == interval
+            assert schedule.policy.catchup_window == interval
 
     @pytest.mark.asyncio
     async def test_reconcile_uses_flat_host_repo_root_for_external_sync_detection(
