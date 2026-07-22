@@ -154,15 +154,19 @@ class AppleContainerRuntime:
         )
         return result.returncode == 0
 
-    def cleanup_builder(self) -> None:
+    def cleanup_builder(self) -> bool:
         """Remove Apple Container's BuildKit container after Pynchy image builds."""
+        removed = False
         for args in (("builder", "stop"), ("builder", "rm", "--force")):
-            subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
+            result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
                 [self.cli, *args],
                 capture_output=True,
                 text=True,
                 check=False,
             )
+            if args[1] == "rm":
+                removed = result.returncode == 0
+        return removed
 
     def prune_images(self, *, all_images: bool = False) -> bool:
         """Prune dangling images, or every unreferenced image when requested."""

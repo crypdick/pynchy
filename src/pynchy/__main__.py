@@ -84,7 +84,7 @@ def _build() -> None:
         get_settings,
     )
     from pynchy.host.container_manager.cleanup import (  # noqa: PLC0415, RUF100 - runtime cleanup is build-command specific.
-        cleanup_runtime_builder,
+        cleanup_runtime_build_state,
     )
     from pynchy.plugins.runtimes.detection import (  # noqa: PLC0415, RUF100 - runtime probing is build-command specific.
         get_runtime,
@@ -99,6 +99,11 @@ def _build() -> None:
         sys.exit(1)
 
     _stdout_line(f"Building {s.container.image} with {runtime.cli}...")
+    runtime.ensure_running()
+    if not cleanup_runtime_build_state(runtime):
+        _stderr_line("Error: Could not clean stale container build state")
+        sys.exit(1)
+    build_state_cleaned = False
     try:
         result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
             [runtime.cli, "build", "-t", s.container.image, "."],
@@ -106,7 +111,10 @@ def _build() -> None:
             check=False,
         )
     finally:
-        cleanup_runtime_builder(runtime)
+        build_state_cleaned = cleanup_runtime_build_state(runtime)
+    if result.returncode == 0 and not build_state_cleaned:
+        _stderr_line("Error: Could not clean container build state after the build")
+        sys.exit(1)
     sys.exit(result.returncode)
 
 

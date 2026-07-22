@@ -86,15 +86,20 @@ def _remove_runtime_container(runtime: object, name: str) -> bool:
     return bool(remove_container(name, force=True))
 
 
-def cleanup_runtime_builder(runtime: object) -> None:
+def cleanup_runtime_builder(runtime: object) -> bool:
     """Let runtimes discard build-only state after Pynchy image builds."""
     cleanup_builder = getattr(runtime, "cleanup_builder", None)
     if not callable(cleanup_builder):
-        return
+        return True
     try:
-        cleanup_builder()
-    except OSError as exc:
+        cleaned = cleanup_builder()
+    except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("Failed to clean container builder", err=str(exc))
+        return False
+    if cleaned is False:
+        logger.warning("Failed to clean container builder")
+        return False
+    return True
 
 
 def cleanup_runtime_images(runtime: object) -> bool:
@@ -103,10 +108,20 @@ def cleanup_runtime_images(runtime: object) -> bool:
     if not callable(prune_images):
         return False
     try:
-        return bool(prune_images(all_images=False))
+        pruned = bool(prune_images(all_images=False))
     except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("Failed to prune container images", err=str(exc))
         return False
+    if not pruned:
+        logger.warning("Failed to prune container images")
+    return pruned
+
+
+def cleanup_runtime_build_state(runtime: object) -> bool:
+    """Discard stale builders and dangling layers around controlled builds."""
+    builder_cleaned = cleanup_runtime_builder(runtime)
+    images_cleaned = cleanup_runtime_images(runtime)
+    return builder_cleaned and images_cleaned
 
 
 def reap_orphaned_agent_containers(

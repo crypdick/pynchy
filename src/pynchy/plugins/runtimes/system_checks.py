@@ -13,8 +13,7 @@ from typing import TYPE_CHECKING, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.cleanup import (
-    cleanup_runtime_builder,
-    cleanup_runtime_images,
+    cleanup_runtime_build_state,
     reap_orphaned_agent_containers,
 )
 from pynchy.logger import logger
@@ -27,6 +26,9 @@ _MISSING_IMAGE_AND_DOCKERFILE_ERROR = (
     "Container image '{image}' not found and no Dockerfile at {dockerfile}"
 )
 _CONTAINER_BUILD_FAILED_ERROR = "Failed to build container image '{image}'"
+_CONTAINER_BUILD_STATE_CLEANUP_FAILED_ERROR = (
+    "Failed to clean stale container build state before building image '{image}'"
+)
 _PLUGIN_REQUIREMENTS_GENERATION_FAILED_ERROR = "Failed to generate container plugin requirements"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 _AGENT_IMAGE_LOCK = threading.Lock()
@@ -64,6 +66,8 @@ def _ensure_agent_image_available(runtime: object) -> None:
         check=False,
     )
     if result.returncode != 0:
+        if not cleanup_runtime_build_state(runtime):
+            raise RuntimeError(_CONTAINER_BUILD_STATE_CLEANUP_FAILED_ERROR.format(image=image))
         container_dir = s.project_root / "src" / "pynchy" / "agent"
         dockerfile = container_dir / "Dockerfile"
         if not dockerfile.exists():
@@ -79,7 +83,7 @@ def _ensure_agent_image_available(runtime: object) -> None:
                 check=False,
             )
         finally:
-            cleanup_runtime_builder(runtime)
+            cleanup_runtime_build_state(runtime)
         if build.returncode != 0:
             raise RuntimeError(_CONTAINER_BUILD_FAILED_ERROR.format(image=image))
 
@@ -100,10 +104,10 @@ def ensure_container_system_running() -> None:
     """Verify the container runtime and clean up stale agent resources."""
     runtime = get_runtime()
     runtime.ensure_running()
+    cleanup_runtime_build_state(runtime)
 
     if os.environ.get(_RUNTIME_HARNESS_ENV) != "1":
         with _AGENT_IMAGE_LOCK:
             _ensure_agent_image_available(runtime)
 
     reap_orphaned_agent_containers(runtime=runtime)
-    cleanup_runtime_images(runtime)

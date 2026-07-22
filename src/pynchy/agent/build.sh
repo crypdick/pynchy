@@ -24,22 +24,56 @@ else
 fi
 
 cleanup_runtime_build_state() {
+    local cleanup_failed=0
+
     if [ "$RUNTIME" = "container" ] && [ "${PYNCHY_KEEP_APPLE_BUILDER:-}" != "1" ]; then
         echo "Cleaning Apple Container builder..."
-        $RUNTIME builder stop >/dev/null 2>&1 || true
-        $RUNTIME builder rm --force >/dev/null 2>&1 || true
+        if ! $RUNTIME builder rm --force; then
+            echo "Failed to remove Apple Container builder." >&2
+            cleanup_failed=1
+        fi
     fi
 
     if [ "${PYNCHY_PRUNE_IMAGES:-1}" != "0" ]; then
         echo "Pruning dangling container images..."
         if [ "$RUNTIME" = "docker" ]; then
-            $RUNTIME image prune -f >/dev/null 2>&1 || true
+            if ! $RUNTIME image prune -f; then
+                cleanup_failed=1
+            fi
         else
-            $RUNTIME image prune >/dev/null 2>&1 || true
+            if ! $RUNTIME image prune; then
+                cleanup_failed=1
+            fi
         fi
     fi
+
+    return "$cleanup_failed"
 }
-trap cleanup_runtime_build_state EXIT
+
+cleanup_runtime_build_state_on_exit() {
+    local build_status=$?
+    local cleanup_status=0
+    if ! cleanup_runtime_build_state; then
+        echo "Container build-state cleanup failed." >&2
+        cleanup_status=1
+    fi
+    if [ "$build_status" -ne 0 ]; then
+        exit "$build_status"
+    fi
+    exit "$cleanup_status"
+}
+
+terminate_build() {
+    exit 143
+}
+
+trap terminate_build TERM INT
+trap cleanup_runtime_build_state_on_exit EXIT
+
+if ! cleanup_runtime_build_state; then
+    echo "Refusing to build with stale container build state." >&2
+    exit 1
+fi
 
 mcp_image_fingerprint() {
     local base="$1"

@@ -53,17 +53,27 @@ class TestEnsureContainerSystemRunning:
     def test_image_exists_no_orphans(self, mock_runtime):
         """Happy path: image exists, no orphaned containers."""
         image_inspect = MagicMock(returncode=0)
+        events: list[str] = []
+        mock_runtime.cleanup_builder.side_effect = lambda: events.append("builder")
+        mock_runtime.prune_images.side_effect = lambda **_kwargs: events.append("images") or True
+
+        def inspect_image(*_args, **_kwargs):
+            events.append("inspect")
+            return image_inspect
 
         with (
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
             patch(
-                "pynchy.plugins.runtimes.system_checks.subprocess.run", return_value=image_inspect
+                "pynchy.plugins.runtimes.system_checks.subprocess.run",
+                side_effect=inspect_image,
             ),
         ):
             ensure_container_system_running()
 
         mock_runtime.ensure_running.assert_called_once()
+        mock_runtime.cleanup_builder.assert_called_once()
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
+        assert events[:3] == ["builder", "images", "inspect"]
 
     def test_image_missing_builds(self, mock_runtime, tmp_path):
         """On-demand image validation builds an image that is not present."""
@@ -90,7 +100,8 @@ class TestEnsureContainerSystemRunning:
             ensure_agent_image_available()
 
         mock_runtime.ensure_running.assert_called_once()
-        mock_runtime.cleanup_builder.assert_called_once()
+        assert mock_runtime.cleanup_builder.call_count == 2
+        assert mock_runtime.prune_images.call_count == 2
         assert run.call_args_list[1].args[0] == [
             sys.executable,
             str(container_dir / "scripts" / "generate_plugin_requirements.py"),
@@ -159,6 +170,30 @@ class TestEnsureContainerSystemRunning:
         ):
             ensure_container_system_running()
 
+        mock_runtime.cleanup_builder.assert_called()
+        mock_runtime.prune_images.assert_called_with(all_images=False)
+
+    def test_missing_image_refuses_build_when_preflight_cleanup_fails(self, mock_runtime, tmp_path):
+        """A missing image must not allocate more disk after cleanup failed."""
+        mock_runtime.prune_images.return_value = False
+        inspect_fail = MagicMock(returncode=1)
+
+        with (
+            patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
+            patch(
+                "pynchy.plugins.runtimes.system_checks.subprocess.run",
+                return_value=inspect_fail,
+            ) as run,
+            patch(
+                "pynchy.plugins.runtimes.system_checks.get_settings",
+                return_value=self._settings(tmp_path),
+            ),
+            pytest.raises(RuntimeError, match="clean stale container build state"),
+        ):
+            ensure_agent_image_available()
+
+        run.assert_called_once()
+
     def test_plugin_requirements_generation_failure_raises(self, mock_runtime, tmp_path):
         """A missing plugin requirements file never falls through to Docker build."""
         inspect_fail = MagicMock(returncode=1)
@@ -183,7 +218,8 @@ class TestEnsureContainerSystemRunning:
             ensure_agent_image_available()
 
         assert run.call_count == 2
-        mock_runtime.cleanup_builder.assert_not_called()
+        mock_runtime.cleanup_builder.assert_called_once()
+        mock_runtime.prune_images.assert_called_once_with(all_images=False)
 
     def test_orphaned_agent_containers_reaped(self, mock_runtime):
         """Orphaned stopped agent containers should be removed."""

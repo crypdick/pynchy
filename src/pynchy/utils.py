@@ -11,7 +11,8 @@ import asyncio
 import contextlib
 import json
 import os
-from asyncio.subprocess import PIPE
+import signal
+from asyncio.subprocess import PIPE, Process
 from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these runtime annotations.
     Callable,
     Coroutine,
@@ -28,6 +29,7 @@ from croniter import croniter
 from pynchy.logger import logger
 
 _INTERVAL_POSITIVE_ERROR = "Interval must be positive"
+_SHELL_TERMINATION_GRACE_SECONDS = 10
 
 
 def write_json_atomic(path: Path, data: object, *, indent: int | None = None) -> None:
@@ -134,6 +136,36 @@ class ShellResult:
     start_error: str | None = None
 
 
+def _signal_shell_process_group(process: Process, sig: signal.Signals) -> None:
+    """Signal a shell command's isolated process group."""
+    try:
+        os.killpg(process.pid, sig)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        with contextlib.suppress(ProcessLookupError):
+            if sig is signal.SIGTERM:
+                process.terminate()
+            else:
+                process.kill()
+
+
+async def _terminate_shell_process_group(process: Process) -> None:
+    """Let shell traps clean up, then force-kill descendants that ignore TERM."""
+    _signal_shell_process_group(process, signal.SIGTERM)
+    try:
+        await asyncio.wait_for(
+            process.communicate(),
+            timeout=_SHELL_TERMINATION_GRACE_SECONDS,
+        )
+    except TimeoutError:
+        _signal_shell_process_group(process, signal.SIGKILL)
+    else:
+        return
+    with contextlib.suppress(Exception):
+        await process.communicate()
+
+
 async def run_shell_command(
     command: str,
     *,
@@ -152,6 +184,7 @@ async def run_shell_command(
             env={**os.environ, **env} if env is not None else None,
             stdout=PIPE,
             stderr=PIPE,
+            start_new_session=True,
         )
     except OSError as exc:
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
@@ -162,12 +195,13 @@ async def run_shell_command(
             timeout=timeout_seconds,
         )
     except TimeoutError:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-        with contextlib.suppress(Exception):
-            await process.communicate()
+        await _terminate_shell_process_group(process)
         return ShellResult(returncode=None, stdout="", stderr="", timed_out=True)
+    except asyncio.CancelledError:
+        await _terminate_shell_process_group(process)
+        raise
     except Exception as exc:  # noqa: BLE001, RUF100  # allow: exception-handling - start_error is surfaced by the caller.
+        await _terminate_shell_process_group(process)
         return ShellResult(returncode=None, stdout="", stderr="", start_error=str(exc))
 
     return ShellResult(
