@@ -29,6 +29,10 @@ from pynchy.host.orchestrator.scheduled_turn import (
     TaskAgentRequest,
     run_task_agent,
 )
+from pynchy.host.orchestrator.temporal.runtime_state import (
+    TemporalActivityInfo,
+    parse_temporal_activity_info,
+)
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.state import (
@@ -202,12 +206,11 @@ def error_signature(error: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"\b\d+\b", "#", first_line)).strip()
 
 
-def _temporal_attempt_metadata() -> tuple[str | None, int | None]:
+def _temporal_run_metadata() -> TemporalActivityInfo | None:
     try:
-        info = activity.info()
+        return parse_temporal_activity_info(activity.info())
     except RuntimeError:
-        return None, None
-    return info.workflow_id, info.attempt
+        return None
 
 
 def _scheduled_group(
@@ -229,7 +232,7 @@ async def _log_task_error(
     error: str,
     escalation_reason: str | None = None,
 ) -> None:
-    workflow_id, attempt = _temporal_attempt_metadata()
+    temporal = _temporal_run_metadata()
     await log_task_run(
         TaskRunLog(
             task_id=task_id,
@@ -238,8 +241,9 @@ async def _log_task_error(
             status="error",
             result=None,
             error=error,
-            temporal_workflow_id=workflow_id,
-            temporal_attempt=attempt,
+            temporal_workflow_id=temporal.workflow_id if temporal else None,
+            temporal_workflow_run_id=temporal.workflow_run_id if temporal else None,
+            temporal_attempt=temporal.attempt if temporal else None,
             escalation_reason=escalation_reason,
         )
     )
@@ -288,6 +292,7 @@ async def _finish_scheduled_agent_run(
     start_time: datetime,
     result: str | None,
     error: str | None,
+    turn_id: str | None = None,
 ) -> bool:
     logger.info(
         "Task completed",
@@ -295,7 +300,7 @@ async def _finish_scheduled_agent_run(
         duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
     )
     duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-    workflow_id, attempt = _temporal_attempt_metadata()
+    temporal = _temporal_run_metadata()
     await log_task_run(
         TaskRunLog(
             task_id=task.id,
@@ -304,8 +309,10 @@ async def _finish_scheduled_agent_run(
             status="error" if error else "success",
             result=result,
             error=error,
-            temporal_workflow_id=workflow_id,
-            temporal_attempt=attempt,
+            temporal_workflow_id=temporal.workflow_id if temporal else None,
+            temporal_workflow_run_id=temporal.workflow_run_id if temporal else None,
+            temporal_attempt=temporal.attempt if temporal else None,
+            turn_id=turn_id,
             error_signature=error_signature(error) if error else None,
         )
     )
@@ -334,7 +341,7 @@ async def resume_interrupted_scheduled_turn(
         start_time = datetime.fromisoformat(turn.started_at)
     except ValueError:
         start_time = datetime.now(UTC)
-    result, error = await run_task_agent(
+    turn_id, result, error = await run_task_agent(
         TaskAgentRequest(
             task=task,
             deps=cast("ScheduledTurnDeps", deps),
@@ -344,13 +351,12 @@ async def resume_interrupted_scheduled_turn(
             resume_turn=turn,
         )
     )
-    if error:
-        return False
     completed = await _finish_scheduled_agent_run(
         task,
         start_time=start_time,
         result=result,
         error=error,
+        turn_id=turn_id,
     )
     if completed:
         await clear_in_flight_turn(turn.turn_id)
@@ -455,7 +461,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
     async def on_target_created(profile: WorkspaceProfile) -> None:
         await register_scheduled_target(cast("ConfigJobExecutionDeps", deps), profile)
 
-    result, error = await run_task_agent(
+    turn_id, result, error = await run_task_agent(
         TaskAgentRequest(
             task=execution_task,
             deps=cast("ScheduledTurnDeps", deps),
@@ -471,4 +477,5 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
         start_time=start_time,
         result=result,
         error=error,
+        turn_id=turn_id,
     )

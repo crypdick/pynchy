@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -34,6 +35,7 @@ from pynchy.state import (
     create_task,
     get_in_flight_turn_for_task,
     get_task_by_id,
+    get_task_run_logs,
     init_test_database,
     prepare_in_flight_turn_recovery,
 )
@@ -82,6 +84,13 @@ class RecordingTemporalRuntime:
 
     async def reconcile_schedules(self):
         self.reconcile_count += 1
+
+
+@dataclass(frozen=True)
+class _ActivityInfo:
+    workflow_id: str
+    workflow_run_id: str
+    attempt: int
 
 
 @contextlib.contextmanager
@@ -714,6 +723,103 @@ class TestRunScheduledAgent:
         assert resumed_run["input_source"] == "scheduled_task"
         assert "continue the unfinished job" in resumed_run["messages"][0]["content"]
         assert await get_in_flight_turn_for_task(sample_task.id) is None
+
+    @pytest.mark.asyncio
+    async def test_reused_workflow_id_keeps_distinct_temporal_runs_and_occurrences(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """Recurring executions retain both Temporal and Pynchy identity boundaries."""
+        mock_deps.groups["test-jid"] = sample_group
+        await create_task(sample_task)
+        temporal_runs = [
+            _ActivityInfo(
+                workflow_id="recurring-workflow",
+                workflow_run_id="workflow-run-1",
+                attempt=1,
+            ),
+            _ActivityInfo(
+                workflow_id="recurring-workflow",
+                workflow_run_id="workflow-run-2",
+                attempt=1,
+            ),
+        ]
+
+        with (
+            patch.object(ts_mod.activity, "info", side_effect=temporal_runs),
+            patch(
+                "pynchy.host.orchestrator.scheduled_turn.merge_worktree_with_policy",
+                new_callable=AsyncMock,
+            ),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(sample_task, mock_deps) is True
+
+        logs = await get_task_run_logs(sample_task.id)
+        assert [log.temporal_workflow_id for log in logs] == [
+            "recurring-workflow",
+            "recurring-workflow",
+        ]
+        assert [log.temporal_workflow_run_id for log in logs] == [
+            "workflow-run-2",
+            "workflow-run-1",
+        ]
+        assert logs[0].turn_id is not None
+        assert logs[1].turn_id is not None
+        assert logs[0].turn_id != logs[1].turn_id
+
+    @pytest.mark.asyncio
+    async def test_activity_retries_and_restart_continuation_share_turn_occurrence(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """One checkpoint groups retries and a distinct interrupted-turn workflow."""
+        mock_deps.groups["test-jid"] = sample_group
+        mock_deps._run_agent_result = "error"
+        await create_task(sample_task)
+        temporal_attempts = [
+            _ActivityInfo(
+                workflow_id="scheduled-workflow",
+                workflow_run_id="scheduled-run",
+                attempt=1,
+            ),
+            _ActivityInfo(
+                workflow_id="scheduled-workflow",
+                workflow_run_id="scheduled-run",
+                attempt=2,
+            ),
+            _ActivityInfo(
+                workflow_id="interrupted-workflow",
+                workflow_run_id="interrupted-run",
+                attempt=1,
+            ),
+        ]
+
+        with (
+            patch.object(ts_mod.activity, "info", side_effect=temporal_attempts),
+            patch(
+                "pynchy.host.orchestrator.scheduled_turn.merge_worktree_with_policy",
+                new_callable=AsyncMock,
+            ),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            checkpoint = await get_in_flight_turn_for_task(sample_task.id)
+            assert checkpoint is not None
+
+            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            await prepare_in_flight_turn_recovery("deploy-sha")
+            mock_deps._run_agent_result = "success"
+            assert await run_scheduled_agent(sample_task, mock_deps) is True
+
+        logs = list(reversed(await get_task_run_logs(sample_task.id)))
+        assert [log.status for log in logs] == ["error", "error", "success"]
+        assert [log.temporal_workflow_run_id for log in logs] == [
+            "scheduled-run",
+            "scheduled-run",
+            "interrupted-run",
+        ]
+        assert [log.temporal_attempt for log in logs] == [1, 2, 1]
+        assert {log.turn_id for log in logs} == {checkpoint.turn_id}
 
     @pytest.mark.asyncio
     async def test_scheduled_agent_honors_explicit_task_repo_access(

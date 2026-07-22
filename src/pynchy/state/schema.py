@@ -81,7 +81,9 @@ CREATE TABLE IF NOT EXISTS task_run_logs (
     result TEXT,
     error TEXT,
     temporal_workflow_id TEXT,
+    temporal_workflow_run_id TEXT,
     temporal_attempt INTEGER,
+    turn_id TEXT,
     error_signature TEXT,
     escalation_reason TEXT,
     FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)

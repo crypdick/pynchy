@@ -26,7 +26,9 @@ class TemporalSchedulerStatusSnapshot:
 class TemporalActivityInfo:
     """Pynchy-owned subset of Temporal activity execution metadata."""
 
-    workflow_id: str
+    workflow_id: str | None
+    workflow_run_id: str | None = None
+    attempt: int | None = None
 
 
 @dataclass
@@ -63,8 +65,16 @@ def parse_temporal_activity_info(raw_info: object) -> TemporalActivityInfo:
     """Parse Temporal's rich activity metadata at the scheduler boundary."""
     if isinstance(raw_info, TemporalActivityInfo):
         return raw_info
-    workflow_id = getattr(raw_info, "workflow_id", "")
-    return TemporalActivityInfo(workflow_id=str(workflow_id))
+    raw_workflow_id = getattr(raw_info, "workflow_id", "")
+    raw_workflow_run_id = getattr(raw_info, "workflow_run_id", None)
+    raw_attempt = getattr(raw_info, "attempt", None)
+    return TemporalActivityInfo(
+        workflow_id=raw_workflow_id if isinstance(raw_workflow_id, str) else None,
+        workflow_run_id=(raw_workflow_run_id if isinstance(raw_workflow_run_id, str) else None),
+        attempt=raw_attempt
+        if isinstance(raw_attempt, int) and not isinstance(raw_attempt, bool)
+        else None,
+    )
 
 
 def _activity_workflow_id() -> str | None:
