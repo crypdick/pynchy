@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 
 from temporalio import activity
@@ -78,7 +79,17 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
     try:
         async with activity_heartbeats(turn_id):
             handled = await _dispatch_interrupted_turn(turn_id, _require_scheduler_deps())
-    except Exception as exc:  # noqa: BLE001, RUF100 - activity boundary records and retries failures.
+
+    except asyncio.CancelledError:
+        # Temporal closes a cancelled workflow before this activity can report a
+        # terminal event. Retain the checkpoint, but relinquish this process's
+        # ownership so startup recovery or the next interactive trigger can
+        # safely claim it again.
+        await release_in_flight_turn_claim(turn_id)
+        _record_activity_result(turn_id, "cancelled")
+        raise
+    except BaseException as exc:  # noqa: BLE001, RUF100 - claim ownership must end with the activity.
+        await release_in_flight_turn_claim(turn_id)
         _record_activity_result(turn_id, "error", str(exc))
         raise
 
@@ -87,6 +98,7 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
         return CONTINUE_AFTER_SAFE_INTERRUPT_RESULT
     if not handled:
         err = "Interrupted agent turn requested retry"
+        await release_in_flight_turn_claim(turn_id)
         _record_activity_result(turn_id, "retry_requested", err)
         raise RuntimeError(err)
     _record_activity_result(turn_id, "completed")

@@ -68,4 +68,7 @@ file; that file only carries deploy diagnostics and rollback metadata.
 
 Recovery resumes the durable agent turn, not the stopped Python instruction pointer. Temporal
 heartbeats detect a lost host activity, while the checkpoint gives the replacement activity the
-semantic information required to continue safely.
+semantic information required to continue safely. If Temporal cancels a recovery activity,
+Pynchy retains the checkpoint and its routed-delivery claim but releases the activity's execution
+claim. Startup recovery or a later interactive trigger can then claim the unfinished turn again;
+cancellation never completes its input cursor.
