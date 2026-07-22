@@ -65,7 +65,12 @@ partial SMS-only view.
 Pass connection names or provider types to inspect specific sources. Results
 separate metadata availability, collector health, event freshness, and historical
 coverage. `latest_inbound` identifies the newest returned source and timestamp
-without exposing a sender. Unknown source names are `not_established`.
+without exposing a sender. The agent tool defaults to WhatsApp, Signal, and
+Google Messages when `sources` is omitted, so an unrelated configured channel
+can't become the reported latest personal message. Pass a configured connection
+name or provider explicitly to inspect another channel. Host-internal IPC callers
+that omit `sources` retain the complete configured-plus-personal inventory.
+Unknown source names are `not_established`.
 
 ## Command center
 

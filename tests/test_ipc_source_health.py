@@ -271,6 +271,36 @@ async def test_reports_non_channel_connection_runtime_status(monkeypatch, tmp_pa
     ]
 
 
+async def test_host_ipc_omission_preserves_complete_source_inventory(monkeypatch, tmp_path) -> None:
+    await init_test_database()
+    settings = make_settings(
+        data_dir=tmp_path,
+        connections={"gateway": MatrixConnectionConfig(expected_user_id="@owner:example.test")},
+    )
+    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+
+    await dispatch(
+        {
+            "type": "messaging_source_health",
+            "request_id": "complete-health-request",
+        },
+        "chat-manager",
+        False,
+        _ConnectionHealthDeps(),
+    )
+
+    response_path = (
+        settings.data_dir / "ipc" / "chat-manager" / "responses" / "complete-health-request.json"
+    )
+    result = json.loads(response_path.read_text(encoding="utf-8"))["result"]
+    assert [source["name"] for source in result["sources"]] == [
+        "gateway",
+        "whatsapp",
+        "signal",
+        "google_messages",
+    ]
+
+
 async def test_rejects_non_list_source_filter(source_health_setup: Settings) -> None:
     await dispatch(
         {

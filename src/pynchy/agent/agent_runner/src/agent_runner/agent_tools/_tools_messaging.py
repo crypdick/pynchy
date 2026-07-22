@@ -10,6 +10,8 @@ from . import _ipc
 from ._ipc_request import ipc_service_request
 from ._registry import tool
 
+_PERSONAL_MESSAGING_SOURCES = ["whatsapp", "signal", "google_messages"]
+
 
 @tool(
     "messaging_source_health",
@@ -19,7 +21,9 @@ from ._registry import tool
         "environment variables, invoking sibling messaging utilities, or opening provider "
         "applications. This tool never reads sender identities or message bodies, opens "
         "conversations, or changes provider read state. Its latest_inbound field identifies "
-        "the newest body-free timestamp across returned sources."
+        "the newest body-free timestamp across returned sources. When sources is omitted, "
+        "the tool checks only WhatsApp, Signal, and Google Messages; pass a configured "
+        "connection name or provider explicitly to inspect another Pynchy channel."
     ),
     {
         "type": "object",
@@ -27,19 +31,21 @@ from ._registry import tool
             "sources": {
                 "type": "array",
                 "items": {"type": "string"},
+                "default": _PERSONAL_MESSAGING_SOURCES,
                 "description": (
                     "Optional connection names or provider types to inspect, such as "
-                    "whatsapp, signal, or google_messages. Omit to inspect every configured "
-                    "Pynchy connection and supported host-local aggregate source."
+                    "whatsapp, signal, google_messages, or discord. Omit to inspect only "
+                    "the three personal messaging sources."
                 ),
             }
         },
     },
 )
 async def _messaging_source_health_handle(arguments: dict[str, Any]) -> list[TextContent]:
+    sources = arguments.get("sources", _PERSONAL_MESSAGING_SOURCES)
     return await ipc_service_request(
         "messaging_source_health",
-        {"sources": arguments["sources"]} if "sources" in arguments else {},
+        {"sources": sources},
         type_override="messaging_source_health",
     )
 
