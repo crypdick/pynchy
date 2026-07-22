@@ -106,7 +106,7 @@ litellm_settings:
   callbacks: ["arize_phoenix"]
 
 # ---------------------------------------------------------------------------
-# Router settings  —  failover tuning
+# Router settings  —  routing and cooldown tuning
 # ---------------------------------------------------------------------------
 # See the litellm-diagnostics reference for detailed rationale.
 router_settings:
@@ -115,26 +115,21 @@ router_settings:
   #          latency-based-routing, cost-based-routing
   routing_strategy: usage-based-routing
 
-  # Retry failed requests on a different deployment
-  num_retries: 3
+  # Retries provide failover only when a model_name has multiple deployments.
+  # This example starts with one deployment per model_name, so repeated router
+  # attempts would call the same upstream. Increase this after adding an
+  # alternate deployment to a model group.
+  num_retries: 0
   timeout: 300
 
-  # Cooldown: after (allowed_fails + 1) consecutive failures on a
-  # deployment, take it out of rotation for cooldown_time seconds.
+  # Leave allowed_fails unset. LiteLLM's topology-aware cooldown policy avoids
+  # removing the only deployment for a retryable transient failure while still
+  # isolating unhealthy deployments when the failure or topology warrants it.
+  # A fixed allowed_fails threshold opts out of that single-route protection.
   #
-  # The check is "fails > allowed_fails", so allowed_fails=1 means the
-  # deployment is cooled down after the 2nd failure.  This tolerates one
-  # transient error (e.g. a brief rate limit) but quickly removes a dead
-  # key from rotation.
-  #
-  # WARNING: Do NOT set allowed_fails to 0.  LiteLLM runs startup health
-  # probes that can fail transiently; allowed_fails=0 causes those probe
-  # failures to immediately cool down ALL deployments, leaving zero
-  # healthy endpoints.
-  allowed_fails: 1
-
-  # 10 min — long enough to avoid per-request churn on an exhausted key,
-  # short enough to recover when the quota resets.
+  # cooldown_time controls how long a deployment stays unavailable after the
+  # router decides to cool it; it does not decide which failures trigger one.
+  # Ten minutes avoids per-request churn on a deployment known to be unusable.
   cooldown_time: 600
 
   # Provider-level budget caps (combined across all keys for that provider).
