@@ -8,6 +8,7 @@ from pynchy.host.orchestrator.threads import (
     create_thread,
     ensure_thread,
     find_thread,
+    supports_thread_creation,
 )
 from pynchy.types import (
     Channel,  # noqa: TC001, RUF100 - beartype resolves this annotation at runtime.
@@ -18,6 +19,10 @@ class ThreadRouting:
     """Capability facade for routing child-thread operations to channel owners."""
 
     channels: list[Channel]
+
+    async def supports_thread_creation(self, parent_jid: str) -> bool:
+        """Return whether the resolved target can host a child conversation."""
+        return await supports_thread_creation(self.channels, parent_jid)
 
     async def create_thread(
         self,

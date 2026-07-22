@@ -58,6 +58,20 @@ class _ThreadCapableChannel:
         self.reused_participants.append((child_jid, participant_ids))
 
 
+class _NonNestableThreadChannel(_ThreadCapableChannel):
+    async def supports_child_threads(self, parent_jid: str) -> bool:
+        assert self.owns_jid(parent_jid)
+        return False
+
+
+@pytest.mark.asyncio
+async def test_app_reports_target_specific_thread_creation_support() -> None:
+    app = PynchyApp()
+    app.channels = [_NonNestableThreadChannel()]
+
+    assert await app.supports_thread_creation("discord:channel:parent") is False
+
+
 @pytest.mark.asyncio
 async def test_app_routes_thread_creation_to_owning_channel() -> None:
     app = PynchyApp()

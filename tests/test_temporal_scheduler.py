@@ -39,6 +39,7 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
+from pynchy.host.orchestrator.scheduled_targeting import ScheduledTargetBusyError
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
     begin_in_flight_turn,
@@ -1686,6 +1687,51 @@ class TestTemporalSchedulerRuntime:
 
         with pytest.raises(RuntimeError, match="Scheduled agent task requested retry"):
             await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
+    @pytest.mark.asyncio
+    async def test_run_scheduled_agent_activity_defers_reserved_non_nestable_target(
+        self, monkeypatch, temporal_task
+    ):
+        def fake_get_task_by_id(task_id: str):
+            return asyncio.sleep(0, result=temporal_task)
+
+        async def busy_target(_task, _runner_deps):
+            await asyncio.sleep(0)
+            raise ScheduledTargetBusyError(
+                "Scheduled task target is reserved and cannot host child threads"
+            )
+
+        monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
+        monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", busy_target)
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="workflow-deferred"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
+        assert result == temporal_workflows.SCHEDULED_TARGET_DEFERRED
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "workflow-deferred"
+        assert status["last_result"] == "deferred"
+
+    @pytest.mark.asyncio
+    async def test_scheduled_agent_workflow_waits_durably_for_reserved_target(self, monkeypatch):
+        execute_activity = AsyncMock(
+            side_effect=[temporal_workflows.SCHEDULED_TARGET_DEFERRED, "completed"]
+        )
+        sleep = AsyncMock()
+        monkeypatch.setattr(temporal_workflows.workflow, "execute_activity", execute_activity)
+        monkeypatch.setattr(temporal_workflows.workflow, "sleep", sleep)
+
+        result = await temporal_workflows.ScheduledAgentTaskWorkflow().run("task-1")
+
+        assert result == "completed"
+        assert execute_activity.await_count == 2
+        sleep.assert_awaited_once_with(temporal_workflows.SCHEDULED_TARGET_RETRY_DELAY)
 
     @pytest.mark.asyncio
     async def test_run_scheduled_canaries_uses_configured_target(self, monkeypatch):

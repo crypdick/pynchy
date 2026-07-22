@@ -201,8 +201,9 @@ async def rebind_task_root(task_id: str, *, group_folder: str, chat_jid: str) ->
 
 
 async def delete_task(task_id: str) -> None:
-    """Delete a task and its run logs."""
+    """Delete a task, its run logs, and any unfinished agent checkpoint."""
     async with atomic_write() as db:
+        await db.execute("DELETE FROM in_flight_turns WHERE task_id = ?", (task_id,))
         await db.execute("DELETE FROM task_run_logs WHERE task_id = ?", (task_id,))
         await db.execute("DELETE FROM scheduled_tasks WHERE id = ?", (task_id,))
 

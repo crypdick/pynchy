@@ -22,6 +22,13 @@ class ThreadChannel(Protocol):
 
 
 @runtime_checkable
+class ThreadCreationProbeChannel(Protocol):
+    """Optional target-specific child-thread capability probe."""
+
+    async def supports_child_threads(self, parent_jid: str) -> bool: ...
+
+
+@runtime_checkable
 class ThreadLookupChannel(Protocol):
     """Optional channel capability for finding an active child conversation."""
 
@@ -60,6 +67,23 @@ def supports_thread_lookup(channels: list[Channel], parent_jid: str) -> bool:
         candidate.owns_jid(parent_jid) and isinstance(candidate, ThreadLookupChannel)
         for candidate in channels
     )
+
+
+async def supports_thread_creation(channels: list[Channel], parent_jid: str) -> bool:
+    """Return whether this specific target can host a child conversation."""
+    channel = next(
+        (
+            candidate
+            for candidate in channels
+            if candidate.owns_jid(parent_jid) and isinstance(candidate, ThreadChannel)
+        ),
+        None,
+    )
+    if channel is None:
+        return False
+    if isinstance(channel, ThreadCreationProbeChannel):
+        return await channel.supports_child_threads(parent_jid)
+    return True
 
 
 async def create_thread(

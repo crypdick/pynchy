@@ -259,6 +259,11 @@ class DiscordChannel:
     async def create_group(self, name: str) -> str:
         return await create_discord_group(self, name)
 
+    async def supports_child_threads(self, parent_jid: str) -> bool:
+        """Return whether the resolved Discord target can create child threads."""
+        parent = await self.resolve_channel(parent_jid)
+        return callable(getattr(parent, "create_thread", None))
+
     async def create_thread(
         self,
         parent_jid: str,

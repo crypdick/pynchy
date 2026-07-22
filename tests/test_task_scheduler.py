@@ -239,6 +239,7 @@ class MockSchedulerDeps:
         self.existing_threads: dict[str, str] = {}
         self.thread_lookups: list[tuple[str, str]] = []
         self.reused_thread_participants: list[tuple[str, tuple[str, ...]]] = []
+        self.thread_creation_supported = True
         # Configurable return value for run_agent
         self._run_agent_result: str = "success"
         # Configurable side effect for run_agent (to call on_output)
@@ -250,6 +251,10 @@ class MockSchedulerDeps:
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None:
         self.groups[profile.jid] = profile
+
+    async def supports_thread_creation(self, parent_jid: str) -> bool:
+        del parent_jid
+        return self.thread_creation_supported
 
     async def broadcast_to_channels(self, jid: str, event) -> None:
         self.messages.append((jid, event))
@@ -932,7 +937,7 @@ class TestRunScheduledAgent:
 
         with (
             patch(
-                "pynchy.host.orchestrator.scheduled_turn.get_session",
+                "pynchy.host.orchestrator.scheduled_targeting.get_session",
                 return_value=Mock(is_alive=True),
             ),
             patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
@@ -1088,6 +1093,62 @@ class TestRunScheduledAgent:
             "test@g.us",
             "discord:channel:scheduled-1",
         ]
+
+    @pytest.mark.asyncio
+    async def test_defers_when_durable_owner_reserves_target_without_child_threads(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """A failed sibling task keeps sole ownership of a non-nestable target."""
+        mock_deps.groups["test-jid"] = sample_group
+        mock_deps.thread_creation_supported = False
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="prior-failed-turn",
+                chat_jid=sample_task.chat_jid,
+                group_folder=sample_task.group_folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[{"content": "Earlier weekly task"}],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at=datetime.now(UTC).isoformat(),
+                task_id="prior-task",
+                scheduled_base_chat_jid=sample_task.chat_jid,
+                scheduled_thread_slot=0,
+            )
+        )
+        log_task_run = AsyncMock()
+        record_task_completion = AsyncMock()
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.log_task_run",
+                new=log_task_run,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new=record_task_completion,
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            with pytest.raises(
+                RuntimeError,
+                match="target is reserved and cannot host child threads",
+            ):
+                await run_scheduled_agent(sample_task, mock_deps)
+
+        assert mock_deps.thread_lookups == []
+        assert mock_deps.thread_creations == []
+        assert mock_deps.agent_runs == []
+        assert await get_in_flight_turn_for_task("prior-task") is not None
+        assert await get_in_flight_turn_for_task(sample_task.id) is None
+        log_task_run.assert_not_awaited()
+        record_task_completion.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_config_job_ensures_its_derived_thread_on_each_run(

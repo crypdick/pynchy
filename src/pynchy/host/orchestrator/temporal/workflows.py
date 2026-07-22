@@ -13,6 +13,8 @@ from temporalio.common import RetryPolicy
 
 ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
 CONTINUE_AFTER_SAFE_INTERRUPT = "continue_after_safe_interrupt"
+SCHEDULED_TARGET_DEFERRED = "scheduled_target_deferred"
+SCHEDULED_TARGET_RETRY_DELAY = timedelta(minutes=1)
 
 
 @workflow.defn
@@ -181,20 +183,24 @@ class ScheduledAgentTaskWorkflow:
 
     @workflow.run
     async def run(self, task_id: str) -> str:
-        return cast(
-            "str",
-            await workflow.execute_activity(
-                "run_scheduled_agent_task",
-                task_id,
-                start_to_close_timeout=timedelta(hours=12),
-                heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
-                retry_policy=RetryPolicy(
-                    maximum_attempts=3,
-                    initial_interval=timedelta(seconds=5),
-                    backoff_coefficient=2.0,
+        while True:
+            result = cast(
+                "str",
+                await workflow.execute_activity(
+                    "run_scheduled_agent_task",
+                    task_id,
+                    start_to_close_timeout=timedelta(hours=12),
+                    heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+                    retry_policy=RetryPolicy(
+                        maximum_attempts=3,
+                        initial_interval=timedelta(seconds=5),
+                        backoff_coefficient=2.0,
+                    ),
                 ),
-            ),
-        )
+            )
+            if result != SCHEDULED_TARGET_DEFERRED:
+                return result
+            await workflow.sleep(SCHEDULED_TARGET_RETRY_DELAY)
 
 
 @workflow.defn
