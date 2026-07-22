@@ -12,7 +12,7 @@ from mcp.types import CallToolResult, TextContent, Tool
 from . import _ipc
 from ._ipc_request import ipc_service_request
 from ._registry import ToolEntry, register, tool, tool_error
-from ._task_status_format import compact_live_task_status
+from ._task_status_format import TASK_STATUS_OUTPUT_SCHEMA, compact_live_task_status
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -326,22 +326,28 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResul
     return None
 
 
-@tool(
-    "list_tasks",
-    (
-        "Read a complete bounded snapshot of current scheduled-work health for agent "
-        "tasks and host jobs, including "
-        "status, last results, recent failure summaries, Temporal next-run times, and "
-        "orchestration errors. "
-        "Call once and answer directly without loading skills or re-querying host state. "
-        "From admin: shows all tasks across all groups. "
-        "From other groups: shows only that group's agent tasks."
-    ),
-    {"type": "object", "properties": {}},
-)
+def _list_tasks_definition() -> Tool:
+    return Tool(
+        name="list_tasks",
+        description=(
+            "Read a complete bounded snapshot of current scheduled-work health for agent "
+            "tasks and host jobs, including "
+            "status, last results, recent failure summaries, Temporal next-run times, and "
+            "orchestration errors. "
+            "Returns compact JSON in both text and MCP structured content. "
+            "Call once, parse the JSON, and answer directly without loading skills or "
+            "re-querying host state. "
+            "From admin: shows all tasks across all groups. "
+            "From other groups: shows only that group's agent tasks."
+        ),
+        inputSchema={"type": "object", "properties": {}},
+        outputSchema=TASK_STATUS_OUTPUT_SCHEMA,
+    )
+
+
 async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
     _arguments: dict[str, Any],
-) -> list[TextContent]:
+) -> list[TextContent] | CallToolResult:
     live_result = await ipc_service_request(
         "list_tasks",
         {},
@@ -349,12 +355,18 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
         type_override="task_status",
     )
     if live_result and not live_result[0].text.startswith("Error:"):
-        return [
-            TextContent(
-                type="text",
-                text=compact_live_task_status(live_result[0].text),
+        payload = compact_live_task_status(live_result[0].text)
+        if payload is not None:
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    )
+                ],
+                structuredContent=payload,
             )
-        ]
+        live_result = [TextContent(type="text", text="Error: malformed host task status")]
 
     tasks_file = _ipc.get_agent_tool_runtime().ipc_dir / "current_tasks.json"
 
@@ -365,14 +377,9 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
             fallback = _list_tasks_text(tasks_file)[0].text
 
         live_error = live_result[0].text if live_result else "Error: empty host response"
-        return [
-            TextContent(
-                type="text",
-                text=f"{live_error}\nSnapshot fallback (run health unavailable):\n{fallback}",
-            )
-        ]
+        return tool_error(f"{live_error}\nSnapshot fallback (run health unavailable):\n{fallback}")
     except (OSError, json.JSONDecodeError, KeyError) as exc:
-        return [TextContent(type="text", text=f"Error reading tasks: {exc}")]
+        return tool_error(f"Error reading tasks: {exc}")
 
 
 # -- pause/resume/cancel --
@@ -436,4 +443,8 @@ async def _cancel_task_handle(  # noqa: RUF029, RUF100 - async tool API.
 register(
     "schedule_task",
     ToolEntry(definition=_schedule_task_definition, handler=_schedule_task_handle),
+)
+register(
+    "list_tasks",
+    ToolEntry(definition=_list_tasks_definition, handler=_list_tasks_handle),
 )

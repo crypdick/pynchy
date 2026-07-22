@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from mcp.types import TextContent
+from mcp.types import CallToolResult, TextContent
 
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
@@ -309,12 +309,15 @@ class TestListTasks:
         )
 
         result = await call_tool("list_tasks", {})
-        assert "host status unavailable" in result[0].text
-        assert "No scheduled-task snapshot is available" in result[0].text
+        assert isinstance(result, CallToolResult)
+        assert result.isError is True
+        assert isinstance(result.content[0], TextContent)
+        assert "host status unavailable" in result.content[0].text
+        assert "No scheduled-task snapshot is available" in result.content[0].text
         request.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_returns_compact_complete_live_status(self, monkeypatch):
+    async def test_returns_compact_complete_structured_live_status(self, monkeypatch):
         live_status = {
             "tasks": [
                 {
@@ -357,15 +360,26 @@ class TestListTasks:
         )
 
         result = await call_tool("list_tasks", {})
-        text = result[0].text
-        assert "Agent tasks (1)" in text
-        assert "t1 | group=admin | schedule=cron:0 9 * * * | status=paused | next=-" in text
-        assert "result=Blocked: provider unavailable" in text
-        assert "consecutive_failures=2" in text
-        assert "orchestration_error=Temporal unavailable" in text
-        assert "Database host jobs (1)" in text
-        assert "h1 | name=backup" in text
-        assert len(text) < len(json.dumps(live_status, indent=2))
+        assert isinstance(result, CallToolResult)
+        assert isinstance(result.content[0], TextContent)
+        text = result.content[0].text
+        payload = json.loads(text)
+        assert payload == result.structuredContent
+        assert payload["complete"] is True
+        assert payload["counts"] == {"tasks": 1, "host_jobs": 1}
+        task = payload["tasks"][0]
+        assert task["id"] == "t1"
+        assert task["last_result"] == "Blocked: provider unavailable"
+        assert task["consecutive_failures"] == 2
+        assert task["orchestration_error"] == "Temporal unavailable"
+        assert task["attention"] == [
+            "paused",
+            "recent_failure",
+            "scheduler_error",
+            "failure_shaped_result",
+        ]
+        assert payload["host_jobs"][0]["id"] == "h1"
+        assert "\n" not in text
         request.assert_awaited_once_with(
             "list_tasks",
             {},
@@ -374,7 +388,9 @@ class TestListTasks:
         )
 
     @pytest.mark.asyncio
-    async def test_live_status_bounds_long_results_without_dropping_tasks(self, monkeypatch):
+    async def test_r4_live_status_is_parseable_and_bounded_without_dropping_tasks(
+        self, monkeypatch
+    ):
         tasks = [
             {
                 "id": f"task-{index}",
@@ -387,7 +403,7 @@ class TestListTasks:
                 "orchestration": {"state": "scheduled", "error": None},
                 "run_health": {"last_status": "success", "consecutive_failures": 0},
             }
-            for index in range(40)
+            for index in range(47)
         ]
         live_status = {"tasks": tasks, "host_jobs": []}
         monkeypatch.setattr(
@@ -399,11 +415,29 @@ class TestListTasks:
 
         result = await call_tool("list_tasks", {})
 
-        text = result[0].text
-        assert "Agent tasks (40)" in text
-        assert "task-0" in text
-        assert "task-39" in text
+        assert isinstance(result, CallToolResult)
+        assert isinstance(result.content[0], TextContent)
+        text = result.content[0].text
+        payload = json.loads(text)
+        assert payload == result.structuredContent
+        assert payload["counts"] == {"tasks": 47, "host_jobs": 0}
+        assert [task["id"] for task in payload["tasks"]] == [f"task-{index}" for index in range(47)]
         assert len(text) < 16_000
+
+    @pytest.mark.asyncio
+    async def test_list_tasks_declares_its_structured_output_schema(self):
+        tools = await list_tools()
+
+        list_tasks = next(tool for tool in tools if tool.name == "list_tasks")
+        assert list_tasks.outputSchema is not None
+        assert list_tasks.outputSchema["required"] == [
+            "schema",
+            "complete",
+            "counts",
+            "tasks",
+            "host_jobs",
+            "coverage",
+        ]
 
     @pytest.mark.asyncio
     async def test_admin_snapshot_fallback_sees_all_tasks(self, monkeypatch, tmp_path):
@@ -433,7 +467,10 @@ class TestListTasks:
         tasks_file = tmp_path / "current_tasks.json"
         tasks_file.write_text(json.dumps(tasks))
         result = await call_tool("list_tasks", {})
-        text = result[0].text
+        assert isinstance(result, CallToolResult)
+        assert result.isError is True
+        assert isinstance(result.content[0], TextContent)
+        text = result.content[0].text
         assert "t1" in text
         assert "t2" in text
 
@@ -466,7 +503,10 @@ class TestListTasks:
         tasks_file.write_text(json.dumps(tasks))
         with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, group_folder="my-group")):
             result = await call_tool("list_tasks", {})
-        text = result[0].text
+        assert isinstance(result, CallToolResult)
+        assert result.isError is True
+        assert isinstance(result.content[0], TextContent)
+        text = result.content[0].text
         assert "t1" in text
         assert "t2" not in text
 
