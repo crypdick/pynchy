@@ -78,3 +78,15 @@ def test_admin_prompt_routes_scheduled_work_reads_to_native_tool() -> None:
     assert "visibility limitation" in result
     assert "Do not discover, load, or read skills" in result
     assert "call `mcp__pynchy__list_tasks` once" in result
+
+
+def test_base_prompt_requires_live_skill_catalog_discovery() -> None:
+    project_root = Path(__file__).parents[1]
+
+    result = read_prompts(["base"], project_root)
+
+    assert result is not None
+    assert "call `search_skills`" in result
+    assert "before answering" in result
+    assert "Finding a skill does not grant access" in result
+    assert "Call `request_skill_access` only when the user asks" in result

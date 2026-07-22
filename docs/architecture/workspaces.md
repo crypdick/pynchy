@@ -121,7 +121,9 @@ Each scheduled run resolves the target workspace's current effective model. To c
 ## Learned Skill Access
 
 Pynchy exposes the vault-backed skill catalog to sessions through
-`search_skills(query)`. An agent that finds a useful skill calls
+`search_skills(query)`. Skill discovery requests always read this live catalog;
+the agent does not infer current availability from prior conversation or its
+system prompt. An agent that finds a useful skill calls
 `request_skill_access(skill_name, reason)`, which posts one interactive choice:
 Grant once, Grant always, Deny once, or Deny always.
 
