@@ -63,6 +63,7 @@ from pynchy.config.settings_sources import (
     hermetic_settings_sources,
     hermetic_settings_sources_enabled,
 )
+from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.config.workspace_layout import (
     WorkspaceMigrationConfig,
     semantic_workspace_configs,
@@ -169,6 +170,7 @@ class Settings(BaseSettings):
     queue: QueueConfig = QueueConfig()
     command_center: CommandCenterConfig = CommandCenterConfig()
     notifications: NotificationsConfig = NotificationsConfig()
+    messaging_source_health: MessagingSourceHealthConfig = MessagingSourceHealthConfig()
     connections: dict[str, ConnectionConfig] = {}
     routes: dict[str, RouteConfig] = {}
     tools: dict[str, ToolConfig] = {}

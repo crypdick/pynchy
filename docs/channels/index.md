@@ -40,15 +40,32 @@ Pynchy skips it at startup.
 ## Inspect source health
 
 Agents can call `messaging_source_health` to inspect current readiness and the
-latest Pynchy-ingested inbound timestamp for configured messaging sources. The
-tool reads host-owned runtime state and aggregate SQLite timestamps. It doesn't
-open provider conversations, read message bodies, or change provider read
-state.
+latest inbound timestamp for configured messaging sources. The tool reads
+Pynchy-owned runtime state and, when explicitly configured, aggregate metadata
+from host-local collector stores. It doesn't read sender identities or message
+bodies, open provider conversations, invoke sibling messaging tools, or change
+provider read state.
 
-Pass connection names or provider types to inspect specific sources. Pynchy
-returns `not_established` when no configured connection matches a requested
-source. This result defines the coverage limit; it doesn't imply that an
-unconfigured provider works or fails outside Pynchy.
+Configure an aggregate metadata root only when Pynchy should project the
+body-free WhatsApp and Signal collector records already present on its host:
+
+```toml
+[messaging_source_health]
+data_dir = "/path/to/host-local/messaging-metadata"
+stale_after_hours = 24
+```
+
+The root must contain provider-specific `whatsapp/messages.db` and
+`signal/messages.db` stores. Pynchy selects only inbound timestamp aggregates
+and Signal's last successful receive-check timestamp. Google Messages is a
+recognized source, but remains `unavailable` until a body-free durable adapter
+covers the complete source; Pynchy doesn't open a browser or substitute a
+partial SMS-only view.
+
+Pass connection names or provider types to inspect specific sources. Results
+separate metadata availability, collector health, event freshness, and historical
+coverage. `latest_inbound` identifies the newest returned source and timestamp
+without exposing a sender. Unknown source names are `not_established`.
 
 ## Command center
 

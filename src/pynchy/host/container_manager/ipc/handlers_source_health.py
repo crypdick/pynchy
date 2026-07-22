@@ -7,6 +7,7 @@ opening provider applications just to determine whether a source works.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from pynchy.config import get_settings
@@ -15,6 +16,12 @@ from pynchy.host.container_manager.ipc.deps import (  # noqa: TC001, RUF100 - be
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
+from pynchy.host.personal_messaging_health import (
+    PERSONAL_PROVIDERS,
+    PersonalProvider,
+    personal_provider_for,
+    project_personal_source,
+)
 from pynchy.logger import logger
 from pynchy.state import get_latest_inbound_timestamp
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
@@ -49,20 +56,27 @@ def _matching_connection_names(requested: str, connections: dict[str, Any]) -> t
 def _selected_sources(
     requested: tuple[str, ...] | None,
     connections: dict[str, Any],
-) -> tuple[tuple[str, str | None], ...]:
+) -> tuple[tuple[str, str | None, PersonalProvider | None], ...]:
     if requested is None:
-        return tuple((name, name) for name in connections)
+        configured = tuple((name, name, None) for name in connections)
+        configured_providers = {connection.type for connection in connections.values()}
+        personal = tuple(
+            (provider, None, provider)
+            for provider in PERSONAL_PROVIDERS
+            if provider not in configured_providers
+        )
+        return configured + personal
 
-    selected: list[tuple[str, str | None]] = []
+    selected: list[tuple[str, str | None, PersonalProvider | None]] = []
     seen: set[str] = set()
     for label in requested:
         matches = _matching_connection_names(label, connections)
         if not matches:
-            selected.append((label, None))
+            selected.append((label, None, personal_provider_for(label)))
             continue
         for name in matches:
             if name not in seen:
-                selected.append((label, name))
+                selected.append((label, name, None))
                 seen.add(name)
     return tuple(selected)
 
@@ -165,6 +179,29 @@ def _not_established(requested: str) -> dict[str, object]:
     }
 
 
+def _latest_inbound(sources: list[dict[str, object]]) -> dict[str, object] | None:
+    candidates: list[tuple[datetime, dict[str, object]]] = []
+    for source in sources:
+        value = source.get("latest_inbound_at")
+        if not isinstance(value, str):
+            continue
+        try:
+            timestamp = datetime.fromisoformat(value)
+        except ValueError:
+            continue
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+        candidates.append((timestamp, source))
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda candidate: candidate[0])[1]
+    return {
+        "name": latest["name"],
+        "provider": latest["provider"],
+        "timestamp": latest["latest_inbound_at"],
+    }
+
+
 async def _handle_messaging_source_health(
     data: dict[str, Any],
     source_group: str,
@@ -194,17 +231,27 @@ async def _handle_messaging_source_health(
     channels = tuple(deps.channels())
     connection_statuses = _connection_statuses(deps)
     sources: list[dict[str, object]] = []
-    for requested_name, configured_name in _selected_sources(requested, connections):
-        if configured_name is None:
+    for requested_name, configured_name, personal_provider in _selected_sources(
+        requested, connections
+    ):
+        if configured_name is not None:
+            sources.append(
+                await _configured_source(
+                    configured_name,
+                    connections,
+                    channels,
+                    connection_statuses,
+                    deps,
+                )
+            )
+            continue
+        if personal_provider is None:
             sources.append(_not_established(requested_name))
             continue
         sources.append(
-            await _configured_source(
-                configured_name,
-                connections,
-                channels,
-                connection_statuses,
-                deps,
+            await project_personal_source(
+                personal_provider,
+                get_settings().messaging_source_health,
             )
         )
 
@@ -213,11 +260,15 @@ async def _handle_messaging_source_health(
         {
             "result": {
                 "sources": sources,
+                "latest_inbound": _latest_inbound(sources),
                 "coverage": {
-                    "scope": "configured Pynchy channel and connection runtimes only",
+                    "scope": (
+                        "configured Pynchy runtimes and configured host-local aggregate stores"
+                    ),
                     "message_content_read": False,
+                    "sender_identity_read": False,
                     "provider_read_state_changed": False,
-                    "unconfigured_sources": "reported as not_established",
+                    "unknown_sources": "reported as not_established",
                 },
             }
         },
