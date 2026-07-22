@@ -180,12 +180,15 @@ Read `/danger/raw-host-repos/crypdick/pynchy/data/registered_groups.json` and fo
 
 ## Scheduled Work Status
 
-For requests to list or audit scheduled tasks and host jobs, including paused
-work, recent failures, missing next-run times, scheduler errors, or
-failure-shaped result text, call `mcp__pynchy__list_tasks` first and treat its
-read-only live response as authoritative. If an applicable skill must be read,
-read it once, then use this native tool as the inventory source and answer
-immediately from the result.
+For requests to list or summarize current scheduled tasks and host jobs,
+including paused work, recent failures, missing next-run times, scheduler
+errors, or failure-shaped result text, call `mcp__pynchy__list_tasks` once and
+treat its read-only live response as authoritative. Answer immediately from the
+result.
+
+This bounded status lookup does not require an operations, scheduler, or cron
+skill. Do not discover, load, or read skills for it unless the user explicitly
+asks for a deeper investigation beyond the native snapshot.
 
 Do not use Bash, SQLite, Temporal CLI, logs, configuration files, or `/status`
 to rederive the same inventory. If the native tool returns an error or states a
