@@ -11,6 +11,7 @@ from conftest import NullChannel, NullIpcDeps, make_settings
 from pynchy.config.models import WhatsAppConnectionConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
+from pynchy.plugins.integrations.matrix_routing_config import MatrixConnectionConfig
 from pynchy.state import init_test_database, store_message_direct
 from pynchy.types import WorkspaceProfile
 
@@ -45,6 +46,11 @@ class _SourceHealthDeps(NullIpcDeps):
 
     def channels(self) -> list[_WhatsAppChannel]:
         return [_WhatsAppChannel()]
+
+
+class _ConnectionHealthDeps(NullIpcDeps):
+    def connection_statuses(self) -> dict[str, bool]:
+        return {"connection.matrix.gateway": True}
 
 
 @pytest.fixture
@@ -132,6 +138,44 @@ async def test_reports_configured_health_and_precise_unconfigured_limits(
 
 def test_source_health_requests_skip_mutation_ledger() -> None:
     assert not request_requires_idempotency_ledger("messaging_source_health")
+
+
+async def test_reports_non_channel_connection_runtime_status(monkeypatch, tmp_path) -> None:
+    await init_test_database()
+    settings = make_settings(
+        data_dir=tmp_path,
+        connections={"gateway": MatrixConnectionConfig(expected_user_id="@owner:example.test")},
+    )
+    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+
+    await dispatch(
+        {
+            "type": "messaging_source_health",
+            "request_id": "connection-health-request",
+            "sources": ["matrix"],
+        },
+        "chat-manager",
+        False,
+        _ConnectionHealthDeps(),
+    )
+
+    response_path = (
+        settings.data_dir / "ipc" / "chat-manager" / "responses" / "connection-health-request.json"
+    )
+    result = json.loads(response_path.read_text(encoding="utf-8"))["result"]
+    assert result["sources"] == [
+        {
+            "name": "gateway",
+            "provider": "matrix",
+            "status": "ready",
+            "ready": True,
+            "latest_inbound_at": None,
+            "freshness_scope": (
+                "Provider freshness is not projected by this Pynchy connection runtime"
+            ),
+            "reason": None,
+        }
+    ]
 
 
 async def test_rejects_non_list_source_filter(source_health_setup: Settings) -> None:
