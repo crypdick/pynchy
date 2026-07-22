@@ -164,20 +164,15 @@ def schedule_for_config_host_cron(job_name: str, schedule_value: str) -> Schedul
 def schedule_for_host_git_sync() -> Schedule:
     """Build the Temporal Schedule for host repository sync polling."""
     scheduler_config = get_settings().scheduler
+    interval = timedelta(seconds=scheduler_config.git_sync_interval_seconds)
     return Schedule(
         action=ScheduleActionStartWorkflow(
             HostGitSyncWorkflow.run,
             id=f"{host_git_sync_schedule_id()}-workflow",
             task_queue=scheduler_config.temporal_task_queue,
         ),
-        spec=ScheduleSpec(
-            intervals=[
-                ScheduleIntervalSpec(
-                    every=timedelta(seconds=scheduler_config.git_sync_interval_seconds)
-                )
-            ]
-        ),
-        policy=_schedule_policy(),
+        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        policy=_poller_schedule_policy(interval),
     )
 
 
@@ -185,6 +180,7 @@ def schedule_for_external_git_sync(repo_slug: str) -> Schedule:
     """Build the Temporal Schedule for one external repository sync poller."""
     scheduler_config = get_settings().scheduler
     schedule_id = external_git_sync_schedule_id(repo_slug)
+    interval = timedelta(seconds=scheduler_config.git_sync_interval_seconds)
     return Schedule(
         action=ScheduleActionStartWorkflow(
             ExternalGitSyncWorkflow.run,
@@ -192,36 +188,23 @@ def schedule_for_external_git_sync(repo_slug: str) -> Schedule:
             id=f"{schedule_id}-workflow",
             task_queue=scheduler_config.temporal_task_queue,
         ),
-        spec=ScheduleSpec(
-            intervals=[
-                ScheduleIntervalSpec(
-                    every=timedelta(seconds=scheduler_config.git_sync_interval_seconds)
-                )
-            ]
-        ),
-        policy=_schedule_policy(),
+        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        policy=_poller_schedule_policy(interval),
     )
 
 
 def schedule_for_channel_reconciliation() -> Schedule:
     """Build the Temporal Schedule for channel history reconciliation."""
     scheduler_config = get_settings().scheduler
+    interval = timedelta(seconds=scheduler_config.channel_reconciliation_interval_seconds)
     return Schedule(
         action=ScheduleActionStartWorkflow(
             ChannelReconciliationWorkflow.run,
             id=f"{channel_reconciliation_schedule_id()}-workflow",
             task_queue=scheduler_config.temporal_task_queue,
         ),
-        spec=ScheduleSpec(
-            intervals=[
-                ScheduleIntervalSpec(
-                    every=timedelta(
-                        seconds=scheduler_config.channel_reconciliation_interval_seconds
-                    )
-                )
-            ]
-        ),
-        policy=_schedule_policy(),
+        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        policy=_poller_schedule_policy(interval),
     )
 
 
@@ -267,6 +250,15 @@ def _recurring_schedule_spec(
 
 def _schedule_policy() -> SchedulePolicy:
     return SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP, pause_on_failure=False)
+
+
+def _poller_schedule_policy(interval: timedelta) -> SchedulePolicy:
+    """Prevent stale reconciliation polls from replaying after an outage."""
+    return SchedulePolicy(
+        overlap=ScheduleOverlapPolicy.SKIP,
+        catchup_window=interval,
+        pause_on_failure=False,
+    )
 
 
 def _agent_task_schedule_policy(task: ScheduledTask) -> SchedulePolicy:
