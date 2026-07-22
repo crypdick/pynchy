@@ -430,7 +430,7 @@ async def _finish_checkpoint(
         await clear_in_flight_turn(turn_id)
 
 
-async def run_task_agent(request: TaskAgentRequest) -> tuple[str | None, str | None]:
+async def run_task_agent(request: TaskAgentRequest) -> tuple[str, str | None, str | None]:
     """Run or semantically resume one checkpointed scheduled agent invocation."""
     resume_turn = request.resume_turn
     turn_id = resume_turn.turn_id if resume_turn else new_turn_id()
@@ -462,9 +462,9 @@ async def run_task_agent(request: TaskAgentRequest) -> tuple[str | None, str | N
     except Exception as exc:  # noqa: BLE001, RUF100 - agent invocation returns task errors.
         state.error = str(exc)
         logger.error("Task failed", task_id=request.task.id, error=state.error)
-        return state.result, state.error
+        return turn_id, state.result, state.error
     else:
-        return state.result, state.error
+        return turn_id, state.result, state.error
     finally:
         if checkpoint_started:
             await _finish_checkpoint(

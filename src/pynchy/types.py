@@ -400,6 +400,12 @@ class ScheduledTask:
 
 @dataclass
 class TaskRunLog:
+    """Attempt evidence linked across Temporal retries and Pynchy recovery.
+
+    A workflow run ID groups activity retries. A turn ID bridges that workflow
+    run to a later interrupted-turn workflow without relying on timestamps.
+    """
+
     task_id: str
     run_at: str
     duration_ms: int | float
@@ -407,7 +413,9 @@ class TaskRunLog:
     result: str | None = None
     error: str | None = None
     temporal_workflow_id: str | None = None
+    temporal_workflow_run_id: str | None = None
     temporal_attempt: int | None = None
+    turn_id: str | None = None
     error_signature: str | None = None
     escalation_reason: str | None = None
 

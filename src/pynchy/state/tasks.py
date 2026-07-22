@@ -44,7 +44,9 @@ def _row_to_task_run_log(row: Row) -> TaskRunLog:
         result=row["result"],
         error=row["error"],
         temporal_workflow_id=row["temporal_workflow_id"],
+        temporal_workflow_run_id=row["temporal_workflow_run_id"],
         temporal_attempt=row["temporal_attempt"],
+        turn_id=row["turn_id"],
         error_signature=row["error_signature"],
         escalation_reason=row["escalation_reason"],
     )
@@ -173,9 +175,10 @@ async def resume_task(task_id: str) -> None:
             """
             INSERT INTO task_run_logs (
                 task_id, run_at, duration_ms, status, result, error,
-                temporal_workflow_id, temporal_attempt, error_signature, escalation_reason
+                temporal_workflow_id, temporal_workflow_run_id, temporal_attempt,
+                turn_id, error_signature, escalation_reason
             )
-            SELECT id, ?, 0, 'resumed', 'Task resumed', NULL, NULL, NULL, NULL, NULL
+            SELECT id, ?, 0, 'resumed', 'Task resumed', NULL, NULL, NULL, NULL, NULL, NULL, NULL
             FROM scheduled_tasks
             WHERE id = ?
             """,
@@ -240,9 +243,10 @@ async def log_task_run(log: TaskRunLog) -> None:
         """
         INSERT INTO task_run_logs (
             task_id, run_at, duration_ms, status, result, error,
-            temporal_workflow_id, temporal_attempt, error_signature, escalation_reason
+            temporal_workflow_id, temporal_workflow_run_id, temporal_attempt,
+            turn_id, error_signature, escalation_reason
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             log.task_id,
@@ -252,7 +256,9 @@ async def log_task_run(log: TaskRunLog) -> None:
             log.result,
             log.error,
             log.temporal_workflow_id,
+            log.temporal_workflow_run_id,
             log.temporal_attempt,
+            log.turn_id,
             log.error_signature,
             log.escalation_reason,
         ),

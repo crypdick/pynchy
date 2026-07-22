@@ -658,7 +658,9 @@ class TestCollectTasks:
                 status="error",
                 error="Same error repeated 3 times in a row",
                 temporal_workflow_id="workflow-1",
+                temporal_workflow_run_id="workflow-run-1",
                 temporal_attempt=3,
+                turn_id="turn-1",
                 error_signature="RuntimeError: same failure",
                 escalation_reason="stagnation",
             ),
@@ -692,7 +694,9 @@ class TestCollectTasks:
             "consecutive_failures": 2,
             "last_error_signature": "RuntimeError: same failure",
             "last_temporal_workflow_id": "workflow-1",
+            "last_temporal_workflow_run_id": "workflow-run-1",
             "last_temporal_attempt": 3,
+            "last_turn_id": "turn-1",
             "escalation_reason": "stagnation",
         }
 

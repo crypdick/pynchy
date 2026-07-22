@@ -920,7 +920,7 @@ class TestTaskAdvanced:
         await delete_task("logged-task")
         assert await get_task_by_id("logged-task") is None
 
-    async def test_log_task_run_persists_temporal_attempt_metadata(self):
+    async def test_log_task_run_persists_occurrence_and_temporal_run_metadata(self):
         await create_task(replace(self._TASK_TEMPLATE, id="attempt-task", next_run=None))
 
         await log_task_run(
@@ -932,7 +932,9 @@ class TestTaskAdvanced:
                 result=None,
                 error="ValueError: failed on port 12345",
                 temporal_workflow_id="workflow-1",
+                temporal_workflow_run_id="workflow-run-1",
                 temporal_attempt=2,
+                turn_id="turn-1",
                 error_signature="ValueError: failed on port #",
                 escalation_reason="stagnation",
             )
@@ -942,7 +944,9 @@ class TestTaskAdvanced:
 
         assert len(logs) == 1
         assert logs[0].temporal_workflow_id == "workflow-1"
+        assert logs[0].temporal_workflow_run_id == "workflow-run-1"
         assert logs[0].temporal_attempt == 2
+        assert logs[0].turn_id == "turn-1"
         assert logs[0].error_signature == "ValueError: failed on port #"
         assert logs[0].escalation_reason == "stagnation"
 
@@ -967,6 +971,8 @@ class TestTaskAdvanced:
         assert task is not None
         assert task.status == "active"
         assert [log.status for log in logs] == ["resumed", "error"]
+        assert logs[0].temporal_workflow_run_id is None
+        assert logs[0].turn_id is None
 
     async def test_create_task_with_repo_access(self):
         await create_task(
@@ -1371,6 +1377,40 @@ class TestEnsureColumns:
         assert "is_admin" in cols
         assert "security_profile" in cols
 
+        await db.close()
+
+    async def test_adds_task_run_identity_columns_to_existing_ledger(self):
+        """Startup migration preserves old rows while adding explicit run identity."""
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE task_run_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                run_at TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result TEXT,
+                error TEXT,
+                temporal_workflow_id TEXT,
+                temporal_attempt INTEGER,
+                error_signature TEXT,
+                escalation_reason TEXT
+            );
+            INSERT INTO task_run_logs (
+                task_id, run_at, duration_ms, status, temporal_workflow_id, temporal_attempt
+            ) VALUES ('task-1', '2026-07-22T00:00:00Z', 10, 'success', 'workflow-1', 1);
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute("PRAGMA table_info(task_run_logs)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert {"temporal_workflow_run_id", "turn_id"} <= cols
+        cursor = await db.execute(
+            "SELECT temporal_workflow_id, temporal_workflow_run_id, turn_id "
+            "FROM task_run_logs WHERE task_id = 'task-1'"
+        )
+        assert await cursor.fetchone() == ("workflow-1", None, None)
         await db.close()
 
     async def test_noop_when_all_columns_present(self):

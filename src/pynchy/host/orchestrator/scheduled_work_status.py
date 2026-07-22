@@ -79,6 +79,8 @@ def _task_run_health(logs: list[TaskRunLog]) -> dict[str, Any]:
         "consecutive_failures": consecutive_failures,
         "last_error_signature": last.error_signature if last else None,
         "last_temporal_workflow_id": last.temporal_workflow_id if last else None,
+        "last_temporal_workflow_run_id": last.temporal_workflow_run_id if last else None,
         "last_temporal_attempt": last.temporal_attempt if last else None,
+        "last_turn_id": last.turn_id if last else None,
         "escalation_reason": last.escalation_reason if last else None,
     }
