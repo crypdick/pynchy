@@ -332,6 +332,9 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
             )
 
     live_error = live_result[0].text if live_result else "Error: empty host response"
+    live_error = " ".join(live_error.split())
+    if len(live_error) > 240:
+        live_error = f"{live_error[:237]}..."
     return tool_error(f"{live_error}\nNo complete bounded scheduled-work inventory is available.")
 
 

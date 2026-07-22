@@ -314,7 +314,9 @@ class TestListTasks:
     @pytest.mark.asyncio
     async def test_host_error_returns_bounded_error_without_snapshot(self, monkeypatch):
         request = AsyncMock(
-            return_value=[TextContent(type="text", text="Error: host status unavailable")]
+            return_value=[
+                TextContent(type="text", text="Error: host status unavailable " + ("x" * 10_000))
+            ]
         )
         monkeypatch.setattr(
             "agent_runner.agent_tools._tools_tasks.ipc_service_request",
@@ -327,6 +329,7 @@ class TestListTasks:
         assert isinstance(result.content[0], TextContent)
         assert "host status unavailable" in result.content[0].text
         assert "No complete bounded scheduled-work inventory is available" in result.content[0].text
+        assert len(result.content[0].text) < 320
         request.assert_awaited_once()
 
     @pytest.mark.asyncio
