@@ -395,7 +395,7 @@ async def _run_target_agent(run: _TargetAgentRun) -> None:
             run.input_messages,
             on_output,
             is_scheduled_task=True,
-            repo_access_override=None,
+            repo_access_override=target.task.repo_access,
             input_source=(
                 request.resume_turn.input_source
                 if request.resume_turn is not None

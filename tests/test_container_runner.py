@@ -177,6 +177,7 @@ def _settings_overrides(
     *,
     tmp_path: Path | None,
     learning: LearningConfig | None,
+    profiles: dict[str, ProfileConfig] | None,
     workspaces: dict[str, WorkspaceConfig] | None,
     container_timeout: float | None,
     idle_timeout: float | None,
@@ -184,6 +185,7 @@ def _settings_overrides(
     overrides: dict[str, object] = {
         "gateway": GatewayConfig(),
         "learning": learning or LearningConfig(),
+        "profiles": profiles or {},
         "workspaces": workspaces or {},
     }
     if tmp_path is not None:
@@ -228,6 +230,7 @@ def _patch_settings(
     idle_timeout: float | None = None,
     max_output_size: int | None = None,
     learning: LearningConfig | None = None,
+    profiles: dict[str, ProfileConfig] | None = None,
     workspaces: dict[str, WorkspaceConfig] | None = None,
     secret_overrides: dict[str, str] | None = None,
 ):
@@ -235,6 +238,7 @@ def _patch_settings(
     overrides = _settings_overrides(
         tmp_path=tmp_path,
         learning=learning,
+        profiles=profiles,
         workspaces=workspaces,
         container_timeout=container_timeout,
         idle_timeout=idle_timeout,
@@ -1868,6 +1872,122 @@ class TestContainerInputAgentCoreConfig:
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
         assert result.is_scheduled_task is True
         assert result.agent_core_config["metadata"]["pynchy_turn_id"].startswith("turn_")
+
+    @pytest.mark.asyncio
+    async def test_scheduled_repo_override_avoids_unselected_workspace_repo(self, tmp_path: Path):
+        """A public scheduled run provisions only its explicit repository scope."""
+        selected_slug = "owner/pynchy"
+        unavailable_slug = "owner/private-tools"
+        repo_root = tmp_path / "repos" / "pynchy"
+        worktree_path = tmp_path / "worktrees" / "pynchy"
+        (repo_root / ".git").mkdir(parents=True)
+        worktree_path.mkdir(parents=True)
+        repo_ctx = RepoContext(
+            slug=selected_slug,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        profiles = {
+            "multi-repo": ProfileConfig(repo=[selected_slug, unavailable_slug]),
+        }
+        workspaces = {
+            TEST_GROUP.folder: WorkspaceConfig(profiles=["multi-repo"]),
+        }
+        deps = _AgentRunnerDeps()
+        proc = FakeProcess()
+        session = MagicMock()
+        runtime = MagicMock(cli="docker")
+        runtime.name = "docker"
+
+        def selected_repo_context(slug: str) -> RepoContext:
+            if slug == unavailable_slug:
+                raise PermissionError("unselected repository is inaccessible")
+            assert slug == selected_slug
+            return repo_ctx
+
+        with (
+            _patch_settings(
+                tmp_path,
+                profiles=profiles,
+                workspaces=workspaces,
+            ) as settings,
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.write_container_snapshots",
+                new_callable=AsyncMock,
+                return_value=0.0,
+            ),
+            patch(
+                "pynchy.host.container_manager.orchestrator.system_checks.ensure_agent_image_available"
+            ),
+            patch(
+                "pynchy.host.container_manager.security.gate.resolve_security",
+                return_value=MagicMock(),
+            ),
+            patch("pynchy.host.container_manager.security.gate.create_gate"),
+            patch(
+                "pynchy.host.git_ops.repo.get_repo_context",
+                side_effect=selected_repo_context,
+            ) as get_repo_context,
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                side_effect=PermissionError("unselected repository returned 403"),
+            ) as resolve_workspace_repos,
+            patch(
+                "pynchy.host.git_ops.worktree.ensure_worktree",
+                return_value=MagicMock(path=worktree_path, notices=[]),
+            ) as ensure_worktree,
+            patch(
+                "pynchy.host.container_manager.mcp.manager.get_mcp_manager",
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.container_manager.orchestrator.get_runtime",
+                return_value=runtime,
+            ),
+            patch(
+                "pynchy.plugins.runtimes.detection.get_runtime",
+                return_value=runtime,
+            ),
+            patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None),
+            patch(
+                "pynchy.host.container_manager.orchestrator.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=proc),
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.create_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._await_query",
+                new=AsyncMock(return_value="success"),
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.destroy_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.clear_session",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await run_agent(
+                deps,
+                TEST_GROUP,
+                "chat",
+                [{"content": "review pynchy"}],
+                is_scheduled_task=True,
+                repo_access_override=selected_slug,
+            )
+
+        assert result == "success"
+        resolve_workspace_repos.assert_not_called()
+        get_repo_context.assert_called_once_with(selected_slug)
+        ensure_worktree.assert_called_once_with(TEST_GROUP.folder, repo_ctx)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
