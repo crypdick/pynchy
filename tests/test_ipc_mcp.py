@@ -11,13 +11,20 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import CallToolResult, TextContent
 
 sys.path.insert(
     0, str(Path(__file__).parent.parent / "src" / "pynchy" / "agent" / "agent_runner" / "src")
 )
 
-from agent_runner.agent_tools import AgentToolRuntime, call_tool, list_tools, use_agent_tool_runtime
+from agent_runner.agent_tools import (
+    AgentToolRuntime,
+    call_tool,
+    list_tools,
+    mcp_server,
+    use_agent_tool_runtime,
+)
 
 from pynchy.actions import ACTION_SPECS, ActionTransport
 
@@ -38,6 +45,12 @@ def _runtime(tmp_path: Path, **overrides: object) -> AgentToolRuntime:
     }
     values.update(overrides)
     return AgentToolRuntime(**values)
+
+
+async def _call_tool_over_mcp(name: str, arguments: dict) -> CallToolResult:
+    """Exercise SDK normalization and output-schema validation over the MCP wire path."""
+    async with create_connected_server_and_client_session(mcp_server) as client:
+        return await client.call_tool(name, arguments)
 
 
 @pytest.fixture(autouse=True)
@@ -308,7 +321,7 @@ class TestListTasks:
             request,
         )
 
-        result = await call_tool("list_tasks", {})
+        result = await _call_tool_over_mcp("list_tasks", {})
         assert isinstance(result, CallToolResult)
         assert result.isError is True
         assert isinstance(result.content[0], TextContent)
@@ -359,13 +372,17 @@ class TestListTasks:
             request,
         )
 
-        result = await call_tool("list_tasks", {})
+        result = await _call_tool_over_mcp("list_tasks", {})
         assert isinstance(result, CallToolResult)
         assert isinstance(result.content[0], TextContent)
         text = result.content[0].text
         payload = json.loads(text)
         assert payload == result.structuredContent
-        assert payload["complete"] is True
+        assert payload["completeness"]["complete_for_scope"] is True
+        assert payload["completeness"]["omitted_populations"] == [
+            "static config or plugin host schedules",
+            "Temporal schedules without a visible database-backed definition",
+        ]
         assert payload["counts"] == {"tasks": 1, "host_jobs": 1}
         task = payload["tasks"][0]
         assert task["id"] == "t1"
@@ -413,7 +430,7 @@ class TestListTasks:
             ),
         )
 
-        result = await call_tool("list_tasks", {})
+        result = await _call_tool_over_mcp("list_tasks", {})
 
         assert isinstance(result, CallToolResult)
         assert isinstance(result.content[0], TextContent)
@@ -425,6 +442,95 @@ class TestListTasks:
         assert len(text) < 16_000
 
     @pytest.mark.asyncio
+    async def test_live_status_rejects_rows_beyond_declared_global_bound(self, monkeypatch):
+        tasks = [
+            {
+                "id": f"task-{index}",
+                "group": "admin",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "status": "active",
+                "next_run": "2026-07-23T16:00:00+00:00",
+                "last_result": "Completed",
+                "orchestration": {"state": "scheduled", "error": None},
+                "run_health": {"last_status": "success", "consecutive_failures": 0},
+            }
+            for index in range(65)
+        ]
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            AsyncMock(
+                return_value=[
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "tasks": tasks,
+                                "host_jobs": [],
+                            }
+                        ),
+                    )
+                ]
+            ),
+        )
+
+        result = await _call_tool_over_mcp("list_tasks", {})
+
+        assert result.isError is True
+        assert result.structuredContent is None
+        assert isinstance(result.content[0], TextContent)
+        assert "task count exceeds the 64-row contract" in result.content[0].text
+
+    @pytest.mark.asyncio
+    async def test_failure_attention_handles_negation_and_operational_phrases(self, monkeypatch):
+        results = [
+            "Completed with 0 failures and no errors",
+            "Unable to authenticate; login required",
+            "Missing credentials",
+            "Permission denied",
+            "Connection refused",
+            "Rate limited by provider",
+        ]
+        tasks = [
+            {
+                "id": f"task-{index}",
+                "group": "admin",
+                "schedule_type": "cron",
+                "schedule_value": "0 9 * * *",
+                "status": "active",
+                "next_run": "2026-07-23T16:00:00+00:00",
+                "last_result": result,
+                "orchestration": {"state": "scheduled", "error": None},
+                "run_health": {"last_status": "success", "consecutive_failures": 0},
+            }
+            for index, result in enumerate(results)
+        ]
+        monkeypatch.setattr(
+            "agent_runner.agent_tools._tools_tasks.ipc_service_request",
+            AsyncMock(
+                return_value=[
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "tasks": tasks,
+                                "host_jobs": [],
+                            }
+                        ),
+                    )
+                ]
+            ),
+        )
+
+        result = await _call_tool_over_mcp("list_tasks", {})
+
+        assert result.structuredContent is not None
+        structured_tasks = result.structuredContent["tasks"]
+        assert "attention" not in structured_tasks[0]
+        for task in structured_tasks[1:]:
+            assert task["attention"] == ["failure_shaped_result"]
+
+    @pytest.mark.asyncio
     async def test_list_tasks_declares_its_structured_output_schema(self):
         tools = await list_tools()
 
@@ -432,7 +538,7 @@ class TestListTasks:
         assert list_tasks.outputSchema is not None
         assert list_tasks.outputSchema["required"] == [
             "schema",
-            "complete",
+            "completeness",
             "counts",
             "tasks",
             "host_jobs",

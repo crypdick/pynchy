@@ -12,7 +12,11 @@ from mcp.types import CallToolResult, TextContent, Tool
 from . import _ipc
 from ._ipc_request import ipc_service_request
 from ._registry import ToolEntry, register, tool, tool_error
-from ._task_status_format import TASK_STATUS_OUTPUT_SCHEMA, compact_live_task_status
+from ._task_status_format import (
+    TASK_STATUS_OUTPUT_SCHEMA,
+    TaskStatusFormatError,
+    compact_live_task_status,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -330,10 +334,13 @@ def _list_tasks_definition() -> Tool:
     return Tool(
         name="list_tasks",
         description=(
-            "Read a complete bounded snapshot of current scheduled-work health for agent "
-            "tasks and host jobs, including "
+            "Read a bounded snapshot of current scheduled-work health for visible "
+            "database-backed agent tasks and host jobs, including "
             "status, last results, recent failure summaries, Temporal next-run times, and "
             "orchestration errors. "
+            "The result states its completeness scope and omitted scheduler populations; "
+            "it does not include static config/plugin host schedules or Temporal schedules "
+            "without a visible database-backed definition. "
             "Returns compact JSON in both text and MCP structured content. "
             "Call once, parse the JSON, and answer directly without loading skills or "
             "re-querying host state. "
@@ -347,7 +354,7 @@ def _list_tasks_definition() -> Tool:
 
 async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
     _arguments: dict[str, Any],
-) -> list[TextContent] | CallToolResult:
+) -> tuple[list[TextContent], dict[str, Any]] | CallToolResult:
     live_result = await ipc_service_request(
         "list_tasks",
         {},
@@ -355,18 +362,20 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
         type_override="task_status",
     )
     if live_result and not live_result[0].text.startswith("Error:"):
-        payload = compact_live_task_status(live_result[0].text)
-        if payload is not None:
-            return CallToolResult(
-                content=[
+        try:
+            payload = compact_live_task_status(live_result[0].text)
+        except TaskStatusFormatError as exc:
+            live_result = [TextContent(type="text", text=f"Error: {exc}")]
+        else:
+            return (
+                [
                     TextContent(
                         type="text",
                         text=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
                     )
                 ],
-                structuredContent=payload,
+                payload,
             )
-        live_result = [TextContent(type="text", text="Error: malformed host task status")]
 
     tasks_file = _ipc.get_agent_tool_runtime().ipc_dir / "current_tasks.json"
 

@@ -10,9 +10,9 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import TextContent, Tool
 
-from ._registry import all_tools, get_handler
+from ._registry import HandlerResult, all_tools, get_handler
 
 _TOOL_MODULES = (
     "_tools_admin",
@@ -50,7 +50,7 @@ async def list_tools() -> list[Tool]:  # noqa: RUF029, RUF100 - async MCP callba
 
 
 @server.call_tool()  # type: ignore[untyped-decorator]
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent] | CallToolResult:
+async def call_tool(name: str, arguments: dict[str, Any]) -> HandlerResult:
     handler = get_handler(name)
     if handler:
         return await handler(arguments)
