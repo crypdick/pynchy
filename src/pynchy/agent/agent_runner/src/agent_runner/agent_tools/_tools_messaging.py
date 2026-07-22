@@ -1,4 +1,4 @@
-"""send_message tool."""
+"""Messaging tools."""
 
 from __future__ import annotations
 
@@ -7,7 +7,40 @@ from typing import Any
 from mcp.types import TextContent
 
 from . import _ipc
+from ._ipc_request import ipc_service_request
 from ._registry import tool
+
+
+@tool(
+    "messaging_source_health",
+    (
+        "Read current health and latest Pynchy-ingested inbound timestamps for messaging "
+        "sources. Use this instead of inspecting host environment variables or opening "
+        "provider applications. This tool never reads message bodies, opens conversations, "
+        "or changes provider read state. Sources outside configured Pynchy connections are "
+        "reported as not_established."
+    ),
+    {
+        "type": "object",
+        "properties": {
+            "sources": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional connection names or provider types to inspect, such as "
+                    "whatsapp, signal, or google_messages. Omit to inspect every configured "
+                    "Pynchy connection."
+                ),
+            }
+        },
+    },
+)
+async def _messaging_source_health_handle(arguments: dict[str, Any]) -> list[TextContent]:
+    return await ipc_service_request(
+        "messaging_source_health",
+        {"sources": arguments["sources"]} if "sources" in arguments else {},
+        type_override="messaging_source_health",
+    )
 
 
 @tool(

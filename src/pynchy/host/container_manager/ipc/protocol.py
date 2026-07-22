@@ -50,6 +50,7 @@ TIER2_TYPES = frozenset(
         "deploy",
         "register_group",
         "create_periodic_agent",
+        "messaging_source_health",
         # Persistent learned-skill decisions use a host-only user approval record.
         "skill_access:policy",
         # Lifecycle: still carries data, will be reviewed later
@@ -85,6 +86,7 @@ READ_ONLY_REQUEST_PREFIXES = (
     "service:recall_",
     "skill_access:",
 )
+READ_ONLY_REQUEST_TYPES = frozenset({"messaging_source_health"})
 
 
 def validate_signal(data: dict[str, Any]) -> str | None:
@@ -288,7 +290,9 @@ def parse_request_envelope(file_path: Path) -> IpcRequestEnvelope:
 
 def request_requires_idempotency_ledger(kind: str) -> bool:
     """Return True when replaying this request kind could mutate host state."""
-    if any(kind.startswith(prefix) for prefix in READ_ONLY_REQUEST_PREFIXES):
+    if kind in READ_ONLY_REQUEST_TYPES or any(
+        kind.startswith(prefix) for prefix in READ_ONLY_REQUEST_PREFIXES
+    ):
         return False
     return not kind.startswith("security:")
 

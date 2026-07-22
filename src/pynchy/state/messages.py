@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import (
+    Sequence,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+)
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -218,6 +221,27 @@ async def get_messaging_stats() -> dict[str, int | str | None]:
         "last_sent_at": row["last_sent_at"] if row else None,
         "pending_deliveries": row["pending_deliveries"] if row else 0,
     }
+
+
+async def get_latest_inbound_timestamp(chat_jids: Sequence[str]) -> str | None:
+    """Return the newest persisted inbound timestamp for the selected chats.
+
+    This aggregate intentionally avoids loading message bodies. Host health
+    surfaces use it to report Pynchy ingestion freshness without exposing a
+    conversation or changing any provider read state.
+    """
+    if not chat_jids:
+        return None
+    db = _get_db()
+    placeholders = ",".join("?" for _ in chat_jids)
+    # S608 audit: only the number of SQLite value placeholders is dynamic.
+    cursor = await db.execute(
+        f"SELECT MAX(timestamp) AS latest FROM messages"  # noqa: S608, RUF100
+        f" WHERE is_from_me = 0 AND chat_jid IN ({placeholders})",
+        tuple(chat_jids),
+    )
+    row = await cursor.fetchone()
+    return row["latest"] if row and row["latest"] else None
 
 
 async def prune_messages_by_sender(sender: str, before_timestamp: str) -> int:

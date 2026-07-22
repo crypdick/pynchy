@@ -131,6 +131,7 @@ from pynchy.state.in_flight_turns import (
 )
 from pynchy.state.messages import (
     get_chat_history,
+    get_latest_inbound_timestamp,
     get_messages_since,
     get_messaging_stats,
     get_new_messages,
@@ -286,6 +287,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "update_chat_name",
     # messages
     "get_chat_history",
+    "get_latest_inbound_timestamp",
     "get_messages_since",
     "get_messaging_stats",
     "get_new_messages",

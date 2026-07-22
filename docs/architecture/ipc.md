@@ -117,6 +117,7 @@ Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` be
 | `cancel_task` | Delete a task | No (own tasks) |
 | `register_group` | Register a new chat group | Yes |
 | `create_periodic_agent` | Create a group + task + config for a periodic agent | Yes |
+| `messaging_source_health` | Read configured source readiness and persisted ingress freshness | No |
 | `deploy` | Trigger a deployment (rebuild, restart) | Yes |
 | `reset_context` | Clear session and chat history | No |
 | `finished_work` | Signal that a scheduled task completed | No |

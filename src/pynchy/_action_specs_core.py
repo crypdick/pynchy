@@ -53,6 +53,12 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
         "Queue an outbound message.",
         "send_message",
     ),
+    agent_action(
+        "message.source.health",
+        "agent-tools",
+        "Read Pynchy messaging-source readiness and persisted ingress freshness.",
+        "messaging_source_health",
+    ),
     build_action(
         "message.outbound.retry",
         "messaging",
