@@ -23,6 +23,7 @@ from pynchy.plugins.integrations.linear_work_items import (
     handle_await_review_work_item,
     handle_block_work_item,
     handle_claim_work_item,
+    handle_create_requested_todo,
     handle_handoff_work_item,
     handle_list_work_items,
     handle_move_unlinked_todo,
@@ -40,6 +41,13 @@ def host_action_registration() -> HostActionRegistration:
 
 def _action_specs() -> tuple[_ActionSpec, ...]:
     return (
+        (
+            "linear_create_requested_todo",
+            "linear.todo.request",
+            "Create planning work from an explicit request in the current direct user turn.",
+            HostActionAccess.WRITE,
+            handle_create_requested_todo,
+        ),
         (
             "linear_list_work_items",
             "linear.workitem.list",

@@ -351,6 +351,8 @@ class TestLinearMcpServer:
             assert "status" not in todo_properties
             assert todo_properties["description"] == {"type": "string"}
             assert todo_properties["priority"]["enum"] == [0, 1, 2, 3, 4]
+            assert "agent originated" in tools["linear_create_todo"]["description"]
+            assert "linear_create_requested_todo" in tools["linear_create_todo"]["description"]
         finally:
             await client.close()
 

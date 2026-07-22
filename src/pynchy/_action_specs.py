@@ -138,6 +138,13 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="linear.workspace.round.trip",
     ),
     agent_action(
+        "linear.todo.request",
+        "linear",
+        "Create planning work from an explicit request in the current direct user turn.",
+        "linear_create_requested_todo",
+        canary="linear.workspace.round.trip",
+    ),
+    agent_action(
         "linear.todo.plan",
         "linear",
         "Persist a concrete Linear plan and request human plan approval.",

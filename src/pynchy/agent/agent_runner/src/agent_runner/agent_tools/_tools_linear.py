@@ -31,6 +31,37 @@ def _evidence_refs_schema() -> dict[str, object]:
 
 
 register_ipc_tool(
+    name="linear_create_requested_todo",
+    description=(
+        "Create a Ready for Planning Linear item only when the current direct human message "
+        "explicitly requests the work. Quote that full message exactly. This authorizes planning, "
+        "not execution; use linear_create_todo for an agent-originated proposal."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "minLength": 1},
+            "description": {"type": "string"},
+            "priority": {
+                "type": "integer",
+                "enum": [0, 1, 2, 3, 4],
+                "description": "Linear priority: 0 none, 1 urgent, 2 high, 3 medium, 4 low.",
+            },
+            "authorization_quote": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "The full current direct human message that requests this work, copied exactly."
+                ),
+            },
+        },
+        "required": ["title", "authorization_quote"],
+        "additionalProperties": False,
+    },
+)
+
+
+register_ipc_tool(
     name="linear_submit_plan",
     description=(
         "Persist a concrete Markdown plan for a Ready for Planning Linear item and move it "
