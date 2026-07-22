@@ -915,6 +915,24 @@ async def test_send_event_chunks_long_text_with_safe_mentions():
 
 
 @pytest.mark.asyncio
+async def test_send_result_uses_discord_identity_without_mutating_shared_event():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeSendChannel()
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    event = OutboundEvent(
+        type=OutboundEventType.RESULT,
+        content="final reply",
+        metadata={"turn_id": "turn-1"},
+    )
+
+    await ch.send_event("discord:channel:1", event)
+
+    assert fake.sends[0][0] == "final reply"
+    assert event.metadata == {"turn_id": "turn-1"}
+
+
+@pytest.mark.asyncio
 async def test_send_event_skips_empty_text():
     ch = _channel()
     ch.client = object()
@@ -1186,6 +1204,25 @@ async def test_update_event_edits_message_in_place():
         OutboundEvent(type=OutboundEventType.TEXT, content="updated text"),
     )
     assert msg.edits[-1][0] == "updated text"
+
+
+@pytest.mark.asyncio
+async def test_update_result_uses_discord_identity_without_mutating_shared_event():
+    ch = _channel()
+    ch.client = object()
+    fake = _FakeStreamChannel()
+    msg = await fake.send("initial", allowed_mentions=None)
+    ch.resolve_channel = AsyncMock(return_value=fake)  # type: ignore[method-assign]
+    event = OutboundEvent(
+        type=OutboundEventType.RESULT,
+        content="final reply",
+        metadata={"prefix_assistant_name": True, "turn_id": "turn-1"},
+    )
+
+    await ch.update_event("discord:channel:1", f"discord-{msg.id}", event)
+
+    assert msg.edits[-1][0] == "final reply"
+    assert event.metadata == {"prefix_assistant_name": True, "turn_id": "turn-1"}
 
 
 @pytest.mark.asyncio

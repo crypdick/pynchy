@@ -9,11 +9,15 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Callable,
     Iterable,
 )
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
 
 from pynchy.config.discord_refs import DiscordChatTarget, resolve_discord_chat_target
+from pynchy.host.orchestrator.messaging.formatters.base import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    RenderedMessage,
+)
 from pynchy.host.orchestrator.messaging.formatters.text import TextFormatter
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
@@ -470,7 +474,7 @@ class DiscordChannel:
             if event.type is OutboundEventType.RESULT:
                 await self.voice.speak(jid, event.content)
             return
-        rendered = self.formatter.render(event)
+        rendered = self._render_event(event)
         if not rendered.text.strip():
             return
         try:
@@ -500,7 +504,7 @@ class DiscordChannel:
             return None
         if parse_jid(jid).kind == "voice":
             return None
-        text = self.formatter.render(event).text
+        text = self._render_event(event).text
         if not text.strip() or len(text) > DISCORD_LIMIT:
             return None
         try:
@@ -527,7 +531,7 @@ class DiscordChannel:
             return
         if not message_id.startswith(_MESSAGE_ID_PREFIX):
             return
-        text = self.formatter.render(event).text
+        text = self._render_event(event).text
         if len(text) > DISCORD_LIMIT:
             raise ValueError(_DISCORD_MESSAGE_TOO_LONG)
         raw_id = message_id.removeprefix(_MESSAGE_ID_PREFIX)
@@ -536,6 +540,17 @@ class DiscordChannel:
         await cast("Any", message).edit(
             content=text, allowed_mentions=discord.AllowedMentions.none()
         )
+
+    def _render_event(self, event: OutboundEvent) -> RenderedMessage:
+        """Render with Discord-specific context without mutating the shared event."""
+        channel_event = replace(
+            event,
+            metadata={
+                **event.metadata,
+                "prefix_assistant_name": self.prefix_assistant_name,
+            },
+        )
+        return self.formatter.render(channel_event)
 
     async def send_reaction(self, jid: str, message_id: str, _sender: str, emoji: str) -> None:
         if self.client is None or not self.owns_jid(jid):
