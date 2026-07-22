@@ -31,6 +31,8 @@
         <string>$PYNCHY_PROJECT_ROOT/data/backup-staging</string>
         <key>PYNCHY_BACKUP_KEEP_DAYS</key>
         <string>30</string>
+        <key>PYNCHY_BACKUP_KEEP_COUNT</key>
+        <string>7</string>
     </dict>
     <key>StandardOutPath</key>
     <string>$HOME/Library/Logs/pynchy/backup.log</string>

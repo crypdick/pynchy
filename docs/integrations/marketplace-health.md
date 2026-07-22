@@ -22,6 +22,7 @@ public_sink = false
 dangerous_writes = false
 
 [profiles.marketplace-poller]
+prompts = ["marketplace-health"]
 tools = ["marketplace-health"]
 ```
 
@@ -37,7 +38,12 @@ It does not list, fetch, or flag messages.
 
 ## Use the projection
 
-Call `marketplace_health_snapshot`. The tool returns only this shape:
+The `marketplace-health` prompt directs the agent to call
+`marketplace_health_snapshot` instead of trying host-only paths from inside its
+container. Keep that prompt assigned anywhere the tool is enabled so learned
+skills with host-local commands cannot bypass the projection.
+
+The tool returns only this shape:
 
 ```json
 {

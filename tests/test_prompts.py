@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from pynchy.config.prompts import read_prompts
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class TestReadPrompts:
@@ -56,3 +53,26 @@ class TestReadPrompts:
         (prompts_dir / "prompts" / "empty.md").write_text("")
         result = read_prompts(["empty"], prompts_dir)
         assert result is None
+
+
+def test_marketplace_health_prompt_routes_aggregate_reads_to_native_tool() -> None:
+    project_root = Path(__file__).parents[1]
+
+    result = read_prompts(["marketplace-health"], project_root)
+
+    assert result is not None
+    assert "mcp__pynchy__marketplace_health_snapshot" in result
+    assert "Do not use Bash" in result
+    assert "/Users/..." in result
+
+
+def test_admin_prompt_routes_scheduled_work_reads_to_native_tool() -> None:
+    project_root = Path(__file__).parents[1]
+
+    result = read_prompts(["pynchy-admin-ops"], project_root)
+
+    assert result is not None
+    assert "mcp__pynchy__list_tasks" in result
+    assert "Do not use Bash" in result
+    assert "immediately from the result" in result
+    assert "visibility limitation" in result
