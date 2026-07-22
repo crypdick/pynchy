@@ -55,6 +55,13 @@ def agent_task_workflow_id(task: ScheduledTask) -> str:
     return f"pynchy-agent-task-{safe_workflow_fragment(task.id)}-{safe_workflow_fragment(due_at)}"
 
 
+def is_stale_agent_task_once_workflow(task: ScheduledTask, workflow_id: str) -> bool:
+    """Return whether a one-shot execution mismatches the task's current definition."""
+    return workflow_id.startswith("pynchy-agent-task-") and (
+        task.schedule_type != "once" or workflow_id != agent_task_workflow_id(task)
+    )
+
+
 def agent_task_schedule_id(task: ScheduledTask) -> str:
     """Return the Temporal Schedule ID for a recurring agent task."""
     return f"pynchy-agent-schedule-{safe_workflow_fragment(task.id)}"
@@ -64,6 +71,15 @@ def database_host_job_workflow_id(job: HostJob) -> str:
     """Return the idempotency key for a one-time database host job."""
     due_at = job.schedule_value
     return f"pynchy-host-job-{safe_workflow_fragment(job.id)}-{safe_workflow_fragment(due_at)}"
+
+
+def is_stale_database_host_job_once_workflow(job: HostJob, workflow_id: str) -> bool:
+    """Return whether a one-shot execution mismatches the host job's current definition."""
+    return (
+        workflow_id.startswith("pynchy-host-job-")
+        and not workflow_id.startswith("pynchy-host-job-schedule-")
+        and (job.schedule_type != "once" or workflow_id != database_host_job_workflow_id(job))
+    )
 
 
 def database_host_job_schedule_id(job: HostJob) -> str:

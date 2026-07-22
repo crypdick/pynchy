@@ -65,6 +65,7 @@ from pynchy.host.orchestrator.temporal.learning import (
     run_learning_review,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
+    _activity_workflow_id,
     _record_activity_result,
     _require_scheduler_deps,
     _update_temporal_scheduler_status,
@@ -84,6 +85,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     agent_task_schedule_id,
     agent_task_workflow_id,
     channel_reconciliation_schedule_id,
+    is_stale_agent_task_once_workflow,
     safe_workflow_fragment,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
@@ -231,6 +233,16 @@ async def run_scheduled_agent_task(task_id: str) -> str:
     task = await get_task_by_id(task_id)
     if task is None or task.status != "active":
         logger.info("Temporal scheduled task skipped", task_id=task_id)
+        _record_activity_result(task_id, "skipped")
+        return "skipped"
+    activity_workflow_id = _activity_workflow_id()
+    if activity_workflow_id is not None and is_stale_agent_task_once_workflow(
+        task, activity_workflow_id
+    ):
+        # A one-shot row can be rescheduled while a delayed execution becomes
+        # runnable. The immutable workflow ID is the version token, so a
+        # mismatched execution cannot run the row's current definition.
+        logger.info("Stale Temporal scheduled task skipped", task_id=task_id)
         _record_activity_result(task_id, "skipped")
         return "skipped"
 
