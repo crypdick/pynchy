@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from croniter import croniter
 from mcp.types import CallToolResult, TextContent, Tool
@@ -17,9 +17,6 @@ from ._task_status_format import (
     TaskStatusFormatError,
     compact_live_task_status,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # -- schedule_task --
 
@@ -253,49 +250,6 @@ def _scheduled_text(message: str) -> list[TextContent]:
     return [TextContent(type="text", text=message)]
 
 
-def _list_tasks_text(tasks_file: Path) -> list[TextContent]:
-    all_tasks = json.loads(tasks_file.read_text(encoding="utf-8"))
-    tasks = (
-        all_tasks
-        if _ipc.get_agent_tool_runtime().is_admin
-        else [
-            task
-            for task in all_tasks
-            if task.get("groupFolder") == _ipc.get_agent_tool_runtime().group_folder
-        ]
-    )
-
-    if not tasks:
-        return [TextContent(type="text", text="No scheduled tasks found.")]
-
-    lines = []
-    for t in tasks:
-        task_type = t.get("type", "agent")
-        if task_type == "host":
-            label = t.get("name") or t.get("command", "")[:50]
-            lines.append(
-                f"- [{t['id']}] [host] {label} "
-                f"({t['schedule_type']}: {t['schedule_value']}) "
-                f"- {t['status']}, "
-                "next: managed by Temporal"
-            )
-        else:
-            prompt = t.get("prompt", "")[:50]
-            lines.append(
-                f"- [{t['id']}] [agent] {prompt}... "
-                f"({t['schedule_type']}: {t['schedule_value']}) "
-                f"- {t['status']}, "
-                "next: managed by Temporal"
-            )
-
-    return [
-        TextContent(
-            type="text",
-            text=f"Scheduled tasks:\n{chr(10).join(lines)}",
-        )
-    ]
-
-
 def _validate_schedule(schedule_type: str, schedule_value: str) -> CallToolResult | None:
     """Return a CallToolResult error if validation fails, else None."""
     if schedule_type == "cron":
@@ -377,18 +331,8 @@ async def _list_tasks_handle(  # noqa: RUF029, RUF100 - async tool API.
                 payload,
             )
 
-    tasks_file = _ipc.get_agent_tool_runtime().ipc_dir / "current_tasks.json"
-
-    try:
-        if not tasks_file.exists():
-            fallback = "No scheduled-task snapshot is available."
-        else:
-            fallback = _list_tasks_text(tasks_file)[0].text
-
-        live_error = live_result[0].text if live_result else "Error: empty host response"
-        return tool_error(f"{live_error}\nSnapshot fallback (run health unavailable):\n{fallback}")
-    except (OSError, json.JSONDecodeError, KeyError) as exc:
-        return tool_error(f"Error reading tasks: {exc}")
+    live_error = live_result[0].text if live_result else "Error: empty host response"
+    return tool_error(f"{live_error}\nNo complete bounded scheduled-work inventory is available.")
 
 
 # -- pause/resume/cancel --
