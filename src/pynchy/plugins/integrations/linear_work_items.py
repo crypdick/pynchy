@@ -14,12 +14,16 @@ from typing import Any
 from pynchy.host.orchestrator.workspace_config import static_workspace_folder
 from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
 from pynchy.plugins.integrations.linear_client import LinearError
-from pynchy.plugins.integrations.linear_statuses import AGENT_SETTABLE_STATUSES
+from pynchy.plugins.integrations.linear_statuses import (
+    AGENT_SETTABLE_STATUSES,
+    AWAITING_REVIEW_STATUS,
+)
 from pynchy.plugins.integrations.linear_work_item_provider import (
     claim_work_item,
     linear_client,
     move_unlinked_work_item,
     reconcile_work_item,
+    submit_unlinked_work_item_for_review,
     submit_work_item_plan,
     transition_linked_work_item,
 )
@@ -29,7 +33,6 @@ from pynchy.state import (
     get_active_work_item_execution,
     get_in_flight_turn_for_group,
     get_latest_unresolved_work_item_transition,
-    get_work_item_execution_for_evidence_ref,
     get_work_item_execution_for_issue,
     list_work_item_executions,
 )
@@ -121,77 +124,41 @@ async def _existing_claim_response(
 
 
 async def handle_await_review_work_item(data: dict[str, Any]) -> dict[str, object]:
-    pull_request = GitHubPullRequestRef.parse(
-        _required_str(data, "pull_request_url", "pull_request_url is required")
-    )
-    evidence_refs = tuple(dict.fromkeys((pull_request.url, *_evidence_refs(data))))
+    workspace = _workspace(data)
+    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
+    summary = _required_str(data, "summary", _SUMMARY_REQUIRED)
+    evidence_refs = _review_evidence_refs(data)
+    execution = await get_active_work_item_execution(issue_id)
+
+    # Awaiting Review describes a completed outcome awaiting acceptance, not a
+    # GitHub artifact. Non-code and already-completed work may have no PR or claim.
+    if execution is None:
+        try:
+            async with linear_client(workspace=workspace) as client:
+                updated = await submit_unlinked_work_item_for_review(client, workspace, issue_id)
+        except (LinearError, ValueError) as exc:
+            return {"error": str(exc)}
+        return {
+            "result": {
+                "issue": _issue_projection(updated),
+                "review": {"summary": summary, "evidence_refs": list(evidence_refs)},
+            }
+        }
+    if execution.workspace != workspace:
+        return {"error": _ACTIVE_EXECUTION_REQUIRED}
     return await _handle_linked_transition(
         data,
         _LinkedTransitionSpec(
             operation="await_review",
-            target_status="awaiting_review",
+            target_status=AWAITING_REVIEW_STATUS,
             result_status=WorkItemExecutionStatus.AWAITING_REVIEW,
             expected_statuses={"in_progress", "blocked"},
         ),
         _TransitionDetails(
-            summary=_required_str(data, "summary", _SUMMARY_REQUIRED),
+            summary=summary,
             evidence_refs=evidence_refs,
         ),
     )
-
-
-async def complete_merged_pull_request(
-    workspace: str,
-    pull_request: GitHubPullRequestRef,
-    delivery_id: str,
-) -> WorkItemExecution | None:
-    """Complete the work item linked to an authenticated merged-PR delivery."""
-    execution = await get_work_item_execution_for_evidence_ref(
-        pull_request.url,
-        workspace=workspace,
-    )
-    if execution is None:
-        return None
-    if execution.status is WorkItemExecutionStatus.COMPLETED:
-        return execution
-    if execution.status is WorkItemExecutionStatus.FAILED:
-        raise LinearError("Merged-PR completion previously conflicted with Linear state")
-    async with linear_client(workspace=workspace) as client:
-        if execution.status is WorkItemExecutionStatus.UNKNOWN:
-            transition = await get_latest_unresolved_work_item_transition(execution.id)
-            if transition is None or transition.target_status != "done":
-                raise LinearError("Merged-PR completion has an unrelated uncertain transition")
-            reconciled = await reconcile_work_item(
-                client,
-                workspace,
-                execution.linear_issue_id,
-                transition,
-            )
-            if reconciled.status is not WorkItemExecutionStatus.COMPLETED:
-                raise LinearError("Merged-PR completion could not be reconciled")
-            return reconciled
-        if execution.status is not WorkItemExecutionStatus.AWAITING_REVIEW:
-            return None
-        updated = await transition_linked_work_item(
-            client,
-            workspace,
-            execution.linear_issue_id,
-            WorkItemTransitionRequest(
-                execution=execution,
-                request_id=f"github-merge:{delivery_id}",
-                operation="complete_after_pull_request_merge",
-                target_status="done",
-                result_execution_status=WorkItemExecutionStatus.COMPLETED,
-                summary=execution.summary,
-                evidence_refs=execution.evidence_refs,
-            ),
-            {"awaiting_review"},
-        )
-    if updated.status is WorkItemExecutionStatus.UNKNOWN:
-        raise LinearError("Merged-PR completion outcome is unknown")
-    if updated.status is WorkItemExecutionStatus.FAILED:
-        raise LinearError("Linear state conflicted with merged-PR completion")
-    return updated
 
 
 async def handle_block_work_item(data: dict[str, Any]) -> dict[str, object]:
@@ -347,6 +314,15 @@ def _evidence_refs(data: dict[str, Any]) -> tuple[str, ...]:
     ):
         raise ValueError("evidence_refs must be an array of non-empty strings")
     return tuple(value)
+
+
+def _review_evidence_refs(data: dict[str, Any]) -> tuple[str, ...]:
+    evidence_refs = _evidence_refs(data)
+    pull_request_url = _optional_str(data, "pull_request_url")
+    if pull_request_url is None:
+        return tuple(dict.fromkeys(evidence_refs))
+    pull_request = GitHubPullRequestRef.parse(pull_request_url)
+    return tuple(dict.fromkeys((pull_request.url, *evidence_refs)))
 
 
 def work_item_execution_to_dict(execution: WorkItemExecution) -> dict[str, object]:

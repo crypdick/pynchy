@@ -69,9 +69,9 @@ register_ipc_tool(
 register_ipc_tool(
     name="linear_await_review_work_item",
     description=(
-        "Submit a Linear work item owned by the current workspace's active Pynchy "
-        "execution for review. This moves it to Awaiting Review and links the GitHub "
-        "pull request; only an authenticated merged-PR webhook moves it to Done."
+        "Report a completed Linear work item for human acceptance. This moves linked or "
+        "already-completed unlinked work to Awaiting Review with a summary and optional "
+        "evidence. Include a GitHub pull request URL only when the work produced one."
     ),
     input_schema={
         "type": "object",
@@ -82,10 +82,11 @@ register_ipc_tool(
                 "type": "string",
                 "format": "uri",
                 "pattern": "^https://github\\.com/[^/]+/[^/]+/pull/[1-9][0-9]*/?$",
+                "description": "Optional canonical pull request URL for development work.",
             },
             "evidence_refs": _evidence_refs_schema(),
         },
-        "required": ["issue_id", "summary", "pull_request_url"],
+        "required": ["issue_id", "summary"],
         "additionalProperties": False,
     },
 )

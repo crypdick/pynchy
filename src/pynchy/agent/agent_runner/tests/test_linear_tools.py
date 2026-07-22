@@ -20,5 +20,8 @@ async def test_linear_tool_contract_keeps_human_approval_out_of_agent_control() 
     assert move.inputSchema["properties"]["status"]["enum"] == ["agent_proposed"]
     assert submit_plan.inputSchema["required"] == ["issue_id", "plan"]
     assert "does not authorize" in (submit_plan.description or "")
-    assert "pull_request_url" in await_review.inputSchema["required"]
-    assert "merged-PR webhook" in (await_review.description or "")
+    assert "pull_request_url" in await_review.inputSchema["properties"]
+    assert "pull_request_url" not in await_review.inputSchema["required"]
+    assert await_review.inputSchema["required"] == ["issue_id", "summary"]
+    assert "human acceptance" in (await_review.description or "")
+    assert "status" not in await_review.inputSchema["properties"]

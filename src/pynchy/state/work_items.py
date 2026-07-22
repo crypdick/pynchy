@@ -432,6 +432,6 @@ def _issue_state(issue: dict[str, Any]) -> dict[str, Any]:
 
 def _delivery_status_for_operation(operation: str) -> str | None:
     """Reserve a requester-delivery outcome for operations with a user summary."""
-    if operation == "complete_after_pull_request_merge":
+    if operation in {"complete_after_linear_review", "complete_after_pull_request_merge"}:
         return None
     return "not_requested" if operation == "claim" else "pending"

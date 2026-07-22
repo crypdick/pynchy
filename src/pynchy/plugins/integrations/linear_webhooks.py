@@ -34,6 +34,11 @@ from pynchy.plugins.integrations.linear_boot import (
 )
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
+from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
+from pynchy.plugins.integrations.linear_webhook_prompts import (
+    LINEAR_ISSUE_INSTRUCTIONS,
+    comment_instructions,
+)
 from pynchy.plugins.integrations.linear_work_item_provider import (
     LinearWorkspaceIssueError,
     linear_client,
@@ -54,10 +59,6 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves route vali
 # NOTE: Update docs/integrations/linear.md "Receive Linear callbacks" and
 # docs/architecture/conversation-routing.md "Linear Issue Webhooks" if this
 # event-admission or prompt contract changes.
-_LINEAR_ISSUE_INSTRUCTIONS = (
-    "The Linear issue bound to this thread changed. Read its current state and take "
-    "appropriate action."
-)
 _LINEAR_ISSUE_URL = re.compile(r"/issue/([^/#?]+)", re.IGNORECASE)
 _DISCORD_THREAD_TITLE_LIMIT = 100
 _DONE_STATE_NAME = LINEAR_TODO_STATUSES["done"].name
@@ -275,18 +276,6 @@ def _comment_context(payload: _LinearWebhookPayload, issue_id: str) -> str:
     )
 
 
-def _comment_instructions(payload: _LinearWebhookPayload) -> str:
-    activity = {
-        "create": "A new comment was posted",
-        "update": "A comment was edited",
-        "remove": "A comment was removed",
-    }[payload.action]
-    return (
-        f"{activity} on the Linear issue bound to this thread. Read it and take appropriate "
-        "action under the issue's current workflow state."
-    )
-
-
 def _issue_context(payload: _LinearWebhookPayload, issue_id: str) -> str:
     state_name = _issue_state_name(payload) or "unknown"
     updated_fields = ", ".join(sorted(payload.updated_from or {})) or "none reported"
@@ -321,7 +310,7 @@ def _comment_event(
         action=payload.action,
         subject_id=issue_id,
         occurred_at=payload.created_at,
-        instructions=_comment_instructions(payload),
+        instructions=comment_instructions(payload.action),
         external_context=_comment_context(payload, issue_id),
         conversation=_conversation(payload, issue_id),
     )
@@ -338,7 +327,7 @@ def _issue_event(
         action=payload.action,
         subject_id=issue_id,
         occurred_at=payload.created_at,
-        instructions=_LINEAR_ISSUE_INSTRUCTIONS,
+        instructions=LINEAR_ISSUE_INSTRUCTIONS,
         external_context=_issue_context(payload, issue_id),
         conversation=_conversation(payload, issue_id),
     )
@@ -465,6 +454,7 @@ def linear_webhook_routes() -> tuple[WebhookRoute, ...]:
                     config=config,
                     public_source=account.config.public_source is not False,
                 ),
+                process_event=process_linear_webhook_event,
                 routes_conversations=True,
                 candidate_workspaces=(
                     configured_linear_workspace_names(config.tool)

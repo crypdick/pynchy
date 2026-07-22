@@ -64,7 +64,7 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_await_review_work_item",
             "linear.workitem.review",
-            "Submit a Pynchy-linked Linear work item for review with its pull request.",
+            "Submit completed linked or existing Linear work for human review.",
             HostActionAccess.WRITE,
             handle_await_review_work_item,
         ),

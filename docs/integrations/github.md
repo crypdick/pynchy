@@ -2,10 +2,11 @@
 
 The built-in GitHub webhook plugin sends pull-request updates directly to the
 mapped project workspace. It does not start an agent, create a worktree, or write
-to GitHub. When a Pynchy-owned Linear item links the same pull request, an
-authenticated merge delivery also moves that item from `Awaiting Review` to
-`Done`. A route binds one GitHub repository to one Pynchy workspace, so an event
-can never fall back to an admin or unrelated channel.
+to GitHub. For development work that links a pull request as review evidence, an
+authenticated merge delivery also moves the Linear item from `Awaiting Review`
+to `Done`. Other kinds of work can use different evidence and human acceptance.
+A route binds one GitHub repository to one Pynchy workspace, so an event can
+never fall back to an admin or unrelated channel.
 
 ## Configure repository routes
 

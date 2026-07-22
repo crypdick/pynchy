@@ -44,8 +44,9 @@ _PLANNING_INSTRUCTIONS = (
 _EXECUTION_INSTRUCTIONS = (
     "Execute this exact Human Approved Linear issue for the current workspace. Confirm it "
     "belongs to this workspace and remains Human Approved, then call linear_claim_work_item "
-    "before changing code. Implement and verify the work. Open a GitHub pull request and call "
-    "linear_await_review_work_item with its canonical URL; do not mark the issue Done."
+    "before acting. Complete and verify the work, then call linear_await_review_work_item with "
+    "a summary and relevant evidence. Include a canonical GitHub pull request URL only when "
+    "the work produced one; do not mark the issue Done."
 )
 
 
