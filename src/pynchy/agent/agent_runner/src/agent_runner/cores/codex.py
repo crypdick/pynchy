@@ -116,6 +116,7 @@ class CodexCLIAgentCore:
         self._last_agent_message: str | None = None
         self._last_turn_metadata: dict[str, object] = {}
         self._terminal_error_emitted = False
+        self._pending_error: dict[str, object] | None = None
 
     async def start(self) -> None:
         """Resolve the CLI binary, write config, and prepare the environment."""
@@ -185,6 +186,7 @@ class CodexCLIAgentCore:
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Spawn one Codex turn and stream mapped events."""
         self._terminal_error_emitted = False
+        self._pending_error = None
         _log(f"spawn codex (session: {self._session_id or 'new'})")
         proc = await self._spawn_process()
         await self._write_prompt(proc, prompt)
@@ -245,6 +247,10 @@ class CodexCLIAgentCore:
         return stderr_text, return_code
 
     def _synthesize_result(self, return_code: int, stderr_text: str) -> AgentEvent:
+        if self._pending_error is not None:
+            self._terminal_error_emitted = True
+            return self._map_error_result(self._pending_error, "error")
+
         is_error = return_code != 0
         result = self._last_agent_message
         if is_error and not result:
@@ -274,16 +280,8 @@ class CodexCLIAgentCore:
         if event_type == "thread.started":
             return self._map_thread_started(obj)
 
-        if event_type in {"turn.completed", "turn.completed_with_errors"}:
-            self._record_turn_metadata(obj)
-            return []
-
-        # Codex emits both terminal event shapes for one failed turn. Once the
-        # first has become a Pynchy result, let its paired event fall through
-        # as an ignored non-item event.
-        if event_type in {"turn.failed", "error"} and not self._terminal_error_emitted:
-            self._terminal_error_emitted = True
-            return [self._map_error_result(obj, str(event_type))]
+        if event_type in {"turn.completed", "turn.completed_with_errors", "turn.failed", "error"}:
+            return self._map_turn_event(str(event_type), obj)
 
         if event_type not in {"item.started", "item.completed"}:
             return []
@@ -292,6 +290,27 @@ class CodexCLIAgentCore:
         if not isinstance(item, dict):
             return []
         return self._map_item_event(str(event_type), item)
+
+    def _map_turn_event(self, event_type: str, obj: dict[str, object]) -> list[AgentEvent]:
+        if event_type in {"turn.completed", "turn.completed_with_errors"}:
+            self._record_turn_metadata(obj)
+            self._pending_error = None
+            return []
+
+        # Codex uses `error` for retry notices as well as terminal failures.
+        # Retain those events as fallbacks; `turn.failed` is authoritative when
+        # present. Without a terminal turn event, query() emits the latest
+        # pending error at subprocess exit.
+        if event_type == "error":
+            if not self._terminal_error_emitted:
+                self._pending_error = obj
+            return []
+
+        if self._terminal_error_emitted:
+            return []
+        self._terminal_error_emitted = True
+        self._pending_error = None
+        return [self._map_error_result(obj, event_type)]
 
     def _map_thread_started(self, obj: dict[str, object]) -> list[AgentEvent]:
         sid = obj.get("thread_id") or obj.get("threadId")

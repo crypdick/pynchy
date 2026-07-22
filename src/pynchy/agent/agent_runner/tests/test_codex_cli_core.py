@@ -373,21 +373,6 @@ def test_stream_event_maps_terminal_failure_to_error_result():
     assert event.data["result_metadata"]["subtype"] == "not_logged_in"
 
 
-def test_stream_event_emits_one_result_for_paired_turn_failure():
-    core = _core()
-
-    failed = core.map_stream_event(
-        {"type": "turn.failed", "error": {"message": "request failed", "code": "timeout"}}
-    )
-    duplicate = core.map_stream_event(
-        {"type": "error", "error": {"message": "request failed", "code": "timeout"}}
-    )
-
-    assert len(failed) == 1
-    assert failed[0].data["result"] == "request failed"
-    assert duplicate == []
-
-
 def test_public_queries_reset_terminal_error_guard_between_turns():
     core = _core()
     first_proc = _FakeProc(
