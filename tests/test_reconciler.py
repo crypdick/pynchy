@@ -149,6 +149,42 @@ class TestInboundReconciliation:
         assert cursor == "2024-06-01T12:00:00"
 
     @pytest.mark.asyncio
+    async def test_workspace_created_during_ingress_waits_for_next_cycle(self):
+        msg = NewMessage(
+            id="msg-creates-thread",
+            chat_jid="slack:C123",
+            sender="U1",
+            sender_name="Alice",
+            content="start a thread",
+            timestamp="2024-06-01T00:00:00",
+        )
+        slack = _make_channel(name="slack", inbound=[msg])
+        discord = _make_channel(name="discord")
+        workspaces = {"group@g.us": TEST_GROUP}
+        deps = _make_deps(channels=[slack, discord], workspaces=workspaces)
+
+        def register_thread(*_args, **_kwargs):
+            workspaces["discord:thread-1"] = WorkspaceProfile(
+                jid="discord:thread-1",
+                name="New thread",
+                folder="test/threads/new-thread",
+                trigger="@pynchy",
+                added_at="2024-06-01",
+            )
+
+        deps.ingest_user_message.side_effect = register_thread
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01T00:00:00")
+
+        await reconcile_all_channels(deps)
+
+        assert "discord:thread-1" in workspaces
+        for channel in (slack, discord):
+            reconciled_jids = [
+                awaited.args[0] for awaited in channel.fetch_inbound_since.await_args_list
+            ]
+            assert reconciled_jids == ["group@g.us"]
+
+    @pytest.mark.asyncio
     async def test_skips_channel_without_jid_or_ownership(self):
         ch = _make_channel(owns=False)
         deps = _make_deps(
