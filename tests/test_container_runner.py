@@ -69,6 +69,7 @@ from pynchy.host.orchestrator.agent_runner import (
     run_agent,
     session_tracking_output_handler,
 )
+from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.types import (
     ChatJid,
@@ -147,7 +148,7 @@ class _AgentRunnerDeps:
         self.sessions = sessions or {}
         self.session_cleared: set[str] = set()
         self.workspaces: dict[str, WorkspaceProfile] = {}
-        self.queue = MagicMock()
+        self.queue = MagicMock(spec=GroupQueue)
         self.plugin_manager = None
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
@@ -1761,6 +1762,9 @@ class TestResolveAgentCore:
 
 class TestContainerInputAgentCoreConfig:
     """Test model configuration passed from host settings into agent cores."""
+
+    def test_agent_runner_queue_double_satisfies_host_process_contract(self) -> None:
+        assert isinstance(_AgentRunnerDeps().queue, host_execution.HostProcessQueue)
 
     @staticmethod
     def _ctx(
