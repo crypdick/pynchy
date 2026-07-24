@@ -114,26 +114,41 @@ class TestAdvanceCursorsAtomic:
 @pytest.mark.usefixtures("_db")
 class TestPruneStaleCursors:
     @pytest.mark.asyncio
-    async def test_deletes_cursors_for_unknown_channels(self):
+    async def test_deletes_cursors_outside_the_active_channel_workspace_pairs(self):
         await set_channel_cursor("old-channel", "group@g.us", "inbound", "2024-01-01")
+        await set_channel_cursor("active-channel", "removed@g.us", "inbound", "2024-02-01")
+        await set_channel_cursor("active-channel", "removed@g.us", "outbound", "2024-03-01")
         await set_channel_cursor("active-channel", "group@g.us", "inbound", "2024-06-01")
 
-        pruned = await prune_stale_cursors({"active-channel"})
+        pruned = await prune_stale_cursors({("active-channel", "group@g.us")})
 
-        assert pruned == 1
+        assert pruned == 3
         assert not await get_channel_cursor("old-channel", "group@g.us", "inbound")
+        assert not await get_channel_cursor("active-channel", "removed@g.us", "inbound")
+        assert not await get_channel_cursor("active-channel", "removed@g.us", "outbound")
         assert await get_channel_cursor("active-channel", "group@g.us", "inbound") == "2024-06-01"
 
     @pytest.mark.asyncio
-    async def test_noop_when_all_channels_active(self):
+    async def test_noop_when_all_channel_workspace_pairs_are_active(self):
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01")
 
-        pruned = await prune_stale_cursors({"slack"})
+        pruned = await prune_stale_cursors({("slack", "group@g.us")})
 
         assert pruned == 0
         assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-01-01"
 
     @pytest.mark.asyncio
     async def test_noop_on_empty_table(self):
-        pruned = await prune_stale_cursors({"slack"})
+        pruned = await prune_stale_cursors({("slack", "group@g.us")})
         assert pruned == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_active_pair_set_preserves_recovery_cursors(self):
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-01-01")
+        await set_channel_cursor("discord", "admin@g.us", "outbound", "2024-02-01")
+
+        pruned = await prune_stale_cursors(set())
+
+        assert pruned == 0
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-01-01"
+        assert await get_channel_cursor("discord", "admin@g.us", "outbound") == "2024-02-01"

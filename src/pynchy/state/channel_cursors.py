@@ -71,19 +71,32 @@ async def advance_cursors_atomic(
                 )
 
 
-async def prune_stale_cursors(active_channel_names: set[ChannelName]) -> int:
-    """Delete cursors for channels absent from the active set.
+async def prune_stale_cursors(
+    active_pairs: set[tuple[ChannelName, ChatJid]],
+) -> int:
+    """Delete cursors outside the eligible channel-workspace pairs.
+
+    An empty runtime-derived set is not authoritative evidence that no
+    configured pair exists, so it is a fail-safe no-op.
 
     Returns the number of rows deleted.
     """
-    if not active_channel_names:
+    if not active_pairs:
         return 0
-    db = _get_db()
-    placeholders = ",".join("?" for _ in active_channel_names)
-    # S608 audit: only the number of SQLite value placeholders is dynamic.
-    cursor = await db.execute(
-        f"DELETE FROM channel_cursors WHERE channel_name NOT IN ({placeholders})",  # noqa: S608, RUF100
-        tuple(active_channel_names),
-    )
-    await db.commit()
-    return cursor.rowcount
+    async with atomic_write() as db:
+        cursor = await db.execute("SELECT DISTINCT channel_name, chat_jid FROM channel_cursors")
+        stored_pairs = {
+            (
+                ChannelName(row["channel_name"]),
+                ChatJid(row["chat_jid"]),
+            )
+            for row in await cursor.fetchall()
+        }
+        stale_pairs = stored_pairs - active_pairs
+        if not stale_pairs:
+            return 0
+        deleted = await db.executemany(
+            "DELETE FROM channel_cursors WHERE channel_name = ? AND chat_jid = ?",
+            stale_pairs,
+        )
+        return deleted.rowcount
