@@ -84,7 +84,7 @@ not ready and spoken replies are skipped. Text channels and inbound speech-to-te
 continue to work.
 
 To leave the service installed but disable its Pynchy integration, add this to
-`config.toml` and restart Pynchy:
+`data/personalization/pynchy.toml` and restart Pynchy:
 
 ```toml
 [plugins.pocket-tts]

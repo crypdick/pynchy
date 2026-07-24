@@ -1,7 +1,7 @@
 """Magic command word matching.
 
 Detects special single-word or two-word commands (context reset, end session,
-redeploy) using configurable word lists from config.toml. Also detects
+redeploy) using configurable word lists from layered settings. Also detects
 approval gate commands (approve/deny/pending).
 """
 

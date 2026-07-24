@@ -1,4 +1,4 @@
-"""Configuration sub-models — each maps to a ``[section]`` in config.toml.
+"""Configuration sub-models — each maps to a layered ``pynchy.toml`` section.
 
 allow: file-length - task adds a core model; splitting schema is out of scope.
 
@@ -169,18 +169,18 @@ class GatewayConfig(_StrictModel):
 
     Two modes:
 
-    **LiteLLM** (``litellm_config`` is set): Runs a LiteLLM proxy Docker
+    **LiteLLM** (normal service mode): Runs a LiteLLM proxy Docker
     container.  All LLM routing config (models, keys, budgets, load
     balancing) lives in the litellm YAML — no translation needed.
 
-    **Builtin** (``litellm_config`` is ``None``): Simple aiohttp reverse
-    proxy for single-key setups.  Uses keys from ``[secrets]``.
+    **Builtin** (component and test mode): Simple aiohttp reverse proxy
+    for single-key setups. Normal startup requires personalized LiteLLM config.
     """
 
     port: int = 4010  # set to 4000 when using litellm mode
     host: str = CONTAINER_REACHABLE_BIND_HOST  # bind address
     container_host: str = "host.docker.internal"  # hostname containers use to reach host
-    litellm_config: str | None = None  # path to litellm_config.yaml; None = builtin mode
+    litellm_config: str | None = None  # convention-wired personalized source path
     litellm_image: str = "ghcr.io/berriai/litellm:main-latest"
     postgres_image: str = "postgres:17-alpine"
     master_key: SecretStr | None = None  # LiteLLM master key (required for LiteLLM mode)

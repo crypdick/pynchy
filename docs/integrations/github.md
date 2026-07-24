@@ -21,7 +21,7 @@ secret_env = "GITHUB_PROJECT_WEBHOOK_SECRET" # pragma: allowlist secret
 ```
 
 Store the corresponding webhook secret in the host environment, not in
-`config.toml`:
+`data/personalization/pynchy.toml`:
 
 ```bash
 GITHUB_PROJECT_WEBHOOK_SECRET="replace-with-a-random-webhook-secret" # pragma: allowlist secret

@@ -1,5 +1,6 @@
 nav:
   - Overview: index.md
+  - Personalization repository: personalization.md
   - Groups: groups.md
   - Workspaces: workspaces.md
   - Prompts: prompts.md

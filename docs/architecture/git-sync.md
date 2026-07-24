@@ -19,6 +19,10 @@ A background loop polls every 5 seconds and detects three types of drift:
 |-----------|-----------------|--------|
 | **Origin drift** | Remote main has new commits (e.g. pushed from another machine) | Offer the configured admin a fetch-and-upgrade action; with `scheduler.auto_deploy = true`, pull, notify running agents, and deploy eligible source changes |
 | **Local HEAD drift** | Local HEAD differs from the SHA at last deploy (e.g. admin agent committed and pushed) | Offer the configured admin an upgrade action; with `scheduler.auto_deploy = true`, deploy eligible source changes |
-| **Config drift** | `config.toml` or `litellm_config.yaml` hash changed | Trigger restart (no rebuild needed) |
+| **Config drift** | `.env` or a recognized file under `data/personalization/` changed | Trigger restart (no rebuild needed) |
 
 Source-file changes (anything under `src/` or `pyproject.toml`) trigger a full deploy with container rebuild. Config-only changes trigger a lighter restart. `scheduler.auto_deploy` defaults to `false`; it only changes repository-revision updates, not direct local configuration changes.
+
+The sync loop does not fetch or update the independent personalization
+repository. Pull or deploy that repository with operator-owned tooling. Pynchy
+only observes recognized local files and restarts when their contents change.

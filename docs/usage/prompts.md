@@ -20,7 +20,8 @@ No registry or config mapping exists. The name **is** the path. Place your promp
 
 ## Assigning Prompts
 
-Prompts are assigned through reusable workspace profiles in `config.toml`.
+Prompts are assigned through reusable workspace profiles in
+`data/personalization/pynchy.toml`.
 
 ```toml
 [profiles.pynchy-dev]

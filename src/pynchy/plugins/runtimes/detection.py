@@ -17,7 +17,7 @@ from pynchy.logger import logger
 
 _NO_CONTAINER_RUNTIME_PLUGINS_MESSAGE = (
     "No container runtime plugins available. "
-    "Ensure the Docker or Apple runtime plugin is enabled in config.toml."
+    "Ensure the Docker or Apple runtime plugin is enabled in pynchy.toml."
 )
 
 

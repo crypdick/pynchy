@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate container plugin requirements from config.toml plugins."""
+"""Generate container plugin requirements from personalized Pynchy settings."""
 
 from __future__ import annotations
 
@@ -94,8 +94,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--config",
-        default="config.toml",
-        help="Path to config.toml containing [plugins.*] entries",
+        default="data/personalization/pynchy.toml",
+        help="Path to pynchy.toml containing [plugins.*] entries",
     )
     args = parser.parse_args()
     output_path = Path(args.output)

@@ -108,7 +108,7 @@ class TestEnsureContainerSystemRunning:
             "--output",
             str(container_dir / "requirements-plugins.txt"),
             "--config",
-            str(tmp_path / "config.toml"),
+            str(tmp_path / "data" / "personalization" / "pynchy.toml"),
         ]
 
     def test_runtime_harness_defers_agent_image_validation(self, mock_runtime, monkeypatch):

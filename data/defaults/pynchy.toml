@@ -1,0 +1,27 @@
+# Public baseline settings. Override these in data/personalization/pynchy.toml.
+
+[agent]
+name = "pynchy"
+trigger_aliases = ["ghost"]
+default_core = "openai"
+
+[container]
+image = "pynchy-agent:latest"
+timeout_ms = 1800000
+idle_timeout_ms = 900000
+max_output_size = 10485760
+max_concurrent = 10
+
+[gateway]
+port = 4010
+host = "0.0.0.0"
+container_host = "host.docker.internal"
+
+[scheduler]
+poll_interval = 60.0
+temporal_address = "localhost:7233"
+temporal_namespace = "default"
+temporal_task_queue = "pynchy-scheduler"
+git_sync_interval_seconds = 300
+channel_reconciliation_interval_seconds = 300
+auto_deploy = false

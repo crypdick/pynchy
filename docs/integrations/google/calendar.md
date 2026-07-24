@@ -6,7 +6,8 @@ setup](index.md) first.
 
 ## Configure the Calendar tool
 
-Add a Chrome profile and Calendar tool to `config.toml`:
+Add a Chrome profile and Calendar tool to
+`data/personalization/pynchy.toml`:
 
 ```toml
 chrome_profiles = ["mycompany"]

@@ -75,13 +75,13 @@ Each group gets its own env file at `data/env/{group}/env`. Only allowlisted var
 
 **Non-LLM credentials** get written directly, scoped by trust level:
 
-- `GH_TOKEN` — **admin containers only.** Auto-discovered from `gh auth token` or `config.toml [secrets]`. Non-admin containers don't receive this; their git operations are routed through host IPC.
+- `GH_TOKEN` — **admin containers only.** Auto-discovered from `gh auth token` or `SECRETS__GH_TOKEN` in `.env`. Non-admin containers don't receive this; their git operations are routed through host IPC.
 - `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` — from host git config (all groups)
 - `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` — from host git config (all groups)
 - Workspace-scoped Proton Pass variables — resolved only for workspaces that declare a secret-reference template. See [Credential Handling](security.md#workspace-scoped-proton-pass-templates).
 
 **Process:**
-1. Host discovers credentials from `config.toml [secrets]` and auto-discovery (OAuth, gh CLI, git config)
+1. Host discovers credentials from `.env` and auto-discovery (OAuth, gh CLI, git config)
 2. LLM keys are registered with the gateway; containers get the gateway URL + ephemeral key
 3. `GH_TOKEN` is included only for admin containers
 4. Per-group env file written to `data/env/{group}/env`

@@ -4,7 +4,7 @@ The agent core determines which LLM SDK or CLI powers agents. Pynchy ships with 
 
 ## Switching Cores
 
-Set the core in `config.toml`:
+Set the core in `data/personalization/pynchy.toml`:
 
 ```toml
 [agent]
@@ -49,8 +49,13 @@ model = "chatgpt/gpt-5.3-codex"
 [workspaces.daily-triage]
 profiles = ["daily-triage"]
 model = "chatgpt/gpt-5.3-codex-spark"
+```
 
-[jobs.daily-triage]
+```toml
+# data/personalization/automations/daily-triage.toml
+schema_version = 1
+
+[job]
 enabled = true
 schedule = "0 8 * * *"
 workspace = "daily-triage"
@@ -59,7 +64,7 @@ prompt = "Produce the daily Pynchy triage memo and send it to this channel."
 
 Pynchy resolves models in this order: the workspace model, the last model specified by the expanded selected profiles, then `[agent].model`. Dynamic threads and scheduled jobs inherit their target workspace's resolved model.
 
-For Codex workspaces using LiteLLM's ChatGPT subscription provider, use a `chatgpt/...` route such as `chatgpt/gpt-5.3-codex-spark` and make sure that `model_name` is declared in `litellm_config.yaml`. Pynchy checks every explicitly configured effective route for Codex, OpenAI, and Claude CLI at startup.
+For Codex workspaces using LiteLLM's ChatGPT subscription provider, use a `chatgpt/...` route such as `chatgpt/gpt-5.3-codex-spark` and make sure that `model_name` is declared in `data/personalization/litellm.yaml`. Pynchy checks every explicitly configured effective route for Codex, OpenAI, and Claude CLI at startup.
 
 ## Built-in: Claude SDK
 
@@ -97,7 +102,7 @@ Use this when you want Codex's CLI runtime, session behavior, and JSONL event
 stream while keeping model routing and provider credentials in the Pynchy
 LiteLLM gateway.
 
-- **Activation:** configure a Codex-capable model in `litellm_config.yaml`, then set `default_core = "codex"` and `model` to that LiteLLM `model_name`
+- **Activation:** configure a Codex-capable model in `data/personalization/litellm.yaml`, then set `default_core = "codex"` and `model` to that LiteLLM `model_name`
 - **Auth state:** Codex reads the same gateway env vars as the OpenAI core (`OPENAI_BASE_URL` / `OPENAI_API_KEY`). Pynchy writes a per-group Codex config that points Codex at that gateway with the Responses wire API.
 - **Session management:** Codex thread IDs are stored as Pynchy session IDs and resumed with `codex exec resume`
 - **Tools:** Codex Bash/tool events are mapped into the same Pynchy event stream, and Pynchy writes a per-group Codex config with the standard `BEFORE_TOOL_USE` hook
@@ -141,7 +146,7 @@ Claude SDK and OpenAI Agents SDK calls route through a host-side gateway. You ge
 - **Provider flexibility** — [100+ LLM providers](https://docs.litellm.ai/docs/providers) via LiteLLM
 - **Load balancing** — across multiple API keys or providers
 
-The gateway is configured in `litellm_config.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../installation/index.md).
+The gateway is configured in `data/personalization/litellm.yaml` and runs as a Docker container managed by Pynchy. See the [Installation Guide](../installation/index.md).
 
 Pynchy's local LLM-request redaction runs only when using the built-in gateway.
 LiteLLM bypasses the owned Python request boundary and reports
@@ -156,7 +161,7 @@ provider for each workspace with:
 - `wire_api = "responses"`
 - `env_key = "OPENAI_API_KEY"`
 
-Use model names that exist in `litellm_config.yaml`; Codex passes its requested
+Use model names that exist in `data/personalization/litellm.yaml`; Codex passes its requested
 model to the gateway. For LiteLLM's ChatGPT Subscription provider, that means a
 route such as:
 

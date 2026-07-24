@@ -30,8 +30,8 @@ non-default directory.
 
 ## Deterministic profile
 
-Runtime setup generates its own `config.toml`, LiteLLM configuration, and `.env`. It never copies
-the control checkout's `.env`, `config.toml`, LiteLLM configuration, provider credentials, or
+Runtime setup generates its own `data/personalization/` tree and `.env`. It
+never copies the control checkout's `.env`, personalization tree, provider credentials, or
 channel credentials. LiteLLM exposes one `pynchy-deterministic` route to an in-network
 OpenAI-compatible sidecar that returns a fixed response. The profile makes no provider calls and
 does not download or run a local model.
@@ -103,7 +103,7 @@ new-feature list
 ```
 
 Read `.new-feature/manifest.toml` when the existing shell needs the allocated values. The
-generated `.env` and `config.toml` let commands run normally from the feature worktree.
+generated `.env` and personalization files let commands run normally from the feature worktree.
 
 Inspect or restart the sandbox from its worktree:
 

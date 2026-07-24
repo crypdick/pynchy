@@ -45,7 +45,7 @@ def _generate_plugin_requirements(container_dir: Path, project_root: Path) -> No
             "--output",
             str(requirements),
             "--config",
-            str(project_root / "config.toml"),
+            str(project_root / "data" / "personalization" / "pynchy.toml"),
         ],
         capture_output=True,
         check=False,

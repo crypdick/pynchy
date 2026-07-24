@@ -8,12 +8,6 @@ import subprocess  # noqa: S404, RUF100 - used only for subprocess exception typ
 from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves git sync helpers at runtime.
 
-from pydantic_settings import (
-    DotEnvSettingsSource,
-    EnvSettingsSource,
-    TomlConfigSettingsSource,
-)
-
 from pynchy.config import get_settings
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves git sync helpers at runtime.
@@ -149,44 +143,33 @@ def _hash_config_files() -> str:
     """Hash config files that require a restart when changed."""
     h = hashlib.sha256()
     s = get_settings()
-    litellm_config = _fresh_litellm_config_path(s)
-    for path in [
-        s.project_root / "config.toml",
+    defaults = s.project_root / "data" / "defaults"
+    personalization = s.project_root / "data" / "personalization"
+    fixed_paths = (
         s.project_root / ".env",
-        litellm_config,
-    ]:
-        if path and path.exists():
+        defaults / "pynchy.toml",
+        personalization / "pynchy.toml",
+        personalization / "litellm.yaml",
+    )
+    for path in fixed_paths:
+        h.update(path.relative_to(s.project_root).as_posix().encode())
+        if path.exists():
             h.update(path.read_bytes())
         else:
             h.update(b"__missing__")
+    for directory in (
+        defaults / "automations",
+        defaults / "skills",
+        personalization / "automations",
+        personalization / "skills",
+    ):
+        if not directory.is_dir():
+            h.update(f"__missing__:{directory.relative_to(s.project_root).as_posix()}".encode())
+            continue
+        for path in sorted(candidate for candidate in directory.rglob("*") if candidate.is_file()):
+            h.update(path.relative_to(s.project_root).as_posix().encode())
+            h.update(path.read_bytes())
     return h.hexdigest()
-
-
-def _fresh_litellm_config_path(settings: Settings) -> Path | None:
-    """Resolve the on-disk config path without relying on cached settings.
-
-    A restart can change ``gateway.litellm_config`` itself. Reading the current
-    TOML and dotenv sources makes the effective revision stable on both sides
-    of that restart even though the active process's Settings singleton remains
-    cached until process replacement.
-    """
-    configured: object = settings.gateway.litellm_config
-    root = settings.project_root
-    try:
-        sources = (
-            TomlConfigSettingsSource(Settings, toml_file=root / "config.toml")(),
-            DotEnvSettingsSource(Settings, env_file=root / ".env")(),
-            EnvSettingsSource(Settings)(),
-        )
-    except (OSError, TypeError, ValueError) as exc:
-        logger.warning("Could not parse fresh deploy configuration", error=str(exc))
-        return Path(str(configured)) if configured else None
-
-    for source in sources:
-        gateway = source.get("gateway")
-        if isinstance(gateway, dict) and "litellm_config" in gateway:
-            configured = gateway["litellm_config"]
-    return Path(str(configured)) if configured else None
 
 
 def get_deploy_config_hash() -> str:

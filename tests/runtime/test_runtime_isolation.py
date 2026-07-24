@@ -34,7 +34,6 @@ _COPIED_CHECKOUT_EXCLUSIONS = {
     ".worktrees",
     "__pycache__",
     "config.toml",
-    "data",
     "groups",
     "litellm_config.yaml",
     "logs",
@@ -147,7 +146,9 @@ def test_second_runtime_has_its_own_database_and_docker_namespace(tmp_path: Path
     assert status(primary_state)["service"]["status"] == "ok"
 
 
-def _ignore_runtime_artifacts(_directory: str, names: list[str]) -> set[str]:
+def _ignore_runtime_artifacts(directory: str, names: list[str]) -> set[str]:
+    if Path(directory).name == "data":
+        return set(names) - {"defaults"}
     return {name for name in names if name in _COPIED_CHECKOUT_EXCLUSIONS}
 
 

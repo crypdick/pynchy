@@ -6,8 +6,7 @@ accept a remote connection.
 ## Missing provider credentials
 
 Set the provider credential in `.env` and reference it from
-`litellm_config.yaml`, or configure the built-in gateway secret. Then restart
-the Pynchy service.
+`data/personalization/litellm.yaml`. Then restart the Pynchy service.
 
 ## WhatsApp QR code does not scan
 

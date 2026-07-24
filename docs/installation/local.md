@@ -7,7 +7,7 @@ Use this guide to install Pynchy on macOS or Linux for local operation.
 - macOS or Linux (tested on macOS 14+ and Ubuntu 24.04)
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
-- An LLM provider credential, routed directly or through LiteLLM
+- An LLM provider credential routed through LiteLLM
 - A reachable Temporal service for scheduled work (default: `localhost:7233`)
 - A container runtime: Apple Container or Docker on macOS; Docker on Linux
 
@@ -46,7 +46,6 @@ If Apple Container is unavailable on macOS, Pynchy falls back to Docker.
 git clone https://github.com/crypdick/pynchy.git
 cd pynchy
 uv sync
-cp config-examples/config.toml.EXAMPLE config.toml
 ```
 
 Install the WhatsApp extra only when you use WhatsApp:
@@ -57,29 +56,40 @@ uv sync --extra whatsapp
 
 For Slack or Discord, follow [Channels](../channels/index.md).
 
-### Configure models and the gateway
+### Check out personalization
 
-Set provider credentials through `[secrets]` or reference environment variables
-from `litellm_config.yaml`. To use LiteLLM, copy its example configuration:
+Pynchy requires an independent personalization repository at the conventional
+path. Clone an existing one:
 
 ```bash
-cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
+git clone git@github.com:YOUR-ACCOUNT/pynchy-personalization.git \
+  data/personalization
 ```
 
-Then configure the gateway in `config.toml`:
+For a new deployment, start from `config-examples/personalization/`, create a
+private repository, and then check it out at `data/personalization/`. See the
+[personalization repository guide](../usage/personalization.md) for the full
+layout and CI workflow.
 
-```toml
-[gateway]
-litellm_config = "litellm_config.yaml"
-port = 4000
-master_key = "your-master-key-here"
+Configure models in `data/personalization/litellm.yaml` and non-secret Pynchy
+settings in `data/personalization/pynchy.toml`. Put provider keys and the
+gateway key in the root `.env`:
+
+```dotenv
+OPENAI_API_KEY=sk-proj-...
+GATEWAY__MASTER_KEY=replace-with-a-long-random-value
+```
+
+Validate the complete tree before starting:
+
+```bash
+uv run pynchy validate-personalization data/personalization
 ```
 
 Pynchy starts LiteLLM on boot and keeps provider credentials outside agent
-containers. Configure a model route before selecting the Codex core; then set
-`[agent] default_core = "codex"` and select the route globally, in a profile,
-or in a workspace. For MCP tools, see [MCP servers](../usage/mcp.md). For a
-single-host macOS Temporal service, see [Scheduled tasks](../usage/scheduled-tasks.md#single-host-macos-service).
+containers. Configure a model route before selecting the Codex core. For MCP
+tools, see [MCP servers](../usage/mcp.md). For a single-host macOS Temporal
+service, see [Scheduled tasks](../usage/scheduled-tasks.md#single-host-macos-service).
 
 ### Build and run
 

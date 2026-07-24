@@ -1,6 +1,6 @@
 """MCP instance resolution — config expansion, kwargs, trust map.
 
-Pure functions that resolve ``config.toml`` MCP entries into concrete
+Pure functions that resolve personalized MCP entries into concrete
 :class:`McpInstance` objects.  Extracted from :mod:`mcp_manager` so the
 manager can focus on lifecycle orchestration and LiteLLM sync.
 """

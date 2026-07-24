@@ -42,6 +42,27 @@ def _run() -> None:
 
     load_dotenv()  # Make .env vars available in os.environ for env_forward, etc.
 
+    from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - startup validates deployment-owned configuration before app imports.
+        LITELLM_FILENAME,
+        PersonalizationError,
+        validate_litellm_model_names,
+        validate_personalization_tree,
+    )
+    from pynchy.config.settings import (  # noqa: PLC0415, RUF100 - startup validates the composed settings before app construction.
+        validate_settings_mapping,
+    )
+
+    try:
+        mapping = validate_personalization_tree(Path.cwd(), Path("data/personalization"))
+        settings = validate_settings_mapping(mapping)
+        validate_litellm_model_names(
+            Path("data/personalization") / LITELLM_FILENAME,
+            settings.configured_agent_models(),
+        )
+    except (OSError, PersonalizationError, ValueError) as exc:
+        _stderr_line(f"Personalization validation failed: {exc}")
+        sys.exit(2)
+
     from pynchy.logger import (  # noqa: PLC0415, RUF100 - configure the error log before application startup.
         configure_error_log,
     )
@@ -116,6 +137,35 @@ def _build() -> None:
         _stderr_line("Error: Could not clean container build state after the build")
         sys.exit(1)
     sys.exit(result.returncode)
+
+
+def _validate_personalization(path: Path) -> int:
+    from pynchy.config.personalization import (  # noqa: PLC0415, RUF100 - validation command keeps service imports lazy.
+        LITELLM_FILENAME,
+        PersonalizationError,
+        validate_litellm_model_names,
+        validate_personalization_tree,
+    )
+    from pynchy.config.settings import (  # noqa: PLC0415, RUF100 - validation command explicitly validates the composed mapping.
+        validate_settings_mapping,
+    )
+
+    try:
+        mapping = validate_personalization_tree(Path.cwd(), path)
+        settings = validate_settings_mapping(mapping)
+        validate_litellm_model_names(
+            path / LITELLM_FILENAME,
+            settings.configured_agent_models(),
+        )
+    except (OSError, PersonalizationError, ValueError) as exc:
+        _stderr_line(f"Personalization validation failed: {exc}")
+        return 1
+    _stdout_line(
+        "Personalization valid: "
+        f"{path.resolve()} ({len(settings.jobs)} automation(s), "
+        f"{len(settings.workspaces)} workspace(s))"
+    )
+    return 0
 
 
 def _bootstrap_control_plane_token(*, rotate: bool) -> int:
@@ -304,6 +354,17 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("build", help="Build the container image")
+    validate_personalization = sub.add_parser(
+        "validate-personalization",
+        help="Validate a personalization repository against this Pynchy checkout",
+    )
+    validate_personalization.add_argument(
+        "path",
+        nargs="?",
+        type=Path,
+        default=Path("data/personalization"),
+        help="Repository path (default: data/personalization)",
+    )
     control_plane = sub.add_parser(
         "control-plane",
         help="Bootstrap local credentials for authenticated control-plane access",
@@ -360,6 +421,8 @@ def main() -> None:
     match args.command:
         case "build":
             _build()
+        case "validate-personalization":
+            sys.exit(_validate_personalization(args.path))
         case "control-plane":
             if args.control_plane_command == "bootstrap":
                 sys.exit(_bootstrap_control_plane_token(rotate=args.rotate))

@@ -5,13 +5,35 @@ runtime state that can disrupt the new service.
 
 ## Copy persistent configuration
 
-Stop the old service before copying these files into the same relative paths in
-the new checkout:
+Stop the old service. Clone the private personalization repository into the new
+checkout first:
 
-- `data/`
-- `config.toml`
-- `litellm_config.yaml`
-- `.env` when it contains gateway, channel, or provider secrets
+```bash
+git clone git@github.com:YOUR-ACCOUNT/pynchy-personalization.git \
+  data/personalization
+```
+
+Then copy runtime data without replacing that nested repository, and copy the
+root `.env` when it contains gateway, channel, or provider secrets:
+
+```bash
+rsync -a --exclude personalization OLD_PYNCHY/data/ NEW_PYNCHY/data/
+cp OLD_PYNCHY/.env NEW_PYNCHY/.env
+```
+
+For an installation that still uses root `config.toml` and
+`litellm_config.yaml`, initialize a private personalization repository, move
+their contents to `pynchy.toml` and `litellm.yaml`, and remove
+`gateway.litellm_config` from the TOML. Pynchy no longer reads the root files.
+Move durable `[jobs.<name>]` declarations into
+`automations/<name>.toml` documents when convenient; the validator still
+accepts non-colliding `[jobs]` declarations during migration.
+
+Validate before the first start:
+
+```bash
+uv run pynchy validate-personalization data/personalization
+```
 
 Do not copy `data/deploy_continuation.json`; it can trigger a rollback to an old
 commit on the new host.

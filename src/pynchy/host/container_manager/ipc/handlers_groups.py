@@ -106,7 +106,7 @@ async def _handle_create_periodic_agent(
     is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
     deps: IpcDeps,
 ) -> None:
-    """Create a periodic agent: folder, config.toml workspace, CLAUDE.md, chat group, and task."""
+    """Create a periodic agent: folder, personalized workspace, instructions, and task."""
     request = _periodic_agent_request(data, source_group=source_group, is_admin=is_admin)
     if request is None:
         return

@@ -80,11 +80,13 @@ def test_generated_runtime_config_is_deterministic_and_credential_free(
     state = harness.setup(spec)
 
     dotenv = _dotenv_values(root / ".env")
-    litellm_config = root.joinpath("litellm_config.yaml").read_text(encoding="utf-8")
-    config = root.joinpath("config.toml").read_text(encoding="utf-8")
+    personalization = root / "data" / "personalization"
+    litellm_config = personalization.joinpath("litellm.yaml").read_text(encoding="utf-8")
+    config = personalization.joinpath("pynchy.toml").read_text(encoding="utf-8")
 
     assert set(dotenv) == {
         "GATEWAY__MASTER_KEY",
+        "PYNCHY_DETERMINISTIC_API_KEY",
         "PYNCHY_DISABLE_SERVICE_INSTALL",
         "PYNCHY_RUNTIME_HARNESS",
         "PYNCHY_RUNTIME_NAMESPACE",
@@ -94,7 +96,7 @@ def test_generated_runtime_config_is_deterministic_and_credential_free(
     assert stat.S_IMODE((root / ".env").stat().st_mode) == 0o600
     assert "model_name: pynchy-deterministic" in litellm_config
     assert f"api_base: http://{spec.fake_container_name}:8080/v1" in litellm_config
-    assert "api_key: deterministic" in litellm_config
+    assert "api_key: os.environ/PYNCHY_DETERMINISTIC_API_KEY" in litellm_config
     assert "public_routes" not in litellm_config
     assert 'default_core = "openai"' in config
     assert 'model = "pynchy-deterministic"' in config
@@ -110,11 +112,11 @@ def test_generated_runtime_config_is_deterministic_and_credential_free(
     assert state["database_path"] == str(root / "data" / "messages.db")
 
     generated = "\n".join(
-        (root / filename).read_text(encoding="utf-8")
-        for filename in (
-            ".env",
-            "config.toml",
-            "litellm_config.yaml",
+        path.read_text(encoding="utf-8")
+        for path in (
+            root / ".env",
+            personalization / "pynchy.toml",
+            personalization / "litellm.yaml",
         )
     )
     assert "paid-provider-secret" not in generated
@@ -230,18 +232,20 @@ def test_setup_builds_the_runtime_agent_from_pinned_inputs(
 
 
 @pytest.mark.parametrize(
-    ("filename", "contents"),
+    ("relative_path", "contents"),
     [
         (".env", "OPENAI_API_KEY=not-owned-by-harness\n"),
-        ("config.toml", "[server]\nport = 8484\n"),
-        ("litellm_config.yaml", "model_list: []\n"),
+        ("data/personalization/pynchy.toml", "[server]\nport = 8484\n"),
+        ("data/personalization/litellm.yaml", "model_list: []\n"),
     ],
 )
 def test_runtime_harness_refuses_to_overwrite_unmanaged_runtime_files(
-    tmp_path: Path, filename: str, contents: str
+    tmp_path: Path, relative_path: str, contents: str
 ) -> None:
-    root = _runtime_root(tmp_path, filename.replace(".", "_"))
-    root.joinpath(filename).write_text(contents, encoding="utf-8")
+    root = _runtime_root(tmp_path, relative_path.replace("/", "_").replace(".", "_"))
+    path = root / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents, encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="Refusing to replace"):
         harness.setup(_spec(root))

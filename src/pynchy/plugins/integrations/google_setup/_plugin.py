@@ -71,7 +71,7 @@ class GoogleSetupPlugin:
     """Host-side handlers for Google OAuth setup.
 
     Registers one ``setup_google_{profile}`` handler per chrome profile
-    defined in config.toml.  Each handler is a closure that injects the
+    defined in layered settings. Each handler is a closure that injects the
     profile name into the request data before calling the shared handler.
     """
 

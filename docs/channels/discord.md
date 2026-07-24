@@ -12,7 +12,7 @@ configuration.
    Messages in Threads*, *Read Message History*, *Add Reactions*, *Connect*, and
    *Speak*. Do not grant Administrator.
 3. Store the token in the host environment, then reference its name from
-   `config.toml`:
+   `data/personalization/pynchy.toml`:
 
    ```bash
    DISCORD_BOT_TOKEN=<bot token>

@@ -1,0 +1,20 @@
+name: Validate Pynchy personalization
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check out Pynchy
+        run: git clone --depth 1 https://github.com/crypdick/pynchy.git ../pynchy
+      - name: Validate against current Pynchy
+        run: |
+          cd ../pynchy
+          uv sync --locked
+          uv run pynchy validate-personalization "$GITHUB_WORKSPACE"

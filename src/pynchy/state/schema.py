@@ -375,7 +375,7 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
 
     if "pynchy_repo_access" in cols:
         # Copy truthy rows using 'pynchy' as a placeholder slug.
-        # Users must update their config.toml to set the real slug.
+        # Users must update personalized settings to set the real slug.
         # _ensure_columns runs before this migration, so repo_access exists.
         await database.execute(
             "UPDATE scheduled_tasks SET repo_access = 'pynchy' "

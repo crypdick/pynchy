@@ -33,19 +33,18 @@ git clone git@github.com:crypdick/pynchy.git ~/src/pynchy
 cd ~/src/pynchy
 uv sync
 uv sync --extra whatsapp       # only when using WhatsApp
+git clone git@github.com:YOUR-ACCOUNT/pynchy-personalization.git \
+  data/personalization
+uv run pynchy validate-personalization data/personalization
 sg docker -c './src/pynchy/agent/build.sh'
 ```
 
 ## Configure credentials and a channel
 
-Copy the configuration examples, configure the model route, and keep secrets in
-`.env`:
-
-```bash
-cd ~/src/pynchy
-cp config-examples/config.toml.EXAMPLE config.toml
-cp config-examples/litellm_config.yaml.EXAMPLE litellm_config.yaml
-```
+Configure model routes and non-secret settings in the private
+`data/personalization/` checkout. Keep gateway, provider, and channel secrets
+in the Pynchy checkout's root `.env`. See
+[Personalization repository](../usage/personalization.md).
 
 Follow [Channels](../channels/index.md) for Slack or Discord setup. To
 use WhatsApp, authenticate from the server and scan its terminal QR code:

@@ -6,7 +6,7 @@ setup](index.md) first.
 
 ## Configure the Drive tool
 
-Add a Chrome profile and Drive tool to `config.toml`:
+Add a Chrome profile and Drive tool to `data/personalization/pynchy.toml`:
 
 ```toml
 chrome_profiles = ["mycompany"]

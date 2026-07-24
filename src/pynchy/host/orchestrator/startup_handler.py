@@ -77,7 +77,7 @@ async def send_boot_notification(deps: StartupDeps) -> None:
     if not credentials.has_api_credentials():
         parts.append(
             "WARNING: No API credentials found -- messages will fail. "
-            "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in config.toml."
+            "Run 'claude' to authenticate or set ANTHROPIC_API_KEY in .env."
         )
         logger.warning("No API credentials found at startup")
 

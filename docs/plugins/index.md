@@ -26,7 +26,7 @@ Plugins come as regular Python packages, discovered automatically at startup. In
 
 A single plugin can implement multiple hooks. A "voice" plugin might provide both an MCP server (transcription tools) and a skill (voice interaction patterns).
 
-> **LLM Gateway:** Regardless of which Agent Core plugin is active, all LLM API calls route through a host-side [LiteLLM](https://docs.litellm.ai/docs/) gateway. This provides automatic load balancing across APIs, access to [100+ LLM providers](https://docs.litellm.ai/docs/providers), and credential isolation — containers never see real API keys. Configure it via `litellm_config.yaml` (see [Container Isolation — Environment Variable Isolation](../architecture/container-isolation.md#environment-variable-isolation)).
+> **LLM Gateway:** Regardless of which Agent Core plugin is active, all LLM API calls route through a host-side [LiteLLM](https://docs.litellm.ai/docs/) gateway. This provides automatic load balancing across APIs, access to [100+ LLM providers](https://docs.litellm.ai/docs/providers), and credential isolation — containers never see real API keys. Configure it via `data/personalization/litellm.yaml` (see [Container Isolation — Environment Variable Isolation](../architecture/container-isolation.md#environment-variable-isolation)).
 
 ## How Discovery Works
 

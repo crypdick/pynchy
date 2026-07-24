@@ -1,6 +1,6 @@
-"""Workspace configuration — reads from config.toml via Settings.
+"""Workspace configuration — reads layered personalization via Settings.
 
-Workspaces are defined in [workspaces.<name>] sections of config.toml.
+Workspaces are defined in [workspaces.<name>] sections of pynchy.toml.
 Runtime creation (e.g. via IPC) writes sections using add_workspace_to_toml().
 """
 
@@ -111,7 +111,7 @@ def static_workspace_folder(folder: str) -> str:
 def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> None:
     """Cache workspace specs exported by plugins.
 
-    Plugin workspace configs are merged with config.toml in `load_workspace_config`.
+    Plugin workspace configs are merged with layered settings in `load_workspace_config`.
     """
     _state.plugin_workspace_specs.clear()
     if plugin_manager is None:
@@ -125,7 +125,7 @@ def configure_plugin_workspaces(plugin_manager: pluggy.PluginManager | None) -> 
 
 
 def _workspace_specs() -> dict[str, WorkspaceSpec]:
-    """Return merged workspace specs from plugins and config.toml.
+    """Return merged workspace specs from plugins and personalization.
 
     User config always wins when both sources define the same workspace folder.
     """
@@ -139,7 +139,7 @@ def _workspace_specs() -> dict[str, WorkspaceSpec]:
 def load_workspace_config(group_folder: str) -> WorkspaceConfig | None:
     """Read workspace config for a group from Settings.
 
-    Returns None if the group has no [workspaces.<name>] section in config.toml.
+    Returns None if the group has no configured [workspaces.<name>] section.
     """
     runtime_restriction = _runtime_restrictions.get(group_folder)
     if conversation_id_from_folder(group_folder) is not None and runtime_restriction is None:
@@ -341,7 +341,7 @@ async def reconcile_workspaces(
     register_fn: Callable[[WorkspaceProfile], Awaitable[None]],
     unregister_fn: Callable[[str], Awaitable[None]] | None = None,
 ) -> None:
-    """Ensure workspace state matches config.toml — create, update, AND clean up.
+    """Ensure workspace state matches personalized desired state.
 
     Idempotent — safe to run on every startup. For each config-driven resource:
       1. Workspace registrations — create missing, remove orphaned
@@ -405,12 +405,12 @@ async def reconcile_workspaces(
 
 
 def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
-    """Programmatically add a workspace to config.toml using tomlkit.
+    """Programmatically add a workspace to personalized settings using tomlkit.
 
     Preserves existing comments and formatting. Creates [workspaces.<folder>]
     section. Resets the settings cache so next get_settings() picks it up.
     """
-    toml_path = Path("config.toml")
+    toml_path = Path("data/personalization/pynchy.toml")
 
     def _mutate(doc: tomlkit.TOMLDocument) -> None:
         if "workspaces" not in doc:
@@ -431,7 +431,7 @@ def add_workspace_to_toml(folder: str, config: WorkspaceConfig) -> None:
 
 def update_profile_skill_policy(profile_name: str, skill_name: str, *, grant: bool) -> None:
     """Persist a named learned-skill decision in one workspace profile."""
-    toml_path = get_settings().project_root / "config.toml"
+    toml_path = get_settings().project_root / "data" / "personalization" / "pynchy.toml"
 
     def _mutate(doc: tomlkit.TOMLDocument) -> None:
         profiles = doc.get("profiles")
@@ -458,20 +458,17 @@ def _deduplicate_preserving_order(values: list[str]) -> list[str]:
 
 
 def add_job_to_toml(job_name: str, config: JobConfig) -> None:
-    """Programmatically add a job to config.toml using tomlkit."""
-    toml_path = Path("config.toml")
-
-    def _mutate(doc: tomlkit.TOMLDocument) -> None:
-        if "jobs" not in doc:
-            doc.add("jobs", tomlkit.table(is_super_table=True))
-
-        job_table = tomlkit.table()
-        data = config.model_dump(exclude_none=True, exclude_defaults=True)
-        for key, value in data.items():
-            job_table.add(key, value)
-
-        cast("Any", doc["jobs"])[job_name] = job_table
-
-    mutate_config_toml(toml_path, _mutate)
+    """Programmatically add one file-backed automation."""
+    if Path(job_name).name != job_name or not job_name or job_name.startswith("."):
+        raise ValueError(f"Invalid automation name: {job_name!r}")
+    automation_path = Path("data/personalization/automations") / f"{job_name}.toml"
+    automation_path.parent.mkdir(parents=True, exist_ok=True)
+    doc = tomlkit.document()
+    doc.add("schema_version", tomlkit.item(1))
+    job_table = tomlkit.table()
+    for key, value in config.model_dump(exclude_none=True, exclude_defaults=True).items():
+        job_table.add(key, value)
+    doc.add("job", job_table)
+    automation_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
     reset_settings()

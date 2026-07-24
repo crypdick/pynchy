@@ -11,7 +11,7 @@ listeners and never gives a workspace the Bridge app password.
   `1025` (SMTP).
 - The Bridge account's **app password** is available to a host-local command.
   The command must print only the password to stdout and must be readable only
-  by the Pynchy host user. Do not put the password in `config.toml`, source
+  by the Pynchy host user. Do not put the password in `pynchy.toml`, source
   control, or a workspace environment.
 
 Bridge's app password is separate from the Proton account password. On macOS,

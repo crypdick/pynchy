@@ -38,6 +38,7 @@ from pynchy.config import (
     ServerConfig,
     Settings,
 )
+from pynchy.config.settings_sources import repository_settings_sources
 from pynchy.host.container_manager.security.cop import (
     CopContextAvailability,
     CopInspectionContext,
@@ -347,7 +348,7 @@ def _clean_git_env():
 def reset_settings(monkeypatch):
     """Ensure each test starts with a clean Settings singleton.
 
-    Uses ``make_settings()`` to build from pure defaults — no config.toml,
+    Uses ``make_settings()`` to build from pure model defaults — no files,
     no .env, no file I/O. Tests are fully isolated from production config.
     Direct ``Settings()`` calls still read real environment variables, but not
     repo-local config files or dotenv files.
@@ -356,9 +357,10 @@ def reset_settings(monkeypatch):
     mock takes precedence over the cached singleton.
     """
     monkeypatch.setitem(Settings.model_config, "env_file", None)
-    monkeypatch.setitem(Settings.model_config, "toml_file", None)
-    safe = make_settings()
-    monkeypatch.setattr("pynchy.config.settings._state.settings", safe)
+    with repository_settings_sources(enabled=False):
+        safe = make_settings()
+        monkeypatch.setattr("pynchy.config.settings._state.settings", safe)
+        yield
 
 
 @pytest.fixture(autouse=True, scope="session")
