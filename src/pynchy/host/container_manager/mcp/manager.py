@@ -1,6 +1,6 @@
 """MCP server lifecycle manager — Docker/script on-demand, idle timeout, LiteLLM sync.
 
-``config.toml`` is the single source of truth.  At boot, :meth:`McpManager.sync`
+Personalized desired state is the source of truth. At boot, :meth:`McpManager.sync`
 pushes MCP state to LiteLLM via its HTTP API.  Docker-based MCP containers and
 script-based MCP subprocesses start on-demand when an agent first needs them
 and stop after an idle timeout.
@@ -118,7 +118,7 @@ def build_direct_server_configs(
 class McpManager:
     """Manages MCP servers: LiteLLM sync, runtime lifecycle, team provisioning.
 
-    ``config.toml`` is the source of truth. At boot, this class syncs state to
+    Personalized settings are the source of truth. At boot, this class syncs state to
     LiteLLM via HTTP API. Docker containers and script subprocesses start
     on-demand and stop on idle; URL servers are registered without a local
     lifecycle.
@@ -137,7 +137,7 @@ class McpManager:
     ) -> None:
         self._settings = settings
         self._gateway = gateway
-        # Plugin-provided MCP servers — merged with config.toml in _merged_mcp_servers.
+        # Plugin-provided MCP servers merge with personalized settings.
         # Config.toml always wins on name collision (same semantics as workspace specs).
         self._plugin_mcp_servers: dict[str, McpServerConfig] = plugin_mcp_servers or {}
         # Plugin-declared trust metadata — used by build_trust_map to populate
@@ -163,7 +163,7 @@ class McpManager:
     # ------------------------------------------------------------------
 
     async def sync(self) -> None:
-        """Sync config.toml MCP state to LiteLLM. Called once at boot."""
+        """Sync personalized MCP state to LiteLLM. Called once at boot."""
         all_servers = self._merged_mcp_servers
         if not all_servers:
             logger.info("No MCP servers configured — skipping MCP sync")

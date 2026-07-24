@@ -38,6 +38,7 @@ graph TB
 | Topic | What it covers |
 |-------|---------------|
 | [Container isolation](container-isolation.md) | Mounts, runtime plugins, environment variables |
+| [Configuration layers](configuration.md) | Public defaults, private personalization, secrets, validation, and runtime state |
 | [IPC](ipc.md) | File-based communication between containers and host |
 | [Message routing](message-routing.md) | Routing behavior, transparent token stream |
 | [Routed conversations](conversation-routing.md) | Stable external subjects, FIFO delivery claims, and replaceable Discord controls |

@@ -7,6 +7,8 @@ site/
 
 # Local data & auth (data/* not data/ — allows re-including subdirectories)
 data/*
+!data/defaults/
+!data/defaults/**
 !data/chrome-profiles/
 data/chrome-profiles/*/
 !data/chrome-profiles/.gitkeep

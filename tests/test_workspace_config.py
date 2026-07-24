@@ -214,7 +214,11 @@ class TestAddWorkspaceToToml:
         self, tmp_path, monkeypatch
     ):
         monkeypatch.chdir(tmp_path)
-        toml_path = tmp_path / "config.toml"
+        defaults_path = tmp_path / "data" / "defaults" / "pynchy.toml"
+        defaults_path.parent.mkdir(parents=True)
+        defaults_path.write_text("", encoding="utf-8")
+        toml_path = tmp_path / "data" / "personalization" / "pynchy.toml"
+        toml_path.parent.mkdir()
         toml_path.write_text(
             """
 [profiles.worker]
@@ -228,7 +232,11 @@ class TestAddWorkspaceToToml:
 
     def test_writes_workspace_profiles(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        toml_path = tmp_path / "config.toml"
+        defaults_path = tmp_path / "data" / "defaults" / "pynchy.toml"
+        defaults_path.parent.mkdir(parents=True)
+        defaults_path.write_text("", encoding="utf-8")
+        toml_path = tmp_path / "data" / "personalization" / "pynchy.toml"
+        toml_path.parent.mkdir()
         toml_path.write_text(
             """
 [profiles.pynchy-dev]
@@ -243,7 +251,11 @@ is_admin = true
 
 
 def test_update_profile_skill_policy_persists_grants_and_denials(tmp_path, monkeypatch):
-    toml_path = tmp_path / "config.toml"
+    defaults_path = tmp_path / "data" / "defaults" / "pynchy.toml"
+    defaults_path.parent.mkdir(parents=True)
+    defaults_path.write_text("", encoding="utf-8")
+    toml_path = tmp_path / "data" / "personalization" / "pynchy.toml"
+    toml_path.parent.mkdir()
     toml_path.write_text(
         """
 [profiles.pynchy-dev]

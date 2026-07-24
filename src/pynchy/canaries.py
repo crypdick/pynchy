@@ -307,7 +307,7 @@ def _code_revision() -> str:
 
 
 def _config_revision() -> str:
-    config_path = Path.cwd() / "config.toml"
+    config_path = Path.cwd() / "data" / "personalization" / "pynchy.toml"
     try:
         return hashlib.sha256(config_path.read_bytes()).hexdigest()[:16]
     except OSError:

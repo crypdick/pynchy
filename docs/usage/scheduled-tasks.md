@@ -40,14 +40,20 @@ see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-
 A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper workspace model override:
 
 ```toml
+# data/personalization/pynchy.toml
 [profiles.admin]
 is_admin = true
 
 [workspaces.admin]
 profiles = ["admin"]
 model = "chatgpt/gpt-5.3-codex-spark"
+```
 
-[jobs.daily-triage]
+```toml
+# data/personalization/automations/daily-triage.toml
+schema_version = 1
+
+[job]
 enabled = true
 schedule = "0 8 * * *"
 workspace = "admin"
@@ -72,7 +78,10 @@ Replace the `chat` value with the real Pynchy channel/topic ref for the deployme
 One-time agent jobs use `at` instead of `schedule`:
 
 ```toml
-[jobs.cancel-youtube-premium]
+# data/personalization/automations/cancel-youtube-premium.toml
+schema_version = 1
+
+[job]
 enabled = true
 at = "2026-07-08T18:30:00-07:00"
 workspace = "admin"
@@ -85,7 +94,10 @@ Use `interval_minutes` for config-backed interval jobs. An agent job can also
 run a host-side gate before creating its thread:
 
 ```toml
-[jobs.marketplace-poller]
+# data/personalization/automations/marketplace-poller.toml
+schema_version = 1
+
+[job]
 workspace = "marketplace-inbox-poller"
 interval_minutes = 30
 display_name = "marketplace inbox poller"
@@ -106,7 +118,10 @@ Set `agent = false` for a script that does not need an LLM but still belongs to
 a conversational workspace:
 
 ```toml
-[jobs.scheduler-watchdog]
+# data/personalization/automations/scheduler-watchdog.toml
+schema_version = 1
+
+[job]
 workspace = "cron"
 schedule = "0 23 * * *"
 display_name = "scheduler health watchdog"
@@ -125,14 +140,17 @@ the logical owner's profile for future replies. Successful output ending in
 
 Plugins can implement `pynchy_job_specs` to load jobs from another durable
 registry. Contributions use the same `JobConfig` fields and enter the same
-database and Temporal reconciliation paths as `[jobs.*]`. User config wins on
-name collisions. A plugin should store logical `workspace` owners, never chat
-JIDs or generated thread folder names.
+database and Temporal reconciliation paths as file-backed automations.
+Personalized config wins on name collisions. A plugin should store logical
+`workspace` owners, never chat JIDs or generated thread folder names.
 
 Host jobs use the reserved workspace name `host`:
 
 ```toml
-[jobs.backup-runtime-dbs]
+# data/personalization/automations/backup-runtime-dbs.toml
+schema_version = 1
+
+[job]
 enabled = true
 schedule = "0 3 * * *"
 workspace = "host"
@@ -256,12 +274,16 @@ Host tasks run shell commands on the host — no LLM, no container. Use them for
 
 Two ways to define them:
 
-### Config file (`config.toml`)
+### Automation file
 
-Static host jobs defined in config. Good for always-on maintenance jobs that are part of the deployment.
+Static host jobs belong in `data/personalization/automations/`. They are useful
+for always-on maintenance jobs that are part of the deployment.
 
 ```toml
-[jobs.backup_db]
+# data/personalization/automations/backup-db.toml
+schema_version = 1
+
+[job]
 enabled = true
 workspace = "host"
 schedule = "0 3 * * *"          # daily at 3am

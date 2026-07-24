@@ -1,10 +1,10 @@
 # ============================================================================
-# Pynchy Configuration — EXAMPLE
+# Pynchy Personalization — EXAMPLE
 # ============================================================================
-# Copy this file to config.toml and configure for your setup:
-#   cp config-examples/config.toml.EXAMPLE config.toml
+# Copy this directory into a private repository, then check that repository out
+# at data/personalization/.
 #
-# Most settings have sensible defaults and can be omitted.
+# Public defaults from data/defaults/pynchy.toml are inherited and can be omitted.
 # Environment variables override TOML values using __ as the nested delimiter:
 #   AGENT__DEFAULT_CORE=codex  →  [agent] default_core = "codex"
 # ============================================================================
@@ -16,7 +16,7 @@
 [agent]
 # Agent core: "openai" (default), "claude", "claude-cli", or "codex"
 # default_core = "openai"
-# Model names must match a route in litellm_config.yaml.
+# Model names must match a route in litellm.yaml.
 # model = "gpt-5.6-terra"
 # Codex CLI only. The selected model and account must support the effort.
 # model_reasoning_effort = "ultra"
@@ -27,7 +27,7 @@
 # Secrets (API keys, tokens, passwords) belong in .env, not here.
 # See config-examples/.env.EXAMPLE for the template.
 #
-# For the Codex core, configure a Codex-capable model in litellm_config.yaml.
+# For the Codex core, configure a Codex-capable model in litellm.yaml.
 # Pynchy routes Codex CLI model traffic through the gateway, not host Codex auth.
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,17 +69,13 @@
 # Gateway Configuration (LiteLLM)
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM API gateway provides credential isolation for containers.
-# Two modes: LiteLLM (recommended) or builtin (simple single-key proxy).
+# Pynchy discovers this repository's litellm.yaml by convention.
 
 [gateway]
-# Path to LiteLLM config file (enables LiteLLM mode)
 # API keys are referenced via os.environ/ in the YAML
 # and set in .env — pynchy forwards them into the LiteLLM container.
-# See config-examples/litellm_config.yaml.EXAMPLE.
-# If not set, uses builtin mode with credentials from [secrets].
-# litellm_config = "litellm_config.yaml"
 
-# Gateway port (set to 4000 when using LiteLLM mode)
+# Gateway port
 # port = 4000
 
 # LiteLLM master key and UI credentials → set in .env (see .env.EXAMPLE):
@@ -120,15 +116,7 @@
 # IPC file polling interval (seconds)
 # ipc_poll = 1.0
 
-# Host jobs (runs shell commands directly on host, no LLM/container loop)
-# [jobs.rebuild_container]
-# workspace = "host"
-# schedule = "0 5 * * *"
-# command = "./container/build.sh"
-# cwd = "."
-# timeout_seconds = 1200
-# quiet_on_success = true
-# enabled = true
+# Put host jobs in separate automations/*.toml files.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Queue Configuration
@@ -205,7 +193,7 @@
 # tools = ["browser"]
 # repo = ["crypdick/pynchy"]
 # is_admin = true
-# contains_secrets = true
+# contains_secrets = true  # pragma: allowlist secret
 # model = "chatgpt/gpt-5.3-codex"
 #
 # Semantic capability rules target a specific tool surface.
@@ -232,9 +220,11 @@
 # tools = []
 # repo = ["crypdick/pynchy"]
 # is_admin = false
-# contains_secrets = false
+# contains_secrets = false  # pragma: allowlist secret
 
 # Each [workspaces.<name>] selects one or more composable profiles.
+
+[workspaces.pynchy]
 
 # [workspaces.admin]
 # profiles = ["pynchy-admin"]
@@ -251,7 +241,7 @@
 # Example profile with Google MCP tool names:
 # [profiles.mycompany-worker]
 # tools = ["gdrive.mycompany", "gcal.mycompany"]
-# contains_secrets = true
+# contains_secrets = true  # pragma: allowlist secret
 
 # [tools."gdrive.mycompany"]
 # type = "mcp"
@@ -283,40 +273,16 @@
 # [tools.gog]
 # type = "builtin"
 # public_source = true
-# secret_data = true
+# secret_data = true  # pragma: allowlist secret
 # public_sink = true
 # dangerous_writes = true
 #
 # [profiles.google-workspace]
 # tools = ["gog"]
-# contains_secrets = true
+# contains_secrets = true  # pragma: allowlist secret
 
-# Daily Pynchy operations triage. Replace the chat ref with the explicit
-# Pynchy channel/topic that should receive the memo.
-# [jobs.daily-triage]
-# enabled = true
-# schedule = "0 8 * * *"
-# workspace = "admin"
-# prompt_file = "prompts/daily-triage.md"
-#
-# One-time agent job:
-# [jobs.cancel-youtube-premium]
-# enabled = true
-# at = "2026-07-08T18:30:00-07:00"
-# workspace = "admin"
-# prompt = """
-# Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
-# """
-#
-# Host job. "host" is a reserved workspace name for direct host execution.
-# [jobs.backup-runtime-dbs]
-# enabled = true
-# schedule = "0 3 * * *"
-# workspace = "host"
-# command = "scripts/backup_runtime_dbs.sh"
-# cwd = "."
-# timeout_seconds = 600
-# quiet_on_success = true
+# Define scheduled work in one automations/<name>.toml file per automation.
+# See automations/weekly-review.toml for the versioned document format.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Command Words (magic commands)
@@ -364,7 +330,7 @@
 # type = "caldav"
 # default_server = "work"  # which server when no prefix given
 # public_source = false
-# secret_data = false
+# secret_data = false  # pragma: allowlist secret
 # public_sink = false
 # dangerous_writes = false
 
@@ -413,7 +379,7 @@
 # [tools.playwright]
 # type = "mcp"
 # public_source = true
-# secret_data = false
+# secret_data = false  # pragma: allowlist secret
 # public_sink = true
 # dangerous_writes = true
 # [tools.playwright.mcp]
@@ -426,7 +392,7 @@
 # type = "builtin"
 # name = "caldav"
 # public_source = false
-# secret_data = false
+# secret_data = false  # pragma: allowlist secret
 # public_sink = false
 # dangerous_writes = false
 
@@ -434,7 +400,7 @@
 # [tools.slack_mcp_acme]
 # type = "mcp"
 # public_source = true
-# secret_data = true
+# secret_data = true  # pragma: allowlist secret
 # public_sink = true
 # dangerous_writes = true
 # [tools.slack_mcp_acme.mcp]
@@ -446,7 +412,7 @@
 # [tools."gdrive.mycompany"]
 # type = "mcp"
 # public_source = false
-# secret_data = true
+# secret_data = true  # pragma: allowlist secret
 # public_sink = false
 # dangerous_writes = false
 # [tools."gdrive.mycompany".mcp]

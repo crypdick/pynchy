@@ -12,7 +12,7 @@ Pynchy's built-in Slack channel plugin needs a bot token (`xoxb`), which means a
 
 You should already understand how pynchy manages MCP servers. If not, read the [MCP servers guide](../usage/mcp.md) first — especially the sections on `env_forward` and multi-tenant setup.
 
-## 1. Define the server in `config.toml`
+## 1. Define the server in `data/personalization/pynchy.toml`
 
 Each Slack workspace gets its own tool entry with its own token mapping:
 
@@ -153,13 +153,19 @@ The tool navigates to Slack using the saved session, extracts fresh tokens, and 
 For unattended operation, configure a periodic workspace that calls the tool on a schedule:
 
 ```toml
+# data/personalization/pynchy.toml
 [profiles.token-refresh]
 tools = ["slack_token_extractor"]
 
 [workspaces.token-refresh]
 profiles = ["token-refresh"]
+```
 
-[jobs.refresh-slack-tokens]
+```toml
+# data/personalization/automations/refresh-slack-tokens.toml
+schema_version = 1
+
+[job]
 enabled = true
 schedule = "0 4 * * 1"  # weekly, Monday 4am
 workspace = "token-refresh"

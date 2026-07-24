@@ -40,7 +40,9 @@ def test_dotenv_secret_names_do_not_become_schema_sections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "config.toml").write_text("", encoding="utf-8")
+    defaults = tmp_path / "data" / "defaults"
+    defaults.mkdir(parents=True)
+    (defaults / "pynchy.toml").write_text("", encoding="utf-8")
     (tmp_path / ".env").write_text(
         "\n".join(
             [
@@ -51,7 +53,6 @@ def test_dotenv_secret_names_do_not_become_schema_sections(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setitem(Settings.model_config, "toml_file", "config.toml")
     monkeypatch.setitem(Settings.model_config, "env_file", ".env")
 
     settings = Settings()

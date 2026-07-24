@@ -140,7 +140,7 @@ def _add_raw_repo_mount(
     is_admin: bool,
 ) -> None:
     # Admin groups get a read-write mount of the actual host repo root.
-    # This gives them direct access to config.toml, data/, other worktrees, etc.
+    # This gives them direct access to personalization, data/, other worktrees, etc.
     # without going through the git sync workflow.  The path is intentionally
     # alarming so agents default to their worktree for normal work.
     if not is_admin:

@@ -49,7 +49,7 @@ uv run pynchy control-plane bootstrap --rotate
 ```
 
 The server reads `PYNCHY_CONTROL_TOKEN` first, then the configured token file.
-Keep the token out of `config.toml`, shell history, URLs, and query strings. A
+Keep the token out of `pynchy.toml`, shell history, URLs, and query strings. A
 client can read a copied mode-`0600` token with `--token-file`; otherwise it reads
 `PYNCHY_CONTROL_TOKEN` and then `data/control-plane.token`.
 

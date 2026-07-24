@@ -9,6 +9,7 @@ Day-to-day operation of Pynchy — managing groups, scheduling tasks, and talkin
 - **Admin channel** — Your private channel (self-chat) for admin control; every other group is completely isolated
 - **[Persistent memory](memory.md)** — Agents save and recall facts across sessions using structured memory tools with ranked search (plugin-provided backend)
 - **[Scheduled tasks](scheduled-tasks.md)** — Recurring jobs that run the selected agent core and can message you back
+- **[Personalization repository](personalization.md)** — Keep settings, LiteLLM routes, skills, and automations in an independent private repository
 - **[Agent cores](agent-cores.md)** — Choose which LLM powers your agents — Claude SDK, OpenAI SDK, Codex CLI, or plugin-provided cores
 - **[Control plane](control-plane.md)** — Inspect local or remote operational state through fail-closed listeners and bearer authentication
 - **[Integrations](../integrations/index.md)** — Connect your workspaces to Google, GitHub, mail, Slack, Linear, and other external services
@@ -45,7 +46,8 @@ A normal message (no prefix) interrupts the active task — the container stops 
 ## Customizing
 
 Start conversationally, then put repeatable channel, workspace, and security
-policy in `config.toml` when you need it to survive restarts and deployments.
+policy in `data/personalization/pynchy.toml` when you need it to survive
+restarts and deployments.
 For example, you can ask Pynchy to help you:
 
 - "Change the trigger word to @Bob"
@@ -63,6 +65,7 @@ For example, you can ask Pynchy to help you:
 | [Workspace configuration](workspaces.md) | Compose profiles and bind workspaces to configured chats |
 | [Memory](memory.md) | Structured memory tools, file-based memory, conversation archives |
 | [Scheduled tasks](scheduled-tasks.md) | Task types, MCP tools, execution model |
+| [Personalization repository](personalization.md) | Layered settings, file-backed automations, custom skills, and CI validation |
 | [Agent cores](agent-cores.md) | LLM framework selection, LiteLLM gateway |
 | [Prompts](prompts.md) | System prompt extensions via profiles and workspaces |
 | [MCP servers](mcp.md) | Adding external tool servers, environment variables, multi-tenant setup |

@@ -20,7 +20,6 @@ from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
-    TomlConfigSettingsSource,
 )
 
 from pynchy.config import settings_validation
@@ -60,6 +59,7 @@ from pynchy.config.scheduler_models import (
 from pynchy.config.server import ServerConfig
 from pynchy.config.settings_sources import (
     FilteredDotenvSettingsSource,
+    PersonalizationSettingsSource,
     hermetic_settings_sources,
     hermetic_settings_sources_enabled,
 )
@@ -144,7 +144,6 @@ def _validate_owner_alias(
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        toml_file="config.toml",
         env_file=".env",
         env_nested_delimiter="__",
         extra="ignore",
@@ -389,14 +388,14 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Priority: init > env vars > .env > config.toml > file secrets."""
+        """Priority: init > env vars > .env > personalization > defaults > file secrets."""
         if hermetic_settings_sources_enabled():
             return (init_settings,)
         return (
             init_settings,
             env_settings,
             FilteredDotenvSettingsSource(dotenv_settings, settings_cls),
-            TomlConfigSettingsSource(settings_cls),
+            PersonalizationSettingsSource(settings_cls),
             file_secret_settings,
         )
 
@@ -448,13 +447,8 @@ class Settings(BaseSettings):
 
 
 def validate_settings_mapping(data: dict[str, Any]) -> Settings:
-    """Validate explicit settings data without reading env, dotenv, or config.toml."""
+    """Validate explicit settings data without reading ambient settings sources."""
     with hermetic_settings_sources(), warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"Config key `toml_file` is set in model_config",
-            category=UserWarning,
-        )
         return Settings(**data)
 
 

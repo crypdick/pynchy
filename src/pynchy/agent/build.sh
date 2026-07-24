@@ -153,7 +153,7 @@ echo "Image: ${IMAGE_NAME}:${TAG}"
 # Generate container plugin requirements from currently installed plugins.
 uv run python ./scripts/generate_plugin_requirements.py \
     --output ./requirements-plugins.txt \
-    --config "${PROJECT_ROOT}/config.toml"
+    --config "${PROJECT_ROOT}/data/personalization/pynchy.toml"
 
 export DOCKER_BUILDKIT=1
 $RUNTIME build -t "${IMAGE_NAME}:${TAG}" .

@@ -2,7 +2,8 @@
 
 Runs a LiteLLM proxy as a Docker container.  All LLM routing config
 (models, keys, budgets, load balancing) lives in the user-managed
-``litellm_config.yaml`` — pynchy doesn't translate or duplicate it.
+``data/personalization/litellm.yaml`` — Pynchy filters it into a generated
+runtime copy without modifying the source.
 
 Pynchy generates an ephemeral master key at startup and passes it to
 the container via ``LITELLM_MASTER_KEY``.  Agent containers authenticate
@@ -15,7 +16,7 @@ without URL changes.
 Env-var forwarding
 ~~~~~~~~~~~~~~~~~~
 
-At startup the gateway scans ``litellm_config.yaml`` for all
+At startup the gateway scans personalized ``litellm.yaml`` for all
 ``os.environ/VARNAME`` references and forwards matching host env vars
 into the Docker container via ``-e``.  The YAML is the single source of
 truth — add model entries there, set the corresponding vars in ``.env``,
@@ -143,7 +144,7 @@ class LiteLLMGateway:
     """Gateway backed by a LiteLLM proxy Docker container.
 
     Pynchy generates an ephemeral master key and injects it into the
-    container via ``LITELLM_MASTER_KEY``.  The litellm_config.yaml should
+    container via ``LITELLM_MASTER_KEY``. The personalized LiteLLM YAML should
     reference it::
 
         general_settings:

@@ -15,7 +15,8 @@ Any *two* are manageable. All three together means a prompt injection attack in 
 ## Four Properties Per Tool
 
 <!-- Source of truth: ServiceTrustConfig in src/pynchy/types.py — keep these properties/defaults in sync. -->
-Each configured tool declares four trust properties in `config.toml`:
+Each configured tool declares four trust properties in
+`data/personalization/pynchy.toml`:
 
 ```toml
 [tools.slack_mcp_acme]

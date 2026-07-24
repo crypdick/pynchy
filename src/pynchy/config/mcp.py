@@ -99,7 +99,7 @@ class McpServerConfig(BaseModel):
 
     # When True, mcp_manager auto-injects workspace=<group_folder> into kwargs.
     # This gives each workspace a separate server instance with workspace-scoped
-    # args, without requiring per-workspace config in config.toml.
+    # args, without requiring per-workspace config in pynchy.toml.
     inject_workspace: bool = False
 
     @field_validator("env_forward", mode="before")

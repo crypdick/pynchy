@@ -258,6 +258,7 @@ deduplicates against the workspace board, and creates up to three rich
 Select the Pynchy repository and Linear tool on a dedicated private workspace:
 
 ```toml
+# data/personalization/pynchy.toml
 [profiles.proactive-review]
 includes = ["base"]
 repo = "owner/pynchy"
@@ -265,12 +266,19 @@ tools = ["linear"]
 
 [workspaces.proactive-review]
 profiles = ["proactive-review"]
+```
 
-[jobs.pynchy-proactive-review]
+Copy the review prompt beside the automation file, then declare the schedule:
+
+```toml
+# data/personalization/automations/pynchy-proactive-review.toml
+schema_version = 1
+
+[job]
 enabled = true
 schedule = "0 10 * * 1"
 workspace = "proactive-review"
-prompt_file = "prompts/pynchy-proactive-review.md"
+prompt_file = "pynchy-proactive-review.md"
 ```
 
 The example runs each Monday at 10:00 in Pynchy's configured timezone. Linear

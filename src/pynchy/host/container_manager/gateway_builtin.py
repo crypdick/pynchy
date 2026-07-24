@@ -1,7 +1,8 @@
 """Builtin gateway — aiohttp reverse proxy for single-key setups.
 
-Used when ``litellm_config`` is not set in config.toml.  Reads keys from
-``[secrets]``.  Containers get the same env vars as LiteLLM mode
+Used as a component mode when ``litellm_config`` is unset. Normal Pynchy
+startup requires personalized LiteLLM configuration. Containers get the same
+environment variables as LiteLLM mode
 (``ANTHROPIC_BASE_URL``, ``OPENAI_BASE_URL``, etc.) so they work without
 URL changes.
 """
@@ -111,7 +112,7 @@ class BuiltinGateway:
     """Simple aiohttp reverse proxy for single-key setups.
 
     Used when ``litellm_config`` is not set.  Reads keys from
-    ``[secrets]`` in config.toml.
+    environment-backed secret settings.
     """
 
     def __init__(self, *, port: int, host: str, container_host: str) -> None:
@@ -235,7 +236,7 @@ class BuiltinGateway:
         if not self._credentials:
             logger.warning(
                 "Gateway has no LLM credentials — containers will fail to authenticate. "
-                "Configure [secrets].openai_api_key or [secrets].anthropic_api_key in config.toml."
+                "Configure SECRETS__OPENAI_API_KEY or SECRETS__ANTHROPIC_API_KEY in .env."
             )
 
         self._session = aiohttp.ClientSession(

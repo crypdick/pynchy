@@ -47,7 +47,7 @@ __all__ = [
 
 # Static registry of built-in plugins.
 # Each entry: (module_path, class_name, config_key)
-# config_key is checked against [plugins.<key>].enabled in config.toml.
+# config_key is checked against layered [plugins.<key>].enabled settings.
 _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
     ("pynchy.plugins.agent_cores.claude", "ClaudeAgentCorePlugin", "claude"),
     ("pynchy.plugins.agent_cores.claude_cli", "ClaudeCLIAgentCorePlugin", "claude-cli"),

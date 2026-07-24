@@ -1,11 +1,12 @@
 """LLM API Gateway — credential isolation for containers.
 
-Two modes, selected by ``[gateway].litellm_config`` in config.toml:
+Normal startup convention-wires the personalized LiteLLM source. Component
+callers can also select built-in mode:
 
 **LiteLLM mode** (recommended)
     Runs a LiteLLM proxy as a Docker container.  All LLM routing config
     (models, keys, budgets, load balancing) lives in the user-managed
-    ``litellm_config.yaml`` — pynchy doesn't translate or duplicate it.
+    ``data/personalization/litellm.yaml`` — Pynchy prepares a runtime copy.
 
 **Builtin mode** (default when LiteLLM is unconfigured)
     Simple aiohttp reverse proxy for single-key setups.  Used when
@@ -224,7 +225,7 @@ async def start_gateway(
     await gateway.start()
 
     # Sync MCP state to LiteLLM after gateway is ready (LiteLLM mode only).
-    # Collect plugin-provided MCP server specs and merge with config.toml.
+    # Collect plugin-provided MCP server specs and merge with personalized settings.
     plugin_mcp_servers, plugin_trust_defaults = collect_plugin_mcp_servers(plugin_manager)
     has_servers = (
         any(isinstance(tool, McpTool) for tool in s.tools.values())

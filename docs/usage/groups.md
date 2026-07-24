@@ -20,7 +20,7 @@ The admin channel is the admin/control group (typically your WhatsApp self-chat)
 | View and manage all tasks | Yes | Own group only |
 | Configure additional directory mounts | Yes | No |
 | Send messages to other chats | Yes | No |
-| Edit `config.toml` (mounted read-write) | Yes | No |
+| Edit the personalization repository through the project mount | Yes | No |
 | MCP service tools (calendar, etc.) | Auto-approved | Policy-gated |
 
 Non-admin groups can inherit profile `repo` entries, giving them read-write worktree mounts at `/workspace/repos/<owner>/<repo>`. Shared agent instructions are delivered via [prompts](prompts.md) rather than filesystem mounts. The host restricts IPC commands from non-admin groups (see [IPC Authorization](../architecture/security.md#4-ipc-authorization)).

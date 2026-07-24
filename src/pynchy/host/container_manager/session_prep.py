@@ -104,7 +104,7 @@ def sync_skills(
     denied_skill_names: list[str] | None = None,
     learned_skill_paths: list[Path] | None = None,
 ) -> None:
-    """Copy agent/skills/ and plugin skills into the session's skills directory.
+    """Copy configured, built-in, and plugin skills into the session directory.
 
     Args:
         session_dir: Path to the agent home directory for this session
@@ -116,8 +116,12 @@ def sync_skills(
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
 
-    skills_src = s.project_root / "src" / "pynchy" / "agent" / "skills"
-    _sync_builtin_skills(skills_src, skills_dst, workspace_skills)
+    for skills_src in (
+        s.project_root / "data" / "defaults" / "skills",
+        s.project_root / "data" / "personalization" / "skills",
+        s.project_root / "src" / "pynchy" / "agent" / "skills",
+    ):
+        _sync_builtin_skills(skills_src, skills_dst, workspace_skills)
     _sync_plugin_skills(skills_dst, plugin_manager, workspace_skills)
 
     desired_learned_skill_names = _selected_learned_skill_names(
@@ -190,7 +194,7 @@ def _sync_builtin_skill_dir(
         return
 
     dst_dir = skills_dst / skill_dir.name
-    if _is_learned_skill_copy(dst_dir):
+    if dst_dir.exists():
         shutil.rmtree(dst_dir)
     _copy_direct_skill_files(skill_dir, dst_dir)
 
@@ -290,18 +294,32 @@ def _is_learned_skill_copy(dst_dir: Path) -> bool:
 
 
 def _is_builtin_skill_source(skill_path: Path) -> bool:
-    builtin_skill = _builtin_skill_dir(skill_path.name)
-    if not builtin_skill.exists():
-        return False
-
-    try:
-        return skill_path.resolve() == builtin_skill.resolve()
-    except OSError:
-        return False
+    return any(
+        _same_existing_path(skill_path, builtin_skill)
+        for builtin_skill in _builtin_skill_dirs(skill_path.name)
+    )
 
 
 def _builtin_skill_dir(name: str) -> Path:
     return get_settings().project_root / "src" / "pynchy" / "agent" / "skills" / name
+
+
+def _builtin_skill_dirs(name: str) -> tuple[Path, ...]:
+    root = get_settings().project_root
+    return (
+        root / "data" / "defaults" / "skills" / name,
+        root / "data" / "personalization" / "skills" / name,
+        _builtin_skill_dir(name),
+    )
+
+
+def _same_existing_path(left: Path, right: Path) -> bool:
+    if not right.exists():
+        return False
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return False
 
 
 def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
@@ -336,7 +354,7 @@ def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path) -> bool:
     if any(path.name.startswith(".pynchy-") for path in dst_dir.iterdir()):
         return False
 
-    return not _builtin_skill_dir(skill_path.name).exists()
+    return not any(path.exists() for path in _builtin_skill_dirs(skill_path.name))
 
 
 def _selected_learned_skill_names(

@@ -220,7 +220,7 @@ class PynchySpec:
     def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         """Provide an MCP server specification.
 
-        Plugin-provided MCP servers are merged with config.toml definitions.
+        Plugin-provided MCP servers are merged with personalized definitions.
         Config.toml always wins if both define the same server name.
 
         Each contribution owns a name, parsed ``McpServerConfig``, and trust
@@ -243,8 +243,8 @@ class PynchySpec:
     def pynchy_job_specs(self) -> tuple[JobSpec, ...]:
         """Provide config-backed scheduled jobs from an external registry.
 
-        Each contribution carries a name and parsed ``JobConfig``; user
-        ``[jobs.*]`` declarations win on name collisions.
+        Each contribution carries a name and parsed ``JobConfig``;
+        personalized declarations win on name collisions.
         """
         raise NotImplementedError
 

@@ -1,4 +1,4 @@
-"""Typed TOML I/O helpers for ``config.toml``.
+"""Typed TOML I/O helpers for Pynchy settings.
 
 Writers should mutate a TOML document here, render it, and validate the rendered
 candidate through :class:`pynchy.config.settings.Settings` before writing. This
@@ -16,11 +16,15 @@ from typing import Any
 
 import tomlkit
 
+from pynchy.config.personalization import (
+    SETTINGS_FILENAME,
+    load_layered_settings_mapping,
+)
 from pynchy.config.settings import Settings, validate_settings_mapping
 
 
 def parse_settings_toml(text: str) -> Settings:
-    """Parse TOML text without reading env, dotenv, or config.toml sources."""
+    """Parse standalone TOML text without reading ambient settings sources."""
     data = tomllib.loads(text) if text.strip() else {}
     return validate_settings_mapping(data)
 
@@ -35,6 +39,17 @@ def mutate_config_toml(path: Path, mutate: Callable[[Any], None]) -> Settings:
     doc = tomlkit.parse(path.read_text(encoding="utf-8")) if path.exists() else tomlkit.document()
     mutate(doc)
     rendered = tomlkit.dumps(doc)
-    settings = parse_settings_toml(rendered)
+    if path.name == SETTINGS_FILENAME and path.parent.name == "personalization":
+        project_root = path.parent.parent.parent
+        personal_data = tomllib.loads(rendered) if rendered.strip() else {}
+        settings = validate_settings_mapping(
+            load_layered_settings_mapping(
+                project_root,
+                personalization_root=path.parent,
+                personalization_settings=personal_data,
+            )
+        )
+    else:
+        settings = parse_settings_toml(rendered)
     path.write_text(rendered, encoding="utf-8")
     return settings

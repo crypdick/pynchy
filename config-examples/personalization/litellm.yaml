@@ -1,6 +1,7 @@
 # LiteLLM Proxy Configuration — EXAMPLE
 # =======================================
-# Copy to litellm_config.yaml (project root) and fill in your API keys.
+# Copy this directory into your private personalization repository and fill in
+# the model routes. Secrets remain in Pynchy's root .env file.
 # This file is the single source of truth for LLM routing — pynchy reads
 # it but never modifies it.
 #
@@ -21,7 +22,7 @@
 # Docs: https://docs.litellm.ai/docs/proxy/configs
 # Wildcard routing: https://docs.litellm.ai/docs/wildcard_routing
 #
-# To enable: set gateway.litellm_config = "litellm_config.yaml" in config.toml
+# Pynchy discovers this file by convention; no path setting is needed.
 
 # ---------------------------------------------------------------------------
 # Model deployments
@@ -40,7 +41,7 @@ model_list:
       mode: responses
     litellm_params:
       model: "openai/gpt-5.5"
-      api_key: os.environ/OPENAI_API_KEY
+      api_key: os.environ/OPENAI_API_KEY  # pragma: allowlist secret
       budget_duration: 7d
       custom_llm_provider: openai
 
@@ -48,7 +49,7 @@ model_list:
   - model_name: "openai/*"
     litellm_params:
       model: "openai/*"
-      api_key: os.environ/OPENAI_API_KEY
+      api_key: os.environ/OPENAI_API_KEY  # pragma: allowlist secret
       budget_duration: 7d
       custom_llm_provider: openai
     model_info:
@@ -62,7 +63,7 @@ model_list:
   #     mode: responses
   #   litellm_params:
   #     model: "openai/gpt-5.1-codex"
-  #     api_key: os.environ/OPENAI_API_KEY
+  #     api_key: os.environ/OPENAI_API_KEY  # pragma: allowlist secret
   #     budget_duration: 7d
   #     custom_llm_provider: openai
 
@@ -90,7 +91,7 @@ model_list:
   # - model_name: "anthropic/*"
   #   litellm_params:
   #     model: "anthropic/*"
-  #     api_key: os.environ/ANTHROPIC_API_KEY
+  #     api_key: os.environ/ANTHROPIC_API_KEY  # pragma: allowlist secret
   #     budget_duration: 7d
   #     custom_llm_provider: anthropic
   #   model_info:
@@ -148,7 +149,7 @@ router_settings:
 # General settings
 # ---------------------------------------------------------------------------
 general_settings:
-  # Master key is set in config.toml [gateway].master_key and passed via env var.
+  # Master key is set as GATEWAY__MASTER_KEY in Pynchy's root .env.
   # Do NOT hardcode it here.
   master_key: os.environ/LITELLM_MASTER_KEY
 
@@ -162,7 +163,7 @@ general_settings:
   # public_routes:
   #   - "/*"  # All routes public (only use on private networks!)
 
-  # UI credentials are set in .env (GATEWAY__UI_PASSWORD) and config.toml
+  # UI credentials are set in .env (GATEWAY__UI_PASSWORD) and pynchy.toml
   # (gateway.ui_username). Pynchy passes them to LiteLLM as UI_USERNAME
   # and UI_PASSWORD env vars.
 

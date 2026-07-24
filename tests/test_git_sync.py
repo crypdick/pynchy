@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from conftest import NullIpcDeps, make_settings
 
-from pynchy.config.models import GatewayConfig
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.git_ops import host_notify_worktree_updates, sync_poll
 from pynchy.host.git_ops.repo import RepoContext
@@ -685,9 +684,10 @@ class TestCheckOriginDrift:
 
 class TestHashConfigFiles:
     def test_hash_config_files_detects_change(self, git_env: dict):
-        """Modifying config.toml should change the hash."""
+        """Modifying personalized settings should change the hash."""
         project = git_env["project"]
-        config_path = project / "config.toml"
+        config_path = project / "data" / "personalization" / "pynchy.toml"
+        config_path.parent.mkdir(parents=True)
 
         config_path.write_text("[agent]\nname = 'test'\n")
         hash1 = sync_poll.get_deploy_config_hash()
@@ -700,7 +700,8 @@ class TestHashConfigFiles:
     def test_hash_config_files_missing_file(self, git_env: dict):
         """Missing litellm config should produce a stable hash."""
         project = git_env["project"]
-        config_path = project / "config.toml"
+        config_path = project / "data" / "personalization" / "pynchy.toml"
+        config_path.parent.mkdir(parents=True)
         config_path.write_text("[agent]\nname = 'test'\n")
 
         hash1 = sync_poll.get_deploy_config_hash()
@@ -708,37 +709,29 @@ class TestHashConfigFiles:
 
         assert hash1 == hash2
 
-    def test_hash_uses_fresh_litellm_path_before_settings_reload(
-        self,
-        git_env: dict,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        """Changing the configured path must not invent drift after restart."""
+    def test_hash_includes_automation_bundle_files(self, git_env: dict):
+        """Prompt changes inside an automation bundle should trigger a restart."""
         project = git_env["project"]
-        old_litellm = project / "old-litellm.yaml"
-        new_litellm = project / "new-litellm.yaml"
-        old_litellm.write_text("model: old\n")
-        new_litellm.write_text("model: new\n")
-        (project / "config.toml").write_text(f'[gateway]\nlitellm_config = "{new_litellm}"\n')
-        stale_settings = make_settings(
-            project_root=project,
-            gateway=GatewayConfig(litellm_config=str(old_litellm)),
-        )
-        reloaded_settings = make_settings(
-            project_root=project,
-            gateway=GatewayConfig(litellm_config=str(new_litellm)),
-        )
-        monkeypatch.delenv("GATEWAY__LITELLM_CONFIG", raising=False)
+        automations = project / "data" / "personalization" / "automations"
+        automations.mkdir(parents=True)
+        prompt = automations / "weekly.md"
+        prompt.write_text("before", encoding="utf-8")
+        before = sync_poll.get_deploy_config_hash()
 
-        with patch(
-            "pynchy.host.git_ops.sync_poll.get_settings",
-            return_value=stale_settings,
-        ):
-            before_restart = sync_poll.get_deploy_config_hash()
-        with patch(
-            "pynchy.host.git_ops.sync_poll.get_settings",
-            return_value=reloaded_settings,
-        ):
-            after_restart = sync_poll.get_deploy_config_hash()
+        prompt.write_text("after", encoding="utf-8")
+        after = sync_poll.get_deploy_config_hash()
 
-        assert before_restart == after_restart
+        assert before != after
+
+    def test_hash_includes_public_defaults(self, git_env: dict):
+        project = git_env["project"]
+        defaults = project / "data" / "defaults"
+        defaults.mkdir(parents=True)
+        settings = defaults / "pynchy.toml"
+        settings.write_text("[agent]\nname = 'before'\n", encoding="utf-8")
+        before = sync_poll.get_deploy_config_hash()
+
+        settings.write_text("[agent]\nname = 'after'\n", encoding="utf-8")
+        after = sync_poll.get_deploy_config_hash()
+
+        assert before != after

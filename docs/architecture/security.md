@@ -111,7 +111,8 @@ for operator setup.
 
 Host-side service tools (calendar, Slack, browser, etc.) are gated by `SecurityPolicy`, which prevents the *lethal trifecta*: an agent with simultaneous access to **untrusted input**, **sensitive data**, and **untrusted output channels**.
 
-Each service declares four trust properties in `config.toml`:
+Each service declares four trust properties in
+`data/personalization/pynchy.toml`:
 
 <!-- Source of truth: ServiceTrustConfig in src/pynchy/types.py — keep these properties/defaults in sync. -->
 | Property | Question it answers |
@@ -339,7 +340,8 @@ An LLM API gateway runs on the host and proxies container API calls to real prov
 Container ──[gateway key]──► Host Gateway ──[real API key]──► Provider
 ```
 
-1. The built-in gateway reads provider credentials from `config.toml [secrets]`. LiteLLM resolves credentials from its own YAML and environment.
+1. LiteLLM resolves provider credentials from
+   `data/personalization/litellm.yaml` and the root `.env`.
 2. On startup, a random per-session ephemeral key (`gw-…`) is generated.
 3. Containers receive environment variables pointing to the gateway:
 
@@ -463,7 +465,7 @@ Channel messages can contain malicious instructions that attempt to manipulate C
 | Repo access | `/workspace/repos/<owner>/<repo>` (rw) | Via profile `repo` (worktree, rw) |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | System prompts | Scoped via config | Scoped via config |
-| `config.toml` | Mounted read-write | Not mounted |
+| Personalization files through the project mount | Read-write | Not mounted |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
 | MCP service tools | Auto-approved | Trust-gated (see [§5](#5-service-trust-policy-lethal-trifecta-defenses)) |

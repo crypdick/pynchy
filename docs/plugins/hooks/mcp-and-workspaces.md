@@ -82,6 +82,6 @@ def pynchy_job_specs(self) -> tuple[JobSpec, ...]:
 
 Plugin jobs enter the same `JobConfig` registry, validation, SQLite task
 records, Temporal schedules, derived-thread routing, and execution paths as
-`[jobs.*]`. User config wins on name collisions. Store a logical `workspace`;
-do not persist a chat JID or generated thread folder. See
+file-backed automations. Personalized config wins on name collisions. Store a
+logical `workspace`; do not persist a chat JID or generated thread folder. See
 [Scheduled tasks](../../usage/scheduled-tasks.md).

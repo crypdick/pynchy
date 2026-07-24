@@ -2,7 +2,7 @@
 
 Maps a GitHub slug (owner/repo) to its filesystem paths. Enables worktrees,
 sync loops, and mount logic to work identically for pynchy's own repo and any
-external repo configured under [repos."owner/repo"] in config.toml.
+external repo configured under [repos."owner/repo"] in layered settings.
 """
 
 from __future__ import annotations

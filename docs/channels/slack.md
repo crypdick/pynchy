@@ -5,7 +5,8 @@ Connect Pynchy to Slack channels and DMs through Slack Socket Mode.
 ## Set up Slack
 
 1. Create a Slack app with Socket Mode enabled.
-2. Add the bot and app token environment variable names to `config.toml`:
+2. Add the bot and app token environment variable names to
+   `data/personalization/pynchy.toml`:
 
    ```toml
    [connections.synapse]

@@ -177,7 +177,7 @@ async def reconcile_agent_jobs(
     settings: Settings,
     resolve_config: Callable[[str], ResolvedWorkspaceConfig | None],
 ) -> set[str]:
-    """Create or update scheduled tasks declared under [jobs.*]."""
+    """Create or update scheduled tasks from configured automation jobs."""
     desired_task_ids: set[str] = set()
     folder_to_group = {profile.folder: profile for profile in workspaces.values()}
 

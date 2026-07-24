@@ -6,8 +6,8 @@ This page covers the internal architecture of pynchy's MCP server management. Fo
 
 ```mermaid
 graph TB
-    Config["config.toml"] --> MCP["MCP Manager"]
-    LCFG["litellm_config.yaml"] --> LiteLLM["LiteLLM"]
+    Config["personalization/pynchy.toml"] --> MCP["MCP Manager"]
+    LCFG["personalization/litellm.yaml"] --> LiteLLM["LiteLLM"]
     MCP --> LiteLLM
     MCP -. "starts/stops managed runtimes" .-> MCPRuntime["MCP runtimes: Docker or host script"]
     MCPRuntime -. "HTTP endpoint" .-> LiteLLM

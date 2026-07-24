@@ -386,8 +386,8 @@ def write_env_file(
     if not env_vars:
         logger.warning(
             "No credentials found — containers will fail to authenticate. "
-            "Configure an LLM provider in litellm_config.yaml/.env or set "
-            "[secrets].openai_api_key / [secrets].anthropic_api_key in config.toml"
+            "Configure an LLM provider in data/personalization/litellm.yaml "
+            "and the root .env"
         )
         return None
 

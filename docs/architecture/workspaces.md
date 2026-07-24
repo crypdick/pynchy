@@ -12,7 +12,7 @@ category that physically contains them.
 
 A workspace spec declares which profiles a workspace selects. Profiles carry reusable defaults for admin status, repo mounts, model routing, selected tools, skills, and whether the workspace filesystem contains secrets. A workspace can override its model directly.
 
-At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. Config-backed jobs under `[jobs.*]` create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [prompts](../usage/prompts.md) rather than seeded files.
+At startup, Pynchy **reconciles** workspace specs against the database, creating configured chat roots when the channel plugin supports provisioning. File-backed automations create scheduled agent tasks or host cron jobs. Agent instructions are delivered via [prompts](../usage/prompts.md) rather than seeded files.
 
 Workspace specs can also declare named child threads. The reconciler creates
 or reuses each thread below its configured root, then registers a dynamic
@@ -48,23 +48,23 @@ never grants a semantic child the category's broader policy.
 
 ## Config Merging
 
-Workspace specs come from two sources: plugins and `config.toml`. When both define the same workspace folder, **user config always wins**.
+Workspace specs come from plugins and layered `pynchy.toml` settings. When both define the same workspace folder, **personalized config wins**.
 
 ```
 Plugin provides:   workspace + profile config
-User overrides:    [workspaces.same-folder] in config.toml
-Result:            User config takes priority
+User overrides:    [workspaces.same-folder] in data/personalization/pynchy.toml
+Result:            Personalized config takes priority
 ```
 
 This lets plugins provide sensible defaults while users retain full control.
 
 ## Reconciliation
 
-Scheduled-task definitions and run evidence live in the database, but the **source of truth is `config.toml`** (and plugin specs). Temporal owns future fire times, delayed one-shots, retries, and execution state. On every startup, `reconcile_workspaces()` syncs the declared config into the database:
+Scheduled-task definitions and run evidence live in the database, but the **source of truth is the personalization tree** (and plugin specs). Temporal owns future fire times, delayed one-shots, retries, and execution state. On every startup, `reconcile_workspaces()` syncs the declared config into the database:
 
-1. Merges plugin specs with `config.toml` workspaces
+1. Merges plugin specs with layered `pynchy.toml` workspaces
 2. Creates chat groups for workspaces missing database entries
-3. Creates or updates scheduled tasks from `[jobs.*]` agent jobs
+3. Creates or updates scheduled tasks from `automations/*.toml`
 4. Creates channel aliases across messaging platforms
 
 ### Root-to-thread migration safety
@@ -84,14 +84,17 @@ retires that registration.
 
 ### Automatic config-to-database sync
 
-For config-backed jobs, the reconciler compares the database row against `config.toml` on every startup. If any of these fields differ, it patches the database to match:
+For file-backed jobs, the reconciler compares the database row against the automation document on every startup. If any of these fields differ, it patches the database to match:
 
 - **`schedule`** — reconciles the Temporal Schedule; Temporal derives the next fire time
 - **`prompt`** — updates the prompt sent to the agent on each scheduled run
 - **delivery chat** — follows the target workspace's current registered JID
 - **`repo`** — updates the repo worktree mounts from the selected profiles
 
-Each scheduled run resolves the target workspace's current effective model. To change a schedule, prompt, repo mount, or model override, edit `config.toml` and restart the service. No manual database edits required.
+Each scheduled run resolves the target workspace's current effective model. To
+change a schedule or prompt, edit its automation file. To change a repo mount
+or model override, edit `data/personalization/pynchy.toml`. Restart the service
+afterward. No manual database edits are required.
 
 ## Workspace Config Fields
 

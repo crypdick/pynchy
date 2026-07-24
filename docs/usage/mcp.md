@@ -14,7 +14,7 @@ no display or you deliberately want the older headless behavior.
 
 ## Adding a server
 
-Define it in `config.toml`:
+Define it in `data/personalization/pynchy.toml`:
 
 ```toml
 [tools.playwright]
