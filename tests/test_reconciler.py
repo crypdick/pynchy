@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from freezegun import freeze_time
 
 from pynchy.config.models import OwnerConfig, WorkspaceConfig
 from pynchy.host.orchestrator.messaging.reconciler import reconcile_all_channels, reset_cooldowns
@@ -147,6 +149,93 @@ class TestInboundReconciliation:
 
         cursor = await get_channel_cursor("slack", "group@g.us", "inbound")
         assert cursor == "2024-06-01T12:00:00"
+
+    @pytest.mark.asyncio
+    async def test_successful_empty_initial_scan_persists_poll_start(self):
+        poll_started_at = datetime(2024, 6, 1, 12, tzinfo=UTC)
+        ch = _make_channel()
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+
+        with freeze_time(poll_started_at) as clock:
+            await reconcile_all_channels(deps)
+            assert (
+                await get_channel_cursor("slack", "group@g.us", "inbound")
+                == poll_started_at.isoformat()
+            )
+
+            clock.tick(delta=timedelta(hours=1))
+            reset_cooldowns()
+            await reconcile_all_channels(deps)
+
+        fetches = ch.fetch_inbound_since.await_args_list
+        assert fetches[0].args[1] == (poll_started_at - timedelta(hours=24)).isoformat()
+        assert fetches[1].args[1] == poll_started_at.isoformat()
+
+    @pytest.mark.asyncio
+    async def test_failed_initial_scan_keeps_retrying_without_a_cursor(self):
+        poll_started_at = datetime(2024, 6, 1, 12, tzinfo=UTC)
+        ch = _make_channel()
+        ch.fetch_inbound_since.side_effect = OSError("provider unavailable")
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+
+        with freeze_time(poll_started_at) as clock:
+            with pytest.raises(RuntimeError, match="OSError: provider unavailable"):
+                await reconcile_all_channels(deps)
+            clock.tick(delta=timedelta(hours=1))
+            with pytest.raises(RuntimeError, match="OSError: provider unavailable"):
+                await reconcile_all_channels(deps)
+
+        assert not await get_channel_cursor("slack", "group@g.us", "inbound")
+        fetches = ch.fetch_inbound_since.await_args_list
+        assert fetches[0].args[1] == (poll_started_at - timedelta(hours=24)).isoformat()
+        assert fetches[1].args[1] == (poll_started_at - timedelta(hours=23)).isoformat()
+
+    @pytest.mark.asyncio
+    async def test_message_arriving_during_empty_fetch_is_recovered_next_pass(self):
+        poll_started_at = datetime(2024, 6, 1, 12, tzinfo=UTC)
+        arrival = poll_started_at + timedelta(minutes=2)
+        msg = NewMessage(
+            id="arrived-during-fetch",
+            chat_jid="slack:C123",
+            sender="U1",
+            sender_name="Alice",
+            content="do not skip me",
+            timestamp=arrival.isoformat(),
+        )
+        ch = _make_channel()
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+        fetch_count = 0
+
+        with freeze_time(poll_started_at) as clock:
+
+            def fetch(_jid: str, cursor: str) -> InboundFetchResult:
+                nonlocal fetch_count
+                fetch_count += 1
+                if fetch_count == 1:
+                    clock.tick(delta=timedelta(minutes=5))
+                    return InboundFetchResult(messages=[])
+                messages = [msg] if cursor <= msg.timestamp else []
+                return InboundFetchResult(
+                    messages=messages,
+                    high_water_mark=msg.timestamp if messages else "",
+                )
+
+            ch.fetch_inbound_since.side_effect = fetch
+            await reconcile_all_channels(deps)
+            reset_cooldowns()
+            await reconcile_all_channels(deps)
+
+        deps.ingest_user_message.assert_awaited_once()
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == arrival.isoformat()
 
     @pytest.mark.asyncio
     async def test_workspace_created_during_ingress_waits_for_next_cycle(self):

@@ -49,8 +49,14 @@ class _ReconcileInboundRequest:
     canonical_jid: str
     target_jid: str
     group: WorkspaceProfile | None
-    inbound_cursor: str
+    inbound: _InboundCursor
     deps: ReconcilerDeps
+
+
+@dataclass(frozen=True)
+class _InboundCursor:
+    fetch_since: str
+    empty_fetch_cursor: str | None
 
 
 @dataclass(frozen=True)
@@ -100,9 +106,12 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
         step="fetch_inbound",
         channel=request.ch.name,
         jid=request.canonical_jid,
-        cursor=request.inbound_cursor[:30] if request.inbound_cursor else "none",
+        cursor=request.inbound.fetch_since[:30],
     )
-    result = await request.ch.fetch_inbound_since(request.target_jid, request.inbound_cursor)
+    result = await request.ch.fetch_inbound_since(
+        request.target_jid,
+        request.inbound.fetch_since,
+    )
 
     remote_messages = result.messages
     logger.debug(
@@ -117,9 +126,15 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
     # pages even when no user messages are found.
     new_inbound_cursor = (
         result.high_water_mark
-        if result.high_water_mark > request.inbound_cursor
-        else request.inbound_cursor
+        if result.high_water_mark > request.inbound.fetch_since
+        else request.inbound.fetch_since
     )
+    if (
+        not remote_messages
+        and not result.high_water_mark
+        and request.inbound.empty_fetch_cursor is not None
+    ):
+        new_inbound_cursor = request.inbound.empty_fetch_cursor
     new_inbound_cursor, recovered = await _ingest_remote_messages(
         request,
         remote_messages,
@@ -130,9 +145,9 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
         "reconciler_trace",
         step="cursor_advance",
         jid=request.canonical_jid,
-        old_cursor=request.inbound_cursor[:30] if request.inbound_cursor else "none",
+        old_cursor=request.inbound.fetch_since[:30],
         new_cursor=new_inbound_cursor[:30] if new_inbound_cursor else "none",
-        will_advance=new_inbound_cursor != request.inbound_cursor,
+        will_advance=new_inbound_cursor != request.inbound.fetch_since,
     )
     return new_inbound_cursor, recovered
 
@@ -299,14 +314,14 @@ async def _reconcile_channel_pair(
         target_jid=target_jid,
     )
 
-    inbound_cursor = await _inbound_cursor(ch.name, canonical_jid, now)
+    inbound = await _inbound_cursor(ch.name, canonical_jid, now)
     inbound_result = await _reconcile_inbound(
         _ReconcileInboundRequest(
             ch=ch,
             canonical_jid=canonical_jid,
             target_jid=target_jid,
             group=group,
-            inbound_cursor=inbound_cursor,
+            inbound=inbound,
             deps=deps,
         )
     )
@@ -322,7 +337,7 @@ async def _reconcile_channel_pair(
         _AdvancePairCursorsRequest(
             channel_name=ch.name,
             canonical_jid=canonical_jid,
-            inbound_cursor=inbound_cursor,
+            inbound_cursor=inbound.fetch_since,
             new_inbound_cursor=new_inbound_cursor,
             outbound_cursor=outbound_cursor,
             new_outbound_cursor=new_outbound_cursor,
@@ -333,18 +348,23 @@ async def _reconcile_channel_pair(
     return pair_recovered, pair_retried, pair_failure
 
 
-async def _inbound_cursor(channel_name: str, canonical_jid: str, now: datetime) -> str:
+async def _inbound_cursor(
+    channel_name: str, canonical_jid: str, poll_started_at: datetime
+) -> _InboundCursor:
     inbound_cursor = await get_channel_cursor(
         ChannelName(channel_name), ChatJid(canonical_jid), "inbound"
     )
     if inbound_cursor:
-        return inbound_cursor
+        return _InboundCursor(fetch_since=inbound_cursor, empty_fetch_cursor=None)
     # No cursor yet — channel was never reconciled (e.g. a
     # Slack-native workspace that was never reconciled).
     # Seed with a lookback so Socket Mode drops are recoverable
-    # from the first cycle onward.  The cursor advances naturally
-    # as messages are walked.
-    return (now - _INITIAL_LOOKBACK).isoformat()
+    # from the first cycle onward. A successful empty result records
+    # poll start so messages arriving during the fetch remain eligible.
+    return _InboundCursor(
+        fetch_since=(poll_started_at - _INITIAL_LOOKBACK).isoformat(),
+        empty_fetch_cursor=poll_started_at.isoformat(),
+    )
 
 
 async def _advance_pair_cursors(request: _AdvancePairCursorsRequest) -> None:
