@@ -90,3 +90,15 @@ def test_base_prompt_requires_live_skill_catalog_discovery() -> None:
     assert "before answering" in result
     assert "Finding a skill does not grant access" in result
     assert "Call `request_skill_access` only when the user asks" in result
+
+
+def test_base_prompt_distinguishes_blocking_questions_from_plain_text() -> None:
+    project_root = Path(__file__).parents[1]
+
+    result = read_prompts(["base"], project_root)
+
+    assert result is not None
+    assert "before you can continue the current task, call `ask_user`" in result
+    assert "Do not end the turn with a plain-text question" in result
+    assert "the current task is complete or the answer is optional" in result
+    assert "conversational, or rhetorical" in result
