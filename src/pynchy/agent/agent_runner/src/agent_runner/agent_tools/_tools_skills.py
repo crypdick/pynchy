@@ -65,7 +65,9 @@ def _skill_summary(skill_name: str, skill_dir: Path) -> str:
 
 
 def _search_stem(token: str) -> str:
-    """Normalize the narrow noun/gerund variants common in skill descriptions."""
+    """Normalize the narrow noun, gerund, and adjective variants used by skills."""
+    if token.endswith("al") and token[:-2].endswith("ion"):
+        token = token[:-2]
     for suffix in _SEARCH_SUFFIXES:
         stem = token.removesuffix(suffix)
         if stem != token and len(stem) >= _MIN_SEARCH_STEM_LENGTH:
@@ -77,20 +79,40 @@ def _search_tokens(text: str) -> list[str]:
     return _SEARCH_TOKEN_PATTERN.findall(text.casefold())
 
 
+def _minimum_search_matches(term_count: int) -> int:
+    """Keep short searches exact while allowing verbose queries some noise."""
+    if term_count <= 2:
+        return term_count
+    return (term_count + 1) // 2
+
+
+def _matched_search_terms(query_terms: list[str], searchable: str) -> int:
+    searchable_stems = {_search_stem(token) for token in _search_tokens(searchable)}
+    return sum(term in searchable or _search_stem(term) in searchable_stems for term in query_terms)
+
+
 def _matching_skills(query: str) -> list[tuple[str, str]]:
     query_terms = _search_tokens(query)
     if not query_terms:
         return []
-    matches: list[tuple[str, str]] = []
+    minimum_matches = _minimum_search_matches(len(query_terms))
+    scored_matches: list[tuple[int, str, str]] = []
     for name, skill_dir in _skill_dirs().items():
         summary = _skill_summary(name, skill_dir)
         searchable = summary.casefold()
-        searchable_stems = {_search_stem(token) for token in _search_tokens(searchable)}
-        if all(
-            term in searchable or _search_stem(term) in searchable_stems for term in query_terms
-        ):
-            matches.append((name, summary))
-    return matches[:_MAX_SEARCH_RESULTS]
+        matched_terms = _matched_search_terms(query_terms, searchable)
+        if matched_terms >= minimum_matches:
+            scored_matches.append((matched_terms, name, summary))
+    if not scored_matches:
+        return []
+
+    # Only return the strongest coverage tier. A verbose query may contain
+    # several generic qualifiers, so returning every partial match would bury
+    # the skill that matches its central capability among unrelated results.
+    best_score = max(score for score, _, _ in scored_matches)
+    return [(name, summary) for score, name, summary in scored_matches if score == best_score][
+        :_MAX_SEARCH_RESULTS
+    ]
 
 
 def _response_payload(response: list[TextContent]) -> dict[str, object] | None:

@@ -64,7 +64,44 @@ async def test_search_skills_matches_live_operations_morphology(
 
 @pytest.mark.asyncio
 @pytest.mark.action("skill.catalog.search")
-async def test_search_skills_requires_every_normalized_term(tmp_path: Path, monkeypatch) -> None:
+async def test_search_skills_matches_verbose_live_operations_query(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / "skills"
+    _write_skill(
+        root,
+        "agent-harness-operations",
+        "Inspect and operate the Pynchy agent harness, including service health and logs.",
+    )
+    _write_skill(
+        root,
+        "pynchy-operations",
+        "Safely inspect Pynchy service status and runtime reconciliation.",
+    )
+    _write_skill(
+        root,
+        "service-diagnostics",
+        "Monitor service status, logs, and diagnostics for an unrelated database.",
+    )
+    _write_skill(root, "pynchy-release-notes", "Read Pynchy release notes.")
+    monkeypatch.setenv("PYNCHY_SKILLS_ROOT", str(root))
+
+    result = await call_tool(
+        "search_skills",
+        {"query": "inspect Pynchy operations operational status service logs diagnostics"},
+    )
+
+    assert "agent-harness-operations" in result[0].text
+    assert "pynchy-operations" in result[0].text
+    assert "service-diagnostics" not in result[0].text
+    assert "pynchy-release-notes" not in result[0].text
+
+
+@pytest.mark.asyncio
+@pytest.mark.action("skill.catalog.search")
+async def test_search_skills_prefers_strongest_normalized_coverage(
+    tmp_path: Path, monkeypatch
+) -> None:
     root = tmp_path / "skills"
     _write_skill(
         root,
