@@ -29,7 +29,6 @@ from pynchy.types import (
     Channel,
     ChannelName,
     ChatJid,
-    InboundFetchResult,
     NewMessage,
     OutboundEvent,
     OutboundEventType,
@@ -91,12 +90,10 @@ def _should_skip_pair(ch: Channel, canonical_jid: str, now: datetime) -> bool:
     return now - _last_reconciled.get(key, _EPOCH) < RECONCILE_COOLDOWN
 
 
-async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, int] | None:
+async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, int]:
     """Fetch and ingest missed inbound messages.
 
-    Returns (new_inbound_cursor, recovered_count), or None if the fetch itself
-    failed (caller should skip outbound retry and the cooldown/cursor update
-    for this pair, so the next cycle retries without waiting out the cooldown).
+    Returns (new_inbound_cursor, recovered_count).
     """
     logger.debug(
         "reconciler_trace",
@@ -105,11 +102,7 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
         jid=request.canonical_jid,
         cursor=request.inbound_cursor[:30] if request.inbound_cursor else "none",
     )
-    result = await _fetch_inbound_result(
-        request.ch, request.target_jid, request.canonical_jid, request.inbound_cursor
-    )
-    if result is None:
-        return None
+    result = await request.ch.fetch_inbound_since(request.target_jid, request.inbound_cursor)
 
     remote_messages = result.messages
     logger.debug(
@@ -142,21 +135,6 @@ async def _reconcile_inbound(request: _ReconcileInboundRequest) -> tuple[str, in
         will_advance=new_inbound_cursor != request.inbound_cursor,
     )
     return new_inbound_cursor, recovered
-
-
-async def _fetch_inbound_result(
-    ch: Channel,
-    target_jid: str,
-    canonical_jid: str,
-    inbound_cursor: str,
-) -> InboundFetchResult | None:
-    try:
-        return await ch.fetch_inbound_since(target_jid, inbound_cursor)
-    except Exception as exc:  # noqa: BLE001, RUF100 - channel fetch is a remote boundary; treat failures as retryable skip.
-        logger.warning(
-            "fetch_inbound_since failed", channel=ch.name, jid=canonical_jid, error=str(exc)
-        )
-        return None
 
 
 async def _ingest_remote_messages(
@@ -227,11 +205,12 @@ async def _deliver_pending_outbound_row(
 
 async def _retry_outbound(
     ch: Channel, canonical_jid: str, target_jid: str, outbound_cursor: str
-) -> tuple[str, int]:
-    """Retry pending outbound deliveries. Returns (new_outbound_cursor, retried_count)."""
+) -> tuple[str, int, str | None]:
+    """Retry pending outbound deliveries and report an exhausted failure."""
     pending = await get_pending_outbound(ChannelName(ch.name), ChatJid(canonical_jid))
     new_outbound_cursor = outbound_cursor
     retried = 0
+    failure = None
     for row in pending:
         try:
             new_outbound_cursor = await _deliver_pending_outbound_row(
@@ -245,10 +224,11 @@ async def _retry_outbound(
                 "outbound retry failed", channel=ch.name, ledger_id=row.ledger_id, error=str(exc)
             )
             await mark_delivery_error(row.ledger_id, ch.name, str(exc))
+            failure = f"outbound retry: {type(exc).__name__}: {exc}"
             break  # preserve ordering — don't skip ahead
         else:
             retried += 1
-    return new_outbound_cursor, retried
+    return new_outbound_cursor, retried, failure
 
 
 async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
@@ -259,18 +239,33 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     now = datetime.now(UTC)
     recovered = 0
     retried = 0
+    failures: list[str] = []
     # A cycle's candidate set is immutable because ingress may register
     # dynamic thread workspaces during pair reconciliation.
     canonical_jids = tuple(deps.workspaces)
 
     for ch in deps.channels:
         for canonical_jid in canonical_jids:
-            pair_result = await _reconcile_channel_pair(deps, ch, canonical_jid, now)
+            try:
+                pair_result = await _reconcile_channel_pair(deps, ch, canonical_jid, now)
+            # allow: exception-handling - isolate remote pair failures until the pass is complete.
+            except Exception as exc:  # noqa: BLE001
+                failure = f"{ch.name}/{canonical_jid}: {type(exc).__name__}: {exc}"
+                failures.append(failure)
+                logger.warning(
+                    "Channel reconciliation pair failed",
+                    channel=ch.name,
+                    jid=canonical_jid,
+                    error=str(exc),
+                )
+                continue
             if pair_result is None:
                 continue
-            pair_recovered, pair_retried = pair_result
+            pair_recovered, pair_retried, pair_failure = pair_result
             recovered += pair_recovered
             retried += pair_retried
+            if pair_failure is not None:
+                failures.append(f"{ch.name}/{canonical_jid}: {pair_failure}")
 
     _log_reconciliation_summary(recovered, retried)
 
@@ -279,6 +274,10 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     pruned = await prune_stale_cursors(active_names)
     if pruned:
         logger.info("Pruned stale cursors", count=pruned)
+    if failures:
+        raise RuntimeError(
+            f"Channel reconciliation failed for {len(failures)} pair(s): {'; '.join(failures)}"
+        )
 
 
 async def _reconcile_channel_pair(
@@ -286,7 +285,7 @@ async def _reconcile_channel_pair(
     ch: Channel,
     canonical_jid: str,
     now: datetime,
-) -> tuple[int, int] | None:
+) -> tuple[int, int, str | None] | None:
     group = deps.workspaces.get(canonical_jid)
     if _should_skip_pair(ch, canonical_jid, now):
         return None
@@ -311,14 +310,12 @@ async def _reconcile_channel_pair(
             deps=deps,
         )
     )
-    if inbound_result is None:
-        return None
     new_inbound_cursor, pair_recovered = inbound_result
 
     outbound_cursor = await get_channel_cursor(
         ChannelName(ch.name), ChatJid(canonical_jid), "outbound"
     )
-    new_outbound_cursor, pair_retried = await _retry_outbound(
+    new_outbound_cursor, pair_retried, pair_failure = await _retry_outbound(
         ch, canonical_jid, target_jid, outbound_cursor
     )
     await _advance_pair_cursors(
@@ -331,8 +328,9 @@ async def _reconcile_channel_pair(
             new_outbound_cursor=new_outbound_cursor,
         )
     )
-    _last_reconciled[ch.name, canonical_jid] = now
-    return pair_recovered, pair_retried
+    if pair_failure is None:
+        _last_reconciled[ch.name, canonical_jid] = now
+    return pair_recovered, pair_retried, pair_failure
 
 
 async def _inbound_cursor(channel_name: str, canonical_jid: str, now: datetime) -> str:

@@ -1580,6 +1580,36 @@ class TestTemporalSchedulerRuntime:
         assert status["last_result"] == "completed"
 
     @pytest.mark.asyncio
+    async def test_run_channel_reconciliation_activity_records_failure(self, monkeypatch):
+        deps = NullSchedulerDeps()
+        fail_reconciliation = AsyncMock(
+            side_effect=RuntimeError("slack/group: history unavailable")
+        )
+
+        monkeypatch.setattr(
+            temporal_channel_reconciliation,
+            "reconcile_all_channels",
+            fail_reconciliation,
+        )
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="channel-reconcile-failed"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        with pytest.raises(RuntimeError, match="slack/group: history unavailable"):
+            await temporal_channel_reconciliation.run_channel_reconciliation()
+
+        fail_reconciliation.assert_awaited_once_with(deps)
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["last_workflow_id"] == "channel-reconcile-failed"
+        assert status["last_task_id"] == "channel-reconciliation"
+        assert status["last_result"] == "error"
+        assert status["last_error"] == "slack/group: history unavailable"
+
+    @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):
 
         temporal_task.status = "paused"
