@@ -10,7 +10,6 @@ import pynchy.config.prompts as prompt_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
 from pynchy.conversation.events import new_turn_id
-from pynchy.conversation.workspaces import conversation_id_from_folder
 from pynchy.host.container_manager import (
     OnOutput,
     resolve_agent_core,
@@ -23,11 +22,13 @@ from pynchy.host.git_ops.utils import count_unpushed_commits, is_repo_dirty
 from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
+    get_conversation_control_by_thread,
     set_conversation_session,
     set_session,
     update_in_flight_session,
 )
 from pynchy.types import (
+    ChatJid,
     ContainerInput,
     ContainerOutput,
     GroupFolder,
@@ -160,7 +161,10 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         is_admin=is_admin,
     )
     wrapped_on_output = session_tracking_output_handler(
-        request.deps, request.group.folder, request.on_output
+        request.deps,
+        request.group.folder,
+        request.chat_jid,
+        request.on_output,
     )
     system_notices = merged_system_notices(
         build_admin_system_notices(
@@ -239,6 +243,7 @@ async def write_container_snapshots(
 def session_tracking_output_handler(
     deps: _PreflightDeps,
     group_folder: str,
+    chat_jid: str,
     on_output: OnOutput | None,
 ) -> OnOutput:
     async def wrapped_on_output(output: ContainerOutput) -> None:
@@ -247,8 +252,13 @@ def session_tracking_output_handler(
         ) and group_folder not in deps.session_cleared:
             deps.sessions[group_folder] = session_id
             await set_session(GroupFolder(group_folder), SessionId(session_id))
-            if conversation_id := conversation_id_from_folder(group_folder):
-                await set_conversation_session(conversation_id, SessionId(session_id))
+            # Workspace folder slugs sanitize opaque conversation IDs and are not
+            # reversible. The exact durable identity belongs to the thread binding.
+            if binding := await get_conversation_control_by_thread(ChatJid(chat_jid)):
+                await set_conversation_session(
+                    binding.conversation_id,
+                    SessionId(session_id),
+                )
             await update_in_flight_session(group_folder, session_id)
         if on_output:
             await on_output(output)
