@@ -8,7 +8,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
@@ -35,6 +35,7 @@ _CODEX_SESSION_PREFIX = "codex:"
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 
+@runtime_checkable
 class HostProcessQueue(Protocol):
     """Queue operations that bridge a direct Temporal host process."""
 

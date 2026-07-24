@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
+from beartype import beartype
 from conftest import NullChannel, make_settings
 
 from pynchy.config.models import NotificationsConfig
@@ -21,6 +22,11 @@ if TYPE_CHECKING:
 
 _OLD_SHA = "a" * 40
 _NEW_SHA = "b" * 40
+
+
+def test_update_offer_answer_is_runtime_decoratable() -> None:
+    """The public update-answer boundary remains instrumented by Beartype."""
+    assert callable(beartype(update_offer.handle_update_offer_answer))
 
 
 class _InteractiveChannel(NullChannel):
