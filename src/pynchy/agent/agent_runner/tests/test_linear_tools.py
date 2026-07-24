@@ -19,14 +19,21 @@ async def test_linear_tool_contract_keeps_human_approval_out_of_agent_control() 
 
     assert "Human Approved" in (claim.description or "")
     assert move.inputSchema["properties"]["status"]["enum"] == ["agent_proposed"]
-    assert requested.inputSchema["required"] == ["title", "authorization_quote"]
+    assert requested.inputSchema["required"] == [
+        "title",
+        "exact_description",
+        "authorization_quote",
+    ]
     assert "current direct human message" in (requested.description or "")
     assert "not execution" in (requested.description or "")
+    assert "otherwise set it false" in (requested.description or "")
     exact_description = requested.inputSchema["properties"]["exact_description"]
     assert exact_description["type"] == "boolean"
-    assert exact_description["default"] is False
+    assert "default" not in exact_description
+    assert "Required explicit choice" in exact_description["description"]
     assert "byte-for-byte" in exact_description["description"]
     assert "direct human" in exact_description["description"]
+    assert "otherwise set false" in exact_description["description"]
     assert submit_plan.inputSchema["required"] == ["issue_id", "plan"]
     assert "does not authorize" in (submit_plan.description or "")
     assert "pull_request_url" in await_review.inputSchema["properties"]

@@ -35,7 +35,9 @@ register_ipc_tool(
     description=(
         "Create a Ready for Planning Linear item only when the current direct human message "
         "explicitly requests the work. Quote that full message exactly. This authorizes planning, "
-        "not execution; use linear_create_todo for an agent-originated proposal."
+        "not execution. Set exact_description true when that message requires the supplied "
+        "description byte-for-byte or forbids appended provenance; otherwise set it false. Use "
+        "linear_create_todo for an agent-originated proposal."
     ),
     input_schema={
         "type": "object",
@@ -44,11 +46,11 @@ register_ipc_tool(
             "description": {"type": "string"},
             "exact_description": {
                 "type": "boolean",
-                "default": False,
                 "description": (
-                    "Set true only when the current direct human explicitly requires the supplied "
-                    "description byte-for-byte. This omits issue-body workspace provenance; never "
-                    "use it for an agent-originated proposal."
+                    "Required explicit choice. Set true when the current direct human requires the "
+                    "supplied description byte-for-byte or forbids appended provenance; otherwise "
+                    "set false. True omits issue-body workspace provenance. Never use this tool "
+                    "for an agent-originated proposal."
                 ),
             },
             "priority": {
@@ -64,7 +66,7 @@ register_ipc_tool(
                 ),
             },
         },
-        "required": ["title", "authorization_quote"],
+        "required": ["title", "exact_description", "authorization_quote"],
         "additionalProperties": False,
     },
 )
