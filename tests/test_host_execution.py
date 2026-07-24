@@ -3,11 +3,17 @@
 from pathlib import Path
 
 import pytest
+from beartype import beartype
 from conftest import make_settings
 
 from pynchy.host.learning.paths import LearningPaths
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.host_execution import codex_thread_exists_in_host_runtime
+
+
+def test_host_agent_turn_request_is_runtime_decoratable() -> None:
+    """The public host-turn request boundary remains instrumented by Beartype."""
+    assert callable(beartype(host_execution.HostAgentTurnRequest))
 
 
 def _write_rollout(codex_home: Path, thread_id: str) -> None:

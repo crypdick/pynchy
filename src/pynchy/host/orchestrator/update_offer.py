@@ -13,7 +13,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these a
     Awaitable,
     Callable,
 )
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.git_ops.sync_poll import (
@@ -34,6 +34,7 @@ _REQUEST_PREFIX = "host-update:"
 _APPROVE_LABEL = "Fetch and upgrade"
 
 
+@runtime_checkable
 class UpdateOfferDeps(Protocol):
     """Capabilities required to handle an accepted update offer."""
 
