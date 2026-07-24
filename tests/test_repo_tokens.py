@@ -16,6 +16,7 @@ import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from conftest import make_settings
 from pydantic import SecretStr
 
@@ -45,7 +46,7 @@ def _fail(stderr: str = "error") -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess([], 1, stdout="", stderr=stderr)
 
 
-def _init_ready_repo(path: Path) -> None:
+def _init_ready_repo(path: Path, *, origin: str | None = None) -> None:
     path.mkdir(parents=True)
     assert run_git("init", "-b", "main", cwd=path).returncode == 0
     assert run_git("config", "user.email", "tests@example.invalid", cwd=path).returncode == 0
@@ -58,7 +59,7 @@ def _init_ready_repo(path: Path) -> None:
             "remote",
             "add",
             "origin",
-            f"https://github.com/{REPO_SLUG}",
+            origin or f"https://github.com/{REPO_SLUG}",
             cwd=path,
         ).returncode
         == 0
@@ -229,10 +230,20 @@ class TestTokenScrubbingInLogs:
 
 
 class TestEnsureRepoCloned:
-    def test_existing_repo_returns_true(self, tmp_path: Path):
+    @pytest.mark.parametrize(
+        "origin",
+        [
+            f"https://github.com/{REPO_SLUG}.git",
+            f"git@github.com:{REPO_SLUG}.git",
+            f"ssh://git@github.com/{REPO_SLUG}.git",
+        ],
+    )
+    def test_existing_repo_with_matching_github_origin_returns_true(
+        self, tmp_path: Path, origin: str
+    ):
         """A repository with HEAD and origin short-circuits without cloning."""
         repo_root = tmp_path / "repo"
-        _init_ready_repo(repo_root)
+        _init_ready_repo(repo_root, origin=origin)
         repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
 
         with patch("pynchy.host.git_ops.repo._clone_repo_to") as clone:
@@ -346,6 +357,37 @@ class TestEnsureRepoCloned:
         assert (recoveries[0] / "user-data.txt").read_text() == "preserve me\n"
         assert (repo_root / "README.md").read_text() == "ready\n"
 
+    def test_wrong_origin_auto_managed_checkout_is_recovered(self, tmp_path: Path):
+        repos_root = tmp_path / "repos"
+        repo_root = repos_root / "private-repo"
+        _init_ready_repo(
+            repo_root,
+            origin="https://github.com/other-owner/different-repo.git",
+        )
+        marker = repo_root / "wrong-repository.txt"
+        marker.write_text("preserve me\n")
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        settings = make_settings(repos=ReposConfig(root=repos_root))
+
+        def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+            _init_ready_repo(target)
+            return True
+
+        with (
+            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        ):
+            assert ensure_repo_cloned(repo_ctx) is True
+
+        recoveries = list(repos_root.glob(".private-repo.pynchy-recovery-*"))
+        assert len(recoveries) == 1
+        assert (recoveries[0] / marker.name).read_text() == "preserve me\n"
+        assert not (repo_root / marker.name).exists()
+
     def test_failed_recovery_leaves_invalid_checkout_untouched(self, tmp_path: Path):
         repos_root = tmp_path / "repos"
         repo_root = repos_root / "private-repo"
@@ -393,6 +435,53 @@ class TestEnsureRepoCloned:
 
         clone.assert_not_called()
         assert original.read_text() == "operator owned\n"
+
+    @pytest.mark.parametrize(
+        ("unsafe_origin", "expected_error"),
+        [
+            (
+                f"https://x-access-token:{SCOPED_CREDENTIAL}@github.com/{REPO_SLUG}.git",
+                "embeds credentials",
+            ),
+            (
+                f"ssh://{SCOPED_CREDENTIAL}@github.com/{REPO_SLUG}.git",
+                "unsupported SSH userinfo",
+            ),
+        ],
+    )
+    def test_unsafe_origin_is_rejected_without_mutating_explicit_checkout(
+        self,
+        tmp_path: Path,
+        unsafe_origin: str,
+        expected_error: str,
+    ):
+        repo_root = tmp_path / "operator-owned"
+        _init_ready_repo(repo_root, origin=unsafe_origin)
+        marker = repo_root / "operator-data.txt"
+        marker.write_text("operator owned\n")
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        settings = make_settings(
+            repos=ReposConfig(
+                root=tmp_path / "repos",
+                overrides={REPO_SLUG: RepoConfig(path=str(repo_root))},
+            )
+        )
+
+        with (
+            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
+            patch("pynchy.host.git_ops.repo.logger") as mock_logger,
+        ):
+            assert ensure_repo_cloned(repo_ctx) is False
+
+        clone.assert_not_called()
+        assert marker.read_text() == "operator owned\n"
+        assert SCOPED_CREDENTIAL not in str(mock_logger.error.call_args)
+        assert expected_error in str(mock_logger.error.call_args)
 
     def test_nested_directory_is_not_mistaken_for_a_repo_checkout(self, tmp_path: Path):
         parent_repo = tmp_path / "parent"

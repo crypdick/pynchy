@@ -126,6 +126,9 @@ def git_env(tmp_path: Path):
     with ExitStack() as stack:
         stack.enter_context(patch("pynchy.host.git_ops.utils.get_settings", return_value=s))
         stack.enter_context(patch("pynchy.config.get_settings", return_value=s))
+        # The filesystem origin exercises fetch/rebase mechanics; GitHub checkout
+        # identity coverage lives with repository provisioning tests.
+        stack.enter_context(patch("pynchy.host.git_ops.repo.ensure_repo_cloned", return_value=True))
         yield {
             "origin": origin,
             "project": project,

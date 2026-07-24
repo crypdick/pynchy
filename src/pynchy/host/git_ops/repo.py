@@ -8,12 +8,14 @@ external repo configured under [repos."owner/repo"] in layered settings.
 from __future__ import annotations
 
 import datetime
+import re
 import shutil
 import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+from urllib.parse import urlsplit
 
 import pynchy.config as pynchy_config
 from pynchy.config.models import (
@@ -23,6 +25,8 @@ from pynchy.logger import logger
 
 # Warn when a token expires within this many days
 _EXPIRY_WARNING_DAYS = 30
+_GITHUB_SCP_ORIGIN = re.compile(r"git@github\.com:(?P<path>[^?#]+)", re.IGNORECASE)
+_UNSUPPORTED_GITHUB_ORIGIN = "checkout origin URL is not a supported GitHub HTTPS or SSH URL"
 
 
 @dataclass(frozen=True)
@@ -125,7 +129,59 @@ def _path_present(path: Path) -> bool:
     return path.exists() or path.is_symlink()
 
 
-def _repo_readiness_error(repo_root: Path) -> str | None:
+def _github_origin_path(origin_url: str) -> tuple[str | None, str | None]:
+    """Parse a safe GitHub HTTPS or SSH origin into its repository path."""
+    value = origin_url.strip()
+    scp_match = _GITHUB_SCP_ORIGIN.fullmatch(value)
+    if scp_match is not None:
+        return scp_match.group("path"), None
+
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return None, _UNSUPPORTED_GITHUB_ORIGIN
+    scheme = parsed.scheme.casefold()
+    error: str | None = None
+    if scheme == "https":
+        if parsed.username is not None or parsed.password is not None:
+            error = "checkout origin URL embeds credentials"
+        expected_netloc = "github.com"
+    elif scheme == "ssh":
+        if parsed.password is not None or (parsed.username or "").casefold() != "git":
+            error = "checkout origin URL has unsupported SSH userinfo"
+        expected_netloc = "git@github.com"
+    else:
+        expected_netloc = ""
+        error = _UNSUPPORTED_GITHUB_ORIGIN
+    if error is None and (
+        parsed.netloc.casefold() != expected_netloc or parsed.query or parsed.fragment
+    ):
+        error = _UNSUPPORTED_GITHUB_ORIGIN
+    return (parsed.path.removeprefix("/"), None) if error is None else (None, error)
+
+
+def _origin_identity_error(origin_url: str, expected_slug: str) -> str | None:
+    """Return why a GitHub origin cannot represent the configured repository."""
+    repo_path, parse_error = _github_origin_path(origin_url)
+    if parse_error is not None or repo_path is None:
+        return parse_error or _UNSUPPORTED_GITHUB_ORIGIN
+
+    if repo_path.casefold().endswith(".git"):
+        repo_path = repo_path[:-4]
+    try:
+        expected_owner, expected_repo = _slug_to_parts(expected_slug)
+        actual_owner, actual_repo = _slug_to_parts(repo_path)
+    except ValueError:
+        return "checkout origin URL does not contain a GitHub owner/repository path"
+    if (actual_owner.casefold(), actual_repo.casefold()) != (
+        expected_owner.casefold(),
+        expected_repo.casefold(),
+    ):
+        return "checkout origin does not match configured repository"
+    return None
+
+
+def _repo_readiness_error(repo_root: Path, expected_slug: str) -> str | None:
     """Return why a checkout is unsafe for worktrees, or ``None`` when ready."""
     if not repo_root.is_dir():
         return "checkout path is not a directory"
@@ -151,7 +207,7 @@ def _repo_readiness_error(repo_root: Path) -> str | None:
     if origin.returncode != 0 or not origin.stdout.strip():
         detail = redact_git_diagnostic(origin.stderr or "")
         return detail or "checkout has no origin remote"
-    return None
+    return _origin_identity_error(origin.stdout, expected_slug)
 
 
 def _unique_sibling_path(repo_root: Path, marker: str) -> Path:
@@ -218,7 +274,7 @@ def _clone_repo_to(repo_ctx: RepoContext, target: Path) -> bool:
         )
         return False
 
-    readiness_error = _repo_readiness_error(target)
+    readiness_error = _repo_readiness_error(target, repo_ctx.slug)
     if readiness_error is not None:
         logger.error(
             "Cloned repo failed readiness checks",
@@ -274,7 +330,11 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     Explicit-path repositories remain operator-owned and recovery does not
     modify them.
     """
-    readiness_error = _repo_readiness_error(repo_ctx.root) if _path_present(repo_ctx.root) else None
+    readiness_error = (
+        _repo_readiness_error(repo_ctx.root, repo_ctx.slug)
+        if _path_present(repo_ctx.root)
+        else None
+    )
     if readiness_error is None and _path_present(repo_ctx.root):
         return True
 
