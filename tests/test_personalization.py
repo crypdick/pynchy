@@ -12,6 +12,7 @@ from pynchy.config.personalization import (
     validate_personalization_tree,
 )
 from pynchy.config.settings import Settings, validate_settings_mapping
+from pynchy.config.settings_sources import repository_settings_sources
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -48,7 +49,8 @@ def test_layers_defaults_personalization_and_environment(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENT__NAME", "Environment")
 
-    settings = Settings()
+    with repository_settings_sources(enabled=True):
+        settings = Settings()
 
     assert settings.agent.name == "Environment"
     assert settings.container.timeout_ms == 1000

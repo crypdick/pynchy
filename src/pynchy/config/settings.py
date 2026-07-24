@@ -62,6 +62,7 @@ from pynchy.config.settings_sources import (
     PersonalizationSettingsSource,
     hermetic_settings_sources,
     hermetic_settings_sources_enabled,
+    repository_settings_sources_enabled,
 )
 from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.config.workspace_layout import (
@@ -391,6 +392,13 @@ class Settings(BaseSettings):
         """Priority: init > env vars > .env > personalization > defaults > file secrets."""
         if hermetic_settings_sources_enabled():
             return (init_settings,)
+        if not repository_settings_sources_enabled():
+            return (
+                init_settings,
+                env_settings,
+                FilteredDotenvSettingsSource(dotenv_settings, settings_cls),
+                file_secret_settings,
+            )
         return (
             init_settings,
             env_settings,

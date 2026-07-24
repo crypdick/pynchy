@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 _HERMETIC_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
     "pynchy_hermetic_settings_sources", default=False
 )
+_REPOSITORY_SETTINGS_SOURCES: ContextVar[bool] = ContextVar(
+    "pynchy_repository_settings_sources", default=True
+)
 
 
 class FilteredDotenvSettingsSource(PydanticBaseSettingsSource):
@@ -62,6 +65,11 @@ def hermetic_settings_sources_enabled() -> bool:
     return _HERMETIC_SETTINGS_SOURCES.get()
 
 
+def repository_settings_sources_enabled() -> bool:
+    """Return whether repository-local files should contribute settings."""
+    return _REPOSITORY_SETTINGS_SOURCES.get()
+
+
 @contextmanager
 def hermetic_settings_sources() -> Iterator[None]:
     """Temporarily disable ambient settings sources."""
@@ -70,3 +78,13 @@ def hermetic_settings_sources() -> Iterator[None]:
         yield
     finally:
         _HERMETIC_SETTINGS_SOURCES.reset(token)
+
+
+@contextmanager
+def repository_settings_sources(*, enabled: bool) -> Iterator[None]:
+    """Temporarily include or exclude repository-local settings files."""
+    token = _REPOSITORY_SETTINGS_SOURCES.set(enabled)
+    try:
+        yield
+    finally:
+        _REPOSITORY_SETTINGS_SOURCES.reset(token)
