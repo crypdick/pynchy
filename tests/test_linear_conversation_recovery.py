@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from conftest import make_settings
+from freezegun import freeze_time
 from linear_webhook_test_support import (
     DELIVERY_ID,
     SIGNING_KEY,
@@ -106,18 +107,18 @@ async def test_http_startup_wakes_pending_linear_conversation_delivery(
         "pynchy.host.orchestrator.workspace_config.get_settings",
         lambda: settings,
     )
-    now = datetime.now(UTC)
-    body = payload(now=now)
+    received_at = datetime(2026, 7, 19, 12, tzinfo=UTC)
+    body = payload(now=received_at)
     raw_body, headers = signed_request(body)
     event = parse_linear_webhook(
         raw_body,
         headers,
         SIGNING_KEY,
-        now,
+        received_at,
         config=route_config(),
     )
     assert event.conversation is not None
-    await admit_webhook_receipt(_receipt(raw_body, now), None)
+    await admit_webhook_receipt(_receipt(raw_body, received_at), None)
     admission = await admit_conversation_delivery(
         ExternalDeliveryIdentity(
             provider=ExternalProvider("linear"),
@@ -142,7 +143,9 @@ async def test_http_startup_wakes_pending_linear_conversation_delivery(
     )
     client = TestClient(TestServer(app))
     folder = routed_conversation_folder("project", admission.conversation.id)
-    await client.start_server()
+    wake_time = datetime(2026, 7, 24, 7, 30, tzinfo=UTC)
+    with freeze_time(wake_time):
+        await client.start_server()
     try:
         assert len(harness.ingested) == 1
         resolved = load_resolved_config(folder)
@@ -152,6 +155,9 @@ async def test_http_startup_wakes_pending_linear_conversation_delivery(
         await client.close()
 
     message = harness.ingested[0]
+    advanced_cursor = datetime(2026, 7, 22, 12, tzinfo=UTC).isoformat()
+    assert received_at.isoformat() < advanced_cursor < message.timestamp
+    assert message.timestamp == wake_time.isoformat()
     assert message.metadata["conversation_id"] == admission.conversation.id
     assert message.metadata["conversation_claim_id"]
     assert load_resolved_config(folder) is None
