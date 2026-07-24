@@ -196,6 +196,40 @@ class TestInboundReconciliation:
 
         ch.fetch_inbound_since.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_aggregates_failed_pairs_after_healthy_pairs_finish(self):
+        failed = _make_channel(name="slack")
+        failed.fetch_inbound_since.side_effect = OSError("history unavailable")
+        also_failed = _make_channel(name="discord")
+        also_failed.fetch_inbound_since.side_effect = TimeoutError("history timed out")
+        healthy = _make_channel(
+            name="matrix",
+            high_water_mark="2024-06-01T12:00:00",
+        )
+        deps = _make_deps(
+            channels=[failed, also_failed, healthy],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+        for channel_name in ("slack", "discord", "matrix"):
+            await set_channel_cursor(
+                channel_name,
+                "group@g.us",
+                "inbound",
+                "2024-01-01T00:00:00",
+            )
+
+        with pytest.raises(RuntimeError) as raised:
+            await reconcile_all_channels(deps)
+
+        error = str(raised.value)
+        assert "failed for 2 pair(s)" in error
+        assert "slack/group@g.us: OSError: history unavailable" in error
+        assert "discord/group@g.us: TimeoutError: history timed out" in error
+        failed.fetch_inbound_since.assert_awaited_once()
+        also_failed.fetch_inbound_since.assert_awaited_once()
+        healthy.fetch_inbound_since.assert_awaited_once()
+        assert await get_channel_cursor("matrix", "group@g.us", "inbound") == "2024-06-01T12:00:00"
+
 
 # ---------------------------------------------------------------------------
 # Outbound retry
@@ -239,11 +273,33 @@ class TestOutboundRetry:
             workspaces={"group@g.us": TEST_GROUP},
         )
 
-        await reconcile_all_channels(deps)
+        with pytest.raises(
+            RuntimeError,
+            match=r"slack/group@g\.us: outbound retry: OSError: network down",
+        ):
+            await reconcile_all_channels(deps)
 
         # Still pending (error recorded, delivered_at still NULL)
         pending = await get_pending_outbound("slack", "group@g.us")
         assert len(pending) == 1
+
+    @pytest.mark.asyncio
+    async def test_failed_pair_can_recover_without_waiting_for_cooldown(self):
+        await record_outbound("group@g.us", "retry me", "broadcast", ["slack"])
+
+        ch = _make_channel()
+        ch.send_event.side_effect = [OSError("network down"), None]
+        deps = _make_deps(
+            channels=[ch],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+
+        with pytest.raises(RuntimeError, match="network down"):
+            await reconcile_all_channels(deps)
+        await reconcile_all_channels(deps)
+
+        assert ch.send_event.await_count == 2
+        assert not await get_pending_outbound("slack", "group@g.us")
 
     @pytest.mark.asyncio
     async def test_preserves_ordering_on_failure(self):
@@ -258,7 +314,11 @@ class TestOutboundRetry:
             workspaces={"group@g.us": TEST_GROUP},
         )
 
-        await reconcile_all_channels(deps)
+        with pytest.raises(
+            RuntimeError,
+            match=r"slack/group@g\.us: outbound retry: OSError: network down",
+        ):
+            await reconcile_all_channels(deps)
 
         # Only one send attempted (breaks after first failure)
         assert ch.send_event.await_count == 1
