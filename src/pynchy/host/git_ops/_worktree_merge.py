@@ -100,6 +100,16 @@ async def merge_worktree_with_policy(group_folder: str) -> None:
     from pynchy.host.git_ops.repo import (  # noqa: PLC0415, RUF100 - keep repo lookup lazy during git_ops package initialization.
         resolve_repos_for_group,
     )
+    from pynchy.host.orchestrator.workspace_config import (  # noqa: PLC0415, RUF100 - keep orchestrator policy lookup lazy during git_ops package initialization.
+        load_resolved_config,
+    )
+
+    resolved = load_resolved_config(group_folder)
+    # Direct host runs use their configured cwd and never provision a per-workspace
+    # worktree. A repo profile still describes the host run's repository scope, so
+    # repo resolution alone is not evidence that a worktree branch exists.
+    if resolved is None or resolved.execution_mode != "container":
+        return
 
     repo_contexts = resolve_repos_for_group(group_folder)
     if not repo_contexts:

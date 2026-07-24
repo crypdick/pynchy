@@ -17,6 +17,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
+from pynchy.config import WorkspaceConfig
+from pynchy.config.models import ProfileConfig
+from pynchy.conversation.models import ConversationId
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.git_ops import background_merge_worktree, merge_worktree_with_policy
 from pynchy.host.git_ops.repo import RepoContext
@@ -26,6 +30,11 @@ from pynchy.host.git_ops.sync import (
     resolve_git_policy,
 )
 from pynchy.host.git_ops.worktree import ensure_worktree
+from pynchy.host.orchestrator.workspace_config import (
+    RuntimeWorkspaceRestriction,
+    register_runtime_workspace_restriction,
+    unregister_runtime_workspace_restriction,
+)
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -437,6 +446,10 @@ class TestMergeWorktreeWithPolicy:
         mock_repo = MagicMock()
         with (
             patch(
+                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+                return_value=MagicMock(execution_mode="container"),
+            ),
+            patch(
                 "pynchy.host.git_ops.repo.resolve_repos_for_group",
                 return_value=[mock_repo],
             ),
@@ -448,11 +461,51 @@ class TestMergeWorktreeWithPolicy:
 
     async def test_no_repo_access_does_nothing(self):
         """Groups without repo_access skip entirely."""
-        with patch(
-            "pynchy.host.git_ops.repo.resolve_repos_for_group",
-            return_value=[],
+        with (
+            patch(
+                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
+                return_value=MagicMock(execution_mode="container"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[],
+            ),
         ):
             await merge_worktree_with_policy("no-repo")
+
+    async def test_routed_host_execution_skips_worktree_merge(self, tmp_path: Path):
+        """A routed host run does not probe worktree branches it never provisions."""
+        folder = routed_conversation_folder("admin", ConversationId("conv_test"))
+        settings = make_settings(
+            profiles={
+                "host-admin": ProfileConfig(
+                    repo="owner/repo",
+                    is_admin=True,
+                    execution_mode="host",
+                    cwd=str(tmp_path),
+                )
+            },
+            workspaces={"admin": WorkspaceConfig(profiles=["host-admin"])},
+        )
+        register_runtime_workspace_restriction(
+            folder,
+            RuntimeWorkspaceRestriction(parent_workspace="admin"),
+        )
+        try:
+            with (
+                patch(
+                    "pynchy.host.orchestrator.workspace_config.get_settings",
+                    return_value=settings,
+                ),
+                patch("pynchy.host.git_ops.repo.resolve_repos_for_group") as resolve_repos,
+                patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as merge,
+            ):
+                await merge_worktree_with_policy(folder)
+        finally:
+            unregister_runtime_workspace_restriction(folder)
+
+        resolve_repos.assert_not_called()
+        merge.assert_not_called()
 
 
 class TestBackgroundMergePolicy:
