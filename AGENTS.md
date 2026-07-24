@@ -37,7 +37,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | `prompts/` | System prompt markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
 | `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
-| `backlog/TODO.md` | Work item index — one-line items linking to plan files in status folders |
+| [Linear task tracking](docs/integrations/linear.md) | Canonical repository work items, plans, and approval state |
 
 ## Detailed Guides
 

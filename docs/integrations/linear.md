@@ -382,7 +382,8 @@ workspace and every workspace member as trusted can configure
 `public_sink = false`. Workspace security policy can still require approval
 before agents use the tool.
 
-## Backlog migration
+## Repository work items
 
-This integration only adds the Linear task-tracking capability. Migrating
-`backlog/TODO.md` and its plan files into Linear remains separate follow-up work.
+Linear holds the canonical repository work items, plans, and approval state.
+The repository does not retain a separate file-backed backlog. This does not
+change the runtime `todo ...` fallback for workspaces without Linear.
