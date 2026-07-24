@@ -545,6 +545,47 @@ class TestResolveAllInstancesPortOffset:
         assert list(state.instances) == ["linear"]
         assert state.workspace_instances == {"code-improver": ["linear"]}
 
+    def test_profile_tools_are_resolved_for_semantic_workspace(self):
+        settings = validate_settings_mapping(
+            {
+                "profiles": {
+                    "base": {"tools": ["linear"]},
+                    "pynchy-dev": {"includes": ["base"]},
+                },
+                "workspaces": {
+                    "admin": {
+                        "scopes": [
+                            {
+                                "workspace": "pynchy-dev",
+                                "profiles": ["pynchy-dev"],
+                            }
+                        ]
+                    }
+                },
+                "tools": {
+                    "linear": {
+                        "type": "mcp",
+                        "mcp": {
+                            "runtime": "script",
+                            "command": "uv",
+                            "port": 8474,
+                            "transport": "streamable_http",
+                            "inject_workspace": True,
+                        },
+                    }
+                },
+            }
+        )
+
+        state = resolve_all_instances(settings, merged_mcp_servers(settings, {}))
+
+        assert list(state.workspace_instances) == ["pynchy-dev"]
+        instance_id = state.workspace_instances["pynchy-dev"][0]
+        instance = state.instances[instance_id]
+        assert instance.server_name == "linear"
+        assert instance.kwargs == {"workspace": "pynchy-dev"}
+        assert instance.port == 8474
+
     def test_linear_mcp_requires_explicit_tool_selection_with_api_key(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
         settings = validate_settings_mapping(

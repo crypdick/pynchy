@@ -264,7 +264,9 @@ def resolve_all_instances(
     port_counters: dict[str, int] = {}
     assigned_ports: set[int] = set()
 
-    for folder in settings.workspaces:
+    # Semantic child workspaces own policy independently from their physical
+    # roots, so they must receive their own selected MCP instances too.
+    for folder in settings.workspace_names():
         servers = resolve_workspace_servers(settings, all_servers, folder)
         if not servers:
             continue
