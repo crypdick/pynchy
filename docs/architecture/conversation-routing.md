@@ -65,6 +65,11 @@ head gets claimed again before later deliveries. Claims referenced by surviving
 turns stay claimed until those turns resume. An idle conversation carries no
 claim.
 
+When an orphaned delivery wakes again, its local message receives the current
+wake timestamp. The durable delivery ledger retains the original provider
+receipt time and FIFO sequence; reusing that old time in the message table could
+place the recovered input behind an already-advanced chat cursor.
+
 Cursor advancement is a separate provider concern. A polling adapter commits
 its continuation cursor only after it has validated the whole page and durably
 admitted every eligible delivery. Receipt replay repairs a crash between receipt

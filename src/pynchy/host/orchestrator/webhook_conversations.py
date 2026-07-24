@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from pynchy.conversation.dispatch import (
@@ -257,7 +258,10 @@ class WebhookConversationDispatcher:
             sender=f"{delivery.identity.provider}-webhook",
             sender_name=delivery.identity.provider.title(),
             content=prompt,
-            timestamp=delivery.received_at,
+            # Recovery can wake a durable delivery after this chat's message
+            # cursor has passed its provider receipt time. Stamp the local wake
+            # so the ordinary ingestion loop cannot skip the recovered message.
+            timestamp=datetime.now(UTC).isoformat(),
             is_from_me=False,
             metadata={
                 "authenticated_external_route": True,
