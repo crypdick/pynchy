@@ -7,11 +7,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 from conftest import make_settings
+from temporalio.exceptions import ApplicationError
 
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 from pynchy.config.models import NotificationsConfig
 from pynchy.host.git_ops import sync_poll
+from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.temporal import git_sync
+from pynchy.host.orchestrator.temporal.runtime_state import get_temporal_scheduler_status
 from pynchy.state import (
     claim_deployment,
     complete_deployment,
@@ -64,7 +67,7 @@ async def test_host_git_sync_skips_the_hermetic_runtime(
     recorded: list[tuple[str, str]] = []
     monkeypatch.setattr(
         git_sync,
-        "_record_activity_result",
+        "_record_tracked_activity_result",
         lambda task_id, result: recorded.append((task_id, result)),
     )
 
@@ -163,12 +166,95 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
     recorded: list[tuple[str, str]] = []
     monkeypatch.setattr(
         git_sync,
-        "_record_activity_result",
+        "_record_tracked_activity_result",
         lambda task_id, result: recorded.append((task_id, result)),
     )
 
     assert await git_sync.run_host_git_sync() == "idle"
     assert recorded == [(git_sync.HOST_GIT_SYNC_ID, "idle")]
+
+
+async def test_external_git_sync_unavailable_fails_temporal_and_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    slug = "owner/unavailable"
+    repo_ctx = RepoContext(
+        slug=slug,
+        root=tmp_path / "repo",
+        worktrees_dir=tmp_path / "worktrees",
+    )
+    diagnostic = "git ls-remote origin refs/heads/main failed with exit 128: access denied"
+    monkeypatch.setattr(git_sync, "get_repo_context", lambda _slug: repo_ctx)
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", object)
+    monkeypatch.setattr(git_sync, "git_env_with_token", lambda _slug: None)
+    monkeypatch.setattr(
+        git_sync,
+        "probe_origin_main_sha",
+        lambda _root, _env: sync_poll.GitOriginProbe(sha=None, error=diagnostic),
+    )
+
+    with pytest.raises(ApplicationError) as raised:
+        await git_sync.run_external_git_sync(slug)
+
+    assert raised.value.type == "ExternalGitSyncUnavailable"
+    assert raised.value.non_retryable
+    status = get_temporal_scheduler_status()
+    task_id = f"{git_sync.EXTERNAL_GIT_SYNC_PREFIX}{slug}"
+    assert status["last_task_id"] == task_id
+    assert status["last_result"] == "unavailable"
+    assert status["last_error"] == f"External git sync unavailable for {slug}: {diagnostic}"
+    assert status["tracked_results"][task_id]["result"] == "unavailable"
+    assert status["tracked_results"][task_id]["error"] == status["last_error"]
+
+
+async def test_external_git_sync_update_failure_fails_temporal_and_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    await init_test_database()
+    slug = "owner/sync-failure"
+    repo_ctx = RepoContext(
+        slug=slug,
+        root=tmp_path / "repo",
+        worktrees_dir=tmp_path / "worktrees",
+    )
+    diagnostic = "git fetch origin failed with exit 128: access denied"
+    monkeypatch.setattr(git_sync, "get_repo_context", lambda _slug: repo_ctx)
+    monkeypatch.setattr(git_sync, "_require_scheduler_deps", object)
+    monkeypatch.setattr(git_sync, "git_env_with_token", lambda _slug: None)
+    monkeypatch.setattr(
+        git_sync,
+        "_load_external_origin",
+        AsyncMock(return_value="old-origin"),
+    )
+    monkeypatch.setattr(
+        git_sync,
+        "probe_origin_main_sha",
+        lambda _root, _env: sync_poll.GitOriginProbe(sha="new-origin"),
+    )
+    monkeypatch.setattr(
+        git_sync,
+        "host_update_main_result",
+        lambda _root, _env: sync_poll.GitUpdateResult(
+            succeeded=False,
+            error=diagnostic,
+        ),
+    )
+
+    with pytest.raises(ApplicationError) as raised:
+        await git_sync.run_external_git_sync(slug)
+
+    assert raised.value.type == "ExternalGitSyncFailed"
+    assert raised.value.non_retryable
+    status = get_temporal_scheduler_status()
+    task_id = f"{git_sync.EXTERNAL_GIT_SYNC_PREFIX}{slug}"
+    assert status["last_task_id"] == task_id
+    assert status["last_result"] == "sync_failed"
+    assert status["last_error"] == f"External git sync sync failed for {slug}: {diagnostic}"
+    assert status["tracked_results"][task_id]["result"] == "sync_failed"
+    assert status["tracked_results"][task_id]["error"] == status["last_error"]
 
 
 async def test_origin_drift_offers_update_without_changing_checkout_by_default(

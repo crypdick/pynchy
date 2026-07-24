@@ -6,9 +6,10 @@ import asyncio
 import json
 import os
 from dataclasses import asdict
-from typing import cast
+from typing import NoReturn, cast
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from pynchy.config import get_settings
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates, last_notified_sha
@@ -21,7 +22,8 @@ from pynchy.host.git_ops.sync_poll import (
     get_deploy_config_hash,
     get_local_head_sha,
     host_get_origin_main_sha,
-    host_update_main,
+    host_update_main_result,
+    probe_origin_main_sha,
 )
 from pynchy.host.git_ops.utils import git_env_with_token
 from pynchy.host.orchestrator.adapters import SessionManager, resolve_admin_notification_jid
@@ -31,7 +33,7 @@ from pynchy.host.orchestrator.temporal.deploy import (
     rollback_and_report_failure,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
-    _record_activity_result,
+    _record_tracked_activity_result,
     _require_scheduler_deps,
 )
 from pynchy.logger import logger
@@ -193,7 +195,7 @@ async def run_host_git_sync() -> str:
         # The hermetic runtime owns its process lifecycle directly. Its
         # generated config is expected to change across feature work, so the
         # production deploy handoff would SIGTERM an unsupervised test process.
-        _record_activity_result(HOST_GIT_SYNC_ID, "skipped")
+        _record_tracked_activity_result(HOST_GIT_SYNC_ID, "skipped")
         return "skipped"
 
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="host_git_sync")
@@ -226,7 +228,7 @@ async def run_host_git_sync() -> str:
             await advance_deployment_baseline(DeployRevision(state.deployed_sha, state.config_hash))
         await _save_host_state(state)
 
-    _record_activity_result(HOST_GIT_SYNC_ID, result)
+    _record_tracked_activity_result(HOST_GIT_SYNC_ID, result)
     return result
 
 
@@ -238,39 +240,67 @@ async def _save_external_origin(repo_slug: str, origin_sha: str) -> None:
     await set_router_state(f"{_EXTERNAL_STATE_PREFIX}{repo_slug}", origin_sha)
 
 
+def _raise_external_git_sync_failure(
+    repo_slug: str,
+    *,
+    result: str,
+    error_type: str,
+    diagnostic: str,
+) -> NoReturn:
+    task_id = f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}"
+    error = f"External git sync {result.replace('_', ' ')} for {repo_slug}: {diagnostic}"
+    logger.warning(
+        "External git sync failed",
+        slug=repo_slug,
+        result=result,
+        error=diagnostic,
+    )
+    _record_tracked_activity_result(task_id, result, error)
+    raise ApplicationError(error, type=error_type, non_retryable=True)
+
+
 @activity.defn(name="run_external_git_sync")
 async def run_external_git_sync(repo_slug: str) -> str:
     """Run one external-repo sync poll through Temporal."""
     repo_ctx = get_repo_context(repo_slug)
     if repo_ctx is None:
-        _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "skipped")
+        _record_tracked_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "skipped")
         return "skipped"
 
     deps = _TemporalGitSyncDeps(_require_scheduler_deps(), reason="external_git_sync")
     env = git_env_with_token(repo_slug)
-    current_origin = await asyncio.to_thread(host_get_origin_main_sha, repo_ctx.root, env)
-    if not current_origin:
-        _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "unavailable")
-        return "unavailable"
+    probe = await asyncio.to_thread(probe_origin_main_sha, repo_ctx.root, env)
+    if probe.sha is None:
+        _raise_external_git_sync_failure(
+            repo_slug,
+            result="unavailable",
+            error_type="ExternalGitSyncUnavailable",
+            diagnostic=probe.error or "origin/main did not return a revision",
+        )
+    current_origin = probe.sha
 
     last_origin = await _load_external_origin(repo_slug)
     if not last_origin:
         await _save_external_origin(repo_slug, current_origin)
-        _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "initialized")
+        _record_tracked_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "initialized")
         return "initialized"
     if current_origin == last_origin:
-        _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "idle")
+        _record_tracked_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "idle")
         return "idle"
 
-    updated = await asyncio.to_thread(host_update_main, repo_ctx.root, env)
-    if not updated:
-        _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "sync_failed")
-        return "sync_failed"
+    update = await asyncio.to_thread(host_update_main_result, repo_ctx.root, env)
+    if not update.succeeded:
+        _raise_external_git_sync_failure(
+            repo_slug,
+            result="sync_failed",
+            error_type="ExternalGitSyncFailed",
+            diagnostic=update.error or "repository update failed without a diagnostic",
+        )
 
     await _save_external_origin(repo_slug, current_origin)
     new_head = await asyncio.to_thread(get_local_head_sha, repo_ctx.root)
     if last_notified_sha.get(str(repo_ctx.root), "") != new_head:
         await host_notify_worktree_updates(None, deps, repo_ctx)
 
-    _record_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "synced")
+    _record_tracked_activity_result(f"{EXTERNAL_GIT_SYNC_PREFIX}{repo_slug}", "synced")
     return "synced"

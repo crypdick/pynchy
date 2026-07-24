@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -20,6 +20,7 @@ class TemporalSchedulerStatusSnapshot:
     last_started_at: str | None = None
     last_completed_at: str | None = None
     last_error: str | None = None
+    tracked_results: dict[str, TemporalTrackedActivitySnapshot] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,17 @@ class TemporalActivityInfo:
     workflow_id: str | None
     workflow_run_id: str | None = None
     attempt: int | None = None
+
+
+@dataclass(frozen=True)
+class TemporalTrackedActivitySnapshot:
+    """Latest status retained for an explicitly tracked recurring activity."""
+
+    workflow_id: str | None
+    workflow_run_id: str | None
+    result: str
+    completed_at: str
+    error: str | None
 
 
 @dataclass
@@ -91,6 +103,33 @@ def _record_activity_result(task_id: str, result: str, error: str | None = None)
         last_result=result,
         last_completed_at=_utc_timestamp(),
         last_error=error,
+    )
+
+
+def _record_tracked_activity_result(task_id: str, result: str, error: str | None = None) -> None:
+    """Record an activity globally and retain its latest per-task health."""
+    try:
+        info = parse_temporal_activity_info(activity.info())
+    except RuntimeError:
+        info = TemporalActivityInfo(workflow_id=None)
+    completed_at = _utc_timestamp()
+    tracked_results = {
+        **_state.temporal_scheduler_status.tracked_results,
+        task_id: TemporalTrackedActivitySnapshot(
+            workflow_id=info.workflow_id,
+            workflow_run_id=info.workflow_run_id,
+            result=result,
+            completed_at=completed_at,
+            error=error,
+        ),
+    }
+    _update_temporal_scheduler_status(
+        last_workflow_id=info.workflow_id,
+        last_task_id=task_id,
+        last_result=result,
+        last_completed_at=completed_at,
+        last_error=error,
+        tracked_results=tracked_results,
     )
 
 

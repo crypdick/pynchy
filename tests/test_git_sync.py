@@ -534,6 +534,54 @@ class TestPollingHelpers:
             sha = sync_poll.host_get_origin_main_sha(tmp_path)
             assert sha is None
 
+    def test_origin_probe_retains_redacted_failure_diagnostic(self, tmp_path: Path):
+        credential = "repo-secret-value"
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+                subprocess.CompletedProcess(
+                    args=[],
+                    returncode=128,
+                    stdout="",
+                    stderr=(
+                        "fatal: unable to access "
+                        f"'https://x-access-token:{credential}@github.com/owner/repo': denied"
+                    ),
+                ),
+            ]
+
+            probe = sync_poll.probe_origin_main_sha(tmp_path, {"GH_TOKEN": credential})
+
+        assert probe.sha is None
+        assert probe.error is not None
+        assert credential not in probe.error
+        assert "https://***@github.com/owner/repo" in probe.error
+        assert "exit 128" in probe.error
+
+    def test_update_failure_retains_redacted_fetch_diagnostic(self, tmp_path: Path):
+        credential = "repo-secret-value"
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(
+                    args=[],
+                    returncode=128,
+                    stdout="",
+                    stderr=(
+                        "fatal: unable to access "
+                        f"'https://x-access-token:{credential}@github.com/owner/repo': denied"
+                    ),
+                ),
+            ]
+
+            result = sync_poll.host_update_main_result(tmp_path, {"GH_TOKEN": credential})
+
+        assert not result.succeeded
+        assert result.error is not None
+        assert credential not in result.error
+        assert "https://***@github.com/owner/repo" in result.error
+        assert "git fetch origin failed with exit 128" in result.error
+
     def test_container_files_change_triggers_rebuild(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
