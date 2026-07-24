@@ -235,9 +235,73 @@ async def test_direct_user_request_creates_ready_for_planning_item_in_parent_wor
     assert result["result"]["issue"]["state"]["name"] == "Ready for Planning"
     assert state.created_issue_count == 1
     assert state.issue["title"] == "Create Wellhub Android automation"
+    assert state.issue["description"] == (
+        "Use the existing Android MCP guidance.\n\n"
+        "---\n\n"
+        "Captured from a Pynchy workspace todo.\n\n"
+        "pynchy.workspace=pynchy\n"
+        "pynchy.chat_jid=pynchy@example.test"
+    )
     workspace = board.await_args.args[1]
     assert workspace.folder == "pynchy"
     assert workspace.jid == "pynchy@example.test"
+
+
+@pytest.mark.action("linear.todo.request")
+async def test_direct_user_request_can_preserve_an_exact_issue_description(
+    lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    state, handlers = lifecycle
+    request = "Create this issue with the supplied description exactly."
+    description = "  Preserve these leading spaces.\n\nDo not append provenance.  "
+    await _begin_direct_turn(request)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_boards.require_workspace_board",
+        AsyncMock(return_value=_board()),
+    )
+
+    result = await _call(
+        handlers,
+        "linear_create_requested_todo",
+        "request-1",
+        title="Preserve this issue body",
+        description=description,
+        exact_description=True,
+        authorization_quote=request,
+    )
+
+    assert result["result"]["issue"]["state"]["name"] == "Ready for Planning"
+    assert state.issue["description"] == description
+
+
+@pytest.mark.action("linear.todo.request")
+async def test_direct_user_request_without_description_keeps_provenance(
+    lifecycle,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    state, handlers = lifecycle
+    request = "Create a planning issue."
+    await _begin_direct_turn(request)
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_boards.require_workspace_board",
+        AsyncMock(return_value=_board()),
+    )
+
+    result = await _call(
+        handlers,
+        "linear_create_requested_todo",
+        "request-1",
+        title="Plan the work",
+        authorization_quote=request,
+    )
+
+    assert result["result"]["issue"]["state"]["name"] == "Ready for Planning"
+    assert state.issue["description"] == (
+        "Captured from a Pynchy workspace todo.\n\n"
+        "pynchy.workspace=pynchy\n"
+        "pynchy.chat_jid=pynchy@example.test"
+    )
 
 
 async def test_requested_todo_rejects_non_direct_turn(lifecycle):

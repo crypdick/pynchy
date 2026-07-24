@@ -349,6 +349,7 @@ class TestLinearMcpServer:
             assert "state_id" not in tools["linear_create_issue"]["inputSchema"]["properties"]
             todo_properties = tools["linear_create_todo"]["inputSchema"]["properties"]
             assert "status" not in todo_properties
+            assert "exact_description" not in todo_properties
             assert todo_properties["description"] == {"type": "string"}
             assert todo_properties["priority"]["enum"] == [0, 1, 2, 3, 4]
             assert "agent originated" in tools["linear_create_todo"]["description"]
@@ -638,3 +639,11 @@ class TestDocs:
         doc = Path(__file__).resolve().parent.parent / "docs" / "integrations" / "linear.md"
 
         assert doc.exists()
+
+    def test_linear_integration_documents_exact_requested_descriptions(self):
+        doc = Path(__file__).resolve().parent.parent / "docs" / "integrations" / "linear.md"
+        content = doc.read_text()
+
+        assert "`exact_description: true`" in content
+        assert "immutable workspace-marked project" in content
+        assert "Generic `linear_create_todo` cannot request this mode" in content

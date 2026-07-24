@@ -99,6 +99,14 @@ applies when a user sends `todo ...` while a workspace task runs. Workspaces
 without Linear keep the local todo path. Agent-created workspace items start in
 `Agent Proposed`.
 
+Descriptions include workspace and chat provenance by default. If the direct
+human explicitly requires the supplied issue description byte-for-byte, pass
+`exact_description: true` to `linear_create_requested_todo`. This mode omits
+only issue-body provenance. The immutable workspace-marked project still owns
+the issue, and the host retains the durable direct-user turn and exact
+authorization quote. Generic `linear_create_todo` cannot request this mode, so
+agent-originated proposals always retain issue-body provenance.
+
 ## Approval workflow
 
 Linear holds the complete planning and authorization state:
@@ -303,7 +311,7 @@ them when an agent starts or finishes work from a workspace board:
 
 | Tool | Purpose |
 |------|---------|
-| `linear_create_requested_todo` | Creates a `Ready for Planning` item from an explicit request in the current direct human turn. It requires the full authorizing message and never authorizes execution. |
+| `linear_create_requested_todo` | Creates a `Ready for Planning` item from an explicit request in the current direct human turn. It requires the full authorizing message, optionally preserves an explicitly requested description byte-for-byte, and never authorizes execution. |
 | `linear_submit_plan` | Writes a concrete Markdown plan into a `Ready for Planning` issue and atomically moves it to `Awaiting Plan Approval`; it never authorizes execution. |
 | `linear_claim_work_item` | Claims a `Human Approved` issue for the current Pynchy execution and moves it to `In Progress`. |
 | `linear_await_review_work_item` | Reports a completed outcome with a summary and optional evidence. It moves linked work or verified existing unlinked work to `Awaiting Review`; a pull-request URL is optional. |
