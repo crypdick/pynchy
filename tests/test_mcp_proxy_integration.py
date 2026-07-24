@@ -227,16 +227,44 @@ class TestLiteLLMSyncEndpoints:
 class TestBuildDirectServerConfigs:
     """Direct agent MCP configs must route only ready instances through the proxy."""
 
+    def test_exposes_logical_name_for_workspace_specific_instance(self):
+        configs = _build_direct_configs(
+            group_folder="pynchy-dev",
+            instance_ids=("linear_e0d492",),
+            instances={
+                "linear_e0d492": _make_instance(
+                    "linear",
+                    instance_id="linear_e0d492",
+                    transport="streamable_http",
+                )
+            },
+            invocation_ts=42.0,
+        )
+
+        assert configs == [
+            {
+                "name": "linear",
+                "url": "http://host.docker.internal:8080/mcp/pynchy-dev/42.0/linear_e0d492",
+                "transport": "streamable_http",
+            }
+        ]
+
     def test_includes_proxy_url(self):
-        """Configs should contain the proxy URL pattern with group/ts/iid."""
+        """Agent names stay stable while proxy URLs retain instance identity."""
         configs = _build_direct_configs(
             instance_ids=("browser_abc",),
-            instances={"browser_abc": _make_instance("browser", transport="streamable_http")},
+            instances={
+                "browser_abc": _make_instance(
+                    "browser",
+                    instance_id="browser_abc",
+                    transport="streamable_http",
+                )
+            },
             invocation_ts=42.0,
         )
 
         assert len(configs) == 1
-        assert configs[0]["name"] == "browser_abc"
+        assert configs[0]["name"] == "browser"
         assert "/mcp/test-ws/42.0/browser_abc" in configs[0]["url"]
         assert "8080" in configs[0]["url"]
         assert configs[0]["transport"] == "streamable_http"

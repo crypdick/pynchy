@@ -184,6 +184,8 @@ def resolve_workspace_servers(
 
     servers: set[str] = set()
     for entry in configured_servers:
+        # TODO: Remove the unreachable `all` and `mcp_groups` branches after
+        # confirming no external Settings substitutes bypass strict schema validation.
         if entry == "all":
             servers.update(all_servers.keys())
         elif entry in getattr(settings, "mcp_groups", {}):

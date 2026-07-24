@@ -86,7 +86,9 @@ def build_direct_server_configs(
 
     The caller supplies only instances that finished starting.  Omitting an
     unavailable instance is deliberate: an optional MCP must not be advertised
-    to the agent until its proxy route can serve it.
+    to the agent until its proxy route can serve it. The agent sees the stable
+    configured server name; the proxy URL retains the instance ID that
+    distinguishes workspace-specific runtimes.
     """
     if not request.instance_ids or not request.proxy_port:
         return []
@@ -99,7 +101,7 @@ def build_direct_server_configs(
             continue
         configs.append(
             {
-                "name": instance_id,
+                "name": instance.server_name,
                 "url": (
                     f"http://{host}:{request.proxy_port}/mcp/{request.group_folder}/"
                     f"{request.invocation_ts}/{instance_id}"
