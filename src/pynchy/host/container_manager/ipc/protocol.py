@@ -3,10 +3,8 @@
 Tier 1 signals carry no payload; the host derives behavior from which
 group sent the signal and from its own state.
 
-Tier 2 requests carry a payload with a request_id for response tracking.
-They will be routed through Deputy mediation in a future step.
-
-See: backlog/2-planning/security-hardening-0-ipc-surface.md
+Tier 2 requests carry a payload with a request_id for response tracking. A
+future Deputy layer will mediate them before dispatch.
 """
 
 from __future__ import annotations

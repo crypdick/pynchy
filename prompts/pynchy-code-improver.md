@@ -9,7 +9,7 @@
 - Fix warnings in tests.
 - Never make purely cosmetic changes
 - Don't make 'god' modules. Files should generally max out around ~450 lines. Files much larger than this should be refactored.
-- If a change requires design input, do not make the change. add the proposal to backlog/0-proposed/ and a human will review it.
+- If a change requires design input, do not make the change. In a Linear-enabled workspace, create an `Agent Proposed` work item; otherwise, ask the human to capture the proposal.
 - Keep docs and comments up to date in accordance to the [contributing-docs.md](../../docs/contributing/contributing-docs.md) file.
 - making sure plugin-specific code doesn't leak into the core codebase; it should stay with the plugin.
 - Prefix all commits with `[code improver]`

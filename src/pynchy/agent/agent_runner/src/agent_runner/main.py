@@ -131,9 +131,8 @@ def _build_mcp_servers(container_input: ContainerInput) -> dict[str, dict[str, o
     if not direct_servers:
         return mcp_servers
 
-    # Add remote MCP servers — connect directly to containers, bypassing
-    # LiteLLM's MCP proxy (which doesn't work with Claude SDK; see
-    # backlog/3-ready/mcp-gateway-transport.md).
+    # Add remote MCP servers — connect directly to containers because LiteLLM's
+    # MCP proxy does not support the Claude SDK.
     log(f"Direct MCP servers received: {direct_servers}")
     for server in direct_servers:
         entry = _direct_mcp_server_entry(server)
