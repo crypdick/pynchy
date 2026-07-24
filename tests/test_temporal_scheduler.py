@@ -320,6 +320,7 @@ class TestTemporalSchedulerRuntime:
             "last_started_at": None,
             "last_completed_at": None,
             "last_error": None,
+            "tracked_results": {},
         }
 
     def test_scheduler_workflow_runner_passes_through_workflow_module(self):

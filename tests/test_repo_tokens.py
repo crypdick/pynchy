@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from conftest import make_settings
@@ -30,10 +30,7 @@ from pynchy.host.git_ops.repo import (
     get_repo_token,
     repo_container_path,
 )
-from pynchy.host.git_ops.utils import git_env_with_token
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pynchy.host.git_ops.utils import git_env_with_token, run_git
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,6 +43,43 @@ def _ok(stdout: str = "") -> subprocess.CompletedProcess[str]:
 
 def _fail(stderr: str = "error") -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess([], 1, stdout="", stderr=stderr)
+
+
+def _init_ready_repo(path: Path) -> None:
+    path.mkdir(parents=True)
+    assert run_git("init", "-b", "main", cwd=path).returncode == 0
+    assert run_git("config", "user.email", "tests@example.invalid", cwd=path).returncode == 0
+    assert run_git("config", "user.name", "Pynchy Tests", cwd=path).returncode == 0
+    (path / "README.md").write_text("ready\n")
+    assert run_git("add", "README.md", cwd=path).returncode == 0
+    assert run_git("commit", "-m", "initial", cwd=path).returncode == 0
+    assert (
+        run_git(
+            "remote",
+            "add",
+            "origin",
+            f"https://github.com/{REPO_SLUG}",
+            cwd=path,
+        ).returncode
+        == 0
+    )
+
+
+def _successful_clone_mock(calls: list[list[str]]):
+    def mock_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[1] == "clone":
+            Path(cmd[3]).mkdir(parents=True)
+            return _ok()
+        if cmd[1:3] == ["rev-parse", "--show-toplevel"]:
+            return _ok(f"{kwargs['cwd']}\n")
+        if cmd[1:3] == ["rev-parse", "--verify"]:
+            return _ok("abc123\n")
+        if cmd[1:4] == ["remote", "get-url", "origin"]:
+            return _ok(f"https://github.com/{REPO_SLUG}\n")
+        return _ok()
+
+    return mock_run
 
 
 REPO_SLUG = "owner/private-repo"
@@ -196,9 +230,15 @@ class TestTokenScrubbingInLogs:
 
 class TestEnsureRepoCloned:
     def test_existing_repo_returns_true(self, tmp_path: Path):
-        """Existing repo directory short-circuits without cloning."""
-        repo_ctx = RepoContext(slug=REPO_SLUG, root=tmp_path, worktrees_dir=tmp_path / "wt")
-        assert ensure_repo_cloned(repo_ctx) is True
+        """A repository with HEAD and origin short-circuits without cloning."""
+        repo_root = tmp_path / "repo"
+        _init_ready_repo(repo_root)
+        repo_ctx = RepoContext(slug=REPO_SLUG, root=repo_root, worktrees_dir=tmp_path / "wt")
+
+        with patch("pynchy.host.git_ops.repo._clone_repo_to") as clone:
+            assert ensure_repo_cloned(repo_ctx) is True
+
+        clone.assert_not_called()
 
     def test_clone_with_token(self, tmp_path: Path):
         """Clones with bare URL and env-based token auth, then resets remote URL."""
@@ -207,13 +247,9 @@ class TestEnsureRepoCloned:
 
         calls = []
 
-        def mock_run(cmd, **kwargs):
-            calls.append(cmd)
-            return _ok()
-
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_CREDENTIAL),
-            patch("subprocess.run", side_effect=mock_run),
+            patch("subprocess.run", side_effect=_successful_clone_mock(calls)),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
 
@@ -235,13 +271,9 @@ class TestEnsureRepoCloned:
 
         calls = []
 
-        def mock_run(cmd, **kwargs):
-            calls.append(cmd)
-            return _ok()
-
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=None),
-            patch("subprocess.run", side_effect=mock_run),
+            patch("subprocess.run", side_effect=_successful_clone_mock(calls)),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
 
@@ -284,6 +316,108 @@ class TestEnsureRepoCloned:
             ),
         ):
             assert ensure_repo_cloned(repo_ctx) is False
+
+    def test_invalid_auto_managed_checkout_is_preserved_after_verified_recovery(
+        self, tmp_path: Path
+    ):
+        repos_root = tmp_path / "repos"
+        repo_root = repos_root / "private-repo"
+        repo_root.mkdir(parents=True)
+        (repo_root / "user-data.txt").write_text("preserve me\n")
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        settings = make_settings(repos=ReposConfig(root=repos_root))
+
+        def clone_ready(_repo_ctx: RepoContext, target: Path) -> bool:
+            _init_ready_repo(target)
+            return True
+
+        with (
+            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.host.git_ops.repo._clone_repo_to", side_effect=clone_ready),
+        ):
+            assert ensure_repo_cloned(repo_ctx) is True
+
+        recoveries = list(repos_root.glob(".private-repo.pynchy-recovery-*"))
+        assert len(recoveries) == 1
+        assert (recoveries[0] / "user-data.txt").read_text() == "preserve me\n"
+        assert (repo_root / "README.md").read_text() == "ready\n"
+
+    def test_failed_recovery_leaves_invalid_checkout_untouched(self, tmp_path: Path):
+        repos_root = tmp_path / "repos"
+        repo_root = repos_root / "private-repo"
+        repo_root.mkdir(parents=True)
+        original = repo_root / "user-data.txt"
+        original.write_text("preserve me\n")
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        settings = make_settings(repos=ReposConfig(root=repos_root))
+
+        with (
+            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.host.git_ops.repo._clone_repo_to", return_value=False),
+        ):
+            assert ensure_repo_cloned(repo_ctx) is False
+
+        assert original.read_text() == "preserve me\n"
+        assert not list(repos_root.glob(".private-repo.pynchy-recovery-*"))
+
+    def test_invalid_explicit_checkout_is_never_replaced(self, tmp_path: Path):
+        repo_root = tmp_path / "operator-owned"
+        repo_root.mkdir()
+        original = repo_root / "user-data.txt"
+        original.write_text("operator owned\n")
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        settings = make_settings(
+            repos=ReposConfig(
+                root=tmp_path / "repos",
+                overrides={REPO_SLUG: RepoConfig(path=str(repo_root))},
+            )
+        )
+
+        with (
+            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
+        ):
+            assert ensure_repo_cloned(repo_ctx) is False
+
+        clone.assert_not_called()
+        assert original.read_text() == "operator owned\n"
+
+    def test_nested_directory_is_not_mistaken_for_a_repo_checkout(self, tmp_path: Path):
+        parent_repo = tmp_path / "parent"
+        _init_ready_repo(parent_repo)
+        repo_root = parent_repo / "partial-checkout"
+        repo_root.mkdir()
+        repo_ctx = RepoContext(
+            slug=REPO_SLUG,
+            root=repo_root,
+            worktrees_dir=tmp_path / "worktrees",
+        )
+        settings = make_settings(
+            repos=ReposConfig(
+                root=tmp_path / "repos",
+                overrides={REPO_SLUG: RepoConfig(path=str(repo_root))},
+            )
+        )
+
+        with (
+            patch("pynchy.config.get_settings", return_value=settings),
+            patch("pynchy.host.git_ops.repo._clone_repo_to") as clone,
+        ):
+            assert ensure_repo_cloned(repo_ctx) is False
+
+        clone.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

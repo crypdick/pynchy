@@ -25,9 +25,26 @@ from pynchy.host.git_ops.utils import (
     files_changed_between,
     get_head_sha,
     push_local_commits,
+    redact_git_diagnostic,
     run_git,
 )
 from pynchy.logger import logger
+
+
+@dataclass(frozen=True)
+class GitOriginProbe:
+    """A remote-main lookup that retains a safe failure diagnostic."""
+
+    sha: str | None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class GitUpdateResult:
+    """Outcome of updating a local main checkout from its origin."""
+
+    succeeded: bool
+    error: str | None = None
 
 
 def get_local_head_sha(repo_root: Path | None = None) -> str:
@@ -36,20 +53,49 @@ def get_local_head_sha(repo_root: Path | None = None) -> str:
     return "" if sha == "unknown" else sha
 
 
-def host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
-    """Lightweight check: get origin/main SHA via ls-remote."""
+def probe_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> GitOriginProbe:
+    """Look up origin/main and retain only a redacted bounded diagnostic."""
+    main = "main"
     try:
         main = detect_main_branch(cwd=repo_root)
         result = run_git("ls-remote", "origin", f"refs/heads/{main}", cwd=repo_root, env=env)
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().split()[0]
+            return GitOriginProbe(sha=result.stdout.strip().split()[0])
     except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Failed to get origin main SHA", err=str(exc))
-    return None
+        diagnostic = redact_git_diagnostic(
+            str(exc),
+            token=env.get("GH_TOKEN") if env else None,
+        )
+        return GitOriginProbe(
+            sha=None,
+            error=f"git ls-remote origin refs/heads/{main} failed: {diagnostic}",
+        )
+
+    diagnostic = redact_git_diagnostic(
+        result.stderr or "",
+        token=env.get("GH_TOKEN") if env else None,
+    )
+    if result.returncode == 0:
+        return GitOriginProbe(
+            sha=None,
+            error=f"git ls-remote origin refs/heads/{main} returned no revision",
+        )
+    suffix = f": {diagnostic}" if diagnostic else ""
+    return GitOriginProbe(
+        sha=None,
+        error=(
+            f"git ls-remote origin refs/heads/{main} failed with exit {result.returncode}{suffix}"
+        ),
+    )
 
 
-def host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool:
-    """Fetch origin and rebase main onto origin/main. Returns True on success.
+def host_get_origin_main_sha(repo_root: Path, env: dict[str, str] | None = None) -> str | None:
+    """Return only the SHA from :func:`probe_origin_main_sha`."""
+    return probe_origin_main_sha(repo_root, env).sha
+
+
+def host_update_main_result(repo_root: Path, env: dict[str, str] | None = None) -> GitUpdateResult:
+    """Fetch origin and rebase main, retaining a redacted failure diagnostic.
 
     Includes pre-flight recovery for stale rebase state and dirty working trees
     left by crashed operations (interrupted rebase, killed process mid-merge).
@@ -77,15 +123,26 @@ def host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool
     # --- Normal fetch + rebase ---
     fetch = run_git("fetch", "origin", cwd=repo_root, env=env)
     if fetch.returncode != 0:
-        logger.warning("git_sync poll: fetch failed", error=fetch.stderr.strip())
-        return False
+        diagnostic = redact_git_diagnostic(
+            fetch.stderr or "",
+            token=env.get("GH_TOKEN") if env else None,
+        )
+        error = f"git fetch origin failed with exit {fetch.returncode}"
+        if diagnostic:
+            error = f"{error}: {diagnostic}"
+        logger.warning("git_sync poll: fetch failed", error=error)
+        return GitUpdateResult(succeeded=False, error=error)
 
     main_branch = detect_main_branch(cwd=repo_root)
     rebase = run_git("rebase", f"origin/{main_branch}", cwd=repo_root)
     if rebase.returncode != 0:
         run_git("rebase", "--abort", cwd=repo_root)
-        logger.warning("git_sync poll: rebase failed", error=rebase.stderr.strip())
-        return False
+        diagnostic = redact_git_diagnostic(rebase.stderr or "")
+        error = f"git rebase origin/{main_branch} failed with exit {rebase.returncode}"
+        if diagnostic:
+            error = f"{error}: {diagnostic}"
+        logger.warning("git_sync poll: rebase failed", error=error)
+        return GitUpdateResult(succeeded=False, error=error)
 
     # --- Push any rebased local commits ---
     push_local_commits(skip_fetch=True, cwd=repo_root, env=env)
@@ -110,7 +167,12 @@ def host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool
                 recovery="stash-pop-conflict",
             )
 
-    return True
+    return GitUpdateResult(succeeded=True)
+
+
+def host_update_main(repo_root: Path, env: dict[str, str] | None = None) -> bool:
+    """Fetch origin and rebase main onto origin/main. Returns True on success."""
+    return host_update_main_result(repo_root, env).succeeded
 
 
 def _host_container_files_changed(old_sha: str, new_sha: str) -> bool:

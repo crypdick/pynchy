@@ -8,7 +8,9 @@ external repo configured under [repos."owner/repo"] in layered settings.
 from __future__ import annotations
 
 import datetime
+import shutil
 import subprocess  # noqa: S404, RUF100 - repo helpers use fixed no-shell git/gh argv.
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -112,27 +114,71 @@ def get_repo_token(slug: str) -> str | None:
 
 def _sanitize_token(text: str, token: str | None) -> str:
     """Strip tokens from text to avoid leaking credentials in logs."""
-    if token and token in text:
-        return text.replace(token, "***")
-    return text
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - preserve the package's lazy import boundary.
+        redact_git_diagnostic,
+    )
+
+    return redact_git_diagnostic(text, token=token)
 
 
-def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
-    """Clone the repo from GitHub if it doesn't exist yet.
+def _path_present(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
 
-    Only applies to auto-managed repos (those without an explicit path in config).
-    Returns True if the repo root exists and is ready for worktree operations.
 
-    Uses the repo's resolved git environment for authentication (supports
-    private repos). The clone URL stays bare so tokens never appear in argv or
-    persist in .git/config.
-    """
-    if repo_ctx.root.exists():
-        return True
+def _repo_readiness_error(repo_root: Path) -> str | None:
+    """Return why a checkout is unsafe for worktrees, or ``None`` when ready."""
+    if not repo_root.is_dir():
+        return "checkout path is not a directory"
 
-    repo_ctx.root.parent.mkdir(parents=True, exist_ok=True)
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - preserve the package's lazy import boundary.
+        redact_git_diagnostic,
+        run_git,
+    )
 
-    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - keep git_ops.utils dependency lazy during git_ops package initialization.
+    top_level = run_git("rev-parse", "--show-toplevel", cwd=repo_root)
+    if top_level.returncode != 0 or not top_level.stdout.strip():
+        detail = redact_git_diagnostic(top_level.stderr or "")
+        return detail or "checkout is not a Git worktree"
+    if Path(top_level.stdout.strip()).resolve() != repo_root.resolve():
+        return "checkout path is nested inside a different Git worktree"
+
+    head = run_git("rev-parse", "--verify", "HEAD^{commit}", cwd=repo_root)
+    if head.returncode != 0 or not head.stdout.strip():
+        detail = redact_git_diagnostic(head.stderr or "")
+        return detail or "checkout has no valid HEAD commit"
+
+    origin = run_git("remote", "get-url", "origin", cwd=repo_root)
+    if origin.returncode != 0 or not origin.stdout.strip():
+        detail = redact_git_diagnostic(origin.stderr or "")
+        return detail or "checkout has no origin remote"
+    return None
+
+
+def _unique_sibling_path(repo_root: Path, marker: str) -> Path:
+    while True:
+        candidate = repo_root.with_name(f".{repo_root.name}.pynchy-{marker}-{uuid.uuid4().hex}")
+        if not _path_present(candidate):
+            return candidate
+
+
+def _remove_staged_checkout(staged_root: Path) -> None:
+    """Remove only a uniquely named checkout staged by this process."""
+    try:
+        if staged_root.is_dir() and not staged_root.is_symlink():
+            shutil.rmtree(staged_root)
+        elif _path_present(staged_root):
+            staged_root.unlink()
+    except OSError as exc:
+        logger.warning(
+            "Could not remove failed staged repository checkout",
+            path=str(staged_root),
+            error=str(exc),
+        )
+
+
+def _clone_repo_to(repo_ctx: RepoContext, target: Path) -> bool:
+    """Clone and validate one auto-managed repository at an unpublished path."""
+    from pynchy.host.git_ops.utils import (  # noqa: PLC0415, RUF100 - preserve the package's lazy import boundary.
         git_env_with_token,
         run_git,
     )
@@ -141,26 +187,125 @@ def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
     token = env.get("GH_TOKEN") if env else None
     clone_url = f"https://github.com/{repo_ctx.slug}"
 
-    logger.info("Cloning repo", slug=repo_ctx.slug, dest=str(repo_ctx.root))
+    logger.info("Cloning repo", slug=repo_ctx.slug, dest=str(target))
     result = run_git(
         "clone",
         clone_url,
-        str(repo_ctx.root),
-        cwd=repo_ctx.root.parent,
+        str(target),
+        cwd=target.parent,
         env=env,
     )
     if result.returncode != 0:
-        stderr = _sanitize_token(result.stderr.strip(), token)
-        logger.error("Failed to clone repo", slug=repo_ctx.slug, stderr=stderr)
+        logger.error(
+            "Failed to clone repo",
+            slug=repo_ctx.slug,
+            stderr=_sanitize_token(result.stderr or "", token),
+        )
         return False
 
-    # Keep the remote URL bare. Future fetch/push operations use env-based auth.
-    subprocess.run(  # noqa: S603, RUF100 - remote URL is derived from repo slug and no shell is used.
-        ["git", "remote", "set-url", "origin", f"https://github.com/{repo_ctx.slug}"],  # noqa: S607, RUF100 - git is the trusted host VCS executable.
-        cwd=str(repo_ctx.root),
-        capture_output=True,
-        check=False,
+    set_url = run_git(
+        "remote",
+        "set-url",
+        "origin",
+        clone_url,
+        cwd=target,
     )
+    if set_url.returncode != 0:
+        logger.error(
+            "Failed to normalize cloned repo remote",
+            slug=repo_ctx.slug,
+            stderr=_sanitize_token(set_url.stderr or "", token),
+        )
+        return False
+
+    readiness_error = _repo_readiness_error(target)
+    if readiness_error is not None:
+        logger.error(
+            "Cloned repo failed readiness checks",
+            slug=repo_ctx.slug,
+            error=readiness_error,
+        )
+        return False
+    return True
+
+
+def _publish_staged_checkout(repo_ctx: RepoContext, staged_root: Path) -> bool:
+    """Publish a verified clone while preserving the invalid checkout."""
+    recovery_root: Path | None = None
+    try:
+        if _path_present(repo_ctx.root):
+            recovery_root = _unique_sibling_path(repo_ctx.root, "recovery")
+            repo_ctx.root.rename(recovery_root)
+        staged_root.rename(repo_ctx.root)
+    except OSError as exc:
+        if recovery_root is not None and _path_present(recovery_root):
+            try:
+                recovery_root.rename(repo_ctx.root)
+            except OSError as restore_exc:
+                logger.critical(
+                    "Could not restore preserved repository checkout",
+                    slug=repo_ctx.slug,
+                    recovery_path=str(recovery_root),
+                    error=str(restore_exc),
+                )
+        logger.error(
+            "Could not publish staged repository checkout",
+            slug=repo_ctx.slug,
+            error=str(exc),
+        )
+        return False
+
+    if recovery_root is not None:
+        logger.warning(
+            "Preserved invalid repository checkout before recovery",
+            slug=repo_ctx.slug,
+            recovery_path=str(recovery_root),
+        )
+    return True
+
+
+def ensure_repo_cloned(repo_ctx: RepoContext) -> bool:
+    """Ensure an auto-managed checkout is ready for worktree operations.
+
+    An invalid auto-managed checkout yields its path only after a staged clone
+    passes readiness checks. The displaced directory moves to a uniquely named
+    recovery sibling so Pynchy never deletes unknown or user-owned data.
+
+    Explicit-path repositories remain operator-owned and recovery does not
+    modify them.
+    """
+    readiness_error = _repo_readiness_error(repo_ctx.root) if _path_present(repo_ctx.root) else None
+    if readiness_error is None and _path_present(repo_ctx.root):
+        return True
+
+    settings = pynchy_config.get_settings()
+    repo_config = settings.repos.overrides.get(repo_ctx.slug)
+    if repo_config is not None and repo_config.path is not None:
+        logger.error(
+            "Configured repository checkout is not ready",
+            slug=repo_ctx.slug,
+            path=str(repo_ctx.root),
+            error=readiness_error or "checkout does not exist",
+        )
+        return False
+
+    if readiness_error is not None:
+        logger.warning(
+            "Auto-managed repository checkout is not ready; staging recovery",
+            slug=repo_ctx.slug,
+            path=str(repo_ctx.root),
+            error=readiness_error,
+        )
+
+    repo_ctx.root.parent.mkdir(parents=True, exist_ok=True)
+    staged_root = _unique_sibling_path(repo_ctx.root, "clone")
+    if not _clone_repo_to(repo_ctx, staged_root):
+        _remove_staged_checkout(staged_root)
+        return False
+    if not _publish_staged_checkout(repo_ctx, staged_root):
+        _remove_staged_checkout(staged_root)
+        return False
+
     logger.info("Cloned repo", slug=repo_ctx.slug)
     return True
 

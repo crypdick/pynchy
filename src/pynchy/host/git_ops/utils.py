@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess  # noqa: S404, RUF100 - shared git helper uses fixed no-shell argv.
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves git helper signatures at runtime.
@@ -15,6 +16,8 @@ _SUBPROCESS_TIMEOUT = 30
 _DEFAULT_GIT_SSH_COMMAND = (
     "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=1"
 )
+_URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@")
+_MAX_GIT_DIAGNOSTIC_LENGTH = 1000
 
 
 def _git_subprocess_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -62,6 +65,13 @@ def run_git(
             stdout="",
             stderr=f"git command timed out after {timeout} seconds",
         )
+
+
+def redact_git_diagnostic(text: str, *, token: str | None = None) -> str:
+    """Return a bounded single-line git diagnostic with credentials redacted."""
+    redacted = text.replace(token, "***") if token else text
+    redacted = _URL_USERINFO.sub(r"\1***@", redacted)
+    return " ".join(redacted.split())[:_MAX_GIT_DIAGNOSTIC_LENGTH]
 
 
 def git_env_with_token(slug: str) -> dict[str, str] | None:
