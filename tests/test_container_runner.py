@@ -25,6 +25,11 @@ from pynchy.config.models import (
     ProfileConfig,
     WorkspaceConfig,
 )
+from pynchy.conversation.models import (
+    ControlSurface,
+    ConversationControlBinding,
+    ConversationId,
+)
 from pynchy.host.container_manager import process as process_mod
 from pynchy.host.container_manager import session as session_mod
 from pynchy.host.container_manager.credentials import (
@@ -66,8 +71,11 @@ from pynchy.host.orchestrator.agent_runner import (
 )
 from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.types import (
+    ChatJid,
     ContainerInput,
     ContainerOutput,
+    GroupFolder,
+    SessionId,
     VolumeMount,
     WorkspaceProfile,
 )
@@ -2335,6 +2343,16 @@ class TestAgentRunnerPreContainerHelpers:
     async def test_session_tracking_output_handler_records_session(self):
         deps = _AgentRunnerDeps()
         on_output = AsyncMock()
+        conversation_id = ConversationId("conv_opaque-id-")
+        binding = ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("admin"),
+            parent_jid=ChatJid("discord:channel:parent"),
+            thread_jid=ChatJid("discord:channel:thread"),
+            title="Opaque conversation",
+            updated_at="2026-07-23T23:40:00+00:00",
+        )
         output = ContainerOutput(
             status="success",
             type="system",
@@ -2351,14 +2369,75 @@ class TestAgentRunnerPreContainerHelpers:
                 "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
                 new_callable=AsyncMock,
             ) as update_checkpoint,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=binding,
+            ) as get_binding,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
+                new_callable=AsyncMock,
+            ) as persist_conversation,
         ):
-            handler = session_tracking_output_handler(deps, "test-group", on_output)
+            handler = session_tracking_output_handler(
+                deps,
+                "admin__thread_conversation-conv_opaque-id",
+                "discord:channel:thread",
+                on_output,
+            )
             await handler(output)
 
-        assert deps.sessions == {"test-group": "codex:thread-1"}
+        assert deps.sessions == {"admin__thread_conversation-conv_opaque-id": "codex:thread-1"}
         persist.assert_awaited_once()
-        update_checkpoint.assert_awaited_once_with("test-group", "codex:thread-1")
+        get_binding.assert_awaited_once_with(ChatJid("discord:channel:thread"))
+        persist_conversation.assert_awaited_once_with(
+            conversation_id,
+            SessionId("codex:thread-1"),
+        )
+        update_checkpoint.assert_awaited_once_with(
+            "admin__thread_conversation-conv_opaque-id",
+            "codex:thread-1",
+        )
         on_output.assert_awaited_once_with(output)
+
+    @pytest.mark.asyncio
+    async def test_session_tracking_output_handler_skips_unbound_chat(self):
+        deps = _AgentRunnerDeps()
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:thread-1"},
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
+                new_callable=AsyncMock,
+            ) as persist_conversation,
+        ):
+            handler = session_tracking_output_handler(
+                deps,
+                "admin",
+                "discord:channel:admin",
+                None,
+            )
+            await handler(output)
+
+        persist_conversation.assert_not_awaited()
 
     def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
         repo_ctx = MagicMock()

@@ -83,6 +83,11 @@ identity or agent session. Titles remain readable operator-facing text rather
 than protocol-shaped IDs. The registered parent workspace constrains where the
 binding can move.
 
+The control binding is also the authoritative runtime lookup from an exact
+thread JID to its opaque conversation ID. Workspace folder names are sanitized
+slugs for placement only; they are not reversible identities and must not be
+decoded to recover a conversation ID.
+
 The binding also stores provider-neutral closed intent. Channels map that intent
 to their native lifecycle operation; Discord uses thread archival. Reconciliation
 opens a thread while a routed turn needs it, then successful delivery completion
