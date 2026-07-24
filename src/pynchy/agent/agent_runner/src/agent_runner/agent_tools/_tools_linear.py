@@ -42,6 +42,15 @@ register_ipc_tool(
         "properties": {
             "title": {"type": "string", "minLength": 1},
             "description": {"type": "string"},
+            "exact_description": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "Set true only when the current direct human explicitly requires the supplied "
+                    "description byte-for-byte. This omits issue-body workspace provenance; never "
+                    "use it for an agent-originated proposal."
+                ),
+            },
             "priority": {
                 "type": "integer",
                 "enum": [0, 1, 2, 3, 4],

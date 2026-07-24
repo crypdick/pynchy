@@ -109,9 +109,18 @@ async def handle_create_requested_todo(data: dict[str, Any]) -> dict[str, object
     if not _turn_contains_authorization_quote(turn, authorization_quote):
         return {"error": _AUTHORIZATION_QUOTE_REQUIRED}
 
+    exact_description = data.get("exact_description", False)
+    if type(exact_description) is not bool:
+        raise TypeError("exact_description must be a boolean")
+    if exact_description:
+        description = data.get("description")
+        if not isinstance(description, str):
+            raise TypeError("description must be supplied when exact_description is true")
+    else:
+        description = _optional_str(data, "description")
     proposal = WorkspaceTodoProposal(
         title=_required_str(data, "title", "title is required").strip(),
-        description=_optional_str(data, "description"),
+        description=description,
         priority=_optional_priority(data),
     )
     try:
@@ -121,6 +130,7 @@ async def handle_create_requested_todo(data: dict[str, Any]) -> dict[str, object
                 workspace,
                 turn.chat_jid,
                 proposal,
+                exact_description=exact_description,
             )
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}

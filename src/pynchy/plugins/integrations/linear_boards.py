@@ -1,6 +1,6 @@
 """Linear workspace todo-board helpers.
 
-Pynchy treats each workspace as the stable owner of a todo board.  Linear does
+Pynchy treats each workspace as the stable owner of a todo board. Linear does
 not expose "boards" as a separate API object, so a workspace board is a Linear
 Project plus shared team workflow states.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import (
     Iterable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
@@ -21,6 +21,10 @@ from pynchy.plugins.integrations.linear_board_payloads import (
     payload_entity,
     projects_for_workspace,
 )
+from pynchy.plugins.integrations.linear_board_queries import (
+    CREATE_WORKSPACE_TODO_MUTATION,
+    MOVE_WORKSPACE_TODO_MUTATION,
+)
 from pynchy.plugins.integrations.linear_board_resources import load_team_resources
 from pynchy.plugins.integrations.linear_board_selection import (
     require_todo_states,
@@ -29,6 +33,7 @@ from pynchy.plugins.integrations.linear_board_selection import (
 from pynchy.plugins.integrations.linear_statuses import (
     AGENT_PROPOSED_STATUS,
     LINEAR_TODO_STATUSES,
+    READY_FOR_PLANNING_STATUS,
     TERMINAL_STATE_TYPES,
 )
 from pynchy.plugins.integrations.linear_workspace_names import (
@@ -214,41 +219,61 @@ async def create_workspace_todo(
     status: str = AGENT_PROPOSED_STATUS,
 ) -> dict[str, Any]:
     """Create a Linear issue in the workspace's board."""
+    return await _create_workspace_todo(
+        client,
+        workspace,
+        replace(
+            proposal,
+            description=todo_description(workspace, proposal.description),
+        ),
+        team_key=team_key,
+        status=status,
+    )
+
+
+async def create_requested_workspace_todo(
+    client: LinearQueryClient,
+    workspace: WorkspaceLike,
+    proposal: WorkspaceTodoProposal,
+    *,
+    team_key: str | None,
+    exact_description: bool = False,
+) -> dict[str, Any]:
+    """Create a direct-human-requested issue at the planning gate."""
+    # Skipping provenance is safe only for direct-human requests: the issue remains
+    # attached to an immutable workspace-marked project, while the host keeps the
+    # durable user turn and exact authorization quote. Generic agent proposals have
+    # no path to this option.
+    # NOTE: Keep docs/integrations/linear.md aligned with this boundary.
+    details = proposal.description
+    description = details if exact_description else todo_description(workspace, details)
+    return await _create_workspace_todo(
+        client,
+        workspace,
+        replace(proposal, description=description),
+        team_key=team_key,
+        status=READY_FOR_PLANNING_STATUS,
+    )
+
+
+async def _create_workspace_todo(
+    client: LinearQueryClient,
+    workspace: WorkspaceLike,
+    proposal: WorkspaceTodoProposal,
+    *,
+    team_key: str | None,
+    status: str,
+) -> dict[str, Any]:
     board = await require_workspace_board(client, workspace, team_key=team_key)
     status_key = normalize_status(status)
     state = board.states[status_key]
     data = await client.query(
-        """
-        mutation CreateWorkspaceTodo(
-          $team_id: String!,
-          $project_id: String!,
-          $state_id: String!,
-          $title: String!,
-          $description: String,
-          $priority: Int
-        ) {
-          issueCreate(input: {
-            teamId: $team_id,
-            projectId: $project_id,
-            stateId: $state_id,
-            title: $title,
-            description: $description,
-            priority: $priority
-          }) {
-            success
-            issue {
-              id identifier title url
-              state { id name type }
-              project { id name }
-            }
-          }
-        }
-        """,
+        CREATE_WORKSPACE_TODO_MUTATION,
         team_id=board.team["id"],
         project_id=board.project["id"],
         state_id=state["id"],
         title=proposal.title,
-        description=todo_description(workspace, proposal.description),
+        description=proposal.description,
         priority=proposal.priority,
     )
     return payload_entity(data, "issueCreate", "issue")
@@ -267,14 +292,7 @@ async def move_workspace_todo(
     status_key = normalize_status(status)
     state = board.states[status_key]
     data = await client.query(
-        """
-        mutation MoveWorkspaceTodo($issue_id: String!, $state_id: String!) {
-          issueUpdate(id: $issue_id, input: { stateId: $state_id }) {
-            success
-            issue { id identifier title url state { id name type } }
-          }
-        }
-        """,
+        MOVE_WORKSPACE_TODO_MUTATION,
         issue_id=issue_id,
         state_id=state["id"],
     )

@@ -16,7 +16,7 @@ from pynchy.plugins.integrations.linear_accounts import (
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     WorkspaceTodoProposal,
-    create_workspace_todo,
+    create_requested_workspace_todo,
     require_workspace_board,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
@@ -123,9 +123,11 @@ async def create_requested_work_item(
     workspace: str,
     chat_jid: str,
     proposal: WorkspaceTodoProposal,
+    *,
+    exact_description: bool = False,
 ) -> dict[str, Any]:
     """Create a human-requested item at the planning gate for one workspace."""
-    return await create_workspace_todo(
+    return await create_requested_workspace_todo(
         client,
         _WorkspaceContext(
             folder=workspace,
@@ -134,7 +136,7 @@ async def create_requested_work_item(
         ),
         proposal,
         team_key=client.team_key,
-        status=READY_FOR_PLANNING_STATUS,
+        exact_description=exact_description,
     )
 
 
