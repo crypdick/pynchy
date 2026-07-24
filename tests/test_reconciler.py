@@ -461,21 +461,55 @@ class TestCooldown:
 @pytest.mark.usefixtures("_db")
 class TestCursorGC:
     @pytest.mark.asyncio
-    async def test_prunes_stale_cursors_after_reconciliation(self):
-        """Cursors for channels not in deps.channels are pruned."""
+    async def test_owned_pair_failure_preserves_its_recovery_cursor(self):
+        await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01")
+        slack = _make_channel(name="slack")
+        slack.fetch_inbound_since.side_effect = OSError("history unavailable")
+        deps = _make_deps(
+            channels=[slack],
+            workspaces={"group@g.us": TEST_GROUP},
+        )
+
+        with pytest.raises(RuntimeError, match="OSError: history unavailable"):
+            await reconcile_all_channels(deps)
+
+        assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01"
+
+    @pytest.mark.asyncio
+    async def test_retains_exactly_owned_active_channel_workspace_pairs(self):
         await set_channel_cursor("dead-channel", "group@g.us", "inbound", "2024-01-01")
         await set_channel_cursor("slack", "group@g.us", "inbound", "2024-06-01")
+        await set_channel_cursor("slack", "removed@g.us", "inbound", "2024-05-01")
+        await set_channel_cursor("discord", "group@g.us", "inbound", "2024-04-01")
+        await set_channel_cursor("discord", "admin@g.us", "inbound", "2024-03-01")
 
-        ch = _make_channel(name="slack")
+        slack = _make_channel(name="slack")
+        slack.owns_jid.side_effect = lambda jid: jid == "group@g.us"
+        discord = _make_channel(name="discord")
+        discord.owns_jid.side_effect = lambda jid: jid == "admin@g.us"
         deps = _make_deps(
-            channels=[ch],
-            workspaces={"group@g.us": TEST_GROUP},
+            channels=[slack, discord],
+            workspaces={
+                "group@g.us": TEST_GROUP,
+                "admin@g.us": WorkspaceProfile(
+                    jid="admin@g.us",
+                    name="Admin",
+                    folder="admin",
+                    trigger="@pynchy",
+                    added_at="2024-01-01",
+                ),
+            },
         )
 
         await reconcile_all_channels(deps)
 
         assert not await get_channel_cursor("dead-channel", "group@g.us", "inbound")
         assert await get_channel_cursor("slack", "group@g.us", "inbound") == "2024-06-01"
+        assert not await get_channel_cursor("slack", "removed@g.us", "inbound")
+        assert not await get_channel_cursor("discord", "group@g.us", "inbound")
+        assert await get_channel_cursor("discord", "admin@g.us", "inbound") == "2024-03-01"
+        slack.fetch_inbound_since.assert_awaited_once_with("group@g.us", "2024-06-01")
+        discord.fetch_inbound_since.assert_awaited_once_with("admin@g.us", "2024-03-01")
 
 
 # ---------------------------------------------------------------------------

@@ -86,12 +86,14 @@ class ReconcilerDeps(Protocol):
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
 
-def _should_skip_pair(ch: Channel, canonical_jid: str, now: datetime) -> bool:
-    """Gate a (channel, jid) pair on ownership and cooldown."""
+def _owns_pair(ch: Channel, canonical_jid: str) -> bool:
     if not ch.owns_jid(canonical_jid):
         logger.debug("jid_ownership_skip", channel=ch.name, canonical_jid=canonical_jid)
-        return True
+        return False
+    return True
 
+
+def _is_on_cooldown(ch: Channel, canonical_jid: str, now: datetime) -> bool:
     key = (ch.name, canonical_jid)
     return now - _last_reconciled.get(key, _EPOCH) < RECONCILE_COOLDOWN
 
@@ -258,10 +260,14 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
     # A cycle's candidate set is immutable because ingress may register
     # dynamic thread workspaces during pair reconciliation.
     canonical_jids = tuple(deps.workspaces)
+    active_pairs: set[tuple[ChannelName, ChatJid]] = set()
 
     for ch in deps.channels:
         for canonical_jid in canonical_jids:
             try:
+                if not _owns_pair(ch, canonical_jid):
+                    continue
+                active_pairs.add((ChannelName(ch.name), ChatJid(canonical_jid)))
                 pair_result = await _reconcile_channel_pair(deps, ch, canonical_jid, now)
             # allow: exception-handling - isolate remote pair failures until the pass is complete.
             except Exception as exc:  # noqa: BLE001
@@ -284,9 +290,7 @@ async def reconcile_all_channels(deps: ReconcilerDeps) -> None:
 
     _log_reconciliation_summary(recovered, retried)
 
-    # GC cursors for channels absent from the active set (e.g. after a rename)
-    active_names = {ChannelName(ch.name) for ch in deps.channels}
-    pruned = await prune_stale_cursors(active_names)
+    pruned = await prune_stale_cursors(active_pairs)
     if pruned:
         logger.info("Pruned stale cursors", count=pruned)
     if failures:
@@ -302,7 +306,7 @@ async def _reconcile_channel_pair(
     now: datetime,
 ) -> tuple[int, int, str | None] | None:
     group = deps.workspaces.get(canonical_jid)
-    if _should_skip_pair(ch, canonical_jid, now):
+    if _is_on_cooldown(ch, canonical_jid, now):
         return None
 
     target_jid = canonical_jid
