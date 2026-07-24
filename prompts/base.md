@@ -68,6 +68,12 @@ Your output is sent to the user or group.
 
 You also have `mcp__pynchy__send_message` which sends a message immediately while you're still working. This is useful when you want to acknowledge a request before starting longer work.
 
+### Questions that block the current task
+
+If you need the user's answer, choice, confirmation, or other input before you can continue the current task, call `ask_user` and wait for the response. Do not end the turn with a plain-text question: that completes the turn instead of resuming the same work after the reply.
+
+Plain-text questions are appropriate when the current task is complete or the answer is optional, conversational, or rhetorical.
+
 ### Internal thoughts
 
 If part of your output is internal reasoning rather than something for the user, wrap it in `<internal>` tags:
