@@ -287,21 +287,27 @@ def _read_container_input() -> ContainerInput:
         return container_input
 
 
-def build_initial_prompt(container_input: ContainerInput) -> str:
-    """Build the initial prompt: SDK messages, scheduled-task framing, notices, pending IPC."""
-    log(f"Using SDK message list ({len(container_input.messages)} messages)")
+def build_agent_prompt(container_input: ContainerInput) -> str:
+    """Build the agent prompt from messages, scheduled-task framing, and notices."""
     prompt = build_sdk_messages(container_input.messages)
 
     if container_input.is_scheduled_task:
         # The host supplies a durable workspace and capabilities. The agent owns
         # the workflow because prescribed lifecycle steps make capable models
         # less adaptable and prevent them from recovering from tool failures.
+        # A scheduled run has no live user to notice a recurring snag, so it
+        # surfaces only actionable problems that it could not resolve itself.
         prompt = (
             "[SCHEDULED TASK]\n"
             "This is an automated scheduled task — not a live user conversation. "
             "Complete the requested objective within the authority granted by your tools "
             "and workspace policy. Report the outcome and relevant evidence in your final "
-            "response; that response ends the run.\n\n" + prompt
+            "response; that response ends the run. If Linear tools are available and you "
+            "encounter a snag, bug, or tool failure that you cannot fix yourself but that "
+            "ought to be fixed, check whether it has already been reported in Linear. If "
+            "not, create an Agent Proposed work item. Do not report problems that you fix "
+            "yourself. Continue the scheduled objective when possible rather than giving "
+            "up at the problem.\n\n" + prompt
         )
 
     # Prepend system notices as part of the user message rather than the system
@@ -312,6 +318,14 @@ def build_initial_prompt(container_input: ContainerInput) -> str:
             f"[System Notice] {notice}" for notice in container_input.system_notices
         )
         prompt = notices_text + "\n\n" + prompt
+
+    return prompt
+
+
+def build_initial_prompt(container_input: ContainerInput) -> str:
+    """Build the initial prompt, including pending container IPC messages."""
+    log(f"Using SDK message list ({len(container_input.messages)} messages)")
+    prompt = build_agent_prompt(container_input)
 
     pending = drain_ipc_input()
     if pending:

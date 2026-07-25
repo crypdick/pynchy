@@ -38,6 +38,12 @@ one-shot runtime. Repo-backed agents can publish with
 changes. They resolve any error it returns and attach the PR to the current
 Linear issue when one exists. Scheduled prompts don't need sentinel commits.
 
+During a scheduled run, the agent tries to resolve snags, bugs, and tool
+failures itself. When an unresolved problem ought to be fixed and Linear tools
+are available, the agent checks for an existing report and creates an
+`Agent Proposed` work item only when needed. It doesn't report problems that it
+fixes during the run.
+
 For a periodic review that turns evidence into approval-gated work proposals,
 see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-proposals).
 

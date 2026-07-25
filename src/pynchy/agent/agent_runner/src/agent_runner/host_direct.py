@@ -15,7 +15,7 @@ import sys
 from urllib.parse import urlparse, urlunparse
 
 from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
-from agent_runner.main import _direct_mcp_server_entry, build_sdk_messages, event_to_output
+from agent_runner.main import _direct_mcp_server_entry, build_agent_prompt, event_to_output
 from agent_runner.models import ContainerInput, ContainerOutput
 from agent_runner.registry import create_agent_core
 
@@ -91,22 +91,6 @@ def _write_error(error: str, session_id: str | None = None) -> None:
     _write_output(ContainerOutput(status="error", new_session_id=session_id, error=error))
 
 
-def _build_prompt(container_input: ContainerInput) -> str:
-    prompt = build_sdk_messages(container_input.messages)
-    if container_input.is_scheduled_task:
-        prompt = (
-            "[SCHEDULED TASK]\n"
-            "This is an automated scheduled task, not a live user conversation. "
-            "Complete the requested work and then stop.\n\n" + prompt
-        )
-    if container_input.system_notices:
-        notices_text = "\n".join(
-            f"[System Notice] {notice}" for notice in container_input.system_notices
-        )
-        prompt = notices_text + "\n\n" + prompt
-    return prompt
-
-
 def _event_session_id(event: AgentEvent, fallback: str | None) -> str | None:
     if event.type == "system":
         session_id = (event.data.get("system_data") or {}).get("session_id")
@@ -154,7 +138,7 @@ async def _main_async() -> int:
     session_id = container_input.session_id
     try:
         await core.start()
-        session_id = await _run_query(core, _build_prompt(container_input), session_id)
+        session_id = await _run_query(core, build_agent_prompt(container_input), session_id)
     except Exception as exc:  # noqa: BLE001, RUF100 - report agent failures to host.  # allow: exception-handling
         _write_error(str(exc), session_id)
         return 1
