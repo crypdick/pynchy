@@ -107,6 +107,7 @@ from pynchy.logger import logger
 from pynchy.state import (
     claim_deployment,
     clear_pending_deployment,
+    clear_unclaimed_in_flight_turn_for_task,
     get_all_host_jobs,
     get_all_tasks,
     get_task_by_id,
@@ -273,6 +274,15 @@ async def run_scheduled_agent_task(task_id: str) -> str:
     return "completed"
 
 
+@activity.defn(name="clear_terminal_scheduled_turn")
+async def clear_terminal_scheduled_turn(task_id: str) -> str:
+    """Discard a failed schedule occurrence unless recovery already owns it."""
+    cleared = await clear_unclaimed_in_flight_turn_for_task(task_id)
+    result = "cleared" if cleared else "preserved"
+    logger.info("Terminal scheduled turn cleanup", task_id=task_id, result=result)
+    return result
+
+
 @activity.defn(name="run_scheduled_canaries")
 async def run_scheduled_canaries() -> str:
     """Run configured external-service canaries without retrying side effects."""
@@ -366,6 +376,7 @@ class TemporalSchedulerRuntime:
                     run_interactive_message_turn,
                     run_interrupted_agent_turn,
                     run_scheduled_agent_task,
+                    clear_terminal_scheduled_turn,
                     run_database_host_job,
                     run_config_host_cron_job,
                     run_learning_review,
