@@ -224,7 +224,7 @@ async def _request_package_approval(  # noqa: PLR0913, RUF100 - approval boundar
         request_id=request_id,
         tool_name=tool_name,
         source_group=source_group,
-        chat_jid=chat_jid,
+        approval_chat_jid=chat_jid,
         request_data=request_data,
         handler_type="security_artifact",
     )
