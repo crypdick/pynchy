@@ -30,12 +30,14 @@ from pynchy.conversation.models import (
     ExternalProvider,
     ExternalRoute,
 )
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ensure_conversation_control,
 )
 from pynchy.host.orchestrator.session_handler import send_clear_confirmation
 from pynchy.host.orchestrator.startup_handler import prepare_interrupted_turn_recovery
+from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.state import (
     WebhookReceipt,
     admit_conversation_delivery,
@@ -46,12 +48,14 @@ from pynchy.state import (
     get_conversation,
     get_conversation_control_binding,
     get_conversation_delivery,
+    get_session,
     get_webhook_receipt,
     prepare_conversation_delivery_recovery,
     resolve_conversation,
     set_chat_cleared_at,
     set_conversation_control_binding,
     set_conversation_session,
+    set_session,
     set_workspace_profile,
     store_chat_metadata,
 )
@@ -395,6 +399,47 @@ async def test_startup_recovery_repairs_legacy_reset_orphan() -> None:
     assert retired_pending.status is ConversationDeliveryStatus.COMPLETED
     assert retained_pending is not None
     assert retained_pending.status is ConversationDeliveryStatus.PENDING
+
+
+async def test_startup_recovery_forgets_session_copied_from_scheduled_thread() -> None:
+    thread_jid = ChatJid("discord:channel:thread-scheduled")
+    conversation = await resolve_conversation(
+        _subject("issue-scheduled-session"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(conversation.id, thread_jid)
+    copied_session = SessionId("scheduled-session")
+    scheduled_folder = dynamic_thread_folder("triage", thread_jid)
+    routed_folder = routed_conversation_folder("triage", conversation.id)
+    await set_conversation_session(conversation.id, copied_session)
+    await set_session(GroupFolder(scheduled_folder), copied_session)
+    await set_session(GroupFolder(routed_folder), copied_session)
+
+    legitimate = await resolve_conversation(
+        _subject("issue-legitimate-session"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(
+        legitimate.id,
+        ChatJid("discord:channel:thread-legitimate"),
+    )
+    legitimate_session = SessionId("legitimate-session")
+    legitimate_folder = routed_conversation_folder("triage", legitimate.id)
+    await set_conversation_session(legitimate.id, legitimate_session)
+    await set_session(GroupFolder(legitimate_folder), legitimate_session)
+
+    recovered = await prepare_conversation_delivery_recovery()
+
+    repaired = await get_conversation(conversation.id)
+    preserved = await get_conversation(legitimate.id)
+    assert recovered == 1
+    assert repaired is not None
+    assert repaired.session_id is None
+    assert await get_session(GroupFolder(scheduled_folder)) is None
+    assert await get_session(GroupFolder(routed_folder)) is None
+    assert preserved is not None
+    assert preserved.session_id == legitimate_session
+    assert await get_session(GroupFolder(legitimate_folder)) == legitimate_session
 
 
 class _ClearConfirmationDeps:
