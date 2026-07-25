@@ -19,6 +19,7 @@ import sys
 import time
 import urllib.request
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -70,6 +71,8 @@ _SANDBOX_NAMESPACE = re.compile(r"pynchy[-_][a-z0-9][a-z0-9_.-]{0,55}")
 _PROCESS_MARKER = re.compile(r"pynchy-runtime-(?:pynchy|temporal)-[0-9a-f]{32}")
 _PROCESS_SUPERVISOR_SCRIPT = '"$@" &\nchild=$!\nwait "$child"\n'
 _PROCESS_PID_KEYS = ("pynchy_pid", "temporal_pid")
+_FAILED_SETUP_ARCHIVE_LIMIT = 5
+_FEATURE_SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,79}")
 _RUNTIME_CONTAINER_SUFFIXES = (
     "pynchy",
     "litellm",
@@ -947,6 +950,37 @@ def _start_runtime_services(spec: RuntimeSpec, state: dict[str, object]) -> None
     _start_pynchy_runtime(spec, state, temporal)
 
 
+def _archive_failed_new_feature_setup(spec: RuntimeSpec) -> Path | None:
+    """Copy bounded runtime logs outside a worktree before new-feature removes it."""
+    control_root_value = os.environ.get("NEW_FEATURE_REPO_ROOT")
+    feature_slug = os.environ.get("NEW_FEATURE_SLUG")
+    if (
+        control_root_value is None
+        or feature_slug is None
+        or _FEATURE_SLUG.fullmatch(feature_slug) is None
+        or not spec.log_dir.is_dir()
+        or not any(path.is_file() for path in spec.log_dir.rglob("*"))
+    ):
+        return None
+
+    control_root = Path(control_root_value).resolve()
+    if not control_root.is_dir() or control_root == spec.root.resolve():
+        return None
+
+    archive_root = (
+        control_root / ".new-feature" / "diagnostics" / "runtime-setup-failures" / feature_slug
+    )
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    destination = archive_root / timestamp
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(spec.log_dir, destination)
+
+    archives = sorted(path for path in archive_root.iterdir() if path.is_dir())
+    for expired in archives[:-_FAILED_SETUP_ARCHIVE_LIMIT]:
+        shutil.rmtree(expired)
+    return destination
+
+
 def setup(spec: RuntimeSpec) -> dict[str, object]:
     if _read_state(spec.root) is not None:
         raise RuntimeError("Runtime already exists; run the stop command first")
@@ -956,8 +990,13 @@ def setup(spec: RuntimeSpec) -> dict[str, object]:
         _initialize_runtime_data(spec)
         _start_runtime_services(spec, state)
     # allow: exception-handling - partial startup must remove every owned runtime resource.
-    except Exception:  # noqa: BLE001, RUF100
+    except Exception as error:  # noqa: BLE001, RUF100
+        archive_path: Path | None = None
+        with contextlib.suppress(OSError):
+            archive_path = _archive_failed_new_feature_setup(spec)
         stop(spec.root)
+        if archive_path is not None:
+            error.add_note(f"Runtime setup logs preserved at {archive_path}")
         raise
     return state
 

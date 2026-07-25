@@ -95,6 +95,12 @@ PostgreSQL, and deterministic OpenAI sidecar containers. PostgreSQL uses a names
 volume so container ownership cannot prevent worktree removal. Generated configuration, logs,
 process state, and databases remain ignored inside the feature worktree.
 
+If runtime setup fails, the harness copies its logs to
+`.new-feature/diagnostics/runtime-setup-failures/<slug>/` in the control checkout before
+`new-feature` removes the partial worktree. The exception reports the exact archive path. The
+harness retains the five newest failure archives for each feature slug; successful setup and
+teardown do not create archives.
+
 When an agent already runs in the control checkout, prevent a nested agent:
 
 ```bash
