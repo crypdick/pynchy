@@ -655,4 +655,4 @@ class Channel(Protocol):
 
     # Optional streaming message updates: channels can post an event, return a
     # message id, then update that message in place.
-    # Used by output_handler for real-time text streaming with a cursor indicator.
+    # Used for real-time text streaming and consecutive tool-trace coalescing.

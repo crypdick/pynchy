@@ -27,7 +27,8 @@ from pynchy.host.orchestrator.messaging.streaming import (
     OutputDeps,
     StreamState,
     TraceBatcher,
-    enqueue_or_broadcast,
+    close_trace_run,
+    enqueue_tool_trace,
     finalize_active_stream,
     get_trace_batcher,
     init_trace_batcher,
@@ -124,7 +125,12 @@ async def broadcast_trace(
     channel_text: str,
 ) -> None:
     """Send a live trace event to channels and the EventBus."""
-    await enqueue_or_broadcast(deps, chat_jid, _make_event("text", channel_text))
+    event = _make_event("text", channel_text)
+    if trace_type in {"tool_use", "tool_result"}:
+        await enqueue_tool_trace(deps, chat_jid, event)
+    else:
+        await close_trace_run(chat_jid)
+        await deps.broadcast_to_channels(chat_jid, event)
     deps.emit(AgentTraceEvent(chat_jid=chat_jid, trace_type=trace_type, data=data))
 
 
@@ -151,6 +157,10 @@ async def broadcast_agent_input(
 
     if source == "hidden_learning_review":
         return
+
+    # An inbound prompt is an explicit boundary even when the channel already
+    # displays the human's message and Pynchy emits only audit trace data.
+    await close_trace_run(chat_jid)
 
     if source == "user":
         # User messages are already visible in chat. Emit trace events for
@@ -288,7 +298,8 @@ async def _handle_system(deps: OutputDeps, chat_jid: str, result: ContainerOutpu
     # Suppress lifecycle events from channels — the descriptive text above is still
     # available to live EventBus consumers for debugging.
     if subtype not in _CHANNEL_SUPPRESSED_SYSTEM_SUBTYPES:
-        await enqueue_or_broadcast(deps, chat_jid, _make_event("system", channel_text))
+        await close_trace_run(chat_jid)
+        await deps.broadcast_to_channels(chat_jid, _make_event("system", channel_text))
 
 
 async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput) -> None:
@@ -307,9 +318,7 @@ async def _handle_text(deps: OutputDeps, chat_jid: str, result: ContainerOutput)
         if state is None:
             # Starting a text stream — flush any pending traces first
             # so tool messages appear before this text in the channel.
-            batcher = get_trace_batcher()
-            if batcher is not None:
-                await batcher.flush(chat_jid)
+            await close_trace_run(chat_jid)
             event = OutboundEvent(type=OutboundEventType.TEXT, content="")
             state = StreamState(event=event)
             stream_states[chat_jid] = state
@@ -331,7 +340,8 @@ async def _handle_result_metadata(deps: OutputDeps, chat_jid: str, meta: dict[st
         parts.append(f"{turns} turns")
     if parts:
         trace_text = f"\U0001f4ca {' \u00b7 '.join(parts)}"
-        await enqueue_or_broadcast(deps, chat_jid, _make_event("text", trace_text))
+        await close_trace_run(chat_jid)
+        await deps.broadcast_to_channels(chat_jid, _make_event("text", trace_text))
     deps.emit(
         AgentTraceEvent(
             chat_jid=chat_jid,
@@ -467,10 +477,8 @@ async def handle_streamed_output(
     # or clean up if the result is empty.
     stream_state = stream_states.pop(chat_jid, None)
 
-    # Flush any buffered traces before the bot reply so ordering is preserved.
-    batcher = get_trace_batcher()
-    if batcher is not None:
-        await batcher.flush(chat_jid)
+    # A final result closes the tool message so a later run starts a separate one.
+    await close_trace_run(chat_jid)
 
     resolved_turn_id = turn_id or new_turn_id()
     sent = await _handle_final_result(

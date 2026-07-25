@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
@@ -17,6 +18,23 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves these runt
 )
 
 _OUTBOUND_LEDGER_ID_MISSING_ERROR = "INSERT INTO outbound_ledger did not return a row id"
+
+
+class OutboundDeliveryOperation(StrEnum):
+    """Remote mutation represented by one per-channel ledger delivery."""
+
+    POST = "post"
+    EDIT = "edit"
+    FALLBACK_POST = "fallback_post"
+
+
+@dataclass(frozen=True)
+class OutboundDelivery:
+    """How one channel should deliver an outbound ledger entry."""
+
+    channel_name: ChannelName
+    operation: OutboundDeliveryOperation = OutboundDeliveryOperation.POST
+    remote_message_id: str | None = None
 
 
 @dataclass
@@ -28,6 +46,8 @@ class PendingDelivery:
     content: str
     timestamp: str
     source: str
+    operation: OutboundDeliveryOperation
+    remote_message_id: str | None
 
 
 async def record_outbound(
@@ -40,6 +60,21 @@ async def record_outbound(
 
     Returns the ledger row ID.
     """
+    return await record_outbound_deliveries(
+        chat_jid,
+        content,
+        source,
+        [OutboundDelivery(channel_name=name) for name in channel_names],
+    )
+
+
+async def record_outbound_deliveries(
+    chat_jid: ChatJid,
+    content: str,
+    source: str,
+    deliveries: list[OutboundDelivery],
+) -> int:
+    """Write outbound content with explicit per-channel mutation semantics."""
     now = datetime.now(UTC).isoformat()
     async with atomic_write() as db:
         cursor = await db.execute(
@@ -50,10 +85,17 @@ async def record_outbound(
         ledger_id = cursor.lastrowid
         if ledger_id is None:
             raise RuntimeError(_OUTBOUND_LEDGER_ID_MISSING_ERROR)
-        for ch_name in channel_names:
+        for delivery in deliveries:
             await db.execute(
-                "INSERT INTO outbound_deliveries (ledger_id, channel_name) VALUES (?, ?)",
-                (ledger_id, ch_name),
+                "INSERT INTO outbound_deliveries"
+                " (ledger_id, channel_name, operation, remote_message_id)"
+                " VALUES (?, ?, ?, ?)",
+                (
+                    ledger_id,
+                    delivery.channel_name,
+                    delivery.operation,
+                    delivery.remote_message_id,
+                ),
             )
     return ledger_id
 
@@ -66,6 +108,24 @@ async def mark_delivered(ledger_id: int, channel_name: str) -> None:
         "UPDATE outbound_deliveries SET delivered_at = ?, error = NULL"
         " WHERE ledger_id = ? AND channel_name = ?",
         (now, ledger_id, channel_name),
+    )
+    await db.commit()
+
+
+async def mark_delivery_succeeded(
+    ledger_id: int,
+    channel_name: str,
+    operation: OutboundDeliveryOperation,
+    remote_message_id: str | None,
+) -> None:
+    """Record the mutation that actually succeeded for one delivery attempt."""
+    db = _get_db()
+    now = datetime.now(UTC).isoformat()
+    await db.execute(
+        "UPDATE outbound_deliveries"
+        " SET delivered_at = ?, error = NULL, operation = ?, remote_message_id = ?"
+        " WHERE ledger_id = ? AND channel_name = ?",
+        (now, operation, remote_message_id, ledger_id, channel_name),
     )
     await db.commit()
 
@@ -89,7 +149,8 @@ async def get_pending_outbound(
     """
     db = _get_db()
     cursor = await db.execute(
-        "SELECT ol.id, ol.chat_jid, ol.content, ol.timestamp, ol.source"
+        "SELECT ol.id, ol.chat_jid, ol.content, ol.timestamp, ol.source,"
+        " od.operation, od.remote_message_id"
         " FROM outbound_deliveries od"
         " JOIN outbound_ledger ol ON od.ledger_id = ol.id"
         " WHERE od.channel_name = ? AND ol.chat_jid = ? AND od.delivered_at IS NULL"
@@ -104,6 +165,8 @@ async def get_pending_outbound(
             content=row["content"],
             timestamp=row["timestamp"],
             source=row["source"],
+            operation=OutboundDeliveryOperation(row["operation"]),
+            remote_message_id=row["remote_message_id"],
         )
         for row in rows
     ]

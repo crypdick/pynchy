@@ -14,8 +14,10 @@ from pynchy.state import (
     mark_delivered,
     mark_delivery_error,
     record_outbound,
+    record_outbound_deliveries,
     store_chat_metadata,
 )
+from pynchy.state.outbound import OutboundDelivery, OutboundDeliveryOperation
 
 
 @pytest.fixture
@@ -44,6 +46,26 @@ class TestRecordOutbound:
         assert len(wa_pending) == 1
         assert slack_pending[0].ledger_id == lid
         assert wa_pending[0].content == "hello"
+
+    @pytest.mark.asyncio
+    async def test_preserves_edit_operation_and_remote_message_id(self):
+        await record_outbound_deliveries(
+            "group@g.us",
+            "accumulated trace",
+            "agent_trace",
+            [
+                OutboundDelivery(
+                    channel_name="discord",
+                    operation=OutboundDeliveryOperation.EDIT,
+                    remote_message_id="discord-123",
+                )
+            ],
+        )
+
+        pending = await get_pending_outbound("discord", "group@g.us")
+
+        assert pending[0].operation is OutboundDeliveryOperation.EDIT
+        assert pending[0].remote_message_id == "discord-123"
 
 
 @pytest.mark.usefixtures("_db")

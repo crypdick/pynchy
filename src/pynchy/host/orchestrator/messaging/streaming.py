@@ -13,6 +13,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.host.orchestrator.messaging.sender import resolve_target_jid
+from pynchy.host.orchestrator.messaging.updating import (
+    UpdatingMessage,
+    deliver_updating_event,
+)
 from pynchy.logger import logger
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves streaming annotations at runtime.
     Channel,
@@ -165,24 +169,34 @@ async def _post_stream_message(
 
 
 # ---------------------------------------------------------------------------
-# Trace batcher — debounce-batches trace messages per chat JID
+# Tool trace batcher — debounce-batches and coalesces per chat JID
 # ---------------------------------------------------------------------------
 
 _DEFAULT_TRACE_COOLDOWN = 3.0
+_TRACE_LEDGER_SOURCE = "agent_trace"
+
+
+@dataclass
+class _TraceRun:
+    """Per-channel editable messages for one consecutive tool run."""
+
+    messages: dict[str, UpdatingMessage] = field(default_factory=dict)
 
 
 class TraceBatcher:
-    """Buffers OutboundEvent objects per JID and flushes after a cooldown.
+    """Buffer tool events per JID and update one message across cooldowns.
 
-    Result/host messages bypass the batcher entirely; callers should
-    ``await flush(chat_jid)`` before sending a result so traces always
-    appear before the bot reply.
+    A timer flush sends the current delta but keeps the run open. Callers close
+    the run before any user-visible non-tool event so the next tool sequence
+    starts a fresh remote message.
     """
 
     def __init__(self, deps: OutputDeps, cooldown: float = _DEFAULT_TRACE_COOLDOWN) -> None:
         self._deps = deps
         self._cooldown = cooldown
         self._buffers: dict[str, list[OutboundEvent]] = {}
+        self._runs: dict[str, _TraceRun] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
         self._timers: dict[str, asyncio.TimerHandle] = {}
 
     # -- public API ----------------------------------------------------------
@@ -193,26 +207,48 @@ class TraceBatcher:
         self._reset_timer(chat_jid)
 
     async def flush(self, chat_jid: str) -> None:
-        """Flush pending traces for *chat_jid* immediately."""
+        """Flush pending tool traces while keeping the consecutive run open."""
         self._cancel_timer(chat_jid)
-        events = self._buffers.pop(chat_jid, [])
-        if events:
-            # Join buffered trace events into a single TEXT event for broadcast.
-            # Each event's content is already rendered with emoji prefixes by the
-            # router; we concatenate them with newlines.
-            combined = OutboundEvent(
-                type=OutboundEventType.TEXT,
-                content="\n".join(e.content for e in events),
-            )
-            await self._deps.broadcast_to_channels(chat_jid, combined)
+        async with self._locks.setdefault(chat_jid, asyncio.Lock()):
+            await self._flush_locked(chat_jid)
+
+    async def close(self, chat_jid: str) -> None:
+        """Flush pending traces and end the editable run for *chat_jid*."""
+        self._cancel_timer(chat_jid)
+        async with self._locks.setdefault(chat_jid, asyncio.Lock()):
+            await self._flush_locked(chat_jid)
+            self._runs.pop(chat_jid, None)
 
     async def flush_all(self) -> None:
-        """Flush every JID -- used during shutdown."""
-        jids = list(self._buffers)
+        """Flush and close every JID -- used during shutdown."""
+        jids = set(self._buffers) | set(self._runs)
         for jid in jids:
-            await self.flush(jid)
+            await self.close(jid)
+
+    def cancel(self) -> None:
+        """Cancel pending timers before discarding this batcher instance."""
+        for timer in self._timers.values():
+            timer.cancel()
+        self._timers.clear()
 
     # -- internals -----------------------------------------------------------
+
+    async def _flush_locked(self, chat_jid: str) -> None:
+        events = self._buffers.pop(chat_jid, [])
+        if not events:
+            return
+        delta = OutboundEvent(
+            type=OutboundEventType.TEXT,
+            content="\n".join(event.content for event in events),
+        )
+        run = self._runs.setdefault(chat_jid, _TraceRun())
+        run.messages = await deliver_updating_event(
+            self._deps,
+            chat_jid,
+            delta,
+            run.messages,
+            source=_TRACE_LEDGER_SOURCE,
+        )
 
     def _reset_timer(self, chat_jid: str) -> None:
         self._cancel_timer(chat_jid)
@@ -248,12 +284,20 @@ def get_trace_batcher() -> TraceBatcher | None:
 
 def reset_trace_batcher() -> None:
     """Clear the process-wide trace batcher before a fresh app lifecycle."""
+    if _state.trace_batcher is not None:
+        _state.trace_batcher.cancel()
     _state.trace_batcher = None
 
 
-async def enqueue_or_broadcast(deps: OutputDeps, chat_jid: str, event: OutboundEvent) -> None:
-    """Enqueue via batcher if available, otherwise broadcast directly."""
+async def enqueue_tool_trace(deps: OutputDeps, chat_jid: str, event: OutboundEvent) -> None:
+    """Enqueue one tool trace, or broadcast when startup has no batcher."""
     if _state.trace_batcher is not None:
         _state.trace_batcher.enqueue(chat_jid, event)
     else:
         await deps.broadcast_to_channels(chat_jid, event)
+
+
+async def close_trace_run(chat_jid: str) -> None:
+    """Close the current consecutive tool run, if batching is active."""
+    if _state.trace_batcher is not None:
+        await _state.trace_batcher.close(chat_jid)

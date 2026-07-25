@@ -146,7 +146,9 @@ from pynchy.state.outbound import (
     get_pending_outbound,
     mark_delivered,
     mark_delivery_error,
+    mark_delivery_succeeded,
     record_outbound,
+    record_outbound_deliveries,
 )
 from pynchy.state.security_context import (
     RecentSecurityContext,
@@ -264,7 +266,9 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_pending_outbound",
     "mark_delivered",
     "mark_delivery_error",
+    "mark_delivery_succeeded",
     "record_outbound",
+    "record_outbound_deliveries",
     # events
     "store_event",
     "RecentSecurityContext",

@@ -19,10 +19,12 @@ from pynchy.state import (
     get_pending_outbound,
     mark_delivered,
     mark_delivery_error,
+    mark_delivery_succeeded,
     message_exists,
     prune_stale_cursors,
 )
 from pynchy.state.outbound import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    OutboundDeliveryOperation,
     PendingDelivery,
 )
 from pynchy.types import (
@@ -213,8 +215,46 @@ async def _deliver_pending_outbound_row(
     ch: Channel, target_jid: str, row: PendingDelivery, outbound_cursor: str
 ) -> str:
     event = OutboundEvent(type=OutboundEventType.TEXT, content=row.content)
-    await ch.send_event(target_jid, event)
-    await mark_delivered(row.ledger_id, ch.name)
+    update_event = getattr(ch, "update_event", None)
+    if (
+        row.operation is OutboundDeliveryOperation.EDIT
+        and row.remote_message_id is not None
+        and callable(update_event)
+    ):
+        try:
+            await update_event(target_jid, row.remote_message_id, event)
+        except Exception as exc:  # noqa: BLE001, RUF100 - a stale or unavailable edit target falls back to a visible post.
+            logger.warning(
+                "Outbound edit retry failed, falling back to a post",
+                channel=ch.name,
+                ledger_id=row.ledger_id,
+                error=str(exc),
+            )
+            await ch.send_event(target_jid, event)
+            await mark_delivery_succeeded(
+                row.ledger_id,
+                ch.name,
+                OutboundDeliveryOperation.FALLBACK_POST,
+                None,
+            )
+        else:
+            await mark_delivery_succeeded(
+                row.ledger_id,
+                ch.name,
+                OutboundDeliveryOperation.EDIT,
+                row.remote_message_id,
+            )
+    else:
+        await ch.send_event(target_jid, event)
+        if row.operation is OutboundDeliveryOperation.POST:
+            await mark_delivered(row.ledger_id, ch.name)
+        else:
+            await mark_delivery_succeeded(
+                row.ledger_id,
+                ch.name,
+                OutboundDeliveryOperation.FALLBACK_POST,
+                None,
+            )
     if row.timestamp > outbound_cursor:
         outbound_cursor = row.timestamp
     return outbound_cursor
