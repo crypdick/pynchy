@@ -11,6 +11,7 @@ from pynchy.state.connection import _get_db
 _MESSAGE_LIMIT = 4
 _MESSAGE_CHAR_LIMIT = 500
 _TOOL_LIMIT = 8
+_AGENT_UPDATE_LIMIT = 2
 
 
 class SecurityContextRole(StrEnum):
@@ -34,6 +35,7 @@ class RecentSecurityContext:
 
     current_user_intent: str | None
     recent_messages: tuple[SecurityContextMessage, ...]
+    recent_agent_updates: tuple[str, ...]
     completed_tool_actions: tuple[str, ...]
 
 
@@ -75,6 +77,27 @@ async def load_recent_security_context(chat_jid: str) -> RecentSecurityContext:
         for row in message_rows
     )
 
+    update_cursor = await db.execute(
+        """
+        SELECT payload FROM events
+        WHERE chat_jid = ? AND event_type = 'agent_trace'
+          AND json_extract(payload, '$.trace_type') = 'text'
+        ORDER BY id DESC LIMIT ?
+        """,
+        (chat_jid, _AGENT_UPDATE_LIMIT),
+    )
+    updates: list[str] = []
+    update_rows = list(await update_cursor.fetchall())
+    update_rows.reverse()
+    for row in update_rows:
+        try:
+            payload = json.loads(row["payload"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        content = payload.get("content")
+        if isinstance(content, str) and content:
+            updates.append(content[:_MESSAGE_CHAR_LIMIT])
+
     event_cursor = await db.execute(
         """
         SELECT payload FROM events
@@ -101,5 +124,6 @@ async def load_recent_security_context(chat_jid: str) -> RecentSecurityContext:
     return RecentSecurityContext(
         current_user_intent=current_intent,
         recent_messages=messages,
+        recent_agent_updates=tuple(updates),
         completed_tool_actions=tuple(tools),
     )

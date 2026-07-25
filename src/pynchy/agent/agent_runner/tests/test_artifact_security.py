@@ -43,6 +43,24 @@ def test_normalizes_sdk_tool_shapes_into_semantic_artifacts() -> None:
     }
 
 
+def test_free_form_patch_transport_is_not_parsed_as_a_shell_command() -> None:
+    """Patch prose that names credentials must not establish credential-read taint."""
+    patch = """\
+*** Begin Patch
+*** Update File: docs/architecture/observers.md
+@@
+-replaces sensitive values
++replaces detected credentials
+*** End Patch
+"""
+    request = normalize_tool_request("apply_patch", {"command": patch})
+
+    artifacts = {(artifact.kind, artifact.value) for artifact in request.artifacts}
+    assert (ArtifactKind.COMMAND, patch) not in artifacts
+    assert (ArtifactKind.PATH_WRITE, "docs/architecture/observers.md") in artifacts
+    assert "CRED001" not in {finding.rule_id for finding in deterministic_findings(request)}
+
+
 @pytest.mark.parametrize(
     ("tool_name", "tool_input", "rule_id"),
     [

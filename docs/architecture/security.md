@@ -214,7 +214,7 @@ The service trust policy (above) gates MCP service tools, but agents also have f
 
 The agent tool security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hook in every agent runner, whether that runner is inside a container or is a trusted direct-host child process. The Claude and OpenAI SDK cores and both CLI cores compose the same hook roster, so the gate applies regardless of the selected built-in core or execution mode.
 
-**Semantic artifact normalization.** The gate parses core-specific tool names and input shapes into owned artifact types: commands, read and write paths, written content, URLs, and package references. Policy therefore follows the operation when an SDK renames a shell or patch tool. Stable deterministic rules then block destructive system commands (`CMD001`), reverse shells (`NET001`), remote content piped directly into a shell (`NET002`), and writes to persistence or autostart paths (`PERSIST001`). Persistence detection covers structured writes and shell redirection, append, `tee`, `cp`, and `install` destinations. Credential-path reads emit `CRED001`, including `.env.*` variants; audits retain rule IDs without copying matched file content.
+**Semantic artifact normalization.** The gate parses core-specific tool names and input shapes into owned artifact types: commands, read and write paths, written content, URLs, and package references. Policy therefore follows the operation when an SDK renames a shell or patch tool. Free-form patch payloads remain written content even when a CLI hook transports them through a field named `command`; prose and file contents never become shell commands merely because of that transport shape. Stable deterministic rules then block destructive system commands (`CMD001`), reverse shells (`NET001`), remote content piped directly into a shell (`NET002`), and writes to persistence or autostart paths (`PERSIST001`). Persistence detection covers structured writes and shell redirection, append, `tee`, `cp`, and `install` destinations. Credential-path reads emit `CRED001`, including `.env.*` variants; audits retain rule IDs without copying matched file content.
 
 **File taint notification.** Every normalized file operation and every shell operation notifies the host before execution. The host calls `SecurityPolicy.notify_file_access()`, so a workspace with `contains_secrets = true` becomes secret-tainted even when the later Bash classifier considers a command such as `cat .env` or `ls` provably local. A credential path such as `.env`, `.env.production`, `.netrc`, or a private-key path also sets secret taint when the workspace profile omitted `contains_secrets`. Taint remains sticky for the container invocation. The host rejects the operation when no active invocation gate can retain that taint; it never substitutes a throwaway policy object. Bash policy requests follow the same rule: a missing gate, unavailable host, empty or malformed response, or unknown decision denies the command because an approval cannot be obtained safely.
 
@@ -274,17 +274,27 @@ Pipelines and chains are split into segments; one network-capable segment makes 
 | Taint State | Network Command | Unknown Command |
 |---|---|---|
 | No taint | Allow | Allow |
+| Secret only | Cop triage | Cop triage |
 | Corruption only | Cop triage | Cop triage |
 | Corruption + secret | Cop triage | Cop triage |
 
-The command Cop returns one of three verdicts for the exact command. It approves
-commands that clearly match current user intent and have bounded, low-risk data
-flow. It denies commands that clearly conflict with that intent or create an
-unacceptable security risk. It escalates ambiguous commands to human approval.
-Corruption and secret taint remain trusted host facts in the review packet, so a
-network-capable command in a dual-tainted session receives the most cautious
-review. Cop approval never creates a reusable grant. The 300-second approval
-timeout matches the existing service approval flow.
+The command Cop returns one of three verdicts for the exact command. It reasons
+about intent at the workflow level: ordinary local inspection, implementation,
+testing, linting, formatting, and verification can support an authorized result
+without directly producing that result. It approves harmless supporting work,
+denies commands that clearly conflict with the workflow or create an
+unacceptable security risk, and escalates consequential ambiguity to human
+approval. The bounded packet includes recent agent updates so in-progress work
+does not look unrelated merely because the latest user message names a final
+result such as an issue or deployment.
+
+Corruption and secret taint remain trusted host facts in the review packet.
+Secret taint means the session can access sensitive data; it does not claim that
+the proposed command reads or exposes that data. Taint raises scrutiny when a
+command can create a dangerous data flow. A network-capable command in a
+dual-tainted session receives the most cautious review. Cop approval never
+creates a reusable grant. The 300-second approval timeout matches the existing
+service approval flow.
 
 **Degraded behavior.** Deterministic blocking rules run locally. If the host
 cannot record and retain an artifact notification, the artifact hook fails
