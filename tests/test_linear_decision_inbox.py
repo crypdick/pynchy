@@ -20,6 +20,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 from pynchy.state import (
     WorkItemTransitionRequest,
     begin_work_item_transition,
+    create_task,
     get_active_work_item_execution,
     get_all_tasks,
     get_task_by_id,
@@ -29,7 +30,12 @@ from pynchy.state import (
     record_task_completion,
     resolve_work_item_transition,
 )
-from pynchy.types import TaskRunLog, WorkItemExecutionStatus, WorkItemTransitionStatus
+from pynchy.types import (
+    ScheduledTask,
+    TaskRunLog,
+    WorkItemExecutionStatus,
+    WorkItemTransitionStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -422,6 +428,47 @@ async def test_reconcile_does_not_infer_authority_from_unleased_in_progress() ->
 
     assert created == []
     assert await get_active_work_item_execution("issue-unleased") is None
+
+
+async def test_reconcile_adopts_completed_legacy_plan_as_approval_evidence() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"] = []
+    client.issues_by_state["state-progress"] = [
+        _issue(
+            "issue-legacy",
+            "SYN-13",
+            "Resume legacy approved work",
+            "in_progress",
+            "project-beta",
+        )
+    ]
+    await create_task(
+        ScheduledTask(
+            id="linear-ready-for-planning-syn-13-proof",
+            group_folder="beta",
+            chat_jid="linear:beta",
+            prompt="Legacy planning evidence",
+            schedule_type="once",
+            schedule_value="2026-07-19T08:00:00+00:00",
+            context_mode="isolated",
+            status="completed",
+            created_at="2026-07-19T08:00:00+00:00",
+        )
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=datetime(2026, 7, 25, 8, 5, tzinfo=UTC),
+    )
+
+    assert len(created) == 1
+    assert created[0].id.startswith("linear-execute-syn-13-")
+    adopted = await get_active_work_item_execution("issue-legacy")
+    assert adopted is not None
+    assert adopted.initiated_by == ("linear-legacy-task:linear-ready-for-planning-syn-13-proof")
+    assert adopted.task_id == created[0].id
 
 
 async def test_reconcile_reactivates_quiet_completed_task_after_grace_period() -> None:

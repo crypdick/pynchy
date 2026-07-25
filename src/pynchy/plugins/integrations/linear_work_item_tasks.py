@@ -15,6 +15,10 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
+from pynchy.plugins.integrations.linear_legacy_work_items import (
+    LegacyAdoptionRequest,
+    adopt_legacy_in_progress_execution,
+)
 from pynchy.plugins.integrations.linear_statuses import (
     FOLLOW_UPS_STATUS,
     HUMAN_APPROVED_STATUS,
@@ -33,7 +37,11 @@ from pynchy.state import (
     get_work_item_execution_for_issue,
     update_task,
 )
-from pynchy.types import ScheduledTask, WorkItemExecution, WorkItemExecutionStatus
+from pynchy.types import (
+    ScheduledTask,
+    WorkItemExecution,
+    WorkItemExecutionStatus,
+)
 
 if TYPE_CHECKING:
     from pynchy.plugins.integrations.linear_client import LinearClient
@@ -268,9 +276,19 @@ def decision_state_id(board: LinearWorkspaceBoard, status: str) -> str:
 async def _admit_in_progress_issue(
     issue: DecisionIssue,
     workspace: WorkspaceLike,
+    board: LinearWorkspaceBoard,
     context: DecisionAdmission,
 ) -> ScheduledTask | None:
     execution = await get_active_work_item_execution(issue.id)
+    if execution is None:
+        execution = await adopt_legacy_in_progress_execution(
+            LegacyAdoptionRequest(
+                client=context.client,
+                issue=issue,
+                workspace=workspace,
+                board=board,
+            )
+        )
     if execution is None:
         logger.warning(
             "Managed Linear issue is In Progress without an execution lease",
@@ -372,7 +390,7 @@ async def admit_decision_issue(
 ) -> ScheduledTask | None:
     """Admit or recover one status-classified managed Linear issue."""
     if status == "in_progress":
-        return await _admit_in_progress_issue(issue, workspace, context)
+        return await _admit_in_progress_issue(issue, workspace, board, context)
     if status == FOLLOW_UPS_STATUS:
         return await _admit_follow_ups_issue(issue, workspace, context)
     return await _admit_human_approved_issue(issue, workspace, board, context)
