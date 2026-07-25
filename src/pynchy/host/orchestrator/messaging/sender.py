@@ -1,6 +1,7 @@
-"""Unified message bus — single broadcast path for ALL outbound channel messages.
+"""Unified message bus for ordinary outbound channel messages.
 
-Every outbound message to channels routes through this module.
+Consecutive editable messages use the capability-driven collaborator in
+``updating.py``; both paths share the same outbound ledger semantics.
 
 The IPC stdin path (message_handler.py formatting ``sender_name: content`` for
 the container) is intentionally separate — it formats messages for the Claude

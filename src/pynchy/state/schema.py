@@ -128,10 +128,12 @@ CREATE TABLE IF NOT EXISTS outbound_ledger (
 CREATE INDEX IF NOT EXISTS idx_outbound_ledger_jid ON outbound_ledger(chat_jid);
 
 CREATE TABLE IF NOT EXISTS outbound_deliveries (
-    ledger_id     INTEGER NOT NULL,
-    channel_name  TEXT NOT NULL,
-    delivered_at  TEXT,
-    error         TEXT,
+    ledger_id          INTEGER NOT NULL,
+    channel_name       TEXT NOT NULL,
+    operation          TEXT NOT NULL DEFAULT 'post',
+    remote_message_id  TEXT,
+    delivered_at       TEXT,
+    error              TEXT,
     PRIMARY KEY (ledger_id, channel_name),
     FOREIGN KEY (ledger_id) REFERENCES outbound_ledger(id)
 );

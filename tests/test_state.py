@@ -1440,6 +1440,45 @@ class TestEnsureColumns:
         assert await cursor.fetchone() == ("workflow-1", None, None)
         await db.close()
 
+    async def test_adds_delivery_operation_to_existing_outbound_ledger(self):
+        """Existing pending sends migrate to explicit post semantics."""
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE outbound_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_jid TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                source TEXT NOT NULL
+            );
+            CREATE TABLE outbound_deliveries (
+                ledger_id INTEGER NOT NULL,
+                channel_name TEXT NOT NULL,
+                delivered_at TEXT,
+                error TEXT,
+                PRIMARY KEY (ledger_id, channel_name)
+            );
+            INSERT INTO outbound_ledger (
+                chat_jid, content, timestamp, source
+            ) VALUES (
+                'discord:channel:1', 'pending', '2026-07-25T00:00:00Z', 'agent'
+            );
+            INSERT INTO outbound_deliveries (
+                ledger_id, channel_name
+            ) VALUES (1, 'discord');
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute("PRAGMA table_info(outbound_deliveries)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert {"operation", "remote_message_id"} <= cols
+        cursor = await db.execute(
+            "SELECT operation, remote_message_id FROM outbound_deliveries WHERE ledger_id = 1"
+        )
+        assert await cursor.fetchone() == ("post", None)
+        await db.close()
+
     async def test_noop_when_all_columns_present(self):
         """create_schema is idempotent when the schema is already up to date."""
         db = await aiosqlite.connect(":memory:")

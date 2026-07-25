@@ -14,9 +14,11 @@ from pynchy.state import (
     get_channel_cursor,
     get_pending_outbound,
     record_outbound,
+    record_outbound_deliveries,
     set_channel_cursor,
     store_chat_metadata,
 )
+from pynchy.state.outbound import OutboundDelivery, OutboundDeliveryOperation
 from pynchy.types import (
     Channel,
     InboundFetchResult,
@@ -350,6 +352,56 @@ class TestOutboundRetry:
         # Should be marked as delivered
         pending = await get_pending_outbound("slack", "group@g.us")
         assert len(pending) == 0
+
+    @pytest.mark.asyncio
+    async def test_retries_pending_edit_without_posting_a_duplicate(self):
+        await record_outbound_deliveries(
+            "group@g.us",
+            "accumulated trace",
+            "agent_trace",
+            [
+                OutboundDelivery(
+                    channel_name="slack",
+                    operation=OutboundDeliveryOperation.EDIT,
+                    remote_message_id="message-123",
+                )
+            ],
+        )
+        ch = _make_channel()
+        ch.update_event = AsyncMock()
+        deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
+
+        await reconcile_all_channels(deps)
+
+        ch.update_event.assert_awaited_once()
+        assert ch.update_event.await_args.args[:2] == ("group@g.us", "message-123")
+        ch.send_event.assert_not_awaited()
+        assert not await get_pending_outbound("slack", "group@g.us")
+
+    @pytest.mark.asyncio
+    async def test_failed_edit_retries_as_a_truthful_fallback_post(self):
+        await record_outbound_deliveries(
+            "group@g.us",
+            "accumulated trace",
+            "agent_trace",
+            [
+                OutboundDelivery(
+                    channel_name="slack",
+                    operation=OutboundDeliveryOperation.EDIT,
+                    remote_message_id="message-123",
+                )
+            ],
+        )
+        ch = _make_channel()
+        ch.update_event = AsyncMock(side_effect=OSError("message unavailable"))
+        deps = _make_deps(channels=[ch], workspaces={"group@g.us": TEST_GROUP})
+
+        await reconcile_all_channels(deps)
+
+        ch.update_event.assert_awaited_once()
+        ch.send_event.assert_awaited_once()
+        assert ch.send_event.await_args.args[1].content == "accumulated trace"
+        assert not await get_pending_outbound("slack", "group@g.us")
 
     @pytest.mark.asyncio
     async def test_records_error_on_retry_failure(self):
