@@ -47,6 +47,16 @@ class _Workspace:
 
 def _state(status: str) -> dict[str, str]:
     states = {
+        "ready_for_planning": {
+            "id": "state-ready",
+            "name": "Ready for Planning",
+            "type": "unstarted",
+        },
+        "awaiting_plan_approval": {
+            "id": "state-awaiting-plan",
+            "name": "Awaiting Plan Approval",
+            "type": "unstarted",
+        },
         "human_approved": {
             "id": "state-approved",
             "name": "Human Approved",
@@ -89,6 +99,7 @@ class _DecisionClient(LinearClient):
 
     def __init__(self) -> None:
         self.issues_by_state = {
+            "state-ready": [],
             "state-approved": [
                 _issue(
                     "issue-execute",
@@ -176,6 +187,8 @@ def _board(project_id: str) -> LinearWorkspaceBoard:
         team={"id": "team-1"},
         project={"id": project_id},
         states={
+            "ready_for_planning": _state("ready_for_planning"),
+            "awaiting_plan_approval": _state("awaiting_plan_approval"),
             "human_approved": _state("human_approved"),
             "in_progress": _state("in_progress"),
             "follow_ups": _state("follow_ups"),
@@ -222,6 +235,96 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert "Success:" in task.prompt
     assert "linear_claim_work_item" not in task.prompt
     assert len(await get_all_tasks()) == 1
+
+
+async def test_reconcile_recovers_ready_planning_without_execution_authority() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"] = []
+    client.issues_by_state["state-ready"] = [
+        _issue(
+            "issue-plan",
+            "SYN-89",
+            "Plan terminal thread archival",
+            "ready_for_planning",
+            "project-beta",
+        ),
+        _issue(
+            "issue-unmanaged-plan",
+            "SYN-40",
+            "Ignore an unmanaged blog item",
+            "ready_for_planning",
+            "project-unmanaged",
+        ),
+    ]
+    now = datetime(2026, 7, 25, 20, 5, tzinfo=UTC)
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=now,
+    )
+    duplicate = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=now,
+    )
+
+    assert len(created) == 1
+    task = created[0]
+    assert task.id.startswith("linear-plan-syn-89-")
+    assert task.input_source == "external:linear:ready_for_planning"
+    assert "linear_submit_plan" in task.prompt
+    assert "Awaiting Plan Approval" in task.prompt
+    assert "does not authorize execution" in task.prompt
+    assert "Do not execute" in task.prompt
+    assert duplicate == []
+    assert await get_active_work_item_execution("issue-plan") is None
+
+
+async def test_reconcile_reactivates_a_quiet_ready_planning_task() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"] = []
+    client.issues_by_state["state-ready"] = [
+        _issue(
+            "issue-plan",
+            "SYN-89",
+            "Plan terminal thread archival",
+            "ready_for_planning",
+            "project-beta",
+        )
+    ]
+    await create_task(
+        ScheduledTask(
+            id="linear-ready-for-planning-syn-89-existing",
+            group_folder="beta",
+            chat_jid="linear:beta",
+            prompt=(
+                "[Source: linear-decision-inbox]\n"
+                '{"identifier": "SYN-89", "issue_id": "issue-plan"}'
+            ),
+            schedule_type="once",
+            schedule_value="2026-07-25T19:00:00+00:00",
+            context_mode="isolated",
+            status="completed",
+            last_run="2026-07-25T19:00:00+00:00",
+            created_at="2026-07-25T19:00:00+00:00",
+        )
+    )
+
+    recovered = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=datetime(2026, 7, 25, 20, 5, tzinfo=UTC),
+    )
+
+    assert [task.id for task in recovered] == ["linear-ready-for-planning-syn-89-existing"]
+    task = await get_task_by_id("linear-ready-for-planning-syn-89-existing")
+    assert task is not None
+    assert task.status == "active"
+    assert "linear_submit_plan" in task.prompt
 
 
 async def test_private_account_keeps_authorized_context_trusted() -> None:

@@ -69,6 +69,8 @@ objects.
 | State | Meaning |
 |-------|---------|
 | `Agent Proposed` | The agent suggested work. No human authorized it. |
+| `Ready for Planning` | A human requested a concrete plan. Execution remains unauthorized. |
+| `Awaiting Plan Approval` | The agent persisted a plan for human review. |
 | `Human Approved` | A human explicitly authorized execution. |
 | `In Progress` | The host owns an active execution lease. |
 | `Awaiting Review` | The delivered result awaits review. For code, every PR is attached to the issue. |
@@ -77,19 +79,25 @@ objects.
 | `Done` | The agent judges the complete job, including follow-ups, finished. |
 | `Rejected` | A human declined the proposal. |
 
-Human authorization and active ownership are host-enforced boundaries. Planning,
-investigation, implementation, validation, review, follow-up, and completion
-belong to the agent.
+Planning authorization, execution authorization, and active ownership form
+separate host-enforced boundaries. The agent chooses how to investigate, plan,
+implement, validate, review, follow up, and complete work within the authority
+granted by the current state.
 
-### Authorize work
+### Plan and authorize work
 
-Move an existing proposal to `Human Approved` in Linear, or explicitly request
-the state change in a direct human conversation. The agent can then use
-`linear_move_todo`; Pynchy verifies that the current turn came directly from a
-human without requiring a matching quote or prescribed wording.
+Move an item to `Ready for Planning` when you want a concrete implementation
+plan without authorizing execution. Temporal admits one durable isolated
+planning task. The agent calls `linear_submit_plan` to persist the plan in the
+issue description and move the item to `Awaiting Plan Approval`.
+
+Review the plan, then move the issue to `Human Approved` in Linear. You can also
+explicitly request that state change in a direct human conversation. The agent
+can then use `linear_move_todo`; Pynchy verifies that the current turn came
+directly from a human without requiring matching wording.
 
 `linear_create_todo` creates an unapproved `Agent Proposed` item. An autonomous
-agent can't promote its own proposal or set `Rejected`.
+agent can't set `Ready for Planning`, `Human Approved`, or `Rejected`.
 
 ### Execute and report
 
@@ -165,12 +173,13 @@ issue ID for conversation identity. Deliveries for off-board issues are
 ignored. Comments, issue changes, and messages in the corresponding Discord
 thread share one ordered conversation.
 
-A `Human Approved` issue delivery acquires the execution lease before the host
-admits a durable isolated task. The issue update itself doesn't also start an
-ordinary conversation turn, because that would race a second agent against the
-same lease. A `Done` delivery completes the linked active, blocked, or
-review-ready execution. Other authenticated events provide context but don't
-bypass authorization.
+A `Ready for Planning` update belongs to the planning controller. A `Human
+Approved` update acquires the execution lease before the host admits a durable
+isolated task. These issue updates don't also start ordinary conversation turns,
+because that would race a second agent against the durable task. An `Awaiting
+Plan Approval` update waits for human review. A `Done` delivery completes the
+linked active, blocked, or review-ready execution. Other authenticated events
+provide context but don't bypass authorization.
 
 The route verifies Linear's HMAC-SHA256 signature, requires a timestamp within
 60 seconds, checks the configured organization ID, and deduplicates delivery
@@ -179,19 +188,18 @@ account's `public_source` setting determines whether callback content is
 trusted.
 
 One Temporal schedule reconciles every managed board once per minute, including
-webhook-routed boards. It leases `Human Approved` work, repairs an `In Progress`
-execution whose durable task is missing, and admits `Follow-ups` without a
-second approval lease. A completed task that leaves its issue active is given a
-five-minute grace period and then reactivated, up to three successful
-no-transition runs. Failed activities retain their checkpoint and use
-Temporal's normal retry path. An `In Progress` issue without a matching lease
-is reported as an invariant violation and is never treated as implicit
-authorization. The migration bridge has one narrow exception: a completed
-legacy `linear-ready-for-planning-<identifier>-*` task whose stored
-decision-inbox payload names the exact durable issue ID is evidence from the
-approved-plan lifecycle, so the controller can adopt it into a current lease
-before resuming work. Matching the issue ID instead of the workspace folder
-allows a managed workspace rename without broadening the authorization.
+webhook-routed boards. It creates or recovers planning tasks for `Ready for
+Planning`, leases `Human Approved` work, repairs an `In Progress` execution
+whose durable task is missing, and admits `Follow-ups` without a second approval
+lease. `Awaiting Plan Approval` remains idle until a human decides.
+
+A completed task that leaves its issue actionable receives a five-minute grace
+period and then reactivates, up to three successful no-transition runs. Failed
+activities retain their checkpoint and use Temporal's normal retry path. An `In
+Progress` issue without a matching lease produces an invariant violation and
+never becomes implicit authorization. A completed planning task tied to the
+exact durable issue ID can also supply approval evidence for an execution that
+started before execution leases existed.
 
 Because the schedule lives in Temporal, a deploy or transient worker outage
 doesn't erase the recovery intent. Once the worker is healthy, the next
@@ -229,27 +237,10 @@ host-managed lease record:
 
 | Tool | Purpose |
 |------|---------|
+| `linear_submit_plan` | Atomically persists a plan and moves a ready item to `Awaiting Plan Approval`. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider transition. |
 | `linear_list_work_items` | Lists durable execution records for the workspace. |
 | `linear_move_todo` | Moves work to an agent-managed outcome or a directly human-authorized state. |
-
-## Migrate an existing board
-
-Older installations might retain `Ready for Planning` and
-`Awaiting Plan Approval`. Pynchy no longer creates or observes those states and
-doesn't delete them automatically. Boot reconciliation adds `Follow-ups` when
-it is missing.
-
-Move unapproved items to `Agent Proposed`. Move only explicitly authorized work
-to `Human Approved`. Existing `In Progress`, `Awaiting Review`, `Blocked`,
-`Done`, and `Rejected` items keep their meaning; use `Follow-ups` for final
-operational work after the main deliverable is ready.
-
-Deployment-specific prompts aren't changed by repository upgrades. Remove fixed
-planning, claiming, commit, sync, or completion rituals from files under
-`data/personalization/prompts/`. State the objective, authority, and success
-condition instead. Keep only constraints that the host can't enforce or the
-agent can't reasonably infer.
 
 ## Inspect executions
 

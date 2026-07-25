@@ -15,9 +15,11 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
+from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
 from pynchy.plugins.integrations.linear_statuses import (
     FOLLOW_UPS_STATUS,
     HUMAN_APPROVED_STATUS,
+    READY_FOR_PLANNING_STATUS,
 )
 from pynchy.plugins.integrations.linear_work_item_provider import linear_client
 from pynchy.plugins.integrations.linear_work_item_tasks import (
@@ -33,7 +35,12 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves controller
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.
 _PAGE_SIZE = 50
-_DECISION_STATUSES = (HUMAN_APPROVED_STATUS, "in_progress", FOLLOW_UPS_STATUS)
+_DECISION_STATUSES = (
+    READY_FOR_PLANNING_STATUS,
+    HUMAN_APPROVED_STATUS,
+    "in_progress",
+    FOLLOW_UPS_STATUS,
+)
 
 
 async def _list_state_issues(
@@ -136,13 +143,21 @@ async def reconcile_linear_decision_inbox(
             workspace = project_workspaces.get(issue.project_id)
             if workspace is None or issue.state_id != state_id:
                 continue
-            admitted = await admit_decision_issue(
-                issue,
-                workspace,
-                boards[workspace.folder],
-                status,
-                admission,
-            )
+            if status == READY_FOR_PLANNING_STATUS:
+                admitted = await admit_planning_issue(
+                    issue,
+                    workspace,
+                    observed_at=observed_at,
+                    public_source=public_source,
+                )
+            else:
+                admitted = await admit_decision_issue(
+                    issue,
+                    workspace,
+                    boards[workspace.folder],
+                    status,
+                    admission,
+                )
             if admitted is not None:
                 created.append(admitted)
     return created

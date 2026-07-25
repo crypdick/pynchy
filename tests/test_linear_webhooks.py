@@ -221,6 +221,8 @@ async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
         team={"id": "team-1"},
         project={"id": "project-1"},
         states={
+            "ready_for_planning": {"id": "state-ready"},
+            "awaiting_plan_approval": {"id": "state-awaiting-plan"},
             "human_approved": {"id": "state-approved"},
             "in_progress": {"id": "state-progress"},
         },
@@ -245,6 +247,60 @@ async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
     assert request.workspace == "project"
     assert request.issue_id == "issue-1"
     assert request.initiated_by == f"linear-webhook:{_DELIVERY_ID}"
+    assert processed.ignored_reason == "work_item_execution_owned_by_controller"
+    assert processed.conversation is None
+
+
+@pytest.mark.parametrize(
+    ("state_id", "state_name"),
+    [
+        ("state-ready", "Ready for Planning"),
+        ("state-awaiting-plan", "Awaiting Plan Approval"),
+    ],
+)
+async def test_planning_issue_updates_do_not_race_the_temporal_controller(
+    monkeypatch: pytest.MonkeyPatch,
+    state_id: str,
+    state_name: str,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Plan durable recovery",
+                "state": {"id": state_id, "name": state_name},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(event, conversation=replace(event.conversation, workspace="project"))
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={
+            "ready_for_planning": {"id": "state-ready"},
+            "awaiting_plan_approval": {"id": "state-awaiting-plan"},
+            "human_approved": {"id": "state-approved"},
+            "in_progress": {"id": "state-progress"},
+        },
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"state": {"id": state_id}}, board)),
+    )
+
+    processed = await process_linear_webhook_event(event)
+
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
     assert processed.conversation is None
 
