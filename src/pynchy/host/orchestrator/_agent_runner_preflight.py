@@ -166,6 +166,7 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         request.group.folder,
         request.chat_jid,
         request.on_output,
+        track_interactive_session=not request.is_scheduled_task,
     )
     system_notices = merged_system_notices(
         build_admin_system_notices(
@@ -246,20 +247,31 @@ def session_tracking_output_handler(
     group_folder: str,
     chat_jid: str,
     on_output: OnOutput | None,
+    *,
+    track_interactive_session: bool = True,
 ) -> OnOutput:
+    """Track provider sessions in their durable owner, if the run has one.
+
+    Scheduled invocations are one-shot and recover from their in-flight
+    checkpoint rather than their provider rollout. The output may share a
+    human-facing thread with a routed conversation, but the scheduled session
+    must remain independent from that conversation's interactive session.
+    """
+
     async def wrapped_on_output(output: ContainerOutput) -> None:
         if (
             session_id := session_id_from_output(output)
         ) and group_folder not in deps.session_cleared:
-            deps.sessions[group_folder] = session_id
-            await set_session(GroupFolder(group_folder), SessionId(session_id))
-            # Workspace folder slugs sanitize opaque conversation IDs and are not
-            # reversible. The exact durable identity belongs to the thread binding.
-            if binding := await get_conversation_control_by_thread(ChatJid(chat_jid)):
-                await set_conversation_session(
-                    binding.conversation_id,
-                    SessionId(session_id),
-                )
+            if track_interactive_session:
+                deps.sessions[group_folder] = session_id
+                await set_session(GroupFolder(group_folder), SessionId(session_id))
+                # Workspace folder slugs sanitize opaque conversation IDs and are not
+                # reversible. The exact durable identity belongs to the thread binding.
+                if binding := await get_conversation_control_by_thread(ChatJid(chat_jid)):
+                    await set_conversation_session(
+                        binding.conversation_id,
+                        SessionId(session_id),
+                    )
             await update_in_flight_session(group_folder, session_id)
         if on_output:
             await on_output(output)

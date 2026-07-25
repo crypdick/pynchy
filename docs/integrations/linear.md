@@ -58,13 +58,16 @@ health check shows that the service is stuck.
 
 ## Use workspace boards
 
-At startup, Pynchy creates missing workspace projects and workflow states.
-Each project carries an immutable workspace marker. Runtime reads and writes
-require exactly one marked project and fail closed if the project is missing
-or ambiguous.
+At startup, Pynchy creates missing workspace projects and workflow states and
+reconciles the positions of its managed states. This keeps the visible order
+`Agent Proposed` → `Ready for Planning` → `Awaiting Plan Approval` → `Human
+Approved` → `In Progress` even when states predate the current workflow. Each
+project carries an immutable workspace marker. Runtime reads and writes require
+exactly one marked project and fail closed if the project is missing or
+ambiguous.
 
-Reconciliation is additive. Pynchy doesn't delete or archive existing Linear
-objects.
+Reconciliation doesn't delete or archive existing Linear objects, change state
+types, or reorder states it doesn't manage.
 
 | State | Meaning |
 |-------|---------|
@@ -94,7 +97,11 @@ issue description and move the item to `Awaiting Plan Approval`.
 Review the plan, then move the issue to `Human Approved` in Linear. You can also
 explicitly request that state change in a direct human conversation. The agent
 can then use `linear_move_todo`; Pynchy verifies that the current turn came
-directly from a human without requiring matching wording.
+directly from a human without requiring matching wording. Moving the issue
+directly to `In Progress` in Linear is also an approval action when an
+authenticated callback route is configured: when the signed webhook identifies
+a user actor and a state change, Pynchy acquires the lease in place instead of
+moving the issue backward first.
 
 `linear_create_todo` creates an unapproved `Agent Proposed` item. An autonomous
 agent can't set `Ready for Planning`, `Human Approved`, or `Rejected`.
@@ -124,7 +131,8 @@ provenance, not magic wording. A later move from `Blocked`, `Done`, or
 `Rejected` to `Human Approved` can start a new execution attempt.
 
 `In Progress` remains lease-managed, so neither the human nor agent sets it
-through the generic tool.
+through the generic tool. A direct Linear UI move is handled only through the
+authenticated user-transition path above.
 
 If the provider result is uncertain after a network failure, use
 `linear_reconcile_work_item` before retrying a mutation.
@@ -175,11 +183,14 @@ thread share one ordered conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
 Approved` update acquires the execution lease before the host admits a durable
-isolated task. These issue updates don't also start ordinary conversation turns,
-because that would race a second agent against the durable task. An `Awaiting
-Plan Approval` update waits for human review. A `Done` delivery completes the
-linked active, blocked, or review-ready execution. Other authenticated events
-provide context but don't bypass authorization.
+isolated task. A user-authored state transition directly to `In Progress`
+acquires the same lease without another provider move. An unleased `In Progress`
+update without that actor and changed-field evidence remains controller-owned
+but does not authorize work. These issue updates don't also start ordinary
+conversation turns, because that would race a second agent against the durable
+task. An `Awaiting Plan Approval` update waits for human review. A `Done`
+delivery completes the linked active, blocked, or review-ready execution. Other
+authenticated events provide context but don't bypass authorization.
 
 The route verifies Linear's HMAC-SHA256 signature, requires a timestamp within
 60 seconds, checks the configured organization ID, and deduplicates delivery
@@ -204,7 +215,9 @@ started before execution leases existed.
 Because the schedule lives in Temporal, a deploy or transient worker outage
 doesn't erase the recovery intent. Once the worker is healthy, the next
 one-minute reconciliation recreates missing work; an interrupted agent turn
-resumes from its durable checkpoint.
+resumes from its durable checkpoint. Planning and execution tasks track their
+own checkpoints and never replace the routed issue conversation's interactive
+agent session.
 
 ## Schedule proactive proposals
 

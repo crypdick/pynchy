@@ -119,9 +119,11 @@ boundary.
 An issue update that requests planning, waits for plan approval, or acquires or
 confirms an active execution lease is the exception: the Linear integration
 records it as controller-owned instead of creating a conversation delivery. A
-Temporal-reconciled isolated task owns planning or execution, so the generic
-issue conversation cannot start a second agent against the same work. Comment
-events remain ordered conversation input.
+signed update whose user actor changed the state directly to `In Progress` can
+establish the lease in place. Current provider state alone cannot establish
+that authority. A Temporal-reconciled isolated task owns planning or execution,
+so the generic issue conversation cannot start a second agent against the same
+work. Comment events remain ordered conversation input.
 
 Webhook admission persists the receipt before linking the FIFO delivery. An
 exact provider replay always attempts the link again, which repairs a crash
@@ -135,6 +137,10 @@ the configured Linear workspace. A first callback derives a title such as
 binding. If Discord no longer has that thread, reconciliation creates a
 replacement, moves the runtime workspace to the replacement JID, and rebinds
 the conversation's existing agent session.
+
+An isolated planning or execution task can post in the same Discord thread, but
+its one-shot provider session belongs only to its in-flight checkpoint. Session
+tracking never binds that scheduled rollout to the routed conversation.
 
 Before admission, the host uses the API key from the route's named Linear account
 to fetch the current issue and rejects a delivery that does not belong to the

@@ -32,6 +32,10 @@ Temporal buffers one overlapping occurrence for a config-backed job. The next ru
 
 Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy and can host child conversations, Pynchy uses a numbered child thread. When the selected chat cannot host children, Pynchy durably defers the run until the reservation clears instead of sharing or rerouting the conversation. Canceling a task also clears its unfinished checkpoint so it cannot retain that reservation. Each agent task uses an isolated runtime folder.
 
+A scheduled agent's provider session belongs only to its in-flight checkpoint.
+Even if its output thread is also the control for a routed webhook conversation,
+the scheduled run cannot replace that conversation's interactive session.
+
 An agent completes a run by returning its final result. The host then closes the
 one-shot runtime. Repo-backed agents can publish with
 `sync_worktree_to_main`, which opens or updates a pull request for committed

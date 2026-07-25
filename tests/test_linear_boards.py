@@ -33,6 +33,7 @@ class FakeLinearClient:
         self.states: list[dict[str, Any]] = [
             {"id": "state-backlog", "name": "Backlog", "type": "backlog", "position": 10.0},
         ]
+        self.updated_states: list[dict[str, Any]] = []
         self.updated_projects: list[dict[str, Any]] = []
         self.created_issues: list[dict[str, Any]] = []
         self.updated_issues: list[dict[str, Any]] = []
@@ -77,15 +78,8 @@ class FakeLinearClient:
             project["description"] = variables["description"]
             self.updated_projects.append(variables)
             return {"projectUpdate": {"success": True, "project": project}}
-        if "CreateWorkflowState" in query:
-            state = {
-                "id": f"state-{variables['name'].lower().replace(' ', '-')}",
-                "name": variables["name"],
-                "type": variables["type"],
-                "position": variables["position"],
-            }
-            self.states.append(state)
-            return {"workflowStateCreate": {"success": True, "workflowState": state}}
+        if "CreateWorkflowState" in query or "UpdateWorkflowStatePosition" in query:
+            return self._workflow_state_response(query, variables)
         if "CreateWorkspaceTodo" in query:
             state = next(state for state in self.states if state["id"] == variables["state_id"])
             issue = {
@@ -115,6 +109,25 @@ class FakeLinearClient:
             message = f"Unexpected query: {query}"
             raise AssertionError(message)
         return response
+
+    def _workflow_state_response(
+        self,
+        query: str,
+        variables: dict[str, Any],
+    ) -> dict[str, Any]:
+        if "CreateWorkflowState" in query:
+            state = {
+                "id": f"state-{variables['name'].lower().replace(' ', '-')}",
+                "name": variables["name"],
+                "type": variables["type"],
+                "position": variables["position"],
+            }
+            self.states.append(state)
+            return {"workflowStateCreate": {"success": True, "workflowState": state}}
+        state = next(state for state in self.states if state["id"] == variables["state_id"])
+        state["position"] = variables["position"]
+        self.updated_states.append(variables)
+        return {"workflowStateUpdate": {"success": True, "workflowState": state}}
 
 
 class TestSelectTeam:
@@ -212,6 +225,57 @@ class TestEnsureWorkspaceBoard:
         assert board.states["awaiting_review"]["name"] == "Awaiting Review"
         created = [query for query in client.queries if "CreateWorkflowState" in query]
         assert len(created) == 1
+
+    async def test_reconciles_existing_managed_state_positions(self):
+        client = FakeLinearClient()
+        client.states.extend(
+            {
+                "id": f"state-{key.replace('_', '-')}",
+                "name": spec.name,
+                "type": spec.type,
+                "position": 1000.0 - spec.position,
+            }
+            for key, spec in LINEAR_TODO_STATUSES.items()
+        )
+        client.projects.append(
+            {
+                "id": "project-existing",
+                "name": "Code Improver",
+                "url": "https://linear.app/acme/project/existing",
+            }
+        )
+
+        board = await provision_workspace_board(
+            client,
+            WorkspaceStub(folder="code-improver", name="Code Improver"),
+            team_key=None,
+        )
+
+        assert {key: state["position"] for key, state in board.states.items()} == {
+            key: spec.position for key, spec in LINEAR_TODO_STATUSES.items()
+        }
+        assert len(client.updated_states) == len(LINEAR_TODO_STATUSES)
+        assert not [query for query in client.queries if "CreateWorkflowState" in query]
+
+    async def test_leaves_correct_managed_state_positions_unchanged(self):
+        client = FakeLinearClient()
+        client.states.extend(
+            {
+                "id": f"state-{key.replace('_', '-')}",
+                "name": spec.name,
+                "type": spec.type,
+                "position": spec.position,
+            }
+            for key, spec in LINEAR_TODO_STATUSES.items()
+        )
+
+        await provision_workspace_board(
+            client,
+            WorkspaceStub(folder="code-improver", name="Code Improver"),
+            team_key=None,
+        )
+
+        assert client.updated_states == []
 
     async def test_reuses_existing_project_by_name(self):
         client = FakeLinearClient()

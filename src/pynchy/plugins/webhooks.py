@@ -57,6 +57,14 @@ WebhookExternalContext = str | Mapping[str, object]
 
 
 @dataclass(frozen=True)
+class WebhookActor:
+    """Provider-authenticated actor identity attached to one delivery."""
+
+    id: str
+    kind: str
+
+
+@dataclass(frozen=True)
 class WebhookEvent:
     """Closed provider event admitted by a plugin-owned route parser.
 
@@ -77,6 +85,8 @@ class WebhookEvent:
     ignored_reason: str | None = None
     host_message: str | None = None
     conversation: WebhookConversation | None = None
+    actor: WebhookActor | None = None
+    changed_fields: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if (self.instructions is None) != (self.external_context is None):

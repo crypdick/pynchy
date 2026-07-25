@@ -17,6 +17,7 @@ from pynchy.plugins.integrations.linear_work_item_completion import (
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
+    acquire_human_started_work_item_lease,
     acquire_work_item_lease,
 )
 from pynchy.state import (
@@ -289,6 +290,43 @@ async def test_host_lease_requires_human_approved(lifecycle: Lifecycle) -> None:
 
     with pytest.raises(ValueError, match="must be Human Approved"):
         await _lease(lifecycle)
+
+    assert await get_active_work_item_execution("issue-1") is None
+
+
+async def test_human_started_lease_adopts_in_progress_without_provider_move(
+    lifecycle: Lifecycle,
+) -> None:
+    lifecycle.state.issue["state"] = _state("state-in-progress")
+
+    execution = await acquire_human_started_work_item_lease(
+        lifecycle.client,
+        WorkItemLeaseRequest(
+            workspace="pynchy",
+            issue_id="issue-1",
+            request_id="human-started-1",
+            initiated_by="linear-webhook:delivery-1:user:user-1",
+        ),
+    )
+
+    assert execution.status.value == "in_progress"
+    assert lifecycle.state.issue["state"]["name"] == "In Progress"
+    assert await get_active_work_item_execution("issue-1") is not None
+
+
+async def test_human_started_lease_requires_current_in_progress_state(
+    lifecycle: Lifecycle,
+) -> None:
+    with pytest.raises(ValueError, match="must be human-started"):
+        await acquire_human_started_work_item_lease(
+            lifecycle.client,
+            WorkItemLeaseRequest(
+                workspace="pynchy",
+                issue_id="issue-1",
+                request_id="human-started-1",
+                initiated_by="linear-webhook:delivery-1:user:user-1",
+            ),
+        )
 
     assert await get_active_work_item_execution("issue-1") is None
 

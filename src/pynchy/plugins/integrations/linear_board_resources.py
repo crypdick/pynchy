@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
-from pynchy.plugins.integrations.linear_board_payloads import nodes
+from pynchy.plugins.integrations.linear_board_payloads import nodes, payload_entity
 
 _LINEAR_TEAM_MISSING = "Linear response did not include team"
 _LINEAR_PROJECT_PAGE_INFO_MISSING = "Linear project response did not include pageInfo"
@@ -64,6 +65,44 @@ async def load_team_resources(
         projects_after = _next_projects_page_cursor(team)
         if projects_after is None:
             return {"projects": projects, "states": states}
+
+
+async def reconcile_workflow_state_position(
+    client: LinearResourceQueryClient,
+    state: dict[str, Any],
+    *,
+    position: float,
+) -> dict[str, Any]:
+    """Keep one managed status at its declared position."""
+    current = state.get("position")
+    if (
+        isinstance(current, int | float)
+        and not isinstance(current, bool)
+        and math.isclose(float(current), position, rel_tol=0.0, abs_tol=1e-9)
+    ):
+        return state
+    state_id = state.get("id")
+    if not isinstance(state_id, str) or not state_id:
+        raise LinearBoardError("Linear workflow state did not include an ID")
+    data = await client.query(
+        """
+        mutation UpdateWorkflowStatePosition(
+          $state_id: String!,
+          $position: Float!
+        ) {
+          workflowStateUpdate(
+            id: $state_id,
+            input: { position: $position }
+          ) {
+            success
+            workflowState { id name type position }
+          }
+        }
+        """,
+        state_id=state_id,
+        position=position,
+    )
+    return payload_entity(data, "workflowStateUpdate", "workflowState")
 
 
 def _next_projects_page_cursor(team: dict[str, Any]) -> str | None:
