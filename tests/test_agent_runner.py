@@ -24,6 +24,7 @@ from agent_runner.host_direct import build_host_core_config
 from agent_runner.ipc import drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
     apply_followup_metadata,
+    build_agent_prompt,
     build_core_config,
     build_initial_prompt,
     build_sdk_messages,
@@ -187,8 +188,32 @@ class TestContainerInput:
         assert "authority" in prompt
         assert "relevant evidence" in prompt
         assert "response ends the run" in prompt
+        assert "If Linear tools are available" in prompt
+        assert "snag, bug, or tool failure that you cannot fix yourself" in prompt
+        assert "check whether it has already been reported in Linear" in prompt
+        assert "create an Agent Proposed work item" in prompt
+        assert "Do not report problems that you fix yourself" in prompt
+        assert "rather than giving up at the problem" in prompt
         assert "finished_work" not in prompt
         assert "host applies publication" not in prompt
+
+    def test_shared_scheduled_prompt_contract_applies_without_container_ipc(self):
+        ci = ContainerInput.from_dict(
+            {
+                "messages": [{"sender_name": "Scheduler", "content": "Review the repo."}],
+                "group_folder": "review",
+                "chat_jid": "scheduled:review",
+                "is_admin": False,
+                "is_scheduled_task": True,
+            }
+        )
+
+        prompt = build_agent_prompt(ci)
+
+        assert "If Linear tools are available" in prompt
+        assert "check whether it has already been reported in Linear" in prompt
+        assert "create an Agent Proposed work item" in prompt
+        assert "Do not report problems that you fix yourself" in prompt
 
     def test_defaults_agent_core(self):
         data = {
