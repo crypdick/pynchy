@@ -106,7 +106,7 @@ class FileSecretTaintCanary:
                     response_path_override=response_path,
                 )
                 response = json.loads(response_path.read_text(encoding="utf-8"))
-            gate.notify_file_access(credential_access=False)
+            gate.notify_file_access()
             artifact = _FileTaintArtifact(
                 secret_tainted=gate.policy.secret_tainted,
                 response_decision=str(response["result"]["decision"]),

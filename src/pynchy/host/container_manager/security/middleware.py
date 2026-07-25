@@ -76,15 +76,18 @@ class SecurityPolicy:
     ) -> ServiceTrustConfig:
         return self._services.get(service, default_trust or _UNKNOWN_SERVICE)
 
-    def notify_file_access(self, *, credential_access: bool = False) -> None:
+    def notify_file_access(self) -> None:
         """Called when the agent uses file-access tools (Read, Execute, Bash).
 
-        Sets secret taint when the workspace declares ``contains_secrets`` or
-        the normalized request names a credential path. The latter protects a
-        misconfigured workspace without treating every source file as secret.
+        Sets secret taint when the workspace declares ``contains_secrets``.
+        Heuristic credential-path matches require separate Cop adjudication.
         """
-        if self._workspace_contains_secrets or credential_access:
+        if self._workspace_contains_secrets:
             self._secret_tainted = True
+
+    def confirm_credential_access(self) -> None:
+        """Set sticky secret taint after credential evidence is confirmed."""
+        self._secret_tainted = True
 
     def notify_public_source_input(self) -> None:
         """Mark the invocation as having received provider-controlled input."""
