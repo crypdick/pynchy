@@ -210,13 +210,17 @@ Planning`, leases `Human Approved` work, repairs an `In Progress` execution
 whose durable task is missing, and admits `Follow-ups` without a second approval
 lease. `Awaiting Plan Approval` remains idle until a human decides.
 
-A completed task that leaves its issue actionable receives a five-minute grace
-period and then reactivates, up to three successful no-transition runs. Failed
-activities retain their checkpoint and use Temporal's normal retry path. An `In
-Progress` issue without a matching lease produces an invariant violation and
-never becomes implicit authorization. A completed planning task tied to the
-exact durable issue ID can also supply approval evidence for an execution that
-started before execution leases existed.
+Only an explicit work-item lifecycle outcome, such as `Awaiting Review`,
+`Blocked`, `Follow-ups`, `Done`, or cancellation, counts as a successful Linear
+execution occurrence. A clean agent exit without one records `incomplete` and
+completes the schedule occurrence without an immediate Temporal retry. After a
+five-minute grace period, reconciliation may reactivate the task; successful and
+incomplete occurrences share a three-occurrence cap. Failed activities retain
+their checkpoint and use Temporal's normal retry path. An `In Progress` issue
+without a matching lease produces an invariant violation and never becomes
+implicit authorization. A completed planning task tied to the exact durable
+issue ID can also supply approval evidence for an execution that started before
+execution leases existed.
 
 Because the schedule lives in Temporal, a deploy or transient worker outage
 doesn't erase the recovery intent. Once the worker is healthy, the next

@@ -45,6 +45,7 @@ from pynchy.types import (
     InFlightWorkKind,
     ScheduledTask,
     TaskRunLog,
+    WorkItemExecutionStatus,
     WorkspaceProfile,
 )
 from pynchy.utils import ShellResult
@@ -1809,6 +1810,71 @@ class TestRunScheduledAgent:
                         await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert completions == [("task-1", "Completed", True)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("execution_status", "expected_run_status", "expected_result"),
+        [
+            (
+                WorkItemExecutionStatus.IN_PROGRESS,
+                "incomplete",
+                "Incomplete: Agent response",
+            ),
+            (
+                WorkItemExecutionStatus.AWAITING_REVIEW,
+                "success",
+                "Agent response",
+            ),
+        ],
+        ids=["still-in-progress", "explicit-outcome"],
+    )
+    async def test_linear_execution_requires_explicit_lifecycle_outcome(
+        self,
+        mock_deps,
+        sample_task,
+        sample_group,
+        tmp_path,
+        execution_status,
+        expected_run_status,
+        expected_result,
+    ):
+        """A clean Linear run succeeds only after recording a lifecycle outcome."""
+        mock_deps.groups["test-jid"] = sample_group
+        sample_task.schedule_type = "once"
+
+        async def agent_response(_group, _jid, _messages, on_output, **_kwargs):
+            await on_output(ContainerOutput(status="success", result="Agent response"))
+            return "success"
+
+        mock_deps._run_agent_side_effect = agent_response
+        execution = Mock(id="execution-1", status=execution_status)
+        logged_runs = []
+        completions = []
+
+        def mock_record(task_id, *, last_result, completed):
+            completions.append((task_id, last_result, completed))
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.scheduled_completion.get_work_item_execution_for_task",
+                new_callable=AsyncMock,
+                return_value=execution,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.log_task_run",
+                side_effect=logged_runs.append,
+            ),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                side_effect=mock_record,
+            ),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            completed = await run_scheduled_agent(sample_task, mock_deps)
+
+        assert completed is True
+        assert [run.status for run in logged_runs] == [expected_run_status]
+        assert completions == [("task-1", expected_result, True)]
 
     @pytest.mark.asyncio
     async def test_once_schedule_remains_active_for_temporal_retry_after_agent_error(
