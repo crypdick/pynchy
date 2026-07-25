@@ -186,7 +186,10 @@ five-minute grace period and then reactivated, up to three successful
 no-transition runs. Failed activities retain their checkpoint and use
 Temporal's normal retry path. An `In Progress` issue without a matching lease
 is reported as an invariant violation and is never treated as implicit
-authorization.
+authorization. The migration bridge has one narrow exception: a completed
+legacy `linear-ready-for-planning-<identifier>-*` task in the same workspace is
+durable evidence from the old approved-plan lifecycle, so the controller can
+adopt it into a current lease before resuming work.
 
 Because the schedule lives in Temporal, a deploy or transient worker outage
 doesn't erase the recovery intent. Once the worker is healthy, the next
