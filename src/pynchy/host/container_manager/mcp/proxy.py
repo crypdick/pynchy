@@ -429,23 +429,24 @@ async def _apply_fencing(
     contents = result.get("content", [])
     for item in contents:
         if item.get("type") == "text" and "text" in item:
-            verdict = await inspect_inbound(
-                source=f"mcp:{instance_id}",
-                content=item["text"],
-            )
-            if verdict.flagged:
-                logger.warning(
-                    "Cop flagged MCP response",
-                    instance=instance_id,
-                    group=group_folder,
-                    reason=verdict.reason,
+            if gate.policy.cop_active:
+                verdict = await inspect_inbound(
+                    source=f"mcp:{instance_id}",
+                    content=item["text"],
                 )
-                item["text"] = (
-                    "Browser content blocked by security policy. "
-                    "The page may contain unsafe content. Try a different page."
-                )
-            else:
-                item["text"] = fence_untrusted_content(item["text"], source=f"mcp:{instance_id}")
+                if verdict.flagged:
+                    logger.warning(
+                        "Cop flagged MCP response",
+                        instance=instance_id,
+                        group=group_folder,
+                        reason=verdict.reason,
+                    )
+                    item["text"] = (
+                        "Browser content blocked by security policy. "
+                        "The page may contain unsafe content. Try a different page."
+                    )
+                    continue
+            item["text"] = fence_untrusted_content(item["text"], source=f"mcp:{instance_id}")
 
     return _json.dumps(data).encode()
 

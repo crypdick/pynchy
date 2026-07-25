@@ -133,6 +133,9 @@ async def evaluate_bash_command(
     """
     policy = gate.policy
 
+    if not policy.cop_active:
+        return _allow()
+
     # Tier 1: No taint -> allow unconditionally
     if not policy.corruption_tainted and not policy.secret_tainted:
         return _allow()

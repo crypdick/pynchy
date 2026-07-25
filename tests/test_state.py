@@ -1058,6 +1058,7 @@ class TestWorkspaceProfiles:
                 ),
             },
             contains_secrets=True,
+            cop_active=False,
         )
         profile = WorkspaceProfile(
             jid="secure@g.us",
@@ -1072,6 +1073,7 @@ class TestWorkspaceProfiles:
         result = await get_workspace_profile("secure@g.us")
         assert result is not None
         assert result.security.contains_secrets is True
+        assert result.security.cop_active is False
         assert "email" in result.security.services
         assert result.security.services["email"].public_source is True
         assert result.security.services["email"].dangerous_writes is True
@@ -1139,6 +1141,7 @@ class TestWorkspaceProfiles:
         assert result is not None
         assert result.security.services == {}
         assert result.security.contains_secrets is False
+        assert result.security.cop_active is True
 
     async def test_get_workspace_profile_raises_on_corrupt_security(self):
         """A corrupt security_profile must fail loud, not silently default trust."""

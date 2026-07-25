@@ -52,6 +52,7 @@ class SecurityPolicy:
         self._services = security.services
         self._capabilities = security.capabilities
         self._workspace_contains_secrets = security.contains_secrets
+        self._cop_active = security.cop_active
         self._corruption_tainted = False
         self._secret_tainted = False
 
@@ -62,6 +63,11 @@ class SecurityPolicy:
     @property
     def secret_tainted(self) -> bool:
         return self._secret_tainted
+
+    @property
+    def cop_active(self) -> bool:
+        """Return whether this workspace uses the secondary Cop reviewer."""
+        return self._cop_active
 
     def _get_trust(
         self,
@@ -114,6 +120,8 @@ class SecurityPolicy:
 
         if trust.public_source:
             self._corruption_tainted = True
+            if not self._cop_active:
+                return PolicyDecision(allowed=True)
             return PolicyDecision(
                 allowed=True,
                 reason=f"Public source '{service}': cop scan required",
@@ -217,7 +225,7 @@ class SecurityPolicy:
         *,
         payload_has_secrets: bool,
     ) -> tuple[bool, bool]:
-        needs_cop = self._corruption_tainted
+        needs_cop = self._cop_active and self._corruption_tainted
         needs_human = bool(trust.dangerous_writes)
 
         if self._corruption_tainted and self._secret_tainted and trust.public_sink:

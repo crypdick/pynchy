@@ -218,6 +218,12 @@ The agent tool security gate closes this gap. It runs as a `BEFORE_TOOL_USE` hoo
 
 **File taint notification.** Every normalized file operation and every shell operation notifies the host before execution. The host calls `SecurityPolicy.notify_file_access()`, so a workspace with `contains_secrets = true` becomes secret-tainted even when the later Bash classifier considers a command such as `cat .env` or `ls` provably local. A credential path such as `.env`, `.env.production`, `.netrc`, or a private-key path also sets secret taint when the workspace profile omitted `contains_secrets`. Taint remains sticky for the container invocation. The host rejects the operation when no active invocation gate can retain that taint; it never substitutes a throwaway policy object. Bash policy requests follow the same rule: a missing gate, unavailable host, empty or malformed response, or unknown decision denies the command because an approval cannot be obtained safely.
 
+**Unattended Cop mode.** Profiles use Cop by default. A profile can set
+`cop_active = false` when Cop decisions would prevent an intentionally
+unattended automation from completing. This disables secondary Cop inspection
+for that workspace but does not disable deterministic command, persistence, or
+package rules, or explicit human-only MCP and host-action contracts.
+
 **CLI hook failure behavior.** CLI-backed cores emit an explicit denial when the hook input is malformed or a built-in security hook raises unexpectedly. Plugin hook modules are declared through typed host-side specifications. Missing or unloadable optional modules are skipped, while the built-in roster remains active, so an optional extension cannot disable the owned gate.
 
 **Package provenance and release age.** Package commands normalize `uv add`,

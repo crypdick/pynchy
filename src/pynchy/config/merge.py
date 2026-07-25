@@ -33,6 +33,7 @@ class ResolvedWorkspaceConfig:
     cwd: str | None
     is_admin: bool
     contains_secrets: bool
+    cop_active: bool = True
     denied_skills: list[str] = field(default_factory=list)
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
@@ -49,6 +50,7 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
     cwd: str | None = None
     is_admin = False
     contains_secrets = False
+    cop_active = True
     capabilities: dict[str, CapabilityRule] = {}
 
     for profile in profiles:
@@ -65,6 +67,8 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
             cwd = profile.cwd
         is_admin = is_admin or profile.is_admin
         contains_secrets = contains_secrets or profile.contains_secrets
+        if profile.cop_active is not None:
+            cop_active = profile.cop_active
         capabilities.update(
             {
                 capability: CapabilityRule(decision=rule.decision)
@@ -83,5 +87,6 @@ def merge_workspace_profiles(profiles: list[ProfileConfig]) -> ResolvedWorkspace
         cwd=cwd,
         is_admin=is_admin,
         contains_secrets=contains_secrets,
+        cop_active=cop_active,
         capabilities=capabilities,
     )

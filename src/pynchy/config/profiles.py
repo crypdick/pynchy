@@ -35,6 +35,7 @@ class ProfileConfig(_StrictModel):
     cwd: str | None = None
     is_admin: bool = False
     contains_secrets: bool = False
+    cop_active: bool | None = None
     capabilities: dict[str, CapabilityTomlConfig] = Field(default_factory=dict)
 
     @field_validator("repo", mode="before")

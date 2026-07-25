@@ -171,12 +171,13 @@ class ServiceTrustConfig:
 class WorkspaceSecurity:
     """Security configuration for a workspace.
 
-    Holds per-service trust declarations and a flag for whether the
-    workspace's local filesystem contains secrets (.env files, etc.).
+    Holds per-service trust declarations, Cop activation, and a flag
+    for whether the workspace's local filesystem contains secrets.
     """
 
     services: dict[str, ServiceTrustConfig] = field(default_factory=dict)
     contains_secrets: bool = False
+    cop_active: bool = True
     capabilities: dict[str, CapabilityRule] = field(default_factory=dict)
 
 
