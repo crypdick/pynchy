@@ -3,30 +3,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.config import PluginConfig
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_decision_inbox import (
-    polling_boards,
     reconcile_linear_decision_inbox,
+)
+from pynchy.plugins.integrations.linear_work_item_provider import (
+    WorkItemLeaseRequest,
+    acquire_work_item_lease,
 )
 from pynchy.state import (
     WorkItemTransitionRequest,
     begin_work_item_transition,
     get_active_work_item_execution,
     get_all_tasks,
+    get_task_by_id,
     get_work_item_transition_by_request,
     init_test_database,
+    log_task_run,
+    record_task_completion,
     resolve_work_item_transition,
 )
-from pynchy.types import WorkItemExecutionStatus, WorkItemTransitionStatus
+from pynchy.types import TaskRunLog, WorkItemExecutionStatus, WorkItemTransitionStatus
 
 
 @dataclass(frozen=True)
@@ -201,7 +204,9 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert execution is not None
     assert execution.status.value == "in_progress"
     assert execution.task_id == task.id
-    assert execution.initiated_by == "linear-decision-inbox"
+    assert execution.initiated_by == "linear-work-item-controller"
+    assert execution.temporal_workflow_id is not None
+    assert execution.temporal_workflow_id.startswith("pynchy-agent-task-")
     assert task.group_folder == "beta"
     assert task.input_source == "external:linear:authorized"
     assert task.context_mode == "isolated"
@@ -356,45 +361,100 @@ async def test_reconcile_paginates_through_large_authorized_backlog() -> None:
     assert len(created) == 61
 
 
-def test_webhook_routed_workspace_does_not_also_use_polling() -> None:
-    settings = make_settings(
-        plugins={
-            "linear": PluginConfig(
-                options={
-                    "webhook_routes": [
-                        {"name": "alpha", "workspace": "alpha"},
-                    ]
-                }
-            )
-        }
+async def test_reconcile_repairs_webhook_lease_that_has_no_durable_task() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"] = [
+        _issue(
+            "issue-webhook",
+            "SYN-13",
+            "Resume webhook work",
+            "human_approved",
+            "project-beta",
+        )
+    ]
+    board = _board("project-beta")
+    execution = await acquire_work_item_lease(
+        client,
+        WorkItemLeaseRequest(
+            workspace="beta",
+            issue_id="issue-webhook",
+            request_id="linear-webhook:delivery-1:lease",
+            initiated_by="linear-webhook:delivery-1",
+            board=board,
+        ),
     )
-    boards = {
-        "alpha": _board("project-alpha"),
-        "beta": _board("project-beta"),
-    }
+    assert execution.task_id is None
 
-    with patch(
-        "pynchy.plugins.integrations.linear_decision_inbox.get_settings",
-        return_value=settings,
-    ):
-        fallback = polling_boards(boards)
-
-    assert fallback == {"beta": boards["beta"]}
-
-
-def test_project_routed_webhook_covers_every_managed_board() -> None:
-    settings = make_settings(
-        plugins={"linear": PluginConfig(options={"webhook_routes": [{"name": "all-boards"}]})}
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": board},
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
     )
-    boards = {
-        "fam": _board("project-fam"),
-        "pynchy-dev": _board("project-pynchy"),
-    }
 
-    with patch(
-        "pynchy.plugins.integrations.linear_decision_inbox.get_settings",
-        return_value=settings,
-    ):
-        fallback = polling_boards(boards)
+    assert len(created) == 1
+    assert created[0].id.startswith("linear-execute-syn-13-")
+    repaired = await get_active_work_item_execution("issue-webhook")
+    assert repaired is not None
+    assert repaired.task_id == created[0].id
+    assert repaired.temporal_workflow_id is not None
 
-    assert fallback == {}
+
+async def test_reconcile_does_not_infer_authority_from_unleased_in_progress() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"] = []
+    client.issues_by_state["state-progress"] = [
+        _issue(
+            "issue-unleased",
+            "SYN-99",
+            "Do not infer approval",
+            "in_progress",
+            "project-beta",
+        )
+    ]
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
+    )
+
+    assert created == []
+    assert await get_active_work_item_execution("issue-unleased") is None
+
+
+async def test_reconcile_reactivates_quiet_completed_task_after_grace_period() -> None:
+    client = _DecisionClient()
+    workspace = _Workspace("beta", "Beta", "linear:beta")
+    board = _board("project-beta")
+    observed_at = datetime.now(UTC)
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [workspace],
+        {"beta": board},
+        now=observed_at,
+    )
+    task = created[0]
+    await log_task_run(
+        TaskRunLog(
+            task_id=task.id,
+            run_at=observed_at.isoformat(),
+            duration_ms=1,
+            status="success",
+        )
+    )
+    await record_task_completion(task.id, last_result="Stopped without transition", completed=True)
+
+    recovered = await reconcile_linear_decision_inbox(
+        client,
+        [workspace],
+        {"beta": board},
+        now=observed_at + timedelta(minutes=6),
+    )
+
+    assert [item.id for item in recovered] == [task.id]
+    active = await get_task_by_id(task.id)
+    assert active is not None
+    assert active.status == "active"
+    assert active.schedule_value == (observed_at + timedelta(minutes=6)).isoformat()

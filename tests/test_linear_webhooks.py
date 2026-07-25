@@ -239,12 +239,14 @@ async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
         acquire,
     )
 
-    await process_linear_webhook_event(event)
+    processed = await process_linear_webhook_event(event)
 
     request = acquire.await_args.args[1]
     assert request.workspace == "project"
     assert request.issue_id == "issue-1"
     assert request.initiated_by == f"linear-webhook:{_DELIVERY_ID}"
+    assert processed.ignored_reason == "work_item_execution_owned_by_controller"
+    assert processed.conversation is None
 
 
 def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:

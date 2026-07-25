@@ -98,7 +98,7 @@ class WebhookEvent:
 
 WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]
 WebhookEventPreparer = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
-WebhookEventProcessor = Callable[[WebhookEvent], Awaitable[None]]
+WebhookEventProcessor = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
 WebhookWorkspaceValidator = Callable[[WorkspaceProfile], str | None]
 
 

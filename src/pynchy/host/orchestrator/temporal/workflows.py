@@ -163,6 +163,22 @@ class ChannelReconciliationWorkflow:
 
 
 @workflow.defn
+class LinearWorkItemReconciliationWorkflow:
+    """Repair missing or orphaned managed Linear execution tasks."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return cast(
+            "str",
+            await workflow.execute_activity(
+                "run_linear_work_item_reconciliation",
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            ),
+        )
+
+
+@workflow.defn
 class CanaryRunWorkflow:
     """Run every declared external-service canary through one host activity."""
 

@@ -166,9 +166,11 @@ ignored. Comments, issue changes, and messages in the corresponding Discord
 thread share one ordered conversation.
 
 A `Human Approved` issue delivery acquires the execution lease before the host
-starts an agent turn. A `Done` delivery completes the linked active, blocked,
-or review-ready execution. Other authenticated events provide context but
-don't bypass authorization.
+admits a durable isolated task. The issue update itself doesn't also start an
+ordinary conversation turn, because that would race a second agent against the
+same lease. A `Done` delivery completes the linked active, blocked, or
+review-ready execution. Other authenticated events provide context but don't
+bypass authorization.
 
 The route verifies Linear's HMAC-SHA256 signature, requires a timestamp within
 60 seconds, checks the configured organization ID, and deduplicates delivery
@@ -176,10 +178,20 @@ UUIDs. The signing secret never enters the agent container. The selected Linear
 account's `public_source` setting determines whether callback content is
 trusted.
 
-When a workspace has no webhook route, the host polls `Human Approved`,
-recoverable `In Progress`, and `Follow-ups` items once per minute. Execution
-polling and webhooks share the same lease boundary; follow-up work doesn't need
-a second approval lease. A webhook-routed workspace isn't also polled.
+One Temporal schedule reconciles every managed board once per minute, including
+webhook-routed boards. It leases `Human Approved` work, repairs an `In Progress`
+execution whose durable task is missing, and admits `Follow-ups` without a
+second approval lease. A completed task that leaves its issue active is given a
+five-minute grace period and then reactivated, up to three successful
+no-transition runs. Failed activities retain their checkpoint and use
+Temporal's normal retry path. An `In Progress` issue without a matching lease
+is reported as an invariant violation and is never treated as implicit
+authorization.
+
+Because the schedule lives in Temporal, a deploy or transient worker outage
+doesn't erase the recovery intent. Once the worker is healthy, the next
+one-minute reconciliation recreates missing work; an interrupted agent turn
+resumes from its durable checkpoint.
 
 ## Schedule proactive proposals
 

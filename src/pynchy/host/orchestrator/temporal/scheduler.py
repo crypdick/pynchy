@@ -65,6 +65,9 @@ from pynchy.host.orchestrator.temporal.learning import (
     learning_review_workflow_id,
     run_learning_review,
 )
+from pynchy.host.orchestrator.temporal.linear_work_items import (
+    run_linear_work_item_reconciliation,
+)
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _activity_workflow_id,
     _record_activity_result,
@@ -101,6 +104,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     InteractiveMessageWorkflow,
     InterruptedTurnWorkflow,
     LearningReviewWorkflow,
+    LinearWorkItemReconciliationWorkflow,
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.logger import logger
@@ -366,6 +370,7 @@ class TemporalSchedulerRuntime:
                     DatabaseHostJobWorkflow,
                     ConfigHostCronWorkflow,
                     LearningReviewWorkflow,
+                    LinearWorkItemReconciliationWorkflow,
                 ],
                 activities=[
                     run_deploy,
@@ -380,6 +385,7 @@ class TemporalSchedulerRuntime:
                     run_database_host_job,
                     run_config_host_cron_job,
                     run_learning_review,
+                    run_linear_work_item_reconciliation,
                 ],
                 workflow_runner=scheduler_workflow_runner(),
             )
