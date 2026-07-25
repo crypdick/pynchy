@@ -231,6 +231,56 @@ def test_setup_builds_the_runtime_agent_from_pinned_inputs(
     ]
 
 
+def test_setup_failure_archives_bounded_logs_before_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = _spec(_runtime_root(tmp_path))
+    spec.log_dir.mkdir(parents=True)
+    spec.log_dir.joinpath("pynchy.general.log").write_text("startup failed\n")
+    control_root = tmp_path / "control"
+    control_root.mkdir()
+    archive_root = (
+        control_root
+        / ".new-feature"
+        / "diagnostics"
+        / "runtime-setup-failures"
+        / "diagnostic-feature"
+    )
+    expected_archive_limit = 5
+    for index in range(expected_archive_limit):
+        old_archive = archive_root / f"20260724T00000{index}000000Z"
+        old_archive.mkdir(parents=True)
+        old_archive.joinpath("old.log").write_text("old\n")
+
+    monkeypatch.setenv("NEW_FEATURE_REPO_ROOT", str(control_root))
+    monkeypatch.setenv("NEW_FEATURE_SLUG", "diagnostic-feature")
+    monkeypatch.setattr(harness, "_write_runtime_config", lambda _spec: {})
+    monkeypatch.setattr(harness, "_write_state", lambda *_args: None)
+    monkeypatch.setattr(
+        harness,
+        "_initialize_runtime_data",
+        lambda _spec: (_ for _ in ()).throw(RuntimeError("startup failed")),
+    )
+    stops: list[Path] = []
+
+    def record_stop(root: Path) -> None:
+        stops.append(root)
+
+    monkeypatch.setattr(harness, "stop", record_stop)
+
+    with pytest.raises(RuntimeError, match="startup failed") as raised:
+        harness.setup(spec)
+
+    archives = sorted(path for path in archive_root.iterdir() if path.is_dir())
+    assert len(archives) == expected_archive_limit
+    assert archives[0].name != "20260724T000000000000Z"
+    assert archives[-1].joinpath("pynchy.general.log").read_text() == "startup failed\n"
+    assert raised.value.__notes__ == [
+        f"Runtime setup logs preserved at {archives[-1]}",
+    ]
+    assert stops == [spec.root]
+
+
 @pytest.mark.parametrize(
     ("relative_path", "contents"),
     [
