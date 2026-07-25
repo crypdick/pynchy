@@ -242,6 +242,37 @@ class TestHostUpdateMain:
             "no marker commit on clean pop"
         )
 
+    def test_returns_false_on_stash_pop_conflict(self, tmp_path: Path):
+        """A conflicted stash restore must not be reported as a deployable update."""
+        (tmp_path / ".git").mkdir()
+        commands: list[list[str]] = []
+
+        def mock_run(*args, **kwargs):
+            cmd_args = args[0] if args else kwargs.get("args", [])
+            commands.append(list(cmd_args))
+            if "status" in cmd_args and "--porcelain" in cmd_args:
+                return subprocess.CompletedProcess(
+                    args=cmd_args, returncode=0, stdout="M dirty.txt\n", stderr=""
+                )
+            if "stash" in cmd_args and "pop" in cmd_args:
+                return subprocess.CompletedProcess(
+                    args=cmd_args, returncode=1, stdout="", stderr="CONFLICT (content)"
+                )
+            return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
+
+        with (
+            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
+            patch("pynchy.host.git_ops.sync_poll.push_local_commits") as push_local,
+        ):
+            result = host_update_main(tmp_path)
+
+        assert result is False
+        flat = _flat_commands(commands)
+        assert _first_command_index(flat, "stash", "pop") >= 0
+        assert not any("commit" in command and "--allow-empty" in command for command in flat)
+        assert push_local.call_count == 1
+
     def test_clean_tree_skips_recovery(self, tmp_path: Path):
         """Clean tree with no stale state goes straight to fetch."""
         (tmp_path / ".git").mkdir()

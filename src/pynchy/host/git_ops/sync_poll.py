@@ -151,21 +151,17 @@ def host_update_main_result(repo_root: Path, env: dict[str, str] | None = None) 
     if stashed:
         pop = run_git("stash", "pop", cwd=repo_root)
         if pop.returncode != 0:
-            # Stash pop failed (conflict) — create marker so the user knows
-            # to reconcile manually.  The stashed work is still in the reflog.
-            run_git(
-                "commit",
-                "--allow-empty",
-                "-m",
-                "[pynchy-sync] stash pop conflict after rebase"
-                " \u2014 work preserved in stash/reflog",
-                cwd=repo_root,
-            )
-            push_local_commits(skip_fetch=True, cwd=repo_root, env=env)
+            # A failed pop retains the stash; never restart from conflict-marked source.
+            diagnostic = redact_git_diagnostic(pop.stderr or "")
+            error = f"git stash pop failed with exit {pop.returncode}"
+            if diagnostic:
+                error = f"{error}: {diagnostic}"
             logger.warning(
                 "git_sync poll: stash pop conflict, work in stash/reflog",
+                error=error,
                 recovery="stash-pop-conflict",
             )
+            return GitUpdateResult(succeeded=False, error=error)
 
     return GitUpdateResult(succeeded=True)
 
