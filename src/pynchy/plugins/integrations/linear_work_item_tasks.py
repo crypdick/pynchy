@@ -46,8 +46,9 @@ from pynchy.types import (
 if TYPE_CHECKING:
     from pynchy.plugins.integrations.linear_client import LinearClient
 
+# NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" aligned with this policy.
 _ORPHAN_RETRY_GRACE = timedelta(minutes=5)
-_ORPHAN_SUCCESS_LIMIT = 3
+_ORPHAN_RUN_LIMIT = 3
 _EXECUTION_CONTRACT = (
     "Objective: deliver the Human Approved Linear work item below.\n"
     "Authority: the host verified approval and acquired the execution lease.\n"
@@ -213,14 +214,15 @@ async def ensure_task_active(
     if _last_run_is_recent(existing, observed_at):
         return existing, False
 
-    successful_runs = sum(
-        log.status == "success" for log in await get_task_run_logs(task.id, limit=10)
+    counted_runs = sum(
+        log.status in {"success", "incomplete"}
+        for log in await get_task_run_logs(task.id, limit=10)
     )
-    if successful_runs >= _ORPHAN_SUCCESS_LIMIT:
+    if counted_runs >= _ORPHAN_RUN_LIMIT:
         logger.warning(
-            "Linear work item remains active after repeated successful agent runs",
+            "Linear work item remains active after repeated completed agent runs",
             task_id=task.id,
-            successful_runs=successful_runs,
+            counted_runs=counted_runs,
         )
         return existing, False
 
@@ -246,7 +248,7 @@ async def ensure_task_active(
     logger.warning(
         "Reactivated orphaned Linear work item task",
         task_id=task.id,
-        successful_runs=successful_runs,
+        counted_runs=counted_runs,
     )
     return resumed, True
 

@@ -259,11 +259,12 @@ class WorkItemExecutionStatus(StrEnum):
     @property
     def is_active(self) -> bool:
         """Return whether this status must continue to exclude a second claim."""
-        return self in {
-            self.CLAIMING,
-            self.IN_PROGRESS,
-            self.UNKNOWN,
-        }
+        return self in {self.CLAIMING, self.IN_PROGRESS, self.UNKNOWN}
+
+    @property
+    def is_explicit_lifecycle_outcome(self) -> bool:
+        """Return whether the agent recorded an outcome in Linear's lifecycle."""
+        return not self.is_active and self is not self.FAILED
 
 
 @dataclass(frozen=True)
@@ -410,7 +411,7 @@ class TaskRunLog:
     task_id: str
     run_at: str
     duration_ms: int | float
-    status: Literal["success", "error", "resumed"]
+    status: Literal["success", "incomplete", "error", "resumed"]
     result: str | None = None
     error: str | None = None
     temporal_workflow_id: str | None = None

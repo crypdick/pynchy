@@ -24,6 +24,7 @@ from pynchy.state import (
     get_active_work_item_execution,
     get_all_tasks,
     get_task_by_id,
+    get_work_item_execution_for_task,
     get_work_item_transition_by_request,
     init_test_database,
     log_task_run,
@@ -223,6 +224,7 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert execution is not None
     assert execution.status.value == "in_progress"
     assert execution.task_id == task.id
+    assert await get_work_item_execution_for_task(task.id) == execution
     assert execution.initiated_by == "linear-work-item-controller"
     assert execution.temporal_workflow_id is not None
     assert execution.temporal_workflow_id.startswith("pynchy-agent-task-")
@@ -627,3 +629,43 @@ async def test_reconcile_reactivates_quiet_completed_task_after_grace_period() -
     assert active is not None
     assert active.status == "active"
     assert active.schedule_value == (observed_at + timedelta(minutes=6)).isoformat()
+
+
+async def test_reconcile_bounds_incomplete_outcome_recovery() -> None:
+    client = _DecisionClient()
+    workspace = _Workspace("beta", "Beta", "linear:beta")
+    board = _board("project-beta")
+    observed_at = datetime.now(UTC)
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [workspace],
+        {"beta": board},
+        now=observed_at,
+    )
+    task = created[0]
+    for attempt in range(3):
+        await log_task_run(
+            TaskRunLog(
+                task_id=task.id,
+                run_at=(observed_at + timedelta(seconds=attempt)).isoformat(),
+                duration_ms=1,
+                status="incomplete",
+            )
+        )
+    await record_task_completion(
+        task.id,
+        last_result="Incomplete: no Linear lifecycle outcome",
+        completed=True,
+    )
+
+    recovered = await reconcile_linear_decision_inbox(
+        client,
+        [workspace],
+        {"beta": board},
+        now=observed_at + timedelta(minutes=6),
+    )
+
+    assert recovered == []
+    bounded = await get_task_by_id(task.id)
+    assert bounded is not None
+    assert bounded.status == "completed"

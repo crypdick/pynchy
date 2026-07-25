@@ -74,6 +74,22 @@ async def get_work_item_execution_for_issue(
     return row_to_execution(row) if row else None
 
 
+async def get_work_item_execution_for_task(task_id: str) -> WorkItemExecution | None:
+    """Return the most recent Linear execution bound to a durable task."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM work_item_executions
+        WHERE task_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (task_id,),
+    )
+    row = await cursor.fetchone()
+    return row_to_execution(row) if row else None
+
+
 async def list_work_item_executions(
     *,
     workspace: str | None = None,

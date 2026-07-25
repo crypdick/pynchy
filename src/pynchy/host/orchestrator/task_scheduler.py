@@ -24,6 +24,7 @@ from pynchy.host.orchestrator.config_job_execution import (
     register_scheduled_target,
     run_deterministic_config_job,
 )
+from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
 from pynchy.host.orchestrator.scheduled_turn import (
     ScheduledTurnDeps,
     TaskAgentRequest,
@@ -294,9 +295,11 @@ async def _finish_scheduled_agent_run(
     error: str | None,
     turn_id: str | None = None,
 ) -> bool:
+    outcome = await classify_scheduled_agent_outcome(task.id, result=result, error=error)
     logger.info(
         "Task completed",
         task_id=task.id,
+        run_status=outcome.status,
         duration_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
     )
     duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
@@ -306,7 +309,7 @@ async def _finish_scheduled_agent_run(
             task_id=task.id,
             run_at=datetime.now(UTC).isoformat(),
             duration_ms=duration_ms,
-            status="error" if error else "success",
+            status=outcome.status,
             result=result,
             error=error,
             temporal_workflow_id=temporal.workflow_id if temporal else None,
@@ -316,12 +319,12 @@ async def _finish_scheduled_agent_run(
             error_signature=error_signature(error) if error else None,
         )
     )
-    result_summary = f"Error: {error}" if error else (result[:200] if result else "Completed")
     await record_task_completion(
         task.id,
-        last_result=result_summary,
+        last_result=outcome.summary,
         # A failed one-shot remains active so Temporal's activity retry can
-        # run the same durable task instead of observing a false completion.
+        # run the same durable task. A clean but domain-incomplete occurrence
+        # completes so bounded Linear reconciliation, not Temporal, retries it.
         completed=task.schedule_type == "once" and error is None,
     )
     return error is None
