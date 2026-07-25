@@ -73,7 +73,6 @@ _P_INTERCEPT = "pynchy.host.orchestrator.messaging.pipeline.intercept_special_co
 _P_FMT_SDK = "pynchy.host.orchestrator.messaging.formatter.format_messages_for_sdk"
 _P_DIRTY = "pynchy.host.orchestrator.messaging.run_context.is_repo_dirty"
 _P_GET_RA = "pynchy.host.orchestrator.workspace_config.get_repo_access"
-_P_MERGE = "pynchy.host.git_ops._worktree_merge.merge_and_push_worktree"
 
 # Patch paths for names imported in _message_routing (routing/loop tests).
 _PR = "pynchy.host.orchestrator.messaging.inbound"
@@ -1454,28 +1453,6 @@ class TestProcessGroupMessages:
         assert result is True
         assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
         deps.broadcast_host_message.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_successful_run_triggers_worktree_merge(self, tmp_path):
-        """pynchy_repo_access group → worktree merge triggered."""
-        group = _make_group(is_admin=False)
-        deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
-        deps.run_agent = AsyncMock(return_value="success")
-        deps.handle_streamed_output = AsyncMock(return_value=False)
-        msg = _make_message("hello", timestamp="new-ts")
-
-        with (
-            patch(_P_SETTINGS) as ms,
-            _patch_msgs_since([msg]),
-            _patch_intercept(),
-            _patch_fmt_sdk(),
-            patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree") as mock_bg_merge,
-        ):
-            ms.return_value = _settings_mock(tmp_path)
-            result = await process_group_messages(deps, "g@g.us")
-
-        assert result is True
-        mock_bg_merge.assert_called_once_with(group)
 
     @pytest.mark.asyncio
     async def test_dirty_repo_warning_added_for_admin_group(self, tmp_path):

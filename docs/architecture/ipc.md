@@ -120,8 +120,7 @@ Host-mutating request kinds are claimed in `request_ledger/{request_id}.json` be
 | `messaging_source_health` | Read body-free source readiness and persisted ingress freshness | No |
 | `deploy` | Trigger a deployment (rebuild, restart) | Yes |
 | `reset_context` | Clear session and chat history | No |
-| `finished_work` | Signal that a scheduled task completed | No |
-| `sync_worktree_to_main` | Merge worktree commits into main | No |
+| `sync_worktree_to_main` | Push worktree commits and open or update a PR | No |
 
 ## Authorization
 

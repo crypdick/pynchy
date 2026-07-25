@@ -145,6 +145,29 @@ class TestHostSyncWorktree:
         assert result["success"] is True
         assert "Already up to date" in result["message"]
 
+    def test_sync_retries_a_push_that_failed_after_merge(self, git_env: dict):
+        """A second explicit sync retries commits already merged into host main."""
+        repo_ctx = git_env["repo_ctx"]
+        wt_path = ensure_worktree("agent-1", repo_ctx).path
+        (wt_path / "feature.txt").write_text("new feature")
+        _git(wt_path, "add", "feature.txt")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "add feature")
+
+        with patch(
+            "pynchy.host.git_ops.sync.push_local_commits",
+            side_effect=[False, True],
+        ) as push:
+            failed = host_sync_worktree("agent-1", repo_ctx)
+            retried = host_sync_worktree("agent-1", repo_ctx)
+
+        assert failed["success"] is False
+        assert "call sync_worktree_to_main again" in failed["message"].lower()
+        assert retried["success"] is True
+        assert "already merged" in retried["message"]
+        assert push.call_count == 2
+
     def test_sync_conflict_leaves_markers(self, git_env: dict):
         """On conflict, leaves conflict markers in worktree for agent to fix."""
         project = git_env["project"]

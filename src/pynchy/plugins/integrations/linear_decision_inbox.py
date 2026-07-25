@@ -11,7 +11,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these a
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.security.fencing import fence_untrusted_content
@@ -22,38 +22,57 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     WorkspaceLike,
 )
 from pynchy.plugins.integrations.linear_statuses import (
+    FOLLOW_UPS_STATUS,
     HUMAN_APPROVED_STATUS,
-    READY_FOR_PLANNING_STATUS,
 )
 from pynchy.plugins.integrations.linear_webhooks import LinearPluginOptions
-from pynchy.plugins.integrations.linear_work_item_provider import linear_client
-from pynchy.state import create_task_if_absent
-from pynchy.types import ScheduledTask
+from pynchy.plugins.integrations.linear_work_item_provider import (
+    WorkItemLeaseRequest,
+    acquire_work_item_lease,
+    linear_client,
+)
+from pynchy.state import (
+    WorkItemClaimConflictError,
+    create_task_if_absent,
+    get_active_work_item_execution,
+)
+from pynchy.types import ScheduledTask, WorkItemExecutionStatus
+
+if TYPE_CHECKING:
+    from pynchy.plugins.integrations.linear_client import LinearClient
 
 # NOTE: Keep docs/integrations/linear.md "Receive Linear callbacks" in sync.
 LINEAR_DECISION_POLL_SECONDS = 60
 _PAGE_SIZE = 50
-_DECISION_STATUSES = (READY_FOR_PLANNING_STATUS, HUMAN_APPROVED_STATUS)
-_PLANNING_INSTRUCTIONS = (
-    "Plan this exact Ready for Planning Linear issue for the current workspace. Confirm it "
-    "belongs to this workspace with linear_list_todos, fetch its current state with "
-    "linear_get_issue, inspect the repository and relevant documentation, then call "
-    "linear_submit_plan with a concrete Markdown implementation plan. The tool persists the "
-    "plan and moves the issue to Awaiting Plan Approval. Do not claim or execute the item."
+_DECISION_STATUSES = (HUMAN_APPROVED_STATUS, "in_progress", FOLLOW_UPS_STATUS)
+_EXECUTION_CONTRACT = (
+    "Objective: deliver the Human Approved Linear work item below.\n"
+    "Authority: the host verified approval and acquired the execution lease.\n"
+    "Success: leave the issue state, comments, and attachments accurately reflecting the "
+    "outcome. If the work produces pull requests, attach every PR to the issue with "
+    "linear_create_attachment before requesting review. Use your judgment to move the issue "
+    "through Awaiting Review, Follow-ups, and Done. Follow-ups are for final operational work "
+    "such as deployment verification, preserving useful logs before teardown, cleaning feature "
+    "resources, and updating or unblocking related issues."
 )
-_EXECUTION_INSTRUCTIONS = (
-    "Execute this exact Human Approved Linear issue for the current workspace. Confirm it "
-    "belongs to this workspace and remains Human Approved, then call linear_claim_work_item "
-    "before acting. Complete and verify the work, then call linear_await_review_work_item with "
-    "a summary and relevant evidence. Include a canonical GitHub pull request URL only when "
-    "the work produced one; do not mark the issue Done."
+_FOLLOW_UPS_CONTRACT = (
+    "Objective: finish the Follow-ups for the Linear work item below.\n"
+    "Authority: the underlying work was already Human Approved.\n"
+    "Success: use your judgment to finish the whole job. Verify delivery or deployment, "
+    "preserve useful logs before teardown, clean feature resources, and update or unblock "
+    "related issues when relevant. Record useful context and move the item to Done when it is "
+    "genuinely finished, or Blocked when it needs outside help."
 )
+_INBOX_INITIATOR = "linear-decision-inbox"
 
 
 @runtime_checkable
 class LinearDecisionClient(Protocol):
     async def query(self, query: str, **variables: object) -> dict[str, Any]:
         """Run a Linear GraphQL query."""
+
+    async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
+        """Return one issue by its durable provider ID."""
 
 
 @dataclass(frozen=True)
@@ -87,6 +106,13 @@ class _DecisionIssue:
             state_id=_text(state, "id"),
             project_id=_text(project, "id"),
         )
+
+
+@dataclass(frozen=True)
+class _TaskAdmission:
+    status: str
+    public_source: bool
+    task_id: str | None = None
 
 
 def _text(payload: dict[str, Any], key: str) -> str:
@@ -179,40 +205,41 @@ def _project_workspaces(
 def _task_for_issue(
     issue: _DecisionIssue,
     workspace: WorkspaceLike,
-    status: str,
     now: datetime,
-    *,
-    public_source: bool,
+    admission: _TaskAdmission,
 ) -> ScheduledTask:
     occurred_at = now.astimezone(UTC).isoformat()
-    digest = hashlib.sha256(f"{status}:{issue.id}:{issue.updated_at}".encode()).hexdigest()[:16]
-    instructions = (
-        _PLANNING_INSTRUCTIONS if status == READY_FOR_PLANNING_STATUS else _EXECUTION_INSTRUCTIONS
-    )
+    digest = hashlib.sha256(
+        f"{admission.status}:{issue.id}:{issue.updated_at}".encode()
+    ).hexdigest()[:16]
     context = json.dumps(
         {
             "issue_id": issue.id,
             "identifier": issue.identifier,
             "title": issue.title,
             "url": issue.url,
-            "observed_state": status,
-            "observed_updated_at": issue.updated_at,
         },
         sort_keys=True,
     )
-    if public_source:
+    if admission.public_source:
         context = fence_untrusted_content(context, source="linear-decision-inbox")
+    is_follow_up = admission.status == FOLLOW_UPS_STATUS
+    task_prefix = "linear-follow-ups" if is_follow_up else "linear-execute"
+    contract = _FOLLOW_UPS_CONTRACT if is_follow_up else _EXECUTION_CONTRACT
+    input_kind = "follow-ups" if is_follow_up else "authorized"
     return ScheduledTask(
-        id=f"linear-{status.replace('_', '-')}-{issue.identifier.lower()}-{digest}",
+        id=admission.task_id or f"{task_prefix}-{issue.identifier.lower()}-{digest}",
         group_folder=workspace.folder,
         chat_jid=workspace.jid,
-        prompt=f"{instructions}\n\n{context}",
+        prompt=f"{contract}\n\n{context}",
         schedule_type="once",
         schedule_value=occurred_at,
         context_mode="isolated",
         next_run=occurred_at,
         created_at=occurred_at,
-        input_source=f"{'external' if public_source else 'trusted'}:linear:{status}",
+        input_source=(
+            f"{'external' if admission.public_source else 'trusted'}:linear:{input_kind}"
+        ),
         derived_thread_name=f"[{issue.identifier}] {issue.title}"[:100],
     )
 
@@ -243,14 +270,56 @@ async def reconcile_linear_decision_inbox(
             workspace = project_workspaces.get(issue.project_id)
             if workspace is None or issue.state_id != state_id:
                 continue
+            existing = await get_active_work_item_execution(issue.id)
+            recovery_task_id = (
+                existing.task_id
+                if status == "in_progress"
+                and existing is not None
+                and existing.workspace == workspace.folder
+                and existing.initiated_by == _INBOX_INITIATOR
+                else None
+            )
             task = _task_for_issue(
                 issue,
                 workspace,
-                status,
                 observed_at,
-                public_source=public_source,
+                _TaskAdmission(
+                    status=status,
+                    public_source=public_source,
+                    task_id=recovery_task_id,
+                ),
             )
-            if await create_task_if_absent(task):
+            if status == "in_progress" and (
+                existing is None
+                or existing.workspace != workspace.folder
+                or existing.initiated_by != _INBOX_INITIATOR
+                or existing.task_id != task.id
+            ):
+                continue
+            if status == HUMAN_APPROVED_STATUS and existing is not None:
+                continue
+            if status == FOLLOW_UPS_STATUS:
+                if existing is None and await create_task_if_absent(task):
+                    created.append(task)
+                continue
+            try:
+                execution = await acquire_work_item_lease(
+                    cast("LinearClient", client),
+                    WorkItemLeaseRequest(
+                        workspace=workspace.folder,
+                        issue_id=issue.id,
+                        request_id=f"{task.id}:lease",
+                        initiated_by=_INBOX_INITIATOR,
+                        task_id=task.id,
+                        board=boards[workspace.folder],
+                    ),
+                )
+            except WorkItemClaimConflictError:
+                continue
+            if (
+                execution.status is WorkItemExecutionStatus.IN_PROGRESS
+                and await create_task_if_absent(task)
+            ):
                 created.append(task)
     return created
 

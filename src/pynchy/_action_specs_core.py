@@ -100,14 +100,8 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action(
         "lifecycle.worktree.sync",
         "agent-tools",
-        "Publish a workspace worktree through the configured Git policy.",
+        "Publish a workspace worktree as a pull request.",
         "sync_worktree_to_main",
-    ),
-    agent_action(
-        "lifecycle.task.finish",
-        "agent-tools",
-        "Finish scheduled work and notify the workspace.",
-        "finished_work",
     ),
     agent_action(
         "lifecycle.context.reset",

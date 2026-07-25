@@ -798,20 +798,6 @@ class TestListToolsVisibility:
         assert "register_group" not in tool_names
 
     @pytest.mark.asyncio
-    async def test_scheduled_task_sees_finished_work(self, tmp_path):
-        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False, is_scheduled_task=True)):
-            tools = await list_tools()
-        tool_names = [t.name for t in tools]
-        assert "finished_work" in tool_names
-
-    @pytest.mark.asyncio
-    async def test_non_scheduled_no_finished_work(self, tmp_path):
-        with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
-            tools = await list_tools()
-        tool_names = [t.name for t in tools]
-        assert "finished_work" not in tool_names
-
-    @pytest.mark.asyncio
     async def test_all_base_tools_present(self, tmp_path):
         with use_agent_tool_runtime(_runtime(tmp_path, is_admin=False)):
             tools = await list_tools()
@@ -836,7 +822,7 @@ class TestListToolsVisibility:
     @pytest.mark.asyncio
     async def test_all_static_agent_tools_have_semantic_action_specs(self, tmp_path):
         """A tool registration needs an action ID before it reaches an agent."""
-        with use_agent_tool_runtime(_runtime(tmp_path, is_scheduled_task=True)):
+        with use_agent_tool_runtime(_runtime(tmp_path)):
             tool_names = {tool.name for tool in await list_tools()}
 
         cataloged_tools = {
@@ -845,5 +831,11 @@ class TestListToolsVisibility:
             for surface in spec.surfaces
             if surface.transport is ActionTransport.AGENT_TOOL and "{" not in surface.name
         }
-
         assert tool_names == cataloged_tools
+
+    @pytest.mark.asyncio
+    async def test_scheduled_task_can_publish_and_recover_from_errors(self, tmp_path):
+        with use_agent_tool_runtime(_runtime(tmp_path, is_scheduled_task=True)):
+            tools = await list_tools()
+
+        assert "sync_worktree_to_main" in {tool.name for tool in tools}

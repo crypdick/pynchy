@@ -30,7 +30,6 @@ _P_LEARNING_PATH_SETTINGS = "pynchy.host.learning.paths.get_settings"
 _P_TEMPORAL_LEARNING_START = (
     "pynchy.host.orchestrator.temporal.scheduler.start_learning_review_workflow"
 )
-_P_BG_MERGE = "pynchy.host.git_ops._worktree_merge.background_merge_worktree"
 
 
 @pytest.fixture(autouse=True)
@@ -154,7 +153,6 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_LEARNING_START, new_callable=AsyncMock, create=True) as mock_start,
-        patch(_P_BG_MERGE),
     ):
         settings.return_value = _settings_mock(tmp_path, learning=LearningConfig(enabled=True))
         result = await process_group_messages(deps, "g@g.us")
@@ -198,7 +196,6 @@ async def test_enabled_learning_logs_capture_attempt(
         patch(_P_LEARNING_SETTINGS) as learning_settings,
         patch(_P_LEARNING_PATH_SETTINGS) as learning_path_settings,
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock),
-        patch(_P_BG_MERGE),
     ):
         enabled_settings = _settings_mock(
             tmp_path,
@@ -263,7 +260,6 @@ async def test_learning_review_packet_includes_follow_up_dispatched_during_activ
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-        patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial, initial_tail], [follow_up]]
 
@@ -319,7 +315,6 @@ async def test_learning_review_is_skipped_when_expanded_fetch_fails(tmp_path: Pa
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-        patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial], RuntimeError("database unavailable")]
 
@@ -417,7 +412,6 @@ async def test_review_after_turn_false_skips_follow_up_expansion_and_learning_st
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-        patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
 
@@ -453,7 +447,6 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
         _patch_fmt_sdk(),
         patch(_P_LEARNING_OBSERVE, side_effect=RuntimeError("observer broke")),
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-        patch(_P_BG_MERGE),
     ):
         result = await process_group_messages(deps, "g@g.us")
 
@@ -496,7 +489,6 @@ async def test_learning_disabled_skips_follow_up_expansion_and_learning_start(
         _patch_intercept(),
         _patch_fmt_sdk(),
         patch(_P_TEMPORAL_LEARNING_START, new_callable=AsyncMock) as temporal_start,
-        patch(_P_BG_MERGE),
     ):
         mock_messages_since.side_effect = [[initial], RuntimeError("should not expand")]
 

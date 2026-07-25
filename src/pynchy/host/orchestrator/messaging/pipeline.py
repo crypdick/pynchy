@@ -15,7 +15,6 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 import pynchy.host.container_manager.session as session_module
-import pynchy.host.git_ops._worktree_merge as worktree_merge_module
 import pynchy.types as types
 from pynchy.config import get_settings
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves pipeline annotations at runtime.
@@ -266,9 +265,6 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
         request.learning_summary,
         get_messages_since,
     )
-
-    # Success: merge worktree commits into main and push for groups with repo_access
-    worktree_merge_module.background_merge_worktree(request.group)
 
     return True
 

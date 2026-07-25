@@ -54,7 +54,6 @@ TIER2_TYPES = frozenset(
         "skill_access:policy",
         # Lifecycle: still carries data, will be reviewed later
         "reset_context",
-        "finished_work",
         "sync_worktree_to_main",
         # Task management
         "pause_task",

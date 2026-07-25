@@ -30,7 +30,6 @@ from pynchy.plugins.integrations.linear_boards import (
     reconcile_workspace_boards,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient
-from pynchy.plugins.integrations.linear_statuses import READY_FOR_PLANNING_STATUS
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     WorkspaceProfile,
 )
@@ -198,7 +197,6 @@ async def create_linear_workspace_todo(
                 context,
                 WorkspaceTodoProposal(title=title),
                 team_key=context.account.team_key,
-                status=READY_FOR_PLANNING_STATUS,
             )
         except Exception as exc:  # noqa: BLE001, RUF100 - local todo capture still succeeds even if Linear fails.
             logger.warning(

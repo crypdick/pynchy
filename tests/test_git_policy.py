@@ -1,9 +1,8 @@
-"""Tests for worktree merge and direct PR creation helpers.
+"""Tests for explicit worktree publication and direct PR creation helpers.
 
 Covers:
 - host_create_pr_from_worktree() behavior
 - IPC sync handler routing
-- merge_worktree_with_policy() and background_merge_worktree() dispatch
 """
 
 from __future__ import annotations
@@ -12,17 +11,12 @@ import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
 
-from pynchy.config import WorkspaceConfig
-from pynchy.config.models import ProfileConfig
-from pynchy.conversation.models import ConversationId
-from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.container_manager.ipc import dispatch
-from pynchy.host.git_ops import background_merge_worktree, merge_worktree_with_policy
 from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.git_ops.sync import (
     GIT_POLICY_MERGE,
@@ -30,11 +24,6 @@ from pynchy.host.git_ops.sync import (
     resolve_git_policy,
 )
 from pynchy.host.git_ops.worktree import ensure_worktree
-from pynchy.host.orchestrator.workspace_config import (
-    RuntimeWorkspaceRestriction,
-    register_runtime_workspace_restriction,
-    unregister_runtime_workspace_restriction,
-)
 from pynchy.types import WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -332,6 +321,57 @@ async def deps():
 class TestIpcPolicyRouting:
     """Tests that the IPC handler syncs worktrees into main."""
 
+    async def test_agent_publication_opens_pr_without_merging_or_deploying(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
+        merge_results_dir.mkdir(parents=True)
+        fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={
+                    "success": True,
+                    "message": "Opened PR: https://github.com/owner/repo/pull/7",
+                },
+            ) as create_pr,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree"
+            ) as merge_main,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
+                new_callable=AsyncMock,
+            ) as notify_worktrees,
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-pr",
+                    "publication": "pull-request",
+                },
+                "agent-1",
+                False,
+                deps,
+            )
+
+        create_pr.assert_called_once_with("agent-1", fake_repo_ctx)
+        merge_main.assert_not_called()
+        notify_worktrees.assert_not_awaited()
+        assert deps.deploy_calls == []
+        result = json.loads((merge_results_dir / "req-pr.json").read_text())
+        assert "pull/7" in result["repos"]["owner/repo"]["message"]
+
     async def test_merge_policy_calls_host_sync(self, deps: MockDeps, tmp_path: Path):
         """sync_worktree_to_main calls host_sync_worktree."""
         merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
@@ -431,105 +471,3 @@ class TestIpcPolicyRouting:
             )
 
         assert len(deps.deploy_calls) == 0
-
-
-# ---------------------------------------------------------------------------
-# background_merge_worktree policy dispatch tests
-# ---------------------------------------------------------------------------
-
-
-class TestMergeWorktreeWithPolicy:
-    """Tests for the awaitable merge_worktree_with_policy()."""
-
-    async def test_merge_policy_calls_merge_and_push(self):
-        """merge_worktree_with_policy dispatches to merge_and_push_worktree."""
-        mock_repo = MagicMock()
-        with (
-            patch(
-                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
-                return_value=MagicMock(execution_mode="container"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[mock_repo],
-            ),
-            patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as mock_merge,
-        ):
-            await merge_worktree_with_policy("agent-1")
-
-        mock_merge.assert_called_once_with("agent-1", mock_repo)
-
-    async def test_no_repo_access_does_nothing(self):
-        """Groups without repo_access skip entirely."""
-        with (
-            patch(
-                "pynchy.host.orchestrator.workspace_config.load_resolved_config",
-                return_value=MagicMock(execution_mode="container"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[],
-            ),
-        ):
-            await merge_worktree_with_policy("no-repo")
-
-    async def test_routed_host_execution_skips_worktree_merge(self, tmp_path: Path):
-        """A routed host run does not probe worktree branches it never provisions."""
-        folder = routed_conversation_folder("admin", ConversationId("conv_test"))
-        settings = make_settings(
-            profiles={
-                "host-admin": ProfileConfig(
-                    repo="owner/repo",
-                    is_admin=True,
-                    execution_mode="host",
-                    cwd=str(tmp_path),
-                )
-            },
-            workspaces={"admin": WorkspaceConfig(profiles=["host-admin"])},
-        )
-        register_runtime_workspace_restriction(
-            folder,
-            RuntimeWorkspaceRestriction(parent_workspace="admin"),
-        )
-        try:
-            with (
-                patch(
-                    "pynchy.host.orchestrator.workspace_config.get_settings",
-                    return_value=settings,
-                ),
-                patch("pynchy.host.git_ops.repo.resolve_repos_for_group") as resolve_repos,
-                patch("pynchy.host.git_ops._worktree_merge.merge_and_push_worktree") as merge,
-            ):
-                await merge_worktree_with_policy(folder)
-        finally:
-            unregister_runtime_workspace_restriction(folder)
-
-        resolve_repos.assert_not_called()
-        merge.assert_not_called()
-
-
-class TestBackgroundMergePolicy:
-    def test_delegates_to_merge_worktree_with_policy(self):
-        """background_merge_worktree wraps merge_worktree_with_policy in a background task."""
-        group = MagicMock(spec=WorkspaceProfile)
-        group.folder = "agent-1"
-
-        with patch("pynchy.utils.create_background_task") as mock_task:
-            background_merge_worktree(group)
-
-        mock_task.assert_called_once()
-        assert "worktree-merge-agent-1" in str(mock_task.call_args)
-        # Close the unawaited coroutine
-        mock_task.call_args[0][0].close()
-
-    def test_no_repo_folder_passes_through(self):
-        """background_merge_worktree passes the group folder through to the coroutine."""
-        group = MagicMock(spec=WorkspaceProfile)
-        group.folder = "no-repo"
-
-        with patch("pynchy.utils.create_background_task") as mock_task:
-            background_merge_worktree(group)
-
-        # The coroutine is always created — repo check happens inside it
-        mock_task.assert_called_once()
-        mock_task.call_args[0][0].close()

@@ -1,10 +1,4 @@
-"""Host-owned lifecycle operations for Pynchy executions linked to Linear issues.
-
-The ordinary Linear MCP server remains useful for browsing and planning.  These
-operations deliberately run in the host process because a claim and its
-provider-transition evidence must share Pynchy's durable state and policy
-boundary.
-"""
+"""Host-enforced boundaries for agent-managed Linear work."""
 
 from __future__ import annotations
 
@@ -12,74 +6,74 @@ from dataclasses import dataclass
 from typing import Any
 
 from pynchy.host.orchestrator.workspace_config import static_workspace_folder
-from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
-from pynchy.plugins.integrations.linear_boards import WorkspaceTodoProposal
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import (
-    AGENT_SETTABLE_STATUSES,
-    AWAITING_REVIEW_STATUS,
+    HUMAN_SETTABLE_STATUSES,
+    TERMINAL_STATE_TYPES,
+    TOOL_SETTABLE_STATUSES,
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
-    claim_work_item,
-    create_requested_work_item,
     linear_client,
-    move_unlinked_work_item,
     reconcile_work_item,
-    submit_unlinked_work_item_for_review,
-    submit_work_item_plan,
+    state_id,
     transition_linked_work_item,
+    update_issue_state,
+    workspace_issue,
 )
 from pynchy.state import (
-    WorkItemClaimConflictError,
     WorkItemTransitionRequest,
+    bind_work_item_execution_to_turn,
     get_active_work_item_execution,
     get_in_flight_turn_for_group,
     get_latest_unresolved_work_item_transition,
     get_work_item_execution_for_issue,
     list_work_item_executions,
 )
-from pynchy.types import (
-    InFlightTurn,
-    WorkItemExecution,
-    WorkItemExecutionStatus,
-)
+from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
 
 _WORKSPACE_REQUIRED = "source_group is required"
 _ISSUE_REQUIRED = "issue_id is required"
-_SUMMARY_REQUIRED = "summary is required"
-_BLOCKER_REQUIRED = "reason is required"
-_HANDOFF_REQUIRED = "owner is required"
-_PLAN_REQUIRED = "plan is required"
-_DIRECT_USER_TURN_REQUIRED = (
-    "A current direct user turn is required to create a Ready for Planning item"
-)
-_AUTHORIZATION_QUOTE_REQUIRED = (
-    "authorization_quote must exactly quote a current direct user message"
-)
-_PRIORITY_INVALID = "priority must be an integer from 0 through 4"
-_ACTIVE_EXECUTION_REQUIRED = "No active Pynchy execution owns this Linear work item"
+_ACTIVE_EXECUTION_REQUIRED = "No Pynchy execution owns this Linear work item"
 _UNKNOWN_TRANSITION_REQUIRED = "No uncertain work-item transition needs reconciliation"
-_AGENT_SETTABLE_STATUS_ERROR = "Agents may move unlinked Linear items only to: {statuses}"
+_DIRECT_USER_REQUIRED = "Human Approved and Rejected require a current direct-human instruction"
+_TERMINAL_USER_REQUIRED = "Only a current direct-human instruction can reopen terminal work"
+_HOST_MANAGED_STATUS = "In Progress is managed by the host execution lease"
 
 
 @dataclass(frozen=True)
-class _LinkedTransitionSpec:
-    """Fixed lifecycle semantics for one user-facing work-item operation."""
-
-    operation: str
+class _LinkedMove:
     target_status: str
     result_status: WorkItemExecutionStatus
     expected_statuses: set[str]
 
 
-@dataclass(frozen=True)
-class _TransitionDetails:
-    """User-supplied result metadata for a typed lifecycle operation."""
-
-    summary: str | None = None
-    blocker: str | None = None
-    handoff_to: str | None = None
-    evidence_refs: tuple[str, ...] = ()
+_LINKED_MOVES = {
+    "awaiting_review": _LinkedMove(
+        target_status="awaiting_review",
+        result_status=WorkItemExecutionStatus.AWAITING_REVIEW,
+        expected_statuses={"in_progress", "blocked"},
+    ),
+    "blocked": _LinkedMove(
+        target_status="blocked",
+        result_status=WorkItemExecutionStatus.BLOCKED,
+        expected_statuses={"in_progress", "awaiting_review", "follow_ups", "blocked"},
+    ),
+    "follow_ups": _LinkedMove(
+        target_status="follow_ups",
+        result_status=WorkItemExecutionStatus.FOLLOW_UPS,
+        expected_statuses={"in_progress", "awaiting_review", "follow_ups", "blocked"},
+    ),
+    "done": _LinkedMove(
+        target_status="done",
+        result_status=WorkItemExecutionStatus.COMPLETED,
+        expected_statuses={"in_progress", "awaiting_review", "follow_ups", "blocked", "done"},
+    ),
+    "rejected": _LinkedMove(
+        target_status="rejected",
+        result_status=WorkItemExecutionStatus.CANCELLED,
+        expected_statuses={"in_progress", "awaiting_review", "follow_ups", "blocked", "rejected"},
+    ),
+}
 
 
 async def handle_list_work_items(data: dict[str, Any]) -> dict[str, object]:
@@ -92,199 +86,145 @@ async def handle_list_work_items(data: dict[str, Any]) -> dict[str, object]:
     }
 
 
-async def handle_create_requested_todo(data: dict[str, Any]) -> dict[str, object]:
-    """Create planning work only when the current direct user turn requested it."""
+async def handle_move_todo(data: dict[str, Any]) -> dict[str, object]:
+    """Move an issue while enforcing only authority and execution ownership."""
     source_group = _source_group(data)
     workspace = static_workspace_folder(source_group)
-    authorization_quote = _required_str(
-        data,
-        "authorization_quote",
-        _AUTHORIZATION_QUOTE_REQUIRED,
-    ).strip()
-    # Tool wording is not proof of human intent. Bind planning authorization to
-    # the host-owned turn and its complete inbound message.
-    turn = await get_in_flight_turn_for_group(source_group)
-    if turn is None or turn.input_source != "user":
-        return {"error": _DIRECT_USER_TURN_REQUIRED}
-    if not _turn_contains_authorization_quote(turn, authorization_quote):
-        return {"error": _AUTHORIZATION_QUOTE_REQUIRED}
-
-    exact_description = data.get("exact_description", False)
-    if type(exact_description) is not bool:
-        raise TypeError("exact_description must be a boolean")
-    if exact_description:
-        description = data.get("description")
-        if not isinstance(description, str):
-            raise TypeError("description must be supplied when exact_description is true")
-    else:
-        description = _optional_str(data, "description")
-    proposal = WorkspaceTodoProposal(
-        title=_required_str(data, "title", "title is required").strip(),
-        description=description,
-        priority=_optional_priority(data),
-    )
-    try:
-        async with linear_client(workspace=workspace) as client:
-            created = await create_requested_work_item(
-                client,
-                workspace,
-                turn.chat_jid,
-                proposal,
-                exact_description=exact_description,
-            )
-    except (LinearError, ValueError) as exc:
-        return {"error": str(exc)}
-    return {"result": {"issue": _issue_projection(created)}}
-
-
-async def handle_claim_work_item(data: dict[str, Any]) -> dict[str, object]:
-    workspace = _workspace(data)
     issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
-    request_id = _required_str(data, "request_id", "request_id is required")
-    existing = await get_active_work_item_execution(issue_id)
-    existing_response = await _existing_claim_response(existing, workspace)
-    if existing_response is not None:
-        return existing_response
-    try:
-        async with linear_client(workspace=workspace) as client:
-            transition = await claim_work_item(client, workspace, issue_id, request_id)
-    except WorkItemClaimConflictError as exc:
-        turn = await get_in_flight_turn_for_group(workspace)
-        if turn is not None and turn.turn_id == exc.execution.turn_id:
-            return {"result": {"work_item": work_item_execution_to_dict(exc.execution)}}
+    status = _required_str(data, "status", "status is required")
+    direct_user = await _has_direct_user_turn(source_group)
+    if error := _move_request_error(status, direct_user=direct_user):
+        return {"error": error}
+
+    active = await get_active_work_item_execution(issue_id)
+    if active is not None and active.workspace != workspace:
+        return {"error": _ACTIVE_EXECUTION_REQUIRED}
+    latest = active or await get_work_item_execution_for_issue(issue_id, workspace=workspace)
+    move = _LINKED_MOVES.get(status)
+    if latest is not None and move is not None and _move_applies_to_execution(latest, status):
+        return await _move_linked(data, latest, move, source_group)
+    if active is not None:
         return {
-            "error": "Linear work item is already claimed",
-            "result": {"existing_execution": work_item_execution_to_dict(exc.execution)},
+            "error": (
+                "The active execution must move to Awaiting Review, Follow-ups, Blocked, Done, "
+                "or Rejected"
+            ),
+            "result": {"work_item": work_item_execution_to_dict(active)},
         }
-    except (LinearError, ValueError) as exc:
-        return {"error": str(exc)}
-    return _execution_response(transition)
+    return await _move_provider_issue(
+        workspace,
+        issue_id,
+        status,
+        direct_user=direct_user,
+    )
 
 
-async def _existing_claim_response(
-    existing: WorkItemExecution | None,
-    workspace: str,
-) -> dict[str, object] | None:
-    if existing is None:
-        return None
-    if existing.workspace != workspace:
-        return {"error": "Linear work item is already claimed"}
-    turn = await get_in_flight_turn_for_group(workspace)
-    if turn is not None and turn.turn_id == existing.turn_id:
-        return {"result": {"work_item": work_item_execution_to_dict(existing)}}
-    return {
-        "error": "Linear work item is already claimed",
-        "result": {"existing_execution": work_item_execution_to_dict(existing)},
+def _move_request_error(status: str, *, direct_user: bool) -> str | None:
+    if status == "in_progress":
+        return _HOST_MANAGED_STATUS
+    if status not in TOOL_SETTABLE_STATUSES:
+        return _status_error()
+    if status in HUMAN_SETTABLE_STATUSES and not direct_user:
+        return _DIRECT_USER_REQUIRED
+    return None
+
+
+def _move_applies_to_execution(execution: WorkItemExecution, status: str) -> bool:
+    if execution.status.is_active:
+        return True
+    return status in _LINKED_MOVES and execution.status in {
+        WorkItemExecutionStatus.AWAITING_REVIEW,
+        WorkItemExecutionStatus.FOLLOW_UPS,
+        WorkItemExecutionStatus.BLOCKED,
     }
 
 
-async def handle_await_review_work_item(data: dict[str, Any]) -> dict[str, object]:
-    workspace = _workspace(data)
-    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
-    summary = _required_str(data, "summary", _SUMMARY_REQUIRED)
-    evidence_refs = _review_evidence_refs(data)
-    execution = await get_active_work_item_execution(issue_id)
-
-    # Awaiting Review describes a completed outcome awaiting acceptance, not a
-    # GitHub artifact. Non-code and already-completed work may have no PR or claim.
-    if execution is None:
-        try:
-            async with linear_client(workspace=workspace) as client:
-                updated = await submit_unlinked_work_item_for_review(client, workspace, issue_id)
-        except (LinearError, ValueError) as exc:
-            return {"error": str(exc)}
-        return {
-            "result": {
-                "issue": _issue_projection(updated),
-                "review": {"summary": summary, "evidence_refs": list(evidence_refs)},
-            }
-        }
-    if execution.workspace != workspace:
-        return {"error": _ACTIVE_EXECUTION_REQUIRED}
-    return await _handle_linked_transition(
-        data,
-        _LinkedTransitionSpec(
-            operation="await_review",
-            target_status=AWAITING_REVIEW_STATUS,
-            result_status=WorkItemExecutionStatus.AWAITING_REVIEW,
-            expected_statuses={"in_progress", "blocked"},
-        ),
-        _TransitionDetails(
-            summary=summary,
-            evidence_refs=evidence_refs,
-        ),
-    )
-
-
-async def handle_block_work_item(data: dict[str, Any]) -> dict[str, object]:
-    reason = _required_str(data, "reason", _BLOCKER_REQUIRED)
-    return await _handle_linked_transition(
-        data,
-        _LinkedTransitionSpec(
-            operation="block",
-            target_status="blocked",
-            result_status=WorkItemExecutionStatus.BLOCKED,
-            expected_statuses={"in_progress", "awaiting_review"},
-        ),
-        _TransitionDetails(
-            blocker=reason,
-            summary=reason,
-            evidence_refs=_evidence_refs(data),
-        ),
-    )
-
-
-async def handle_handoff_work_item(data: dict[str, Any]) -> dict[str, object]:
-    owner = _required_str(data, "owner", _HANDOFF_REQUIRED)
-    return await _handle_linked_transition(
-        data,
-        _LinkedTransitionSpec(
-            operation="handoff",
-            target_status="blocked",
-            result_status=WorkItemExecutionStatus.HANDED_OFF,
-            expected_statuses={"in_progress", "awaiting_review", "blocked"},
-        ),
-        _TransitionDetails(
-            handoff_to=owner,
-            summary=_optional_str(data, "summary") or f"Handed off to {owner}",
-            evidence_refs=_evidence_refs(data),
-        ),
-    )
-
-
-async def _handle_linked_transition(
+async def _move_linked(
     data: dict[str, Any],
-    spec: _LinkedTransitionSpec,
-    details: _TransitionDetails,
+    execution: WorkItemExecution,
+    move: _LinkedMove,
+    source_group: str,
 ) -> dict[str, object]:
-    workspace = _workspace(data)
-    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
     request_id = _required_str(data, "request_id", "request_id is required")
-    execution = await get_active_work_item_execution(issue_id)
-    if execution is None or execution.workspace != workspace:
-        return {"error": _ACTIVE_EXECUTION_REQUIRED}
     try:
-        async with linear_client(workspace=workspace) as client:
+        if execution.status.is_active:
+            execution = await _bind_turn(execution, source_group)
+        async with linear_client(workspace=execution.workspace) as client:
             updated = await transition_linked_work_item(
                 client,
-                workspace,
-                issue_id,
+                execution.workspace,
+                execution.linear_issue_id,
                 WorkItemTransitionRequest(
                     execution=execution,
                     request_id=request_id,
-                    operation=spec.operation,
-                    target_status=spec.target_status,
-                    result_execution_status=spec.result_status,
-                    summary=details.summary,
-                    blocker=details.blocker,
-                    handoff_to=details.handoff_to,
-                    evidence_refs=details.evidence_refs,
+                    operation=f"move_to_{move.target_status}",
+                    target_status=move.target_status,
+                    result_execution_status=move.result_status,
                 ),
-                spec.expected_statuses,
+                move.expected_statuses,
             )
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}
     return _execution_response(updated)
+
+
+async def _bind_turn(
+    execution: WorkItemExecution,
+    source_group: str,
+) -> WorkItemExecution:
+    turn = await get_in_flight_turn_for_group(source_group)
+    if turn is None:
+        return execution
+    return await bind_work_item_execution_to_turn(
+        execution.id,
+        turn_id=turn.turn_id,
+        task_id=turn.task_id,
+    )
+
+
+async def _move_provider_issue(
+    workspace: str,
+    issue_id: str,
+    status: str,
+    *,
+    direct_user: bool,
+) -> dict[str, object]:
+    try:
+        updated = await _apply_provider_move(
+            workspace,
+            issue_id,
+            status,
+            direct_user=direct_user,
+        )
+    except (LinearError, TypeError, ValueError) as exc:
+        return {"error": str(exc)}
+    return {"result": {"issue": _issue_projection(updated)}}
+
+
+async def _apply_provider_move(
+    workspace: str,
+    issue_id: str,
+    status: str,
+    *,
+    direct_user: bool,
+) -> dict[str, Any]:
+    async with linear_client(workspace=workspace) as client:
+        issue, board = await workspace_issue(client, workspace, issue_id)
+        current_state = issue.get("state")
+        if not isinstance(current_state, dict):
+            raise TypeError("Linear issue state was not an object")
+        if current_state.get("type") in TERMINAL_STATE_TYPES and not direct_user:
+            raise ValueError(_TERMINAL_USER_REQUIRED)
+        return await update_issue_state(
+            client,
+            issue_id,
+            state_id(board.states[status]),
+        )
+
+
+async def _has_direct_user_turn(source_group: str) -> bool:
+    turn = await get_in_flight_turn_for_group(source_group)
+    return turn is not None and turn.input_source == "user"
 
 
 async def handle_reconcile_work_item(data: dict[str, Any]) -> dict[str, object]:
@@ -304,48 +244,6 @@ async def handle_reconcile_work_item(data: dict[str, Any]) -> dict[str, object]:
     return _execution_response(resolved)
 
 
-async def handle_move_unlinked_todo(data: dict[str, Any]) -> dict[str, object]:
-    workspace = _workspace(data)
-    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
-    status = _required_str(data, "status", "status is required")
-    active = await get_active_work_item_execution(issue_id)
-    if active is not None:
-        return {
-            "error": "Use the linked work-item lifecycle tools while Pynchy owns this issue",
-            "result": {"work_item": work_item_execution_to_dict(active)},
-        }
-    if status not in AGENT_SETTABLE_STATUSES:
-        return {
-            "error": _AGENT_SETTABLE_STATUS_ERROR.format(
-                statuses=", ".join(sorted(AGENT_SETTABLE_STATUSES))
-            )
-        }
-    try:
-        async with linear_client(workspace=workspace) as client:
-            updated = await move_unlinked_work_item(client, workspace, issue_id, status)
-    except (LinearError, ValueError) as exc:
-        return {"error": str(exc)}
-    return {"result": {"issue": _issue_projection(updated)}}
-
-
-async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
-    workspace = _workspace(data)
-    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
-    plan = _required_str(data, "plan", _PLAN_REQUIRED)
-    active = await get_active_work_item_execution(issue_id)
-    if active is not None:
-        return {
-            "error": "A claimed Linear work item cannot re-enter planning",
-            "result": {"work_item": work_item_execution_to_dict(active)},
-        }
-    try:
-        async with linear_client(workspace=workspace) as client:
-            updated = await submit_work_item_plan(client, workspace, issue_id, plan)
-    except (LinearError, ValueError) as exc:
-        return {"error": str(exc)}
-    return {"result": {"issue": _issue_projection(updated)}}
-
-
 def _workspace(data: dict[str, Any]) -> str:
     return static_workspace_folder(_source_group(data))
 
@@ -361,45 +259,8 @@ def _required_str(data: dict[str, Any], key: str, error: str) -> str:
     return value
 
 
-def _optional_str(data: dict[str, Any], key: str) -> str | None:
-    value = data.get(key)
-    return value.strip() if isinstance(value, str) and value.strip() else None
-
-
-def _optional_priority(data: dict[str, Any]) -> int | None:
-    value = data.get("priority")
-    if value is None:
-        return None
-    if type(value) is not int or not 0 <= value <= 4:
-        raise ValueError(_PRIORITY_INVALID)
-    return value
-
-
-def _turn_contains_authorization_quote(turn: InFlightTurn, quote: str) -> bool:
-    return any(
-        message.get("message_type") == "user"
-        and isinstance(content := message.get("content"), str)
-        and quote == content.strip()
-        for message in turn.input_messages
-    )
-
-
-def _evidence_refs(data: dict[str, Any]) -> tuple[str, ...]:
-    value = data.get("evidence_refs", [])
-    if not isinstance(value, list) or not all(
-        isinstance(item, str) and item.strip() for item in value
-    ):
-        raise ValueError("evidence_refs must be an array of non-empty strings")
-    return tuple(value)
-
-
-def _review_evidence_refs(data: dict[str, Any]) -> tuple[str, ...]:
-    evidence_refs = _evidence_refs(data)
-    pull_request_url = _optional_str(data, "pull_request_url")
-    if pull_request_url is None:
-        return tuple(dict.fromkeys(evidence_refs))
-    pull_request = GitHubPullRequestRef.parse(pull_request_url)
-    return tuple(dict.fromkeys((pull_request.url, *evidence_refs)))
+def _status_error() -> str:
+    return "status must be one of: " + ", ".join(sorted(TOOL_SETTABLE_STATUSES))
 
 
 def work_item_execution_to_dict(execution: WorkItemExecution) -> dict[str, object]:

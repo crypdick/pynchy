@@ -17,15 +17,10 @@ from functools import partial
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from pynchy.config import get_settings
-from pynchy.plugins.integrations.github_pull_requests import GitHubPullRequestRef
-from pynchy.plugins.integrations.linear_board_payloads import LinearBoardPayloadError
-from pynchy.plugins.integrations.linear_client import LinearError
-from pynchy.plugins.integrations.linear_work_item_completion import complete_merged_pull_request
 from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
     WebhookEvent,
     WebhookPayloadError,
-    WebhookProcessingError,
     WebhookRoute,
 )
 
@@ -238,9 +233,28 @@ def _pull_request_event(
         and payload.pull_request is not None
         and payload.pull_request.merged
     ):
-        text = "PR merged"
-        event_action = "merged"
-    elif has_merge_conflict:
+        return WebhookEvent(
+            delivery_id=context.delivery_id,
+            event_type=context.event_type,
+            action="merged",
+            subject_id=str(number),
+            occurred_at=context.occurred_at,
+            instructions=(
+                "GitHub reports that this pull request merged. Resolve its canonical URL with "
+                "linear_find_issues_by_attachment_url, inspect any linked work item and relevant "
+                "runtime state, then use your judgment about what remains. A merge is evidence, "
+                "not an automatic command. Move linked work to Follow-ups when final operational "
+                "work remains so that lifecycle can own it; use Done only when the whole job is "
+                "already finished, or report that no linked work needs action."
+            ),
+            external_context={
+                "repository": context.repository,
+                "pull_request_number": number,
+                "pull_request_url": url,
+                "event": "merged",
+            },
+        )
+    if has_merge_conflict:
         text = "merge conflict detected"
     elif payload.action == "synchronize":
         text = "new commits pushed"
@@ -269,24 +283,6 @@ def _pull_request_event(
         subject_id=str(number),
         message=f"GitHub PR update — {context.repository}#{number}: {text}.\n{url}",
     )
-
-
-async def _process_github_event(
-    event: WebhookEvent,
-    *,
-    config: GitHubWebhookRouteConfig,
-) -> None:
-    """Apply trusted merge lifecycle effects before admitting the delivery receipt."""
-    if event.event_type != "pull_request" or event.action != "merged":
-        return
-    try:
-        pull_request = GitHubPullRequestRef.from_repository_number(
-            config.repository,
-            int(event.subject_id),
-        )
-        await complete_merged_pull_request(config.workspace, pull_request, event.delivery_id)
-    except (LinearBoardPayloadError, LinearError, ValueError) as exc:
-        raise WebhookProcessingError(str(exc)) from exc
 
 
 def _issue_comment_event(
@@ -455,7 +451,6 @@ def github_webhook_routes() -> tuple[WebhookRoute, ...]:
             workspace=config.workspace,
             secret_env=config.secret_env,
             parse=partial(parse_github_webhook, config=config),
-            process_event=partial(_process_github_event, config=config),
             max_body_bytes=config.max_body_bytes,
             rate_limit_requests=config.rate_limit_requests,
             rate_limit_window_seconds=config.rate_limit_window_seconds,

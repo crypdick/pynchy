@@ -875,10 +875,6 @@ class TestResetContextExecution:
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
-                new_callable=AsyncMock,
-            ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
@@ -902,10 +898,6 @@ class TestResetContextExecution:
             patch(
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
-                new_callable=AsyncMock,
             ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
@@ -951,10 +943,6 @@ class TestResetContextExecution:
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
-            patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
-                new_callable=AsyncMock,
-            ),
         ):
             (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
             await dispatch(
@@ -972,118 +960,6 @@ class TestResetContextExecution:
             assert "admin-1@g.us" in deps.cleared_chats
             reset_file = tmp_path / "data" / "ipc" / "admin-1" / "reset_prompt.json"
             assert not reset_file.exists()
-
-    async def test_reset_context_survives_merge_failure(self, deps, tmp_path):
-        """reset_context should continue even if worktree merge fails."""
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops._worktree_merge.merge_worktree_with_policy",
-                new_callable=AsyncMock,
-                side_effect=Exception("merge failed"),
-            ),
-        ):
-            (tmp_path / "data" / "ipc" / "admin-1").mkdir(parents=True)
-            await dispatch(
-                {
-                    "type": "reset_context",
-                    "chatJid": "admin-1@g.us",
-                    "message": "Start fresh",
-                    "groupFolder": "admin-1",
-                },
-                "admin-1",
-                True,
-                deps,
-            )
-
-            # Session should still be cleared despite merge failure
-            assert "admin-1" in deps.cleared_sessions
-
-
-# --- finished_work execution ---
-
-
-@pytest.mark.action("lifecycle.task.finish")
-class TestFinishedWorkExecution:
-    """Tests for the finished_work IPC command."""
-
-    async def test_finished_work_sends_host_message(self, deps):
-        await dispatch(
-            {
-                "type": "finished_work",
-                "chatJid": "other@g.us",
-            },
-            "other-group",
-            False,
-            deps,
-        )
-
-        assert len(deps.host_messages) == 1
-        assert deps.host_messages[0][0] == "other@g.us"
-        assert "finished" in deps.host_messages[0][1].lower()
-
-    async def test_finished_work_merges_worktree_for_pynchy_repo_access(self, deps):
-        with patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree") as mock_merge:
-            await dispatch(
-                {
-                    "type": "finished_work",
-                    "chatJid": "other@g.us",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-            mock_merge.assert_called_once()
-            group_arg = mock_merge.call_args[0][0]
-            assert group_arg.folder == "other-group"
-
-    async def test_finished_work_skips_merge_for_non_pynchy_repo_access(self, deps):
-        """When no matching group is found, background_merge_worktree is not called."""
-        with patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree") as mock_merge:
-            await dispatch(
-                {
-                    "type": "finished_work",
-                    "chatJid": "nonexistent@g.us",
-                },
-                "nonexistent-group",
-                False,
-                deps,
-            )
-
-            mock_merge.assert_not_called()
-
-    async def test_finished_work_rejects_missing_chat_jid(self, deps):
-        """finished_work without chatJid should bail."""
-        await dispatch(
-            {
-                "type": "finished_work",
-            },
-            "other-group",
-            False,
-            deps,
-        )
-
-        assert len(deps.host_messages) == 0
-
-    async def test_finished_work_host_message_sent_regardless_of_merge(self, deps):
-        """finished_work always sends the host message; background merge is fire-and-forget."""
-        with patch("pynchy.host.git_ops._worktree_merge.background_merge_worktree"):
-            await dispatch(
-                {
-                    "type": "finished_work",
-                    "chatJid": "other@g.us",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-            # Host message is sent immediately regardless of merge outcome
-            assert len(deps.host_messages) == 1
 
 
 # --- create_periodic_agent authorization ---

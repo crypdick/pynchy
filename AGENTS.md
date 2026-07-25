@@ -34,10 +34,10 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | `src/pynchy/types.py` | Data models (dataclasses) |
 | `src/pynchy/logger.py` | Structured logging (structlog) |
 | `src/pynchy/agent/` | Container-side code — skills, agent runner, build scripts |
-| `prompts/` | System prompt markdown files |
+| `data/defaults/prompts/` | Public system prompt markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
 | `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
-| [Linear task tracking](docs/integrations/linear.md) | Canonical repository work items, plans, and approval state |
+| [Linear task tracking](docs/integrations/linear.md) | Canonical repository work items, authorization, and results |
 
 ## Detailed Guides
 

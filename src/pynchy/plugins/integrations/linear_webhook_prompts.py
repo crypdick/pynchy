@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 LINEAR_ISSUE_INSTRUCTIONS = (
-    "The Linear issue bound to this thread changed. Read its current state and take "
-    "appropriate action. If independent verification shows the requested outcome already "
-    "exists, call linear_await_review_work_item with a summary and evidence; an earlier claim "
-    "or pull request is not required."
+    "Handle this Linear issue update within its current authorization. Use your judgment about "
+    "the work's actual state instead of treating workflow names as a ritual. When authorized "
+    "work produces pull requests, attach every PR to this issue with linear_create_attachment "
+    "before requesting review. If the issue entered Follow-ups, finish the operational loose "
+    "ends that matter: verify deployment or delivery, preserve useful logs before teardown, "
+    "clean feature resources, and update or unblock related issues as appropriate. Move it to "
+    "Done when the whole job is genuinely finished, or Blocked when it needs outside help."
 )
 
 
@@ -18,8 +21,6 @@ def comment_instructions(action: str) -> str:
         "remove": "A comment was removed",
     }[action]
     return (
-        f"{activity} on the Linear issue bound to this thread. Read it and take appropriate "
-        "action under the issue's current workflow state. If independent verification shows "
-        "the requested outcome already exists, call linear_await_review_work_item with a "
-        "summary and evidence; an earlier claim or pull request is not required."
+        f"{activity} on this Linear issue. Respond within its current authorization and use "
+        "your judgment to keep the issue, comments, attachments, and follow-up work accurate."
     )

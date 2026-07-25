@@ -182,12 +182,9 @@ CREATE TABLE IF NOT EXISTS work_item_executions (
     updated_at TEXT NOT NULL,
     completed_at TEXT
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue
+CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue_v3
 ON work_item_executions(linear_issue_id)
-WHERE status IN ('claiming', 'in_progress', 'blocked', 'unknown');
-CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue_v2
-ON work_item_executions(linear_issue_id)
-WHERE status IN ('claiming', 'in_progress', 'awaiting_review', 'blocked', 'unknown');
+WHERE status IN ('claiming', 'in_progress', 'unknown');
 CREATE INDEX IF NOT EXISTS idx_work_item_executions_workspace
 ON work_item_executions(workspace, updated_at DESC);
 
@@ -399,6 +396,20 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
+async def _migrate_work_item_active_index(database: aiosqlite.Connection) -> None:
+    """Keep execution leases limited to work that can still be running."""
+    await database.execute("DROP INDEX IF EXISTS idx_work_item_executions_active_issue")
+    await database.execute("DROP INDEX IF EXISTS idx_work_item_executions_active_issue_v2")
+    await database.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue_v3
+        ON work_item_executions(linear_issue_id)
+        WHERE status IN ('claiming', 'in_progress', 'unknown')
+        """
+    )
+    await database.commit()
+
+
 async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     """Seed channel_cursors from existing last_agent_timestamp (one-time migration).
 
@@ -463,6 +474,7 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
     await _migrate_repo_access_column(database)
+    await _migrate_work_item_active_index(database)
     await drop_derived_task_thread_columns(database)
     await clear_temporal_owned_next_runs(database)
     await _seed_channel_cursors(database)

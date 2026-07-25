@@ -12,6 +12,10 @@ _LINEAR_DATA_OBJECT_MISSING = "Linear response did not include a data object"
 _LINEAR_ISSUE_NOT_CREATED = "Linear did not create the issue"
 _LINEAR_ISSUE_CREATE_ISSUE_MISSING = "Linear issueCreate response did not include an issue"
 _LINEAR_ISSUE_DELETE_FAILED = "Linear did not delete the issue"
+_LINEAR_COMMENT_NOT_CREATED = "Linear did not create the comment"
+_LINEAR_COMMENT_MISSING = "Linear commentCreate response did not include a comment"
+_LINEAR_ATTACHMENT_NOT_CREATED = "Linear did not create the attachment"
+_LINEAR_ATTACHMENT_MISSING = "Linear attachmentCreate response did not include an attachment"
 _LINEAR_ISSUE_NOT_FOUND = "Entity not found: Issue"
 _LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
 _LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
@@ -205,6 +209,96 @@ class LinearClient:
         if not isinstance(issue, dict):
             raise LinearError("Linear issue response was not an object")
         return issue
+
+    async def create_comment(self, issue_id: str, body: str) -> dict[str, Any]:
+        """Add an ordinary comment to an issue."""
+        data = await self.query(
+            """
+            mutation CreateComment($issue_id: String!, $body: String!) {
+              commentCreate(input: { issueId: $issue_id, body: $body }) {
+                success
+                comment { id body createdAt }
+              }
+            }
+            """,
+            issue_id=issue_id,
+            body=body,
+        )
+        result = data.get("commentCreate")
+        if not isinstance(result, dict) or not result.get("success"):
+            raise LinearError(_LINEAR_COMMENT_NOT_CREATED)
+        comment = result.get("comment")
+        if not isinstance(comment, dict):
+            raise LinearError(_LINEAR_COMMENT_MISSING)
+        return comment
+
+    async def create_attachment(
+        self,
+        issue_id: str,
+        url: str,
+        title: str,
+        *,
+        subtitle: str | None = None,
+    ) -> dict[str, Any]:
+        """Attach an external resource to an issue.
+
+        Linear treats an issue and URL pair as idempotent, so a repeated call
+        updates the visible attachment instead of creating a duplicate.
+        """
+        data = await self.query(
+            """
+            mutation CreateAttachment(
+              $issue_id: String!,
+              $url: String!,
+              $title: String!,
+              $subtitle: String
+            ) {
+              attachmentCreate(
+                input: {
+                  issueId: $issue_id,
+                  url: $url,
+                  title: $title,
+                  subtitle: $subtitle
+                }
+              ) {
+                success
+                attachment { id url title subtitle createdAt updatedAt }
+              }
+            }
+            """,
+            issue_id=issue_id,
+            url=url,
+            title=title,
+            subtitle=subtitle,
+        )
+        result = data.get("attachmentCreate")
+        if not isinstance(result, dict) or not result.get("success"):
+            raise LinearError(_LINEAR_ATTACHMENT_NOT_CREATED)
+        attachment = result.get("attachment")
+        if not isinstance(attachment, dict):
+            raise LinearError(_LINEAR_ATTACHMENT_MISSING)
+        return attachment
+
+    async def find_issues_by_attachment_url(self, url: str) -> list[dict[str, Any]]:
+        """Resolve an external URL back to its Linear issue attachments."""
+        data = await self.query(
+            """
+            query AttachmentsForURL($url: String!) {
+              attachmentsForURL(url: $url) {
+                nodes {
+                  id url title subtitle
+                  issue {
+                    id identifier title url
+                    state { id name type }
+                    project { id name }
+                  }
+                }
+              }
+            }
+            """,
+            url=url,
+        )
+        return _nodes(data, "attachmentsForURL")
 
     async def delete_issue(self, issue_id: str) -> None:
         """Permanently remove an issue created exclusively for a canary."""

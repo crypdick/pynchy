@@ -285,12 +285,15 @@ Anthropic Messages routes. For technical details, see [Agent Tool Security Gate]
 
 ## Host-Mutating Operations
 
-Some IPC operations can change what code runs on the host: merging code, registering new workspaces, scheduling tasks, running host commands. These are automatically inspected by the **Cop** — an LLM-based security reviewer.
+Some IPC operations publish code or change persistent host behavior: opening
+pull requests, registering new workspaces, scheduling tasks, and running host
+commands. These are automatically inspected by the **Cop** — an LLM-based
+security reviewer.
 
 The Cop examines the payload of each host-mutating operation (the diff being merged, the task prompt, the group config) together with a small recent context window. Flagged operations require human approval before proceeding. If Cop or its context is unavailable, request-reply operations also require approval; fire-and-forget operations are blocked.
 
 **What's covered:**
-- Code merges (`sync_worktree_to_main`)
+- Pull-request publication (`sync_worktree_to_main`)
 - Workspace registration (`register_group`)
 - Periodic agent creation (`create_periodic_agent`)
 - Task scheduling (`schedule_task`, `schedule_host_job`)

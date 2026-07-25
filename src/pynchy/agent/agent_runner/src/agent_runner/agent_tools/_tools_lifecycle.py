@@ -1,4 +1,4 @@
-"""Lifecycle tools: reset_context, finished_work, sync_worktree_to_main."""
+"""Lifecycle tools: reset_context and sync_worktree_to_main."""
 
 from __future__ import annotations
 
@@ -21,12 +21,10 @@ from ._registry import tool, tool_error
 @tool(
     "sync_worktree_to_main",
     (
-        "Publish your committed changes. Depending on workspace "
-        "policy, this either merges into main and pushes, or "
-        "pushes to a branch and opens/updates a PR. "
-        "Commit all changes first. On conflict, your worktree "
-        "will have conflict markers — fix them, git add, "
-        "git rebase --continue, then retry."
+        "Publish committed workspace changes for review. The host pushes the isolated "
+        "worktree branch and opens or updates a pull request, returning its canonical URL. "
+        "Attach every returned PR URL to the current Linear issue before moving it to "
+        "Awaiting Review. Resolve any reported conflict or publication failure and retry."
     ),
     {"type": "object", "properties": {}},
 )
@@ -36,6 +34,7 @@ async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent]
         "sync_worktree_to_main",
         {
             "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
+            "publication": "pull-request",
         },
         request_id=request_id,
         reply_to="merge_results",
@@ -54,7 +53,22 @@ async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent]
                 continue
 
             if result.get("success"):
-                return [TextContent(type="text", text=result["message"])]
+                repo_results = result.get("repos")
+                messages = (
+                    [
+                        str(repo_result["message"])
+                        for repo_result in repo_results.values()
+                        if isinstance(repo_result, dict) and repo_result.get("message")
+                    ]
+                    if isinstance(repo_results, dict)
+                    else []
+                )
+                return [
+                    TextContent(
+                        type="text",
+                        text="\n".join(messages) if messages else result["message"],
+                    )
+                ]
             return tool_error(result["message"])
         await asyncio.sleep(0.3)
 
@@ -62,45 +76,11 @@ async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent]
 
 
 def _exit_container() -> NoReturn:
-    """Write the close sentinel and terminate the container process."""
+    """Write the close sentinel and terminate after an explicit context reset."""
     close_sentinel = Path("/workspace/ipc/input/_close")
     close_sentinel.parent.mkdir(parents=True, exist_ok=True)
     close_sentinel.write_text("", encoding="utf-8")
     os._exit(0)
-
-
-# -- finished_work --
-
-
-@tool(
-    "finished_work",
-    (
-        "Signal that your scheduled task is complete and shut "
-        "down this container. This will:\n"
-        "1. Merge any un-synced worktree commits (safety net)\n"
-        "2. Notify the chat that the task finished\n"
-        "3. Terminate this container\n\n"
-        "Call sync_worktree_to_main first if you have commits "
-        "to push. This tool is a final safety net — it will "
-        "merge anything you missed.\n\n"
-        "After calling this tool, the container exits "
-        "immediately. Do NOT attempt further work."
-    ),
-    {"type": "object", "properties": {}},
-    visible=lambda: _ipc.get_agent_tool_runtime().is_scheduled_task,
-)
-async def _finished_work_handle(  # noqa: RUF029, RUF100 - async tool API.
-    _arguments: dict[str, Any],
-) -> list[TextContent]:
-    _ipc.write_request_file(
-        "finished_work",
-        {
-            "groupFolder": _ipc.get_agent_tool_runtime().group_folder,
-            "chatJid": _ipc.get_agent_tool_runtime().chat_jid,
-        },
-        reply_to=None,
-    )
-    _exit_container()
 
 
 # -- reset_context --

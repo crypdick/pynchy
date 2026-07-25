@@ -63,12 +63,7 @@ def tool_specs() -> list[dict[str, Any]]:
         },
         {
             "name": "linear_create_todo",
-            "description": (
-                "Propose a Linear work item that the agent originated for this Pynchy workspace. "
-                "The item starts in Agent Proposed and may include evidence and acceptance "
-                "criteria. Do not use this for work explicitly requested in the current human "
-                "message; use linear_create_requested_todo instead."
-            ),
+            "description": "Create an Agent Proposed work item for this workspace.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -83,6 +78,53 @@ def tool_specs() -> list[dict[str, Any]]:
                     },
                 },
                 "required": ["title"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "linear_create_comment",
+            "description": "Add a comment to a Linear issue.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string"},
+                    "body": {"type": "string"},
+                },
+                "required": ["issue_id", "body"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "linear_create_attachment",
+            "description": (
+                "Attach an external URL to a Linear issue. Use one attachment for every "
+                "pull request produced by the work. Reusing the same issue and URL updates "
+                "the existing attachment."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "issue_id": {"type": "string"},
+                    "url": {"type": "string", "format": "uri"},
+                    "title": {"type": "string"},
+                    "subtitle": {"type": "string"},
+                },
+                "required": ["issue_id", "url", "title"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "linear_find_issues_by_attachment_url",
+            "description": (
+                "Find Linear issues linked to an exact external URL. Use the canonical pull "
+                "request URL from a GitHub event to recover its attached work item."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "format": "uri"},
+                },
+                "required": ["url"],
                 "additionalProperties": False,
             },
         },

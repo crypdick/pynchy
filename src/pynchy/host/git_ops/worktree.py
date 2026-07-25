@@ -9,7 +9,7 @@ Design: existing worktrees use best-effort sync (fetch + merge), never
 agents may leave uncommitted work in their worktree. We preserve that state
 and notify the agent via system notices so it can resume gracefully.
 
-Merge and push operations live in ``_worktree_merge.py``.
+Agents publish committed changes explicitly through ``sync_worktree_to_main``.
 """
 
 from __future__ import annotations
