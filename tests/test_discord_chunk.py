@@ -83,6 +83,15 @@ def test_reopened_fence_chunk_reserves_room_for_both_fence_markers():
     assert all(_fence_count(chunk) % 2 == 0 for chunk in chunks)
 
 
+def test_fence_opening_near_plain_chunk_boundary_reserves_closing_marker():
+    # Starting a fence changes the current chunk's flush budget. Reserve that
+    # closing marker before appending the opener at the end of plain text.
+    text = "p" * 1994 + f"\n{FENCE}\n" + "x" * 20 + f"\n{FENCE}"
+    chunks = chunk_discord_text(text)
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert all(_fence_count(chunk) % 2 == 0 for chunk in chunks)
+
+
 def test_custom_limit_is_respected():
     text = "\n".join("row" + str(i) for i in range(100))
     chunks = chunk_discord_text(text, limit=50)
