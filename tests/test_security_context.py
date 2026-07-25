@@ -31,6 +31,15 @@ async def test_recent_security_context_is_bounded_and_omits_tool_inputs() -> Non
         chat_jid,
         {"trace_type": "thinking", "tool_name": "not-an-action"},
     )
+    for index in range(3):
+        await state.store_event(
+            "agent_trace",
+            chat_jid,
+            {
+                "trace_type": "text",
+                "content": f"update-{index}-" + ("y" * 600),
+            },
+        )
     for index in range(10):
         await state.store_event(
             "agent_trace",
@@ -51,5 +60,8 @@ async def test_recent_security_context_is_bounded_and_omits_tool_inputs() -> Non
     assert len(context.current_user_intent) == 500
     assert len(context.recent_messages) == 4
     assert all(len(message.content) == 500 for message in context.recent_messages)
+    assert len(context.recent_agent_updates) == 2
+    assert context.recent_agent_updates[0].startswith("update-1-")
+    assert all(len(update) == 500 for update in context.recent_agent_updates)
     assert context.completed_tool_actions == tuple(f"Tool{index}" for index in range(2, 10))
     assert "must-not-cross-context-boundary" not in repr(context)

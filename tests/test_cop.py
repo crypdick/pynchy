@@ -148,6 +148,7 @@ async def test_outbound_sends_bounded_context_and_proposed_action():
         availability=CopContextAvailability.AVAILABLE,
         current_user_intent="Fix the typo",
         recent_messages=(("user", "Please fix it"), ("assistant", "I will inspect it")),
+        recent_agent_updates=("The fix is in place; running focused tests.",),
         completed_tool_actions=("Read", "ApplyPatch"),
     )
     with (
@@ -164,6 +165,7 @@ async def test_outbound_sends_bounded_context_and_proposed_action():
 
     request_text = str(bodies[0]["messages"])
     assert "Fix the typo" in request_text
+    assert "running focused tests" in request_text
     assert "ApplyPatch" in request_text
     assert "diff: typo fix" in request_text
 
@@ -383,6 +385,41 @@ async def test_bash_sends_taint_facts_and_uses_configured_cop_model():
     request_text = str(bodies[0]["messages"])
     assert '"corruption_tainted": true' in request_text
     assert '"secret_tainted": true' in request_text
+
+
+@pytest.mark.asyncio
+async def test_bash_prompt_treats_local_validation_as_authorized_workflow_support():
+    """The agentic reviewer receives the workflow-level intent contract."""
+    bodies: list[dict[str, object]] = []
+    with (
+        patch(
+            "pynchy.host.container_manager.gateway.get_gateway",
+            return_value=_fake_gateway(),
+        ),
+        _mock_aiohttp_session(
+            '{"decision": "approve", "reason": "Routine local validation"}',
+            captured_bodies=bodies,
+        ),
+    ):
+        verdict = await inspect_bash(
+            "uv run pytest -q tests/test_logger.py",
+            inspection_context=CopInspectionContext(
+                availability=CopContextAvailability.AVAILABLE,
+                current_user_intent="Create a Linear issue for the blocker",
+                recent_agent_updates=("The implementation is ready for focused checks.",),
+            ),
+            risk=CopCommandRisk(
+                network_capable=False,
+                corruption_tainted=False,
+                secret_tainted=True,
+            ),
+        )
+
+    assert verdict.decision is CopCommandDecision.APPROVE
+    system_prompt = str(bodies[0]["system"])
+    assert "workflow level" in system_prompt
+    assert "Do not escalate harmless local work" in system_prompt
+    assert "does not mean" in system_prompt
 
 
 @pytest.mark.asyncio

@@ -148,7 +148,9 @@ def _append_unique(
             existing.add((kind, stripped))
 
 
-def _command_values(tool_input: dict[str, Any]) -> list[str]:
+def _command_values(tool_key: str, tool_input: dict[str, Any]) -> list[str]:
+    if tool_key not in _COMMAND_TOOL_NAMES:
+        return []
     values: list[str] = []
     for key in ("command", "cmd", "commands", "script"):
         values.extend(_strings(tool_input.get(key)))
@@ -156,6 +158,17 @@ def _command_values(tool_input: dict[str, Any]) -> list[str]:
     if isinstance(action, dict):
         for key in ("command", "commands"):
             values.extend(_strings(action.get(key)))
+    return values
+
+
+def _content_values(tool_key: str, tool_input: dict[str, Any]) -> list[str]:
+    values = [value for key in _CONTENT_KEYS for value in _strings(tool_input.get(key))]
+    if tool_key in _WRITE_TOOL_NAMES:
+        # CLI hook transports can put a free-form patch in ``input`` or
+        # ``command``. Treat that value as patch content: parsing it as shell
+        # code can turn ordinary prose such as "credentials" into CRED001.
+        for key in ("input", "command"):
+            values.extend(_strings(tool_input.get(key)))
     return values
 
 
@@ -178,14 +191,14 @@ def normalize_tool_request(tool_name: str, tool_input: dict[str, Any]) -> Normal
     tool_key = _tool_key(tool_name)
     artifacts: list[SecurityArtifact] = []
 
-    commands = _command_values(tool_input)
+    commands = _command_values(tool_key, tool_input)
     if commands or tool_key in _COMMAND_TOOL_NAMES:
         _append_unique(artifacts, ArtifactKind.COMMAND, commands)
 
     paths: list[str] = []
     for key in _PATH_KEYS:
         paths.extend(_strings(tool_input.get(key)))
-    content_values = [value for key in _CONTENT_KEYS for value in _strings(tool_input.get(key))]
+    content_values = _content_values(tool_key, tool_input)
     if tool_key in _WRITE_TOOL_NAMES:
         paths.extend(_patch_paths(content_values))
     if paths or tool_key in _READ_TOOL_NAMES or tool_key in _WRITE_TOOL_NAMES:

@@ -260,7 +260,7 @@ checks do not change skill admission.
 **Network commands are gated when tainted.** Commands like `curl`, `wget`, `python`, `ssh`, `pip install`, and similar network-capable tools are checked against the session's taint state:
 
 - **No taint** — the command runs. Nothing sensitive to exfiltrate.
-- **Any taint** — the Cop compares the exact command with current user intent and trusted host security facts. It approves clear low-risk matches, denies clear unsafe or unrelated commands, and sends ambiguous decisions to you.
+- **Any taint** — the Cop compares the exact command with current user intent, recent agent updates, and trusted host security facts. It treats routine local inspection, implementation, and validation as part of the authorized workflow even when those steps do not directly produce the requested final result. It denies clear unsafe conflicts and sends consequential ambiguity to you. Secret taint means sensitive data is accessible, not that every command reads or exposes it.
 
 **Unknown commands get the same Cop triage.** Commands not on either list go to
 the Cop with their classification and taint facts. A Cop approval covers only
