@@ -444,10 +444,29 @@ async def test_reconcile_adopts_completed_legacy_plan_as_approval_evidence() -> 
     ]
     await create_task(
         ScheduledTask(
+            id="linear-ready-for-planning-syn-13-wrong-issue",
+            group_folder="retired-pynchy-dev",
+            chat_jid="linear:retired-pynchy-dev",
+            prompt=(
+                "[Source: linear-decision-inbox]\n"
+                '{"identifier": "SYN-13", "issue_id": "another-issue"}'
+            ),
+            schedule_type="once",
+            schedule_value="2026-07-19T08:00:00+00:00",
+            context_mode="isolated",
+            status="completed",
+            created_at="2026-07-19T08:00:00+00:00",
+        )
+    )
+    await create_task(
+        ScheduledTask(
             id="linear-ready-for-planning-syn-13-proof",
-            group_folder="beta",
-            chat_jid="linear:beta",
-            prompt="Legacy planning evidence",
+            group_folder="retired-pynchy-dev",
+            chat_jid="linear:retired-pynchy-dev",
+            prompt=(
+                "[Source: linear-decision-inbox]\n"
+                '{"identifier": "SYN-13", "issue_id": "issue-legacy"}'
+            ),
             schedule_type="once",
             schedule_value="2026-07-19T08:00:00+00:00",
             context_mode="isolated",
