@@ -94,6 +94,12 @@ plan without authorizing execution. Temporal admits one durable isolated
 planning task. The agent calls `linear_submit_plan` to persist the plan in the
 issue description and move the item to `Awaiting Plan Approval`.
 
+While the item is `Awaiting Plan Approval`, comments can ask the agent to
+revisit assumptions or refine the plan. The agent can call
+`linear_submit_plan` again to atomically replace the marked plan section
+without moving the issue backward or granting execution authority. The item
+remains `Awaiting Plan Approval` for human review.
+
 Review the plan, then move the issue to `Human Approved` in Linear. You can also
 explicitly request that state change in a direct human conversation. The agent
 can then use `linear_move_todo`; Pynchy verifies that the current turn came
@@ -250,7 +256,7 @@ host-managed lease record:
 
 | Tool | Purpose |
 |------|---------|
-| `linear_submit_plan` | Atomically persists a plan and moves a ready item to `Awaiting Plan Approval`. |
+| `linear_submit_plan` | Atomically persists an initial or revised plan and leaves it `Awaiting Plan Approval`. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider transition. |
 | `linear_list_work_items` | Lists durable execution records for the workspace. |
 | `linear_move_todo` | Moves work to an agent-managed outcome or a directly human-authorized state. |

@@ -39,7 +39,7 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_submit_plan",
             "linear.todo.plan",
-            "Persist a concrete Linear plan and request human plan approval.",
+            "Persist or revise a concrete Linear plan for human approval.",
             HostActionAccess.WRITE,
             handle_submit_plan,
         ),

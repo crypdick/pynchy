@@ -260,7 +260,36 @@ async def test_submit_plan_persists_markdown_and_waits_for_human_approval(
     assert await get_active_work_item_execution("issue-1") is None
 
 
-async def test_submit_plan_requires_ready_for_planning(
+async def test_submit_plan_replaces_unapproved_plan_without_lifecycle_churn(
+    lifecycle: Lifecycle,
+) -> None:
+    lifecycle.state.issue["state"] = _state("state-awaiting-plan-approval")
+    lifecycle.state.issue["description"] = (
+        "Acceptance criteria from the user.\n\n"
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "1. Follow the stale assumptions.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+
+    result = await _call(
+        lifecycle,
+        "linear_submit_plan",
+        "plan-revision-1",
+        issue_id="issue-1",
+        plan="1. Re-read current behavior.\n2. Replace the stale assumptions.",
+    )
+
+    issue = result["result"]["issue"]
+    assert issue["state"]["name"] == "Awaiting Plan Approval"
+    assert lifecycle.state.issue["description"].startswith("Acceptance criteria from the user.")
+    assert lifecycle.state.issue["description"].count("<!-- pynchy.plan:start -->") == 1
+    assert "2. Replace the stale assumptions." in lifecycle.state.issue["description"]
+    assert "Follow the stale assumptions." not in lifecycle.state.issue["description"]
+    assert await get_active_work_item_execution("issue-1") is None
+
+
+async def test_submit_plan_requires_planning_or_approval_wait_state(
     lifecycle: Lifecycle,
 ) -> None:
     result = await _call(
@@ -271,7 +300,11 @@ async def test_submit_plan_requires_ready_for_planning(
         plan="A concrete plan.",
     )
 
-    assert result == {"error": "Linear work item must be Ready for Planning before planning"}
+    assert result == {
+        "error": (
+            "Linear work item must be Ready for Planning or Awaiting Plan Approval before planning"
+        )
+    }
 
 
 async def test_host_lease_persists_before_moving_to_in_progress(

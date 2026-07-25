@@ -12,11 +12,11 @@ from pynchy.plugins.integrations.linear_statuses import (
     TERMINAL_STATE_TYPES,
     TOOL_SETTABLE_STATUSES,
 )
+from pynchy.plugins.integrations.linear_work_item_planning import submit_work_item_plan
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     reconcile_work_item,
     state_id,
-    submit_work_item_plan,
     transition_linked_work_item,
     update_issue_state,
     workspace_issue,
