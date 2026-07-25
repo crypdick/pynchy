@@ -18,11 +18,8 @@ from pynchy.plugins.integrations.linear_boards import (
     require_workspace_board,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
-from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
 from pynchy.plugins.integrations.linear_statuses import (
-    AWAITING_PLAN_APPROVAL_STATUS,
     HUMAN_APPROVED_STATUS,
-    READY_FOR_PLANNING_STATUS,
 )
 from pynchy.state import (
     WorkItemClaimConflictError,
@@ -44,7 +41,6 @@ from pynchy.types import (
 
 _WORKSPACE_ISSUE_REQUIRED = "Linear issue does not belong to this Pynchy workspace board"
 _HUMAN_APPROVAL_REQUIRED = "Linear work item must be Human Approved before Pynchy can run it"
-_PLANNING_READY_REQUIRED = "Linear work item must be Ready for Planning before planning"
 
 
 class LinearWorkspaceIssueError(ValueError):
@@ -333,25 +329,6 @@ async def reconcile_work_item(
         ),
         issue=issue,
         error=None if matches_target else "Linear state differs from the intended transition",
-    )
-
-
-async def submit_work_item_plan(
-    client: LinearClient,
-    workspace: str,
-    issue_id: str,
-    plan: str,
-) -> dict[str, Any]:
-    """Persist a concrete plan before advancing to human plan approval."""
-    issue, board = await workspace_issue(client, workspace, issue_id)
-    if state_id(issue) != state_id(board.states[READY_FOR_PLANNING_STATUS]):
-        raise ValueError(_PLANNING_READY_REQUIRED)
-    description = description_with_plan(issue.get("description"), plan)
-    return await update_issue_plan(
-        client,
-        issue_id=issue_id,
-        state_id=state_id(board.states[AWAITING_PLAN_APPROVAL_STATUS]),
-        description=description,
     )
 
 

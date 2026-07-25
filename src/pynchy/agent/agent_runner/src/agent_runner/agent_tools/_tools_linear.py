@@ -33,8 +33,9 @@ def _issue_schema(*, include_status: bool = False) -> dict[str, object]:
 register_ipc_tool(
     name="linear_submit_plan",
     description=(
-        "Persist a concrete Markdown plan for a Ready for Planning Linear item and move it "
-        "to Awaiting Plan Approval. This does not authorize or begin execution."
+        "Persist a concrete Markdown plan for a Ready for Planning Linear item, or revise its "
+        "existing plan while it is Awaiting Plan Approval. The item remains Awaiting Plan "
+        "Approval; this does not authorize or begin execution."
     ),
     input_schema={
         "type": "object",

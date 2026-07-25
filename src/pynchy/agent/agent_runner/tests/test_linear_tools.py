@@ -27,6 +27,7 @@ async def test_linear_tools_preserve_planning_gate_and_generic_execution_actions
     assert "Follow-ups" in (move.description or "")
     assert set(submit_plan.inputSchema["required"]) == {"issue_id", "plan"}
     assert "Awaiting Plan Approval" in (submit_plan.description or "")
+    assert "revise" in (submit_plan.description or "")
 
     removed_ritual = {
         "linear_create_authorized_work_item",
