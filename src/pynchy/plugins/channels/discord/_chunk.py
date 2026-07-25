@@ -48,11 +48,6 @@ def _chunk_budget(limit: int, *, in_fence: bool) -> int:
     return limit - (_FENCE_RESERVE if in_fence else 0)
 
 
-def _line_pieces(line: str, *, limit: int, in_fence: bool) -> list[str]:
-    budget = _chunk_budget(limit, in_fence=in_fence)
-    return _hard_split(line, budget) if len(line) > budget else [line]
-
-
 def _flush_chunk(
     chunks: list[str],
     parts: list[str],
@@ -104,20 +99,26 @@ def chunk_discord_text(text: str, *, limit: int = DISCORD_LIMIT) -> list[str]:
     pending_reopen = False
 
     for line in text.splitlines(keepends=True):
-        pieces = _line_pieces(line, limit=limit, in_fence=in_fence)
-        for piece in pieces:
-            budget = _chunk_budget(limit, in_fence=in_fence)
-            if cur_parts and cur_len + len(piece) > budget:
+        remaining = line
+        while remaining:
+            reopen_size = _FENCE_RESERVE if not cur_parts and pending_reopen else 0
+            available = _chunk_budget(limit, in_fence=in_fence) - cur_len - reopen_size
+
+            if cur_parts and len(remaining) > available:
                 pending_reopen = _flush_chunk(chunks, cur_parts, in_fence=in_fence)
                 cur_parts = []
                 cur_len = 0
+                continue
+
+            piece = _hard_split(remaining, available)[0]
             cur_len, pending_reopen = _append_piece(
                 cur_parts,
                 piece,
                 cur_len=cur_len,
                 pending_reopen=pending_reopen,
             )
-            if _is_fence_line(piece):
+            remaining = remaining[len(piece) :]
+            if not remaining and _is_fence_line(line):
                 in_fence = not in_fence
 
     _flush_chunk(chunks, cur_parts, in_fence=in_fence)

@@ -74,6 +74,15 @@ def test_fence_split_keeps_each_chunk_balanced():
         assert _fence_count(chunk) % 2 == 0, f"unbalanced fences in chunk: {chunk[:60]!r}"
 
 
+def test_reopened_fence_chunk_reserves_room_for_both_fence_markers():
+    # The reopened chunk needs room for both its synthetic opening fence and
+    # the closing fence appended when it is flushed.
+    text = f"{FENCE}\n{'x' * 1997}\n{FENCE}"
+    chunks = chunk_discord_text(text)
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert all(_fence_count(chunk) % 2 == 0 for chunk in chunks)
+
+
 def test_custom_limit_is_respected():
     text = "\n".join("row" + str(i) for i in range(100))
     chunks = chunk_discord_text(text, limit=50)
