@@ -95,6 +95,32 @@ class TestGroupQueue:
         task_complete.set()
         await asyncio.sleep(0.05)
 
+    async def test_shutdown_stops_host_runner_process_group(self, queue: GroupQueue) -> None:
+        """Shutdown must stop a host runner through its process group, not Docker."""
+        lease = queue.acquire_host_process("group1@g.us")
+        proc = AsyncMock(spec=asyncio.subprocess.Process)
+        proc.returncode = None
+        assert queue.register_host_process(lease, proc, "host-agent-runner", "pynchy-dev")
+
+        with (
+            patch(
+                "pynchy.host.container_manager.session.destroy_all_sessions",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.concurrency.stop_host_process",
+                new_callable=AsyncMock,
+            ) as stop_host,
+            patch(
+                "pynchy.host.container_manager.process.graceful_stop",
+                new_callable=AsyncMock,
+            ) as stop_container,
+        ):
+            await queue.shutdown()
+
+        stop_host.assert_awaited_once_with(proc)
+        stop_container.assert_not_awaited()
+
     async def test_only_runs_one_container_per_group(self, queue: GroupQueue):
         concurrent_count = 0
         max_concurrent = 0

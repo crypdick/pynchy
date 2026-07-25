@@ -496,12 +496,12 @@ class GroupQueue:
         # Destroy all persistent sessions first
         await container_session.destroy_all_sessions()
 
-        # Stop any remaining one-shot containers
-        active: list[tuple[asyncio.subprocess.Process, str]] = []
+        # Stop remaining one-shot runners through their native shutdown path.
+        active: list[tuple[asyncio.subprocess.Process, str, bool]] = []
         for state in self._groups.values():
             proc_alive = getattr(state.process, "returncode", None) is None
             if state.process and state.container_name and proc_alive:
-                active.append((state.process, state.container_name))
+                active.append((state.process, state.container_name, state.is_host_process))
 
         if not active:
             logger.info("GroupQueue shutdown complete (no active containers)")
@@ -510,11 +510,16 @@ class GroupQueue:
         logger.info(
             "GroupQueue shutting down, stopping containers",
             active_count=len(active),
-            containers=[name for _, name in active],
+            containers=[name for _, name, _ in active],
         )
 
         await asyncio.gather(
-            *(container_process.graceful_stop(proc, name) for proc, name in active),
+            *(
+                stop_host_process(proc)
+                if is_host_process
+                else container_process.graceful_stop(proc, name)
+                for proc, name, is_host_process in active
+            ),
             return_exceptions=True,
         )
         logger.info(

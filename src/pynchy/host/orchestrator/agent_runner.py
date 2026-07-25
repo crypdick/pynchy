@@ -342,6 +342,9 @@ async def _run_scheduled_execution(
         return "error"
     finally:
         if not interrupted:
+            # Mirror scheduled-container teardown: the host runner may have
+            # published a provider session while streaming its final output.
+            await destroy_session(group.folder)
             await clear_session(GroupFolder(group.folder))
             deps.sessions.pop(group.folder, None)
 

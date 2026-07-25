@@ -25,6 +25,7 @@ from pynchy.config.models import (
     ProfileConfig,
     WorkspaceConfig,
 )
+from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.conversation.models import (
     ControlSurface,
     ConversationControlBinding,
@@ -2133,14 +2134,16 @@ class TestContainerInputAgentCoreConfig:
 
     @pytest.mark.asyncio
     async def test_scheduled_run_dispatches_host_mode_as_one_shot(self, tmp_path: Path):
+        parent_folder = "host-group"
+        child_folder = dynamic_thread_folder(parent_folder, "discord:daily-review")
         group = WorkspaceProfile(
-            jid="host@g.us",
-            name="Host Group",
-            folder="host-group",
+            jid="discord:daily-review",
+            name="Host Group/Daily Review",
+            folder=child_folder,
             trigger="@pynchy",
             is_admin=True,
         )
-        deps = _AgentRunnerDeps({"host-group": "interactive-session"})
+        deps = _AgentRunnerDeps({child_folder: "interactive-session"})
         ctx = self._ctx("interactive-session")
         ctx.is_admin = True
         settings = make_settings(
@@ -2151,7 +2154,7 @@ class TestContainerInputAgentCoreConfig:
                     cwd=str(tmp_path),
                 )
             },
-            workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
+            workspaces={parent_folder: WorkspaceConfig(profiles=["host-admin"])},
         )
 
         with (
@@ -2209,7 +2212,8 @@ class TestContainerInputAgentCoreConfig:
         input_data = run_host_agent_turn.await_args.args[0].input_data
         assert input_data.is_scheduled_task is True
         assert input_data.session_id is None
-        destroy_session.assert_awaited_once_with(group.folder)
+        assert destroy_session.await_count == 2
+        destroy_session.assert_awaited_with(group.folder)
         clear_session.assert_awaited_once_with(GroupFolder(group.folder))
         assert deps.sessions == {}
 
