@@ -22,6 +22,7 @@ from pynchy.host.orchestrator.temporal.workflows import (
     DatabaseHostJobWorkflow,
     ExternalGitSyncWorkflow,
     HostGitSyncWorkflow,
+    LinearWorkItemReconciliationWorkflow,
     ScheduledAgentTaskWorkflow,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves Temporal schedule annotations at runtime.
@@ -36,11 +37,14 @@ SCHEDULE_PREFIXES = (
     "pynchy-host-cron-schedule-",
     "pynchy-git-sync-",
     "pynchy-channel-reconciliation",
+    "pynchy-linear-work-item-reconciliation",
     "pynchy-canary-",
 )
 HOST_GIT_SYNC_SCHEDULE_ID = "pynchy-git-sync-host"
 CHANNEL_RECONCILIATION_SCHEDULE_ID = "pynchy-channel-reconciliation"
+LINEAR_WORK_ITEM_RECONCILIATION_SCHEDULE_ID = "pynchy-linear-work-item-reconciliation"
 CANARY_SCHEDULE_ID = "pynchy-canary-schedule"
+LINEAR_WORK_ITEM_RECONCILIATION_INTERVAL = timedelta(minutes=1)
 _UNSUPPORTED_RECURRING_SCHEDULE_TYPE = "Unsupported recurring schedule type: {schedule_type}"
 
 
@@ -105,6 +109,11 @@ def external_git_sync_schedule_id(repo_slug: str) -> str:
 def channel_reconciliation_schedule_id() -> str:
     """Return the Temporal Schedule ID for channel reconciliation polling."""
     return CHANNEL_RECONCILIATION_SCHEDULE_ID
+
+
+def linear_work_item_reconciliation_schedule_id() -> str:
+    """Return the Temporal Schedule ID for managed Linear work recovery."""
+    return LINEAR_WORK_ITEM_RECONCILIATION_SCHEDULE_ID
 
 
 def canary_schedule_id() -> str:
@@ -217,6 +226,21 @@ def schedule_for_channel_reconciliation() -> Schedule:
         action=ScheduleActionStartWorkflow(
             ChannelReconciliationWorkflow.run,
             id=f"{channel_reconciliation_schedule_id()}-workflow",
+            task_queue=scheduler_config.temporal_task_queue,
+        ),
+        spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),
+        policy=_poller_schedule_policy(interval),
+    )
+
+
+def schedule_for_linear_work_item_reconciliation() -> Schedule:
+    """Build the periodic managed Linear work-item recovery schedule."""
+    scheduler_config = get_settings().scheduler
+    interval = LINEAR_WORK_ITEM_RECONCILIATION_INTERVAL
+    return Schedule(
+        action=ScheduleActionStartWorkflow(
+            LinearWorkItemReconciliationWorkflow.run,
+            id=f"{linear_work_item_reconciliation_schedule_id()}-workflow",
             task_queue=scheduler_config.temporal_task_queue,
         ),
         spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=interval)]),

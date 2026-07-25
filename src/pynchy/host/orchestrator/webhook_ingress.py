@@ -195,15 +195,15 @@ async def _prepare_route_event(
 async def _process_route_event(
     route: WebhookRoute,
     event: WebhookEvent,
-) -> web.Response | None:
+) -> WebhookEvent | web.Response:
     """Apply one route-owned trusted host effect once before receipt admission."""
     existing = await get_webhook_receipt(route.provider, route.name, event.delivery_id)
     if existing is not None:
-        return None
+        return event
     if route.process_event is None:
-        return None
+        return event
     try:
-        await route.process_event(event)
+        return await route.process_event(event)
     except WebhookProcessingError as exc:
         logger.warning(
             "Authenticated webhook host effect failed",
@@ -211,7 +211,6 @@ async def _process_route_event(
             reason=str(exc),
         )
         return web.json_response({"error": "webhook processing failed"}, status=503)
-    return None
 
 
 def _parse_event(
@@ -379,9 +378,10 @@ async def handle_webhook(request: web.Request) -> web.Response:
         return prepared
     event, workspace = prepared
 
-    processing_response = await _process_route_event(route, event)
-    if processing_response is not None:
-        return processing_response
+    processed_event = await _process_route_event(route, event)
+    if isinstance(processed_event, web.Response):
+        return processed_event
+    event = processed_event
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)

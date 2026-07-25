@@ -33,6 +33,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     database_host_job_workflow_id,
     external_git_sync_schedule_id,
     host_git_sync_schedule_id,
+    linear_work_item_reconciliation_schedule_id,
     once_due_at,
     schedule_for_agent_task,
     schedule_for_canaries,
@@ -41,6 +42,7 @@ from pynchy.host.orchestrator.temporal.schedules import (
     schedule_for_database_host_job,
     schedule_for_external_git_sync,
     schedule_for_host_git_sync,
+    schedule_for_linear_work_item_reconciliation,
     start_delay_until,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
@@ -109,6 +111,13 @@ async def _reconcile_builtin_schedules(
         client_any,
         channel_schedule_id,
         schedule_for_channel_reconciliation(),
+    )
+    work_item_schedule_id = linear_work_item_reconciliation_schedule_id()
+    desired_schedule_ids.add(work_item_schedule_id)
+    await _upsert_schedule(
+        client_any,
+        work_item_schedule_id,
+        schedule_for_linear_work_item_reconciliation(),
     )
     settings_any = cast("Any", settings)
     if settings_any.canary.enabled:

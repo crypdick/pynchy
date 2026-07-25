@@ -49,7 +49,10 @@ workspace trust boundary.
 Use `prepare_event` for a read-only provider check that must run before receipt or
 conversation admission. The host runs preparation on delivery replays, so the
 callback must remain idempotent. Use `process_event` for an idempotent host effect
-that runs only before the first receipt admission.
+that runs only before the first receipt admission. It must return the resulting
+`WebhookEvent`; a provider may return a new event with a different closed
+disposition when the host effect transfers execution ownership to another
+durable subsystem.
 
 Set `routes_conversations=True` when actionable events target durable subjects.
 Return a `WebhookConversation` with an immutable `ConversationSubject` and a

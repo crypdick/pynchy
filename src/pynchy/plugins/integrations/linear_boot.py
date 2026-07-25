@@ -129,6 +129,11 @@ def workspace_for_linear_project(project_id: str) -> str | None:
     return None
 
 
+def linear_workspace_boards() -> dict[str, LinearWorkspaceBoard]:
+    """Return the managed board identities established during startup."""
+    return dict(_registry.boards)
+
+
 def _linear_workspaces(workspaces: Iterable[WorkspaceProfile]) -> list[_LinearWorkspaceContext]:
     registered = list(workspaces)
     candidates = list(registered)

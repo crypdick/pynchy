@@ -24,6 +24,7 @@ import pynchy.host.orchestrator.temporal.host_jobs as temporal_host_jobs
 import pynchy.host.orchestrator.temporal.interactive as temporal_interactive
 import pynchy.host.orchestrator.temporal.interrupted as temporal_interrupted
 import pynchy.host.orchestrator.temporal.learning as temporal_learning
+import pynchy.host.orchestrator.temporal.linear_work_items as temporal_linear_work_items
 import pynchy.host.orchestrator.temporal.scheduler as temporal_scheduler
 import pynchy.host.orchestrator.temporal.schedules as temporal_schedules
 import pynchy.host.orchestrator.temporal.workflows as temporal_workflows
@@ -269,6 +270,7 @@ class TestTemporalSchedulerRuntime:
             temporal_workflows.HostGitSyncWorkflow,
             temporal_workflows.ExternalGitSyncWorkflow,
             temporal_workflows.ChannelReconciliationWorkflow,
+            temporal_workflows.LinearWorkItemReconciliationWorkflow,
         }.issubset(set(captured["workflows"]))
         assert {
             temporal_scheduler.run_interactive_message_turn,
@@ -279,6 +281,7 @@ class TestTemporalSchedulerRuntime:
             temporal_scheduler.run_host_git_sync,
             temporal_scheduler.run_external_git_sync,
             temporal_scheduler.run_channel_reconciliation,
+            temporal_scheduler.run_linear_work_item_reconciliation,
         }.issubset(set(captured["activities"]))
 
     @staticmethod
@@ -632,7 +635,13 @@ class TestTemporalSchedulerRuntime:
         await runtime.reconcile_schedules()
 
         assert all(
-            schedule_id.startswith(("pynchy-git-sync-", "pynchy-channel-reconciliation"))
+            schedule_id.startswith(
+                (
+                    "pynchy-git-sync-",
+                    "pynchy-channel-reconciliation",
+                    "pynchy-linear-work-item-reconciliation",
+                )
+            )
             for schedule_id, _schedule, _kwargs in client.created_schedules
         )
         assert len(client.started_workflows) == 1
@@ -1015,6 +1024,10 @@ class TestTemporalSchedulerRuntime:
         assert schedules["pynchy-channel-reconciliation"].spec.intervals[0].every == (
             timedelta(minutes=5)
         )
+        work_items = schedules["pynchy-linear-work-item-reconciliation"]
+        assert work_items.action.workflow == "LinearWorkItemReconciliationWorkflow"
+        assert work_items.spec.intervals[0].every == timedelta(minutes=1)
+        assert work_items.policy.catchup_window == timedelta(minutes=1)
 
     def test_poller_schedules_bound_default_catchup_to_their_intervals(self, monkeypatch):
         settings = make_settings(
@@ -1027,11 +1040,18 @@ class TestTemporalSchedulerRuntime:
             temporal_schedules.schedule_for_host_git_sync(),
             temporal_schedules.schedule_for_external_git_sync("owner/project"),
             temporal_schedules.schedule_for_channel_reconciliation(),
+            temporal_schedules.schedule_for_linear_work_item_reconciliation(),
         )
 
-        for schedule in schedules:
-            assert schedule.spec.intervals[0].every == timedelta(minutes=5)
-            assert schedule.policy.catchup_window == timedelta(minutes=5)
+        expected_intervals = (
+            timedelta(minutes=5),
+            timedelta(minutes=5),
+            timedelta(minutes=5),
+            timedelta(minutes=1),
+        )
+        for schedule, interval in zip(schedules, expected_intervals, strict=True):
+            assert schedule.spec.intervals[0].every == interval
+            assert schedule.policy.catchup_window == interval
 
     def test_poller_schedules_bound_custom_catchup_to_their_intervals(self, monkeypatch):
         settings = make_settings(
@@ -1610,6 +1630,47 @@ class TestTemporalSchedulerRuntime:
         assert status["last_task_id"] == "channel-reconciliation"
         assert status["last_result"] == "error"
         assert status["last_error"] == "slack/group: history unavailable"
+
+    @pytest.mark.asyncio
+    async def test_run_linear_work_item_reconciliation_uses_managed_boards(self, monkeypatch):
+        deps = NullSchedulerDeps(
+            groups={
+                "discord:project": WorkspaceProfile(
+                    jid="discord:project",
+                    name="Project",
+                    folder="project",
+                    trigger="@Pynchy",
+                )
+            }
+        )
+        boards = {"project": object()}
+        reconcile = AsyncMock(return_value=[object(), object()])
+        monkeypatch.setattr(
+            temporal_linear_work_items,
+            "linear_workspace_boards",
+            lambda: boards,
+        )
+        monkeypatch.setattr(
+            temporal_linear_work_items,
+            "reconcile_all_linear_work_items",
+            reconcile,
+        )
+        monkeypatch.setattr(
+            temporal_linear_work_items.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="linear-work-items"),
+        )
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        result = await temporal_linear_work_items.run_linear_work_item_reconciliation()
+
+        assert result == "completed:2"
+        reconcile.assert_awaited_once_with(deps.workspaces, boards)
+        status = temporal_scheduler.get_temporal_scheduler_status()
+        assert status["tracked_results"]["linear-work-item-reconciliation"]["result"] == (
+            "completed:2"
+        )
 
     @pytest.mark.asyncio
     async def test_run_scheduled_agent_activity_skips_paused_task(self, monkeypatch, temporal_task):

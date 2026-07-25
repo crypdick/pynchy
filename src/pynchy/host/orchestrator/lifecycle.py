@@ -56,7 +56,7 @@ from pynchy.plugins.channel_runtime import (
 )
 from pynchy.plugins.connections import ConnectionRuntimeContext, load_connection_runtimes
 from pynchy.plugins.host_actions import initialize_host_action_catalog
-from pynchy.plugins.integrations import linear_boot, linear_decision_inbox
+from pynchy.plugins.integrations import linear_boot
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
 )
@@ -311,7 +311,6 @@ async def start_connection_runtimes(app: PynchyApp) -> None:
 
 async def _start_subsystems(
     app: PynchyApp,
-    linear_boards: dict[str, LinearWorkspaceBoard],
 ) -> None:
     """Scheduler, IPC, git sync, HTTP server."""
     s = get_settings()
@@ -325,16 +324,6 @@ async def _start_subsystems(
             task_scheduler.start_scheduler_loop(scheduler_deps), name="scheduler"
         )
     )
-    if linear_boards:
-        app.add_subsystem_task(
-            create_background_task(
-                linear_decision_inbox.start_linear_decision_inbox_loop(
-                    app.workspaces,
-                    linear_boards,
-                ),
-                name="linear-decision-inbox",
-            )
-        )
     app.add_subsystem_task(
         create_background_task(
             ipc_manager.start_ipc_watcher(dep_factory.make_ipc_deps(app)),
@@ -372,12 +361,12 @@ async def _prepare_state_and_subsystems(
 ) -> startup_handler.InterruptedTurnRecovery:
     """Start stateful runtime owners inside the deploy rollback boundary."""
     try:
-        repo_groups = await _reconcile_state(app)
+        await _reconcile_state(app)
         interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
         # Provider runtimes may wake orphaned deliveries prepared above, but
         # interrupted durable turns must not be dispatched until every runtime
         # that owns their route is ready.
-        await _start_subsystems(app, repo_groups)
+        await _start_subsystems(app)
         await startup_handler.confirm_deploy_startup(interrupted_recovery)
     except Exception as exc:  # noqa: BLE001, RUF100 - deploy rollback must cover every startup owner.
         app.cancel_subsystem_tasks()

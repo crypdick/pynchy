@@ -1,0 +1,378 @@
+"""Durable task admission and orphan recovery for managed Linear work."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+
+from pynchy.host.container_manager.security.fencing import fence_untrusted_content
+from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
+from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves task annotations.
+    LinearWorkspaceBoard,
+    WorkspaceLike,
+)
+from pynchy.plugins.integrations.linear_statuses import (
+    FOLLOW_UPS_STATUS,
+    HUMAN_APPROVED_STATUS,
+)
+from pynchy.plugins.integrations.linear_work_item_provider import (
+    WorkItemLeaseRequest,
+    acquire_work_item_lease,
+)
+from pynchy.state import (
+    WorkItemClaimConflictError,
+    bind_work_item_execution_to_task,
+    create_task_if_absent,
+    get_active_work_item_execution,
+    get_task_by_id,
+    get_task_run_logs,
+    get_work_item_execution_for_issue,
+    update_task,
+)
+from pynchy.types import ScheduledTask, WorkItemExecution, WorkItemExecutionStatus
+
+if TYPE_CHECKING:
+    from pynchy.plugins.integrations.linear_client import LinearClient
+
+_ORPHAN_RETRY_GRACE = timedelta(minutes=5)
+_ORPHAN_SUCCESS_LIMIT = 3
+_EXECUTION_CONTRACT = (
+    "Objective: deliver the Human Approved Linear work item below.\n"
+    "Authority: the host verified approval and acquired the execution lease.\n"
+    "Success: leave the issue state, comments, and attachments accurately reflecting the "
+    "outcome. If the work produces pull requests, attach every PR to the issue with "
+    "linear_create_attachment before requesting review. Use your judgment to move the issue "
+    "through Awaiting Review, Follow-ups, and Done. Follow-ups are for final operational work "
+    "such as deployment verification, preserving useful logs before teardown, cleaning feature "
+    "resources, and updating or unblocking related issues."
+)
+_FOLLOW_UPS_CONTRACT = (
+    "Objective: finish the Follow-ups for the Linear work item below.\n"
+    "Authority: the underlying work was already Human Approved.\n"
+    "Success: use your judgment to finish the whole job. Verify delivery or deployment, "
+    "preserve useful logs before teardown, clean feature resources, and update or unblock "
+    "related issues when relevant. Record useful context and move the item to Done when it is "
+    "genuinely finished, or Blocked when it needs outside help."
+)
+_CONTROLLER_INITIATOR = "linear-work-item-controller"
+
+
+@runtime_checkable
+class LinearDecisionClient(Protocol):
+    async def query(self, query: str, **variables: object) -> dict[str, Any]:
+        """Run a Linear GraphQL query."""
+
+    async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
+        """Return one issue by its durable provider ID."""
+
+
+@dataclass(frozen=True)
+class DecisionIssue:
+    id: str
+    identifier: str
+    title: str
+    url: str
+    updated_at: str
+    state_id: str
+    project_id: str
+
+    @classmethod
+    def from_payload(cls, payload: object) -> DecisionIssue | None:
+        if not isinstance(payload, dict):
+            raise TypeError("Linear decision inbox issue was not an object")
+        state = payload.get("state")
+        project = payload.get("project")
+        if not isinstance(state, dict):
+            raise TypeError("Linear decision inbox issue lacks state")
+        if project is None:
+            return None
+        if not isinstance(project, dict):
+            raise TypeError("Linear decision inbox issue project was not an object")
+        return cls(
+            id=_text(payload, "id"),
+            identifier=_text(payload, "identifier"),
+            title=_text(payload, "title"),
+            url=_text(payload, "url"),
+            updated_at=_text(payload, "updatedAt"),
+            state_id=_text(state, "id"),
+            project_id=_text(project, "id"),
+        )
+
+
+@dataclass(frozen=True)
+class _TaskAdmission:
+    status: str
+    public_source: bool
+    task_id: str | None = None
+
+
+@dataclass(frozen=True)
+class DecisionAdmission:
+    client: LinearDecisionClient
+    observed_at: datetime
+    public_source: bool
+
+
+def _text(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        raise TypeError(f"Linear decision inbox issue {key} was not text")
+    if not value:
+        raise ValueError(f"Linear decision inbox issue lacks {key}")
+    return value
+
+
+def _task_for_issue(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    now: datetime,
+    admission: _TaskAdmission,
+) -> ScheduledTask:
+    occurred_at = now.astimezone(UTC).isoformat()
+    digest = hashlib.sha256(
+        f"{admission.status}:{issue.id}:{issue.updated_at}".encode()
+    ).hexdigest()[:16]
+    context = json.dumps(
+        {
+            "issue_id": issue.id,
+            "identifier": issue.identifier,
+            "title": issue.title,
+            "url": issue.url,
+        },
+        sort_keys=True,
+    )
+    if admission.public_source:
+        context = fence_untrusted_content(context, source="linear-decision-inbox")
+    is_follow_up = admission.status == FOLLOW_UPS_STATUS
+    task_prefix = "linear-follow-ups" if is_follow_up else "linear-execute"
+    contract = _FOLLOW_UPS_CONTRACT if is_follow_up else _EXECUTION_CONTRACT
+    input_kind = "follow-ups" if is_follow_up else "authorized"
+    return ScheduledTask(
+        id=admission.task_id or f"{task_prefix}-{issue.identifier.lower()}-{digest}",
+        group_folder=workspace.folder,
+        chat_jid=workspace.jid,
+        prompt=f"{contract}\n\n{context}",
+        schedule_type="once",
+        schedule_value=occurred_at,
+        context_mode="isolated",
+        next_run=occurred_at,
+        created_at=occurred_at,
+        input_source=(
+            f"{'external' if admission.public_source else 'trusted'}:linear:{input_kind}"
+        ),
+        derived_thread_name=f"[{issue.identifier}] {issue.title}"[:100],
+    )
+
+
+def _execution_task_id(issue: DecisionIssue, execution: WorkItemExecution) -> str:
+    if execution.task_id is not None:
+        return execution.task_id
+    return f"linear-execute-{issue.identifier.lower()}-{execution.id[:16]}"
+
+
+def _last_run_is_recent(task: ScheduledTask, observed_at: datetime) -> bool:
+    if task.last_run is None:
+        return False
+    try:
+        last_run = datetime.fromisoformat(task.last_run)
+    except ValueError:
+        logger.warning(
+            "Linear work item task has an invalid last-run timestamp",
+            task_id=task.id,
+            last_run=task.last_run,
+        )
+        return True
+    if last_run.tzinfo is None:
+        last_run = last_run.replace(tzinfo=UTC)
+    return observed_at.astimezone(UTC) - last_run.astimezone(UTC) < _ORPHAN_RETRY_GRACE
+
+
+async def _ensure_task_active(
+    task: ScheduledTask,
+    *,
+    observed_at: datetime,
+) -> tuple[ScheduledTask, bool]:
+    """Create missing work or reactivate a quiet orphan after a grace period."""
+    existing = await get_task_by_id(task.id)
+    if existing is None:
+        return task, await create_task_if_absent(task)
+    if existing.status == "active" or existing.status in {"paused", "cancelled"}:
+        return existing, False
+    if _last_run_is_recent(existing, observed_at):
+        return existing, False
+
+    successful_runs = sum(
+        log.status == "success" for log in await get_task_run_logs(task.id, limit=10)
+    )
+    if successful_runs >= _ORPHAN_SUCCESS_LIMIT:
+        logger.warning(
+            "Linear work item remains active after repeated successful agent runs",
+            task_id=task.id,
+            successful_runs=successful_runs,
+        )
+        return existing, False
+
+    due_at = observed_at.astimezone(UTC).isoformat()
+    resumed = replace(
+        task,
+        schedule_value=due_at,
+        next_run=due_at,
+        last_run=existing.last_run,
+        last_result=existing.last_result,
+        created_at=existing.created_at,
+    )
+    await update_task(
+        task.id,
+        {
+            "prompt": resumed.prompt,
+            "schedule_value": resumed.schedule_value,
+            "status": "active",
+            "input_source": resumed.input_source,
+            "derived_thread_name": resumed.derived_thread_name,
+        },
+    )
+    logger.warning(
+        "Reactivated orphaned Linear work item task",
+        task_id=task.id,
+        successful_runs=successful_runs,
+    )
+    return resumed, True
+
+
+async def _bind_execution_task(
+    execution: WorkItemExecution,
+    task: ScheduledTask,
+) -> None:
+    await bind_work_item_execution_to_task(
+        execution.id,
+        task_id=task.id,
+        temporal_workflow_id=agent_task_workflow_id(task),
+    )
+
+
+def decision_state_id(board: LinearWorkspaceBoard, status: str) -> str:
+    """Return one required managed decision-state ID."""
+    state = board.states.get(status)
+    state_id = state.get("id") if isinstance(state, dict) else None
+    if state_id is None:
+        raise ValueError(f"Linear board lacks decision state {status}")
+    if not isinstance(state_id, str):
+        raise TypeError(f"Linear board decision state {status} lacks a text ID")
+    return state_id
+
+
+async def _admit_in_progress_issue(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    context: DecisionAdmission,
+) -> ScheduledTask | None:
+    execution = await get_active_work_item_execution(issue.id)
+    if execution is None:
+        logger.warning(
+            "Managed Linear issue is In Progress without an execution lease",
+            issue=issue.identifier,
+            workspace=workspace.folder,
+        )
+        return None
+    if (
+        execution.workspace != workspace.folder
+        or execution.status is not WorkItemExecutionStatus.IN_PROGRESS
+    ):
+        logger.warning(
+            "Managed Linear issue has an unusable execution lease",
+            issue=issue.identifier,
+            workspace=workspace.folder,
+            execution_id=execution.id,
+            execution_status=execution.status.value,
+        )
+        return None
+    task = _task_for_issue(
+        issue,
+        workspace,
+        context.observed_at,
+        _TaskAdmission(
+            status="in_progress",
+            public_source=context.public_source,
+            task_id=_execution_task_id(issue, execution),
+        ),
+    )
+    active_task, admitted = await _ensure_task_active(task, observed_at=context.observed_at)
+    await _bind_execution_task(execution, active_task)
+    return active_task if admitted else None
+
+
+async def _admit_follow_ups_issue(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    context: DecisionAdmission,
+) -> ScheduledTask | None:
+    latest = await get_work_item_execution_for_issue(issue.id, workspace=workspace.folder)
+    if latest is not None and latest.status is WorkItemExecutionStatus.UNKNOWN:
+        logger.warning(
+            "Linear Follow-ups deferred for an uncertain execution",
+            issue=issue.identifier,
+            execution_id=latest.id,
+        )
+        return None
+    task = _task_for_issue(
+        issue,
+        workspace,
+        context.observed_at,
+        _TaskAdmission(status=FOLLOW_UPS_STATUS, public_source=context.public_source),
+    )
+    active_task, admitted = await _ensure_task_active(task, observed_at=context.observed_at)
+    return active_task if admitted else None
+
+
+async def _admit_human_approved_issue(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    board: LinearWorkspaceBoard,
+    context: DecisionAdmission,
+) -> ScheduledTask | None:
+    if await get_active_work_item_execution(issue.id) is not None:
+        return None
+    task = _task_for_issue(
+        issue,
+        workspace,
+        context.observed_at,
+        _TaskAdmission(status=HUMAN_APPROVED_STATUS, public_source=context.public_source),
+    )
+    try:
+        execution = await acquire_work_item_lease(
+            cast("LinearClient", context.client),
+            WorkItemLeaseRequest(
+                workspace=workspace.folder,
+                issue_id=issue.id,
+                request_id=f"{task.id}:lease",
+                initiated_by=_CONTROLLER_INITIATOR,
+                task_id=task.id,
+                board=board,
+            ),
+        )
+    except WorkItemClaimConflictError:
+        return None
+    if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
+        return None
+    active_task, admitted = await _ensure_task_active(task, observed_at=context.observed_at)
+    await _bind_execution_task(execution, active_task)
+    return active_task if admitted else None
+
+
+async def admit_decision_issue(
+    issue: DecisionIssue,
+    workspace: WorkspaceLike,
+    board: LinearWorkspaceBoard,
+    status: str,
+    context: DecisionAdmission,
+) -> ScheduledTask | None:
+    """Admit or recover one status-classified managed Linear issue."""
+    if status == "in_progress":
+        return await _admit_in_progress_issue(issue, workspace, context)
+    if status == FOLLOW_UPS_STATUS:
+        return await _admit_follow_ups_issue(issue, workspace, context)
+    return await _admit_human_approved_issue(issue, workspace, board, context)

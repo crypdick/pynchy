@@ -183,7 +183,10 @@ from pynchy.state.tasks import (
 )
 from pynchy.state.webhook_models import WebhookAdmission, WebhookReceipt
 from pynchy.state.webhooks import admit_webhook_receipt, get_webhook_receipt
-from pynchy.state.work_item_bindings import bind_work_item_execution_to_turn
+from pynchy.state.work_item_bindings import (
+    bind_work_item_execution_to_task,
+    bind_work_item_execution_to_turn,
+)
 from pynchy.state.work_item_models import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
@@ -349,6 +352,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "WorkItemTransitionRequest",
     "begin_work_item_transition",
     "bind_work_item_execution_to_turn",
+    "bind_work_item_execution_to_task",
     "create_work_item_claim",
     "get_active_work_item_execution",
     "get_latest_unresolved_work_item_transition",
