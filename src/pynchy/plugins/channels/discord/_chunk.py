@@ -102,7 +102,10 @@ def chunk_discord_text(text: str, *, limit: int = DISCORD_LIMIT) -> list[str]:
         remaining = line
         while remaining:
             reopen_size = _FENCE_RESERVE if not cur_parts and pending_reopen else 0
-            available = _chunk_budget(limit, in_fence=in_fence) - cur_len - reopen_size
+            opening_reserve = _FENCE_RESERVE if not in_fence and _is_fence_line(line) else 0
+            available = (
+                _chunk_budget(limit, in_fence=in_fence) - cur_len - reopen_size - opening_reserve
+            )
 
             if cur_parts and len(remaining) > available:
                 pending_reopen = _flush_chunk(chunks, cur_parts, in_fence=in_fence)
