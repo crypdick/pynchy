@@ -59,7 +59,10 @@ checkpoint through a stable recovery workflow. The recovery activity rehydrates 
 agent session, reapplies the original input provenance, and sends a continuation instruction
 that tells the agent to inspect its transcript and workspace, avoid repeating completed side
 effects, and finish the original request. Scheduled agent turns use the same checkpoint and
-claim mechanism.
+claim mechanism. Temporal activity retries reuse that checkpoint. After the scheduled workflow
+exhausts its retries, a cleanup activity removes the checkpoint only when no recovery workflow
+has claimed it. The next scheduled occurrence can then start normally, while an active recovery
+keeps ownership of unfinished work.
 
 A saved conversation session does not indicate running work. Idle conversations have no
 in-flight checkpoint, so a deploy or later restart does not wake them. SQLite remains the source

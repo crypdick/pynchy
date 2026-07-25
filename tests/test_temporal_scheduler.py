@@ -13,6 +13,7 @@ import pytest
 from conftest import make_settings
 from temporalio import activity
 from temporalio.client import ScheduleOverlapPolicy, WorkflowFailureError
+from temporalio.exceptions import ActivityError
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -272,6 +273,7 @@ class TestTemporalSchedulerRuntime:
         assert {
             temporal_scheduler.run_interactive_message_turn,
             temporal_scheduler.run_interrupted_agent_turn,
+            temporal_scheduler.clear_terminal_scheduled_turn,
             temporal_scheduler.run_learning_review,
             temporal_scheduler.run_deploy,
             temporal_scheduler.run_host_git_sync,
@@ -1763,6 +1765,29 @@ class TestTemporalSchedulerRuntime:
         assert result == "completed"
         assert execute_activity.await_count == 2
         sleep.assert_awaited_once_with(temporal_workflows.SCHEDULED_TARGET_RETRY_DELAY)
+
+    @pytest.mark.asyncio
+    async def test_scheduled_agent_workflow_clears_terminal_checkpoint(self, monkeypatch):
+        terminal_error = ActivityError(
+            "scheduled task failed",
+            scheduled_event_id=1,
+            started_event_id=2,
+            identity="test-worker",
+            activity_type="run_scheduled_agent_task",
+            activity_id="activity-1",
+            retry_state=None,
+        )
+        execute_activity = AsyncMock(side_effect=[terminal_error, "cleared"])
+        monkeypatch.setattr(temporal_workflows.workflow, "execute_activity", execute_activity)
+
+        with pytest.raises(ActivityError, match="scheduled task failed"):
+            await temporal_workflows.ScheduledAgentTaskWorkflow().run("task-1")
+
+        assert execute_activity.await_count == 2
+        assert execute_activity.await_args_list[1].args == (
+            "clear_terminal_scheduled_turn",
+            "task-1",
+        )
 
     @pytest.mark.asyncio
     async def test_run_scheduled_canaries_uses_configured_target(self, monkeypatch):

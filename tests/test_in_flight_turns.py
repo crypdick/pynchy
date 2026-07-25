@@ -24,6 +24,7 @@ from pynchy.state import (
     begin_in_flight_turn,
     claim_in_flight_turn,
     claim_next_conversation_delivery,
+    clear_unclaimed_in_flight_turn_for_task,
     complete_in_flight_turn,
     get_conversation_delivery,
     get_in_flight_turn,
@@ -48,6 +49,7 @@ def _turn(
     scheduled_thread_slot: int | None = None,
     conversation_claim_id: str | None = None,
     input_source: str = "user",
+    claimed_at: str | None = "2026-07-14T10:00:02+00:00",
 ) -> InFlightTurn:
     return InFlightTurn(
         turn_id=turn_id,
@@ -60,7 +62,7 @@ def _turn(
         started_at="2026-07-14T10:00:01+00:00",
         task_id=task_id,
         session_id="session-before",
-        claimed_at="2026-07-14T10:00:02+00:00",
+        claimed_at=claimed_at,
         scheduled_base_chat_jid=scheduled_base_chat_jid,
         scheduled_thread_slot=scheduled_thread_slot,
         conversation_claim_id=conversation_claim_id,
@@ -107,6 +109,32 @@ async def test_recovery_releases_old_claim_and_is_claimed_only_once() -> None:
     assert recovered[0].claimed_at is None
     assert await claim_in_flight_turn("turn-1") is True
     assert await claim_in_flight_turn("turn-1") is False
+
+
+@pytest.mark.asyncio
+async def test_terminal_scheduled_cleanup_preserves_claimed_recovery() -> None:
+    await init_test_database()
+    await begin_in_flight_turn(
+        _turn(
+            work_kind=InFlightWorkKind.SCHEDULED,
+            task_id="task-1",
+            claimed_at=None,
+        )
+    )
+
+    assert await clear_unclaimed_in_flight_turn_for_task("task-1") is True
+    assert await get_in_flight_turn("turn-1") is None
+
+    await begin_in_flight_turn(
+        _turn(
+            "turn-claimed",
+            work_kind=InFlightWorkKind.SCHEDULED,
+            task_id="task-1",
+        )
+    )
+
+    assert await clear_unclaimed_in_flight_turn_for_task("task-1") is False
+    assert await get_in_flight_turn("turn-claimed") is not None
 
 
 @pytest.mark.asyncio

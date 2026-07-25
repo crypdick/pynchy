@@ -216,6 +216,20 @@ async def clear_in_flight_turn(turn_id: str) -> None:
     await db.commit()
 
 
+async def clear_unclaimed_in_flight_turn_for_task(task_id: str) -> bool:
+    """Clear a terminal scheduled checkpoint unless a recovery worker owns it."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        DELETE FROM in_flight_turns
+        WHERE task_id = ? AND work_kind = ? AND claimed_at IS NULL
+        """,
+        (task_id, InFlightWorkKind.SCHEDULED.value),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
 async def complete_in_flight_turn(
     turn_id: str,
     *,
