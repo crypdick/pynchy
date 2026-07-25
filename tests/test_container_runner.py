@@ -2589,6 +2589,52 @@ class TestAgentRunnerPreContainerHelpers:
 
         persist_conversation.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_scheduled_session_tracks_only_its_recovery_checkpoint(self):
+        deps = _AgentRunnerDeps()
+        output = ContainerOutput(
+            status="success",
+            type="system",
+            system_subtype="thread.started",
+            system_data={"session_id": "codex:scheduled-thread"},
+        )
+
+        with (
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_session",
+                new_callable=AsyncMock,
+            ) as persist,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.update_in_flight_session",
+                new_callable=AsyncMock,
+            ) as update_checkpoint,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
+                new_callable=AsyncMock,
+            ) as get_binding,
+            patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
+                new_callable=AsyncMock,
+            ) as persist_conversation,
+        ):
+            handler = session_tracking_output_handler(
+                deps,
+                "project__thread_discord-channel-linear-thread",
+                "discord:channel:linear-thread",
+                None,
+                track_interactive_session=False,
+            )
+            await handler(output)
+
+        assert deps.sessions == {}
+        persist.assert_not_awaited()
+        get_binding.assert_not_awaited()
+        persist_conversation.assert_not_awaited()
+        update_checkpoint.assert_awaited_once_with(
+            "project__thread_discord-channel-linear-thread",
+            "codex:scheduled-thread",
+        )
+
     def test_build_admin_system_notices_includes_repo_warnings_and_guidance(self):
         repo_ctx = MagicMock()
         repo_ctx.worktrees_dir = Path.cwd() / "worktrees"

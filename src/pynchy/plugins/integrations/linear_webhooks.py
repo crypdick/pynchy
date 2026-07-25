@@ -16,7 +16,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 import aiohttp
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError
 
 from pynchy.config import get_settings
 from pynchy.config.workspace_names import parent_workspace_name
@@ -34,6 +34,10 @@ from pynchy.plugins.integrations.linear_boot import (
 )
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
+from pynchy.plugins.integrations.linear_webhook_config import (
+    LinearPluginOptions,
+    LinearWebhookRouteConfig,
+)
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
 from pynchy.plugins.integrations.linear_webhook_prompts import (
     LINEAR_ISSUE_INSTRUCTIONS,
@@ -45,6 +49,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     workspace_issue,
 )
 from pynchy.plugins.webhooks import (
+    WebhookActor,
     WebhookAuthenticationError,
     WebhookConversation,
     WebhookEvent,
@@ -64,60 +69,17 @@ _DISCORD_THREAD_TITLE_LIMIT = 100
 _DONE_STATE_NAME = LINEAR_TODO_STATUSES["done"].name
 
 
-class _LinearWebhookModel(BaseModel):
-    model_config = {"extra": "ignore", "populate_by_name": True}
+class _LinearActor(BaseModel):
+    model_config = {"extra": "ignore"}
 
-
-class LinearWebhookRouteConfig(_LinearWebhookModel):
-    """Plugin-owned config for one Linear webhook subscription."""
-
-    model_config = {"extra": "forbid"}
-
-    name: str
-    workspace: str | None = None
-    tool: str = "linear"
-    secret_env: str = "LINEAR_WEBHOOK_SECRET"  # noqa: S105, RUF100 - environment variable name, not a credential.
-    organization_id: str | None = None
-    timestamp_tolerance_seconds: int = 60
-    max_body_bytes: int = 256 * 1024
-    rate_limit_requests: int = 60
-    rate_limit_window_seconds: int = 60
-
-    @field_validator("name", "tool", "secret_env")
-    @classmethod
-    def validate_required_text(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Linear webhook route text fields cannot be empty")
-        return value
-
-    @field_validator(
-        "timestamp_tolerance_seconds",
-        "max_body_bytes",
-        "rate_limit_requests",
-        "rate_limit_window_seconds",
-    )
-    @classmethod
-    def validate_positive_limits(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("Linear webhook limits must be positive")
-        return value
-
-
-class LinearPluginOptions(_LinearWebhookModel):
-    """Typed transport parser for ``[plugins.linear.options]``."""
-
-    model_config = {"extra": "forbid"}
-
-    webhook_routes: tuple[LinearWebhookRouteConfig, ...] = ()
-
-
-class _LinearActor(_LinearWebhookModel):
     id: str = ""
     type: str = ""
     name: str = ""
 
 
-class _LinearWebhookPayload(_LinearWebhookModel):
+class _LinearWebhookPayload(BaseModel):
+    model_config = {"extra": "ignore", "populate_by_name": True}
+
     action: Literal["create", "update", "remove"]
     type: str
     actor: _LinearActor | None = None
@@ -204,6 +166,16 @@ def _actor_name(payload: _LinearWebhookPayload) -> str:
     if payload.actor is None:
         return "Unknown"
     return payload.actor.name.strip() or payload.actor.id.strip() or "Unknown"
+
+
+def _actor(payload: _LinearWebhookPayload) -> WebhookActor | None:
+    if payload.actor is None:
+        return None
+    actor_id = payload.actor.id.strip()
+    actor_kind = payload.actor.type.strip()
+    if not actor_id or not actor_kind:
+        return None
+    return WebhookActor(id=actor_id, kind=actor_kind)
 
 
 def _optional_text(value: object) -> str | None:
@@ -313,6 +285,8 @@ def _comment_event(
         instructions=comment_instructions(payload.action),
         external_context=_comment_context(payload, issue_id),
         conversation=_conversation(payload, issue_id),
+        actor=_actor(payload),
+        changed_fields=frozenset(payload.updated_from or ()),
     )
 
 
@@ -330,6 +304,8 @@ def _issue_event(
         instructions=LINEAR_ISSUE_INSTRUCTIONS,
         external_context=_issue_context(payload, issue_id),
         conversation=_conversation(payload, issue_id),
+        actor=_actor(payload),
+        changed_fields=frozenset(payload.updated_from or ()),
     )
 
 

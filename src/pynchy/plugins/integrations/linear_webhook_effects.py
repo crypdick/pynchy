@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import aiohttp
 
+from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_statuses import (
@@ -18,6 +19,7 @@ from pynchy.plugins.integrations.linear_work_item_completion import (
 )
 from pynchy.plugins.integrations.linear_work_item_provider import (
     WorkItemLeaseRequest,
+    acquire_human_started_work_item_lease,
     acquire_work_item_lease,
     linear_client,
     state_id,
@@ -85,17 +87,48 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
             if existing.workspace != workspace:
                 raise WorkItemClaimConflictError(existing)
             return current_state_id in {approved_state_id, in_progress_state_id}
-        if current_state_id != approved_state_id:
+        if current_state_id == in_progress_state_id:
+            actor = event.actor
+            if not _is_human_state_transition(event) or actor is None:
+                # In Progress is controller-owned even when its lease invariant
+                # is broken. Routing this update to an ordinary conversation
+                # would start competing work and could resume an unrelated
+                # interactive provider session.
+                logger.warning(
+                    "Unleased Linear In Progress update lacks human transition provenance",
+                    workspace=workspace,
+                    issue_id=event.subject_id,
+                    delivery_id=event.delivery_id,
+                )
+                return True
+            execution = await acquire_human_started_work_item_lease(
+                client,
+                WorkItemLeaseRequest(
+                    workspace=workspace,
+                    issue_id=event.subject_id,
+                    request_id=f"linear-webhook:{event.delivery_id}:lease",
+                    initiated_by=(f"linear-webhook:{event.delivery_id}:user:{actor.id}"),
+                ),
+            )
+        elif current_state_id == approved_state_id:
+            execution = await acquire_work_item_lease(
+                client,
+                WorkItemLeaseRequest(
+                    workspace=workspace,
+                    issue_id=event.subject_id,
+                    request_id=f"linear-webhook:{event.delivery_id}:lease",
+                    initiated_by=f"linear-webhook:{event.delivery_id}",
+                ),
+            )
+        else:
             return False
-        execution = await acquire_work_item_lease(
-            client,
-            WorkItemLeaseRequest(
-                workspace=workspace,
-                issue_id=event.subject_id,
-                request_id=f"linear-webhook:{event.delivery_id}:lease",
-                initiated_by=f"linear-webhook:{event.delivery_id}",
-            ),
-        )
     if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
         raise WebhookProcessingError("Linear execution lease did not become active")
     return True
+
+
+def _is_human_state_transition(event: WebhookEvent) -> bool:
+    actor = event.actor
+    if event.action != "update" or actor is None or actor.kind.casefold() != "user":
+        return False
+    return any(field.casefold() in {"state", "stateid"} for field in event.changed_fields)

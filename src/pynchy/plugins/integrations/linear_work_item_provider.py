@@ -134,6 +134,39 @@ async def acquire_work_item_lease(
     request: WorkItemLeaseRequest,
 ) -> WorkItemExecution:
     """Acquire one durable execution lease before agent work begins."""
+    return await _acquire_work_item_lease(
+        client,
+        request,
+        admitted_status=HUMAN_APPROVED_STATUS,
+        admission_error=_HUMAN_APPROVAL_REQUIRED,
+    )
+
+
+async def acquire_human_started_work_item_lease(
+    client: LinearClient,
+    request: WorkItemLeaseRequest,
+) -> WorkItemExecution:
+    """Adopt a human-started provider issue into the durable execution controller.
+
+    The caller must derive authority from an authenticated webhook whose user
+    actor changed the issue state. This provider primitive deliberately cannot
+    infer that provenance from Linear's current state alone.
+    """
+    return await _acquire_work_item_lease(
+        client,
+        request,
+        admitted_status="in_progress",
+        admission_error="Linear work item must be human-started before Pynchy can adopt it",
+    )
+
+
+async def _acquire_work_item_lease(
+    client: LinearClient,
+    request: WorkItemLeaseRequest,
+    *,
+    admitted_status: str,
+    admission_error: str,
+) -> WorkItemExecution:
     prior_transition = await get_work_item_transition_by_request(request.request_id)
     if prior_transition is not None:
         execution = await get_work_item_execution(prior_transition.execution_id)
@@ -156,8 +189,8 @@ async def acquire_work_item_lease(
         raise WorkItemClaimConflictError(existing)
 
     issue, board = await _lease_issue_context(client, request)
-    if state_id(issue) != state_id(board.states[HUMAN_APPROVED_STATUS]):
-        raise ValueError(_HUMAN_APPROVAL_REQUIRED)
+    if state_id(issue) != state_id(board.states[admitted_status]):
+        raise ValueError(admission_error)
     try:
         execution = await create_work_item_claim(
             WorkItemClaimRequest(
@@ -180,6 +213,13 @@ async def acquire_work_item_lease(
             transition,
         )
     transition = await _pending_transition(execution.id, request.request_id)
+    if admitted_status == "in_progress":
+        return await resolve_work_item_transition(
+            transition=transition,
+            execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+            transition_status=WorkItemTransitionStatus.SUCCEEDED,
+            issue=issue,
+        )
     return await transition_issue(
         client,
         _TransitionAttempt(

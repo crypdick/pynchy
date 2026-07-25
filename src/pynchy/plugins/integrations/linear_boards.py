@@ -25,7 +25,10 @@ from pynchy.plugins.integrations.linear_board_queries import (
     CREATE_WORKSPACE_TODO_MUTATION,
     MOVE_WORKSPACE_TODO_MUTATION,
 )
-from pynchy.plugins.integrations.linear_board_resources import load_team_resources
+from pynchy.plugins.integrations.linear_board_resources import (
+    load_team_resources,
+    reconcile_workflow_state_position,
+)
 from pynchy.plugins.integrations.linear_board_selection import (
     require_todo_states,
     require_workspace_project,
@@ -321,7 +324,11 @@ async def _ensure_states(
     for key, spec in LINEAR_TODO_STATUSES.items():
         existing = by_name.get(norm_name(spec.name))
         if existing is not None:
-            states[key] = existing
+            states[key] = await reconcile_workflow_state_position(
+                client,
+                existing,
+                position=spec.position,
+            )
             continue
         data = await client.query(
             """

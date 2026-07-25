@@ -161,6 +161,10 @@ def test_every_issue_change_targets_the_issue_conversation(
     assert (
         "Changed fields: title" if updated_from is not None else "Changed fields: none reported"
     ) in event.external_context
+    assert event.actor is not None
+    assert event.actor.id == "user-1"
+    assert event.actor.kind == "user"
+    assert event.changed_fields == frozenset(updated_from or ())
     assert event.conversation is not None
     assert event.conversation.control_title == "[PYN-1] Webhook callbacks"
     assert event.conversation.control_closed is False
@@ -247,6 +251,130 @@ async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
     assert request.workspace == "project"
     assert request.issue_id == "issue-1"
     assert request.initiated_by == f"linear-webhook:{_DELIVERY_ID}"
+    assert processed.ignored_reason == "work_item_execution_owned_by_controller"
+    assert processed.conversation is None
+
+
+async def test_human_move_directly_to_in_progress_acquires_lease_in_place(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Authorized outcome",
+                "state": {"id": "state-progress", "name": "In Progress"},
+            },
+            updated_from={"stateId": "state-awaiting-plan"},
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(event, conversation=replace(event.conversation, workspace="project"))
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={
+            "ready_for_planning": {"id": "state-ready"},
+            "awaiting_plan_approval": {"id": "state-awaiting-plan"},
+            "human_approved": {"id": "state-approved"},
+            "in_progress": {"id": "state-progress"},
+        },
+    )
+    acquire_started = AsyncMock(
+        return_value=_LeaseResult(status=WorkItemExecutionStatus.IN_PROGRESS)
+    )
+    acquire_approved = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"state": {"id": "state-progress"}}, board)),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.acquire_human_started_work_item_lease",
+        acquire_started,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.acquire_work_item_lease",
+        acquire_approved,
+    )
+
+    processed = await process_linear_webhook_event(event)
+
+    request = acquire_started.await_args.args[1]
+    assert request.workspace == "project"
+    assert request.issue_id == "issue-1"
+    assert request.initiated_by == (f"linear-webhook:{_DELIVERY_ID}:user:user-1")
+    acquire_approved.assert_not_awaited()
+    assert processed.ignored_reason == "work_item_execution_owned_by_controller"
+    assert processed.conversation is None
+
+
+@pytest.mark.parametrize(
+    ("actor_type", "updated_from"),
+    [
+        ("integration", {"stateId": "state-awaiting-plan"}),
+        ("user", {"title": "Old title"}),
+    ],
+)
+async def test_unproven_in_progress_update_is_suppressed_without_authorizing_work(
+    monkeypatch: pytest.MonkeyPatch,
+    actor_type: str,
+    updated_from: dict[str, object],
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload(
+        now=now,
+        event_type="Issue",
+        action="update",
+        data={
+            "id": "issue-1",
+            "identifier": "PYN-1",
+            "title": "Unproven outcome",
+            "state": {"id": "state-progress", "name": "In Progress"},
+        },
+        updated_from=updated_from,
+    )
+    payload["actor"] = {"id": "actor-1", "type": actor_type, "name": "Actor"}
+    raw_body, headers = _signed_request(payload)
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(event, conversation=replace(event.conversation, workspace="project"))
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={
+            "ready_for_planning": {"id": "state-ready"},
+            "awaiting_plan_approval": {"id": "state-awaiting-plan"},
+            "human_approved": {"id": "state-approved"},
+            "in_progress": {"id": "state-progress"},
+        },
+    )
+    acquire_started = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"state": {"id": "state-progress"}}, board)),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.acquire_human_started_work_item_lease",
+        acquire_started,
+    )
+
+    processed = await process_linear_webhook_event(event)
+
+    acquire_started.assert_not_awaited()
     assert processed.ignored_reason == "work_item_execution_owned_by_controller"
     assert processed.conversation is None
 
