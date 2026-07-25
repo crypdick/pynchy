@@ -20,15 +20,9 @@ from pynchy.capabilities import (
     IdempotencyMode,
 )
 from pynchy.plugins.integrations.linear_work_items import (
-    handle_await_review_work_item,
-    handle_block_work_item,
-    handle_claim_work_item,
-    handle_create_requested_todo,
-    handle_handoff_work_item,
     handle_list_work_items,
-    handle_move_unlinked_todo,
+    handle_move_todo,
     handle_reconcile_work_item,
-    handle_submit_plan,
 )
 
 _ActionSpec = tuple[str, str, str, HostActionAccess, HostActionHandler]
@@ -42,53 +36,11 @@ def host_action_registration() -> HostActionRegistration:
 def _action_specs() -> tuple[_ActionSpec, ...]:
     return (
         (
-            "linear_create_requested_todo",
-            "linear.todo.request",
-            "Create planning work from an explicit request in the current direct user turn.",
-            HostActionAccess.WRITE,
-            handle_create_requested_todo,
-        ),
-        (
             "linear_list_work_items",
             "linear.workitem.list",
             "List durable Pynchy executions linked to Linear work items.",
             HostActionAccess.READ,
             handle_list_work_items,
-        ),
-        (
-            "linear_submit_plan",
-            "linear.todo.plan",
-            "Persist a concrete Linear plan and request human plan approval.",
-            HostActionAccess.WRITE,
-            handle_submit_plan,
-        ),
-        (
-            "linear_claim_work_item",
-            "linear.workitem.claim",
-            "Claim a Human Approved Linear work item for the current Pynchy execution.",
-            HostActionAccess.WRITE,
-            handle_claim_work_item,
-        ),
-        (
-            "linear_await_review_work_item",
-            "linear.workitem.review",
-            "Submit completed linked or existing Linear work for human review.",
-            HostActionAccess.WRITE,
-            handle_await_review_work_item,
-        ),
-        (
-            "linear_block_work_item",
-            "linear.workitem.block",
-            "Mark a Pynchy-linked Linear work item blocked with a reason.",
-            HostActionAccess.WRITE,
-            handle_block_work_item,
-        ),
-        (
-            "linear_handoff_work_item",
-            "linear.workitem.handoff",
-            "Hand off a Pynchy-linked Linear work item to another owner.",
-            HostActionAccess.WRITE,
-            handle_handoff_work_item,
         ),
         (
             "linear_reconcile_work_item",
@@ -100,9 +52,9 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_move_todo",
             "linear.todo.move",
-            "Return an unlinked Linear item to Agent Proposed.",
+            "Move a workspace Linear item within the caller's current authority.",
             HostActionAccess.WRITE,
-            handle_move_unlinked_todo,
+            handle_move_todo,
         ),
     )
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import ANY, AsyncMock, patch
@@ -54,6 +54,7 @@ from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
+from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
 from pynchy.plugins.integrations.linear_webhooks import (
@@ -76,10 +77,15 @@ from pynchy.state import (
     init_test_database,
     set_conversation_session,
 )
-from pynchy.types import SessionId, WorkspaceProfile
+from pynchy.types import SessionId, WorkItemExecutionStatus, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+
+@dataclass(frozen=True)
+class _LeaseResult:
+    status: WorkItemExecutionStatus
 
 
 @pytest.fixture(autouse=True)
@@ -107,8 +113,7 @@ def test_every_comment_change_maps_to_concise_issue_conversation(
     assert event.subject_id == "issue-1"
     assert event.instructions is not None
     assert activity in event.instructions
-    assert "take appropriate action" in event.instructions
-    assert "linear_await_review_work_item" in event.instructions
+    assert "current authorization" in event.instructions
     assert event.external_context is not None
     context_activity = {"create": "posted", "update": "edited", "remove": "removed"}[action]
     assert f"Event: comment {context_activity}" in event.external_context
@@ -150,8 +155,7 @@ def test_every_issue_change_targets_the_issue_conversation(
 
     assert event.instructions is not None
     assert event.external_context is not None
-    assert "take appropriate action" in event.instructions
-    assert "linear_await_review_work_item" in event.instructions
+    assert "current authorization" in event.instructions
     assert f"Event: issue {action}" in event.external_context
     assert "State: In Progress" in event.external_context
     assert (
@@ -191,6 +195,56 @@ async def test_done_issue_update_completes_reviewed_execution(
     await process_linear_webhook_event(event)
 
     complete.assert_awaited_once_with("project", "issue-1", _DELIVERY_ID)
+
+
+async def test_human_approved_issue_acquires_host_lease_before_agent_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Authorized outcome",
+                "state": {"id": "state-approved", "name": "Human Approved"},
+            },
+        )
+    )
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    assert event.conversation is not None
+    event = replace(event, conversation=replace(event.conversation, workspace="project"))
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={
+            "human_approved": {"id": "state-approved"},
+            "in_progress": {"id": "state-progress"},
+        },
+    )
+    acquire = AsyncMock(return_value=_LeaseResult(status=WorkItemExecutionStatus.IN_PROGRESS))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"state": {"id": "state-approved"}}, board)),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.acquire_work_item_lease",
+        acquire,
+    )
+
+    await process_linear_webhook_event(event)
+
+    request = acquire.await_args.args[1]
+    assert request.workspace == "project"
+    assert request.issue_id == "issue-1"
+    assert request.initiated_by == f"linear-webhook:{_DELIVERY_ID}"
 
 
 def test_plugin_route_requires_a_linear_enabled_discord_root() -> None:
@@ -723,7 +777,7 @@ async def test_same_issue_fifo_reuses_session_while_other_issue_runs_independent
                 "id": "issue-2",
                 "identifier": "PYN-2",
                 "title": "Independent issue",
-                "state": {"id": "state-1", "name": "Ready for Planning"},
+                "state": {"id": "state-1", "name": "Agent Proposed"},
             },
             url="https://linear.app/acme/issue/PYN-2",
         )

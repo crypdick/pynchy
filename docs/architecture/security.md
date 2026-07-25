@@ -299,7 +299,7 @@ Some IPC operations change what code runs on the host machine. These are **host-
 
 | Operation | What it mutates | Cop inspects |
 |---|---|---|
-| `sync_worktree_to_main` | Merges code into main branch | The merge summary |
+| `sync_worktree_to_main` | Pushes a worktree branch and opens or updates a PR | The publication summary |
 | `register_group` | Creates new workspace | Group config |
 | `create_periodic_agent` | Creates persistent agent | Agent name, profile, schedule, prompt |
 | `schedule_task` | Schedules future execution | Task prompt and target |

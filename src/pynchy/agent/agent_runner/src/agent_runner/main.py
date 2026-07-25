@@ -287,22 +287,21 @@ def _read_container_input() -> ContainerInput:
         return container_input
 
 
-def _build_initial_prompt(container_input: ContainerInput) -> str:
+def build_initial_prompt(container_input: ContainerInput) -> str:
     """Build the initial prompt: SDK messages, scheduled-task framing, notices, pending IPC."""
     log(f"Using SDK message list ({len(container_input.messages)} messages)")
     prompt = build_sdk_messages(container_input.messages)
 
     if container_input.is_scheduled_task:
+        # The host supplies a durable workspace and capabilities. The agent owns
+        # the workflow because prescribed lifecycle steps make capable models
+        # less adaptable and prevent them from recovering from tool failures.
         prompt = (
             "[SCHEDULED TASK]\n"
             "This is an automated scheduled task — not a live user conversation. "
-            "Your container will be destroyed when you finish.\n\n"
-            "Lifecycle:\n"
-            "1. Complete the work described below\n"
-            "2. Commit and call sync_worktree_to_main (if you have project access)\n"
-            "3. Call finished_work() to shut down cleanly\n\n"
-            "Calling finished_work() merges any un-synced commits (safety net) "
-            "and terminates this container. Do NOT continue work after calling it.\n\n" + prompt
+            "Complete the requested objective within the authority granted by your tools "
+            "and workspace policy. Report the outcome and relevant evidence in your final "
+            "response; that response ends the run.\n\n" + prompt
         )
 
     # Prepend system notices as part of the user message rather than the system
@@ -476,6 +475,6 @@ async def main() -> None:
     with contextlib.suppress(OSError):
         IPC_INPUT_CLOSE_SENTINEL.unlink()
 
-    prompt = _build_initial_prompt(container_input)
+    prompt = build_initial_prompt(container_input)
     core, core_config = await _create_and_start_core(container_input)
     await _run_conversation_loop(core, core_config, prompt, container_input.session_id)

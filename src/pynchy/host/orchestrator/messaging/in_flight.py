@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
-import pynchy.host.git_ops._worktree_merge as worktree_merge_module
 from pynchy.event_bus import AgentActivityEvent, Event
 from pynchy.host.container_manager import OnOutput  # noqa: TC001 - beartype resolves Protocols.
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
@@ -248,7 +247,6 @@ async def resume_interrupted_message_turn(
             conversation_claim_id=turn.conversation_claim_id,
         )
 
-    worktree_merge_module.background_merge_worktree(group)
     logger.info(
         "Interrupted agent turn completed",
         chat_jid=turn.chat_jid,

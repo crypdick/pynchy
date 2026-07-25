@@ -1,4 +1,4 @@
-"""Behavioral tests for Linear decision-state task admission."""
+"""Behavioral tests for host-leased Linear execution admission."""
 
 from __future__ import annotations
 
@@ -12,11 +12,21 @@ from conftest import make_settings
 
 from pynchy.config import PluginConfig
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
+from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_decision_inbox import (
     polling_boards,
     reconcile_linear_decision_inbox,
 )
-from pynchy.state import get_all_tasks, init_test_database
+from pynchy.state import (
+    WorkItemTransitionRequest,
+    begin_work_item_transition,
+    get_active_work_item_execution,
+    get_all_tasks,
+    get_work_item_transition_by_request,
+    init_test_database,
+    resolve_work_item_transition,
+)
+from pynchy.types import WorkItemExecutionStatus, WorkItemTransitionStatus
 
 
 @dataclass(frozen=True)
@@ -26,52 +36,115 @@ class _Workspace:
     jid: str
 
 
-class _DecisionClient:
+def _state(status: str) -> dict[str, str]:
+    states = {
+        "human_approved": {
+            "id": "state-approved",
+            "name": "Human Approved",
+            "type": "unstarted",
+        },
+        "in_progress": {
+            "id": "state-progress",
+            "name": "In Progress",
+            "type": "started",
+        },
+        "follow_ups": {
+            "id": "state-follow-ups",
+            "name": "Follow-ups",
+            "type": "started",
+        },
+    }
+    return states[status]
+
+
+def _issue(
+    issue_id: str,
+    identifier: str,
+    title: str,
+    status: str,
+    project_id: str,
+) -> dict[str, Any]:
+    return {
+        "id": issue_id,
+        "identifier": identifier,
+        "title": title,
+        "url": f"https://linear.app/example/issue/{identifier}",
+        "updatedAt": "2026-07-19T08:00:00+00:00",
+        "state": _state(status),
+        "project": {"id": project_id, "name": project_id},
+    }
+
+
+class _DecisionClient(LinearClient):
+    team_key = "SYN"
+
     def __init__(self) -> None:
         self.issues_by_state = {
-            "state-ready": [
-                _issue(
-                    "issue-plan",
-                    "SYN-1",
-                    "Plan the task inbox",
-                    "state-ready",
-                    "project-alpha",
-                ),
-                _issue(
-                    "issue-unmanaged",
-                    "SYN-2",
-                    "Ignore an unrelated project",
-                    "state-ready",
-                    "project-unmanaged",
-                ),
-            ],
             "state-approved": [
                 _issue(
                     "issue-execute",
                     "SYN-3",
                     "Execute an approved task",
-                    "state-approved",
+                    "human_approved",
                     "project-beta",
-                )
+                ),
+                _issue(
+                    "issue-unmanaged",
+                    "SYN-4",
+                    "Ignore an unrelated project",
+                    "human_approved",
+                    "project-unmanaged",
+                ),
             ],
+            "state-progress": [],
+            "state-follow-ups": [],
         }
 
+    async def get_issue(self, issue_id: str) -> dict[str, Any] | None:
+        return next(
+            (
+                issue
+                for issues in self.issues_by_state.values()
+                for issue in issues
+                if issue["id"] == issue_id
+            ),
+            None,
+        )
+
     async def query(self, query: str, **variables: object) -> dict[str, Any]:
-        assert "PynchyLinearDecisionInbox" in query
-        issues = self.issues_by_state[str(variables["state_id"])]
-        return {
-            "workflowState": {
-                "issues": {
-                    "nodes": issues,
-                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+        if "PynchyLinearDecisionInbox" in query:
+            issues = self.issues_by_state[str(variables["state_id"])]
+            return {
+                "workflowState": {
+                    "issues": {
+                        "nodes": issues,
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    }
                 }
             }
-        }
+        issue = await self.get_issue(str(variables["issue_id"]))
+        if issue is None:
+            raise AssertionError("test update targeted an unknown issue")
+        old_state_id = str(issue["state"]["id"])
+        new_state_id = str(variables["state_id"])
+        self.issues_by_state[old_state_id].remove(issue)
+        issue["state"] = next(
+            state
+            for state in (
+                _state("human_approved"),
+                _state("in_progress"),
+                _state("follow_ups"),
+            )
+            if state["id"] == new_state_id
+        )
+        self.issues_by_state[new_state_id].append(issue)
+        return {"issueUpdate": {"success": True, "issue": issue}}
 
 
 class _PagedDecisionClient(_DecisionClient):
     async def query(self, query: str, **variables: object) -> dict[str, Any]:
-        assert "PynchyLinearDecisionInbox" in query
+        if "PynchyLinearDecisionInbox" not in query:
+            return await super().query(query, **variables)
         issues = self.issues_by_state[str(variables["state_id"])]
         start = int(str(variables["after"] or 0))
         end = start + 50
@@ -89,31 +162,14 @@ class _PagedDecisionClient(_DecisionClient):
         }
 
 
-def _issue(
-    issue_id: str,
-    identifier: str,
-    title: str,
-    state_id: str,
-    project_id: str,
-) -> dict[str, Any]:
-    return {
-        "id": issue_id,
-        "identifier": identifier,
-        "title": title,
-        "url": f"https://linear.app/example/issue/{identifier}",
-        "updatedAt": "2026-07-19T08:00:00+00:00",
-        "state": {"id": state_id},
-        "project": {"id": project_id, "name": project_id},
-    }
-
-
 def _board(project_id: str) -> LinearWorkspaceBoard:
     return LinearWorkspaceBoard(
         team={"id": "team-1"},
         project={"id": project_id},
         states={
-            "ready_for_planning": {"id": "state-ready"},
-            "human_approved": {"id": "state-approved"},
+            "human_approved": _state("human_approved"),
+            "in_progress": _state("in_progress"),
+            "follow_ups": _state("follow_ups"),
         },
     )
 
@@ -123,7 +179,7 @@ async def _database() -> None:
     await init_test_database()
 
 
-async def test_reconcile_admits_each_human_decision_to_its_own_workspace_once() -> None:
+async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> None:
     client = _DecisionClient()
     workspaces = [
         _Workspace("alpha", "Alpha", "linear:alpha"),
@@ -139,58 +195,128 @@ async def test_reconcile_admits_each_human_decision_to_its_own_workspace_once() 
     duplicate = await reconcile_linear_decision_inbox(client, workspaces, boards, now=now)
 
     assert duplicate == []
-    assert {task.group_folder for task in created} == {"alpha", "beta"}
-    assert {task.input_source for task in created} == {
-        "external:linear:ready_for_planning",
-        "external:linear:human_approved",
-    }
-    assert all(task.context_mode == "isolated" for task in created)
-    assert {task.derived_thread_name for task in created} == {
-        "[SYN-1] Plan the task inbox",
-        "[SYN-3] Execute an approved task",
-    }
-    assert len(await get_all_tasks()) == 2
-
-
-async def test_planning_task_requires_a_persisted_plan_without_execution_authority() -> None:
-    created = await reconcile_linear_decision_inbox(
-        _DecisionClient(),
-        [_Workspace("alpha", "Alpha", "linear:alpha")],
-        {"alpha": _board("project-alpha")},
-        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
-    )
-
+    assert len(created) == 1
     task = created[0]
-    assert "linear_submit_plan" in task.prompt
-    assert "Awaiting Plan Approval" in task.prompt
-    assert "Do not claim or execute" in task.prompt
-    assert "EXTERNAL_UNTRUSTED_CONTENT" in task.prompt
+    execution = await get_active_work_item_execution("issue-execute")
+    assert execution is not None
+    assert execution.status.value == "in_progress"
+    assert execution.task_id == task.id
+    assert execution.initiated_by == "linear-decision-inbox"
+    assert task.group_folder == "beta"
+    assert task.input_source == "external:linear:authorized"
+    assert task.context_mode == "isolated"
+    assert task.derived_thread_name == "[SYN-3] Execute an approved task"
+    assert "Objective:" in task.prompt
+    assert "Authority:" in task.prompt
+    assert "Success:" in task.prompt
+    assert "linear_claim_work_item" not in task.prompt
+    assert len(await get_all_tasks()) == 1
 
 
-async def test_private_account_decision_context_remains_trusted() -> None:
+async def test_private_account_keeps_authorized_context_trusted() -> None:
     created = await reconcile_linear_decision_inbox(
         _DecisionClient(),
-        [_Workspace("alpha", "Alpha", "linear:alpha")],
-        {"alpha": _board("project-alpha")},
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
         now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
         public_source=False,
     )
 
     task = created[0]
-    assert task.input_source == "trusted:linear:ready_for_planning"
+    assert task.input_source == "trusted:linear:authorized"
     assert "EXTERNAL_UNTRUSTED_CONTENT" not in task.prompt
+
+
+async def test_reconcile_admits_follow_up_work_without_a_second_approval_lease() -> None:
+    client = _DecisionClient()
+    follow_up = _issue(
+        "issue-follow-up",
+        "SYN-5",
+        "Finish operational cleanup",
+        "follow_ups",
+        "project-beta",
+    )
+    client.issues_by_state["state-follow-ups"].append(follow_up)
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
+        public_source=False,
+    )
+    duplicate = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        now=datetime(2026, 7, 19, 8, 6, tzinfo=UTC),
+        public_source=False,
+    )
+
+    follow_up_tasks = [task for task in created if task.id.startswith("linear-follow-ups-")]
+    assert len(follow_up_tasks) == 1
+    assert follow_up_tasks[0].input_source == "trusted:linear:follow-ups"
+    assert "preserve useful logs before teardown" in follow_up_tasks[0].prompt
+    assert await get_active_work_item_execution("issue-follow-up") is None
+    assert duplicate == []
+
+
+async def test_reauthorized_handoff_creates_a_new_execution_task() -> None:
+    client = _DecisionClient()
+    workspaces = [_Workspace("beta", "Beta", "linear:beta")]
+    boards = {"beta": _board("project-beta")}
+    first = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
+    )
+    execution = await get_active_work_item_execution("issue-execute")
+    assert execution is not None
+    transition = await begin_work_item_transition(
+        WorkItemTransitionRequest(
+            execution=execution,
+            request_id="handoff-1",
+            operation="record_handoff",
+            target_status="blocked",
+            result_execution_status=WorkItemExecutionStatus.HANDED_OFF,
+        )
+    )
+    assert await get_work_item_transition_by_request("handoff-1") == transition
+    await resolve_work_item_transition(
+        transition=transition,
+        execution_status=WorkItemExecutionStatus.HANDED_OFF,
+        transition_status=WorkItemTransitionStatus.SUCCEEDED,
+    )
+    issue = client.issues_by_state["state-progress"].pop()
+    issue["state"] = _state("human_approved")
+    issue["updatedAt"] = "2026-07-19T09:00:00+00:00"
+    client.issues_by_state["state-approved"].append(issue)
+
+    second = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=datetime(2026, 7, 19, 9, 5, tzinfo=UTC),
+    )
+
+    assert len(second) == 1
+    assert second[0].id != first[0].id
+    current = await get_active_work_item_execution("issue-execute")
+    assert current is not None
+    assert current.attempt == 2
 
 
 async def test_reconcile_ignores_issues_without_a_project() -> None:
     client = _DecisionClient()
-    client.issues_by_state["state-ready"].insert(
+    client.issues_by_state["state-approved"].insert(
         0,
         {
             **_issue(
                 "issue-no-project",
                 "SYN-0",
                 "Not assigned to a project",
-                "state-ready",
+                "human_approved",
                 "unused",
             ),
             "project": None,
@@ -199,44 +325,26 @@ async def test_reconcile_ignores_issues_without_a_project() -> None:
 
     created = await reconcile_linear_decision_inbox(
         client,
-        [_Workspace("alpha", "Alpha", "linear:alpha")],
-        {"alpha": _board("project-alpha")},
-        now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
-    )
-
-    assert [task.group_folder for task in created] == ["alpha"]
-
-
-async def test_approved_task_requires_claim_before_execution() -> None:
-    client = _DecisionClient()
-    client.issues_by_state["state-ready"] = []
-
-    created = await reconcile_linear_decision_inbox(
-        client,
         [_Workspace("beta", "Beta", "linear:beta")],
         {"beta": _board("project-beta")},
         now=datetime(2026, 7, 19, 8, 5, tzinfo=UTC),
     )
 
-    task = created[0]
-    assert "linear_claim_work_item" in task.prompt
-    assert "Human Approved" in task.prompt
-    assert "linear_await_review_work_item" in task.prompt
+    assert [task.group_folder for task in created] == ["beta"]
 
 
-async def test_reconcile_paginates_through_a_large_planning_backlog() -> None:
+async def test_reconcile_paginates_through_large_authorized_backlog() -> None:
     client = _PagedDecisionClient()
-    client.issues_by_state["state-ready"] = [
+    client.issues_by_state["state-approved"] = [
         _issue(
             f"issue-{number}",
             f"SYN-{number}",
-            f"Plan item {number}",
-            "state-ready",
+            f"Execute item {number}",
+            "human_approved",
             "project-alpha",
         )
         for number in range(1, 62)
     ]
-    client.issues_by_state["state-approved"] = []
 
     created = await reconcile_linear_decision_inbox(
         client,

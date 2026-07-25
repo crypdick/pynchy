@@ -275,6 +275,84 @@ class TestLinearClient:
         _, kwargs = client.query.call_args
         assert kwargs["input"] == {"teamId": "team-1", "title": "Track tasks"}
 
+    async def test_create_comment_returns_provider_comment(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(
+            return_value={
+                "commentCreate": {
+                    "success": True,
+                    "comment": {
+                        "id": "comment-1",
+                        "body": "Validation passed.",
+                        "createdAt": "2026-07-25T17:00:00Z",
+                    },
+                }
+            }
+        )
+
+        result = await client.create_comment("issue-1", "Validation passed.")
+
+        assert result["id"] == "comment-1"
+        assert client.query.await_args.kwargs == {
+            "issue_id": "issue-1",
+            "body": "Validation passed.",
+        }
+
+    async def test_create_attachment_returns_visible_issue_attachment(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(
+            return_value={
+                "attachmentCreate": {
+                    "success": True,
+                    "attachment": {
+                        "id": "attachment-1",
+                        "url": "https://github.com/example/pynchy/pull/85",
+                        "title": "Implement SYN-85",
+                    },
+                }
+            }
+        )
+
+        result = await client.create_attachment(
+            "issue-1",
+            "https://github.com/example/pynchy/pull/85",
+            "Implement SYN-85",
+            subtitle="Ready for review",
+        )
+
+        assert result["id"] == "attachment-1"
+        assert client.query.await_args.kwargs == {
+            "issue_id": "issue-1",
+            "url": "https://github.com/example/pynchy/pull/85",
+            "title": "Implement SYN-85",
+            "subtitle": "Ready for review",
+        }
+
+    async def test_find_issues_by_attachment_url_returns_linked_issues(self):
+        client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        client.query = AsyncMock(
+            return_value={
+                "attachmentsForURL": {
+                    "nodes": [
+                        {
+                            "id": "attachment-1",
+                            "url": "https://github.com/example/pynchy/pull/85",
+                            "issue": {"id": "issue-1", "identifier": "SYN-85"},
+                        }
+                    ]
+                }
+            }
+        )
+
+        result = await client.find_issues_by_attachment_url(
+            "https://github.com/example/pynchy/pull/85"
+        )
+
+        assert result[0]["issue"]["identifier"] == "SYN-85"
+        assert client.query.await_args.kwargs == {
+            "url": "https://github.com/example/pynchy/pull/85"
+        }
+
     async def test_get_issue_returns_none_after_canary_cleanup(self):
         client = LinearClient(api_key="lin_api_test", session=AsyncMock())
         client.query = AsyncMock(return_value={"issue": None})
@@ -331,6 +409,9 @@ class TestLinearMcpServer:
                 "linear_create_issue",
                 "linear_list_todos",
                 "linear_create_todo",
+                "linear_create_comment",
+                "linear_create_attachment",
+                "linear_find_issues_by_attachment_url",
             }
         finally:
             await client.close()
@@ -352,8 +433,7 @@ class TestLinearMcpServer:
             assert "exact_description" not in todo_properties
             assert todo_properties["description"] == {"type": "string"}
             assert todo_properties["priority"]["enum"] == [0, 1, 2, 3, 4]
-            assert "agent originated" in tools["linear_create_todo"]["description"]
-            assert "linear_create_requested_todo" in tools["linear_create_todo"]["description"]
+            assert "Agent Proposed" in tools["linear_create_todo"]["description"]
         finally:
             await client.close()
 
@@ -541,6 +621,126 @@ class TestLinearMcpServer:
         assert kwargs["team_key"] is None
         assert kwargs["status"] == "agent_proposed"
 
+    @pytest.mark.action("linear.comment.create")
+    async def test_mcp_creates_an_ordinary_issue_comment(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.create_comment = AsyncMock(
+            return_value={
+                "id": "comment-1",
+                "body": "Validation passed.",
+                "createdAt": "2026-07-25T17:00:00Z",
+            }
+        )
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_create_comment",
+                            "arguments": {
+                                "issue_id": "issue-1",
+                                "body": "Validation passed.",
+                            },
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"])["id"] == "comment-1"
+        fake_client.create_comment.assert_awaited_once_with(
+            "issue-1",
+            "Validation passed.",
+        )
+
+    @pytest.mark.action("linear.attachment.create")
+    async def test_mcp_attaches_pull_request_to_issue(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.create_attachment = AsyncMock(
+            return_value={
+                "id": "attachment-1",
+                "url": "https://github.com/example/pynchy/pull/85",
+            }
+        )
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_create_attachment",
+                            "arguments": {
+                                "issue_id": "issue-1",
+                                "url": "https://github.com/example/pynchy/pull/85",
+                                "title": "Implement SYN-85",
+                                "subtitle": "Ready for review",
+                            },
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        assert json.loads(payload["result"]["content"][0]["text"])["id"] == "attachment-1"
+        fake_client.create_attachment.assert_awaited_once_with(
+            "issue-1",
+            "https://github.com/example/pynchy/pull/85",
+            "Implement SYN-85",
+            subtitle="Ready for review",
+        )
+
+    @pytest.mark.action("linear.attachment.resolve")
+    async def test_mcp_resolves_pull_request_to_attached_issue(self, monkeypatch):
+        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
+        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
+        fake_client.find_issues_by_attachment_url = AsyncMock(
+            return_value=[
+                {
+                    "id": "attachment-1",
+                    "issue": {"id": "issue-1", "identifier": "SYN-85"},
+                }
+            ]
+        )
+        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
+            client = await start_mcp_client()
+            try:
+                response = await client.post(
+                    "/mcp",
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "linear_find_issues_by_attachment_url",
+                            "arguments": {
+                                "url": "https://github.com/example/pynchy/pull/85",
+                            },
+                        },
+                    },
+                )
+                payload = await response.json()
+            finally:
+                await client.close()
+
+        linked = json.loads(payload["result"]["content"][0]["text"])
+        assert linked[0]["issue"]["identifier"] == "SYN-85"
+        fake_client.find_issues_by_attachment_url.assert_awaited_once_with(
+            "https://github.com/example/pynchy/pull/85"
+        )
+
     @pytest.mark.action("linear.team.list")
     async def test_mcp_lists_teams_from_the_configured_linear_client(self, monkeypatch):
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
@@ -640,10 +840,13 @@ class TestDocs:
 
         assert doc.exists()
 
-    def test_linear_integration_documents_exact_requested_descriptions(self):
+    def test_linear_integration_documents_agent_managed_work(self):
         doc = Path(__file__).resolve().parent.parent / "docs" / "integrations" / "linear.md"
         content = doc.read_text()
 
-        assert "`exact_description: true`" in content
-        assert "immutable workspace-marked project" in content
-        assert "Generic `linear_create_todo` cannot request this mode" in content
+        assert "immutable workspace marker" in content
+        assert "`linear_create_todo` creates an unapproved" in content
+        assert "`linear_move_todo`" in content
+        assert "`linear_create_comment`" in content
+        assert "`linear_create_attachment`" in content
+        assert "`linear_find_issues_by_attachment_url`" in content

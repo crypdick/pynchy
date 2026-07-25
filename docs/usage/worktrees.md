@@ -14,8 +14,9 @@ repo = "owner/repo"
 profiles = ["code"]
 ```
 
-The container-side tool (`sync_worktree_to_main`) commits through the host-side git workflow. Config no longer exposes a per-workspace git policy; repo-backed workspaces merge through the host.
-
-**Post-run behavior** also follows the policy. After a container run:
-
-- Worktree commits are rebased and merged into main, then pushed.
+The agent can call `sync_worktree_to_main` to publish committed changes for
+review. Despite its legacy name, the agent-facing tool pushes the isolated
+branch and opens or updates a pull request; it does not merge into `main`.
+The tool returns the canonical PR URL or an actionable failure. The agent
+attaches every returned PR to the current Linear issue before moving it to
+`Awaiting Review`. Returning a final response doesn't publish automatically.

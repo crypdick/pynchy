@@ -23,6 +23,20 @@ class TestGuardGitHook:
         assert not d.allowed
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("action", ["continue", "abort", "skip"])
+    async def test_sync_conflict_recovery_is_allowed(self, action):
+        d = await guard_git_hook("Bash", {"command": f"git rebase --{action}"})
+        assert d.allowed
+
+    @pytest.mark.asyncio
+    async def test_recovery_cannot_hide_a_second_new_rebase(self):
+        d = await guard_git_hook(
+            "Bash",
+            {"command": "git rebase --continue && git rebase origin/main"},
+        )
+        assert not d.allowed
+
+    @pytest.mark.asyncio
     async def test_git_status_allowed(self):
         d = await guard_git_hook("Bash", {"command": "git status"})
         assert d.allowed

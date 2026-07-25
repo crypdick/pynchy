@@ -1,4 +1,4 @@
-"""IPC handlers for session lifecycle: reset, finished_work, sync_worktree."""
+"""IPC handlers for session lifecycle: reset and sync_worktree."""
 
 from __future__ import annotations
 
@@ -7,13 +7,19 @@ import json
 from typing import Any, cast
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_workspace_by_folder
+from pynchy.host.container_manager.ipc.deps import (
+    IpcDeps,  # noqa: TC001, RUF100 - beartype resolves handler signatures at runtime.
+)
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
-from pynchy.host.git_ops import _worktree_merge, repo
+from pynchy.host.git_ops import repo
 from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
-from pynchy.host.git_ops.sync import host_sync_worktree
+from pynchy.host.git_ops.sync import (
+    GIT_POLICY_PR,
+    host_create_pr_from_worktree,
+    host_sync_worktree,
+)
 from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.logger import logger
@@ -85,11 +91,6 @@ async def _handle_reset_context(
         )
         return
 
-    try:
-        await _worktree_merge.merge_worktree_with_policy(group_folder)
-    except Exception:  # noqa: BLE001, RUF100 - worktree sync failure must not block the reset_context boundary.
-        logger.exception("Worktree sync failed during context reset")
-
     await deps.clear_session(group_folder)
     await deps.clear_chat_history(chat_jid)
 
@@ -114,28 +115,6 @@ async def _handle_reset_context(
     )
 
 
-async def _handle_finished_work(
-    data: dict[str, Any],
-    source_group: str,
-    _is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    deps: IpcDeps,
-) -> None:
-    chat_jid = data.get("chatJid", "")
-    if not chat_jid:
-        logger.warning("finished_work missing chatJid", source_group=source_group)
-        return
-
-    group = resolve_workspace_by_folder(source_group, deps)
-    if group:
-        _worktree_merge.background_merge_worktree(group)
-
-    await deps.broadcast_host_message(
-        chat_jid,
-        "Scheduled task finished. Send a message to start a new conversation.",
-    )
-    logger.info("finished_work handled", group=source_group)
-
-
 async def _handle_sync_worktree_to_main(
     data: dict[str, Any],
     source_group: str,
@@ -150,7 +129,7 @@ async def _handle_sync_worktree_to_main(
     if receipt is cop_gate_module.ReceiptVerification.INVALID:
         return
     if receipt is not cop_gate_module.ReceiptVerification.VALID:
-        summary = f"sync_worktree_to_main from '{source_group}'"
+        summary = f"publish committed worktree from '{source_group}'"
         allowed = await cop_gate_module.cop_gate(
             "sync_worktree_to_main",
             summary,
@@ -174,15 +153,24 @@ async def _handle_sync_worktree_to_main(
         return
 
     sync_results: list[tuple[Any, dict[str, Any], str, bool | None]] = []
+    publication = data.get("publication")
     for repo_ctx in repo_contexts:
-        repo_result, repo_pre_merge_sha, repo_deploy_info = await asyncio.to_thread(
-            _sync_merge_and_check_deploy, source_group, repo_ctx
-        )
+        if publication == GIT_POLICY_PR:
+            repo_result = await asyncio.to_thread(
+                host_create_pr_from_worktree,
+                source_group,
+                repo_ctx,
+            )
+            repo_pre_merge_sha, repo_deploy_info = "unknown", None
+        else:
+            repo_result, repo_pre_merge_sha, repo_deploy_info = await asyncio.to_thread(
+                _sync_merge_and_check_deploy, source_group, repo_ctx
+            )
         sync_results.append((repo_ctx, repo_result, repo_pre_merge_sha, repo_deploy_info))
     result, pre_merge_sha, deploy_info = _aggregate_sync_results(sync_results)
     write_ipc_response(result_dir / f"{request_id}.json", result)
 
-    if result.get("success"):
+    if result.get("success") and publication != GIT_POLICY_PR:
         # IpcDeps satisfies WorktreeNotifyDeps directly.
         for repo_ctx, _repo_result, _repo_sha, _repo_deploy in sync_results:
             await host_notify_worktree_updates(source_group, deps, repo_ctx)
@@ -198,5 +186,4 @@ async def _handle_sync_worktree_to_main(
 
 
 register("reset_context", _handle_reset_context)
-register("finished_work", _handle_finished_work)
 register("sync_worktree_to_main", _handle_sync_worktree_to_main)

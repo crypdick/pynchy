@@ -33,7 +33,6 @@ from pynchy.plugins.integrations.linear_board_selection import (
 from pynchy.plugins.integrations.linear_statuses import (
     AGENT_PROPOSED_STATUS,
     LINEAR_TODO_STATUSES,
-    READY_FOR_PLANNING_STATUS,
     TERMINAL_STATE_TYPES,
 )
 from pynchy.plugins.integrations.linear_workspace_names import (
@@ -228,31 +227,6 @@ async def create_workspace_todo(
         ),
         team_key=team_key,
         status=status,
-    )
-
-
-async def create_requested_workspace_todo(
-    client: LinearQueryClient,
-    workspace: WorkspaceLike,
-    proposal: WorkspaceTodoProposal,
-    *,
-    team_key: str | None,
-    exact_description: bool = False,
-) -> dict[str, Any]:
-    """Create a direct-human-requested issue at the planning gate."""
-    # Skipping provenance is safe only for direct-human requests: the issue remains
-    # attached to an immutable workspace-marked project, while the host keeps the
-    # durable user turn and exact authorization quote. Generic agent proposals have
-    # no path to this option.
-    # NOTE: Keep docs/integrations/linear.md aligned with this boundary.
-    details = proposal.description
-    description = details if exact_description else todo_description(workspace, details)
-    return await _create_workspace_todo(
-        client,
-        workspace,
-        replace(proposal, description=description),
-        team_key=team_key,
-        status=READY_FOR_PLANNING_STATUS,
     )
 
 

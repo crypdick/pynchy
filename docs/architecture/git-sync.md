@@ -1,13 +1,17 @@
 # Coordinated Git Sync
 
-How Pynchy coordinates git operations between containers and the host. Use this page to configure profile `repo` access and troubleshoot merge conflicts in worktrees.
+How Pynchy coordinates git operations between containers and the host. Use this
+page to configure profile `repo` access and troubleshoot publication conflicts
+in worktrees.
 
 ## Design Principles
 
 1. **Prefer mountable files over generated code** — Hook config and scripts live in `src/pynchy/agent/` as static files, mounted read-only. Don't generate complex logic in Python when a mountable file suffices.
 2. **Clear host/container naming** — Host-side functions use a `host_` prefix (e.g., `host_sync_worktree()`). Container-side scripts live in `src/pynchy/agent/scripts/`.
 3. **Self-contained error messages to containers** — Containers can't read host state (logs, config, etc.). Errors sent to containers must include enough context to act on. On conflict, the host leaves the worktree in a resolvable state (conflict markers visible to agent) rather than aborting.
-4. **Host owns main** — Agents never push to main directly. The host mediates all merges into main, pushes to origin, and syncs other agents.
+4. **Host owns publication credentials** — Agents never push directly. The host
+   publishes isolated worktree branches as pull requests. Merged remote changes
+   return through the normal origin-drift path.
 
 For worktree isolation details, see `docs/usage/worktrees.md`.
 

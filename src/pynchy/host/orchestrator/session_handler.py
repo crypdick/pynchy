@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.event_bus import ChatClearedEvent, Event, MessageEvent
 from pynchy.host.container_manager.session import destroy_session
-from pynchy.host.git_ops._worktree_merge import background_merge_worktree
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
 from pynchy.host.orchestrator.messaging.channel_handler import send_reaction_to_channels
@@ -77,14 +76,11 @@ async def _teardown_group(
 ) -> None:
     """Shared teardown for context reset and end session.
 
-    Merges worktree, destroys the persistent session, stops containers,
-    advances the cursor, and persists state.  When *clear_context* is True,
-    also wipes the session from memory and DB (full context reset).
+    Destroys the persistent session, stops containers, advances the cursor, and
+    persists state. When *clear_context* is True, also wipes the session from
+    memory and DB (full context reset).
     """
     logger.info("teardown_trace", step="start", group=group.name, clear_context=clear_context)
-
-    # Merge worktree commits before killing the container so work isn't stranded
-    background_merge_worktree(group)
 
     # Destroy persistent session (kills container)
     create_background_task(
@@ -117,7 +113,7 @@ async def handle_context_reset(
     *,
     source_message: NewMessage | None = None,
 ) -> None:
-    """Clear session state, merge worktree, destroy session, and confirm context reset."""
+    """Clear session state, destroy the session, and confirm the context reset."""
     await _teardown_group(deps, group, chat_jid, timestamp, clear_context=True)
     logger.info("teardown_trace", step="send_clear_confirmation_start", group=group.name)
     await send_clear_confirmation(deps, chat_jid, source_message=source_message)

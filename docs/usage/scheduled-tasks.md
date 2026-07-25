@@ -30,7 +30,13 @@ and can run concurrently.
 
 Temporal buffers one overlapping occurrence for a config-backed job. The next run waits for the current one, then runs in the same task thread; Pynchy never creates a numbered spillover thread for that job. This requires a channel with child-thread support. Pynchy records an error instead of moving the run to another target when the root channel cannot create threads.
 
-Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy and can host child conversations, Pynchy uses a numbered child thread. When the selected chat cannot host children, Pynchy durably defers the run until the reservation clears instead of sharing or rerouting the conversation. Canceling a task also clears its unfinished checkpoint so it cannot retain that reservation. Each agent task uses an isolated runtime folder. If its workspace profile selects a repo, worktree commits merge and push after a successful run.
+Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy and can host child conversations, Pynchy uses a numbered child thread. When the selected chat cannot host children, Pynchy durably defers the run until the reservation clears instead of sharing or rerouting the conversation. Canceling a task also clears its unfinished checkpoint so it cannot retain that reservation. Each agent task uses an isolated runtime folder.
+
+An agent completes a run by returning its final result. The host then closes the
+one-shot runtime. Repo-backed agents can publish with
+`sync_worktree_to_main`, which opens or updates a pull request for committed
+changes. They resolve any error it returns and attach the PR to the current
+Linear issue when one exists. Scheduled prompts don't need sentinel commits.
 
 For a periodic review that turns evidence into approval-gated work proposals,
 see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-proposals).
@@ -164,7 +170,9 @@ quiet_on_success = true
 
 Pynchy reconciles scheduled work into Temporal. Recurring agent tasks, database host jobs, and config-file host cron jobs become Temporal Schedules. One-time agent tasks and one-time host jobs become delayed Temporal workflows.
 
-Temporal fires the workflows. Each workflow runs an activity in the Pynchy host process, so agent containers, IPC streaming, shell execution, task logs, and worktree merge behavior stay on the existing host runner path.
+Temporal fires the workflows. Each workflow runs an activity in the Pynchy host
+process, so agent containers, IPC streaming, shell execution, task logs, and
+worktree isolation stay on the existing host runner path.
 
 Host commands are not retried within the same Temporal occurrence. A command
 may have changed external state before failing or losing its worker, so its next

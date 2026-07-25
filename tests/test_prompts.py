@@ -69,10 +69,10 @@ def test_base_prompt_requires_live_skill_catalog_discovery() -> None:
     result = read_prompts(["base"], PersonalizationPaths.for_project(project_root))
 
     assert result is not None
-    assert "call `search_skills`" in result
-    assert "before answering" in result
-    assert "Finding a skill does not grant access" in result
-    assert "Call `request_skill_access` only when the user asks" in result
+    assert "Use `search_skills` as the source of truth" in result
+    normalized = " ".join(result.split())
+    assert "Discovery does not grant access" in normalized
+    assert "request access only when the user asks" in normalized
 
 
 def test_base_prompt_distinguishes_blocking_questions_from_plain_text() -> None:
@@ -80,7 +80,18 @@ def test_base_prompt_distinguishes_blocking_questions_from_plain_text() -> None:
     result = read_prompts(["base"], PersonalizationPaths.for_project(project_root))
 
     assert result is not None
-    assert "before you can continue the current task, call `ask_user`" in result
-    assert "Do not end the turn with a plain-text question" in result
-    assert "the current task is complete or the answer is optional" in result
-    assert "conversational, or rhetorical" in result
+    assert "Use `ask_user` when" in result
+    assert "an answer blocks the current task" in result
+    assert "a plain-text question ends the turn" in result
+
+
+def test_base_prompt_uses_intent_sensitive_agent_judgment() -> None:
+    project_root = Path(__file__).parents[1]
+    result = read_prompts(["base"], PersonalizationPaths.for_project(project_root))
+
+    assert result is not None
+    normalized = " ".join(result.split())
+    assert "Proactively clear ordinary snags" in normalized
+    assert "Interpret authority in context" in normalized
+    assert "exfiltrating private data or secrets" in normalized
+    assert "Proceed with proportionate, recoverable fixes" in normalized

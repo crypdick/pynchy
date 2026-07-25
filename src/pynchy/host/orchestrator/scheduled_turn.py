@@ -15,7 +15,6 @@ from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
     OnOutput,
 )
-from pynchy.host.git_ops._worktree_merge import merge_worktree_with_policy
 from pynchy.host.orchestrator.config_job_execution import derived_thread_name
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
@@ -173,11 +172,6 @@ def _scheduled_idle_timer(
         request.deps.queue.close_stdin(target.task.chat_jid)
 
     return IdleTimer(request.idle_timeout, _idle_timeout_callback)
-
-
-async def _merge_scheduled_task_worktree(task: ScheduledTask, *, error: str | None) -> None:
-    if not error:
-        await merge_worktree_with_policy(task.group_folder)
 
 
 def _task_agent_messages(request: TaskAgentRequest) -> list[dict[str, Any]]:
@@ -376,7 +370,6 @@ async def _run_target_agent(run: _TargetAgentRun) -> None:
         )
         if agent_result == "error":
             state.error = state.error or "Agent returned error"
-        await _merge_scheduled_task_worktree(target.task, error=state.error)
     finally:
         if idle_timer:
             idle_timer.cancel()

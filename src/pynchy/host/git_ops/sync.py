@@ -22,6 +22,7 @@ from pynchy.host.git_ops.repo import (
 )
 from pynchy.host.git_ops.utils import (
     count_commits,
+    count_unpushed_commits,
     detect_main_branch,
     git_env_with_token,
     push_local_commits,
@@ -140,6 +141,8 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
     """
     ctx = _validate_sync_preconditions(group_folder, repo_ctx)
     if isinstance(ctx, dict):
+        if ctx.get("success") and count_unpushed_commits(cwd=repo_ctx.root) > 0:
+            return _retry_pending_main_push(repo_ctx)
         return ctx
 
     steps: tuple[Callable[[], dict[str, Any] | None], ...] = (
@@ -162,6 +165,25 @@ def host_sync_worktree(group_folder: str, repo_ctx: RepoContext) -> dict[str, An
     return {
         "success": True,
         "message": f"Merged {ctx.ahead} commit(s) into main and pushed to origin.",
+    }
+
+
+def _retry_pending_main_push(repo_ctx: RepoContext) -> dict[str, Any]:
+    pushed = push_local_commits(
+        cwd=repo_ctx.root,
+        env=git_env_with_token(repo_ctx.slug),
+    )
+    if pushed:
+        return {
+            "success": True,
+            "message": "Published commits already merged into the host main branch.",
+        }
+    return {
+        "success": False,
+        "message": (
+            "Push to origin still failed. Your commits remain on the host main branch; "
+            "inspect the reported Git state and call sync_worktree_to_main again."
+        ),
     }
 
 
@@ -231,7 +253,7 @@ def _sync_push_main(repo_ctx: RepoContext, ctx: _WorktreeContext) -> dict[str, A
             "message": (
                 "Merge succeeded but push to origin failed. "
                 "Your commits are on the host's main branch. "
-                "The host will retry pushing automatically."
+                "Call sync_worktree_to_main again to retry publication."
             ),
         }
     return None

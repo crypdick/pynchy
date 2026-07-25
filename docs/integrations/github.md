@@ -1,12 +1,12 @@
 # GitHub PR notifications
 
 The built-in GitHub webhook plugin sends pull-request updates directly to the
-mapped project workspace. It does not start an agent, create a worktree, or write
-to GitHub. For development work that links a pull request as review evidence, an
-authenticated merge delivery also moves the Linear item from `Awaiting Review`
-to `Done`. Other kinds of work can use different evidence and human acceptance.
-A route binds one GitHub repository to one Pynchy workspace, so an event can
-never fall back to an admin or unrelated channel.
+mapped project workspace. Most events are concise human-visible notifications.
+A merged pull request starts an isolated agent turn so the agent can inspect
+the linked work and exercise judgment about Follow-ups. The webhook itself
+doesn't create a worktree or mutate GitHub or Linear. A route binds one GitHub
+repository to one Pynchy workspace, so an event can never fall back to an admin
+or unrelated channel.
 
 ## Configure repository routes
 
@@ -66,12 +66,12 @@ The plugin emits concise direct host notifications for:
 - Failed check runs that GitHub associates with one or more pull requests.
 - An explicit non-mergeable state included in a pull-request delivery.
 
-A merged pull request is also a trusted lifecycle signal for the built-in
-[Linear integration](linear.md). Pynchy matches the canonical PR URL stored by
-`linear_await_review_work_item`, records the Linear transition before applying
-it, and completes only an execution already in `Awaiting Review`. Duplicate
-GitHub delivery IDs do not repeat the transition. A PR with no linked Pynchy
-execution remains a notification only.
+Development agents attach every pull request to the Linear issue with
+`linear_create_attachment`. A merged-PR event starts an isolated agent turn,
+which resolves the URL with `linear_find_issues_by_attachment_url`, inspects
+the linked work and runtime state, and decides whether the job should enter
+`Follow-ups`, `Done`, or remain elsewhere. Merge is evidence, not an automatic
+state transition.
 
 GitHub does not publish a dedicated merge-conflict event, and mergeability can be
 computed asynchronously. The webhook immediately reports the commit event; retain a

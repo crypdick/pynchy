@@ -704,10 +704,6 @@ class TestRunScheduledAgent:
                 new_callable=AsyncMock,
             ),
             patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
-            patch(
-                "pynchy.host.orchestrator.scheduled_turn.merge_worktree_with_policy",
-                new_callable=AsyncMock,
-            ),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
             with pytest.raises(asyncio.CancelledError):
@@ -751,10 +747,6 @@ class TestRunScheduledAgent:
 
         with (
             patch.object(ts_mod.activity, "info", side_effect=temporal_runs),
-            patch(
-                "pynchy.host.orchestrator.scheduled_turn.merge_worktree_with_policy",
-                new_callable=AsyncMock,
-            ),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
             assert await run_scheduled_agent(sample_task, mock_deps) is True
@@ -801,10 +793,6 @@ class TestRunScheduledAgent:
 
         with (
             patch.object(ts_mod.activity, "info", side_effect=temporal_attempts),
-            patch(
-                "pynchy.host.orchestrator.scheduled_turn.merge_worktree_with_policy",
-                new_callable=AsyncMock,
-            ),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
             assert await run_scheduled_agent(sample_task, mock_deps) is False

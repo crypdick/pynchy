@@ -184,7 +184,7 @@ async def test_create_linear_workspace_todo_uses_env_defaults(monkeypatch):
     assert args[1].folder == "alpha"
     assert args[2].title == "Review docs"
     assert kwargs["team_key"] is None
-    assert kwargs["status"] == "ready_for_planning"
+    assert "status" not in kwargs
 
 
 async def test_create_linear_workspace_todo_requires_linear_tool_selection(monkeypatch):

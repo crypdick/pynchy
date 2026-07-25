@@ -25,6 +25,7 @@ from agent_runner.ipc import drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
     apply_followup_metadata,
     build_core_config,
+    build_initial_prompt,
     build_sdk_messages,
     event_to_output,
 )
@@ -167,6 +168,27 @@ class TestContainerInput:
         assert ci.agent_core_module == "custom.mod"
         assert ci.agent_core_class == "CustomCore"
         assert ci.agent_core_config == {"model": "gpt-4"}
+
+    def test_scheduled_prompt_states_contract_without_choreography(self):
+        ci = ContainerInput.from_dict(
+            {
+                "messages": [{"sender_name": "Scheduler", "content": "Review the repo."}],
+                "group_folder": "review",
+                "chat_jid": "scheduled:review",
+                "is_admin": False,
+                "is_scheduled_task": True,
+            }
+        )
+
+        with patch("agent_runner.main.drain_ipc_input", return_value=[]):
+            prompt = build_initial_prompt(ci)
+
+        assert "objective" in prompt
+        assert "authority" in prompt
+        assert "relevant evidence" in prompt
+        assert "response ends the run" in prompt
+        assert "finished_work" not in prompt
+        assert "host applies publication" not in prompt
 
     def test_defaults_agent_core(self):
         data = {

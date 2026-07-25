@@ -196,6 +196,9 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
             "linear_create_issue": _tool_create_issue,
             "linear_list_todos": _tool_list_todos,
             "linear_create_todo": _tool_create_todo,
+            "linear_create_comment": _tool_create_comment,
+            "linear_create_attachment": _tool_create_attachment,
+            "linear_find_issues_by_attachment_url": _tool_find_issues_by_attachment_url,
         }
         handler = handlers.get(str(name))
         if handler is None:
@@ -293,6 +296,41 @@ async def _tool_create_todo(
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
         status=AGENT_PROPOSED_STATUS,
     )
+
+
+async def _tool_create_comment(
+    client: LinearClient,
+    arguments: dict[str, Any],
+    _workspace: str | None,
+) -> dict[str, Any]:
+    return await client.create_comment(
+        _required_str(arguments, "issue_id"),
+        _required_str(arguments, "body"),
+    )
+
+
+async def _tool_create_attachment(
+    client: LinearClient,
+    arguments: dict[str, Any],
+    _workspace: str | None,
+) -> dict[str, Any]:
+    subtitle = arguments.get("subtitle")
+    if subtitle is not None and not isinstance(subtitle, str):
+        raise LinearError("Linear argument subtitle must be a string")
+    return await client.create_attachment(
+        _required_str(arguments, "issue_id"),
+        _required_str(arguments, "url"),
+        _required_str(arguments, "title"),
+        subtitle=subtitle,
+    )
+
+
+async def _tool_find_issues_by_attachment_url(
+    client: LinearClient,
+    arguments: dict[str, Any],
+    _workspace: str | None,
+) -> list[dict[str, Any]]:
+    return await client.find_issues_by_attachment_url(_required_str(arguments, "url"))
 
 
 def _workspace_context(workspace: str | None) -> WorkspaceContext:

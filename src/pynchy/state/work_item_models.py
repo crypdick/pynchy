@@ -18,7 +18,7 @@ WorkItemExecutionStatus = RuntimeWorkItemExecutionStatus
 
 
 class WorkItemClaimConflictError(RuntimeError):
-    """Raised when a non-terminal execution already owns a Linear issue."""
+    """Raised when an active execution already owns a Linear issue."""
 
     def __init__(self, execution: WorkItemExecution) -> None:
         self.execution = execution

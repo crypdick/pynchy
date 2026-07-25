@@ -318,7 +318,7 @@ class ContainerSession:
         session usable for IPC until the actual container stops.
 
         A clean exit (code 0) means the container shut down intentionally
-        (reset_context, finished_work) -- NOT a crash.
+        (for example, reset_context) -- NOT a crash.
         """
         exit_code = await proc.wait()
         if self._dead:

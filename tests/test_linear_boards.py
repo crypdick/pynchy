@@ -176,11 +176,10 @@ class TestEnsureWorkspaceBoard:
         created_state_names = {state["name"] for state in client.states}
         assert {
             "Agent Proposed",
-            "Ready for Planning",
-            "Awaiting Plan Approval",
             "Human Approved",
             "In Progress",
             "Awaiting Review",
+            "Follow-ups",
             "Blocked",
             "Done",
             "Rejected",

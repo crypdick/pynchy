@@ -15,25 +15,18 @@ from pynchy.plugins.integrations.linear_accounts import (
 )
 from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
-    WorkspaceTodoProposal,
-    create_requested_workspace_todo,
     require_workspace_board,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
-from pynchy.plugins.integrations.linear_plans import description_with_plan, update_issue_plan
-from pynchy.plugins.integrations.linear_statuses import (
-    AWAITING_PLAN_APPROVAL_STATUS,
-    AWAITING_REVIEW_STATUS,
-    HUMAN_APPROVED_STATUS,
-    READY_FOR_PLANNING_STATUS,
-    TERMINAL_STATE_TYPES,
-)
+from pynchy.plugins.integrations.linear_statuses import HUMAN_APPROVED_STATUS
 from pynchy.state import (
+    WorkItemClaimConflictError,
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
     begin_work_item_transition,
     create_work_item_claim,
-    get_in_flight_turn_for_group,
+    get_active_work_item_execution,
+    get_work_item_execution,
     get_work_item_transition_by_request,
     resolve_work_item_transition,
 )
@@ -45,8 +38,7 @@ from pynchy.types import (
 )
 
 _WORKSPACE_ISSUE_REQUIRED = "Linear issue does not belong to this Pynchy workspace board"
-_HUMAN_APPROVAL_REQUIRED = "Linear work item must be Human Approved before Pynchy can claim it"
-_PLANNING_READY_REQUIRED = "Linear work item must be Ready for Planning before planning"
+_HUMAN_APPROVAL_REQUIRED = "Linear work item must be Human Approved before Pynchy can run it"
 
 
 class LinearWorkspaceIssueError(ValueError):
@@ -71,6 +63,19 @@ class _TransitionAttempt:
     transition: WorkItemTransition
     expected_statuses: set[str]
     target_status: str
+
+
+@dataclass(frozen=True)
+class WorkItemLeaseRequest:
+    """Host-derived authority and ownership for one execution lease."""
+
+    workspace: str
+    issue_id: str
+    request_id: str
+    initiated_by: str
+    turn_id: str | None = None
+    task_id: str | None = None
+    board: LinearWorkspaceBoard | None = None
 
 
 class LinearClientContext:
@@ -118,50 +123,115 @@ def linear_client(
     return LinearClientContext(account)
 
 
-async def create_requested_work_item(
+async def acquire_work_item_lease(
     client: LinearClient,
-    workspace: str,
-    chat_jid: str,
-    proposal: WorkspaceTodoProposal,
-    *,
-    exact_description: bool = False,
-) -> dict[str, Any]:
-    """Create a human-requested item at the planning gate for one workspace."""
-    return await create_requested_workspace_todo(
-        client,
-        _WorkspaceContext(
-            folder=workspace,
-            name=_workspace_name(workspace),
-            jid=chat_jid,
-        ),
-        proposal,
-        team_key=client.team_key,
-        exact_description=exact_description,
-    )
-
-
-async def claim_work_item(
-    client: LinearClient,
-    workspace: str,
-    issue_id: str,
-    request_id: str,
+    request: WorkItemLeaseRequest,
 ) -> WorkItemExecution:
-    """Persist a claim, then transition a Human Approved issue to In Progress."""
-    issue, board = await workspace_issue(client, workspace, issue_id)
+    """Acquire one durable execution lease before agent work begins."""
+    prior_transition = await get_work_item_transition_by_request(request.request_id)
+    if prior_transition is not None:
+        execution = await get_work_item_execution(prior_transition.execution_id)
+        if execution is None:
+            raise RuntimeError("work item lease transition lost its execution")
+        if (
+            execution.workspace != request.workspace
+            or execution.linear_issue_id != request.issue_id
+        ):
+            raise ValueError("work item lease request_id belongs to another execution")
+        return await _resume_work_item_lease(
+            client,
+            request,
+            execution,
+            prior_transition,
+        )
+
+    existing = await get_active_work_item_execution(request.issue_id)
+    if existing is not None:
+        raise WorkItemClaimConflictError(existing)
+
+    issue, board = await _lease_issue_context(client, request)
     if state_id(issue) != state_id(board.states[HUMAN_APPROVED_STATUS]):
         raise ValueError(_HUMAN_APPROVAL_REQUIRED)
-    turn = await get_in_flight_turn_for_group(workspace)
-    execution = await create_work_item_claim(
-        WorkItemClaimRequest(
-            workspace=workspace,
-            issue=issue,
-            turn_id=turn.turn_id if turn else None,
-            task_id=turn.task_id if turn else None,
-            initiated_by=turn.chat_jid if turn else workspace,
-            request_id=request_id,
+    try:
+        execution = await create_work_item_claim(
+            WorkItemClaimRequest(
+                workspace=request.workspace,
+                issue=issue,
+                turn_id=request.turn_id,
+                task_id=request.task_id,
+                initiated_by=request.initiated_by,
+                request_id=request.request_id,
+            )
         )
+    except WorkItemClaimConflictError as exc:
+        transition = await get_work_item_transition_by_request(request.request_id)
+        if transition is None or transition.execution_id != exc.execution.id:
+            raise
+        return await _resume_work_item_lease(
+            client,
+            request,
+            exc.execution,
+            transition,
+        )
+    transition = await _pending_transition(execution.id, request.request_id)
+    return await transition_issue(
+        client,
+        _TransitionAttempt(
+            board=board,
+            execution=execution,
+            transition=transition,
+            expected_statuses={HUMAN_APPROVED_STATUS},
+            target_status="in_progress",
+        ),
     )
-    transition = await _pending_transition(execution.id, request_id)
+
+
+async def _lease_issue_context(
+    client: LinearClient,
+    request: WorkItemLeaseRequest,
+) -> tuple[dict[str, Any], LinearWorkspaceBoard]:
+    if request.board is None:
+        return await workspace_issue(client, request.workspace, request.issue_id)
+    issue = await client.get_issue(request.issue_id)
+    if issue is None:
+        raise LinearWorkspaceIssueError("Linear issue does not exist")
+    project = issue.get("project")
+    if not isinstance(project, dict) or project.get("id") != request.board.project.get("id"):
+        raise LinearWorkspaceIssueError(_WORKSPACE_ISSUE_REQUIRED)
+    return issue, request.board
+
+
+async def _resume_work_item_lease(
+    client: LinearClient,
+    request: WorkItemLeaseRequest,
+    execution: WorkItemExecution,
+    transition: WorkItemTransition,
+) -> WorkItemExecution:
+    """Finish or reconcile an interrupted host-owned lease acquisition."""
+    if transition.status in {
+        WorkItemTransitionStatus.SUCCEEDED,
+        WorkItemTransitionStatus.CONFLICT,
+    }:
+        return execution
+    issue, board = await _lease_issue_context(client, request)
+    current_state_id = state_id(issue)
+    if current_state_id == state_id(board.states["in_progress"]):
+        return await resolve_work_item_transition(
+            transition=transition,
+            execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+            transition_status=WorkItemTransitionStatus.SUCCEEDED,
+            issue=issue,
+        )
+    if transition.status is WorkItemTransitionStatus.UNKNOWN or current_state_id != state_id(
+        board.states[HUMAN_APPROVED_STATUS]
+    ):
+        return await resolve_work_item_transition(
+            transition=transition,
+            execution_status=WorkItemExecutionStatus.FAILED,
+            transition_status=WorkItemTransitionStatus.CONFLICT,
+            issue=issue,
+            error="Linear state differs from the intended execution lease",
+        )
     return await transition_issue(
         client,
         _TransitionAttempt(
@@ -217,56 +287,6 @@ async def reconcile_work_item(
         ),
         issue=issue,
         error=None if matches_target else "Linear state differs from the intended transition",
-    )
-
-
-async def move_unlinked_work_item(
-    client: LinearClient,
-    workspace: str,
-    issue_id: str,
-    status: str,
-) -> dict[str, Any]:
-    """Move a board item only after the caller established it has no active claim."""
-    _issue, board = await workspace_issue(client, workspace, issue_id)
-    if status not in board.states:
-        raise ValueError(f"Unknown Pynchy todo status: {status}")
-    return await update_issue_state(client, issue_id, state_id(board.states[status]))
-
-
-async def submit_unlinked_work_item_for_review(
-    client: LinearClient,
-    workspace: str,
-    issue_id: str,
-) -> dict[str, Any]:
-    """Move verified existing work to review without inventing an execution claim."""
-    issue, board = await workspace_issue(client, workspace, issue_id)
-    state = issue.get("state")
-    if not isinstance(state, dict):
-        raise TypeError("Linear issue state was not an object")
-    if state.get("type") in TERMINAL_STATE_TYPES:
-        raise ValueError("A terminal Linear work item cannot re-enter Awaiting Review")
-    target_state_id = state_id(board.states[AWAITING_REVIEW_STATUS])
-    if state_id(issue) == target_state_id:
-        return issue
-    return await update_issue_state(client, issue_id, target_state_id)
-
-
-async def submit_work_item_plan(
-    client: LinearClient,
-    workspace: str,
-    issue_id: str,
-    plan: str,
-) -> dict[str, Any]:
-    """Persist a concrete plan before advancing to the human plan-approval gate."""
-    issue, board = await workspace_issue(client, workspace, issue_id)
-    if state_id(issue) != state_id(board.states[READY_FOR_PLANNING_STATUS]):
-        raise ValueError(_PLANNING_READY_REQUIRED)
-    description = description_with_plan(issue.get("description"), plan)
-    return await update_issue_plan(
-        client,
-        issue_id=issue_id,
-        state_id=state_id(board.states[AWAITING_PLAN_APPROVAL_STATUS]),
-        description=description,
     )
 
 
