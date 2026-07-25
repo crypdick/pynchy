@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -60,13 +61,17 @@ def _state_id(board: LinearWorkspaceBoard, status: str) -> str:
 
 async def _legacy_planning_task_id(request: LegacyAdoptionRequest) -> str | None:
     prefix = f"{_LEGACY_PLANNING_TASK_PREFIX}{request.issue.identifier.lower()}-"
+    issue_id_pattern = re.compile(
+        rf'"issue_id"\s*:\s*"{re.escape(request.issue.id)}"',
+    )
     task = next(
         (
             task
             for task in await get_all_tasks()
             if task.id.startswith(prefix)
-            and task.group_folder == request.workspace.folder
             and task.status == "completed"
+            and "[Source: linear-decision-inbox]" in task.prompt
+            and issue_id_pattern.search(task.prompt) is not None
         ),
         None,
     )

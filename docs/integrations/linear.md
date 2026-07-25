@@ -187,9 +187,11 @@ no-transition runs. Failed activities retain their checkpoint and use
 Temporal's normal retry path. An `In Progress` issue without a matching lease
 is reported as an invariant violation and is never treated as implicit
 authorization. The migration bridge has one narrow exception: a completed
-legacy `linear-ready-for-planning-<identifier>-*` task in the same workspace is
-durable evidence from the old approved-plan lifecycle, so the controller can
-adopt it into a current lease before resuming work.
+legacy `linear-ready-for-planning-<identifier>-*` task whose stored
+decision-inbox payload names the exact durable issue ID is evidence from the
+approved-plan lifecycle, so the controller can adopt it into a current lease
+before resuming work. Matching the issue ID instead of the workspace folder
+allows a managed workspace rename without broadening the authorization.
 
 Because the schedule lives in Temporal, a deploy or transient worker outage
 doesn't erase the recovery intent. Once the worker is healthy, the next
