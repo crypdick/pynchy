@@ -47,6 +47,8 @@ data/personalization/
 ├── automations/
 │   ├── weekly-review.toml
 │   └── weekly-review.md
+├── prompts/
+│   └── my-workspace-prompt.md
 └── skills/
     └── my-skill/
         └── SKILL.md
@@ -105,6 +107,13 @@ A personalized skill can replace a same-named public default. It cannot shadow
 a code-coupled skill. Each skill directory must contain a `SKILL.md` whose
 frontmatter has matching `name`, non-empty `description`, and non-empty `tier`
 fields.
+
+## Prompts
+
+Prompt names select Markdown files by basename. Pynchy reads a personalized
+file from `prompts/<name>.md` when present; otherwise it reads the public
+baseline in `data/defaults/prompts/`. A personalized file replaces, rather than
+extends, a same-named default.
 
 ## Validate in CI
 

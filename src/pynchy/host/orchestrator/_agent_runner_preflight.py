@@ -9,6 +9,7 @@ from typing import Any, Protocol, cast, runtime_checkable
 import pynchy.config.prompts as prompt_config
 import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import get_settings
+from pynchy.config.personalization import PersonalizationPaths
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (
     OnOutput,
@@ -208,7 +209,7 @@ def resolved_pre_container_context(
     repo_access = repo_accesses[0] if repo_accesses else None
     system_prompt_append = prompt_config.read_prompts(
         resolved.prompts if resolved else [],
-        get_settings().project_root,
+        PersonalizationPaths.for_project(get_settings().project_root),
     )
     session_id = deps.sessions.get(group_folder)
     return is_admin, repo_access, repo_accesses, system_prompt_append, session_id
