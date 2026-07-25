@@ -260,9 +260,9 @@ from this fallback query so one workspace does not use both delivery paths.
 ## Schedule proactive proposals
 
 Use a config-backed [agent task](../usage/scheduled-tasks.md#agent-tasks) to run a real
-isolated review instead of posting a reminder into an interactive session. The
-bundled `prompts/pynchy-proactive-review.md` prompt reviews one bounded slice,
-deduplicates against the workspace board, and creates up to three rich
+isolated review instead of posting a reminder into an interactive session. Add
+`pynchy-proactive-review.md` to `data/personalization/prompts/` to review one
+bounded slice, deduplicate against the workspace board, and create up to three rich
 `Agent Proposed` items. It never approves or executes them.
 
 Select the Pynchy repository and Linear tool on a dedicated private workspace:

@@ -8,15 +8,19 @@ Prompts are markdown files injected into an agent's system prompt. They contain 
 
 ## Convention-Based Resolution
 
-Prompt names map to files by convention:
+Prompt names map to files by convention. Pynchy uses the personalized file
+when it exists; otherwise it uses the public default:
 
 ```text
-"base"           ->  prompts/base.md
-"idle-escape"    ->  prompts/idle-escape.md
-"pynchy-dev"     ->  prompts/pynchy-dev.md
+"base"           ->  data/personalization/prompts/base.md
+                  ->  data/defaults/prompts/base.md
+"idle-escape"    ->  data/personalization/prompts/idle-escape.md
+                  ->  data/defaults/prompts/idle-escape.md
 ```
 
-No registry or config mapping exists. The name **is** the path. Place your prompt file at `prompts/<name>.md` and reference it by name in your config.
+No registry or config mapping exists. The name identifies the file. Place a
+deployment-specific prompt at `data/personalization/prompts/<name>.md` and
+reference it by name in your config.
 
 ## Assigning Prompts
 
@@ -50,7 +54,9 @@ The `admin` workspace receives `["base", "idle-escape", "pynchy-admin-ops"]`. Fi
 
 ## File Location and Format
 
-Prompt files live under `prompts/` in the project root. Plain markdown works best. Multiple matching prompts are concatenated with `---` separators.
+Public defaults live under `data/defaults/prompts/`; deployment-specific prompts
+live under `data/personalization/prompts/`. Plain markdown works best. Multiple
+matching prompts are concatenated with `---` separators.
 
 Files ending in `.EXAMPLE` are ignored because they are repo templates.
 

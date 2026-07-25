@@ -21,6 +21,7 @@ SETTINGS_FILENAME = "pynchy.toml"
 LITELLM_FILENAME = "litellm.yaml"
 AUTOMATIONS_DIRNAME = "automations"
 SKILLS_DIRNAME = "skills"
+PROMPTS_DIRNAME = "prompts"
 _INLINE_SECRET_KEYS = frozenset(
     {
         "access_token",
@@ -77,6 +78,16 @@ class PersonalizationPaths:
     @property
     def litellm_config(self) -> Path:
         return self.personalization / LITELLM_FILENAME
+
+    @property
+    def default_prompts(self) -> Path:
+        """Return the public baseline prompt directory."""
+        return self.defaults / PROMPTS_DIRNAME
+
+    @property
+    def personalized_prompts(self) -> Path:
+        """Return the deployment-owned prompt directory."""
+        return self.personalization / PROMPTS_DIRNAME
 
 
 def load_layered_settings_mapping(

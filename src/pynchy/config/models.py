@@ -16,6 +16,7 @@ in their respective plugin files.
 from __future__ import annotations
 
 import posixpath
+import re
 from pathlib import Path
 from typing import Annotated, Literal, NewType
 
@@ -41,6 +42,7 @@ ProfileName = NewType("ProfileName", str)
 ToolName = NewType("ToolName", str)
 WorkspaceName = NewType("WorkspaceName", str)
 RepoSlug = NewType("RepoSlug", str)
+PromptName = NewType("PromptName", str)
 # TODO(config-schema-cutover): propagate these semantic names through host/runtime
 # call sites as the remaining config plumbing adopts workspace/tool identity types.
 
@@ -49,6 +51,7 @@ CONNECTION_NAME_MESSAGE = "command_center.connection must be a [connections.<nam
 CHAT_REF_MESSAGE = "chat must be connection.<platform>.<name>.chat.<chat>"
 CONFIG_NAME_MESSAGE = "config names must not be empty"
 REPO_SLUG_MESSAGE = "repo must be an owner/repo slug"
+PROMPT_NAME_MESSAGE = "prompt names must be lowercase hyphenated identifiers"
 MOUNT_ABSOLUTE_MESSAGE = "mount_path must be an absolute container path"
 MOUNT_POSIX_MESSAGE = "mount_path must be an absolute POSIX container path"
 MOUNT_PARENT_MESSAGE = "mount_path must not contain '..' path components"
@@ -94,6 +97,12 @@ def _validated_repo_slug(v: str) -> RepoSlug:
     return RepoSlug(v)
 
 
+def _validated_prompt_name(v: str) -> PromptName:
+    if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", v) is None:
+        raise ValueError(PROMPT_NAME_MESSAGE)
+    return PromptName(v)
+
+
 # AfterValidator runs after Pydantic coerces the input to str; for Optional fields it
 # is skipped on None. The validator returns the NewType so the field's static type
 # carries the parse result — no downstream re-validation.
@@ -104,6 +113,7 @@ ValidatedProfileName = Annotated[ProfileName, AfterValidator(_validated_name)]
 ValidatedToolName = Annotated[ToolName, AfterValidator(_validated_name)]
 ValidatedWorkspaceName = Annotated[WorkspaceName, AfterValidator(_validated_name)]
 ValidatedRepoSlug = Annotated[RepoSlug, AfterValidator(_validated_repo_slug)]
+ValidatedPromptName = Annotated[PromptName, AfterValidator(_validated_prompt_name)]
 CodexModelReasoningEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
 CopWireApi = Literal["messages", "responses"]
 

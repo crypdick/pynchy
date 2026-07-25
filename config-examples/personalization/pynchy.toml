@@ -442,7 +442,8 @@
 # Scalar fields such as model use later-profile-wins semantics before a workspace
 # model override takes precedence.
 #
-# Prompts use convention-based resolution: name "base" -> prompts/base.md.
+# Prompts resolve from personalization first, then public defaults:
+# "base" -> data/personalization/prompts/base.md -> data/defaults/prompts/base.md.
 
 # [profiles.pynchy-dev]
 # prompts = ["pynchy-admin-ops", "pynchy-code-improver"]
