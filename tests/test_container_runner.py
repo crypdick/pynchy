@@ -2132,6 +2132,148 @@ class TestContainerInputAgentCoreConfig:
         )
 
     @pytest.mark.asyncio
+    async def test_scheduled_run_dispatches_host_mode_as_one_shot(self, tmp_path: Path):
+        group = WorkspaceProfile(
+            jid="host@g.us",
+            name="Host Group",
+            folder="host-group",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        deps = _AgentRunnerDeps({"host-group": "interactive-session"})
+        ctx = self._ctx("interactive-session")
+        ctx.is_admin = True
+        settings = make_settings(
+            profiles={
+                "host-admin": ProfileConfig(
+                    is_admin=True,
+                    execution_mode="host",
+                    cwd=str(tmp_path),
+                )
+            },
+            workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_agent_dispatch.prepare_host_codex_home",
+                return_value=tmp_path / ".codex",
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_agent_dispatch.host_agent_env_vars",
+                return_value={"CODEX_HOME": str(tmp_path / ".codex")},
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_agent_dispatch.prepare_host_direct_mcp_servers",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "pynchy.host.orchestrator.host_agent_dispatch.run_host_agent_turn",
+                new_callable=AsyncMock,
+                return_value="success",
+            ) as run_host_agent_turn,
+            patch(
+                "pynchy.host.orchestrator.agent_runner._run_scheduled_task",
+                new_callable=AsyncMock,
+            ) as run_scheduled_container,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.destroy_session",
+                new_callable=AsyncMock,
+            ) as destroy_session,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.clear_session",
+                new_callable=AsyncMock,
+            ) as clear_session,
+        ):
+            result = await run_agent(
+                deps,
+                group,
+                "chat",
+                [{"content": "review the prior day"}],
+                is_scheduled_task=True,
+            )
+
+        assert result == "success"
+        run_scheduled_container.assert_not_awaited()
+        run_host_agent_turn.assert_awaited_once()
+        input_data = run_host_agent_turn.await_args.args[0].input_data
+        assert input_data.is_scheduled_task is True
+        assert input_data.session_id is None
+        destroy_session.assert_awaited_once_with(group.folder)
+        clear_session.assert_awaited_once_with(GroupFolder(group.folder))
+        assert deps.sessions == {}
+
+    @pytest.mark.asyncio
+    async def test_scheduled_host_cancellation_preserves_recovery_state(self, tmp_path: Path):
+        group = WorkspaceProfile(
+            jid="host@g.us",
+            name="Host Group",
+            folder="host-group",
+            trigger="@pynchy",
+            is_admin=True,
+        )
+        deps = _AgentRunnerDeps({"host-group": "interrupted-session"})
+        ctx = self._ctx("interrupted-session")
+        settings = make_settings(
+            profiles={
+                "host-admin": ProfileConfig(
+                    is_admin=True,
+                    execution_mode="host",
+                    cwd=str(tmp_path),
+                )
+            },
+            workspaces={group.folder: WorkspaceConfig(profiles=["host-admin"])},
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch(
+                "pynchy.host.orchestrator.workspace_config.get_settings",
+                return_value=settings,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.pre_container_setup",
+                new_callable=AsyncMock,
+                return_value=ctx,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner._run_host_execution",
+                new_callable=AsyncMock,
+                side_effect=asyncio.CancelledError,
+            ),
+            patch(
+                "pynchy.host.orchestrator.agent_runner.destroy_session",
+                new_callable=AsyncMock,
+            ) as destroy_session,
+            patch(
+                "pynchy.host.orchestrator.agent_runner.clear_session",
+                new_callable=AsyncMock,
+            ) as clear_session,
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await run_agent(
+                deps,
+                group,
+                "chat",
+                [{"content": "review the prior day"}],
+                is_scheduled_task=True,
+            )
+
+        destroy_session.assert_awaited_once_with(group.folder)
+        clear_session.assert_not_awaited()
+        assert deps.sessions == {"host-group": "interrupted-session"}
+
+    @pytest.mark.asyncio
     async def test_host_execution_includes_ready_direct_mcp_servers(self, tmp_path: Path):
         group = WorkspaceProfile(
             jid="host@g.us",
@@ -2261,15 +2403,15 @@ class TestContainerInputAgentCoreConfig:
                 return_value=ctx,
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner._prepare_host_codex_home",
+                "pynchy.host.orchestrator.host_agent_dispatch.prepare_host_codex_home",
                 return_value=tmp_path / ".codex",
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner._codex_thread_exists_in_host_runtime",
+                "pynchy.host.orchestrator.host_agent_dispatch.codex_thread_exists_in_host_runtime",
                 return_value=False,
             ) as thread_exists,
             patch(
-                "pynchy.host.orchestrator.agent_runner._host_agent_env_vars",
+                "pynchy.host.orchestrator.host_agent_dispatch.host_agent_env_vars",
                 return_value={"CODEX_HOME": str(tmp_path / ".codex")},
             ),
             patch(
@@ -2278,11 +2420,11 @@ class TestContainerInputAgentCoreConfig:
                 return_value="success",
             ) as run_host_input,
             patch(
-                "pynchy.host.orchestrator.agent_runner.destroy_session",
+                "pynchy.host.orchestrator.host_agent_dispatch.destroy_session",
                 new_callable=AsyncMock,
             ) as destroy_session,
             patch(
-                "pynchy.host.orchestrator.agent_runner.clear_session",
+                "pynchy.host.orchestrator.host_agent_dispatch.clear_session",
                 new_callable=AsyncMock,
             ) as clear_session,
         ):
