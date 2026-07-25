@@ -70,6 +70,18 @@ def test_boolean_privilege_fields_or_across_profiles() -> None:
     assert result.contains_secrets is True
 
 
+def test_later_cop_active_setting_wins() -> None:
+    result = merge_workspace_profiles(
+        [
+            _profile(cop_active=False),
+            _profile(),
+            _profile(cop_active=True),
+        ]
+    )
+
+    assert result.cop_active is True
+
+
 def test_empty_profile_sequence_resolves_to_empty_defaults() -> None:
     result = merge_workspace_profiles([])
 
@@ -83,6 +95,7 @@ def test_empty_profile_sequence_resolves_to_empty_defaults() -> None:
         cwd=None,
         is_admin=False,
         contains_secrets=False,
+        cop_active=True,
     )
 
 

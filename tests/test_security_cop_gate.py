@@ -13,7 +13,8 @@ from pynchy.host.container_manager.security.cop import (
     CopVerdict,
 )
 from pynchy.host.container_manager.security.cop_gate import cop_gate
-from pynchy.types import OutboundEventType
+from pynchy.host.container_manager.security.gate import SecurityGate
+from pynchy.types import OutboundEventType, WorkspaceSecurity
 
 
 @pytest.fixture
@@ -56,6 +57,37 @@ async def test_cop_allows_clean_operation(mock_deps):
             mock_deps,
         )
     assert result is True
+
+
+@pytest.mark.asyncio
+async def test_inactive_cop_skips_outbound_inspection(mock_deps):
+    """A profile can omit Cop without weakening explicit human contracts."""
+    gate = SecurityGate(WorkspaceSecurity(cop_active=False))
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.get_gate_for_group",
+            return_value=gate,
+        ),
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
+            new_callable=AsyncMock,
+        ) as inspect,
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.record_security_event",
+            new_callable=AsyncMock,
+        ) as audit,
+    ):
+        result = await cop_gate(
+            "sync_worktree_to_main",
+            "diff: bounded repair",
+            {"type": "sync_worktree_to_main"},
+            "admin-1",
+            mock_deps,
+        )
+
+    assert result is True
+    inspect.assert_not_awaited()
+    assert audit.await_args.kwargs["decision"] == "cop_disabled_by_profile"
 
 
 @pytest.mark.asyncio

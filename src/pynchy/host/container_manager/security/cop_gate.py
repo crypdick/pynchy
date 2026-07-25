@@ -32,6 +32,7 @@ from pynchy.host.container_manager.security.cop import (
     inspect_outbound,
     load_cop_inspection_context,
 )
+from pynchy.host.container_manager.security.gate import get_gate_for_group
 from pynchy.host.container_manager.security.identity import (
     ReceiptVerification,
     consume_approval_receipt,
@@ -107,6 +108,17 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
     """
     # Resolve chat_jid for audit and notifications
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
+    gate = get_gate_for_group(source_group)
+    if gate is not None and not gate.policy.cop_active:
+        await record_security_event(
+            chat_jid=chat_jid,
+            workspace=source_group,
+            tool_name=operation,
+            decision="cop_disabled_by_profile",
+            request_id=request_id,
+        )
+        return True
+
     inspection_context = await load_cop_inspection_context(chat_jid)
     verdict = await inspect_outbound(operation, payload_summary, inspection_context)
     context_degraded = inspection_context.availability is CopContextAvailability.UNAVAILABLE

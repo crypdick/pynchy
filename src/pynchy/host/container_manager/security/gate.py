@@ -240,5 +240,6 @@ def build_workspace_security(
     return WorkspaceSecurity(
         services=services,
         contains_secrets=resolved.contains_secrets,
+        cop_active=resolved.cop_active,
         capabilities=dict(resolved.capabilities),
     )

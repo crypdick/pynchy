@@ -24,6 +24,7 @@ def _make_gate(
     *,
     corruption: bool = False,
     secret: bool = False,
+    cop_active: bool = True,
 ) -> SecurityGate:
     services = {}
     if corruption:
@@ -40,7 +41,12 @@ def _make_gate(
             public_sink=False,
             dangerous_writes=False,
         )
-    gate = SecurityGate(WorkspaceSecurity(services=services))
+    gate = SecurityGate(
+        WorkspaceSecurity(
+            services=services,
+            cop_active=cop_active,
+        )
+    )
     if corruption:
         gate.evaluate_read("browser")
     if secret:
@@ -116,6 +122,26 @@ class TestBashSecurityNoTaint:
         entries = await state.get_chat_history("discord:channel:1")
         assert entries[-1].metadata is not None
         assert entries[-1].metadata["decision"] == "bash_gate_unavailable"
+
+
+class TestBashSecurityWithoutCop:
+    """An unattended profile can disable the secondary reviewer."""
+
+    @pytest.mark.asyncio
+    async def test_inactive_cop_bypasses_review_with_both_taints(self):
+        gate = _make_gate(
+            corruption=True,
+            secret=True,
+            cop_active=False,
+        )
+        with patch(
+            "pynchy.host.container_manager.ipc.handlers_security.inspect_bash",
+            new_callable=AsyncMock,
+        ) as inspect:
+            decision = await evaluate_bash_command(gate, "printenv DOCKER_CONTEXT")
+
+        assert decision["decision"] == "allow"
+        inspect.assert_not_awaited()
 
 
 class TestBashSecurityCorruptionTainted:

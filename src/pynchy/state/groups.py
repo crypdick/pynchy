@@ -48,6 +48,7 @@ def _row_to_workspace_profile(row: Row) -> WorkspaceProfile:
             security = WorkspaceSecurity(
                 services=services,
                 contains_secrets=sec_data["contains_secrets"],
+                cop_active=sec_data.get("cop_active", True),
             )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
             raise ValueError(_CORRUPT_SECURITY_PROFILE_ERROR.format(folder=row["folder"])) from exc
@@ -96,6 +97,7 @@ async def set_workspace_profile(profile: WorkspaceProfile) -> None:
             for svc_name, config in profile.security.services.items()
         },
         "contains_secrets": profile.security.contains_secrets,
+        "cop_active": profile.security.cop_active,
     }
 
     await db.execute(

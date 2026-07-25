@@ -238,6 +238,13 @@ Agents can read and edit files, fetch URLs, install packages, and run shell comm
 
 **Safe commands still run without Cop review.** Common dev tools — `ls`, `cat`, `grep`, `sed`, `jq`, `find`, `git`, `wc`, and dozens more — are on a local whitelist. They cannot reach the network. Their file-access notification must still reach the active host gate, but the Cop does not review them.
 
+**Trusted unattended profiles can disable Cop.** Set `cop_active = false` on a
+profile only when the agent must operate without interactive Cop decisions and
+the host account forms the intended outer authority boundary. Deterministic
+command, persistence, and package checks still run before shell commands reach
+the host. Explicit human-only MCP and host-action contracts remain unchanged.
+Cop defaults to active.
+
 **Package installs carry typed provenance.** Pynchy recognizes `uv`, `uvx`,
 pip, pipx, npm, Yarn, and Cargo operations plus writes to their common manifests
 and lockfiles. Shell-generated or ambiguous package names are denied. Direct
