@@ -230,20 +230,23 @@ For web browsing, email, or other untrusted-input tasks, use a non-admin workspa
 
 Agents can read and edit files, fetch URLs, install packages, and run shell commands. The agent tool gate normalizes those different operations before they run, using the same taint tracking as the tool trust policy above.
 
-**File access establishes workspace taint.** File and shell operations notify the host before execution. If the selected profile sets `contains_secrets = true`, even a local command such as `ls` sets secret taint before a later external action. Access to a recognized credential path such as `.env` or `.env.production` also sets secret taint when the profile omitted that declaration. If no active host gate can retain the taint, the operation is denied.
+**File access establishes workspace taint.** File and shell operations notify the host before execution. If the selected profile sets `contains_secrets = true`, even a local command such as `ls` sets secret taint before a later external action.
+
+A credential-looking shell argument or keyword match such as `.env`, `.env.production`, or `credentials` is initially only a `CRED001` taint candidate. The Cop sees the matched normalized command and confirms taint only when the operation can expose secret contents. It rejects incidental prose, search patterns, write-only destinations, and metadata-only operations. If that focused review is unavailable, ambiguous, invalid, or disabled, Pynchy confirms taint conservatively. A structured `Read` call targeting a recognized credential path is already conclusive and establishes taint without an LLM veto. The current operation still runs; the verdict only controls sticky state for later policy decisions. If no active host gate can retain that state, the operation is denied.
 
 **Security gate failures deny the operation.** Bash requests are denied when the active host gate is missing or the host response is unavailable, empty, malformed, or unknown. CLI-backed cores also emit a denial for malformed hook input or an unexpected built-in gate exception. A malformed optional plugin-hook configuration falls back to the built-in security roster.
 
 **Deterministic hazards never run.** The local gate blocks destructive system commands, reverse shells, remote content piped directly into a shell, and structured or shell-based writes to common persistence and autostart paths. This includes redirects, appends, `tee`, `cp`, and `install` destinations.
 
-**Safe commands still run without Cop review.** Common dev tools — `ls`, `cat`, `grep`, `sed`, `jq`, `find`, `git`, `wc`, and dozens more — are on a local whitelist. They cannot reach the network. Their file-access notification must still reach the active host gate, but the Cop does not review them.
+**Safe commands still run without command approval.** Common dev tools — `ls`, `cat`, `grep`, `sed`, `jq`, `find`, `git`, `wc`, and dozens more — are on a local whitelist. They cannot reach the network. Their file-access notification must still reach the active host gate. A `CRED001` candidate may receive the narrow taint review described above, but that review classifies secret exposure rather than approving the command.
 
 **Trusted unattended profiles can disable Cop.** Set `cop_active = false` on a
 profile only when the agent must operate without interactive Cop decisions and
 the host account forms the intended outer authority boundary. Deterministic
 command, persistence, and package checks still run before shell commands reach
 the host. Explicit human-only MCP and host-action contracts remain unchanged.
-Cop defaults to active.
+Cop defaults to active. Possible credential access confirms secret taint
+conservatively when this setting disables the reviewer.
 
 **Package installs carry typed provenance.** Pynchy recognizes `uv`, `uvx`,
 pip, pipx, npm, Yarn, and Cargo operations plus writes to their common manifests

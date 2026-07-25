@@ -6,6 +6,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves assesso
     Awaitable,
     Callable,
 )
+from dataclasses import dataclass
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves the canary response path at runtime.
 )
@@ -14,6 +15,11 @@ from typing import Any
 from pynchy.host.container_manager.ipc.deps import IpcDeps, resolve_chat_jid
 from pynchy.host.container_manager.ipc.write import ipc_response_path, write_ipc_response
 from pynchy.host.container_manager.security.audit import record_security_event
+from pynchy.host.container_manager.security.cop import (
+    CopTaintCandidate,
+    CopTaintDecision,
+    inspect_secret_taint,
+)
 from pynchy.host.container_manager.security.gate import SecurityGate, get_gate_for_group
 from pynchy.host.container_manager.security.package_metadata import (
     PackageCoordinate,
@@ -24,6 +30,15 @@ from pynchy.host.container_manager.security.package_metadata import (
     assess_package_metadata,
 )
 from pynchy.logger import logger
+
+_MAX_TAINT_CANDIDATES = 8
+_MAX_TAINT_ARTIFACT_CHARS = 4_000
+
+
+@dataclass(frozen=True)
+class _TaintAdjudication:
+    audit_decision: str
+    reason: str
 
 
 def _allow() -> dict[str, str]:
@@ -51,6 +66,80 @@ def _package_coordinates(value: object) -> tuple[PackageCoordinate, ...] | None:
     if any(coordinate is None for coordinate in coordinates):
         return None
     return tuple(coordinate for coordinate in coordinates if coordinate is not None)
+
+
+def _taint_evidence(value: object) -> tuple[CopTaintCandidate, ...] | None:
+    if not isinstance(value, list) or not 0 < len(value) <= _MAX_TAINT_CANDIDATES:
+        return None
+    candidates: list[CopTaintCandidate] = []
+    for item in value:
+        if not isinstance(item, dict):
+            return None
+        rule_id = item.get("rule_id")
+        artifact_kind = item.get("artifact_kind")
+        artifact_value = item.get("artifact_value")
+        if (
+            rule_id != "CRED001"
+            or artifact_kind not in {"command", "path_read"}
+            or not isinstance(artifact_value, str)
+            or not artifact_value.strip()
+            or len(artifact_value) > _MAX_TAINT_ARTIFACT_CHARS
+        ):
+            return None
+        candidates.append(
+            CopTaintCandidate(
+                rule_id=rule_id,
+                artifact_kind=artifact_kind,
+                artifact_value=artifact_value,
+            )
+        )
+    return tuple(candidates)
+
+
+async def _adjudicate_credential_taint(
+    *,
+    data: dict[str, Any],
+    tool_name: str,
+    rule_ids: tuple[str, ...],
+    gate: SecurityGate,
+) -> _TaintAdjudication | None:
+    if "CRED001" not in rule_ids or gate.policy.secret_tainted:
+        return None
+    evidence = _taint_evidence(data.get("taint_evidence"))
+    if evidence is not None and any(item.artifact_kind == "path_read" for item in evidence):
+        gate.confirm_credential_access()
+        return _TaintAdjudication(
+            audit_decision="credential_taint_confirmed_by_rule",
+            reason="A structured read targets a recognized credential path",
+        )
+    if not gate.policy.cop_active:
+        gate.confirm_credential_access()
+        return _TaintAdjudication(
+            audit_decision="credential_taint_confirmed_by_policy",
+            reason="Cop is disabled; heuristic credential access confirmed conservatively",
+        )
+    if evidence is None:
+        gate.confirm_credential_access()
+        return _TaintAdjudication(
+            audit_decision="credential_taint_confirmed_degraded",
+            reason="Heuristic credential evidence missing or malformed",
+        )
+
+    verdict = await inspect_secret_taint(tool_name, evidence)
+    if verdict.decision is CopTaintDecision.CONFIRM:
+        gate.confirm_credential_access()
+        return _TaintAdjudication(
+            audit_decision=(
+                "credential_taint_confirmed_degraded"
+                if verdict.degraded
+                else "credential_taint_confirmed"
+            ),
+            reason=verdict.reason,
+        )
+    return _TaintAdjudication(
+        audit_decision="credential_taint_rejected",
+        reason=verdict.reason,
+    )
 
 
 async def evaluate_package_coordinates(
@@ -134,7 +223,27 @@ async def handle_artifact_security_check(
         decision, package_rule_ids = await evaluate_package_coordinates(coordinates)
     audited_rule_ids = tuple(dict.fromkeys((*rule_ids, *package_rule_ids)))
     if data.get("file_access") is True:
-        gate.notify_file_access(credential_access="CRED001" in rule_ids)
+        # Workspace declarations and service reads are host-owned facts. CRED001
+        # is heuristic evidence, so the Cop adjudicates it before sticky taint.
+        gate.notify_file_access()
+        taint_adjudication = await _adjudicate_credential_taint(
+            data=data,
+            tool_name=safe_tool_name,
+            rule_ids=rule_ids,
+            gate=gate,
+        )
+        if taint_adjudication is not None:
+            await record_security_event(
+                chat_jid=chat_jid,
+                workspace=source_group,
+                tool_name=safe_tool_name,
+                decision=taint_adjudication.audit_decision,
+                corruption_tainted=gate.policy.corruption_tainted,
+                secret_tainted=gate.policy.secret_tainted,
+                reason=taint_adjudication.reason,
+                request_id=request_id,
+                rule_ids=("CRED001",),
+            )
 
     if decision["decision"] == "needs_human":
         await _request_package_approval(

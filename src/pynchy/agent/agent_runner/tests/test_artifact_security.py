@@ -112,6 +112,26 @@ async def test_file_capable_tools_notify_host_before_execution(
 
 
 @pytest.mark.asyncio
+async def test_credential_match_sends_semantic_taint_candidate_to_host() -> None:
+    response = [TextContent(type="text", text='{"decision": "allow"}')]
+    with patch(
+        "agent_runner.agent_tools._ipc_request.ipc_service_request",
+        new_callable=AsyncMock,
+        return_value=response,
+    ) as ipc_request:
+        decision = await artifact_security_hook("Bash", {"command": "rg credentials docs/"})
+
+    assert decision.allowed is True
+    assert ipc_request.await_args.args[1]["taint_evidence"] == [
+        {
+            "rule_id": "CRED001",
+            "artifact_kind": "command",
+            "artifact_value": "rg credentials docs/",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_hard_rule_denies_without_depending_on_host() -> None:
     with patch(
         "agent_runner.agent_tools._ipc_request.ipc_service_request",

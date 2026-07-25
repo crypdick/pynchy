@@ -14,9 +14,12 @@ from pynchy.host.container_manager.security.cop import (
     CopCommandRisk,
     CopContextAvailability,
     CopInspectionContext,
+    CopTaintCandidate,
+    CopTaintDecision,
     inspect_bash,
     inspect_inbound,
     inspect_outbound,
+    inspect_secret_taint,
     load_cop_inspection_context,
 )
 
@@ -300,6 +303,58 @@ async def test_bash_benign_command():
 
     assert verdict.decision is CopCommandDecision.APPROVE
     assert verdict.reason == "Local file operation"
+
+
+@pytest.mark.asyncio
+async def test_taint_cop_rejects_incidental_keyword_with_bounded_evidence():
+    """The semantic reviewer sees the matched operation and can reject taint."""
+    bodies: list[dict[str, object]] = []
+    with (
+        patch(
+            "pynchy.host.container_manager.gateway.get_gateway",
+            return_value=_fake_gateway(),
+        ),
+        _mock_aiohttp_session(
+            '{"decision": "reject", "reason": "Search pattern only"}',
+            captured_bodies=bodies,
+        ),
+    ):
+        verdict = await inspect_secret_taint(
+            "Bash",
+            (
+                CopTaintCandidate(
+                    rule_id="CRED001",
+                    artifact_kind="command",
+                    artifact_value="rg credentials docs/",
+                ),
+            ),
+        )
+
+    assert verdict.decision is CopTaintDecision.REJECT
+    request_text = str(bodies[0]["messages"])
+    assert "rg credentials docs/" in request_text
+    assert "CRED001" in request_text
+    assert "data-flow classification" in str(bodies[0]["system"])
+
+
+@pytest.mark.asyncio
+async def test_taint_cop_failure_confirms_conservatively():
+    """Reviewer unavailability cannot erase a possible secret exposure."""
+    with patch("pynchy.host.container_manager.gateway.get_gateway", return_value=None):
+        verdict = await inspect_secret_taint(
+            "Read",
+            (
+                CopTaintCandidate(
+                    rule_id="CRED001",
+                    artifact_kind="path_read",
+                    artifact_value=".env",
+                ),
+            ),
+        )
+
+    assert verdict.decision is CopTaintDecision.CONFIRM
+    assert verdict.degraded is True
+    assert verdict.reason == "No gateway available"
 
 
 @pytest.mark.asyncio

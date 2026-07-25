@@ -65,9 +65,13 @@ class SecurityGate:
         """Evaluate an explicit semantic capability."""
         return self._policy.evaluate_capability(capability)
 
-    def notify_file_access(self, *, credential_access: bool = False) -> None:
+    def notify_file_access(self) -> None:
         """Forward file-access notification to the policy."""
-        self._policy.notify_file_access(credential_access=credential_access)
+        self._policy.notify_file_access()
+
+    def confirm_credential_access(self) -> None:
+        """Retain a Cop-confirmed or conservatively confirmed secret exposure."""
+        self._policy.confirm_credential_access()
 
     def notify_public_source_input(self) -> None:
         """Forward initial public-source taint to the policy."""

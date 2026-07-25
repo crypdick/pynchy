@@ -293,6 +293,12 @@ def _command_writes_persistence(command: str) -> bool:
     return False
 
 
+def _credential_taint_candidate(artifact: SecurityArtifact) -> bool:
+    return (
+        artifact.kind is ArtifactKind.COMMAND and _command_accesses_credential(artifact.value)
+    ) or (artifact.kind is ArtifactKind.PATH_READ and _credential_path(artifact.value))
+
+
 def _artifact_findings(artifact: SecurityArtifact) -> tuple[RuleFinding, ...]:
     findings: list[RuleFinding] = []
     if artifact.kind is ArtifactKind.COMMAND:
@@ -313,7 +319,7 @@ def _artifact_findings(artifact: SecurityArtifact) -> tuple[RuleFinding, ...]:
                 "Remote content cannot be piped directly to a shell",
             ),
             (
-                _command_accesses_credential(artifact.value),
+                _credential_taint_candidate(artifact),
                 "CRED001",
                 "Credential-file access establishes secret taint",
             ),
@@ -333,9 +339,23 @@ def _artifact_findings(artifact: SecurityArtifact) -> tuple[RuleFinding, ...]:
                 "Writing to an autostart or persistence path is prohibited",
             )
         )
-    elif artifact.kind is ArtifactKind.PATH_READ and _credential_path(artifact.value):
+    elif _credential_taint_candidate(artifact):
         findings.append(RuleFinding("CRED001", "Credential-file access establishes secret taint"))
     return tuple(findings)
+
+
+def credential_taint_evidence(
+    request: NormalizedToolRequest,
+) -> tuple[SecurityArtifact, ...]:
+    """Return artifacts that may expose credential-file contents.
+
+    A structured read path is conclusive. Command matches remain heuristic: an
+    argument named ``credentials`` may be a search term, output path, or actual
+    secret read, so the host Cop adjudicates that semantic distinction.
+    """
+    return tuple(
+        artifact for artifact in request.artifacts if _credential_taint_candidate(artifact)
+    )
 
 
 def _package_findings(package: PackageReference) -> tuple[RuleFinding, ...]:

@@ -15,6 +15,8 @@ from pynchy.host.container_manager.security.cop import (
     CopCommandDecision,
     CopCommandRisk,
     CopCommandVerdict,
+    CopTaintDecision,
+    CopTaintVerdict,
 )
 from pynchy.host.container_manager.security.gate import SecurityGate
 from pynchy.types import OutboundEventType, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
@@ -382,6 +384,10 @@ async def test_artifact_check_sets_workspace_secret_taint_before_safe_shell_read
             "pynchy.host.container_manager.ipc.handlers_artifact_security.get_gate_for_group",
             return_value=gate,
         ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
+            new_callable=AsyncMock,
+        ) as inspect_taint,
         patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
     ):
         await registry.dispatch(
@@ -398,6 +404,7 @@ async def test_artifact_check_sets_workspace_secret_taint_before_safe_shell_read
         )
 
     assert gate.policy.secret_tainted is True
+    inspect_taint.assert_not_awaited()
     response_path = tmp_path / "ipc" / "test-ws" / "responses" / "artifact-request.json"
     assert json.loads(response_path.read_text(encoding="utf-8")) == {
         "result": {
@@ -409,6 +416,217 @@ async def test_artifact_check_sets_workspace_secret_taint_before_safe_shell_read
     assert entries[-1].metadata is not None
     assert entries[-1].metadata["decision"] == "file_access_noted"
     assert entries[-1].metadata["rule_ids"] == ["CRED001"]
+
+
+@pytest.mark.asyncio
+async def test_cop_rejects_incidental_credential_keyword_before_secret_taint(tmp_path):
+    """A heuristic word match remains untainted when the Cop finds no read."""
+    await state.init_test_database()
+    workspace = WorkspaceProfile(
+        jid="discord:channel:1",
+        name="Test",
+        folder="test-ws",
+        trigger="always",
+    )
+    deps = _Deps(workspace)
+    gate = SecurityGate(WorkspaceSecurity())
+    settings = make_settings(data_dir=tmp_path)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.get_gate_for_group",
+            return_value=gate,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
+            new_callable=AsyncMock,
+            return_value=CopTaintVerdict(
+                decision=CopTaintDecision.REJECT,
+                reason="The word is a search pattern, not a credential read",
+            ),
+        ) as inspect_taint,
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+    ):
+        await registry.dispatch(
+            {
+                "type": "security:artifact_check",
+                "request_id": "artifact-keyword",
+                "tool_name": "Bash",
+                "file_access": True,
+                "rule_ids": ["CRED001"],
+                "taint_evidence": [
+                    {
+                        "rule_id": "CRED001",
+                        "artifact_kind": "command",
+                        "artifact_value": "rg credentials docs/",
+                    }
+                ],
+            },
+            "test-ws",
+            False,
+            deps,
+        )
+
+    assert gate.policy.secret_tainted is False
+    candidate = inspect_taint.await_args.args[1][0]
+    assert candidate.artifact_value == "rg credentials docs/"
+    decisions = [
+        entry.metadata["decision"]
+        for entry in await state.get_chat_history("discord:channel:1")
+        if entry.metadata is not None
+    ]
+    assert decisions == ["credential_taint_rejected", "file_access_noted"]
+
+
+@pytest.mark.asyncio
+async def test_cop_confirms_real_credential_read_before_secret_taint(tmp_path):
+    await state.init_test_database()
+    workspace = WorkspaceProfile(
+        jid="discord:channel:1",
+        name="Test",
+        folder="test-ws",
+        trigger="always",
+    )
+    deps = _Deps(workspace)
+    gate = SecurityGate(WorkspaceSecurity())
+    settings = make_settings(data_dir=tmp_path)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.get_gate_for_group",
+            return_value=gate,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
+            new_callable=AsyncMock,
+            return_value=CopTaintVerdict(
+                decision=CopTaintDecision.CONFIRM,
+                reason="cat reads the credential file contents",
+            ),
+        ),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+    ):
+        await registry.dispatch(
+            {
+                "type": "security:artifact_check",
+                "request_id": "artifact-secret-read",
+                "tool_name": "Bash",
+                "file_access": True,
+                "rule_ids": ["CRED001"],
+                "taint_evidence": [
+                    {
+                        "rule_id": "CRED001",
+                        "artifact_kind": "command",
+                        "artifact_value": "cat .env",
+                    }
+                ],
+            },
+            "test-ws",
+            False,
+            deps,
+        )
+
+    assert gate.policy.secret_tainted is True
+    entries = await state.get_chat_history("discord:channel:1")
+    assert entries[0].metadata is not None
+    assert entries[0].metadata["decision"] == "credential_taint_confirmed"
+    assert entries[0].metadata["secret_tainted"] is True
+
+
+@pytest.mark.asyncio
+async def test_structured_credential_read_is_confirmed_without_cop_veto(tmp_path):
+    """An exact Read path is a semantic fact, not a keyword ambiguity."""
+    await state.init_test_database()
+    workspace = WorkspaceProfile(
+        jid="discord:channel:1",
+        name="Test",
+        folder="test-ws",
+        trigger="always",
+    )
+    deps = _Deps(workspace)
+    gate = SecurityGate(WorkspaceSecurity())
+    settings = make_settings(data_dir=tmp_path)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.get_gate_for_group",
+            return_value=gate,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
+            new_callable=AsyncMock,
+        ) as inspect_taint,
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+    ):
+        await registry.dispatch(
+            {
+                "type": "security:artifact_check",
+                "request_id": "artifact-structured-read",
+                "tool_name": "Read",
+                "file_access": True,
+                "rule_ids": ["CRED001"],
+                "taint_evidence": [
+                    {
+                        "rule_id": "CRED001",
+                        "artifact_kind": "path_read",
+                        "artifact_value": "/workspace/group/.env",
+                    }
+                ],
+            },
+            "test-ws",
+            False,
+            deps,
+        )
+
+    assert gate.policy.secret_tainted is True
+    inspect_taint.assert_not_awaited()
+    entries = await state.get_chat_history("discord:channel:1")
+    assert entries[0].metadata is not None
+    assert entries[0].metadata["decision"] == "credential_taint_confirmed_by_rule"
+
+
+@pytest.mark.asyncio
+async def test_missing_cop_taint_evidence_confirms_conservatively(tmp_path):
+    await state.init_test_database()
+    workspace = WorkspaceProfile(
+        jid="discord:channel:1",
+        name="Test",
+        folder="test-ws",
+        trigger="always",
+    )
+    deps = _Deps(workspace)
+    gate = SecurityGate(WorkspaceSecurity())
+    settings = make_settings(data_dir=tmp_path)
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.get_gate_for_group",
+            return_value=gate,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_artifact_security.inspect_secret_taint",
+            new_callable=AsyncMock,
+        ) as inspect_taint,
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+    ):
+        await registry.dispatch(
+            {
+                "type": "security:artifact_check",
+                "request_id": "artifact-missing-evidence",
+                "tool_name": "Read",
+                "file_access": True,
+                "rule_ids": ["CRED001"],
+            },
+            "test-ws",
+            False,
+            deps,
+        )
+
+    assert gate.policy.secret_tainted is True
+    inspect_taint.assert_not_awaited()
+    entries = await state.get_chat_history("discord:channel:1")
+    assert entries[0].metadata is not None
+    assert entries[0].metadata["decision"] == "credential_taint_confirmed_degraded"
 
 
 @pytest.mark.asyncio
@@ -503,9 +721,9 @@ async def test_artifact_check_broadcasts_approval_for_direct_package_source(tmp_
     assert deps.events[0].type is OutboundEventType.APPROVAL
 
 
-def test_credential_path_taints_even_when_workspace_profile_is_misconfigured():
+def test_confirmed_credential_path_taints_when_workspace_profile_is_misconfigured():
     gate = SecurityGate(WorkspaceSecurity(contains_secrets=False))
 
-    gate.notify_file_access(credential_access=True)
+    gate.confirm_credential_access()
 
     assert gate.policy.secret_tainted is True

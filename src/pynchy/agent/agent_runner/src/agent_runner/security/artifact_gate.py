@@ -8,7 +8,11 @@ from typing import Any
 
 from agent_runner.hooks import HookDecision
 from agent_runner.security.action_identity import current_guarded_action_id
-from agent_runner.security.artifacts import deterministic_findings, normalize_tool_request
+from agent_runner.security.artifacts import (
+    credential_taint_evidence,
+    deterministic_findings,
+    normalize_tool_request,
+)
 
 
 def _log(message: str) -> None:
@@ -20,6 +24,7 @@ async def _notify_host(
     tool_name: str,
     *,
     rule_ids: tuple[str, ...],
+    taint_evidence: tuple[dict[str, str], ...],
     packages: tuple[dict[str, str | bool | None], ...],
 ) -> HookDecision:
     from agent_runner.agent_tools._ipc_request import (  # noqa: PLC0415, PLC2701, RUF100 - avoid loading IPC until a file-capable tool runs.
@@ -32,6 +37,7 @@ async def _notify_host(
             {
                 "tool_name": tool_name,
                 "rule_ids": list(rule_ids),
+                "taint_evidence": list(taint_evidence),
                 "file_access": True,
                 "packages": list(packages),
             },
@@ -80,5 +86,13 @@ async def artifact_security_hook(tool_name: str, tool_input: dict[str, Any]) -> 
     return await _notify_host(
         tool_name,
         rule_ids=tuple(f.rule_id for f in findings),
+        taint_evidence=tuple(
+            {
+                "rule_id": "CRED001",
+                "artifact_kind": artifact.kind.value,
+                "artifact_value": artifact.value,
+            }
+            for artifact in credential_taint_evidence(request)
+        ),
         packages=tuple(package.to_wire() for package in request.packages),
     )
