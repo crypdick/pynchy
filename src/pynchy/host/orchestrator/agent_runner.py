@@ -38,25 +38,11 @@ from pynchy.host.orchestrator.agent_core_config import (
 from pynchy.host.orchestrator.agent_core_config import (
     session_model_mismatch as _session_model_mismatch,
 )
-from pynchy.host.orchestrator.host_execution import HostAgentTurnRequest, run_host_agent_turn
-from pynchy.host.orchestrator.host_execution import (
-    codex_thread_exists_in_host_runtime as _codex_thread_exists_in_host_runtime,
-)
-from pynchy.host.orchestrator.host_execution import host_agent_env_vars as _host_agent_env_vars
+from pynchy.host.orchestrator.host_agent_dispatch import run_host_execution as _run_host_execution
 from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_execution_cwd
-from pynchy.host.orchestrator.host_execution import (
-    migrate_host_codex_thread as _migrate_host_codex_thread,
-)
-from pynchy.host.orchestrator.host_execution import (
-    prepare_host_codex_home as _prepare_host_codex_home,
-)
-from pynchy.host.orchestrator.host_execution import (
-    prepare_host_direct_mcp_servers as _prepare_host_direct_mcp_servers,
-)
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
-from pynchy.plugins.agent_hooks import collect_agent_hook_specs, host_agent_hook_configs
 from pynchy.state import clear_session
 from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
 
@@ -315,6 +301,51 @@ async def _cold_start(
     )
 
 
+async def _run_scheduled_execution(
+    deps: AgentRunnerDeps,
+    group: WorkspaceProfile,
+    chat_jid: str,
+    messages: list[dict[str, Any]],
+    ctx: PreContainerResult,
+) -> str:
+    """Run one scheduled invocation in the profile's selected execution mode."""
+    ctx.session_id = None
+    host_cwd = _host_execution_cwd(group.folder)
+    if host_cwd is None:
+        # The one-shot container has a fresh provider home, so it cannot
+        # resume a durable interactive Codex rollout. Pynchy's in-flight turn
+        # supplies its own semantic recovery context when a task restarts.
+        logger.info(
+            "run_agent scheduled task (one-shot)",
+            group=group.name,
+            snapshot_ms=round(ctx.snapshot_ms),
+        )
+        return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
+
+    interrupted = False
+    try:
+        return await _run_host_execution(
+            deps,
+            group,
+            chat_jid,
+            messages,
+            ctx,
+            host_cwd,
+            build_container_input,
+            is_scheduled_task=True,
+        )
+    except asyncio.CancelledError:
+        interrupted = True
+        raise
+    except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"
+        logger.exception("Scheduled host task error", group=group.name)
+        return "error"
+    finally:
+        if not interrupted:
+            await clear_session(GroupFolder(group.folder))
+            deps.sessions.pop(group.folder, None)
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -337,8 +368,8 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
 
     This is the single public entry point for all agent invocations.
     Uses persistent sessions for interactive messages (warm path reuses an
-    existing container, cold path spawns one).  Scheduled tasks always
-    use one-shot containers.
+    existing container, cold path spawns one). Scheduled tasks use a fresh
+    one-shot invocation in the workspace profile's selected execution mode.
 
     Args:
         is_scheduled_task: Whether this is a scheduled task run.
@@ -371,18 +402,10 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     )
     ctx.turn_id = resolved_turn_id
 
-    # --- Scheduled tasks: one-shot container, no persistent session ---
+    # Resolve host mode before the scheduled container branch. Scheduled host
+    # jobs still use one-shot provider state and semantic checkpoint recovery.
     if is_scheduled_task:
-        # The one-shot container has a fresh provider home, so it cannot
-        # resume a durable interactive Codex rollout. Pynchy's in-flight turn
-        # supplies its own semantic recovery context when a task restarts.
-        ctx.session_id = None
-        logger.info(
-            "run_agent scheduled task (one-shot)",
-            group=group.name,
-            snapshot_ms=round(ctx.snapshot_ms),
-        )
-        return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
+        return await _run_scheduled_execution(deps, group, chat_jid, messages, ctx)
 
     # --- Interactive messages: warm/cold session path ---
     agent_core_config = _agent_core_config_from_settings(group.folder)
@@ -400,55 +423,15 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
 
     host_cwd = _host_execution_cwd(group.folder)
     if host_cwd is not None:
-        codex_home = _prepare_host_codex_home(group.folder, deps.plugin_manager)
-        _migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
-        if not _codex_thread_exists_in_host_runtime(ctx.session_id, codex_home=codex_home):
-            logger.info(
-                "Stored Codex session is not available to host runtime; starting fresh",
-                group=group.name,
-                session_id=ctx.session_id,
-            )
-            await destroy_session(group.folder)
-            await clear_session(GroupFolder(group.folder))
-            deps.sessions.pop(group.folder, None)
-            ctx.session_id = None
-        logger.info(
-            "run_agent host execution",
-            group=group.name,
-            cwd=str(host_cwd),
-            snapshot_ms=round(ctx.snapshot_ms),
-        )
-        input_data = build_container_input(
+        return await _run_host_execution(
+            deps,
+            group,
+            chat_jid,
             messages,
             ctx,
-            chat_jid,
-            group,
+            host_cwd,
+            build_container_input,
             is_scheduled_task=is_scheduled_task,
-        )
-        input_data.plugin_hooks = host_agent_hook_configs(
-            collect_agent_hook_specs(deps.plugin_manager)
-        )
-        await _prepare_host_direct_mcp_servers(
-            input_data,
-            group_folder=group.folder,
-            chat_jid=chat_jid,
-            broadcast_host_message=deps.broadcast_host_message,
-        )
-        return await run_host_agent_turn(
-            HostAgentTurnRequest(
-                input_data=input_data,
-                cwd=host_cwd,
-                on_output=ctx.wrapped_on_output,
-                timeout_seconds=ctx.config_timeout,
-                env=_host_agent_env_vars(
-                    is_admin=ctx.is_admin,
-                    group_folder=group.folder,
-                    codex_home=codex_home,
-                ),
-                queue=deps.queue,
-                chat_jid=chat_jid,
-                group_folder=group.folder,
-            )
         )
 
     session = get_session(GroupFolder(group.folder))
