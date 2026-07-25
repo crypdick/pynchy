@@ -16,6 +16,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
     reconcile_work_item,
     state_id,
+    submit_work_item_plan,
     transition_linked_work_item,
     update_issue_state,
     workspace_issue,
@@ -35,6 +36,7 @@ _WORKSPACE_REQUIRED = "source_group is required"
 _ISSUE_REQUIRED = "issue_id is required"
 _ACTIVE_EXECUTION_REQUIRED = "No Pynchy execution owns this Linear work item"
 _UNKNOWN_TRANSITION_REQUIRED = "No uncertain work-item transition needs reconciliation"
+_PLAN_REQUIRED = "plan is required"
 _DIRECT_USER_REQUIRED = "Human Approved and Rejected require a current direct-human instruction"
 _TERMINAL_USER_REQUIRED = "Only a current direct-human instruction can reopen terminal work"
 _HOST_MANAGED_STATUS = "In Progress is managed by the host execution lease"
@@ -117,6 +119,25 @@ async def handle_move_todo(data: dict[str, Any]) -> dict[str, object]:
         status,
         direct_user=direct_user,
     )
+
+
+async def handle_submit_plan(data: dict[str, Any]) -> dict[str, object]:
+    """Persist a plan without granting or beginning execution."""
+    workspace = _workspace(data)
+    issue_id = _required_str(data, "issue_id", _ISSUE_REQUIRED)
+    plan = _required_str(data, "plan", _PLAN_REQUIRED)
+    active = await get_active_work_item_execution(issue_id)
+    if active is not None:
+        return {
+            "error": "A claimed Linear work item cannot re-enter planning",
+            "result": {"work_item": work_item_execution_to_dict(active)},
+        }
+    try:
+        async with linear_client(workspace=workspace) as client:
+            updated = await submit_work_item_plan(client, workspace, issue_id, plan)
+    except (LinearError, ValueError) as exc:
+        return {"error": str(exc)}
+    return {"result": {"issue": _issue_projection(updated)}}
 
 
 def _move_request_error(status: str, *, direct_user: bool) -> str | None:

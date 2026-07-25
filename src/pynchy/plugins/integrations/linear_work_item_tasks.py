@@ -199,7 +199,7 @@ def _last_run_is_recent(task: ScheduledTask, observed_at: datetime) -> bool:
     return observed_at.astimezone(UTC) - last_run.astimezone(UTC) < _ORPHAN_RETRY_GRACE
 
 
-async def _ensure_task_active(
+async def ensure_task_active(
     task: ScheduledTask,
     *,
     observed_at: datetime,
@@ -318,7 +318,7 @@ async def _admit_in_progress_issue(
             task_id=_execution_task_id(issue, execution),
         ),
     )
-    active_task, admitted = await _ensure_task_active(task, observed_at=context.observed_at)
+    active_task, admitted = await ensure_task_active(task, observed_at=context.observed_at)
     await _bind_execution_task(execution, active_task)
     return active_task if admitted else None
 
@@ -342,7 +342,7 @@ async def _admit_follow_ups_issue(
         context.observed_at,
         _TaskAdmission(status=FOLLOW_UPS_STATUS, public_source=context.public_source),
     )
-    active_task, admitted = await _ensure_task_active(task, observed_at=context.observed_at)
+    active_task, admitted = await ensure_task_active(task, observed_at=context.observed_at)
     return active_task if admitted else None
 
 
@@ -376,7 +376,7 @@ async def _admit_human_approved_issue(
         return None
     if execution.status is not WorkItemExecutionStatus.IN_PROGRESS:
         return None
-    active_task, admitted = await _ensure_task_active(task, observed_at=context.observed_at)
+    active_task, admitted = await ensure_task_active(task, observed_at=context.observed_at)
     await _bind_execution_task(execution, active_task)
     return active_task if admitted else None
 

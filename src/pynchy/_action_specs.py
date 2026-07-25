@@ -159,6 +159,13 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         canary="linear.workspace.round.trip",
     ),
     agent_action(
+        "linear.todo.plan",
+        "linear",
+        "Persist a concrete Linear plan and request human plan approval.",
+        "linear_submit_plan",
+        canary="linear.workspace.round.trip",
+    ),
+    agent_action(
         "linear.todo.move",
         "linear",
         "Move a workspace Linear item within the caller's current authority.",

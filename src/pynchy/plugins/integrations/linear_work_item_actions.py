@@ -23,6 +23,7 @@ from pynchy.plugins.integrations.linear_work_items import (
     handle_list_work_items,
     handle_move_todo,
     handle_reconcile_work_item,
+    handle_submit_plan,
 )
 
 _ActionSpec = tuple[str, str, str, HostActionAccess, HostActionHandler]
@@ -35,6 +36,13 @@ def host_action_registration() -> HostActionRegistration:
 
 def _action_specs() -> tuple[_ActionSpec, ...]:
     return (
+        (
+            "linear_submit_plan",
+            "linear.todo.plan",
+            "Persist a concrete Linear plan and request human plan approval.",
+            HostActionAccess.WRITE,
+            handle_submit_plan,
+        ),
         (
             "linear_list_work_items",
             "linear.workitem.list",

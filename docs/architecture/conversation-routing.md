@@ -116,11 +116,12 @@ stores only the host-parsed prompt, readable control title, and closed event
 metadata needed to wake the agent. Raw provider shapes do not cross the routing
 boundary.
 
-An issue update that acquires or confirms an active work-item execution lease
-is the exception: the Linear integration records it as controller-owned instead
-of creating a conversation delivery. A Temporal-reconciled isolated task owns
-that execution, so the generic issue conversation cannot start a second agent
-against the same lease. Comment events remain ordered conversation input.
+An issue update that requests planning, waits for plan approval, or acquires or
+confirms an active execution lease is the exception: the Linear integration
+records it as controller-owned instead of creating a conversation delivery. A
+Temporal-reconciled isolated task owns planning or execution, so the generic
+issue conversation cannot start a second agent against the same work. Comment
+events remain ordered conversation input.
 
 Webhook admission persists the receipt before linking the FIFO delivery. An
 exact provider replay always attempts the link again, which repairs a crash

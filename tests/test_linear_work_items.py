@@ -44,6 +44,11 @@ class FakeLinearState:
         state_id = variables.get("state_id")
         if not isinstance(state_id, str):
             raise TypeError("test client only supports issue state updates")
+        description = variables.get("description")
+        if description is not None:
+            if not isinstance(description, str):
+                raise TypeError("test plan description must be text")
+            self.issue["description"] = description
         self.issue["state"] = _state(state_id)
         self.issue["updatedAt"] = "2026-07-25T17:00:00+00:00"
         if self.fail_after_update:
@@ -75,6 +80,16 @@ def _state(state_id: str) -> dict[str, str]:
             "id": "state-agent-proposed",
             "name": "Agent Proposed",
             "type": "backlog",
+        },
+        "state-ready-for-planning": {
+            "id": "state-ready-for-planning",
+            "name": "Ready for Planning",
+            "type": "unstarted",
+        },
+        "state-awaiting-plan-approval": {
+            "id": "state-awaiting-plan-approval",
+            "name": "Awaiting Plan Approval",
+            "type": "unstarted",
         },
         "state-human-approved": {
             "id": "state-human-approved",
@@ -129,6 +144,8 @@ def _board() -> LinearWorkspaceBoard:
         project={"id": "project-1", "name": "Pynchy"},
         states={
             "agent_proposed": _state("state-agent-proposed"),
+            "ready_for_planning": _state("state-ready-for-planning"),
+            "awaiting_plan_approval": _state("state-awaiting-plan-approval"),
             "human_approved": _state("state-human-approved"),
             "in_progress": _state("state-in-progress"),
             "awaiting_review": _state("state-awaiting-review"),
@@ -216,6 +233,44 @@ async def _begin_turn(*, input_source: str = "user") -> None:
             input_source=input_source,
         )
     )
+
+
+@pytest.mark.action("linear.todo.plan")
+async def test_submit_plan_persists_markdown_and_waits_for_human_approval(
+    lifecycle: Lifecycle,
+) -> None:
+    lifecycle.state.issue["state"] = _state("state-ready-for-planning")
+    lifecycle.state.issue["description"] = "Acceptance criteria from the user."
+
+    result = await _call(
+        lifecycle,
+        "linear_submit_plan",
+        "plan-1",
+        issue_id="issue-1",
+        plan="1. Add the failing test.\n2. Implement the behavior.\n3. Run the full gate.",
+    )
+
+    issue = result["result"]["issue"]
+    assert issue["state"]["name"] == "Awaiting Plan Approval"
+    assert lifecycle.state.issue["description"].startswith("Acceptance criteria from the user.")
+    assert "<!-- pynchy.plan:start -->" in lifecycle.state.issue["description"]
+    assert "1. Add the failing test." in lifecycle.state.issue["description"]
+    assert "<!-- pynchy.plan:end -->" in lifecycle.state.issue["description"]
+    assert await get_active_work_item_execution("issue-1") is None
+
+
+async def test_submit_plan_requires_ready_for_planning(
+    lifecycle: Lifecycle,
+) -> None:
+    result = await _call(
+        lifecycle,
+        "linear_submit_plan",
+        "plan-1",
+        issue_id="issue-1",
+        plan="A concrete plan.",
+    )
+
+    assert result == {"error": "Linear work item must be Ready for Planning before planning"}
 
 
 async def test_host_lease_persists_before_moving_to_in_progress(

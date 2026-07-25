@@ -8,7 +8,11 @@ import aiohttp
 
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_client import LinearError
-from pynchy.plugins.integrations.linear_statuses import HUMAN_APPROVED_STATUS
+from pynchy.plugins.integrations.linear_statuses import (
+    AWAITING_PLAN_APPROVAL_STATUS,
+    HUMAN_APPROVED_STATUS,
+    READY_FOR_PLANNING_STATUS,
+)
 from pynchy.plugins.integrations.linear_work_item_completion import (
     complete_reviewed_work_item,
 )
@@ -41,9 +45,9 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
             await complete_reviewed_work_item(workspace, event.subject_id, event.delivery_id)
             return event
         if await _controller_owns_event(event, workspace):
-            # The periodic controller owns authorized execution. Admitting this
-            # issue update as an ordinary conversation turn would race a second
-            # agent against the same lease.
+            # The periodic controller owns planning and authorized execution.
+            # Admitting the same issue update as an ordinary conversation turn
+            # would race a second agent against that durable task.
             return replace(
                 event,
                 instructions=None,
@@ -68,6 +72,12 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
     async with linear_client(workspace=workspace) as client:
         issue, board = await workspace_issue(client, workspace, event.subject_id)
         current_state_id = state_id(issue)
+        planning_state_ids = {
+            state_id(board.states[READY_FOR_PLANNING_STATUS]),
+            state_id(board.states[AWAITING_PLAN_APPROVAL_STATUS]),
+        }
+        if current_state_id in planning_state_ids:
+            return True
         approved_state_id = state_id(board.states[HUMAN_APPROVED_STATUS])
         in_progress_state_id = state_id(board.states["in_progress"])
         existing = await get_active_work_item_execution(event.subject_id)

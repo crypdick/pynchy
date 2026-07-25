@@ -31,6 +31,23 @@ def _issue_schema(*, include_status: bool = False) -> dict[str, object]:
 
 
 register_ipc_tool(
+    name="linear_submit_plan",
+    description=(
+        "Persist a concrete Markdown plan for a Ready for Planning Linear item and move it "
+        "to Awaiting Plan Approval. This does not authorize or begin execution."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "issue_id": {"type": "string", "minLength": 1},
+            "plan": {"type": "string", "minLength": 1},
+        },
+        "required": ["issue_id", "plan"],
+        "additionalProperties": False,
+    },
+)
+
+register_ipc_tool(
     name="linear_list_work_items",
     description="List durable Linear execution leases and outcomes for this workspace.",
     input_schema={"type": "object", "properties": {}, "additionalProperties": False},
