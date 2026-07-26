@@ -366,6 +366,8 @@ class ScheduledTask:
     last_reset_occurrence: str | None = None
     occurrence_generation: int = 0
     occurrence_due_at: str | None = None
+    superseded_occurrence_generation: int | None = None
+    superseded_occurrence_due_at: str | None = None
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.

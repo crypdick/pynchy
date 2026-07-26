@@ -25,9 +25,9 @@ from pynchy.host.git_ops.repo import repo_host_root
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
     agent_task_occurrence_due_at,
+    agent_task_occurrence_workflow_id,
     agent_task_schedule_id,
     agent_task_workflow_id,
-    agent_task_workflow_prefix,
     canary_schedule_id,
     channel_reconciliation_schedule_id,
     config_host_cron_schedule_id,
@@ -288,19 +288,27 @@ async def _cancel_superseded_resumed_agent_workflows(
 ) -> set[str]:
     """Cancel an older running occurrence before starting an explicit resume."""
     once_tasks = [task for task in tasks if task.schedule_type == "once"]
-    resumed_tasks = {
-        task.id: task
-        for task in once_tasks
-        if task.status == "active" and task.occurrence_generation > 0
-    }
-    if not resumed_tasks:
+    superseded_owners: dict[str, list[ScheduledTask]] = {}
+    for task in once_tasks:
+        if (
+            task.status != "active"
+            or task.superseded_occurrence_due_at is None
+            or task.superseded_occurrence_generation is None
+        ):
+            continue
+        workflow_id = agent_task_occurrence_workflow_id(
+            task.id,
+            task.superseded_occurrence_due_at,
+            task.superseded_occurrence_generation,
+        )
+        superseded_owners.setdefault(workflow_id, []).append(task)
+    if not superseded_owners:
         return set()
 
-    prefixes = sorted(
-        ((agent_task_workflow_prefix(task.id), task) for task in once_tasks),
-        key=lambda item: len(item[0]),
-        reverse=True,
-    )
+    current_owners: dict[str, set[str]] = {}
+    for task in once_tasks:
+        current_owners.setdefault(agent_task_workflow_id(task), set()).add(task.id)
+
     client_any = cast("Any", client)
     workflow_iter: object = client_any.list_workflows('ExecutionStatus = "Running"')
     if inspect.isawaitable(workflow_iter):
@@ -309,21 +317,26 @@ async def _cancel_superseded_resumed_agent_workflows(
     async for execution in cast("Any", workflow_iter):
         if execution.workflow_type != ScheduledAgentTaskWorkflow.__name__:
             continue
-        owner = next(
-            (task for prefix, task in prefixes if execution.id.startswith(prefix)),
-            None,
-        )
-        if owner is None or owner.id not in resumed_tasks:
+        owners = superseded_owners.get(execution.id, [])
+        if not owners:
             continue
-        if execution.id == agent_task_workflow_id(owner):
+
+        # A generation-zero ID may normalize two distinct task IDs to the same
+        # value. Never cancel or block on ambiguous ownership: resumed
+        # generations use digested IDs and can safely make progress independently.
+        if len(owners) != 1:
             continue
+        owner = owners[0]
+        if current_owners.get(execution.id, set()) - {owner.id}:
+            continue
+
+        deferred.add(owner.id)
         handle = client_any.get_workflow_handle(execution.id, run_id=execution.run_id)
         try:
             await handle.cancel()
         except RPCError as exc:
             if exc.status != RPCStatusCode.NOT_FOUND:
                 raise
-        deferred.add(owner.id)
     return deferred
 
 

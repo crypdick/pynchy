@@ -38,6 +38,8 @@ def _row_to_task(row: Row) -> ScheduledTask:
         last_reset_occurrence=row["last_reset_occurrence"] or None,
         occurrence_generation=row["occurrence_generation"],
         occurrence_due_at=row["occurrence_due_at"] or None,
+        superseded_occurrence_generation=row["superseded_occurrence_generation"],
+        superseded_occurrence_due_at=row["superseded_occurrence_due_at"] or None,
     )
 
 
@@ -68,8 +70,9 @@ async def create_task(task: ScheduledTask) -> None:
              schedule_value, session_policy, next_run, status, created_at,
              repo_access, input_source, config_job_name, derived_thread_name,
              bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
-             occurrence_generation, occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
+             superseded_occurrence_due_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -92,6 +95,8 @@ async def create_task(task: ScheduledTask) -> None:
             task.last_reset_occurrence,
             task.occurrence_generation,
             task.occurrence_due_at,
+            task.superseded_occurrence_generation,
+            task.superseded_occurrence_due_at,
         ),
     )
     await db.commit()
@@ -107,8 +112,9 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
              schedule_value, session_policy, next_run, status, created_at,
              repo_access, input_source, config_job_name, derived_thread_name,
              bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
-             occurrence_generation, occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
+             superseded_occurrence_due_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -131,6 +137,8 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             task.last_reset_occurrence,
             task.occurrence_generation,
             task.occurrence_due_at,
+            task.superseded_occurrence_generation,
+            task.superseded_occurrence_due_at,
         ),
     )
     await db.commit()
@@ -214,6 +222,15 @@ async def resume_task(task_id: str) -> None:
             """
             UPDATE scheduled_tasks
             SET status = 'active',
+                superseded_occurrence_due_at = CASE
+                    WHEN schedule_type = 'once'
+                    THEN COALESCE(occurrence_due_at, schedule_value)
+                    ELSE superseded_occurrence_due_at
+                END,
+                superseded_occurrence_generation = CASE
+                    WHEN schedule_type = 'once' THEN occurrence_generation
+                    ELSE superseded_occurrence_generation
+                END,
                 occurrence_due_at = CASE
                     WHEN schedule_type = 'once' THEN ?
                     ELSE occurrence_due_at

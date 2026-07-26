@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     conversation_id TEXT,
     last_reset_occurrence TEXT,
     occurrence_generation INTEGER NOT NULL DEFAULT 0,
-    occurrence_due_at TEXT
+    occurrence_due_at TEXT,
+    superseded_occurrence_generation INTEGER,
+    superseded_occurrence_due_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);

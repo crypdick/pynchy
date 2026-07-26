@@ -56,6 +56,8 @@ def _row_to_task(row: Row | None) -> ScheduledTask | None:
         last_reset_occurrence=row["last_reset_occurrence"] or None,
         occurrence_generation=row["occurrence_generation"],
         occurrence_due_at=row["occurrence_due_at"] or None,
+        superseded_occurrence_generation=row["superseded_occurrence_generation"],
+        superseded_occurrence_due_at=row["superseded_occurrence_due_at"] or None,
     )
 
 
@@ -121,8 +123,9 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
              schedule_value, session_policy, next_run, status, created_at,
              repo_access, input_source, config_job_name, derived_thread_name,
              bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
-             occurrence_generation, occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
+             superseded_occurrence_due_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -145,6 +148,8 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
             task.last_reset_occurrence,
             task.occurrence_generation,
             task.occurrence_due_at,
+            task.superseded_occurrence_generation,
+            task.superseded_occurrence_due_at,
         ),
     )
 

@@ -1074,6 +1074,8 @@ class TestTaskAdvanced:
         assert resumed.schedule_value == original.schedule_value
         assert resumed.occurrence_due_at == resumed_at
         assert resumed.occurrence_generation == 1
+        assert resumed.superseded_occurrence_due_at == original.schedule_value
+        assert resumed.superseded_occurrence_generation == 0
         assert resumed.repo_access == original.repo_access
         assert resumed.conversation_id == original.conversation_id
         resumed_workflow_id = agent_task_workflow_id(resumed)
@@ -1097,6 +1099,8 @@ class TestTaskAdvanced:
         assert resumed_again.schedule_value == original.schedule_value
         assert resumed_again.occurrence_due_at == resumed_at
         assert resumed_again.occurrence_generation == 2
+        assert resumed_again.superseded_occurrence_due_at == resumed_at
+        assert resumed_again.superseded_occurrence_generation == 1
         assert agent_task_workflow_id(resumed_again) != resumed_workflow_id
         assert agent_task_workflow_id(resumed_again).endswith("-resume-2")
 
@@ -1119,6 +1123,8 @@ class TestTaskAdvanced:
         assert unchanged.schedule_value == completed.schedule_value
         assert unchanged.occurrence_generation == 0
         assert unchanged.occurrence_due_at is None
+        assert unchanged.superseded_occurrence_generation is None
+        assert unchanged.superseded_occurrence_due_at is None
         assert await get_task_run_logs(completed.id) == []
 
     async def test_create_task_with_repo_access(self):
@@ -1575,10 +1581,11 @@ class TestEnsureColumns:
         await create_schema(db)
 
         cursor = await db.execute(
-            "SELECT occurrence_generation, occurrence_due_at "
+            "SELECT occurrence_generation, occurrence_due_at, "
+            "superseded_occurrence_generation, superseded_occurrence_due_at "
             "FROM scheduled_tasks WHERE id = 'legacy-once'"
         )
-        assert await cursor.fetchone() == (0, None)
+        assert await cursor.fetchone() == (0, None, None, None)
         await db.close()
 
     async def test_adds_missing_column_to_existing_table(self):
