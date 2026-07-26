@@ -5,6 +5,10 @@ Extracted from app.py to keep the orchestrator focused on wiring.
 
 from __future__ import annotations
 
+from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves teardown strategy annotations at runtime.
+    Awaitable,
+    Callable,
+)
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -50,7 +54,7 @@ class ContextResetDeps(Protocol):
 
 
 @runtime_checkable
-class SessionDeps(ContextResetDeps, Protocol):
+class SessionDeps(Protocol):
     """Dependencies for the complete session lifecycle."""
 
     @property
@@ -74,6 +78,11 @@ class SessionDeps(ContextResetDeps, Protocol):
     def emit(self, event: Event) -> None: ...
 
 
+@runtime_checkable
+class ResetSessionDeps(SessionDeps, ContextResetDeps, Protocol):
+    """Session collaborators that also participate in destructive reset."""
+
+
 async def clear_durable_context(
     deps: ContextResetDeps,
     group: WorkspaceProfile,
@@ -92,31 +101,36 @@ async def _teardown_group(
     chat_jid: str,
     timestamp: str,
     *,
-    clear_context: bool = False,
+    reset_context: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Shared teardown for context reset and end session.
 
     Destroys the persistent session, stops containers, advances the cursor, and
-    persists state. When *clear_context* is True, also wipes the session from
-    memory and DB (full context reset).
+    persists state. A reset action composes plugin settlement and durable
+    cleanup into that shared teardown sequence.
     """
-    logger.info("teardown_trace", step="start", group=group.name, clear_context=clear_context)
+    logger.info(
+        "teardown_trace",
+        step="start",
+        group=group.name,
+        resets_context=reset_context is not None,
+    )
 
-    if clear_context:
+    if reset_context is not None:
         await deps.queue.stop_active_process_for_control(RuntimeId(group.folder))
     else:
         create_background_task(
             destroy_session(group.folder),
             name=f"destroy-session-{group.folder}",
         )
-    if clear_context:
+    if reset_context is not None:
         logger.info("teardown_trace", step="clear_session_start", group=group.name)
-        await clear_durable_context(deps, group)
+        await reset_context()
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
     runtime_id = RuntimeId(group.folder)
     deps.queue.clear_pending_tasks(runtime_id)
-    if not clear_context:
+    if reset_context is None:
         create_background_task(
             deps.queue.stop_active_process(runtime_id),
             name=f"stop-container-{chat_jid[:20]}",
@@ -127,7 +141,7 @@ async def _teardown_group(
 
 
 async def handle_context_reset(
-    deps: SessionDeps,
+    deps: ResetSessionDeps,
     chat_jid: str,
     group: WorkspaceProfile,
     timestamp: str,
@@ -140,7 +154,7 @@ async def handle_context_reset(
         group,
         chat_jid,
         timestamp,
-        clear_context=True,
+        reset_context=lambda: clear_durable_context(deps, group),
     )
     logger.info("teardown_trace", step="send_clear_confirmation_start", group=group.name)
     await send_clear_confirmation(deps, chat_jid, source_message=source_message)
@@ -148,7 +162,7 @@ async def handle_context_reset(
 
 
 async def handle_scheduled_context_reset(
-    deps: SessionDeps,
+    deps: ResetSessionDeps,
     task_id: str,
     group: WorkspaceProfile,
     occurrence_id: str,

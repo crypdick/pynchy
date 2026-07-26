@@ -124,7 +124,7 @@ async def test_scheduled_reset_settles_plugins_before_destructive_cleanup() -> N
         folder="test",
         trigger="@pynchy",
     )
-    deps = MagicMock(spec=session_handler.SessionDeps)
+    deps = MagicMock(spec=session_handler.ResetSessionDeps)
     deps.prepare_context_reset = AsyncMock(side_effect=RuntimeError("not settled"))
 
     with (
@@ -158,7 +158,7 @@ async def test_manual_reset_stops_worker_before_plugin_settlement() -> None:
         trigger="@pynchy",
     )
     events: list[str] = []
-    deps = MagicMock(spec=session_handler.SessionDeps)
+    deps = MagicMock(spec=session_handler.ResetSessionDeps)
     deps.queue.stop_active_process_for_control = AsyncMock(
         side_effect=lambda _runtime_id: events.append("stopped")
     )
