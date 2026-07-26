@@ -35,6 +35,8 @@ jobs:
           enable-cache: true
       - name: Install Python dependencies
         run: uv sync --locked --all-groups
+      - name: Check architecture boundaries
+        run: uv run prek run check-architecture-boundaries --all-files
       - name: Check semantic action coverage
         run: uv run python scripts/prek_hooks/check_action_coverage.py
       - name: Run Python tests

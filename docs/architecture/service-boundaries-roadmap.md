@@ -450,10 +450,44 @@ but the policy must name those roots explicitly.
 
 ## Delivery roadmap
 
-Track each implementation slice as a repository work item in Linear. This
-roadmap defines direction and acceptance criteria; it does not turn later
-phases into one giant authorized change. Phase 0 and Phase 1 may proceed in
-parallel because the AgentEvent defect has independent correctness impact.
+Track implementation slices in the current work log below. This roadmap
+defines direction and acceptance criteria; it does not turn later phases into
+one giant authorized change. Phase 0 and Phase 1 may proceed in parallel
+because the AgentEvent defect has independent correctness impact.
+
+### Current work log
+
+The blocking checker, policy, exact baseline, `prek` hook, required CI step,
+and code-owner protection are implemented. The policy currently records 333
+exact baseline entries containing 463 import occurrences. The aggregate report
+below is a review aid; `architecture-baseline.toml` remains the exact,
+machine-checked authority.
+
+| Importing component | Occurrences | Imported components |
+|---|---:|---|
+| `application` | 167 | `canary_adapter` 2, `config` 56, `container_adapter` 37, `git_adapter` 13, `host_adapter` 1, `integration_adapter` 2, `learning_adapter` 6, `state_adapter` 40, `temporal_adapter` 10 |
+| `canary_adapter` | 21 | `config` 3, `container_adapter` 11, `git_adapter` 1, `integration_adapter` 5, `state_adapter` 1 |
+| `channel_adapter` | 31 | `application` 6, `config` 19, `container_adapter` 1, `host_adapter` 3, `state_adapter` 2 |
+| `config` | 2 | `integration_adapter` 2 |
+| `container_adapter` | 92 | `application` 13, `config` 43, `git_adapter` 8, `host_adapter` 1, `integration_adapter` 1, `learning_adapter` 5, `runtime_adapter` 7, `state_adapter` 11, `temporal_adapter` 3 |
+| `domain` | 2 | `application` 1, `config` 1 |
+| `extension_api` | 7 | `config` 6, `runtime_adapter` 1 |
+| `git_adapter` | 9 | `application` 1, `config` 7, `container_adapter` 1 |
+| `host_adapter` | 1 | `config` 1 |
+| `integration_adapter` | 58 | `application` 7, `computer_use_adapter` 2, `config` 31, `container_adapter` 4, `state_adapter` 12, `temporal_adapter` 2 |
+| `learning_adapter` | 10 | `application` 1, `config` 6, `container_adapter` 1, `runtime_adapter` 1, `temporal_adapter` 1 |
+| `memory_adapter` | 1 | `config` 1 |
+| `observer_adapter` | 3 | `container_adapter` 2, `state_adapter` 1 |
+| `ports` | 5 | `application` 2, `container_adapter` 3 |
+| `runtime_adapter` | 5 | `config` 2, `container_adapter` 3 |
+| `state_adapter` | 2 | `config` 2 |
+| `temporal_adapter` | 47 | `application` 22, `canary_adapter` 1, `config` 7, `git_adapter` 5, `integration_adapter` 2, `learning_adapter` 5, `state_adapter` 5 |
+
+The first completed ratchet slice introduced `StateRuntimeConfig`, passed the
+resolved SQLite path from the lifecycle composition root, verified schema
+initialization through the public state API, removed the
+`pynchy.state.connection` to `config` baseline entry, and left the allowed
+dependency graph unchanged.
 
 ### Phase 0: Encode the target and stop new debt
 

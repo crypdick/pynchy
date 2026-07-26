@@ -69,6 +69,7 @@ from pynchy.state import (
     recover_incomplete_webhook_effects,
     store_chat_metadata,
 )
+from pynchy.state.connection import StateRuntimeConfig
 from pynchy.types import NewMessage, OutboundEvent, OutboundEventType
 from pynchy.utils import create_background_task
 
@@ -178,7 +179,7 @@ async def _initialize_core(app: PynchyApp) -> None:
 
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
-    await init_database()
+    await init_database(StateRuntimeConfig(database_path=get_settings().data_dir / "messages.db"))
     await prepare_conversation_runtime_ownership_recovery()
     # A crash can leave an external write without a receipt. Recovery fails closed
     # rather than replaying that side effect.

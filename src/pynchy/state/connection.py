@@ -13,12 +13,19 @@ from collections.abc import (
 )
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Any
 
 import aiosqlite
 
-from pynchy.config import get_settings
 from pynchy.state.schema import create_schema
+
+
+@dataclass(frozen=True, slots=True)
+class StateRuntimeConfig:
+    """Resolved host values required to initialize state."""
+
+    database_path: Path
 
 
 @dataclass(slots=True)
@@ -124,9 +131,9 @@ async def _update_by_id(
     await db.commit()
 
 
-async def init_database() -> None:
+async def init_database(config: StateRuntimeConfig) -> None:
     """Initialize the database connection and schema."""
-    db_path = get_settings().data_dir / "messages.db"
+    db_path = config.database_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     db = await aiosqlite.connect(str(db_path))

@@ -1,0 +1,266 @@
+version = 1
+default_violation_guidance = "Move the shared semantic contract inward or inject a narrow capability from a named composition root."
+
+# Source modules must match exactly one component. The nested agent runner is a
+# separate first-party runtime even though its checkout lives beneath pynchy.
+source_roots = [
+  { path = "src/pynchy", module = "pynchy", exclude = ["agent/agent_runner/**"] },
+  { path = "src/pynchy/agent/agent_runner/src/agent_runner", module = "agent_runner" },
+]
+
+# Only these modules may select and wire concrete implementations.
+composition_roots = [
+  "pynchy.__main__",
+  "pynchy.host.orchestrator.app",
+  "pynchy.host.orchestrator.dep_factory",
+  "pynchy.host.orchestrator.lifecycle",
+]
+
+[[components]]
+name = "foundation"
+module_patterns = [
+  "pynchy",
+  "pynchy.agent",
+  "pynchy.host",
+  "pynchy._runtime_typing",
+  "pynchy.logger",
+  "pynchy.utils",
+]
+allowed_dependencies = []
+violation_guidance = "Foundation code must not become an outward dependency; move the required stable contract into the foundation or domain component."
+
+[[components]]
+name = "domain"
+module_patterns = [
+  "pynchy.action_intents",
+  "pynchy.conversation.**",
+  "pynchy.deployment_types",
+  "pynchy.security_canary_ids",
+  "pynchy.session_policy",
+  "pynchy.types",
+  "pynchy.webhook_effects",
+]
+allowed_dependencies = ["foundation"]
+violation_guidance = "Move the shared semantic type or invariant into the domain component without importing outward behavior."
+
+[[components]]
+name = "extension_api"
+module_patterns = [
+  "pynchy._action_contract",
+  "pynchy._action_spec_helpers",
+  "pynchy._action_specs",
+  "pynchy._action_specs_computer_use",
+  "pynchy._action_specs_core",
+  "pynchy._action_specs_gog",
+  "pynchy.actions",
+  "pynchy.capabilities",
+  "pynchy.event_bus",
+  "pynchy.plugins",
+  "pynchy.plugins.agent_hooks",
+  "pynchy.plugins.channel_runtime",
+  "pynchy.plugins.connections",
+  "pynchy.plugins.contracts",
+  "pynchy.plugins.hookspecs",
+  "pynchy.plugins.host_actions",
+  "pynchy.plugins.memory",
+  "pynchy.plugins.memory._api",
+  "pynchy.plugins.observers",
+  "pynchy.plugins.observers._api",
+  "pynchy.plugins.registry",
+  "pynchy.plugins.session_lifecycle",
+  "pynchy.plugins.speech",
+  "pynchy.plugins.speech._api",
+  "pynchy.plugins.tunnels",
+  "pynchy.plugins.tunnels._api",
+  "pynchy.plugins.computer_use",
+  "pynchy.plugins.computer_use.contract",
+  "pynchy.plugins.computer_use.models",
+  "pynchy.plugins.webhooks",
+]
+allowed_dependencies = ["domain", "foundation"]
+violation_guidance = "Depend on the inward-facing plugin contract, or move the missing extension contract into this component."
+
+[[components]]
+name = "ports"
+module_patterns = [
+  "pynchy.host.orchestrator.messaging.deps",
+  "pynchy.host.orchestrator.scheduled_turn_deps",
+  "pynchy.host.orchestrator.scheduler_deps",
+]
+allowed_dependencies = ["domain", "extension_api", "foundation"]
+violation_guidance = "Depend on a use-case-owned port and wire its concrete implementation in a named composition root."
+
+[[components]]
+name = "config"
+module_patterns = ["pynchy.config.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation"]
+violation_guidance = "Inject only the resolved configuration values the importer needs from a named composition root."
+
+[[components]]
+name = "application"
+module_patterns = ["pynchy.*", "pynchy.host.orchestrator.**"]
+exclude_patterns = [
+  "pynchy.agent",
+  "pynchy._action_contract",
+  "pynchy._action_spec_helpers",
+  "pynchy._action_specs",
+  "pynchy._action_specs_computer_use",
+  "pynchy._action_specs_core",
+  "pynchy._action_specs_gog",
+  "pynchy._runtime_typing",
+  "pynchy.action_intents",
+  "pynchy.actions",
+  "pynchy.canaries",
+  "pynchy.capabilities",
+  "pynchy.config",
+  "pynchy.conversation",
+  "pynchy.deployment_types",
+  "pynchy.google_mcp_canaries",
+  "pynchy.event_bus",
+  "pynchy.logger",
+  "pynchy.operational_canaries",
+  "pynchy.security_canaries",
+  "pynchy.security_canaries_artifact",
+  "pynchy.security_canary_ids",
+  "pynchy.session_policy",
+  "pynchy.types",
+  "pynchy.utils",
+  "pynchy.webhook_effects",
+  "pynchy.host.orchestrator.messaging.deps",
+  "pynchy.host.orchestrator.scheduled_turn_deps",
+  "pynchy.host.orchestrator.scheduler_deps",
+  "pynchy.host.orchestrator.temporal.**",
+  "pynchy.host",
+  "pynchy.plugins",
+  "pynchy.state",
+]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
+
+[[components]]
+name = "state_adapter"
+module_patterns = ["pynchy.state.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
+
+[[components]]
+name = "container_adapter"
+module_patterns = ["pynchy.host.container_manager.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use a use-case-owned execution or container capability port and wire this adapter at composition."
+
+[[components]]
+name = "temporal_adapter"
+module_patterns = ["pynchy.host.orchestrator.temporal.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use an application scheduling port; keep Temporal workflow and activity implementations behind it."
+
+[[components]]
+name = "git_adapter"
+module_patterns = ["pynchy.host.git_ops.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use a use-case-owned source-control port and wire the Git implementation at composition."
+
+[[components]]
+name = "learning_adapter"
+module_patterns = ["pynchy.host.learning.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use a use-case-owned learning capability port and wire the concrete adapter at composition."
+
+[[components]]
+name = "host_adapter"
+module_patterns = ["pynchy.host.*"]
+exclude_patterns = [
+  "pynchy.host.container_manager",
+  "pynchy.host.git_ops",
+  "pynchy.host.learning",
+  "pynchy.host.orchestrator",
+]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use a use-case-owned host capability port and wire the concrete adapter at composition."
+
+[[components]]
+name = "channel_adapter"
+module_patterns = ["pynchy.plugins.channels.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use an inbound or delivery port; channel adapters must not become sibling application services."
+
+[[components]]
+name = "integration_adapter"
+module_patterns = ["pynchy.plugins.integrations.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use an integration-neutral application port instead of importing this concrete integration."
+
+[[components]]
+name = "memory_adapter"
+module_patterns = ["pynchy.plugins.memory.**"]
+exclude_patterns = ["pynchy.plugins.memory", "pynchy.plugins.memory._api"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the plugin memory contract and select the concrete memory adapter at composition."
+
+[[components]]
+name = "observer_adapter"
+module_patterns = ["pynchy.plugins.observers.**"]
+exclude_patterns = ["pynchy.plugins.observers", "pynchy.plugins.observers._api"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the plugin observer contract and select the concrete observer adapter at composition."
+
+[[components]]
+name = "runtime_adapter"
+module_patterns = ["pynchy.plugins.runtimes.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the runtime provider contract and select the platform adapter at composition."
+
+[[components]]
+name = "speech_adapter"
+module_patterns = ["pynchy.plugins.speech.**"]
+exclude_patterns = ["pynchy.plugins.speech", "pynchy.plugins.speech._api"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the plugin speech contract and select the concrete synthesizer at composition."
+
+[[components]]
+name = "tunnel_adapter"
+module_patterns = ["pynchy.plugins.tunnels.**"]
+exclude_patterns = ["pynchy.plugins.tunnels", "pynchy.plugins.tunnels._api"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the plugin tunnel contract and select the concrete tunnel provider at composition."
+
+[[components]]
+name = "agent_core_adapter"
+module_patterns = ["pynchy.plugins.agent_cores.**"]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the agent-core plugin contract and select the concrete provider at composition."
+
+[[components]]
+name = "computer_use_adapter"
+module_patterns = ["pynchy.plugins.computer_use.**"]
+exclude_patterns = [
+  "pynchy.plugins.computer_use",
+  "pynchy.plugins.computer_use.contract",
+  "pynchy.plugins.computer_use.models",
+]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Use the computer-use provider contract and select the concrete backend at composition."
+
+[[components]]
+name = "canary_adapter"
+module_patterns = [
+  "pynchy.canaries",
+  "pynchy.google_mcp_canaries",
+  "pynchy.operational_canaries",
+  "pynchy.security_canaries",
+  "pynchy.security_canaries_artifact",
+]
+allowed_dependencies = ["domain", "extension_api", "foundation", "ports"]
+violation_guidance = "Inject the canary's required capabilities instead of importing concrete operational adapters."
+
+[[components]]
+name = "agent_assets"
+module_patterns = ["pynchy.agent.scripts.**"]
+allowed_dependencies = ["foundation"]
+
+[[components]]
+name = "agent_runner"
+module_patterns = ["agent_runner.**"]
+allowed_dependencies = []
+violation_guidance = "Cross this separate runtime only through its serialized input and output wire contract."
