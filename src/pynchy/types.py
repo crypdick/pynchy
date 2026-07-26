@@ -271,6 +271,7 @@ class WorkItemExecution:
     handoff_to: str | None
     evidence_refs: tuple[str, ...]
     requester_delivery_status: str
+    requester_delivery_turn_id: str | None
     requester_delivery_error: str | None
     requester_delivered_at: str | None
     created_at: str

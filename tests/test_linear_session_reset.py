@@ -55,6 +55,7 @@ def _execution() -> WorkItemExecution:
         handoff_to=None,
         evidence_refs=(),
         requester_delivery_status="not_required",
+        requester_delivery_turn_id=None,
         requester_delivery_error=None,
         requester_delivered_at=None,
         created_at="2026-07-25T00:00:00Z",

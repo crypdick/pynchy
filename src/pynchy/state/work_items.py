@@ -141,6 +141,7 @@ async def create_work_item_claim(request: WorkItemClaimRequest) -> WorkItemExecu
         handoff_to=None,
         evidence_refs=(),
         requester_delivery_status="not_requested",
+        requester_delivery_turn_id=None,
         requester_delivery_error=None,
         requester_delivered_at=None,
         created_at=now,
@@ -178,9 +179,9 @@ async def _persist_work_item_claim(
                 turn_id, task_id, attempt, flow_id, temporal_workflow_id, initiated_by,
                 observed_state_id, observed_state_name, observed_updated_at, status,
                 summary, blocker, handoff_to, evidence_refs, requester_delivery_status,
-                requester_delivery_error, requester_delivered_at, created_at, updated_at,
-                completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                requester_delivery_turn_id, requester_delivery_error, requester_delivered_at,
+                created_at, updated_at, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 execution.id,
@@ -203,6 +204,7 @@ async def _persist_work_item_claim(
                 execution.handoff_to,
                 json.dumps(execution.evidence_refs),
                 execution.requester_delivery_status,
+                execution.requester_delivery_turn_id,
                 execution.requester_delivery_error,
                 execution.requester_delivered_at,
                 execution.created_at,
@@ -233,15 +235,22 @@ async def begin_work_item_transition(request: WorkItemTransitionRequest) -> Work
             request=request,
             created_at=now,
         )
-        delivery_status = _delivery_status_for_operation(request.operation)
+        delivery_turn_id = request.requester_delivery_turn_id
+        evidence_refs = (
+            request.evidence_refs
+            if request.evidence_refs is not None
+            else request.execution.evidence_refs
+        )
         await db.execute(
             """
             UPDATE work_item_executions
             SET summary = COALESCE(?, summary),
-                blocker = ?,
-                handoff_to = ?,
+                blocker = COALESCE(?, blocker),
+                handoff_to = COALESCE(?, handoff_to),
                 evidence_refs = ?,
-                requester_delivery_status = COALESCE(?, requester_delivery_status),
+                requester_delivery_status = CASE WHEN ? IS NULL
+                    THEN requester_delivery_status ELSE 'pending' END,
+                requester_delivery_turn_id = COALESCE(?, requester_delivery_turn_id),
                 requester_delivery_error = CASE WHEN ? IS NULL
                     THEN requester_delivery_error ELSE NULL END,
                 requester_delivered_at = CASE WHEN ? IS NULL
@@ -253,10 +262,11 @@ async def begin_work_item_transition(request: WorkItemTransitionRequest) -> Work
                 request.summary,
                 request.blocker,
                 request.handoff_to,
-                json.dumps(request.evidence_refs),
-                delivery_status,
-                delivery_status,
-                delivery_status,
+                json.dumps(evidence_refs),
+                delivery_turn_id,
+                delivery_turn_id,
+                delivery_turn_id,
+                delivery_turn_id,
                 now,
                 request.execution.id,
             ),
@@ -357,7 +367,7 @@ async def mark_work_item_delivery_delivered_for_turn(turn_id: str) -> None:
             requester_delivery_error = NULL,
             requester_delivered_at = ?,
             updated_at = ?
-        WHERE turn_id = ? AND requester_delivery_status = 'pending'
+        WHERE requester_delivery_turn_id = ? AND requester_delivery_status = 'pending'
         """,
         (now, now, turn_id),
     )
@@ -388,6 +398,11 @@ async def _insert_transition(
     request: WorkItemTransitionRequest,
     created_at: str,
 ) -> None:
+    evidence_refs = (
+        request.evidence_refs
+        if request.evidence_refs is not None
+        else request.execution.evidence_refs
+    )
     await db.execute(
         """
         INSERT INTO work_item_transitions (
@@ -401,7 +416,7 @@ async def _insert_transition(
             request.operation,
             request.target_status,
             request.result_execution_status.value,
-            json.dumps(request.evidence_refs),
+            json.dumps(evidence_refs),
             WorkItemTransitionStatus.PENDING.value,
             created_at,
         ),
@@ -425,10 +440,3 @@ def _issue_state(issue: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(state, dict):
         raise TypeError("Linear issue payload missing state")
     return state
-
-
-def _delivery_status_for_operation(operation: str) -> str | None:
-    """Reserve a requester-delivery outcome for operations with a user summary."""
-    if operation in {"complete_after_linear_review", "complete_after_pull_request_merge"}:
-        return None
-    return "not_requested" if operation == "claim" else "pending"

@@ -285,9 +285,21 @@ class TestHandleStreamedOutput:
         group = _make_group()
         output = _make_output(type="result", result="Hello user!")
 
-        result = await handle_streamed_output(deps, "g@g.us", group, output, turn_id="turn_1")
+        with patch.object(
+            router,
+            "mark_work_item_delivery_delivered_for_turn",
+            new_callable=AsyncMock,
+        ) as mark_delivered:
+            result = await handle_streamed_output(
+                deps,
+                "g@g.us",
+                group,
+                output,
+                turn_id="turn_1",
+            )
 
         assert result is True
+        mark_delivered.assert_awaited_once_with("turn_1")
         store = cast("AsyncMock", router.store_message_direct)
         store.assert_awaited_once()
         saved = store.await_args.kwargs
@@ -301,6 +313,30 @@ class TestHandleStreamedOutput:
         # Result finalization goes through the bus (finalize_stream_or_broadcast)
         # which calls ch.send_event on the mock channel.
         deps._test_channel.send_event.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_failed_channel_send_does_not_confirm_requester_delivery(self):
+        deps = _make_deps()
+        deps._test_channel.send_event.side_effect = OSError("channel unavailable")
+        group = _make_group()
+        output = _make_output(type="result", result="Blocked on credentials.")
+
+        with patch.object(
+            router,
+            "mark_work_item_delivery_delivered_for_turn",
+            new_callable=AsyncMock,
+        ) as mark_delivered:
+            result = await handle_streamed_output(
+                deps,
+                "g@g.us",
+                group,
+                output,
+                turn_id="turn-blocked",
+            )
+
+        assert result is True
+        deps._test_channel.send_event.assert_awaited_once()
+        mark_delivered.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_result_internal_only_still_sends(self):

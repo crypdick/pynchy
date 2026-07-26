@@ -60,7 +60,7 @@ def _action_specs() -> tuple[_ActionSpec, ...]:
         (
             "linear_move_todo",
             "linear.todo.move",
-            "Move a workspace Linear item within the caller's current authority.",
+            "Move a Linear item and durably record a typed linked-work outcome.",
             HostActionAccess.WRITE,
             handle_move_todo,
         ),

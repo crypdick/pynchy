@@ -25,8 +25,10 @@ from pynchy.state import (
     begin_in_flight_turn,
     clear_in_flight_turn,
     get_active_work_item_execution,
+    get_work_item_execution_for_issue,
     init_test_database,
     list_work_item_executions,
+    mark_work_item_delivery_delivered_for_turn,
 )
 from pynchy.types import InFlightTurn, InFlightWorkKind
 
@@ -220,10 +222,10 @@ async def _lease(
     )
 
 
-async def _begin_turn(*, input_source: str = "user") -> None:
+async def _begin_turn(*, turn_id: str = "turn-1", input_source: str = "user") -> None:
     await begin_in_flight_turn(
         InFlightTurn(
-            turn_id="turn-1",
+            turn_id=turn_id,
             chat_jid="pynchy@example.test",
             group_folder="pynchy",
             work_kind=InFlightWorkKind.INTERACTIVE,
@@ -398,6 +400,7 @@ async def test_agent_can_move_owned_work_to_awaiting_review(
         "move-1",
         issue_id="issue-1",
         status="awaiting_review",
+        outcome={"summary": "Implementation is ready for review."},
     )
 
     work_item = result["result"]["work_item"]
@@ -410,13 +413,16 @@ async def test_blocked_work_can_be_reauthorized_for_a_new_attempt(
     lifecycle: Lifecycle,
 ) -> None:
     await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
     blocked = await _call(
         lifecycle,
         "linear_move_todo",
         "move-blocked",
         issue_id="issue-1",
         status="blocked",
+        outcome={"blocker": "Publication requires a write-capable credential."},
     )
+    await clear_in_flight_turn("turn-1")
     await _begin_turn()
     approved = await _call(
         lifecycle,
@@ -430,6 +436,98 @@ async def test_blocked_work_can_be_reauthorized_for_a_new_attempt(
     assert blocked["result"]["work_item"]["status"] == "blocked"
     assert approved["result"]["issue"]["state"]["name"] == "Human Approved"
     assert retried.attempt == 2
+
+
+async def test_blocked_linked_work_requires_durable_blocker_evidence(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked",
+        issue_id="issue-1",
+        status="blocked",
+    )
+
+    assert result == {"error": "outcome.blocker is required when moving work to Blocked"}
+    execution = await get_work_item_execution_for_issue("issue-1", workspace="pynchy")
+    assert execution is not None
+    assert execution.status.value == "in_progress"
+    assert execution.blocker is None
+    assert lifecycle.state.issue["state"]["name"] == "In Progress"
+
+
+async def test_later_blocked_outcome_rebinds_only_requester_delivery(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(turn_id="turn-owner", input_source="scheduled_task")
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-awaiting",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={
+            "summary": "Implementation is ready.",
+            "evidence_refs": ["tests:focused", "deploy:staging"],
+        },
+    )
+    await clear_in_flight_turn("turn-owner")
+    await _begin_turn(turn_id="turn-follow-ups", input_source="trusted:linear:follow-ups")
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-follow-ups",
+        issue_id="issue-1",
+        status="follow_ups",
+        outcome={"summary": "One deployment follow-up remains."},
+    )
+    await clear_in_flight_turn("turn-follow-ups")
+    await _begin_turn(turn_id="turn-blocked", input_source="trusted:linear:follow-ups")
+
+    result = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked",
+        issue_id="issue-1",
+        status="blocked",
+        outcome={
+            "blocker": "The deployment credential is unavailable.",
+            "handoff_to": "release operator",
+        },
+    )
+
+    work_item = result["result"]["work_item"]
+    assert work_item["turn_id"] == "turn-owner"
+    assert work_item["summary"] == "The deployment credential is unavailable."
+    assert work_item["blocker"] == "The deployment credential is unavailable."
+    assert work_item["handoff_to"] == "release operator"
+    assert work_item["evidence_refs"] == ["tests:focused", "deploy:staging"]
+    assert work_item["requester_delivery"] == {
+        "status": "pending",
+        "turn_id": "turn-blocked",
+        "error": None,
+        "delivered_at": None,
+    }
+
+    await mark_work_item_delivery_delivered_for_turn("turn-owner")
+    await mark_work_item_delivery_delivered_for_turn("turn-follow-ups")
+    still_pending = await get_work_item_execution_for_issue("issue-1", workspace="pynchy")
+    assert still_pending is not None
+    assert still_pending.requester_delivery_status == "pending"
+    assert still_pending.requester_delivery_turn_id == "turn-blocked"
+
+    await mark_work_item_delivery_delivered_for_turn("turn-blocked")
+    delivered = await get_work_item_execution_for_issue("issue-1", workspace="pynchy")
+    assert delivered is not None
+    assert delivered.turn_id == "turn-owner"
+    assert delivered.requester_delivery_status == "delivered"
+    assert delivered.requester_delivery_turn_id == "turn-blocked"
+    assert delivered.requester_delivered_at is not None
 
 
 @pytest.mark.parametrize("status", ["human_approved", "rejected"])
@@ -488,9 +586,13 @@ async def test_agent_can_finish_follow_ups_in_a_later_turn(lifecycle: Lifecycle)
         "move-awaiting",
         issue_id="issue-1",
         status="awaiting_review",
+        outcome={
+            "summary": "Implementation and focused tests are complete.",
+            "evidence_refs": ["tests:focused"],
+        },
     )
     await clear_in_flight_turn("turn-1")
-    await _begin_turn(input_source="trusted:linear:follow-ups")
+    await _begin_turn(turn_id="turn-2", input_source="trusted:linear:follow-ups")
 
     follow_ups = await _call(
         lifecycle,
@@ -498,6 +600,7 @@ async def test_agent_can_finish_follow_ups_in_a_later_turn(lifecycle: Lifecycle)
         "move-follow-ups",
         issue_id="issue-1",
         status="follow_ups",
+        outcome={"summary": "Verifying the deployed result."},
     )
     done = await _call(
         lifecycle,
@@ -505,10 +608,14 @@ async def test_agent_can_finish_follow_ups_in_a_later_turn(lifecycle: Lifecycle)
         "move-done",
         issue_id="issue-1",
         status="done",
+        outcome={"summary": "Deployment verified and cleanup complete."},
     )
 
     assert awaiting["result"]["work_item"]["turn_id"] == "turn-1"
     assert follow_ups["result"]["work_item"]["status"] == "follow_ups"
+    assert follow_ups["result"]["work_item"]["turn_id"] == "turn-1"
+    assert follow_ups["result"]["work_item"]["requester_delivery"]["turn_id"] == "turn-2"
+    assert follow_ups["result"]["work_item"]["evidence_refs"] == ["tests:focused"]
     assert done["result"]["work_item"]["status"] == "completed"
 
 
@@ -578,6 +685,7 @@ async def test_direct_human_done_completes_active_execution(
         "move-1",
         issue_id="issue-1",
         status="done",
+        outcome={"summary": "The requested work is complete."},
     )
 
     assert result["result"]["work_item"]["status"] == "completed"
@@ -599,6 +707,7 @@ async def test_done_webhook_completes_execution_still_in_progress(
 @pytest.mark.action("linear.workitem.reconcile")
 async def test_reconcile_confirms_lost_move_response(lifecycle: Lifecycle) -> None:
     await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
     lifecycle.state.fail_after_update = True
     uncertain = await _call(
         lifecycle,
@@ -606,6 +715,7 @@ async def test_reconcile_confirms_lost_move_response(lifecycle: Lifecycle) -> No
         "move-1",
         issue_id="issue-1",
         status="awaiting_review",
+        outcome={"summary": "Ready despite a lost provider response."},
     )
     lifecycle.state.fail_after_update = False
 
@@ -622,6 +732,7 @@ async def test_reconcile_confirms_lost_move_response(lifecycle: Lifecycle) -> No
 
 async def test_remote_state_conflict_is_durable(lifecycle: Lifecycle) -> None:
     await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
     lifecycle.state.issue["state"] = _state("state-human-approved")
 
     result = await _call(
@@ -630,6 +741,7 @@ async def test_remote_state_conflict_is_durable(lifecycle: Lifecycle) -> None:
         "move-1",
         issue_id="issue-1",
         status="awaiting_review",
+        outcome={"summary": "Ready for review."},
     )
 
     assert "conflicted" in result["error"]
