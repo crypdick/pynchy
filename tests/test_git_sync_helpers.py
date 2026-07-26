@@ -155,7 +155,7 @@ class TestHostUpdateMain:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=1, stdout="", stderr="network error"
         )
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("pynchy.host.git_ops.utils._run_git_process", return_value=mock_result):
             result = host_update_main(tmp_path)
             assert result is False
 
@@ -179,7 +179,7 @@ class TestHostUpdateMain:
             return ok
 
         with (
-            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.utils._run_git_process", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
             result = host_update_main(tmp_path)
@@ -198,7 +198,7 @@ class TestHostUpdateMain:
             return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
 
         with (
-            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.utils._run_git_process", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
             result = host_update_main(tmp_path)
@@ -224,7 +224,7 @@ class TestHostUpdateMain:
             return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
 
         with (
-            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.utils._run_git_process", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
             patch("pynchy.host.git_ops.sync_poll.push_local_commits", return_value=True),
         ):
@@ -261,7 +261,7 @@ class TestHostUpdateMain:
             return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
 
         with (
-            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.utils._run_git_process", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
             patch("pynchy.host.git_ops.sync_poll.push_local_commits") as push_local,
         ):
@@ -284,7 +284,7 @@ class TestHostUpdateMain:
             return subprocess.CompletedProcess(args=cmd_args, returncode=0, stdout="", stderr="")
 
         with (
-            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.utils._run_git_process", side_effect=mock_run),
             patch("pynchy.host.git_ops.sync_poll.detect_main_branch", return_value="main"),
         ):
             result = host_update_main(tmp_path)
@@ -308,11 +308,11 @@ class TestHostSourceFilesChanged:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="src/pynchy/app.py\n"
         )
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("pynchy.host.git_ops.utils._run_git_process", return_value=mock_result):
             assert host_source_files_changed("abc", "def") is True
 
     def test_no_source_changes(self):
         """Should return False when no src/ files changed."""
         mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("pynchy.host.git_ops.utils._run_git_process", return_value=mock_result):
             assert host_source_files_changed("abc", "def") is False

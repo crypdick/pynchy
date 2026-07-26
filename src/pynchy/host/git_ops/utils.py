@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import signal
 import subprocess  # noqa: S404, RUF100 - shared git helper uses fixed no-shell argv.
 from pathlib import (
     Path,  # noqa: TC003, RUF100 - beartype resolves git helper signatures at runtime.
@@ -13,8 +15,10 @@ from pynchy.config import get_settings
 from pynchy.logger import logger
 
 _SUBPROCESS_TIMEOUT = 30
+_PROCESS_GROUP_TERMINATION_GRACE_SECONDS = 2
 _DEFAULT_GIT_SSH_COMMAND = (
-    "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=1"
+    "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 "
+    "-o ServerAliveInterval=5 -o ServerAliveCountMax=1"
 )
 _URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@")
 _MAX_GIT_DIAGNOSTIC_LENGTH = 1000
@@ -44,19 +48,32 @@ def run_git(
             overrides the inherited environment.
     """
     command = ["git", *args]
+    return _run_git_process(
+        command,
+        cwd=str(cwd or get_settings().project_root),
+        env=_git_subprocess_env(env),
+        timeout=timeout,
+    )
+
+
+def _run_git_process(
+    command: list[str], *, cwd: str, env: dict[str, str], timeout: int
+) -> subprocess.CompletedProcess[str]:
+    """Run one git process while retaining ownership of its process group."""
+    process = subprocess.Popen(  # noqa: S603, RUF100 - git args are passed as argv by internal helper call sites; no shell.
+        command,  # noqa: S607, RUF100 - git is the trusted host VCS executable.
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+        env=env,
+    )
     try:
-        return subprocess.run(  # noqa: S603, RUF100 - git args are passed as argv by internal helper call sites; no shell.
-            command,  # noqa: S607, RUF100 - git is the trusted host VCS executable.
-            cwd=str(cwd or get_settings().project_root),
-            capture_output=True,
-            text=True,
-            start_new_session=True,
-            env=_git_subprocess_env(env),
-            timeout=timeout,
-            check=False,
-        )
+        stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        # Callers consistently branch on returncode.  Preserve that contract so
+        _terminate_process_group(process)
+        # Callers consistently branch on returncode. Preserve that contract so
         # a best-effort startup fetch cannot prevent the HTTP control plane
         # from coming up when GitHub is unavailable.
         return subprocess.CompletedProcess(
@@ -65,6 +82,27 @@ def run_git(
             stdout="",
             stderr=f"git command timed out after {timeout} seconds",
         )
+    return subprocess.CompletedProcess(
+        args=command,
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    """Terminate a timed-out git process and every child in its session."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    try:
+        process.communicate(timeout=_PROCESS_GROUP_TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
 
 
 def redact_git_diagnostic(text: str, *, token: str | None = None) -> str:

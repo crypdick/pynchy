@@ -240,7 +240,7 @@ class TestHostCreatePrFromWorktree:
         synthetic_token = "synthetic-sensitive-value"  # noqa: S105, RUF100 - synthetic redaction fixture.  # pragma: allowlist secret
         real_run = subprocess.run
 
-        def _mock_run(args, **kwargs):
+        def _mock_git_process(args, **kwargs):
             if args[:2] == ["git", "push"]:
                 return subprocess.CompletedProcess(
                     args=args,
@@ -248,14 +248,17 @@ class TestHostCreatePrFromWorktree:
                     stdout="",
                     stderr=f"remote rejected {synthetic_token} with HTTP 403",
                 )
-            return real_run(args, **kwargs)
+            return real_run(args, capture_output=True, text=True, check=False, **kwargs)
 
         with (
             patch(
                 "pynchy.host.git_ops.sync.git_env_with_token",
                 return_value={"GH_TOKEN": synthetic_token},
             ),
-            patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=_mock_run),
+            patch(
+                "pynchy.host.git_ops.utils._run_git_process",
+                side_effect=_mock_git_process,
+            ),
         ):
             result = host_create_pr_from_worktree("agent-1", repo_ctx)
 
