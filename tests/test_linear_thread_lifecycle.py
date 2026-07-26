@@ -22,6 +22,7 @@ from linear_webhook_test_support import (
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.host.orchestrator.webhook_ingress import recover_webhook_conversations
 from pynchy.state import (
     get_conversation_control_binding,
     get_workspace_profile,
@@ -173,6 +174,7 @@ async def test_startup_restores_closed_existing_control_without_waking_an_agent(
     )
     restarted_client = TestClient(TestServer(restarted))
     await restarted_client.start_server()
+    await recover_webhook_conversations(restarted)
     try:
         assert restarted_harness.ingested == []
         assert restarted_harness.channel.closed[binding.thread_jid] is True

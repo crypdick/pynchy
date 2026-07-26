@@ -302,10 +302,19 @@ def _task_for_event(
     )
 
 
-async def _start_conversation_routes(app: web.Application) -> None:
+async def _prepare_conversation_routes(  # noqa: RUF029, RUF100 - aiohttp startup hooks use an async callback contract.
+    app: web.Application,
+) -> None:
     ingress = app[webhook_ingress_key]
     if ingress.conversation_dispatcher is not None:
-        await ingress.conversation_dispatcher.start()
+        ingress.conversation_dispatcher.prepare()
+
+
+async def recover_webhook_conversations(app: web.Application) -> None:
+    """Restore durable webhook routes and dispatch pending deliveries."""
+    ingress = app[webhook_ingress_key]
+    if ingress.conversation_dispatcher is not None:
+        await ingress.conversation_dispatcher.recover_pending()
 
 
 async def _stop_conversation_routes(  # noqa: RUF029, RUF100 - aiohttp cleanup hooks use an async callback contract.
@@ -441,7 +450,7 @@ def install_webhook_ingress(app: web.Application, ingress: WebhookIngress) -> No
     """Register the validated ingress and its exact public POST paths."""
     app[webhook_ingress_key] = ingress
     if ingress.conversation_dispatcher is not None:
-        app.on_startup.append(_start_conversation_routes)
+        app.on_startup.append(_prepare_conversation_routes)
         app.on_cleanup.append(_stop_conversation_routes)
     for path in ingress.routes:
         app.router.add_post(path, handle_webhook)

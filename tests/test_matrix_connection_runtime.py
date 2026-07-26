@@ -387,7 +387,9 @@ async def test_startup_recovery_releases_and_wakes_a_pending_matrix_claim(
         lambda: make_settings(data_dir=tmp_path),
     )
 
-    await prepare_interrupted_turn_recovery()
+    await prepare_interrupted_turn_recovery(
+        continuation_path=tmp_path / "deploy_continuation.startup.json"
+    )
     stub = _StubGateway([_batch("cursor-after-restart")], _portal())
     harness = await _harness()
     runtime = _runtime(stub)

@@ -335,7 +335,9 @@ async def test_claims_serialize_one_conversation_but_not_different_subjects(
         "pynchy.host.orchestrator.startup_handler.get_settings",
         lambda: make_settings(data_dir=tmp_path),
     )
-    await prepare_interrupted_turn_recovery()
+    await prepare_interrupted_turn_recovery(
+        continuation_path=tmp_path / "deploy_continuation.startup.json"
+    )
     reclaimed_a1 = await claim_next_conversation_delivery(
         first.conversation.id,
         ConversationClaimId("claim-a1-after-restart"),

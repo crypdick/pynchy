@@ -101,10 +101,13 @@ class WebhookConversationDispatcher:
         repr=False,
     )
 
-    async def start(self) -> None:
-        """Register completion wakes and recover pending deliveries."""
+    def prepare(self) -> None:
+        """Register process-local completion wakes without dispatching work."""
         for provider in {route.provider for route in self.routes}:
             register_conversation_delivery_waker(provider, self.owner, self.after_completion)
+
+    async def recover_pending(self) -> None:
+        """Restore durable routes and wake pending deliveries."""
         for route in self.routes:
             provider = ExternalProvider(route.provider)
             route_id = ExternalRoute(route.name)
@@ -118,6 +121,11 @@ class WebhookConversationDispatcher:
             )
             for conversation_id in pending:
                 await self.wake(conversation_id)
+
+    async def start(self) -> None:
+        """Prepare callbacks and recover pending deliveries."""
+        self.prepare()
+        await self.recover_pending()
 
     def close(self) -> None:
         """Remove this HTTP runtime's process-local completion callbacks."""

@@ -15,6 +15,7 @@ from pynchy.conversation.workspaces import (
     routed_conversation_folder,
 )
 from pynchy.logger import logger
+from pynchy.types import ChatJid, GroupFolder, SessionId
 
 
 class RuntimeOwnershipRepairConflictError(RuntimeError):
@@ -23,15 +24,15 @@ class RuntimeOwnershipRepairConflictError(RuntimeError):
 
 @dataclass(frozen=True)
 class _RuntimeOwnershipEvidence:
-    """Durable evidence that determines one repair plan."""
+    """Durable evidence from which one repair plan is derived."""
 
     conversation_id: ConversationId
-    thread_jid: str
-    session_id: str | None
-    original_workspace: str
-    parent_workspace: str
-    profile_folder: str | None
-    delivery_workspace: str | None
+    thread_jid: ChatJid
+    session_id: SessionId | None
+    original_workspace: GroupFolder
+    parent_workspace: GroupFolder
+    profile_folder: GroupFolder | None
+    delivery_workspace: GroupFolder | None
 
 
 @dataclass(frozen=True)
@@ -39,20 +40,20 @@ class _RuntimeOwnershipRepair:
     """One conversation's validated target and movable runtime projections."""
 
     conversation_id: ConversationId
-    thread_jid: str
-    session_id: str | None
-    original_workspace: str
-    target_workspace: str
-    routed_folder: str
-    source_folders: tuple[str, ...]
-    profile_folder: str | None
+    thread_jid: ChatJid
+    session_id: SessionId | None
+    original_workspace: GroupFolder
+    target_workspace: GroupFolder
+    routed_folder: GroupFolder
+    source_folders: tuple[GroupFolder, ...]
+    profile_folder: GroupFolder | None
 
     @property
     def repairs_owner(self) -> bool:
         return self.target_workspace != self.original_workspace
 
     @property
-    def profile_source(self) -> str | None:
+    def profile_source(self) -> GroupFolder | None:
         folder = self.profile_folder
         if folder is None:
             return None
@@ -66,59 +67,61 @@ class _RuntimeOwnershipRepair:
 
 def _runtime_source_folders(
     conversation_id: ConversationId,
-    thread_jid: str,
-    original_workspace: str,
-    target_workspace: str,
-    profile_folder: str | None,
-) -> tuple[str, ...]:
+    thread_jid: ChatJid,
+    original_workspace: GroupFolder,
+    target_workspace: GroupFolder,
+    profile_folder: GroupFolder | None,
+) -> tuple[GroupFolder, ...]:
     """Return only folders that can safely belong to this conversation."""
     candidates = [
-        dynamic_thread_folder(original_workspace, thread_jid),
-        routed_conversation_folder(original_workspace, conversation_id),
-        dynamic_thread_folder(target_workspace, thread_jid),
+        GroupFolder(dynamic_thread_folder(original_workspace, thread_jid)),
+        GroupFolder(routed_conversation_folder(original_workspace, conversation_id)),
+        GroupFolder(dynamic_thread_folder(target_workspace, thread_jid)),
     ]
     if profile_folder is not None and (
         profile_folder in candidates
         or conversation_id_from_folder(profile_folder) == conversation_id
     ):
         candidates.append(profile_folder)
-    target_folder = routed_conversation_folder(target_workspace, conversation_id)
+    target_folder = GroupFolder(routed_conversation_folder(target_workspace, conversation_id))
     return tuple(dict.fromkeys(folder for folder in candidates if folder != target_folder))
 
 
 def _plan_runtime_ownership_repair(
     evidence: _RuntimeOwnershipEvidence,
-    *,
-    allow_owner_reassignment: bool,
 ) -> _RuntimeOwnershipRepair:
     """Derive a repair without mutating any durable projection."""
-    profile_workspace = (
+    profile_workspace_name = (
         parent_workspace_name(evidence.profile_folder)
         if evidence.profile_folder is not None
         and conversation_id_from_folder(evidence.profile_folder) == evidence.conversation_id
         else None
     )
+    profile_workspace = (
+        GroupFolder(profile_workspace_name) if profile_workspace_name is not None else None
+    )
     # The authenticated receipt records the route-selected owner before a
     # control surface can accidentally overwrite either mutable projection.
     authoritative_workspace = evidence.delivery_workspace or profile_workspace
     should_repair_owner = (
-        allow_owner_reassignment
-        and authoritative_workspace is not None
+        authoritative_workspace is not None
         and authoritative_workspace != evidence.original_workspace
         and evidence.original_workspace == evidence.parent_workspace
     )
-    target_workspace = (
-        str(authoritative_workspace) if should_repair_owner else evidence.original_workspace
-    )
+    target_workspace = evidence.original_workspace
+    if should_repair_owner and authoritative_workspace is not None:
+        target_workspace = authoritative_workspace
     return _RuntimeOwnershipRepair(
         conversation_id=evidence.conversation_id,
         thread_jid=evidence.thread_jid,
         session_id=evidence.session_id,
         original_workspace=evidence.original_workspace,
         target_workspace=target_workspace,
-        routed_folder=routed_conversation_folder(
-            target_workspace,
-            evidence.conversation_id,
+        routed_folder=GroupFolder(
+            routed_conversation_folder(
+                target_workspace,
+                evidence.conversation_id,
+            )
         ),
         source_folders=_runtime_source_folders(
             evidence.conversation_id,
@@ -131,11 +134,7 @@ def _plan_runtime_ownership_repair(
     )
 
 
-async def repair_conversation_runtime_ownership(
-    database: Connection,
-    *,
-    allow_owner_reassignment: bool,
-) -> int:
+async def repair_conversation_runtime_ownership(database: Connection) -> int:
     """Collapse thread-derived runtimes into their routed conversation owner."""
     cursor = await database.execute(
         """
@@ -164,20 +163,23 @@ async def repair_conversation_runtime_ownership(
         plan = _plan_runtime_ownership_repair(
             _RuntimeOwnershipEvidence(
                 conversation_id=ConversationId(row["id"]),
-                thread_jid=str(row["thread_jid"]),
-                session_id=(str(row["session_id"]) if row["session_id"] is not None else None),
-                original_workspace=str(row["workspace"]),
-                parent_workspace=str(row["parent_workspace"]),
+                thread_jid=ChatJid(str(row["thread_jid"])),
+                session_id=(
+                    SessionId(str(row["session_id"])) if row["session_id"] is not None else None
+                ),
+                original_workspace=GroupFolder(str(row["workspace"])),
+                parent_workspace=GroupFolder(str(row["parent_workspace"])),
                 profile_folder=(
-                    str(row["profile_folder"]) if row["profile_folder"] is not None else None
+                    GroupFolder(str(row["profile_folder"]))
+                    if row["profile_folder"] is not None
+                    else None
                 ),
                 delivery_workspace=(
-                    str(row["delivery_workspace"])
+                    GroupFolder(str(row["delivery_workspace"]))
                     if row["delivery_workspace"] is not None
                     else None
                 ),
-            ),
-            allow_owner_reassignment=allow_owner_reassignment,
+            )
         )
         if not await _repair_target_is_available(database, plan):
             continue
@@ -320,7 +322,9 @@ async def _repair_session(
         "SELECT group_folder FROM sessions WHERE session_id = ?",
         (plan.session_id,),
     )
-    session_folders = {str(session["group_folder"]) for session in await sessions_cursor.fetchall()}
+    session_folders = {
+        GroupFolder(str(session["group_folder"])) for session in await sessions_cursor.fetchall()
+    }
     session_sources = [folder for folder in plan.source_folders if folder in session_folders]
     if not session_sources:
         return 0
@@ -349,8 +353,8 @@ async def _repair_session(
 
 async def _merge_session_taint(
     database: Connection,
-    source_folder: str,
-    target_folder: str,
+    source_folder: GroupFolder,
+    target_folder: GroupFolder,
 ) -> None:
     await database.execute(
         """

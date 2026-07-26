@@ -27,7 +27,13 @@ from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.state import get_chat_history, set_router_state, store_message
-from pynchy.types import InFlightTurn, InFlightWorkKind, NewMessage, WorkspaceProfile
+from pynchy.types import (
+    DeployRevision,
+    InFlightTurn,
+    InFlightWorkKind,
+    NewMessage,
+    WorkspaceProfile,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -925,7 +931,10 @@ class TestDeployContinuationResume:
             s.data_dir = data_dir
             mock_settings.return_value = s
 
-            await check_deploy_continuation(app)
+            await check_deploy_continuation(
+                app,
+                active_revision=DeployRevision("abc12345", "active-config"),
+            )
 
         assert set(started) == {
             ("turn-admin", "admin-1"),
@@ -969,6 +978,9 @@ class TestDeployContinuationResume:
             s.data_dir = data_dir
             mock_settings.return_value = s
 
-            await check_deploy_continuation(app)
+            await check_deploy_continuation(
+                app,
+                active_revision=DeployRevision("abc12345", "active-config"),
+            )
 
         assert len(started) == 0

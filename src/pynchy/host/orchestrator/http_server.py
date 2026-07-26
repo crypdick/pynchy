@@ -7,6 +7,7 @@ import json
 import os
 import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from aiohttp import web
@@ -29,12 +30,16 @@ from pynchy.host.orchestrator.capability_status import (
     resolve_workspace_capabilities,
 )
 from pynchy.host.orchestrator.http_control import (
-    ControlPlaneConfigurationError,
     ControlPlaneRuntime,
     build_control_plane_middleware,
     register_unix_socket_cleanup,
     resolve_control_plane_runtime,
     start_control_plane_sites,
+)
+from pynchy.host.orchestrator.http_readiness import (
+    ControlPlaneReadiness,
+    readiness_key,
+    readiness_middleware,
 )
 from pynchy.host.orchestrator.status import StatusDeps, collect_status
 from pynchy.host.orchestrator.temporal.deploy import DeployRequest
@@ -43,6 +48,7 @@ from pynchy.host.orchestrator.webhook_ingress import (
     WebhookIngressDeps,
     build_webhook_ingress,
     install_webhook_ingress,
+    recover_webhook_conversations,
 )
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_work_items import work_item_execution_to_dict
@@ -70,6 +76,16 @@ _RUNTIME_HARNESS_MESSAGE_PATH = "/__pynchy_runtime__/messages"
 # Typed app key avoids aiohttp NotAppKeyWarning from plain-string lookups.
 deps_key: web.AppKey[HttpDeps] = web.AppKey("deps")
 status_deps_key: web.AppKey[StatusDeps] = web.AppKey("status_deps")
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedHttpServer:
+    """Prepared control plane whose listener and publication are explicit."""
+
+    runner: web.AppRunner
+    runtime: ControlPlaneRuntime
+    app: web.Application
+    readiness: ControlPlaneReadiness
 
 
 def _write_boot_warning(message: str) -> None:
@@ -354,10 +370,10 @@ async def _handle_runtime_harness_message(request: web.Request) -> web.Response:
 # ------------------------------------------------------------------
 
 
-async def start_http_server(
+async def prepare_http_server(
     deps: HttpServerDeps, *, status_deps: StatusDeps | None = None
-) -> web.AppRunner:
-    """Create, start, and return the HTTP server runner."""
+) -> PreparedHttpServer:
+    """Prepare routes and cleanup hooks without opening a listener."""
     settings = get_settings()
     webhook_routes = collect_webhook_routes(cast("Any", deps.get_plugin_manager()))
     runtime = resolve_control_plane_runtime(
@@ -369,18 +385,29 @@ async def start_http_server(
         status_deps=status_deps,
         runtime=runtime,
         webhook_routes=webhook_routes,
+        readiness=ControlPlaneReadiness(),
     )
     register_unix_socket_cleanup(app, runtime)
-
     runner = web.AppRunner(app)
-    await runner.setup()
     try:
-        await start_control_plane_sites(runner, runtime)
-    except (ControlPlaneConfigurationError, OSError):
+        await runner.setup()
+    except BaseException:
         await runner.cleanup()
         raise
+    return PreparedHttpServer(
+        runner=runner,
+        runtime=runtime,
+        app=app,
+        readiness=app[readiness_key],
+    )
+
+
+async def activate_http_server(prepared: PreparedHttpServer) -> web.AppRunner:
+    """Bind the listener while the readiness gate still rejects requests."""
+    await start_control_plane_sites(prepared.runner, prepared.runtime)
+    runtime = prepared.runtime
     logger.info(
-        "HTTP control plane listening",
+        "HTTP control plane listening behind startup gate",
         host=runtime.bind_host,
         port=runtime.port,
         unix_socket=str(runtime.unix_socket) if runtime.unix_socket else None,
@@ -388,7 +415,33 @@ async def start_http_server(
         remote_deploy=runtime.allow_remote_deploy,
         remote_auth=runtime.remote_auth_required,
     )
-    return runner
+    return prepared.runner
+
+
+async def recover_http_routes(prepared: PreparedHttpServer) -> None:
+    """Restore route ownership and wake durable deliveries."""
+    await recover_webhook_conversations(prepared.app)
+
+
+def publish_http_server(prepared: PreparedHttpServer) -> None:
+    """Allow requests after all runtime owners are ready."""
+    prepared.readiness.accepting_requests = True
+    logger.info("HTTP control plane ready")
+
+
+async def start_http_server(
+    deps: HttpServerDeps, *, status_deps: StatusDeps | None = None
+) -> web.AppRunner:
+    """Create, start, and return the HTTP server runner."""
+    prepared = await prepare_http_server(deps, status_deps=status_deps)
+    try:
+        await activate_http_server(prepared)
+        await recover_http_routes(prepared)
+    except BaseException:
+        await prepared.runner.cleanup()
+        raise
+    publish_http_server(prepared)
+    return prepared.runner
 
 
 def create_http_app(
@@ -397,6 +450,7 @@ def create_http_app(
     status_deps: StatusDeps | None = None,
     runtime: ControlPlaneRuntime | None = None,
     webhook_routes: tuple[WebhookRoute, ...] = (),
+    readiness: ControlPlaneReadiness | None = None,
 ) -> AiohttpApplication:
     """Build the aiohttp app with all HTTP routes registered."""
     resolved_runtime = runtime
@@ -407,15 +461,18 @@ def create_http_app(
             project_root=settings.project_root,
         )
     webhook_ingress = build_webhook_ingress(cast("WebhookIngressDeps", deps), webhook_routes)
+    resolved_readiness = readiness or ControlPlaneReadiness(accepting_requests=True)
     app = web.Application(
         middlewares=[
+            readiness_middleware,
             build_control_plane_middleware(
                 resolved_runtime,
                 provider_authenticated_paths=webhook_ingress.public_paths,
-            )
+            ),
         ]
     )
     app[deps_key] = deps
+    app[readiness_key] = resolved_readiness
     if status_deps is not None:
         app[status_deps_key] = status_deps
     app.router.add_get("/health", _handle_health)

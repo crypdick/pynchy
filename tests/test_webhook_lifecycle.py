@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -154,6 +155,26 @@ async def _admit(
     )
     assert conversation_id is not None
     return conversation_id
+
+
+async def test_dispatcher_preparation_defers_pending_delivery_domain_work() -> None:
+    harness = LinearWebhookHarness()
+    await harness.persist_parent()
+
+    route = _route(AsyncMock())
+    dispatcher = WebhookConversationDispatcher(deps=harness, routes=(route,))
+    dispatcher.prepare()
+    try:
+        await _admit(dispatcher, route, _message_event("pending-at-startup"))
+
+        assert harness.ingested == []
+        assert harness.channel.created == []
+
+        await dispatcher.recover_pending()
+
+        assert len(harness.ingested) == 1
+    finally:
+        dispatcher.close()
 
 
 async def test_lifecycle_waits_for_older_turn_closes_once_and_wakes_its_sibling() -> None:

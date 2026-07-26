@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
-    from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     OnOutput,
@@ -31,9 +30,6 @@ class SchedulerDependencies(Protocol):
 
     @property
     def queue(self) -> GroupQueue: ...
-
-    @property
-    def startup_readiness(self) -> StartupReadiness: ...
 
     async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
 

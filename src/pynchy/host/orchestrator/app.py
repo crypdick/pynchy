@@ -39,7 +39,6 @@ from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
-from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.host.orchestrator.workspace_registration import (
@@ -107,7 +106,6 @@ class PynchyApp(ThreadRouting):
         self._memory: MemoryProvider | None = None
         self._speech_synthesizer: SpeechSynthesizer | None = None
         self.subsystem_tasks = RuntimeTaskOwner()
-        self.startup_readiness = StartupReadiness()
         self.connection_runtime_owner = ConnectionRuntimeOwner()
         self.plugin_manager: pluggy.PluginManager | None = None
 
@@ -198,7 +196,7 @@ class PynchyApp(ThreadRouting):
     # State persistence
     # ------------------------------------------------------------------
 
-    async def _load_state(self) -> None:
+    async def load_state(self) -> None:
         """Load persisted state from the database."""
         self.last_timestamp = await get_router_state("last_timestamp") or ""
         agent_ts = await get_router_state("last_agent_timestamp")
@@ -216,10 +214,7 @@ class PynchyApp(ThreadRouting):
             workspace_count=len(self.workspaces),
         )
 
-    async def load_state(self) -> None:
-        await self._load_state()
-
-    async def _save_state(self) -> None:
+    async def save_state(self) -> None:
         """Persist router state to the database atomically.
 
         Both rows are written in a single transaction so a crash can never
@@ -235,9 +230,6 @@ class PynchyApp(ThreadRouting):
     # ------------------------------------------------------------------
     # Protocol adapter methods (satisfy handler Protocols via structural typing)
     # ------------------------------------------------------------------
-
-    async def save_state(self) -> None:
-        await self._save_state()
 
     async def handle_context_reset(
         self,

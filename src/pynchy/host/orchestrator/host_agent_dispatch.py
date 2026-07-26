@@ -14,7 +14,6 @@ from pynchy.host.orchestrator._agent_runner_preflight import (
 from pynchy.host.orchestrator.host_execution import (
     HostAgentTurnRequest,
     HostProcessQueue,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
-    codex_thread_exists_in_host_runtime,
     host_agent_env_vars,
     migrate_host_codex_thread,
     prepare_host_codex_home,
@@ -78,11 +77,8 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
 ) -> str:
     """Run one durable thread turn through the direct-host runtime."""
     codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager)
-    migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
-    if (session_id := ctx.session_id) is not None and not codex_thread_exists_in_host_runtime(
-        session_id,
-        codex_home=codex_home,
-    ):
+    session_available = migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
+    if (session_id := ctx.session_id) is not None and not session_available:
         logger.info(
             "Stored Codex session is not available to host runtime; starting fresh",
             group=group.name,
