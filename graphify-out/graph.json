@@ -72356,11 +72356,27 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
+      "label": "_target_session_has_other_owners()",
+      "file_type": "code",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L235",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_runtime_repair_py_sessionid",
+      "label": "SessionId",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_state_conversation_runtime_repair_repair_sources_are_available",
       "label": "_repair_sources_are_available()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L227",
+      "source_location": "L269",
       "_origin": "ast"
     },
     {
@@ -72368,7 +72384,7 @@
       "label": "_apply_runtime_ownership_repair()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L250",
+      "source_location": "L292",
       "_origin": "ast"
     },
     {
@@ -72376,7 +72392,7 @@
       "label": "_repair_conversation_owner()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L262",
+      "source_location": "L304",
       "_origin": "ast"
     },
     {
@@ -72384,7 +72400,7 @@
       "label": "_repair_workspace_profile()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L279",
+      "source_location": "L321",
       "_origin": "ast"
     },
     {
@@ -72392,7 +72408,7 @@
       "label": "_repair_in_flight_turns()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L297",
+      "source_location": "L339",
       "_origin": "ast"
     },
     {
@@ -72400,7 +72416,7 @@
       "label": "_repair_session()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L315",
+      "source_location": "L357",
       "_origin": "ast"
     },
     {
@@ -72408,7 +72424,7 @@
       "label": "_merge_session_taint()",
       "file_type": "code",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L354",
+      "source_location": "L396",
       "_origin": "ast"
     },
     {
@@ -72476,11 +72492,19 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_conversation_runtime_repair_rationale_254",
+      "id": "pynchy_state_conversation_runtime_repair_rationale_240",
+      "label": "Return whether replacing a stale target session could steal live state.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L240",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_conversation_runtime_repair_rationale_296",
       "label": "Apply one preflighted repair across its separate state projections.",
       "file_type": "rationale",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L254",
+      "source_location": "L296",
       "_origin": "ast"
     },
     {
@@ -284242,11 +284266,54 @@
     },
     {
       "source": "pynchy_state_conversation_runtime_repair",
+      "target": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L235",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
+      "target": "pynchy_state_conversation_runtime_repair_py_connection",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L235",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
+      "target": "pynchy_state_conversation_runtime_repair_runtimeownershiprepair",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L235",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
+      "target": "pynchy_state_conversation_runtime_repair_py_sessionid",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L235",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair",
       "target": "pynchy_state_conversation_runtime_repair_repair_sources_are_available",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L227",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284257,7 +284324,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L227",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284268,7 +284335,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L227",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284278,7 +284345,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L250",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284289,7 +284356,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L250",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284300,7 +284367,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L250",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284310,7 +284377,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L262",
+      "source_location": "L304",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284321,7 +284388,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L262",
+      "source_location": "L304",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284332,7 +284399,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L262",
+      "source_location": "L304",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284342,7 +284409,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L279",
+      "source_location": "L321",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284353,7 +284420,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L279",
+      "source_location": "L321",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284364,7 +284431,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L279",
+      "source_location": "L321",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284374,7 +284441,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L297",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284385,7 +284452,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L297",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284396,7 +284463,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L297",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284406,7 +284473,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L315",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284417,7 +284484,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L315",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284428,7 +284495,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L315",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284438,7 +284505,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L354",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284449,7 +284516,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L354",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284460,7 +284527,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L354",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284554,6 +284621,17 @@
     },
     {
       "source": "pynchy_state_conversation_runtime_repair_repair_conversation_runtime_ownership",
+      "target": "pynchy_state_conversation_runtime_repair_py_sessionid",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L168",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_repair_conversation_runtime_ownership",
       "target": "pynchy_state_conversation_runtime_repair_py_groupfolder",
       "relation": "calls",
       "context": "call",
@@ -284598,12 +284676,34 @@
     },
     {
       "source": "pynchy_state_conversation_runtime_repair_repair_target_is_available",
-      "target": "pynchy_state_conversation_runtime_repair_repair_sources_are_available",
+      "target": "pynchy_state_conversation_runtime_repair_py_sessionid",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L216",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_repair_target_is_available",
+      "target": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
       "source_location": "L224",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_repair_target_is_available",
+      "target": "pynchy_state_conversation_runtime_repair_repair_sources_are_available",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L232",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284614,7 +284714,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L244",
+      "source_location": "L286",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284625,7 +284725,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L255",
+      "source_location": "L297",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284636,7 +284736,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L256",
+      "source_location": "L298",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284647,7 +284747,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L257",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284658,7 +284758,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L258",
+      "source_location": "L300",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284669,7 +284769,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L326",
+      "source_location": "L368",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284680,7 +284780,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L342",
+      "source_location": "L384",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284765,12 +284865,22 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_conversation_runtime_repair_rationale_254",
+      "source": "pynchy_state_conversation_runtime_repair_rationale_240",
+      "target": "pynchy_state_conversation_runtime_repair_target_session_has_other_owners",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/conversation_runtime_repair.py",
+      "source_location": "L240",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_conversation_runtime_repair_rationale_296",
       "target": "pynchy_state_conversation_runtime_repair_apply_runtime_ownership_repair",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/conversation_runtime_repair.py",
-      "source_location": "L254",
+      "source_location": "L296",
       "weight": 1.0,
       "_origin": "ast"
     },
