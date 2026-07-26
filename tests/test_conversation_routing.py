@@ -55,6 +55,7 @@ from pynchy.state import (
     mark_session_security_taint,
     prepare_conversation_delivery_recovery,
     prepare_conversation_runtime_ownership_recovery,
+    rebind_conversation_workspace,
     resolve_conversation,
     set_chat_cleared_at,
     set_conversation_control_binding,
@@ -481,6 +482,43 @@ async def test_startup_recovery_migrates_legacy_thread_runtime_ownership() -> No
     assert recovered == 1
     assert profile is not None
     assert profile.folder == routed_folder
+
+
+async def test_startup_recovery_moves_same_conversation_to_new_workspace_owner() -> None:
+    thread_jid = ChatJid("discord:channel:thread-runtime-owner-move")
+    conversation = await resolve_conversation(
+        _subject("issue-runtime-owner-move"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(conversation.id, thread_jid)
+    old_folder = routed_conversation_folder("triage", conversation.id)
+    new_folder = routed_conversation_folder("engineering", conversation.id)
+    session_id = SessionId("runtime-owner-move-session")
+    await set_workspace_profile(
+        WorkspaceProfile(
+            jid=thread_jid,
+            name="Routed issue thread",
+            folder=old_folder,
+            trigger="@Pynchy",
+        )
+    )
+    await set_conversation_session(conversation.id, session_id)
+    await set_session(GroupFolder(old_folder), session_id)
+    await mark_session_security_taint(GroupFolder(old_folder), secret_tainted=True)
+    await rebind_conversation_workspace(conversation.id, GroupFolder("engineering"))
+
+    recovered = await prepare_conversation_runtime_ownership_recovery()
+
+    profile = await get_workspace_profile(thread_jid)
+    old_taint = await get_session_security_taint(GroupFolder(old_folder))
+    new_taint = await get_session_security_taint(GroupFolder(new_folder))
+    assert recovered == 2
+    assert profile is not None
+    assert profile.folder == new_folder
+    assert await get_session(GroupFolder(old_folder)) is None
+    assert await get_session(GroupFolder(new_folder)) == session_id
+    assert old_taint.secret_tainted is False
+    assert new_taint.secret_tainted is True
 
 
 async def test_startup_recovery_does_not_steal_routed_workspace_folder() -> None:
