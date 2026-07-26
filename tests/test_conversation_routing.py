@@ -139,11 +139,14 @@ async def _admit(
         _webhook_receipt(identity, subject_key, received_at=received_at),
         None,
     )
-    return await admit_conversation_delivery(
+    admission = await admit_conversation_delivery(
         identity,
         _subject(subject_key),
         GroupFolder(workspace),
     )
+    if admission is None:
+        raise AssertionError("Ordinary test delivery was unexpectedly suppressed")
+    return admission
 
 
 async def _bind_control_thread(

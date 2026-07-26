@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, Protocol, runtime_checkable
 
 from aiohttp import web
 
-from pynchy.host.container_manager.security.fencing import fence_untrusted_content
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves dispatch inputs at runtime.
+    ConversationId,
+)
 from pynchy.host.orchestrator.http_control import ClientAddress, RequestRateLimiter
 from pynchy.host.orchestrator.webhook_conversations import (
     ConversationWebhookDeps,
     WebhookConversationDispatcher,
 )
+from pynchy.host.orchestrator.webhook_delivery_admission import (
+    WebhookDeliveryAdmissionRequest,
+    admit_prepared_event,
+    effect_callback_decision,
+)
+from pynchy.host.orchestrator.webhook_event_rendering import prompt_for_event
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.plugins.webhooks import (
@@ -32,10 +38,10 @@ from pynchy.plugins.webhooks import (
 from pynchy.state import (
     WebhookAdmission,
     WebhookReceipt,
-    admit_webhook_receipt,
     get_webhook_receipt,
 )
 from pynchy.types import ScheduledTask, SessionPolicy, WorkspaceProfile
+from pynchy.webhook_effects import WebhookEffectCallbackDecision
 
 
 @runtime_checkable
@@ -284,7 +290,7 @@ def _task_for_event(
         id=f"webhook-{route.provider}-{route.name}-{event.delivery_id}",
         group_folder=workspace.folder,
         chat_jid=workspace.jid,
-        prompt=_prompt_for_event(route, event),
+        prompt=prompt_for_event(route, event),
         schedule_type="once",
         schedule_value=received_at,
         session_policy=SessionPolicy.RESET_BEFORE_RUN,
@@ -294,26 +300,6 @@ def _task_for_event(
             f"webhook:{route.provider}" if route.public_source else f"trusted:{route.provider}"
         ),
     )
-
-
-def _event_public_source(route: WebhookRoute, event: WebhookEvent) -> bool:
-    if event.conversation is not None and event.conversation.public_source is not None:
-        return event.conversation.public_source
-    return route.public_source
-
-
-def _prompt_for_event(route: WebhookRoute, event: WebhookEvent) -> str:
-    if event.instructions is None or event.external_context is None:
-        raise ValueError("Actionable webhook event lost its prompt context")
-    external_context = event.external_context
-    if isinstance(external_context, Mapping):
-        external_context = json.dumps(external_context, sort_keys=True, ensure_ascii=False)
-    if _event_public_source(route, event):
-        external_context = fence_untrusted_content(
-            external_context,
-            source=f"{route.provider}-webhook",
-        )
-    return f"{event.instructions}\n\n{external_context}"
 
 
 async def _start_conversation_routes(app: web.Application) -> None:
@@ -332,28 +318,16 @@ async def _stop_conversation_routes(  # noqa: RUF029, RUF100 - aiohttp cleanup h
 
 async def _dispatch_admitted_event(
     ingress: WebhookIngress,
-    route: WebhookRoute,
     event: WebhookEvent,
     admission: WebhookAdmission,
     workspace: WorkspaceProfile | None,
+    conversation_id: ConversationId | None,
 ) -> None:
     dispatcher = ingress.conversation_dispatcher
-    if event.conversation is not None and admission.receipt.disposition in {
-        "routed",
-        "lifecycle",
-    }:
+    if conversation_id is not None:
         if dispatcher is None:
             raise RuntimeError("Routed webhook dispatcher disappeared after startup")
-        prompt = (
-            _prompt_for_event(route, event) if admission.receipt.disposition == "routed" else None
-        )
-        conversation_id = await dispatcher.admit(
-            route,
-            event,
-            prompt,
-        )
-        if conversation_id is not None:
-            await dispatcher.wake(conversation_id)
+        await dispatcher.wake(conversation_id)
     if admission.created and admission.task is not None:
         ingress.deps.dispatch_scheduled_task(admission.task)
     if admission.created and event.host_message is not None and workspace is not None:
@@ -384,10 +358,15 @@ async def handle_webhook(request: web.Request) -> web.Response:
         return prepared
     event, workspace = prepared
 
-    processed_event = await _process_route_event(route, event)
-    if isinstance(processed_event, web.Response):
-        return processed_event
-    event = processed_event
+    callback_decision = await effect_callback_decision(event)
+    defer_process_event = (
+        callback_decision is WebhookEffectCallbackDecision.HELD and route.process_event is not None
+    )
+    if callback_decision is WebhookEffectCallbackDecision.UNRELATED:
+        processed_event = await _process_route_event(route, event)
+        if isinstance(processed_event, web.Response):
+            return processed_event
+        event = processed_event
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)
@@ -417,20 +396,39 @@ async def handle_webhook(request: web.Request) -> web.Response:
         occurred_at=event.occurred_at,
         received_at=received_at_text,
     )
-    admission = await admit_webhook_receipt(receipt, task, self_echo=event.self_echo)
-    await _dispatch_admitted_event(ingress, route, event, admission, workspace)
+    admission, conversation_id = await admit_prepared_event(
+        ingress.conversation_dispatcher,
+        route,
+        event,
+        WebhookDeliveryAdmissionRequest(
+            receipt=receipt,
+            task=task,
+            defer_process_event=defer_process_event,
+        ),
+    )
+    await _dispatch_admitted_event(
+        ingress,
+        event,
+        admission,
+        workspace,
+        conversation_id,
+    )
     logger.info(
         "Webhook delivery admitted",
         provider=route.provider,
         route=route.name,
         delivery_id=event.delivery_id,
         disposition=admission.receipt.disposition,
+        outbound_effect_held=admission.outbound_effect_held,
+        outbound_effect_suppressed=admission.outbound_effect_suppressed,
         duplicate=not admission.created,
     )
     return web.json_response(
         {
             "status": (
-                "accepted"
+                "ignored"
+                if admission.outbound_effect_suppressed
+                else "accepted"
                 if admission.receipt.disposition in {"routed", "lifecycle"}
                 else admission.receipt.disposition
             ),

@@ -57,6 +57,7 @@ from pynchy.state.chats import (
     update_chat_name,
 )
 from pynchy.state.connection import _get_db, close_test_database, init_database, init_test_database
+from pynchy.state.conversation_admission import admit_conversation_delivery
 from pynchy.state.conversation_controls import (
     close_conversation_control,
     get_conversation_control_binding,
@@ -74,7 +75,6 @@ from pynchy.state.conversation_recovery import (
     prepare_conversation_runtime_ownership_recovery,
 )
 from pynchy.state.conversation_routing import (
-    admit_conversation_delivery,
     claim_next_conversation_delivery,
     complete_conversation_delivery,
     get_conversation,
@@ -200,17 +200,20 @@ from pynchy.state.tasks import (
     resume_task,
     update_task,
 )
-from pynchy.state.webhook_models import (
-    LinearCommentSelfEcho,
-    LinearIssueStateSelfEcho,
-    WebhookAdmission,
-    WebhookReceipt,
+from pynchy.state.webhook_effects import (
+    begin_webhook_effect,
+    confirm_webhook_effect,
+    fail_webhook_effect,
+    mark_webhook_effect_executing,
+    mark_webhook_effect_outcome_unknown,
+    reconcile_webhook_effect_absent,
+    recover_incomplete_webhook_effects,
 )
+from pynchy.state.webhook_models import WebhookAdmission, WebhookConversationRequest, WebhookReceipt
 from pynchy.state.webhooks import (
+    admit_webhook_conversation,
     admit_webhook_receipt,
     get_webhook_receipt,
-    record_linear_comment_self_echo,
-    record_linear_issue_state_self_echo,
 )
 from pynchy.state.work_item_bindings import (
     bind_work_item_execution_to_task,
@@ -356,14 +359,19 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "resume_task",
     "update_task",
     # webhooks
-    "LinearCommentSelfEcho",
-    "LinearIssueStateSelfEcho",
     "WebhookAdmission",
+    "WebhookConversationRequest",
     "WebhookReceipt",
+    "admit_webhook_conversation",
     "admit_webhook_receipt",
+    "begin_webhook_effect",
+    "confirm_webhook_effect",
+    "fail_webhook_effect",
     "get_webhook_receipt",
-    "record_linear_comment_self_echo",
-    "record_linear_issue_state_self_echo",
+    "mark_webhook_effect_executing",
+    "mark_webhook_effect_outcome_unknown",
+    "reconcile_webhook_effect_absent",
+    "recover_incomplete_webhook_effects",
     # host_jobs
     "create_host_job",
     "delete_host_job",

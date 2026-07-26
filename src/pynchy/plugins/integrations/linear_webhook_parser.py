@@ -25,6 +25,10 @@ from pynchy.plugins.integrations.linear_statuses import TERMINAL_STATE_TYPES
 from pynchy.plugins.integrations.linear_webhook_config import (  # noqa: TC001, RUF100 - beartype resolves parser annotations at runtime.
     LinearWebhookRouteConfig,
 )
+from pynchy.plugins.integrations.linear_webhook_evidence import (
+    comment_webhook_evidence,
+    issue_state_webhook_evidence,
+)
 from pynchy.plugins.integrations.linear_webhook_prompts import (
     LINEAR_ISSUE_INSTRUCTIONS,
     comment_instructions,
@@ -37,7 +41,9 @@ from pynchy.plugins.webhooks import (
     WebhookLifecycle,
     WebhookPayloadError,
 )
-from pynchy.state import LinearCommentSelfEcho, LinearIssueStateSelfEcho
+from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves parser evidence.
+    WebhookEffectEvidence,
+)
 
 # NOTE: Update docs/integrations/linear.md "Receive Linear callbacks" and
 # docs/architecture/conversation-routing.md "Linear Issue Webhooks" if this
@@ -258,10 +264,10 @@ def _comment_context(payload: _LinearWebhookPayload, issue_id: str) -> str:
     )
 
 
-def _comment_self_echo(
+def _comment_effect_evidence(
     payload: _LinearWebhookPayload,
     config: LinearWebhookRouteConfig,
-) -> LinearCommentSelfEcho | None:
+) -> WebhookEffectEvidence | None:
     """Build an exact selector only from provider-side Comment/create evidence."""
     if payload.action != "create":
         return None
@@ -270,21 +276,21 @@ def _comment_self_echo(
     revision = _optional_text(payload.data.get("updatedAt"))
     if comment_id is None or issue_id is None or revision is None:
         return None
-    return LinearCommentSelfEcho(
-        account_name=config.tool,
+    return comment_webhook_evidence(
+        config.tool,
         comment_id=comment_id,
         issue_id=issue_id,
         revision=revision,
     )
 
 
-def _issue_state_self_echo(
+def _issue_state_effect_evidence(
     payload: _LinearWebhookPayload,
     config: LinearWebhookRouteConfig,
     *,
     issue_id: str,
     state: _LinearIssueState | None,
-) -> LinearIssueStateSelfEcho | None:
+) -> WebhookEffectEvidence | None:
     """Build a selector only for exact nonterminal Issue/update evidence."""
     if (
         payload.action != "update"
@@ -297,8 +303,8 @@ def _issue_state_self_echo(
     revision = _optional_text(payload.data.get("updatedAt"))
     if revision is None:
         return None
-    return LinearIssueStateSelfEcho(
-        account_name=config.tool,
+    return issue_state_webhook_evidence(
+        config.tool,
         issue_id=issue_id,
         state_id=state.id,
         revision=revision,
@@ -351,7 +357,7 @@ def _comment_event(
         conversation=_conversation(payload, issue_id),
         actor=_actor(payload),
         changed_fields=frozenset(payload.updated_from or ()),
-        self_echo=_comment_self_echo(payload, config),
+        effect_evidence=_comment_effect_evidence(payload, config),
     )
 
 
@@ -363,6 +369,13 @@ def _issue_event(
 ) -> WebhookEvent:
     issue_id = _issue_id(payload)
     state = _issue_state(payload)
+    if payload.action == "create":
+        return _ignored_event(
+            payload,
+            delivery_id,
+            subject_id=issue_id,
+            reason="issue_creation_does_not_authorize_work",
+        )
     control_closed = _issue_control_closed(payload)
     conversation = _conversation(
         payload,
@@ -396,7 +409,7 @@ def _issue_event(
         conversation=conversation,
         actor=_actor(payload),
         changed_fields=frozenset(payload.updated_from or ()),
-        self_echo=_issue_state_self_echo(
+        effect_evidence=_issue_state_effect_evidence(
             payload,
             config,
             issue_id=issue_id,

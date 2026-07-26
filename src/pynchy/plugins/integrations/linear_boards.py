@@ -14,6 +14,9 @@ from dataclasses import dataclass, replace
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
+from pynchy.plugins.integrations.linear_board_mutations import (
+    apply_workspace_todo_move,
+)
 from pynchy.plugins.integrations.linear_board_payloads import (
     nodes,
     norm_name,
@@ -23,7 +26,6 @@ from pynchy.plugins.integrations.linear_board_payloads import (
 )
 from pynchy.plugins.integrations.linear_board_queries import (
     CREATE_WORKSPACE_TODO_MUTATION,
-    MOVE_WORKSPACE_TODO_MUTATION,
 )
 from pynchy.plugins.integrations.linear_board_resources import (
     load_team_resources,
@@ -268,12 +270,8 @@ async def move_workspace_todo(
     board = await require_workspace_board(client, workspace, team_key=team_key)
     status_key = normalize_status(status)
     state = board.states[status_key]
-    data = await client.query(
-        MOVE_WORKSPACE_TODO_MUTATION,
-        issue_id=issue_id,
-        state_id=state["id"],
-    )
-    return payload_entity(data, "issueUpdate", "issue")
+    state_id = str(state["id"])
+    return await apply_workspace_todo_move(client, issue_id=issue_id, state_id=state_id)
 
 
 async def list_workspace_todos(

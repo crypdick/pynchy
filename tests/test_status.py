@@ -24,8 +24,14 @@ from pynchy.host.git_ops.repo import RepoContext
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
-from pynchy.state import init_test_database
+from pynchy.state import (
+    begin_webhook_effect,
+    init_test_database,
+    mark_webhook_effect_executing,
+    mark_webhook_effect_outcome_unknown,
+)
 from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
+from pynchy.webhook_effects import WebhookEffectScope
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -1152,6 +1158,43 @@ class TestStatusEndpoint(AioHTTPTestCase):
         assert response.status == 200
         assert await response.json() == {"workspace": "project", "actions": []}
         assert invalid.status == 400
+
+    async def test_webhook_effect_reconciliation_requires_explicit_absence_proof(self):
+        await init_test_database()
+        effect_id = await begin_webhook_effect(
+            WebhookEffectScope(
+                provider="linear",
+                account="project",
+                event_type="Comment",
+                event_action="create",
+                subject_id="issue-1",
+                intent_fingerprint="intent-fingerprint",
+            )
+        )
+        await mark_webhook_effect_executing(effect_id)
+        await mark_webhook_effect_outcome_unknown(effect_id)
+
+        listed = await self.client.get("/webhook-effects")
+        rejected = await self.client.post(
+            f"/webhook-effects/{effect_id}/reconcile-absent",
+            json={"verified_absent": False},
+        )
+        reconciled = await self.client.post(
+            f"/webhook-effects/{effect_id}/reconcile-absent",
+            json={"verified_absent": True},
+        )
+        after = await self.client.get("/webhook-effects")
+
+        assert listed.status == 200
+        listed_body = await listed.json()
+        assert listed_body["effects"][0]["intent_fingerprint"] == "intent-fingerprint"
+        assert rejected.status == 400
+        assert reconciled.status == 200
+        assert await reconciled.json() == {
+            "status": "reconciled_absent",
+            "released_deliveries": 0,
+        }
+        assert await after.json() == {"status": "outcome_unknown", "effects": []}
 
     async def test_canary_report_and_history_endpoints(self):
         await init_test_database()

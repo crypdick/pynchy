@@ -2,30 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from datetime import UTC, datetime
-
 from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves state boundary annotations at runtime.
     Connection,
     Row,
 )
 
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.state.conversation_routing import _admit_conversation_delivery
+from pynchy.state.webhook_effect_admission import admit_webhook_effect_delivery
 from pynchy.state.webhook_models import (
-    LinearCommentSelfEcho,
-    LinearIssueStateSelfEcho,
     WebhookAdmission,
+    WebhookConversationAdmission,
+    WebhookConversationRequest,
     WebhookReceipt,
 )
 from pynchy.types import ScheduledTask, SessionPolicy
-
-_LINEAR_COMMENT_SELF_ECHO_REASON = "pynchy_self_comment_echo"
-_LINEAR_ISSUE_STATE_SELF_ECHO_REASON = "pynchy_self_issue_state_echo"
-_LINEAR_SELF_ECHO_REASONS = frozenset(
-    {_LINEAR_COMMENT_SELF_ECHO_REASON, _LINEAR_ISSUE_STATE_SELF_ECHO_REASON}
+from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves admission evidence.
+    WebhookEffectEvidence,
 )
-
-type _LinearSelfEcho = LinearCommentSelfEcho | LinearIssueStateSelfEcho
 
 
 def _row_to_receipt(row: Row) -> WebhookReceipt:
@@ -77,6 +71,21 @@ def _row_to_task(row: Row | None) -> ScheduledTask | None:
     )
 
 
+async def _effect_decision(
+    database: Connection,
+    receipt: WebhookReceipt,
+) -> str | None:
+    cursor = await database.execute(
+        """
+        SELECT decision FROM webhook_effect_decisions
+        WHERE provider = ? AND route = ? AND delivery_id = ?
+        """,
+        (receipt.provider, receipt.route, receipt.delivery_id),
+    )
+    row = await cursor.fetchone()
+    return row["decision"] if row is not None else None
+
+
 async def _existing_admission(
     database: Connection,
     receipt: WebhookReceipt,
@@ -101,11 +110,13 @@ async def _existing_admission(
             (existing.task_id,),
         )
         task_row = await task_cursor.fetchone()
+    decision = await _effect_decision(database, existing)
     return WebhookAdmission(
         receipt=existing,
         task=_row_to_task(task_row),
         created=False,
-        self_echo_suppressed=existing.ignored_reason in _LINEAR_SELF_ECHO_REASONS,
+        outbound_effect_suppressed=decision == "suppressed",
+        outbound_effect_held=decision == "held",
     )
 
 
@@ -175,213 +186,117 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
     )
 
 
-def _validate_linear_comment_self_echo(
-    receipt: WebhookReceipt,
-    self_echo: LinearCommentSelfEcho,
-) -> None:
-    if receipt.provider != "linear" or receipt.event_type != "Comment":
-        raise ValueError("Linear comment self-echo markers require a Linear Comment receipt")
-    if receipt.event_action != self_echo.action:
-        raise ValueError("Linear comment self-echo action does not match its receipt")
-    if receipt.subject_id != self_echo.issue_id:
-        raise ValueError("Linear comment self-echo issue does not match its receipt")
-
-
-async def _consume_linear_comment_self_echo(
-    database: Connection,
-    self_echo: LinearCommentSelfEcho,
-) -> bool:
-    cursor = await database.execute(
+async def _insert_receipt(database: Connection, receipt: WebhookReceipt) -> None:
+    await database.execute(
         """
-        DELETE FROM linear_comment_self_echoes
-        WHERE account_name = ?
-          AND comment_id = ?
-          AND issue_id = ?
-          AND revision = ?
-          AND action = ?
+        INSERT INTO webhook_receipts (
+            provider, route, delivery_id, workspace, event_type, event_action,
+            subject_id, payload_sha256, disposition, ignored_reason, task_id,
+            occurred_at, received_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            self_echo.account_name,
-            self_echo.comment_id,
-            self_echo.issue_id,
-            self_echo.revision,
-            self_echo.action,
+            receipt.provider,
+            receipt.route,
+            receipt.delivery_id,
+            receipt.workspace,
+            receipt.event_type,
+            receipt.event_action,
+            receipt.subject_id,
+            receipt.payload_sha256,
+            receipt.disposition,
+            receipt.ignored_reason,
+            receipt.task_id,
+            receipt.occurred_at,
+            receipt.received_at,
         ),
     )
-    return cursor.rowcount == 1
 
 
-def _validate_linear_issue_state_self_echo(
-    receipt: WebhookReceipt,
-    self_echo: LinearIssueStateSelfEcho,
-) -> None:
-    if receipt.provider != "linear" or receipt.event_type != "Issue":
-        raise ValueError("Linear issue state self-echo markers require a Linear Issue receipt")
-    if receipt.event_action != self_echo.action:
-        raise ValueError("Linear issue state self-echo action does not match its receipt")
-    if receipt.subject_id != self_echo.issue_id:
-        raise ValueError("Linear issue state self-echo issue does not match its receipt")
-
-
-async def _consume_linear_issue_state_self_echo(
+async def _admit_webhook_receipt(
     database: Connection,
-    self_echo: LinearIssueStateSelfEcho,
-) -> bool:
-    cursor = await database.execute(
-        """
-        DELETE FROM linear_issue_state_self_echoes
-        WHERE account_name = ?
-          AND issue_id = ?
-          AND state_id = ?
-          AND revision = ?
-          AND action = ?
-        """,
-        (
-            self_echo.account_name,
-            self_echo.issue_id,
-            self_echo.state_id,
-            self_echo.revision,
-            self_echo.action,
-        ),
+    receipt: WebhookReceipt,
+    task: ScheduledTask | None,
+    *,
+    effect_evidence: WebhookEffectEvidence | None = None,
+) -> WebhookAdmission:
+    if receipt.task_id != (task.id if task is not None else None):
+        raise ValueError("Webhook receipt task identity does not match its admitted task")
+    if effect_evidence is not None and task is not None:
+        raise ValueError("Outbound-effect callbacks cannot create isolated tasks")
+
+    await _ensure_external_receipt(database, receipt)
+    existing = await _existing_admission(database, receipt)
+    if existing is not None:
+        return existing
+    if task is not None:
+        await _insert_task(database, task)
+    await _insert_receipt(database, receipt)
+    suppressed = False
+    held = False
+    if effect_evidence is not None and receipt.disposition != "lifecycle":
+        suppressed, held = await admit_webhook_effect_delivery(
+            database,
+            receipt,
+            effect_evidence,
+        )
+    return WebhookAdmission(
+        receipt=receipt,
+        task=task,
+        created=True,
+        outbound_effect_suppressed=suppressed,
+        outbound_effect_held=held,
     )
-    return cursor.rowcount == 1
-
-
-def _validate_linear_self_echo(receipt: WebhookReceipt, self_echo: _LinearSelfEcho) -> None:
-    if isinstance(self_echo, LinearCommentSelfEcho):
-        _validate_linear_comment_self_echo(receipt, self_echo)
-        return
-    _validate_linear_issue_state_self_echo(receipt, self_echo)
-
-
-async def _consume_linear_self_echo(
-    database: Connection,
-    receipt: WebhookReceipt,
-    self_echo: _LinearSelfEcho,
-) -> bool:
-    if isinstance(self_echo, LinearCommentSelfEcho):
-        return await _consume_linear_comment_self_echo(database, self_echo)
-    if receipt.disposition == "lifecycle":
-        # Terminal Issue callbacks close the conversation and apply their
-        # lifecycle effect even when a matching self-echo marker exists.
-        return False
-    return await _consume_linear_issue_state_self_echo(database, self_echo)
-
-
-def _linear_self_echo_reason(self_echo: _LinearSelfEcho) -> str:
-    if isinstance(self_echo, LinearCommentSelfEcho):
-        return _LINEAR_COMMENT_SELF_ECHO_REASON
-    return _LINEAR_ISSUE_STATE_SELF_ECHO_REASON
-
-
-async def record_linear_comment_self_echo(
-    self_echo: LinearCommentSelfEcho,
-) -> None:
-    """Record exact provider evidence before its authenticated callback arrives."""
-    async with atomic_write() as database:
-        await database.execute(
-            """
-            INSERT OR IGNORE INTO linear_comment_self_echoes (
-                account_name, comment_id, issue_id, revision, action, recorded_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                self_echo.account_name,
-                self_echo.comment_id,
-                self_echo.issue_id,
-                self_echo.revision,
-                self_echo.action,
-                datetime.now(UTC).isoformat(),
-            ),
-        )
-
-
-async def record_linear_issue_state_self_echo(
-    self_echo: LinearIssueStateSelfEcho,
-) -> None:
-    """Record exact provider evidence before its authenticated callback arrives."""
-    async with atomic_write() as database:
-        await database.execute(
-            """
-            INSERT OR IGNORE INTO linear_issue_state_self_echoes (
-                account_name, issue_id, state_id, revision, action, recorded_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                self_echo.account_name,
-                self_echo.issue_id,
-                self_echo.state_id,
-                self_echo.revision,
-                self_echo.action,
-                datetime.now(UTC).isoformat(),
-            ),
-        )
 
 
 async def admit_webhook_receipt(
     receipt: WebhookReceipt,
     task: ScheduledTask | None,
     *,
-    self_echo: _LinearSelfEcho | None = None,
+    effect_evidence: WebhookEffectEvidence | None = None,
 ) -> WebhookAdmission:
-    """Persist one receipt and its task, consuming a matching self echo atomically."""
-    if receipt.task_id != (task.id if task is not None else None):
-        raise ValueError("Webhook receipt task identity does not match its admitted task")
-    if self_echo is not None:
-        _validate_linear_self_echo(receipt, self_echo)
-
+    """Persist one immutable receipt and its callback-correlation decision."""
     async with atomic_write() as database:
-        await _ensure_external_receipt(database, receipt)
-        existing = await _existing_admission(database, receipt)
-        if existing is not None:
-            return existing
-        self_echo_suppressed = self_echo is not None and await _consume_linear_self_echo(
+        return await _admit_webhook_receipt(
             database,
             receipt,
-            self_echo,
+            task,
+            effect_evidence=effect_evidence,
         )
-        admitted_receipt = receipt
-        admitted_task = task
-        if self_echo_suppressed and self_echo is not None:
-            admitted_receipt = replace(
-                receipt,
-                disposition="ignored",
-                ignored_reason=_linear_self_echo_reason(self_echo),
-                task_id=None,
+
+
+async def admit_webhook_conversation(
+    receipt: WebhookReceipt,
+    request: WebhookConversationRequest,
+    *,
+    effect_evidence: WebhookEffectEvidence | None = None,
+) -> WebhookConversationAdmission:
+    """Atomically persist a routed receipt, correlation, payload, and FIFO state."""
+    if receipt.disposition not in {"routed", "lifecycle"}:
+        raise ValueError("Conversation webhook admission requires a routed receipt")
+    async with atomic_write() as database:
+        webhook = await _admit_webhook_receipt(
+            database,
+            receipt,
+            None,
+            effect_evidence=effect_evidence,
+        )
+        if webhook.receipt.disposition not in {"routed", "lifecycle"}:
+            return WebhookConversationAdmission(
+                webhook=webhook,
+                conversation=None,
             )
-            admitted_task = None
-        if admitted_task is not None:
-            await _insert_task(database, admitted_task)
-        await database.execute(
-            """
-            INSERT INTO webhook_receipts (
-                provider, route, delivery_id, workspace, event_type, event_action,
-                subject_id, payload_sha256, disposition, ignored_reason, task_id,
-                occurred_at, received_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                admitted_receipt.provider,
-                admitted_receipt.route,
-                admitted_receipt.delivery_id,
-                admitted_receipt.workspace,
-                admitted_receipt.event_type,
-                admitted_receipt.event_action,
-                admitted_receipt.subject_id,
-                admitted_receipt.payload_sha256,
-                admitted_receipt.disposition,
-                admitted_receipt.ignored_reason,
-                admitted_receipt.task_id,
-                admitted_receipt.occurred_at,
-                admitted_receipt.received_at,
-            ),
+        conversation = await _admit_conversation_delivery(
+            database,
+            request.identity,
+            request.subject,
+            request.workspace,
+            payload=request.payload,
         )
-    return WebhookAdmission(
-        receipt=admitted_receipt,
-        task=admitted_task,
-        created=True,
-        self_echo_suppressed=self_echo_suppressed,
-    )
+        return WebhookConversationAdmission(
+            webhook=webhook,
+            conversation=conversation,
+        )
 
 
 async def get_webhook_receipt(

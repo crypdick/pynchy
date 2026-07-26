@@ -64,7 +64,7 @@ async def prepare_conversation_delivery_recovery() -> int:
                       <= julianday(chats.cleared_at)
             )
               AND (
-                  status = 'pending'
+                  status IN ('held', 'pending')
                   OR (
                       status = 'claimed'
                       AND NOT EXISTS (
@@ -74,6 +74,21 @@ async def prepare_conversation_delivery_recovery() -> int:
                       )
                   )
               )
+            """
+        )
+        await database.execute(
+            """
+            DELETE FROM webhook_effect_candidates
+            WHERE EXISTS (
+                SELECT 1 FROM conversation_deliveries
+                WHERE conversation_deliveries.provider =
+                          webhook_effect_candidates.provider
+                  AND conversation_deliveries.route =
+                          webhook_effect_candidates.route
+                  AND conversation_deliveries.delivery_id =
+                          webhook_effect_candidates.delivery_id
+                  AND conversation_deliveries.status = 'completed'
+            )
             """
         )
         released = await database.execute(

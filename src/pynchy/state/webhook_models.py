@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
+    ConversationDeliveryAdmission,
+    ConversationSubject,
+    ExternalDeliveryIdentity,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves admission annotations at runtime.
+    GroupFolder,
     ScheduledTask,
 )
 
@@ -50,40 +56,29 @@ class WebhookReceipt:
 
 
 @dataclass(frozen=True)
-class LinearCommentSelfEcho:
-    """Exact provider evidence for one Pynchy-created Linear comment."""
-
-    account_name: str
-    comment_id: str
-    issue_id: str
-    revision: str
-    action: str = "create"
-
-    def __post_init__(self) -> None:
-        if not all((self.account_name, self.comment_id, self.issue_id, self.revision, self.action)):
-            raise ValueError("Linear self-echo marker fields cannot be blank")
-
-
-@dataclass(frozen=True)
-class LinearIssueStateSelfEcho:
-    """Exact provider evidence for one Pynchy-created nonterminal state update."""
-
-    account_name: str
-    issue_id: str
-    state_id: str
-    revision: str
-    action: str = "update"
-
-    def __post_init__(self) -> None:
-        if not all((self.account_name, self.issue_id, self.state_id, self.revision, self.action)):
-            raise ValueError("Linear self-echo marker fields cannot be blank")
-
-
-@dataclass(frozen=True)
 class WebhookAdmission:
     """Idempotent admission result for one provider delivery."""
 
     receipt: WebhookReceipt
     task: ScheduledTask | None
     created: bool
-    self_echo_suppressed: bool = False
+    outbound_effect_suppressed: bool = False
+    outbound_effect_held: bool = False
+
+
+@dataclass(frozen=True)
+class WebhookConversationAdmission:
+    """One transaction's immutable receipt and optional routed FIFO entry."""
+
+    webhook: WebhookAdmission
+    conversation: ConversationDeliveryAdmission | None
+
+
+@dataclass(frozen=True)
+class WebhookConversationRequest:
+    """Parsed provider-neutral delivery data committed beside its receipt."""
+
+    identity: ExternalDeliveryIdentity
+    subject: ConversationSubject
+    workspace: GroupFolder
+    payload: dict[str, object]

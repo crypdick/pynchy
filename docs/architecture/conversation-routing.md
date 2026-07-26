@@ -137,13 +137,14 @@ not perform provider writes or interpret provider payloads.
 
 ## Linear Issue Webhooks
 
-The built-in Linear webhook adapter maps each authenticated `Comment` or `Issue`
-event to `linear:<organization-id>:issue` plus the immutable Linear issue ID.
-The webhook receipt retains the delivery UUID. Ordinary entries retain only the
-host-parsed prompt, readable control title, and control metadata needed to wake
-the agent; terminal issue entries retain closed metadata and the parsed workflow
-state ID for lifecycle-only delivery. Raw provider shapes do not cross the
-routing boundary.
+The built-in Linear webhook adapter maps each authenticated `Comment` or
+non-creation `Issue` event to `linear:<organization-id>:issue` plus the immutable
+Linear issue ID. `Issue/create` is recorded as ignored: creating an issue,
+including one in `Agent Proposed`, is not an authorization signal. The webhook
+receipt retains the delivery UUID. Ordinary entries retain only the host-parsed
+prompt, readable control title, and control metadata needed to wake the agent;
+terminal issue entries retain closed metadata and immutable state evidence for
+lifecycle-only delivery. Raw provider shapes do not cross the routing boundary.
 
 An issue update that requests planning, waits for plan approval, or acquires or
 confirms an active execution lease is the exception: the Linear integration
@@ -161,31 +162,62 @@ such as `Done` never supplies a fallback classification. A typed terminal entry
 waits in the issue FIFO, closes an existing control binding, and never creates an
 LLM turn or a terminal-first Discord thread.
 
-When present, the terminal entry retains the callback's parsed state ID. At its
-FIFO head, the Linear lifecycle callback compares that ID with the managed
-board's exact `Done` state ID and completes reviewed work only when they match.
-It does not infer completion from the issue's mutable state at callback time.
-`Duplicate`, `Canceled`, and other typed terminal states close the control but do
-not complete the work item unless their exact state ID matches managed `Done`.
+At ingress, the terminal entry retains both the callback's parsed state ID and
+the managed board's exact `Done` state ID. At its FIFO head, the Linear lifecycle
+callback compares those two immutable values and completes reviewed work only
+when they match. It does not fetch the issue or project again, so deleting the
+issue or moving it off the managed board while the callback waits cannot wedge
+the FIFO. `Duplicate`, `Canceled`, and other typed terminal states close the
+control but do not complete the work item unless their exact state ID matches
+the captured managed `Done` ID.
 
-Webhook admission persists the receipt before linking the FIFO delivery. An
-exact provider replay always attempts the link again, which repairs a crash
-between those writes. Duplicate delivery IDs reuse the existing FIFO entry.
-Separate issue subjects can hold claims concurrently; deliveries for one issue
-wait behind its claimed FIFO head.
+Webhook admission commits the immutable receipt, effect candidates, parsed
+delivery envelope, and initial FIFO state in one SQLite transaction. A crash
+cannot leave a receipt that depends on replaying mutable provider preparation to
+recover its FIFO entry. Duplicate delivery IDs reuse the transaction's existing
+receipt and entry. Separate issue subjects can hold claims concurrently;
+deliveries for one issue wait behind its oldest non-completed FIFO head,
+including a held head.
 
-After a confirmed host-owned Linear comment or nonterminal workflow-state update,
-Pynchy records an exact one-time echo marker. A comment marker contains the
-account name, comment ID, issue ID, `data.updatedAt` revision, and `create`
-action; a state marker contains the account name, issue ID, state ID,
-`data.updatedAt` revision, and `update` action. Receipt admission atomically
-consumes only a callback with every matching value and persists it as ignored
-before conversation admission. A replay of that delivery reuses the ignored
-receipt. Pynchy does not suppress by actor identity, so comments from a person
-sharing the same Linear account, comment edits, and callbacks with missing or
-mismatched evidence remain actionable. Terminal state callbacks never use this
-marker path because their lifecycle handling must still close the control and
-reconcile managed `Done` work.
+Before a host-owned Linear comment or nonterminal workflow-state mutation starts,
+Pynchy records a provider-neutral outbound-effect intent. A callback with the
+same account, event kind, action, and subject is held in the issue FIFO until
+the provider response resolves every matching in-flight intent. Exact response
+evidence completes the held self callback without an agent turn; a mismatch
+releases it in its original FIFO position. Multiple routes and provider retries
+use retained confirmation evidence, so one route cannot consume another
+route's suppression.
+
+Correlation is classified before route-owned trusted processing. Exact
+self-callbacks never run those effects. A candidate callback stores the parsed
+event in its held FIFO envelope; after a mismatch releases it, trusted
+processing runs idempotently at the FIFO head from that persisted envelope.
+Provider deletion or project movement after admission cannot change the event
+being processed.
+
+The webhook receipt remains an immutable audit of the authenticated event.
+Correlation decisions and candidates are stored separately. A confirmed
+comment fingerprint covers comment ID, issue ID, revision, and action; a state
+fingerprint covers issue ID, state ID, revision, and action. Pynchy does not
+suppress by actor identity, so a person sharing the Linear account remains
+actionable once exact evidence disproves the hold. Terminal state callbacks
+never enter the hold path because their lifecycle reducer must still close the
+control and reconcile managed `Done` work.
+
+If the process loses a mutation after external I/O starts but before exact
+response evidence is durable, its effect becomes `outcome_unknown`. Matching
+callbacks remain quarantined rather than being guessed safe. Prepared effects
+that never reached external I/O are released during startup recovery. Unknown
+effects are never silently time-pruned; candidate matching is limited to the
+24-hour provider-event window around the attempt, while confirmed evidence is
+retained for seven days to cover retries and overlapping routes. The
+authenticated control plane lists these records at `GET /webhook-effects`.
+After independently proving the provider mutation did not occur, an operator
+can send `{"verified_absent": true}` to
+`POST /webhook-effects/{effect_id}/reconcile-absent`; that explicit decision
+releases held candidates and advances their FIFOs. The record retains a hash of
+the requested mutation fields to support that investigation without storing
+comment or plan bodies.
 
 The adapter places the stable routed workspace behind a Discord child thread of
 the configured Linear workspace. A first callback derives a title such as

@@ -23,6 +23,7 @@ from pynchy.conversation.models import (
     ExternalRoute,
 )
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.state.webhook_effect_decisions import webhook_effect_delivery_status
 from pynchy.types import GroupFolder, SessionId
 
 if TYPE_CHECKING:
@@ -230,76 +231,74 @@ async def _delivery_by_identity(
     return _row_to_delivery(row) if row is not None else None
 
 
-async def admit_conversation_delivery(
+async def _admit_conversation_delivery(
+    database: Connection,
     identity: ExternalDeliveryIdentity,
     subject: ConversationSubject,
     workspace: GroupFolder,
     *,
     payload: dict[str, Any] | None = None,
-) -> ConversationDeliveryAdmission:
-    """Link one authenticated receipt to a conversation exactly once.
-
-    The corresponding webhook receipt must already exist, proving that the
-    provider boundary authenticated and durably admitted the delivery.
-    """
-    async with atomic_write() as database:
-        existing_delivery = await _delivery_by_identity(database, identity)
-        if existing_delivery is not None:
-            conversation = await _conversation_by_id(database, existing_delivery.conversation_id)
-            if conversation is None:
-                raise RuntimeError("Conversation delivery references a missing conversation")
-            if conversation.subject != subject:
-                raise ValueError("External delivery is already linked to another subject")
-            return ConversationDeliveryAdmission(
-                conversation=conversation,
-                delivery=existing_delivery,
-                created=False,
-            )
-
-        receipt_cursor = await database.execute(
-            """
-            SELECT received_at FROM external_receipts
-            WHERE provider = ? AND route = ? AND delivery_id = ?
-            """,
-            (identity.provider, identity.route, identity.delivery_id),
-        )
-        receipt = await receipt_cursor.fetchone()
-        if receipt is None:
-            raise ValueError("External delivery requires an authenticated receipt")
-
-        conversation = await _resolve_conversation(database, subject, workspace)
-        cursor = await database.execute(
-            """
-            INSERT INTO conversation_deliveries (
-                provider, route, delivery_id, conversation_id, status, received_at, payload
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                identity.provider,
-                identity.route,
-                identity.delivery_id,
-                conversation.id,
-                ConversationDeliveryStatus.PENDING.value,
-                receipt["received_at"],
-                json.dumps(payload, sort_keys=True) if payload is not None else None,
-            ),
-        )
-        sequence = cursor.lastrowid
-        if sequence is None:
-            raise RuntimeError("Conversation delivery insert returned no sequence")
-        delivery = ConversationDelivery(
-            sequence=sequence,
-            identity=identity,
-            conversation_id=conversation.id,
-            status=ConversationDeliveryStatus.PENDING,
-            received_at=receipt["received_at"],
-            payload=payload,
-        )
+) -> ConversationDeliveryAdmission | None:
+    existing_delivery = await _delivery_by_identity(database, identity)
+    if existing_delivery is not None:
+        conversation = await _conversation_by_id(database, existing_delivery.conversation_id)
+        if conversation is None:
+            raise RuntimeError("Conversation delivery references a missing conversation")
+        if conversation.subject != subject:
+            raise ValueError("External delivery is already linked to another subject")
         return ConversationDeliveryAdmission(
             conversation=conversation,
-            delivery=delivery,
-            created=True,
+            delivery=existing_delivery,
+            created=False,
         )
+
+    receipt_cursor = await database.execute(
+        """
+        SELECT received_at FROM external_receipts
+        WHERE provider = ? AND route = ? AND delivery_id = ?
+        """,
+        (identity.provider, identity.route, identity.delivery_id),
+    )
+    receipt = await receipt_cursor.fetchone()
+    if receipt is None:
+        raise ValueError("External delivery requires an authenticated receipt")
+
+    status = await webhook_effect_delivery_status(database, identity)
+    if status is None:
+        return None
+    conversation = await _resolve_conversation(database, subject, workspace)
+    cursor = await database.execute(
+        """
+        INSERT INTO conversation_deliveries (
+            provider, route, delivery_id, conversation_id, status, received_at, payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            identity.provider,
+            identity.route,
+            identity.delivery_id,
+            conversation.id,
+            status.value,
+            receipt["received_at"],
+            json.dumps(payload, sort_keys=True) if payload is not None else None,
+        ),
+    )
+    sequence = cursor.lastrowid
+    if sequence is None:
+        raise RuntimeError("Conversation delivery insert returned no sequence")
+    delivery = ConversationDelivery(
+        sequence=sequence,
+        identity=identity,
+        conversation_id=conversation.id,
+        status=status,
+        received_at=receipt["received_at"],
+        payload=payload,
+    )
+    return ConversationDeliveryAdmission(
+        conversation=conversation,
+        delivery=delivery,
+        created=True,
+    )
 
 
 async def get_conversation_delivery(
@@ -358,17 +357,17 @@ async def claim_next_conversation_delivery(
         if await claimed_cursor.fetchone() is not None:
             return None
 
-        pending_cursor = await database.execute(
+        head_cursor = await database.execute(
             """
-            SELECT sequence FROM conversation_deliveries
-            WHERE conversation_id = ? AND status = 'pending'
+            SELECT sequence, status FROM conversation_deliveries
+            WHERE conversation_id = ? AND status != 'completed'
             ORDER BY sequence
             LIMIT 1
             """,
             (conversation_id,),
         )
-        pending = await pending_cursor.fetchone()
-        if pending is None:
+        head = await head_cursor.fetchone()
+        if head is None or head["status"] != ConversationDeliveryStatus.PENDING.value:
             return None
 
         claimed_at = _timestamp()
@@ -378,11 +377,11 @@ async def claim_next_conversation_delivery(
             SET status = 'claimed', claim_id = ?, claimed_at = ?
             WHERE sequence = ? AND status = 'pending'
             """,
-            (claim_id, claimed_at, pending["sequence"]),
+            (claim_id, claimed_at, head["sequence"]),
         )
         cursor = await database.execute(
             "SELECT * FROM conversation_deliveries WHERE sequence = ?",
-            (pending["sequence"],),
+            (head["sequence"],),
         )
         row = await cursor.fetchone()
         if row is None:

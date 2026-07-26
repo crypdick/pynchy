@@ -59,7 +59,7 @@ async def set_chat_cleared_at(
             WHERE conversation_id = ?
               AND julianday(received_at) <= julianday(?)
               AND (
-                  status = 'pending'
+                  status IN ('held', 'pending')
                   OR (
                       status = 'claimed'
                       AND NOT EXISTS (
@@ -84,7 +84,7 @@ async def set_chat_cleared_at(
             WHERE conversation_id = ?
               AND julianday(received_at) <= julianday(?)
               AND (
-                  status = 'pending'
+                  status IN ('held', 'pending')
                   OR (
                       status = 'claimed'
                       AND NOT EXISTS (
@@ -97,6 +97,13 @@ async def set_chat_cleared_at(
               )
             """,
             (timestamp, conversation_id, timestamp),
+        )
+        await database.executemany(
+            """
+            DELETE FROM webhook_effect_candidates
+            WHERE provider = ? AND route = ? AND delivery_id = ?
+            """,
+            [(row["provider"], row["route"], row["delivery_id"]) for row in candidates],
         )
 
         completions: list[ConversationDeliveryCompletion] = []

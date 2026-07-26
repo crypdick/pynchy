@@ -87,6 +87,7 @@ class Conversation:
 class ConversationDeliveryStatus(StrEnum):
     """Durable execution state for one conversation delivery."""
 
+    HELD = "held"
     PENDING = "pending"
     CLAIMED = "claimed"
     COMPLETED = "completed"

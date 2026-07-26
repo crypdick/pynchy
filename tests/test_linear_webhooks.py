@@ -104,6 +104,14 @@ async def _database() -> None:
     await init_test_database()
 
 
+def _workspace_board() -> LinearWorkspaceBoard:
+    return LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={"done": {"id": "state-done"}},
+    )
+
+
 @pytest.mark.parametrize(
     ("action", "activity"),
     [
@@ -140,7 +148,7 @@ def test_every_comment_change_maps_to_concise_issue_conversation(
 
 @pytest.mark.parametrize(
     ("action", "updated_from"),
-    [("create", None), ("update", {"title": "Old title"}), ("remove", None)],
+    [("update", {"title": "Old title"}), ("remove", None)],
 )
 def test_every_issue_change_targets_the_issue_conversation(
     action: str,
@@ -179,6 +187,31 @@ def test_every_issue_change_targets_the_issue_conversation(
     assert event.conversation is not None
     assert event.conversation.control_title == "[PYN-1] Webhook callbacks"
     assert event.conversation.control_closed is False
+
+
+@pytest.mark.parametrize("state_name", ["Agent Proposed", "In Progress"])
+def test_issue_creation_never_authorizes_or_wakes_work(state_name: str) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="create",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Created issue",
+                "state": {"id": "state-1", "name": state_name, "type": "started"},
+            },
+        )
+    )
+
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.instructions is None
+    assert event.external_context is None
+    assert event.conversation is None
+    assert event.ignored_reason == "issue_creation_does_not_authorize_work"
 
 
 @pytest.mark.parametrize(
@@ -304,7 +337,7 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
     assert event.lifecycle is not None
 
-    workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, object()))
+    workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, _workspace_board()))
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhooks.linear_client",
         lambda **_kwargs: _linear_client_context(),
@@ -317,6 +350,10 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     prepared = await prepare_linear_webhook_event(event, config=_config())
 
     assert prepared.lifecycle is not None
+    assert prepared.lifecycle.context == {
+        "linear_state_id": "state-done",
+        "linear_managed_done_state_id": "state-done",
+    }
     assert prepared.conversation is not None
     assert prepared.conversation.workspace == "project"
     workspace_issue.assert_awaited_once()
@@ -326,24 +363,10 @@ async def test_managed_done_lifecycle_completes_reviewed_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     complete = AsyncMock(return_value=None)
-    board = LinearWorkspaceBoard(
-        team={"id": "team-1"},
-        project={"id": "project-1"},
-        states={"done": {"id": "state-done"}},
-    )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhook_effects.complete_reviewed_work_item",
         complete,
     )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
-        lambda **_kwargs: _linear_client_context(),
-    )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
-        AsyncMock(return_value=({"id": "issue-1"}, board)),
-    )
-
     await process_linear_webhook_lifecycle(
         WebhookLifecycleDelivery(
             identity=ExternalDeliveryIdentity(
@@ -354,7 +377,10 @@ async def test_managed_done_lifecycle_completes_reviewed_execution(
             conversation_id=ConversationId("conversation-1"),
             subject_id="issue-1",
             workspace=GroupFolder("project"),
-            context={"linear_state_id": "state-done"},
+            context={
+                "linear_state_id": "state-done",
+                "linear_managed_done_state_id": "state-done",
+            },
         )
     )
 
@@ -367,24 +393,10 @@ async def test_non_managed_terminal_lifecycle_does_not_complete_reviewed_executi
     terminal_state_id: str,
 ) -> None:
     complete = AsyncMock(return_value=None)
-    board = LinearWorkspaceBoard(
-        team={"id": "team-1"},
-        project={"id": "project-1"},
-        states={"done": {"id": "state-done"}},
-    )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhook_effects.complete_reviewed_work_item",
         complete,
     )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
-        lambda **_kwargs: _linear_client_context(),
-    )
-    monkeypatch.setattr(
-        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
-        AsyncMock(return_value=({"id": "issue-1"}, board)),
-    )
-
     await process_linear_webhook_lifecycle(
         WebhookLifecycleDelivery(
             identity=ExternalDeliveryIdentity(
@@ -395,7 +407,10 @@ async def test_non_managed_terminal_lifecycle_does_not_complete_reviewed_executi
             conversation_id=ConversationId("conversation-1"),
             subject_id="issue-1",
             workspace=GroupFolder("project"),
-            context={"linear_state_id": terminal_state_id},
+            context={
+                "linear_state_id": terminal_state_id,
+                "linear_managed_done_state_id": "state-done",
+            },
         )
     )
 
@@ -1012,7 +1027,7 @@ async def test_route_preparation_verifies_board_membership_before_dispatch() -> 
         patch(
             "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
             new_callable=AsyncMock,
-            return_value=({"id": "issue-1"}, object()),
+            return_value=({"id": "issue-1"}, _workspace_board()),
         ) as workspace_issue,
     ):
         route = LinearMcpPlugin().pynchy_webhook_routes()[0]
@@ -1058,6 +1073,11 @@ async def test_project_route_selects_issue_workspace_instead_of_ingress_scope() 
         patch(
             "pynchy.plugins.integrations.linear_webhooks.get_settings",
             return_value=settings,
+        ),
+        patch(
+            "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+            new_callable=AsyncMock,
+            return_value=({"id": "issue-1"}, _workspace_board()),
         ),
     ):
         prepared = await prepare_linear_webhook_event(
@@ -1160,6 +1180,7 @@ async def test_same_issue_fifo_reuses_session_while_other_issue_runs_independent
         other_payload = _payload(
             now=now + timedelta(seconds=2),
             event_type="Issue",
+            action="update",
             data={
                 "id": "issue-2",
                 "identifier": "PYN-2",

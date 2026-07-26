@@ -16,11 +16,10 @@ from pynchy.conversation.models import (
     ExternalDeliveryIdentity,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
 )
 from pynchy.logger import logger
-from pynchy.state.webhook_models import (
-    LinearCommentSelfEcho,  # noqa: TC001, RUF100 - beartype resolves webhook markers.
-    LinearIssueStateSelfEcho,  # noqa: TC001, RUF100 - beartype resolves webhook markers.
-)
 from pynchy.types import GroupFolder, WorkspaceProfile
+from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves webhook evidence.
+    WebhookEffectEvidence,
+)
 
 if TYPE_CHECKING:
     import pluggy
@@ -127,7 +126,7 @@ class WebhookEvent:
     actor: WebhookActor | None = None
     changed_fields: frozenset[str] = frozenset()
     lifecycle: WebhookLifecycle | None = None
-    self_echo: LinearCommentSelfEcho | LinearIssueStateSelfEcho | None = None
+    effect_evidence: WebhookEffectEvidence | None = None
 
     def __post_init__(self) -> None:
         if (self.instructions is None) != (self.external_context is None):

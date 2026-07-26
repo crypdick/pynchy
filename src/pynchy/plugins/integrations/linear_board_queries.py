@@ -33,7 +33,7 @@ MOVE_WORKSPACE_TODO_MUTATION = """
 mutation MoveWorkspaceTodo($issue_id: String!, $state_id: String!) {
   issueUpdate(id: $issue_id, input: {stateId: $state_id}) {
     success
-    issue { id identifier title url state { id name type } }
+    issue { id identifier title url updatedAt state { id name type } }
   }
 }
 """

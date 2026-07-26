@@ -42,11 +42,7 @@ from pynchy.types import GroupFolder, WorkItemExecutionStatus
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     """Apply host-owned authorization and leasing before ordinary admission."""
     conversation = event.conversation
-    if (
-        event.event_type != "Issue"
-        or event.action not in {"create", "update"}
-        or conversation is None
-    ):
+    if event.event_type != "Issue" or event.action != "update" or conversation is None:
         return event
     if event.lifecycle is not None:
         # Terminal callbacks are completed at their durable FIFO head.
@@ -88,29 +84,25 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
     this delivery.
     """
     context = delivery.context
-    state = context.get("linear_state_id") if context is not None else None
-    if not isinstance(state, str) or not state:
+    callback_state = context.get("linear_state_id") if context is not None else None
+    managed_done_state = (
+        context.get("linear_managed_done_state_id") if context is not None else None
+    )
+    if (
+        not isinstance(callback_state, str)
+        or not callback_state
+        or not isinstance(managed_done_state, str)
+        or not managed_done_state
+    ):
         return
     workspace = str(delivery.workspace)
-    try:
-        async with linear_client(workspace=workspace) as client:
-            _issue, board = await workspace_issue(client, workspace, delivery.subject_id)
-            managed_done_state_id = state_id(board.states["done"])
-        if state != managed_done_state_id:
-            return
-        await complete_reviewed_work_item(
-            workspace,
-            delivery.subject_id,
-            str(delivery.identity.delivery_id),
-        )
-    except (
-        aiohttp.ClientError,
-        LinearBoardError,
-        LinearError,
-        TimeoutError,
-        ValueError,
-    ) as exc:
-        raise WebhookProcessingError(str(exc)) from exc
+    if callback_state != managed_done_state:
+        return
+    await complete_reviewed_work_item(
+        workspace,
+        delivery.subject_id,
+        str(delivery.identity.delivery_id),
+    )
 
 
 async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:

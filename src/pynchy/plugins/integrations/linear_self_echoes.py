@@ -1,62 +1,46 @@
-"""Durable self-echo evidence for host-owned Linear mutations."""
+"""Host-owned durable effect correlation for Linear mutations."""
 
 from __future__ import annotations
 
-from functools import partial
-from typing import Any
-
-from pynchy.plugins.integrations.linear_client import (
-    LinearError,
-    LinearSelfEchoRecorder,
-)
+from pynchy.conversation.dispatch import notify_conversation_delivery_completed
+from pynchy.plugins.integrations.linear_client import LinearSelfEchoRecorder
 from pynchy.state import (
-    LinearCommentSelfEcho,
-    LinearIssueStateSelfEcho,
-    record_linear_comment_self_echo,
-    record_linear_issue_state_self_echo,
+    begin_webhook_effect,
+    confirm_webhook_effect,
+    fail_webhook_effect,
+    mark_webhook_effect_executing,
+    mark_webhook_effect_outcome_unknown,
 )
+from pynchy.webhook_effects import (  # noqa: TC001, RUF100 - beartype resolves recorder callbacks.
+    WebhookEffectEvidence,
+    WebhookEffectId,
+    WebhookEffectResolution,
+)
+
+
+async def _notify_resolution(resolution: WebhookEffectResolution) -> None:
+    for wakeup in resolution.wakeups:
+        await notify_conversation_delivery_completed(wakeup)
+
+
+async def _confirm(
+    effect_id: WebhookEffectId,
+    evidence: WebhookEffectEvidence,
+) -> None:
+    await _notify_resolution(await confirm_webhook_effect(effect_id, evidence))
+
+
+async def _fail(effect_id: WebhookEffectId) -> None:
+    await _notify_resolution(await fail_webhook_effect(effect_id))
 
 
 def linear_self_echo_recorder(account_name: str) -> LinearSelfEchoRecorder:
-    """Create callbacks that persist evidence for one Linear account's writes."""
+    """Bind the generic durable effect ledger to one Linear account."""
     return LinearSelfEchoRecorder(
-        comment_created=partial(_record_linear_comment_self_echo, account_name),
-        issue_state_updated=partial(_record_linear_issue_state_self_echo, account_name),
-    )
-
-
-def _self_echo_evidence_text(evidence: dict[str, Any], key: str) -> str:
-    value = evidence.get(key)
-    if not isinstance(value, str) or not value:
-        raise LinearError("Linear provider response lost its self-echo evidence")
-    return value
-
-
-async def _record_linear_comment_self_echo(
-    account_name: str,
-    comment: dict[str, Any],
-) -> None:
-    """Records comment self-echo evidence for matching webhook callbacks."""
-    await record_linear_comment_self_echo(
-        LinearCommentSelfEcho(
-            account_name=account_name,
-            comment_id=_self_echo_evidence_text(comment, "id"),
-            issue_id=_self_echo_evidence_text(comment, "issueId"),
-            revision=_self_echo_evidence_text(comment, "updatedAt"),
-        )
-    )
-
-
-async def _record_linear_issue_state_self_echo(
-    account_name: str,
-    issue: dict[str, Any],
-) -> None:
-    """Records issue-state self-echo evidence for matching webhook callbacks."""
-    await record_linear_issue_state_self_echo(
-        LinearIssueStateSelfEcho(
-            account_name=account_name,
-            issue_id=_self_echo_evidence_text(issue, "id"),
-            state_id=_self_echo_evidence_text(issue, "stateId"),
-            revision=_self_echo_evidence_text(issue, "updatedAt"),
-        )
+        account_name=account_name,
+        begin=begin_webhook_effect,
+        mark_executing=mark_webhook_effect_executing,
+        confirm=_confirm,
+        fail=_fail,
+        mark_outcome_unknown=mark_webhook_effect_outcome_unknown,
     )

@@ -7,7 +7,11 @@ from typing import Any
 from pynchy.plugins.integrations.linear_client import (
     LinearError,
     LinearQueryClient,
-    record_issue_state_update_if_supported,
+    confirm_issue_state_effect,
+    linear_webhook_effect,
+)
+from pynchy.plugins.integrations.linear_webhook_evidence import (
+    issue_state_mutation_intent,
 )
 
 PLAN_START = "<!-- pynchy.plan:start -->"
@@ -44,40 +48,52 @@ async def update_issue_plan(
     description: str,
 ) -> dict[str, Any]:
     """Persist a plan and its approval-wait state in one provider mutation."""
-    data = await client.query(
-        """
-        mutation SubmitPynchyWorkItemPlan(
-          $issue_id: String!,
-          $state_id: String!,
-          $description: String!
-        ) {
-          issueUpdate(id: $issue_id, input: {
-            stateId: $state_id,
-            description: $description
-          }) {
-            success
-            issue {
-              id identifier title description url updatedAt
-              state { id name type }
-              project { id name }
-            }
-          }
-        }
-        """,
-        issue_id=issue_id,
-        state_id=state_id,
-        description=description,
-    )
-    result = data.get("issueUpdate")
-    if not isinstance(result, dict) or not result.get("success"):
-        raise LinearError("Linear did not persist the work-item plan")
-    issue = result.get("issue")
-    if not isinstance(issue, dict):
-        raise LinearError("Linear plan response did not include an issue")
-    await record_issue_state_update_if_supported(
+    async with linear_webhook_effect(
         client,
-        issue,
-        issue_id=issue_id,
-        state_id=state_id,
-    )
-    return issue
+        "Issue",
+        "update",
+        issue_id,
+        intent_fingerprint=issue_state_mutation_intent(
+            issue_id,
+            state_id,
+            description=description,
+        ),
+    ) as effect:
+        data = await client.query(
+            """
+            mutation SubmitPynchyWorkItemPlan(
+              $issue_id: String!,
+              $state_id: String!,
+              $description: String!
+            ) {
+              issueUpdate(id: $issue_id, input: {
+                stateId: $state_id,
+                description: $description
+              }) {
+                success
+                issue {
+                  id identifier title description url updatedAt
+                  state { id name type }
+                  project { id name }
+                }
+              }
+            }
+            """,
+            issue_id=issue_id,
+            state_id=state_id,
+            description=description,
+        )
+        result = data.get("issueUpdate")
+        if not isinstance(result, dict) or not result.get("success"):
+            await effect.fail()
+            raise LinearError("Linear did not persist the work-item plan")
+        issue = result.get("issue")
+        if not isinstance(issue, dict):
+            raise LinearError("Linear plan response did not include an issue")
+        await confirm_issue_state_effect(
+            effect,
+            issue,
+            issue_id=issue_id,
+            state_id=state_id,
+        )
+        return issue

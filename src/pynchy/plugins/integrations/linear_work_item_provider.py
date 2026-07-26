@@ -17,11 +17,9 @@ from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     require_workspace_board,
 )
-from pynchy.plugins.integrations.linear_client import (
-    LinearClient,
-    LinearError,
-    LinearQueryClient,
-    record_issue_state_update_if_supported,
+from pynchy.plugins.integrations.linear_client import LinearClient
+from pynchy.plugins.integrations.linear_issue_mutations import (
+    update_issue_state,
 )
 from pynchy.plugins.integrations.linear_self_echoes import (
     linear_self_echo_recorder,
@@ -408,43 +406,6 @@ async def workspace_issue(
     if not isinstance(project, dict) or project.get("id") != board.project.get("id"):
         raise LinearWorkspaceIssueError(_WORKSPACE_ISSUE_REQUIRED)
     return issue, board
-
-
-async def update_issue_state(
-    client: LinearQueryClient,
-    issue_id: str,
-    state_id: str,
-) -> dict[str, Any]:
-    """Apply one GraphQL issue-state update and require a provider receipt."""
-    data = await client.query(
-        """
-        mutation TransitionPynchyWorkItem($issue_id: String!, $state_id: String!) {
-          issueUpdate(id: $issue_id, input: { stateId: $state_id }) {
-            success
-            issue {
-              id identifier title url updatedAt
-              state { id name type }
-              project { id name }
-            }
-          }
-        }
-        """,
-        issue_id=issue_id,
-        state_id=state_id,
-    )
-    result = data.get("issueUpdate")
-    if not isinstance(result, dict) or not result.get("success"):
-        raise LinearError("Linear did not update the work item")
-    issue = result.get("issue")
-    if not isinstance(issue, dict):
-        raise LinearError("Linear work-item update response did not include an issue")
-    await record_issue_state_update_if_supported(
-        client,
-        issue,
-        issue_id=issue_id,
-        state_id=state_id,
-    )
-    return issue
 
 
 async def _pending_transition(execution_id: str, request_id: str) -> WorkItemTransition:

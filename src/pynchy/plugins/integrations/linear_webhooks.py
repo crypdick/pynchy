@@ -11,6 +11,9 @@ from pynchy.config import get_settings
 from pynchy.config.workspace_names import parent_workspace_name
 from pynchy.plugins.integrations.linear_accounts import linear_account
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
+from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves workspace evidence.
+    LinearWorkspaceBoard,
+)
 from pynchy.plugins.integrations.linear_boot import (
     configured_linear_workspace_names,
     linear_workspace_enabled,
@@ -32,6 +35,7 @@ from pynchy.plugins.integrations.linear_webhook_parser import parse_linear_webho
 from pynchy.plugins.integrations.linear_work_item_provider import (
     LinearWorkspaceIssueError,
     linear_client,
+    state_id,
     workspace_issue,
 )
 from pynchy.plugins.webhooks import (
@@ -44,11 +48,14 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves route vali
 )
 
 
-async def _event_workspace(event: WebhookEvent, config: LinearWebhookRouteConfig) -> str:
+async def _event_workspace(
+    event: WebhookEvent,
+    config: LinearWebhookRouteConfig,
+) -> tuple[str, LinearWorkspaceBoard]:
     async with linear_client(account_name=config.tool) as client:
         if config.workspace is not None:
-            await workspace_issue(client, config.workspace, event.subject_id)
-            return config.workspace
+            _issue, board = await workspace_issue(client, config.workspace, event.subject_id)
+            return config.workspace, board
         issue = await client.get_issue(event.subject_id)
         project = issue.get("project") if issue is not None else None
         project_id = project.get("id") if isinstance(project, dict) else None
@@ -57,7 +64,8 @@ async def _event_workspace(event: WebhookEvent, config: LinearWebhookRouteConfig
         )
         if workspace is None:
             raise LinearWorkspaceIssueError("Linear issue is not on a managed workspace board")
-        return workspace
+        _issue, board = await workspace_issue(client, workspace, event.subject_id)
+        return workspace, board
 
 
 async def prepare_linear_webhook_event(
@@ -70,7 +78,7 @@ async def prepare_linear_webhook_event(
     if event.conversation is None:
         return event
     try:
-        workspace = await _event_workspace(event, config)
+        workspace, board = await _event_workspace(event, config)
     except LinearWorkspaceIssueError:
         return replace(
             event,
@@ -89,6 +97,11 @@ async def prepare_linear_webhook_event(
         workspace,
         config.tool,
     )
+    lifecycle = event.lifecycle
+    if lifecycle is not None:
+        context = dict(lifecycle.context or {})
+        context["linear_managed_done_state_id"] = state_id(board.states["done"])
+        lifecycle = replace(lifecycle, context=context)
     return replace(
         event,
         conversation=replace(
@@ -97,6 +110,7 @@ async def prepare_linear_webhook_event(
             workspace=workspace,
             public_source=public_source,
         ),
+        lifecycle=lifecycle,
     )
 
 

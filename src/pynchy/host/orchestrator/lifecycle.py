@@ -66,6 +66,7 @@ from pynchy.state import (
     initialize_deployment_state,
     prepare_conversation_runtime_ownership_recovery,
     recover_incomplete_action_intents,
+    recover_incomplete_webhook_effects,
     store_chat_metadata,
 )
 from pynchy.types import NewMessage, OutboundEvent, OutboundEventType
@@ -182,6 +183,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     # A crash can leave an external write without a receipt. Recovery fails closed
     # rather than replaying that side effect.
     await recover_incomplete_action_intents()
+    await recover_incomplete_webhook_effects()
     await initialize_deployment_state(current_deploy_revision())
     logger.info("Database initialized")
 

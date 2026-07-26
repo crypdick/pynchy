@@ -208,8 +208,10 @@ See [Linear's webhook documentation](https://linear.app/developers/webhooks).
 
 Pynchy maps the issue's marked project to its workspace and uses the immutable
 issue ID for conversation identity. Deliveries for off-board issues are
-ignored. Ordinary comments, nonterminal issue changes, and messages in the
-corresponding Discord thread share one ordered conversation.
+ignored. `Issue/create` is also ignored because creation is not authorization;
+this includes Pynchy-created `Agent Proposed` issues. Ordinary comments,
+nonterminal issue updates and removals, and messages in the corresponding
+Discord thread share one ordered conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
 Approved` update acquires the execution lease before the host admits work into
@@ -232,15 +234,33 @@ execution only when the callback's exact state ID matches the managed board's
 `Done` state. `Duplicate`, `Canceled`, and other terminal statuses close the
 control without completing the work item. If lifecycle processing fails or the
 host restarts before completion, Pynchy retries that same FIFO head before later
-callbacks run.
+callbacks run. Pynchy captures both state IDs during ingress and doesn't fetch
+the issue again at the FIFO head, so later issue deletion or project movement
+doesn't block lifecycle processing.
 
-After Linear confirms a host-owned comment creation or a nonterminal state move,
-Pynchy immediately records exact provider evidence for that write. Only the
-matching callback gets atomically recorded as ignored, so it cannot reopen the
-issue conversation. Comments with missing or mismatched evidence, including
-comments from someone sharing the same Linear account, remain ordinary routed
-input. Terminal state callbacks never use this suppression path: Pynchy still
-processes them as lifecycle-only control work.
+Before a host-owned comment creation or nonterminal state move starts, Pynchy
+records a durable outbound-effect intent. If its callback arrives before the API
+response, Pynchy acknowledges and holds it at the issue's FIFO head. Exact
+response evidence completes the self callback without an agent turn; mismatched
+evidence releases the callback in place. Confirmed evidence is retained so
+provider retries and every configured route make the same decision. Comments
+from someone sharing the same Linear account remain ordinary routed input once
+their exact evidence does not match. Terminal state callbacks never use this
+suppression path: Pynchy still processes them as lifecycle-only control work.
+The receipt, parsed delivery envelope, effect candidates, and initial FIFO state
+commit together. Trusted Linear processing runs before admission only for
+callbacks already known to be unrelated; held candidates run it from the
+persisted envelope after release.
+
+A host stop or transport failure after external I/O begins can leave the
+provider outcome unknowable. Pynchy quarantines matching callbacks as
+`outcome_unknown` rather than risking a self wake. It releases only effects
+known not to have reached the provider. This fail-closed state requires
+reconciliation if it occurs. `GET /webhook-effects` lists quarantined effects
+and their request-field hashes. After checking Linear independently and proving
+the mutation absent, an authenticated operator can post
+`{"verified_absent": true}` to
+`/webhook-effects/{effect_id}/reconcile-absent` to release its held callbacks.
 See [Routed conversations](../architecture/conversation-routing.md#linear-issue-webhooks)
 for the callback identity and recovery contract.
 

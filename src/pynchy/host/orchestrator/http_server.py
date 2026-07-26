@@ -13,6 +13,7 @@ from aiohttp import web
 
 from pynchy.canaries import canary_run_to_dict, get_canary_report
 from pynchy.config import get_settings
+from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import (
     files_changed_between,
@@ -51,8 +52,11 @@ from pynchy.state import (
     get_recent_canary_runs,
     list_action_intents,
     list_work_item_executions,
+    reconcile_webhook_effect_absent,
 )
+from pynchy.state.webhook_effects import list_webhook_effects
 from pynchy.types import DeployClaimStatus
+from pynchy.webhook_effects import WebhookEffect, WebhookEffectId, WebhookEffectStatus
 
 if TYPE_CHECKING:
     from aiohttp.web_app import Application as AiohttpApplication
@@ -228,6 +232,70 @@ async def _handle_actions(request: web.Request) -> web.Response:
     )
 
 
+def _webhook_effect_to_dict(effect: WebhookEffect) -> dict[str, object]:
+    scope = effect.scope
+    return {
+        "id": effect.id,
+        "provider": scope.provider,
+        "account": scope.account,
+        "event_type": scope.event_type,
+        "event_action": scope.event_action,
+        "subject_id": scope.subject_id,
+        "intent_fingerprint": scope.intent_fingerprint,
+        "status": effect.status.value,
+        "fingerprint": effect.fingerprint,
+        "created_at": effect.created_at,
+        "executing_at": effect.executing_at,
+        "resolved_at": effect.resolved_at,
+    }
+
+
+async def _handle_webhook_effects(request: web.Request) -> web.Response:
+    """Return bounded outbound-effect records for operator reconciliation."""
+    raw_limit = request.query.get("limit", "100")
+    if not raw_limit.isdecimal() or not 1 <= int(raw_limit) <= 200:
+        return web.json_response({"error": "limit must be an integer from 1 to 200"}, status=400)
+    raw_status = request.query.get("status", WebhookEffectStatus.OUTCOME_UNKNOWN.value)
+    if raw_status == "all":
+        status = None
+    else:
+        try:
+            status = WebhookEffectStatus(raw_status)
+        except ValueError:
+            return web.json_response({"error": "unknown webhook effect status"}, status=400)
+    effects = await list_webhook_effects(status=status, limit=int(raw_limit))
+    return web.json_response(
+        {"status": raw_status, "effects": [_webhook_effect_to_dict(effect) for effect in effects]}
+    )
+
+
+async def _handle_webhook_effect_absent(request: web.Request) -> web.Response:
+    """Release one quarantine only after explicit external provider verification."""
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        body = None
+    if body != {"verified_absent": True}:
+        return web.json_response(
+            {"error": "verified_absent must be exactly true"},
+            status=400,
+        )
+    try:
+        resolution = await reconcile_webhook_effect_absent(
+            WebhookEffectId(request.match_info["effect_id"])
+        )
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=409)
+    for wakeup in resolution.wakeups:
+        await notify_conversation_delivery_completed(wakeup)
+    return web.json_response(
+        {
+            "status": WebhookEffectStatus.RECONCILED_ABSENT.value,
+            "released_deliveries": len(resolution.wakeups),
+        }
+    )
+
+
 async def _handle_capabilities(request: web.Request) -> web.Response:
     """Return effective host-action capabilities for one or every workspace."""
     report = await get_canary_report(history_limit=10)
@@ -354,6 +422,11 @@ def create_http_app(
     app.router.add_get("/status", _handle_status)
     app.router.add_get("/work-items", _handle_work_items)
     app.router.add_get("/actions", _handle_actions)
+    app.router.add_get("/webhook-effects", _handle_webhook_effects)
+    app.router.add_post(
+        "/webhook-effects/{effect_id}/reconcile-absent",
+        _handle_webhook_effect_absent,
+    )
     app.router.add_get("/capabilities", _handle_capabilities)
     app.router.add_get("/canaries/report", _handle_canary_report)
     app.router.add_get("/canaries/runs", _handle_canary_runs)

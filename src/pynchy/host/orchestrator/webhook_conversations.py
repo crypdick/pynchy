@@ -18,8 +18,6 @@ from pynchy.conversation.models import (
     ConversationDelivery,
     ConversationDeliveryCompletion,
     ConversationId,
-    ExternalDeliveryId,
-    ExternalDeliveryIdentity,
     ExternalProvider,
     ExternalRoute,
 )
@@ -29,6 +27,10 @@ from pynchy.host.orchestrator.conversation_control import (
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
     sync_conversation_control_state,
+)
+from pynchy.host.orchestrator.webhook_conversation_admission import (
+    conversation_admission_request,
+    process_deferred_event,
 )
 from pynchy.host.orchestrator.workspace_config import (
     RuntimeWorkspaceRestriction,
@@ -43,7 +45,10 @@ from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves
     WebhookRoute,
 )
 from pynchy.state import (
+    WebhookAdmission,
+    WebhookReceipt,
     admit_conversation_delivery,
+    admit_webhook_conversation,
     claim_next_conversation_delivery,
     complete_conversation_delivery,
     get_conversation,
@@ -129,45 +134,46 @@ class WebhookConversationDispatcher:
         prompt: str | None,
     ) -> ConversationId | None:
         """Idempotently link one routed event to its immutable subject."""
-        target = event.conversation
-        if target is None:
+        request = conversation_admission_request(route, event, prompt)
+        if request is None:
             return None
-        workspace = target.workspace or route.workspace
-        if workspace is None:
-            raise RuntimeError("Routed webhook conversation has no workspace owner")
-        identity = ExternalDeliveryIdentity(
-            provider=ExternalProvider(route.provider),
-            route=ExternalRoute(route.name),
-            delivery_id=ExternalDeliveryId(event.delivery_id),
-        )
-        if event.lifecycle is None and prompt is None:
-            raise ValueError("Routed webhook delivery has no prompt")
-        payload: dict[str, object] = {
-            "control_title": target.control_title,
-            "control_closed": target.control_closed,
-            "event_type": event.event_type,
-            "event_action": event.action,
-            "public_source": (
-                target.public_source if target.public_source is not None else route.public_source
-            ),
-        }
-        if event.lifecycle is not None:
-            payload.update(
-                {
-                    "delivery_mode": "lifecycle",
-                    "lifecycle_context": event.lifecycle.context,
-                    "subject_id": event.subject_id,
-                }
-            )
-        else:
-            payload["prompt"] = prompt
         admission = await admit_conversation_delivery(
-            identity,
-            target.subject,
-            GroupFolder(workspace),
-            payload=payload,
+            request.identity,
+            request.subject,
+            request.workspace,
+            payload=request.payload,
         )
+        if admission is None:
+            return None
         return admission.conversation.id
+
+    async def admit_webhook(
+        self,
+        route: WebhookRoute,
+        event: WebhookEvent,
+        prompt: str | None,
+        receipt: WebhookReceipt,
+        *,
+        defer_process_event: bool,
+    ) -> tuple[WebhookAdmission, ConversationId | None]:
+        """Atomically link an authenticated receipt to its parsed FIFO entry."""
+        request = conversation_admission_request(
+            route,
+            event,
+            prompt,
+            defer_process_event=defer_process_event,
+        )
+        if request is None:
+            raise ValueError("Conversation webhook lost its parsed route target")
+        admission = await admit_webhook_conversation(
+            receipt,
+            request,
+            effect_evidence=event.effect_evidence,
+        )
+        conversation_id = (
+            admission.conversation.conversation.id if admission.conversation is not None else None
+        )
+        return admission.webhook, conversation_id
 
     async def wake(self, conversation_id: ConversationId) -> None:
         """Claim and inject the next FIFO delivery, if the conversation is idle."""
@@ -176,14 +182,29 @@ class WebhookConversationDispatcher:
         if delivery is None:
             return
         try:
-            if self._is_lifecycle_delivery(delivery):
-                await self._complete_lifecycle_delivery(delivery, claim_id)
-                return
-            workspace_jid, message = await self._prepare_message(delivery, claim_id)
-            await self.deps.ingest_message(workspace_jid, message)
+            await self._dispatch_claimed_delivery(delivery, claim_id)
         except BaseException:
             await release_conversation_delivery_claim(claim_id)
             raise
+
+    async def _dispatch_claimed_delivery(
+        self,
+        delivery: ConversationDelivery,
+        claim_id: ConversationClaimId,
+    ) -> None:
+        processed_delivery = await process_deferred_event(
+            delivery,
+            claim_id,
+            self._route_for_delivery(delivery),
+        )
+        if processed_delivery is None:
+            return
+        delivery = processed_delivery
+        if self._is_lifecycle_delivery(delivery):
+            await self._complete_lifecycle_delivery(delivery, claim_id)
+            return
+        workspace_jid, message = await self._prepare_message(delivery, claim_id)
+        await self.deps.ingest_message(workspace_jid, message)
 
     @staticmethod
     def _is_lifecycle_delivery(delivery: ConversationDelivery) -> bool:

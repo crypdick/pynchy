@@ -1,16 +1,16 @@
-"""HTTP ingress coverage for exact Pynchy-authored Linear comment echoes."""
+"""HTTP ingress coverage for callback-first Linear comment correlation."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from linear_webhook_test_support import (
     DELIVERY_ID,
-    SECOND_DELIVERY_ID,
     SIGNING_KEY,
-    THIRD_DELIVERY_ID,
     LinearWebhookHarness,
     payload,
     post_linear_event,
@@ -19,17 +19,21 @@ from linear_webhook_test_support import (
     webhook_route,
 )
 
-from pynchy.host.orchestrator.http_server import create_http_app
-from pynchy.state import (
-    LinearCommentSelfEcho,
-    get_webhook_receipt,
-    init_test_database,
-    record_linear_comment_self_echo,
+from pynchy.conversation.models import (
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalProvider,
+    ExternalRoute,
 )
+from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.plugins.integrations.linear_self_echoes import linear_self_echo_recorder
+from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
+from pynchy.state import get_conversation_delivery, init_test_database
+from pynchy.webhook_effects import WebhookEffectScope
 
 _COMMENT_ID = "comment-1"
 _ISSUE_ID = "issue-1"
-_REVISION = "2026-07-26T04:45:00+00:00"
+_REVISION = "2026-07-26T16:00:01+00:00"
 
 
 @pytest.fixture(autouse=True)
@@ -49,112 +53,95 @@ def _comment_payload(now: datetime, *, revision: str = _REVISION) -> dict[str, o
     )
 
 
-def _marker() -> LinearCommentSelfEcho:
-    return LinearCommentSelfEcho(
-        account_name=route_config().tool,
+def _evidence(*, revision: str = _REVISION):
+    return comment_webhook_evidence(
+        route_config().tool,
         comment_id=_COMMENT_ID,
         issue_id=_ISSUE_ID,
-        revision=_REVISION,
+        revision=revision,
     )
 
 
-async def test_exact_self_comment_echo_is_ignored_once_and_retry_remains_ignored(
+async def _start_effect():
+    recorder = linear_self_echo_recorder(route_config().tool)
+    scope = WebhookEffectScope(
+        provider="linear",
+        account=route_config().tool,
+        event_type="Comment",
+        event_action="create",
+        subject_id=_ISSUE_ID,
+    )
+    effect_id = await recorder.begin(scope)
+    await recorder.mark_executing(effect_id)
+    return recorder, effect_id
+
+
+async def test_callback_before_response_is_acknowledged_but_never_wakes_an_agent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
     harness = LinearWebhookHarness()
     await harness.persist_parent()
-    await record_linear_comment_self_echo(_marker())
-    app = create_http_app(harness, runtime=public_runtime(), webhook_routes=(webhook_route(),))
+    recorder, effect_id = await _start_effect()
+    processed = AsyncMock(side_effect=lambda event: event)
+    route = replace(webhook_route(), process_event=processed)
+    app = create_http_app(harness, runtime=public_runtime(), webhook_routes=(route,))
     client = TestClient(TestServer(app))
     await client.start_server()
     try:
-        event = _comment_payload(datetime.now(UTC))
-        first_status, first = await post_linear_event(client, event)
-        retry_status, retry = await post_linear_event(client, event)
-        consumed_status, consumed = await post_linear_event(
-            client,
-            event,
-            delivery_id=SECOND_DELIVERY_ID,
-        )
+        status, body = await post_linear_event(client, _comment_payload(datetime.now(UTC)))
+        assert status == 200
+        assert body == {"status": "accepted", "duplicate": False}
+        assert harness.ingested == []
+
+        await recorder.confirm(effect_id, _evidence())
     finally:
         await client.close()
 
-    assert first_status == retry_status == consumed_status == 200
-    assert first == {"status": "ignored", "duplicate": False}
-    assert retry == {"status": "ignored", "duplicate": True}
-    assert consumed == {"status": "accepted", "duplicate": False}
-    assert len(harness.ingested) == 1
-    assert len(harness.channel.created) == 1
-
-    receipt = await get_webhook_receipt("linear", "project", DELIVERY_ID)
-    assert receipt is not None
-    assert receipt.disposition == "ignored"
-    assert receipt.ignored_reason == "pynchy_self_comment_echo"
+    assert harness.ingested == []
+    processed.assert_not_awaited()
+    delivery = await get_conversation_delivery(webhook_route_identity("project", DELIVERY_ID))
+    assert delivery is not None
+    assert delivery.status.value == "completed"
 
 
-async def test_comment_without_exact_marker_remains_actionable_regardless_of_actor(
+async def test_nonmatching_callback_releases_and_wakes_after_response_disproves_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
     harness = LinearWebhookHarness()
     await harness.persist_parent()
-    app = create_http_app(harness, runtime=public_runtime(), webhook_routes=(webhook_route(),))
+    recorder, effect_id = await _start_effect()
+    processed = AsyncMock(side_effect=lambda event: event)
+    route = replace(webhook_route(), process_event=processed)
+    app = create_http_app(harness, runtime=public_runtime(), webhook_routes=(route,))
     client = TestClient(TestServer(app))
     await client.start_server()
     try:
-        event = _comment_payload(datetime.now(UTC))
-        event["actor"] = {
-            "id": "pynchy-shared-linear-account",
-            "type": "user",
-            "name": "Pynchy account",
-        }
-        status, body = await post_linear_event(client, event)
+        status, body = await post_linear_event(
+            client,
+            _comment_payload(
+                datetime.now(UTC),
+                revision="2026-07-26T16:00:09+00:00",
+            ),
+        )
+        assert status == 200
+        assert body == {"status": "accepted", "duplicate": False}
+        assert harness.ingested == []
+        processed.assert_not_awaited()
+
+        await recorder.confirm(effect_id, _evidence())
+        assert len(harness.ingested) == 1
+        assert "Pynchy posted this update." in harness.ingested[0].content
+        processed.assert_awaited_once()
     finally:
         await client.close()
 
-    assert status == 200
-    assert body == {"status": "accepted", "duplicate": False}
-    assert len(harness.ingested) == 1
-    assert "Pynchy posted this update." in harness.ingested[0].content
 
-    receipt = await get_webhook_receipt("linear", "project", DELIVERY_ID)
-    assert receipt is not None
-    assert receipt.disposition == "routed"
-
-
-async def test_mismatched_comment_revision_routes_and_preserves_exact_marker(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", SIGNING_KEY)
-    harness = LinearWebhookHarness()
-    await harness.persist_parent()
-    await record_linear_comment_self_echo(_marker())
-    app = create_http_app(harness, runtime=public_runtime(), webhook_routes=(webhook_route(),))
-    client = TestClient(TestServer(app))
-    await client.start_server()
-    try:
-        now = datetime.now(UTC)
-        mismatch_status, mismatch = await post_linear_event(
-            client,
-            _comment_payload(now, revision="2026-07-26T04:45:01+00:00"),
-        )
-        exact_status, exact = await post_linear_event(
-            client,
-            _comment_payload(now),
-            delivery_id=THIRD_DELIVERY_ID,
-        )
-    finally:
-        await client.close()
-
-    assert mismatch_status == exact_status == 200
-    assert mismatch == {"status": "accepted", "duplicate": False}
-    assert exact == {"status": "ignored", "duplicate": False}
-    assert len(harness.ingested) == 1
-
-    mismatch_receipt = await get_webhook_receipt("linear", "project", DELIVERY_ID)
-    exact_receipt = await get_webhook_receipt("linear", "project", THIRD_DELIVERY_ID)
-    assert mismatch_receipt is not None
-    assert mismatch_receipt.disposition == "routed"
-    assert exact_receipt is not None
-    assert exact_receipt.ignored_reason == "pynchy_self_comment_echo"
+def webhook_route_identity(route: str, delivery_id: str) -> ExternalDeliveryIdentity:
+    """Build the provider-neutral identity used by the durable FIFO."""
+    return ExternalDeliveryIdentity(
+        provider=ExternalProvider("linear"),
+        route=ExternalRoute(route),
+        delivery_id=ExternalDeliveryId(delivery_id),
+    )
