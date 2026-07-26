@@ -450,7 +450,10 @@ class TestResolveAllInstancesPortOffset:
         manager = McpManager(settings, MagicMock(spec=LiteLLMGateway))
         await manager.sync()
 
-        proxy_factory.assert_called_once_with(host=settings.gateway.host)
+        proxy_factory.assert_called_once_with(
+            host=settings.gateway.host,
+            backend_lease=manager.proxy_backend_lease,
+        )
 
         parent_ids = manager.get_workspace_instance_ids("admin")
         child_ids = manager.get_workspace_instance_ids("admin__thread_discord-channel-thread")
