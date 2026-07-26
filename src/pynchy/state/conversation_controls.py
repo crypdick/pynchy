@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pynchy.conversation.models import (
@@ -82,6 +83,25 @@ async def list_idle_conversation_ids(
         (provider, route),
     )
     return tuple(ConversationId(row["conversation_id"]) for row in await cursor.fetchall())
+
+
+async def close_conversation_control(conversation_id: ConversationId) -> bool:
+    """Close an existing control without changing its conversation placement.
+
+    Lifecycle deliveries may be retried after a process interruption.  The
+    conditional update gives the close transition exactly-once durable state
+    semantics while leaving control presentation and workspace ownership intact.
+    """
+    async with atomic_write() as database:
+        cursor = await database.execute(
+            """
+            UPDATE conversation_control_bindings
+            SET closed = 1, updated_at = ?
+            WHERE conversation_id = ? AND closed = 0
+            """,
+            (datetime.now(UTC).isoformat(), conversation_id),
+        )
+        return cursor.rowcount == 1
 
 
 async def set_conversation_control_binding(

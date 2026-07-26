@@ -25,7 +25,11 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     state_id,
     workspace_issue,
 )
-from pynchy.plugins.webhooks import WebhookEvent, WebhookProcessingError
+from pynchy.plugins.webhooks import (
+    WebhookEvent,
+    WebhookLifecycleDelivery,
+    WebhookProcessingError,
+)
 from pynchy.state import (
     WorkItemClaimConflictError,
     get_active_work_item_execution,
@@ -36,7 +40,7 @@ from pynchy.types import GroupFolder, WorkItemExecutionStatus
 
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
-    """Apply host-owned authorization, leasing, and completion bookkeeping."""
+    """Apply host-owned authorization and leasing before ordinary admission."""
     conversation = event.conversation
     if (
         event.event_type != "Issue"
@@ -44,13 +48,13 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
         or conversation is None
     ):
         return event
+    if event.lifecycle is not None:
+        # Terminal callbacks are completed at their durable FIFO head.
+        return event
     workspace = conversation.workspace
     if workspace is None:
         raise WebhookProcessingError("Linear host effect has no resolved workspace")
     try:
-        if conversation.control_closed is True:
-            await complete_reviewed_work_item(workspace, event.subject_id, event.delivery_id)
-            return event
         if await _controller_owns_event(event, workspace):
             # The periodic controller owns planning and authorized execution.
             # Persist its routed identity without admitting a second agent turn.
@@ -73,6 +77,40 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     ) as exc:
         raise WebhookProcessingError(str(exc)) from exc
     return event
+
+
+async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -> None:
+    """Complete reviewed work only for the persisted managed-Done state.
+
+    A terminal callback can wait behind an earlier human delivery, so the
+    callback's parsed state ID is the durable fact used for this decision.  Do
+    not infer completion from the issue's mutable state when the FIFO reaches
+    this delivery.
+    """
+    context = delivery.context
+    state = context.get("linear_state_id") if context is not None else None
+    if not isinstance(state, str) or not state:
+        return
+    workspace = str(delivery.workspace)
+    try:
+        async with linear_client(workspace=workspace) as client:
+            _issue, board = await workspace_issue(client, workspace, delivery.subject_id)
+            managed_done_state_id = state_id(board.states["done"])
+        if state != managed_done_state_id:
+            return
+        await complete_reviewed_work_item(
+            workspace,
+            delivery.subject_id,
+            str(delivery.identity.delivery_id),
+        )
+    except (
+        aiohttp.ClientError,
+        LinearBoardError,
+        LinearError,
+        TimeoutError,
+        ValueError,
+    ) as exc:
+        raise WebhookProcessingError(str(exc)) from exc
 
 
 async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:

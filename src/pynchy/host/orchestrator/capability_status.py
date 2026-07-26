@@ -142,7 +142,11 @@ async def _resolve_action(
     action: HostActionDescriptor,
     context: _ResolutionContext,
 ) -> ResolvedCapability:
-    missing_tool = missing_workspace_tool(action, context.enabled_tools)
+    missing_tool = missing_workspace_tool(
+        action,
+        context.enabled_tools,
+        service_aliases=context.security.services,
+    )
     if missing_tool is not None:
         return ResolvedCapability(
             descriptor=action.capability,

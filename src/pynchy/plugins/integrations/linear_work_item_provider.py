@@ -17,7 +17,15 @@ from pynchy.plugins.integrations.linear_boards import (
     LinearWorkspaceBoard,
     require_workspace_board,
 )
-from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
+from pynchy.plugins.integrations.linear_client import (
+    LinearClient,
+    LinearError,
+    LinearQueryClient,
+    record_issue_state_update_if_supported,
+)
+from pynchy.plugins.integrations.linear_self_echoes import (
+    linear_self_echo_recorder,
+)
 from pynchy.plugins.integrations.linear_statuses import (
     HUMAN_APPROVED_STATUS,
 )
@@ -98,6 +106,7 @@ class LinearClientContext:
             api_key=api_key,
             session=self._session,
             team_key=self._account.team_key,
+            self_echo_recorder=linear_self_echo_recorder(self._account.name),
         )
 
     async def __aexit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
@@ -402,7 +411,7 @@ async def workspace_issue(
 
 
 async def update_issue_state(
-    client: LinearClient,
+    client: LinearQueryClient,
     issue_id: str,
     state_id: str,
 ) -> dict[str, Any]:
@@ -429,6 +438,12 @@ async def update_issue_state(
     issue = result.get("issue")
     if not isinstance(issue, dict):
         raise LinearError("Linear work-item update response did not include an issue")
+    await record_issue_state_update_if_supported(
+        client,
+        issue,
+        issue_id=issue_id,
+        state_id=state_id,
+    )
     return issue
 
 

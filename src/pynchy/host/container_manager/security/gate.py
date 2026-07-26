@@ -36,6 +36,7 @@ class SecurityGate:
     """Session-scoped security enforcement for all tool calls."""
 
     def __init__(self, security: WorkspaceSecurity) -> None:
+        self._service_names = frozenset(security.services)
         self._policy = SecurityPolicy(security)
         self._session_tool_approvals: set[str] = set()
 
@@ -43,6 +44,11 @@ class SecurityGate:
     def policy(self) -> SecurityPolicy:
         """Access the underlying SecurityPolicy (for taint inspection)."""
         return self._policy
+
+    @property
+    def service_names(self) -> frozenset[str]:
+        """Return non-secret service aliases compiled from workspace configuration."""
+        return self._service_names
 
     def evaluate_read(
         self,

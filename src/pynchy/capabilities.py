@@ -256,9 +256,11 @@ class HostActionRegistration:
 def missing_workspace_tool(
     action: HostActionDescriptor,
     enabled_tools: Iterable[str],
+    *,
+    service_aliases: Iterable[str] = (),
 ) -> str | None:
-    """Return the first workspace-tool prerequisite omitted by the active profile."""
-    enabled = frozenset(enabled_tools)
+    """Return the first prerequisite omitted from tools or stable service aliases."""
+    enabled = frozenset(enabled_tools) | frozenset(service_aliases)
     required = tuple(
         requirement.name
         for requirement in action.capability.requirements

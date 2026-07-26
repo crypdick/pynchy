@@ -13,6 +13,7 @@ async def test_linear_tools_preserve_planning_gate_and_generic_execution_actions
 
     move = tools["linear_move_todo"]
     submit_plan = tools["linear_submit_plan"]
+    create_comment = tools["linear_create_comment"]
 
     assert move.inputSchema["properties"]["status"]["enum"] == [
         "agent_proposed",
@@ -39,6 +40,8 @@ async def test_linear_tools_preserve_planning_gate_and_generic_execution_actions
     assert set(submit_plan.inputSchema["required"]) == {"issue_id", "plan"}
     assert "Awaiting Plan Approval" in (submit_plan.description or "")
     assert "revise" in (submit_plan.description or "")
+    assert set(create_comment.inputSchema["required"]) == {"issue_id", "body"}
+    assert "host records" in (create_comment.description or "")
 
     removed_ritual = {
         "linear_create_authorized_work_item",

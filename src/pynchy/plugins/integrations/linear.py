@@ -204,7 +204,6 @@ async def _call_tool(params: dict[str, Any], *, workspace: str | None = None) ->
             "linear_create_issue": _tool_create_issue,
             "linear_list_todos": _tool_list_todos,
             "linear_create_todo": _tool_create_todo,
-            "linear_create_comment": _tool_create_comment,
             "linear_create_attachment": _tool_create_attachment,
             "linear_find_issues_by_attachment_url": _tool_find_issues_by_attachment_url,
         }
@@ -303,17 +302,6 @@ async def _tool_create_todo(
         ),
         team_key=os.environ.get("LINEAR_TEAM_KEY"),
         status=AGENT_PROPOSED_STATUS,
-    )
-
-
-async def _tool_create_comment(
-    client: LinearClient,
-    arguments: dict[str, Any],
-    _workspace: str | None,
-) -> dict[str, Any]:
-    return await client.create_comment(
-        _required_str(arguments, "issue_id"),
-        _required_str(arguments, "body"),
     )
 
 

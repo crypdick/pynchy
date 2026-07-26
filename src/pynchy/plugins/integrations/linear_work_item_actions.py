@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pynchy.actions import ActionId
 from pynchy.capabilities import (
+    ActionIntentContract,
     ApprovalContract,
     AuditContract,
     CapabilityDescriptor,
@@ -18,6 +19,11 @@ from pynchy.capabilities import (
     HostToolName,
     IdempotencyContract,
     IdempotencyMode,
+)
+from pynchy.plugins.integrations.linear_comment_actions import (
+    handle_create_comment,
+    linear_comment_action_draft,
+    linear_comment_action_receipt,
 )
 from pynchy.plugins.integrations.linear_work_items import (
     handle_list_work_items,
@@ -36,6 +42,13 @@ def host_action_registration() -> HostActionRegistration:
 
 def _action_specs() -> tuple[_ActionSpec, ...]:
     return (
+        (
+            "linear_create_comment",
+            "linear.comment.create",
+            "Add a workspace-owned Linear comment without reopening its own conversation.",
+            HostActionAccess.WRITE,
+            handle_create_comment,
+        ),
         (
             "linear_submit_plan",
             "linear.todo.plan",
@@ -96,4 +109,13 @@ def _descriptor(spec: _ActionSpec) -> HostActionDescriptor:
         ),
         audit=AuditContract(),
         policy_service="linear",
+        action_intent=(
+            ActionIntentContract(
+                provider="linear",
+                draft_from_request=linear_comment_action_draft,
+                receipt_from_response=linear_comment_action_receipt,
+            )
+            if action_id == "linear.comment.create"
+            else None
+        ),
     )

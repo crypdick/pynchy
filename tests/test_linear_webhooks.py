@@ -50,13 +50,23 @@ from linear_webhook_test_support import (
 
 from pynchy.config import PluginConfig
 from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
+from pynchy.conversation.models import (
+    ConversationId,
+    ExternalDeliveryId,
+    ExternalDeliveryIdentity,
+    ExternalProvider,
+    ExternalRoute,
+)
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearError
-from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
+from pynchy.plugins.integrations.linear_webhook_effects import (
+    process_linear_webhook_event,
+    process_linear_webhook_lifecycle,
+)
 from pynchy.plugins.integrations.linear_webhooks import (
     LinearWebhookRouteConfig,
     parse_linear_webhook,
@@ -67,6 +77,7 @@ from pynchy.plugins.webhooks import (
     WebhookAuthenticationError,
     WebhookConfigurationError,
     WebhookEvent,
+    WebhookLifecycleDelivery,
     WebhookProcessingError,
 )
 from pynchy.state import (
@@ -77,7 +88,7 @@ from pynchy.state import (
     init_test_database,
     set_conversation_session,
 )
-from pynchy.types import SessionId, WorkItemExecutionStatus, WorkspaceProfile
+from pynchy.types import GroupFolder, SessionId, WorkItemExecutionStatus, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -145,7 +156,7 @@ def test_every_issue_change_targets_the_issue_conversation(
                 "id": "issue-1",
                 "identifier": "PYN-1",
                 "title": "Webhook callbacks",
-                "state": {"id": "state-1", "name": "In Progress"},
+                "state": {"id": "state-1", "name": "In Progress", "type": "started"},
             },
             updated_from=updated_from,
         )
@@ -170,8 +181,26 @@ def test_every_issue_change_targets_the_issue_conversation(
     assert event.conversation.control_closed is False
 
 
-async def test_done_issue_update_completes_reviewed_execution(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("state", "expected_context"),
+    [
+        (
+            {"id": "state-done", "name": "Done", "type": "completed"},
+            {"linear_state_id": "state-done"},
+        ),
+        (
+            {"id": "state-duplicate", "name": "Duplicate", "type": "canceled"},
+            {"linear_state_id": "state-duplicate"},
+        ),
+        (
+            {"id": "state-custom", "name": "Shipped", "type": "completed"},
+            {"linear_state_id": "state-custom"},
+        ),
+    ],
+)
+def test_typed_terminal_issue_states_become_lifecycle_only(
+    state: dict[str, str],
+    expected_context: dict[str, str],
 ) -> None:
     now = datetime.now(UTC)
     raw_body, headers = _signed_request(
@@ -183,22 +212,194 @@ async def test_done_issue_update_completes_reviewed_execution(
                 "id": "issue-1",
                 "identifier": "PYN-1",
                 "title": "Reviewed outcome",
-                "state": {"id": "state-done", "name": "Done"},
+                "state": state,
+            },
+        )
+    )
+
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.instructions is None
+    assert event.external_context is None
+    assert event.lifecycle is not None
+    assert event.lifecycle.context == expected_context
+    assert event.conversation is not None
+    assert event.conversation.control_closed is True
+
+
+def test_nested_typed_terminal_issue_state_becomes_lifecycle_only() -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "issue": {
+                    "id": "issue-1",
+                    "identifier": "PYN-1",
+                    "title": "Nested state",
+                    "state": {"id": "state-canceled", "name": "Canceled", "type": "canceled"},
+                },
+            },
+        )
+    )
+
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.lifecycle is not None
+    assert event.lifecycle.context == {"linear_state_id": "state-canceled"}
+    assert event.conversation is not None
+    assert event.conversation.control_closed is True
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"id": "state-done", "name": "Done"},
+        {"id": "state-done", "name": "Done", "type": "started"},
+    ],
+)
+def test_display_name_does_not_make_an_issue_terminal(state: dict[str, str]) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Not terminal",
+                "state": state,
+            },
+        )
+    )
+
+    event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.lifecycle is None
+    assert event.instructions is not None
+    assert event.conversation is not None
+    assert event.conversation.control_closed is (False if "type" in state else None)
+
+
+async def test_terminal_lifecycle_preparation_resolves_its_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    raw_body, headers = _signed_request(
+        _payload(
+            now=now,
+            event_type="Issue",
+            action="update",
+            data={
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "title": "Terminal event",
+                "state": {"id": "state-done", "name": "Done", "type": "completed"},
             },
         )
     )
     event = parse_linear_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
-    assert event.conversation is not None
-    event = replace(event, conversation=replace(event.conversation, workspace="project"))
+    assert event.lifecycle is not None
+
+    workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, object()))
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        workspace_issue,
+    )
+
+    prepared = await prepare_linear_webhook_event(event, config=_config())
+
+    assert prepared.lifecycle is not None
+    assert prepared.conversation is not None
+    assert prepared.conversation.workspace == "project"
+    workspace_issue.assert_awaited_once()
+
+
+async def test_managed_done_lifecycle_completes_reviewed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     complete = AsyncMock(return_value=None)
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={"done": {"id": "state-done"}},
+    )
     monkeypatch.setattr(
         "pynchy.plugins.integrations.linear_webhook_effects.complete_reviewed_work_item",
         complete,
     )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"id": "issue-1"}, board)),
+    )
 
-    await process_linear_webhook_event(event)
+    await process_linear_webhook_lifecycle(
+        WebhookLifecycleDelivery(
+            identity=ExternalDeliveryIdentity(
+                provider=ExternalProvider("linear"),
+                route=ExternalRoute("project"),
+                delivery_id=ExternalDeliveryId(_DELIVERY_ID),
+            ),
+            conversation_id=ConversationId("conversation-1"),
+            subject_id="issue-1",
+            workspace=GroupFolder("project"),
+            context={"linear_state_id": "state-done"},
+        )
+    )
 
     complete.assert_awaited_once_with("project", "issue-1", _DELIVERY_ID)
+
+
+@pytest.mark.parametrize("terminal_state_id", ["state-duplicate", "state-custom-canceled"])
+async def test_non_managed_terminal_lifecycle_does_not_complete_reviewed_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_state_id: str,
+) -> None:
+    complete = AsyncMock(return_value=None)
+    board = LinearWorkspaceBoard(
+        team={"id": "team-1"},
+        project={"id": "project-1"},
+        states={"done": {"id": "state-done"}},
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.complete_reviewed_work_item",
+        complete,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects.workspace_issue",
+        AsyncMock(return_value=({"id": "issue-1"}, board)),
+    )
+
+    await process_linear_webhook_lifecycle(
+        WebhookLifecycleDelivery(
+            identity=ExternalDeliveryIdentity(
+                provider=ExternalProvider("linear"),
+                route=ExternalRoute("project"),
+                delivery_id=ExternalDeliveryId(_DELIVERY_ID),
+            ),
+            conversation_id=ConversationId("conversation-1"),
+            subject_id="issue-1",
+            workspace=GroupFolder("project"),
+            context={"linear_state_id": terminal_state_id},
+        )
+    )
+
+    complete.assert_not_awaited()
 
 
 async def test_human_approved_issue_acquires_host_lease_before_agent_admission(

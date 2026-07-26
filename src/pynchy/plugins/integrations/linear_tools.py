@@ -82,19 +82,6 @@ def tool_specs() -> list[dict[str, Any]]:
             },
         },
         {
-            "name": "linear_create_comment",
-            "description": "Add a comment to a Linear issue.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "issue_id": {"type": "string"},
-                    "body": {"type": "string"},
-                },
-                "required": ["issue_id", "body"],
-                "additionalProperties": False,
-            },
-        },
-        {
             "name": "linear_create_attachment",
             "description": (
                 "Attach an external URL to a Linear issue. Use one attachment for every "

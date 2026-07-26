@@ -67,6 +67,23 @@ register_ipc_tool(
 )
 
 register_ipc_tool(
+    name="linear_create_comment",
+    description=(
+        "Add a comment to a Linear issue owned by this workspace. The host records the "
+        "provider response so Pynchy does not reopen the conversation for its own echo."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "issue_id": {"type": "string", "minLength": 1},
+            "body": {"type": "string", "minLength": 1},
+        },
+        "required": ["issue_id", "body"],
+        "additionalProperties": False,
+    },
+)
+
+register_ipc_tool(
     name="linear_list_work_items",
     description="List durable Linear execution leases and outcomes for this workspace.",
     input_schema={"type": "object", "properties": {}, "additionalProperties": False},

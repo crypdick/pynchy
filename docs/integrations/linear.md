@@ -208,8 +208,8 @@ See [Linear's webhook documentation](https://linear.app/developers/webhooks).
 
 Pynchy maps the issue's marked project to its workspace and uses the immutable
 issue ID for conversation identity. Deliveries for off-board issues are
-ignored. Comments, issue changes, and messages in the corresponding Discord
-thread share one ordered conversation.
+ignored. Ordinary comments, nonterminal issue changes, and messages in the
+corresponding Discord thread share one ordered conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
 Approved` update acquires the execution lease before the host admits work into
@@ -219,9 +219,30 @@ Progress` acquires the same lease without another provider move. An unleased
 controller-owned but does not authorize work. These issue updates don't also
 start ordinary conversation turns, because that would race a second agent
 against the durable task. An `Awaiting Plan Approval` update waits for human
-review. A `Done` delivery completes the linked active, blocked, or review-ready
-execution. Other authenticated events provide context but don't bypass
-authorization.
+review.
+
+An `Issue` callback with Linear workflow type `completed` or `canceled` becomes
+a lifecycle-only FIFO delivery. Pynchy uses the type, not a mutable display name,
+to recognize terminal state. The delivery waits behind older issue work, closes
+an existing control thread when it reaches the FIFO head, and never starts an
+LLM turn. A terminal callback that arrives first creates no Discord thread.
+
+At that FIFO head, Pynchy completes the linked active, blocked, or review-ready
+execution only when the callback's exact state ID matches the managed board's
+`Done` state. `Duplicate`, `Canceled`, and other terminal statuses close the
+control without completing the work item. If lifecycle processing fails or the
+host restarts before completion, Pynchy retries that same FIFO head before later
+callbacks run.
+
+After Linear confirms a host-owned comment creation or a nonterminal state move,
+Pynchy immediately records exact provider evidence for that write. Only the
+matching callback gets atomically recorded as ignored, so it cannot reopen the
+issue conversation. Comments with missing or mismatched evidence, including
+comments from someone sharing the same Linear account, remain ordinary routed
+input. Terminal state callbacks never use this suppression path: Pynchy still
+processes them as lifecycle-only control work.
+See [Routed conversations](../architecture/conversation-routing.md#linear-issue-webhooks)
+for the callback identity and recovery contract.
 
 The route verifies Linear's HMAC-SHA256 signature, requires a timestamp within
 60 seconds, checks the configured organization ID, and deduplicates delivery
@@ -275,15 +296,15 @@ The Linear MCP server provides ordinary provider tools:
 | `linear_create_issue` | Creates an ordinary issue without an approval-bearing state. |
 | `linear_list_todos` | Lists open items on the current workspace board. |
 | `linear_create_todo` | Creates an unapproved workspace proposal. |
-| `linear_create_comment` | Adds an ordinary comment to an issue. |
 | `linear_create_attachment` | Attaches an external URL, including every pull request produced by the work, to an issue. |
 | `linear_find_issues_by_attachment_url` | Resolves an exact external URL, such as a PR URL from a GitHub event, back to attached issues. |
 
-Pynchy's built-in agent tools expose generic state actions plus the
-host-managed lease record:
+Pynchy's built-in agent tools expose host-managed comment, state, and lease
+actions:
 
 | Tool | Purpose |
 |------|---------|
+| `linear_create_comment` | Adds a workspace-owned comment to an issue without reopening its own conversation. |
 | `linear_submit_plan` | Atomically persists an initial or revised plan and leaves it `Awaiting Plan Approval`. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider transition. |
 | `linear_list_work_items` | Lists durable execution records for the workspace. |
