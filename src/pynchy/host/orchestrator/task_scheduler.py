@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -66,7 +67,16 @@ _config_job_run_locks: dict[str, asyncio.Lock] = {}
 TemporalSchedulerRuntime: Any | None = None
 
 
-_scheduler_state = {"running": False}
+@dataclass
+class _SchedulerRun:
+    """One scheduler owner's shared startup result."""
+
+    settled: asyncio.Event = field(default_factory=asyncio.Event)
+    failure: BaseException | None = None
+
+
+_Readiness = asyncio.Future[None] | None
+_scheduler_state: dict[str, _SchedulerRun | None] = {"run": None}
 
 
 @runtime_checkable
@@ -86,22 +96,72 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: objec
     return runtime_cls(deps, cast("SchedulerConfig", scheduler_config))
 
 
-async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
-    """Start the scheduler polling loop."""
+def _resolve_readiness(readiness: _Readiness) -> None:
+    if readiness is not None and not readiness.done():
+        readiness.set_result(None)
+
+
+def _fail_readiness(readiness: _Readiness, failure: BaseException) -> None:
+    if readiness is None or readiness.done():
+        return
+    if isinstance(failure, asyncio.CancelledError):
+        readiness.cancel()
+        return
+    readiness.set_exception(failure)
+
+
+async def _observe_start(run: _SchedulerRun, readiness: _Readiness) -> None:
+    try:
+        await run.settled.wait()
+        if run.failure is not None:
+            raise run.failure
+    except BaseException as exc:
+        _fail_readiness(readiness, exc)
+        raise
+    _resolve_readiness(readiness)
+
+
+async def _run_owner(
+    deps: SchedulerDependencies, run: _SchedulerRun, readiness: _Readiness
+) -> None:
+    scheduler_config = get_settings().scheduler
+    async with _build_temporal_runtime(deps, scheduler_config) as temporal_runtime:
+        run.settled.set()
+        _resolve_readiness(readiness)
+        logger.info("Scheduler loop started", backend="temporal")
+        await _run_scheduler_loop(deps, temporal_runtime)
+
+
+async def start_scheduler_loop(
+    deps: SchedulerDependencies,
+    *,
+    ready: asyncio.Future[None] | None = None,
+) -> None:
+    """Start the scheduler polling loop and publish worker readiness."""
     async with _scheduler_lock:
-        if _scheduler_state["running"]:
-            logger.debug("Scheduler loop already running, skipping duplicate start")
-            return
-        _scheduler_state["running"] = True
+        run = _scheduler_state["run"]
+        owns_run = run is None
+        if run is None:
+            run = _SchedulerRun()
+            _scheduler_state["run"] = run
+
+    if not owns_run:
+        logger.debug("Scheduler loop already running, observing shared startup")
+        await _observe_start(run, ready)
+        return
 
     try:
-        scheduler_config = get_settings().scheduler
-        logger.info("Scheduler loop started", backend="temporal")
-        async with _build_temporal_runtime(deps, scheduler_config) as temporal_runtime:
-            await _run_scheduler_loop(deps, temporal_runtime)
+        await _run_owner(deps, run, ready)
+    except BaseException as exc:
+        if not run.settled.is_set():
+            run.failure = exc
+            run.settled.set()
+            _fail_readiness(ready, exc)
+        raise
     finally:
         async with _scheduler_lock:
-            _scheduler_state["running"] = False
+            if _scheduler_state["run"] is run:
+                _scheduler_state["run"] = None
 
 
 async def _run_scheduler_loop(
