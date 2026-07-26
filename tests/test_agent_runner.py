@@ -21,7 +21,7 @@ sys.path.insert(
 
 from agent_runner.core import AgentCoreConfig, AgentEvent
 from agent_runner.host_direct import build_host_core_config
-from agent_runner.ipc import drain_ipc_input, drain_ipc_messages, should_close
+from agent_runner.ipc import IpcMessage, drain_ipc_input, drain_ipc_messages, should_close
 from agent_runner.main import (
     apply_followup_metadata,
     build_agent_prompt,
@@ -451,6 +451,107 @@ class TestCoreStartupErrors:
 
         assert outputs[0].query_id == "query-startup"
         assert outputs[0].error == "Failed to start agent core: startup failed"
+
+
+class TestScheduledReportFollowupContext:
+    """Verify a completed scheduled report remains in the provider conversation."""
+
+    @pytest.mark.asyncio
+    async def test_human_followup_sees_exact_scheduled_findings(self, tmp_path: Path):
+        report = "Alert findings: queue lag is 47 minutes; deployed SHA is abc123."
+        human_reply = "Which queue and deployment did that alert identify?"
+        created_cores = []
+        outputs: list[ContainerOutput] = []
+
+        class TranscriptCore:
+            """Minimal provider model whose context lives with one core instance."""
+
+            def __init__(self, config: AgentCoreConfig) -> None:
+                self.config = config
+                self.history: list[str] = []
+                self.contexts: list[str] = []
+                self._session_id = "provider-session-scheduled-report"
+
+            @property
+            def session_id(self) -> str:
+                return self._session_id
+
+            async def start(self) -> None:
+                return None
+
+            async def query(self, prompt: str):
+                context = "\n".join((*self.history, f"user: {prompt}"))
+                self.contexts.append(context)
+                if not self.history:
+                    result = report
+                elif report in context:
+                    result = "The alert identified queue lag at 47 minutes on SHA abc123."
+                else:
+                    result = "The scheduled findings are missing."
+                self.history.extend((f"user: {prompt}", f"assistant: {result}"))
+                yield AgentEvent(type="result", data={"result": result})
+
+            async def stop(self) -> None:
+                return None
+
+        def create_core(
+            _module_path: str,
+            _class_name: str,
+            config: AgentCoreConfig,
+        ) -> TranscriptCore:
+            core = TranscriptCore(config)
+            created_cores.append(core)
+            return core
+
+        initial = ContainerInput(
+            messages=[
+                {
+                    "message_type": "user",
+                    "sender": "scheduled_task",
+                    "sender_name": "Scheduled Task",
+                    "content": "Inspect the production alert and report exact findings.",
+                }
+            ],
+            group_folder="scheduled-report",
+            chat_jid="discord:thread:scheduled-report",
+            is_admin=False,
+            is_scheduled_task=True,
+            turn_id="turn-scheduled",
+            query_id="query-scheduled",
+        )
+        followup = IpcMessage(
+            text=f'<messages><message sender="Ricardo">{human_reply}</message></messages>',
+            turn_id="turn-human",
+            query_id="query-human",
+        )
+        ipc_dir = tmp_path / "input"
+
+        with (
+            patch("agent_runner.main.read_initial_input", return_value=initial),
+            patch("agent_runner.main.create_agent_core", side_effect=create_core),
+            patch(
+                "agent_runner.main.wait_for_ipc_followup",
+                new_callable=AsyncMock,
+                side_effect=[followup, None],
+            ),
+            patch("agent_runner.main.should_close", return_value=False),
+            patch("agent_runner.main.write_output", side_effect=outputs.append),
+            patch("agent_runner.main.IPC_INPUT_DIR", ipc_dir),
+            patch("agent_runner.main.IPC_INPUT_CLOSE_SENTINEL", ipc_dir / "_close"),
+            patch("agent_runner.ipc.IPC_INPUT_DIR", ipc_dir),
+        ):
+            await run_agent_main()
+
+        assert len(created_cores) == 1
+        provider_context = created_cores[0].contexts[1]
+        assert human_reply in provider_context
+        assert report in provider_context
+        assert [output.result for output in outputs if output.result] == [
+            report,
+            "The alert identified queue lag at 47 minutes on SHA abc123.",
+        ]
+        assert outputs[-1].new_session_id == "provider-session-scheduled-report"
+        assert outputs[-1].query_id == "query-human"
 
 
 # ---------------------------------------------------------------------------
