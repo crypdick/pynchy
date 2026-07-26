@@ -26,6 +26,7 @@ from pynchy.host.git_ops.utils import (
     detect_main_branch,
     git_env_with_token,
     push_local_commits,
+    redact_git_diagnostic,
     run_git,
 )
 from pynchy.logger import logger
@@ -291,6 +292,7 @@ def host_create_pr_from_worktree(
     ctx = _validate_sync_preconditions(group_folder, repo_ctx)
     if isinstance(ctx, dict):
         return ctx
+    token = ctx.env.get("GH_TOKEN") if ctx.env is not None else None
 
     # 1. Push the worktree branch to origin
     push = run_git(
@@ -305,7 +307,7 @@ def host_create_pr_from_worktree(
     if push.returncode != 0:
         return {
             "success": False,
-            "message": f"Push failed: {push.stderr.strip()}",
+            "message": f"Push failed: {redact_git_diagnostic(push.stderr, token=token)}",
         }
 
     # 2. Check if a PR already exists for this branch
@@ -373,7 +375,7 @@ def host_create_pr_from_worktree(
             "success": False,
             "message": (
                 f"Pushed {ctx.ahead} commit(s) to {ctx.branch_name}, but PR creation failed: "
-                f"{pr_create.stderr.strip()}"
+                f"{redact_git_diagnostic(pr_create.stderr, token=token)}"
             ),
         }
 

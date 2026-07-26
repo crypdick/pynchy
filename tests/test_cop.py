@@ -178,6 +178,8 @@ async def test_outbound_sends_bounded_context_and_proposed_action():
     assert "diff: typo fix" in request_text
     assert "linear_work_item_lease" in request_text
     assert "publish its isolated worktree branch as a pull request" in request_text
+    assert "merge a pull request" in request_text
+    assert "deploy to production" in request_text
     system_prompt = " ".join(str(bodies[0]["system"]).split())
     assert "statement about the user's availability or sleep" in system_prompt
     assert "deploying to production" in system_prompt

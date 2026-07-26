@@ -343,6 +343,11 @@ immediate no-publication result instead of waiting for its timeout. The
 payload-bound approval remains pending and can replay the exact operation if a
 human approves it later.
 
+`sync_worktree_to_main` is PR-only at the host boundary. Missing or alternate
+publication modes are rejected before approval receipts or Cop authority are
+evaluated, so this agent action cannot merge into the host branch or trigger a
+deployment.
+
 The Cop receives a bounded SQLite view of the current user intent, the four
 most recent user or assistant messages (500 characters each), the eight most
 recent completed tool names, and any active host-derived Linear execution

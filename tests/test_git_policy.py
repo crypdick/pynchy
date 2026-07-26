@@ -11,7 +11,7 @@ import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
 from contextlib import ExitStack
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from conftest import NullIpcDeps, init_test_database, make_settings
@@ -227,6 +227,43 @@ class TestHostCreatePrFromWorktree:
         assert result["success"] is False
         assert "Push failed" in result["message"]
 
+    def test_push_failure_redacts_standalone_configured_token(self, git_env: dict):
+        """A raw token in Git stderr is removed before reaching IPC diagnostics."""
+        repo_ctx = git_env["repo_ctx"]
+        wt_result = ensure_worktree("agent-1", repo_ctx)
+        wt_path = wt_result.path
+        (wt_path / "feature.txt").write_text("new feature")
+        _git(wt_path, "add", "feature.txt")
+        _git(wt_path, "config", "user.email", "test@test.com")
+        _git(wt_path, "config", "user.name", "Test")
+        _git(wt_path, "commit", "-m", "add feature")
+        synthetic_token = "synthetic-sensitive-value"  # noqa: S105, RUF100 - synthetic redaction fixture.  # pragma: allowlist secret
+        real_run = subprocess.run
+
+        def _mock_run(args, **kwargs):
+            if args[:2] == ["git", "push"]:
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=1,
+                    stdout="",
+                    stderr=f"remote rejected {synthetic_token} with HTTP 403",
+                )
+            return real_run(args, **kwargs)
+
+        with (
+            patch(
+                "pynchy.host.git_ops.sync.git_env_with_token",
+                return_value={"GH_TOKEN": synthetic_token},
+            ),
+            patch("pynchy.host.git_ops.sync.subprocess.run", side_effect=_mock_run),
+        ):
+            result = host_create_pr_from_worktree("agent-1", repo_ctx)
+
+        assert result["success"] is False
+        assert synthetic_token not in result["message"]
+        assert "***" in result["message"]
+        assert "HTTP 403" in result["message"]
+
     def test_pr_creation_failure(self, git_env: dict):
         """PR creation failure still reports that push succeeded."""
         repo_ctx = git_env["repo_ctx"]
@@ -346,13 +383,6 @@ class TestIpcPolicyRouting:
                     "message": "Opened PR: https://github.com/owner/repo/pull/7",
                 },
             ) as create_pr,
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree"
-            ) as merge_main,
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ) as notify_worktrees,
         ):
             await dispatch(
                 {
@@ -366,8 +396,6 @@ class TestIpcPolicyRouting:
             )
 
         create_pr.assert_called_once_with("agent-1", fake_repo_ctx)
-        merge_main.assert_not_called()
-        notify_worktrees.assert_not_awaited()
         assert deps.deploy_calls == []
         result = json.loads((merge_results_dir / "req-pr.json").read_text())
         assert "pull/7" in result["repos"]["owner/repo"]["message"]
@@ -416,103 +444,3 @@ class TestIpcPolicyRouting:
         assert "https://***@github.com/owner/repo" in diagnostic
         assert "HTTP 403" in diagnostic
         assert len(diagnostic) <= 1000
-
-    async def test_merge_policy_calls_host_sync(self, deps: MockDeps, tmp_path: Path):
-        """sync_worktree_to_main calls host_sync_worktree."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=make_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[fake_repo_ctx],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "Merged 1 commit(s)"},
-            ) as mock_sync,
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ),
-        ):
-            await dispatch(
-                {"type": "sync_worktree_to_main", "request_id": "req-1"},
-                "agent-1",
-                False,
-                deps,
-            )
-
-        mock_sync.assert_called_once()
-
-        result_file = merge_results_dir / "req-1.json"
-        assert result_file.exists()
-        data = json.loads(result_file.read_text())
-        assert data["success"] is True
-
-    async def test_successful_sync_notifies_worktrees(self, deps: MockDeps, tmp_path: Path):
-        """Successful sync notifies sibling worktrees."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=make_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[fake_repo_ctx],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "Merged"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ) as mock_notify,
-        ):
-            await dispatch(
-                {"type": "sync_worktree_to_main", "request_id": "req-3"},
-                "agent-1",
-                False,
-                deps,
-            )
-
-        mock_notify.assert_awaited_once()
-
-    async def test_failed_sync_does_not_trigger_deploy(self, deps: MockDeps, tmp_path: Path):
-        """Failed sync writes the result and does not trigger deploy."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=make_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[fake_repo_ctx],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": False, "message": "conflict"},
-            ),
-        ):
-            await dispatch(
-                {"type": "sync_worktree_to_main", "request_id": "req-4"},
-                "agent-1",
-                False,
-                deps,
-            )
-
-        assert len(deps.deploy_calls) == 0
