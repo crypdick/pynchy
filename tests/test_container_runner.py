@@ -2598,9 +2598,9 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
             ) as destroy_session,
             patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.clear_session",
+                "pynchy.host.orchestrator.host_agent_dispatch.clear_runtime_session_references",
                 new_callable=AsyncMock,
-            ) as clear_session,
+            ) as clear_runtime_session_references,
         ):
             result = await run_agent(deps, group, "chat", [{"content": "hi"}])
 
@@ -2609,7 +2609,11 @@ class TestContainerInputAgentCoreConfig:
         assert input_data.session_id is None
         assert deps.sessions == {}
         destroy_session.assert_awaited_once_with(group.folder)
-        clear_session.assert_awaited_once()
+        clear_runtime_session_references.assert_awaited_once_with(
+            GroupFolder(group.folder),
+            "codex:gpt-5.5:missing-thread",
+            "chat",
+        )
         thread_exists.assert_called_once_with(
             "codex:gpt-5.5:missing-thread",
             codex_home=tmp_path / ".codex",

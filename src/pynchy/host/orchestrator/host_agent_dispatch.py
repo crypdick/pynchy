@@ -24,10 +24,12 @@ from pynchy.host.orchestrator.host_execution import (
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.plugins.agent_hooks import collect_agent_hook_specs, host_agent_hook_configs
-from pynchy.state import clear_session
+from pynchy.state.runtime_session_recovery import clear_runtime_session_references
 from pynchy.types import (
+    ChatJid,
     ContainerInput,  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     GroupFolder,
+    SessionId,
     WorkspaceProfile,
 )
 
@@ -77,14 +79,21 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
     """Run one durable thread turn through the direct-host runtime."""
     codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager)
     migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
-    if not codex_thread_exists_in_host_runtime(ctx.session_id, codex_home=codex_home):
+    if (session_id := ctx.session_id) is not None and not codex_thread_exists_in_host_runtime(
+        session_id,
+        codex_home=codex_home,
+    ):
         logger.info(
             "Stored Codex session is not available to host runtime; starting fresh",
             group=group.name,
-            session_id=ctx.session_id,
+            session_id=session_id,
         )
         await destroy_session(group.folder)
-        await clear_session(GroupFolder(group.folder))
+        await clear_runtime_session_references(
+            GroupFolder(group.folder),
+            SessionId(session_id),
+            ChatJid(chat_jid),
+        )
         deps.sessions.pop(group.folder, None)
         ctx.session_id = None
     logger.info(

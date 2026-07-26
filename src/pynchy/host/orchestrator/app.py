@@ -38,6 +38,8 @@ from pynchy.host.orchestrator.messaging import (
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
+from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
+from pynchy.host.orchestrator.startup_readiness import StartupReadiness
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
 from pynchy.host.orchestrator.workspace_registration import (
@@ -104,7 +106,8 @@ class PynchyApp(ThreadRouting):
         self._observers: list[ObserverProvider] = []
         self._memory: MemoryProvider | None = None
         self._speech_synthesizer: SpeechSynthesizer | None = None
-        self._subsystem_tasks: list[object] = []
+        self.subsystem_tasks = RuntimeTaskOwner()
+        self.startup_readiness = StartupReadiness()
         self.connection_runtime_owner = ConnectionRuntimeOwner()
         self.plugin_manager: pluggy.PluginManager | None = None
 
@@ -134,23 +137,17 @@ class PynchyApp(ThreadRouting):
         self._shutting_down = True
         return True
 
-    def cancel_subsystem_tasks(self) -> None:
-        for task in self._subsystem_tasks:
-            cast("Any", task).cancel()
-        self._subsystem_tasks.clear()
-
-    def add_subsystem_task(self, task: object) -> None:
-        self._subsystem_tasks.append(task)
-
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         """Attach a conversation-owned session to its current runtime placement."""
         self.sessions[group_folder] = session_id
         await set_session(GroupFolder(group_folder), session_id)
 
     async def cleanup_http_runner(self) -> None:
-        if self._http_runner is None:
+        runner = self._http_runner
+        if runner is None:
             return
-        await cast("Any", self._http_runner).cleanup()
+        self._http_runner = None
+        await cast("Any", runner).cleanup()
 
     def set_http_runner(self, runner: object) -> None:
         self._http_runner = runner

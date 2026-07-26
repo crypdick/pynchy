@@ -78,6 +78,7 @@ from pynchy.utils import create_background_task
 
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
 _PLUGIN_MANAGER_NOT_INITIALIZED = "phase 1 (_initialize_core) must run before {phase}"
+_SCHEDULER_STOPPED_BEFORE_READY = "Temporal scheduler stopped before publishing readiness"
 
 
 def _require_plugin_manager(app: PynchyApp, phase: str) -> pluggy.PluginManager:
@@ -107,8 +108,8 @@ async def _notify_admin_shutdown(app: PynchyApp, sig_name: str) -> None:
         logger.debug("Shutdown notification failed", exc_info=True)
 
 
-def _cancel_subsystem_tasks(app: PynchyApp) -> None:
-    app.cancel_subsystem_tasks()
+async def _stop_subsystem_tasks(app: PynchyApp) -> None:
+    await app.subsystem_tasks.stop()
 
 
 def _prepare_channels_for_shutdown(app: PynchyApp) -> None:
@@ -147,7 +148,7 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
     try:
         await _notify_admin_shutdown(app, sig_name)
-        _cancel_subsystem_tasks(app)
+        await _stop_subsystem_tasks(app)
         _prepare_channels_for_shutdown(app)
         await _cleanup_http_runner(app)
 
@@ -308,6 +309,20 @@ async def start_connection_runtimes(app: PynchyApp) -> None:
         raise
 
 
+def _settle_scheduler_exit(
+    task: asyncio.Future[Any],
+    readiness: asyncio.Future[None],
+) -> None:
+    """Release startup if the scheduler task stops before its own handshake."""
+    if readiness.done():
+        return
+    if task.cancelled():
+        readiness.cancel()
+        return
+    failure = task.exception()
+    readiness.set_exception(failure or RuntimeError(_SCHEDULER_STOPPED_BEFORE_READY))
+
+
 # ---------------------------------------------------------------------------
 # Phase 4: Subsystem startup
 # ---------------------------------------------------------------------------
@@ -319,16 +334,20 @@ async def _start_subsystems(
     """Scheduler, IPC, git sync, HTTP server."""
     s = get_settings()
 
-    # PynchyApp stores workspaces as a mapping, while scheduler jobs consume a
-    # callable accessor plus thread-routing methods. Keep that boundary in the
-    # adapter instead of treating the app as structurally interchangeable.
+    # Temporal must accept work before connection runtimes start: a runtime can
+    # wake a durable workflow during its initial poll. Interactive activities
+    # remain parked on startup_readiness until route recovery finishes.
     scheduler_deps = dep_factory.make_scheduler_deps(app)
-    app.add_subsystem_task(
-        create_background_task(
-            task_scheduler.start_scheduler_loop(scheduler_deps), name="scheduler"
-        )
+    scheduler_ready = asyncio.get_running_loop().create_future()
+    scheduler_task = create_background_task(
+        task_scheduler.start_scheduler_loop(scheduler_deps, ready=scheduler_ready),
+        name="scheduler",
     )
-    app.add_subsystem_task(
+    scheduler_task.add_done_callback(lambda task: _settle_scheduler_exit(task, scheduler_ready))
+    app.subsystem_tasks.add(scheduler_task)
+    await scheduler_ready
+
+    app.subsystem_tasks.add(
         create_background_task(
             ipc_manager.start_ipc_watcher(dep_factory.make_ipc_deps(app)),
             name="ipc-watcher",
@@ -366,18 +385,21 @@ async def _prepare_state_and_subsystems(
     try:
         await _reconcile_state(app)
         interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery(app)
-        # Provider runtimes may wake orphaned deliveries prepared above, but
-        # interrupted durable turns must not be dispatched until every runtime
-        # that owns their route is ready.
         await _start_subsystems(app)
         await startup_handler.confirm_deploy_startup(interrupted_recovery)
-    except Exception as exc:  # noqa: BLE001, RUF100 - deploy rollback must cover every startup owner.
-        app.cancel_subsystem_tasks()
+        app.startup_readiness.mark_ready()
+    except BaseException as exc:  # noqa: BLE001, RUF100 - rollback must also release waiters during cancellation.
+        app.startup_readiness.mark_failed(exc)
+        await app.subsystem_tasks.stop()
+        try:
+            await app.cleanup_http_runner()
+        except Exception:  # noqa: BLE001, RUF100 - preserve the startup error that triggers rollback.
+            logger.exception("HTTP cleanup failed during startup rollback")
         try:
             await app.connection_runtime_owner.close()
         except Exception:  # noqa: BLE001, RUF100 - preserve the startup error that triggers rollback.
             logger.exception("Connection runtime cleanup failed during startup rollback")
-        if await asyncio.to_thread(continuation_path.exists):
+        if isinstance(exc, Exception) and await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
     return interrupted_recovery

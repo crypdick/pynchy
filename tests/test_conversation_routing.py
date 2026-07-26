@@ -105,13 +105,14 @@ def _webhook_receipt(
     identity: ExternalDeliveryIdentity,
     subject_key: str,
     *,
+    workspace: str = "triage",
     received_at: str = "2026-07-19T12:00:01+00:00",
 ) -> WebhookReceipt:
     return WebhookReceipt(
         provider=identity.provider,
         route=identity.route,
         delivery_id=identity.delivery_id,
-        workspace="triage",
+        workspace=workspace,
         event_type="Issue",
         event_action="update",
         subject_id=subject_key,
@@ -137,7 +138,12 @@ async def _admit(
 ) -> ConversationDeliveryAdmission:
     identity = _delivery(delivery_id)
     await admit_webhook_receipt(
-        _webhook_receipt(identity, subject_key, received_at=received_at),
+        _webhook_receipt(
+            identity,
+            subject_key,
+            workspace=workspace,
+            received_at=received_at,
+        ),
         None,
     )
     admission = await admit_conversation_delivery(
@@ -153,14 +159,17 @@ async def _admit(
 async def _bind_control_thread(
     conversation_id: ConversationId,
     thread_jid: ChatJid,
+    *,
+    parent_workspace: GroupFolder | None = None,
 ) -> None:
+    resolved_parent = parent_workspace or GroupFolder("triage")
     await store_chat_metadata(thread_jid, "2026-07-19T12:00:00+00:00")
     await set_conversation_control_binding(
         ConversationControlBinding(
             conversation_id=conversation_id,
             surface=ControlSurface.DISCORD,
-            parent_workspace=GroupFolder("triage"),
-            parent_jid=ChatJid("discord:channel:triage"),
+            parent_workspace=resolved_parent,
+            parent_jid=ChatJid(f"discord:channel:{resolved_parent}"),
             thread_jid=thread_jid,
             title="[SYN-9] Reset delivery ordering",
             updated_at="2026-07-19T12:00:00+00:00",

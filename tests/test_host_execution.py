@@ -1,5 +1,6 @@
 """Tests for direct host-execution session discovery."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,10 @@ def test_host_agent_turn_request_is_runtime_decoratable() -> None:
 def _write_rollout(codex_home: Path, thread_id: str) -> None:
     rollout_dir = codex_home / "sessions" / "2026" / "07" / "14"
     rollout_dir.mkdir(parents=True)
-    (rollout_dir / f"rollout-2026-07-14T07-27-55-{thread_id}.jsonl").write_text("")
+    header = {"type": "session_meta", "payload": {"id": thread_id}}
+    (rollout_dir / f"rollout-2026-07-14T07-27-55-{thread_id}.jsonl").write_text(
+        json.dumps(header) + "\n"
+    )
 
 
 def test_host_codex_thread_exists_when_rollout_is_absent_from_stale_index(
@@ -41,6 +45,52 @@ def test_host_codex_thread_is_missing_without_rollout_even_when_index_claims_it(
     (tmp_path / "session_index.jsonl").write_text(f'{{"id":"{thread_id}"}}\n')
 
     assert not codex_thread_exists_in_host_runtime(f"codex:gpt-5.5:{thread_id}")
+
+
+@pytest.mark.parametrize("content", ["", "{truncated"])
+def test_host_codex_thread_is_missing_when_rollout_header_is_not_durable(
+    tmp_path: Path,
+    content: str,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    rollout_dir = tmp_path / "sessions" / "2026" / "07" / "14"
+    rollout_dir.mkdir(parents=True)
+    (rollout_dir / f"rollout-2026-07-14T07-27-55-{thread_id}.jsonl").write_text(content)
+
+    assert not codex_thread_exists_in_host_runtime(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=tmp_path,
+    )
+
+
+def test_host_codex_thread_is_missing_when_rollout_header_is_not_utf8(
+    tmp_path: Path,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    rollout_dir = tmp_path / "sessions" / "2026" / "07" / "14"
+    rollout_dir.mkdir(parents=True)
+    (rollout_dir / f"rollout-2026-07-14T07-27-55-{thread_id}.jsonl").write_bytes(b"\xff")
+
+    assert not codex_thread_exists_in_host_runtime(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=tmp_path,
+    )
+
+
+def test_host_codex_thread_inspection_error_is_not_treated_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_inspection(_path: Path, _pattern: str):
+        raise OSError("storage unavailable")
+
+    monkeypatch.setattr(Path, "rglob", fail_inspection)
+
+    with pytest.raises(host_execution.CodexRolloutInspectionError):
+        codex_thread_exists_in_host_runtime(
+            "codex:gpt-5.5:019f6106-fd23-7292-bac5-7dbb7da29002",
+            codex_home=tmp_path,
+        )
 
 
 def test_admin_host_execution_uses_full_learning_vault_mirror(
@@ -124,4 +174,31 @@ def test_host_codex_thread_migrates_from_legacy_global_home(tmp_path: Path) -> N
     assert migrated is True
     assert host_execution.codex_thread_exists_in_host_runtime(
         f"codex:gpt-5.5:{thread_id}", codex_home=scoped_home
+    )
+
+
+def test_host_codex_thread_copy_error_is_not_treated_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    legacy_home = tmp_path / "legacy-codex"
+    scoped_home = tmp_path / "scoped-codex"
+    _write_rollout(legacy_home, thread_id)
+
+    def fail_copy(*_args) -> None:
+        Path(_args[1]).write_text('{"type":"session_meta"', encoding="utf-8")
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(host_execution.shutil, "copy2", fail_copy)
+
+    with pytest.raises(host_execution.CodexRolloutInspectionError):
+        host_execution.migrate_host_codex_thread(
+            f"codex:gpt-5.5:{thread_id}",
+            codex_home=scoped_home,
+            legacy_codex_home=legacy_home,
+        )
+    assert not host_execution.codex_thread_exists_in_host_runtime(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=scoped_home,
     )
