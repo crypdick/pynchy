@@ -26,6 +26,7 @@ from pynchy.state import (
     clear_in_flight_turn,
     get_active_work_item_execution,
     get_work_item_execution_for_issue,
+    get_work_item_transition_by_request,
     init_test_database,
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
@@ -407,6 +408,142 @@ async def test_agent_can_move_owned_work_to_awaiting_review(
     assert work_item["status"] == "awaiting_review"
     assert work_item["turn_id"] == "turn-1"
     assert await get_active_work_item_execution("issue-1") is None
+
+
+async def test_successful_nonblocked_moves_clear_blocked_projection(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked",
+        issue_id="issue-1",
+        status="blocked",
+        outcome={
+            "blocker": "Publication requires a write-capable credential.",
+            "handoff_to": "release operator",
+        },
+    )
+
+    reviewed = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-reviewed",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "Publication succeeded."},
+    )
+    completed = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-completed",
+        issue_id="issue-1",
+        status="done",
+        outcome={"summary": "The reviewed change is merged and deployed."},
+    )
+
+    reviewed_item = reviewed["result"]["work_item"]
+    assert reviewed_item["status"] == "awaiting_review"
+    assert reviewed_item["blocker"] is None
+    assert reviewed_item["handoff_to"] is None
+    completed_item = completed["result"]["work_item"]
+    assert completed_item["status"] == "completed"
+    assert completed_item["blocker"] is None
+    assert completed_item["handoff_to"] is None
+
+    blocked_transition = await get_work_item_transition_by_request("move-blocked")
+    assert blocked_transition is not None
+    assert blocked_transition.blocker == "Publication requires a write-capable credential."
+    assert blocked_transition.handoff_to == "release operator"
+
+
+async def test_unknown_nonblocked_move_preserves_blocker_until_reconciled(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked",
+        issue_id="issue-1",
+        status="blocked",
+        outcome={
+            "blocker": "Publication requires a write-capable credential.",
+            "handoff_to": "release operator",
+        },
+    )
+    lifecycle.state.fail_after_update = True
+
+    uncertain = await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-reviewed",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "Publication may have succeeded."},
+    )
+
+    uncertain_item = uncertain["result"]["work_item"]
+    assert uncertain_item["status"] == "unknown"
+    assert uncertain_item["blocker"] == "Publication requires a write-capable credential."
+    assert uncertain_item["handoff_to"] == "release operator"
+
+    lifecycle.state.fail_after_update = False
+    reconciled = await _call(
+        lifecycle,
+        "linear_reconcile_work_item",
+        "reconcile-reviewed",
+        issue_id="issue-1",
+    )
+
+    reconciled_item = reconciled["result"]["work_item"]
+    assert reconciled_item["status"] == "awaiting_review"
+    assert reconciled_item["blocker"] is None
+    assert reconciled_item["handoff_to"] is None
+
+
+async def test_conflicting_nonblocked_move_preserves_prior_blocker(
+    lifecycle: Lifecycle,
+) -> None:
+    await _lease(lifecycle)
+    await _begin_turn(input_source="scheduled_task")
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-blocked",
+        issue_id="issue-1",
+        status="blocked",
+        outcome={
+            "blocker": "Publication requires a write-capable credential.",
+            "handoff_to": "release operator",
+        },
+    )
+    lifecycle.state.fail_after_update = True
+    await _call(
+        lifecycle,
+        "linear_move_todo",
+        "move-reviewed",
+        issue_id="issue-1",
+        status="awaiting_review",
+        outcome={"summary": "Publication may have succeeded."},
+    )
+    lifecycle.state.fail_after_update = False
+    lifecycle.state.issue["state"] = _state("state-blocked")
+
+    conflicted = await _call(
+        lifecycle,
+        "linear_reconcile_work_item",
+        "reconcile-reviewed",
+        issue_id="issue-1",
+    )
+
+    conflicted_item = conflicted["result"]["work_item"]
+    assert conflicted_item["status"] == "failed"
+    assert conflicted_item["blocker"] == "Publication requires a write-capable credential."
+    assert conflicted_item["handoff_to"] == "release operator"
 
 
 async def test_blocked_work_can_be_reauthorized_for_a_new_attempt(

@@ -299,6 +299,9 @@ class WorkItemTransition:
     target_status: str
     result_execution_status: WorkItemExecutionStatus
     evidence_refs: tuple[str, ...]
+    summary: str | None
+    blocker: str | None
+    handoff_to: str | None
     status: WorkItemTransitionStatus
     receipt: dict[str, Any] | None
     error: str | None

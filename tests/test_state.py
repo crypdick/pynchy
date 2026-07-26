@@ -1576,6 +1576,88 @@ class TestEnsureColumns:
         assert await cursor.fetchone() == ("owner-turn", None)
         await db.close()
 
+    async def test_migrates_stale_work_item_outcomes_without_losing_blocker_evidence(self):
+        """Existing terminal projections clear only after preserving transition evidence."""
+        db = await aiosqlite.connect(":memory:")
+        await create_schema(db)
+        await db.executescript(
+            """
+            INSERT INTO work_item_executions (
+                id, workspace, linear_issue_id, linear_issue_identifier,
+                linear_issue_url, attempt, initiated_by, observed_state_id,
+                observed_state_name, status, summary, blocker, handoff_to,
+                evidence_refs, requester_delivery_status, created_at, updated_at
+            ) VALUES
+                (
+                    'completed-execution', 'pynchy', 'issue-completed', 'SYN-88',
+                    'https://linear.app/example/issue/SYN-88', 1, 'linear-webhook:test',
+                    'state-done', 'Done', 'completed', 'Publication succeeded.',
+                    'GitHub permission missing', 'release operator', '[]', 'delivered',
+                    '2026-07-26T00:00:00Z', '2026-07-26T00:10:00Z'
+                ),
+                (
+                    'blocked-execution', 'pynchy', 'issue-blocked', 'SYN-99',
+                    'https://linear.app/example/issue/SYN-99', 1, 'linear-webhook:test',
+                    'state-blocked', 'Blocked', 'blocked', 'Deployment is blocked.',
+                    'Deployment credential missing', 'release operator', '[]', 'delivered',
+                    '2026-07-26T00:00:00Z', '2026-07-26T00:10:00Z'
+                );
+            INSERT INTO work_item_transitions (
+                execution_id, request_id, operation, target_status,
+                result_execution_status, evidence_refs, status, created_at, resolved_at
+            ) VALUES
+                (
+                    'completed-execution', 'blocked-completed', 'move_to_blocked', 'blocked',
+                    'blocked', '[]', 'succeeded',
+                    '2026-07-26T00:01:00Z', '2026-07-26T00:01:01Z'
+                ),
+                (
+                    'blocked-execution', 'blocked-current', 'move_to_blocked', 'blocked',
+                    'blocked', '[]', 'succeeded',
+                    '2026-07-26T00:01:00Z', '2026-07-26T00:01:01Z'
+                );
+            """
+        )
+        await db.execute("ALTER TABLE work_item_transitions DROP COLUMN summary")
+        await db.execute("ALTER TABLE work_item_transitions DROP COLUMN blocker")
+        await db.execute("ALTER TABLE work_item_transitions DROP COLUMN handoff_to")
+
+        await create_schema(db)
+
+        cursor = await db.execute(
+            """
+            SELECT status, blocker, handoff_to
+            FROM work_item_executions
+            ORDER BY id
+            """
+        )
+        assert await cursor.fetchall() == [
+            ("blocked", "Deployment credential missing", "release operator"),
+            ("completed", None, None),
+        ]
+        cursor = await db.execute(
+            """
+            SELECT request_id, summary, blocker, handoff_to
+            FROM work_item_transitions
+            ORDER BY request_id
+            """
+        )
+        assert await cursor.fetchall() == [
+            (
+                "blocked-completed",
+                None,
+                "GitHub permission missing",
+                "release operator",
+            ),
+            (
+                "blocked-current",
+                None,
+                "Deployment credential missing",
+                "release operator",
+            ),
+        ]
+        await db.close()
+
     async def test_adds_occurrence_state_to_existing_scheduled_tasks(self):
         """Existing one-shot tasks gain the initial generation without row loss."""
         db = await aiosqlite.connect(":memory:")

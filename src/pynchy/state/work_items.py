@@ -17,6 +17,7 @@ from pynchy.state.work_item_models import (
     WorkItemTransitionRequest,
 )
 from pynchy.state.work_item_rows import row_to_execution, row_to_transition
+from pynchy.state.work_item_transition_records import insert_work_item_transition
 from pynchy.types import (
     WorkItemExecution,
     WorkItemExecutionStatus,
@@ -212,7 +213,7 @@ async def _persist_work_item_claim(
                 execution.completed_at,
             ),
         )
-        await _insert_transition(
+        await insert_work_item_transition(
             db,
             request=WorkItemTransitionRequest(
                 execution=execution,
@@ -230,7 +231,7 @@ async def begin_work_item_transition(request: WorkItemTransitionRequest) -> Work
     """Record a pending remote transition before Pynchy calls Linear."""
     now = _timestamp()
     async with atomic_write() as db:
-        await _insert_transition(
+        await insert_work_item_transition(
             db,
             request=request,
             created_at=now,
@@ -287,6 +288,14 @@ async def resolve_work_item_transition(
 ) -> WorkItemExecution:
     """Persist a provider receipt or uncertainty and the resulting local lifecycle state."""
     now = _timestamp()
+    clears_blocked_outcome = (
+        transition_status is WorkItemTransitionStatus.SUCCEEDED
+        and execution_status
+        not in {
+            WorkItemExecutionStatus.BLOCKED,
+            WorkItemExecutionStatus.HANDED_OFF,
+        }
+    )
     completed_at = (
         now
         if execution_status
@@ -313,10 +322,20 @@ async def resolve_work_item_transition(
             await db.execute(
                 """
                 UPDATE work_item_executions
-                SET status = ?, updated_at = ?, completed_at = ?
+                SET status = ?,
+                    blocker = CASE WHEN ? THEN NULL ELSE blocker END,
+                    handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
+                    updated_at = ?, completed_at = ?
                 WHERE id = ?
                 """,
-                (execution_status.value, now, completed_at, transition.execution_id),
+                (
+                    execution_status.value,
+                    clears_blocked_outcome,
+                    clears_blocked_outcome,
+                    now,
+                    completed_at,
+                    transition.execution_id,
+                ),
             )
         else:
             state = _issue_state(issue)
@@ -325,7 +344,10 @@ async def resolve_work_item_transition(
                 UPDATE work_item_executions
                 SET linear_issue_identifier = ?, linear_issue_url = ?,
                     observed_state_id = ?, observed_state_name = ?, observed_updated_at = ?,
-                    status = ?, updated_at = ?, completed_at = ?
+                    status = ?,
+                    blocker = CASE WHEN ? THEN NULL ELSE blocker END,
+                    handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
+                    updated_at = ?, completed_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -335,6 +357,8 @@ async def resolve_work_item_transition(
                     _issue_str(state, "name"),
                     _optional_str(issue, "updatedAt"),
                     execution_status.value,
+                    clears_blocked_outcome,
+                    clears_blocked_outcome,
                     now,
                     completed_at,
                     transition.execution_id,
@@ -390,37 +414,6 @@ async def get_latest_unresolved_work_item_transition(
     )
     row = await cursor.fetchone()
     return row_to_transition(row) if row else None
-
-
-async def _insert_transition(
-    db: aiosqlite.Connection,
-    *,
-    request: WorkItemTransitionRequest,
-    created_at: str,
-) -> None:
-    evidence_refs = (
-        request.evidence_refs
-        if request.evidence_refs is not None
-        else request.execution.evidence_refs
-    )
-    await db.execute(
-        """
-        INSERT INTO work_item_transitions (
-            execution_id, request_id, operation, target_status,
-            result_execution_status, evidence_refs, status, receipt, error, created_at, resolved_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL)
-        """,
-        (
-            request.execution.id,
-            request.request_id,
-            request.operation,
-            request.target_status,
-            request.result_execution_status.value,
-            json.dumps(evidence_refs),
-            WorkItemTransitionStatus.PENDING.value,
-            created_at,
-        ),
-    )
 
 
 def _issue_str(payload: dict[str, Any], key: str) -> str:

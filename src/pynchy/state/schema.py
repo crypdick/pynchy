@@ -28,7 +28,10 @@ from pynchy.state.task_schema_migrations import (
     migrate_cached_task_thread_binding,
     migrate_scheduled_session_policy,
 )
-from pynchy.state.work_item_schema_migrations import migrate_work_item_active_index
+from pynchy.state.work_item_schema_migrations import (
+    migrate_work_item_active_index,
+    migrate_work_item_outcome_projection,
+)
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
 
@@ -172,6 +175,9 @@ CREATE TABLE IF NOT EXISTS work_item_transitions (
     target_status TEXT NOT NULL,
     result_execution_status TEXT NOT NULL,
     evidence_refs TEXT NOT NULL DEFAULT '[]',
+    summary TEXT,
+    blocker TEXT,
+    handoff_to TEXT,
     status TEXT NOT NULL,
     receipt TEXT,
     error TEXT,
@@ -440,5 +446,6 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await migrate_scheduled_session_policy(database)
     await migrate_cached_task_thread_binding(database)
     await migrate_work_item_active_index(database)
+    await migrate_work_item_outcome_projection(database)
     await clear_temporal_owned_next_runs(database)
     await _seed_channel_cursors(database)
