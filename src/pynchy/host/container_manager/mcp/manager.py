@@ -18,6 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import (
+    AsyncIterator,  # noqa: TC003, RUF100 - beartype resolves lease return annotations at runtime.
+)
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
@@ -44,7 +48,7 @@ from pynchy.host.container_manager.mcp.litellm import (
     sync_mcp_endpoints,
     sync_teams,
 )
-from pynchy.host.container_manager.mcp.proxy import McpProxy
+from pynchy.host.container_manager.mcp.proxy import McpBackendUnavailableError, McpProxy
 from pynchy.host.container_manager.mcp.resolution import (
     McpInstance,
     WorkspaceTeam,
@@ -149,11 +153,15 @@ class McpManager:
         self._workspace_instances: dict[str, list[str]] = {}
         self._workspace_teams: dict[str, WorkspaceTeam] = {}
         self._instance_start_locks: dict[str, asyncio.Lock] = {}
+        self._active_proxy_requests: dict[str, int] = {}
         self._unavailable_until: dict[str, float] = {}
         self._teams_cache_path = settings.data_dir / "litellm" / "mcp_teams.json"
         self._idle_task: asyncio.Task[None] | None = None
         self._warm_task: asyncio.Task[None] | None = None
-        self._proxy = McpProxy(host=settings.gateway.host)
+        self._proxy = McpProxy(
+            host=settings.gateway.host,
+            backend_lease=self.proxy_backend_lease,
+        )
         self._proxy_port: int = 0
 
     @property
@@ -175,6 +183,7 @@ class McpManager:
         state = resolve_all_instances(self._settings, all_servers)
         self._instances = state.instances
         self._workspace_instances = state.workspace_instances
+        self._active_proxy_requests.clear()
         self._unavailable_until.clear()
 
         if not self._instances:
@@ -262,6 +271,50 @@ class McpManager:
         lock = self._instance_start_locks.setdefault(instance_id, asyncio.Lock())
         async with lock:
             await self._ensure_running_unlocked(instance_id)
+
+    @asynccontextmanager
+    async def proxy_backend_lease(self, instance_id: str) -> AsyncIterator[None]:
+        """Keep one managed backend available for the duration of a proxy request."""
+        instance = self._instances.get(instance_id)
+        if instance is None:
+            raise McpBackendUnavailableError(instance_id)
+        if instance.server_config.type == "url":
+            yield
+            return
+
+        lock = self._instance_start_locks.setdefault(instance_id, asyncio.Lock())
+        async with lock:
+            retry_at = self._unavailable_until.get(instance_id, 0.0)
+            if retry_at > time.monotonic():
+                raise McpBackendUnavailableError(instance_id)
+
+            try:
+                await self._ensure_running_unlocked(instance_id)
+            except Exception as exc:  # noqa: BLE001, RUF100 - proxy lifecycle boundary records cooldown.
+                self._unavailable_until[instance_id] = time.monotonic() + _MCP_FAILURE_RETRY_SECONDS
+                logger.warning(
+                    "Failed to start proxied MCP instance",
+                    instance_id=instance_id,
+                    error=str(exc),
+                    retry_after_seconds=_MCP_FAILURE_RETRY_SECONDS,
+                )
+                raise McpBackendUnavailableError(instance_id) from exc
+
+            self._unavailable_until.pop(instance_id, None)
+            self._active_proxy_requests[instance_id] = (
+                self._active_proxy_requests.get(instance_id, 0) + 1
+            )
+
+        try:
+            yield
+        finally:
+            # Keep release synchronous so cancellation cannot strand activity.
+            remaining = self._active_proxy_requests.get(instance_id, 1) - 1
+            if remaining > 0:
+                self._active_proxy_requests[instance_id] = remaining
+            else:
+                self._active_proxy_requests.pop(instance_id, None)
+            instance.last_activity = time.monotonic()
 
     async def get_canary_server_endpoint(self, server_name: str) -> str:
         """Start one configured server and return its host-reachable MCP endpoint.
@@ -354,35 +407,38 @@ class McpManager:
 
     async def stop_idle(self) -> None:
         """Stop Docker/script instances that exceeded their idle_timeout."""
-        now = time.monotonic()
         for instance in list(self._instances.values()):
             if instance.server_config.type not in ("docker", "script"):
                 continue
             if instance.server_config.idle_timeout == 0:
                 continue  # Never auto-stop
 
-            elapsed = now - instance.last_activity
-            if elapsed <= instance.server_config.idle_timeout:
-                continue
-
-            if instance.server_config.type == "script":
-                if instance.process is None or instance.process.poll() is not None:
-                    continue  # not running
-                logger.info(
-                    "Stopping idle MCP script",
-                    instance_id=instance.instance_id,
-                    idle_seconds=int(elapsed),
-                )
-                terminate_process(instance)
-            else:
-                if not await is_container_running(instance.container_name):
+            lock = self._instance_start_locks.setdefault(instance.instance_id, asyncio.Lock())
+            async with lock:
+                if self._active_proxy_requests.get(instance.instance_id, 0) > 0:
                     continue
-                logger.info(
-                    "Stopping idle MCP container",
-                    instance_id=instance.instance_id,
-                    idle_seconds=int(elapsed),
-                )
-                await stop_container(instance.container_name)
+                elapsed = time.monotonic() - instance.last_activity
+                if elapsed <= instance.server_config.idle_timeout:
+                    continue
+
+                if instance.server_config.type == "script":
+                    if instance.process is None or instance.process.poll() is not None:
+                        continue  # not running
+                    logger.info(
+                        "Stopping idle MCP script",
+                        instance_id=instance.instance_id,
+                        idle_seconds=int(elapsed),
+                    )
+                    terminate_process(instance)
+                else:
+                    if not await is_container_running(instance.container_name):
+                        continue
+                    logger.info(
+                        "Stopping idle MCP container",
+                        instance_id=instance.instance_id,
+                        idle_seconds=int(elapsed),
+                    )
+                    await stop_container(instance.container_name)
 
     async def stop_all(self) -> None:
         """Shutdown: stop all managed Docker containers and script subprocesses."""

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from pynchy.host.container_manager.mcp.proxy import McpProxy, create_proxy_app
+from pynchy.host.container_manager.mcp.proxy import (
+    McpBackendUnavailableError,
+    McpProxy,
+    create_proxy_app,
+)
 from pynchy.host.container_manager.security.approval import resolve_mcp_proxy_approval
 from pynchy.host.container_manager.security.cop import CopVerdict
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
@@ -195,9 +200,21 @@ class TestMcpProxyRouting:
         """Proxy should return 502 when the backend is unreachable."""
         security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
         create_gate("test-ws", 1000.0, security)
+        events: list[str] = []
+
+        @asynccontextmanager
+        async def backend_lease(_instance_id: str):
+            events.append("enter")
+            try:
+                yield
+            finally:
+                events.append("release")
 
         # Port 1 is unlikely to be listening
-        app = create_proxy_app({"browser": "http://localhost:1/mcp"})
+        app = create_proxy_app(
+            {"browser": "http://localhost:1/mcp"},
+            backend_lease=backend_lease,
+        )
         client = TestClient(TestServer(app))
         await client.start_server()
 
@@ -207,6 +224,86 @@ class TestMcpProxyRouting:
                 json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
             )
             assert resp.status == 502
+            assert events == ["enter", "release"]
+        finally:
+            await client.close()
+
+    async def test_proxy_ensures_stopped_backend_before_forwarding(self):
+        """A valid request should restart its managed backend before forwarding."""
+        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        create_gate("test-ws", 1000.0, security)
+        backend_running = False
+        events: list[str] = []
+
+        async def handle(_request: web.Request) -> web.Response:
+            await asyncio.sleep(0)
+            assert backend_running
+            events.append("forward")
+            return web.json_response({"jsonrpc": "2.0", "id": 1, "result": {}})
+
+        backend_app = web.Application()
+        backend_app.router.add_post("/mcp", handle)
+        backend = TestServer(backend_app)
+        await backend.start_server()
+
+        @asynccontextmanager
+        async def backend_lease(instance_id: str):
+            nonlocal backend_running
+            await asyncio.sleep(0)
+            assert instance_id == "browser"
+            events.append("ensure")
+            backend_running = True
+            yield
+
+        app = create_proxy_app(
+            {"browser": f"http://localhost:{backend.port}/mcp"},
+            backend_lease=backend_lease,
+        )
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/browser",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+
+            assert resp.status == 200
+            assert events == ["ensure", "forward"]
+        finally:
+            await client.close()
+            await backend.close()
+
+    async def test_proxy_returns_502_when_backend_ensure_fails(self, mock_backend):
+        """A managed-backend startup failure should not escape as a proxy 500."""
+        security = WorkspaceSecurity(services={"browser": _SAFE_TRUST})
+        create_gate("test-ws", 1000.0, security)
+        ensure_backend = AsyncMock(side_effect=RuntimeError("start failed"))
+
+        @asynccontextmanager
+        async def backend_lease(instance_id: str):
+            try:
+                await ensure_backend(instance_id)
+            except RuntimeError as exc:
+                raise McpBackendUnavailableError(instance_id) from exc
+            yield
+
+        app = create_proxy_app(
+            {"browser": f"http://localhost:{mock_backend.port}/mcp"},
+            backend_lease=backend_lease,
+        )
+        client = TestClient(TestServer(app))
+        await client.start_server()
+
+        try:
+            resp = await client.post(
+                "/mcp/test-ws/1000.0/browser",
+                json={"jsonrpc": "2.0", "method": "tools/call", "id": 1},
+            )
+
+            assert resp.status == 502
+            assert await resp.json() == {"error": "MCP backend unavailable"}
+            ensure_backend.assert_awaited_once_with("browser")
         finally:
             await client.close()
 
@@ -417,9 +514,13 @@ class TestMcpProxyOutboundGating:
             services={"browser": ServiceTrustConfig(dangerous_writes="forbidden")}
         )
         create_gate("test-ws", 1000.0, security)
+        backend_lease = AsyncMock()
 
         backend_url = f"http://localhost:{mock_backend.port}/mcp"
-        app = create_proxy_app({"browser": backend_url})
+        app = create_proxy_app(
+            {"browser": backend_url},
+            backend_lease=backend_lease,
+        )
         client = TestClient(TestServer(app))
         await client.start_server()
 
@@ -437,6 +538,7 @@ class TestMcpProxyOutboundGating:
             data = await resp.json()
             assert "error" in data
             assert "denied" in data["error"].lower() or "forbidden" in data["error"].lower()
+            backend_lease.assert_not_called()
         finally:
             await client.close()
 

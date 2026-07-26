@@ -16,6 +16,7 @@ import asyncio
 import json as _json
 import uuid
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -36,6 +37,11 @@ from pynchy.logger import logger
 # request_id) -> None.  The implementation writes the pending file and
 # broadcasts the notification to chat channels.
 ApprovalRequestFn = Callable[[str, str, dict[str, Any], str], Awaitable[None]]
+BackendLeaseFn = Callable[[str], AbstractAsyncContextManager[None]]
+
+
+class McpBackendUnavailableError(RuntimeError):
+    """A managed MCP backend could not be leased for a proxied request."""
 
 
 @dataclass
@@ -52,6 +58,7 @@ class _ProxyState:
     service_names: dict[str, str] = field(default_factory=dict)
     http_session: aiohttp.ClientSession | None = None
     approval_fn: ApprovalRequestFn | None = None
+    backend_lease: BackendLeaseFn | None = None
 
 
 # Typed app key -- set once at construction, never reassigned.
@@ -88,6 +95,7 @@ def create_proxy_app(
     trust_map: dict[str, dict[str, Any]] | None = None,
     service_names: dict[str, str] | None = None,
     approval_fn: ApprovalRequestFn | None = None,
+    backend_lease: BackendLeaseFn | None = None,
 ) -> object:
     """Create the aiohttp proxy application.
 
@@ -100,6 +108,8 @@ def create_proxy_app(
         approval_fn: Callback for human approval requests.  When a tools/call
             triggers needs_human, the proxy calls this to write the pending
             file and broadcast to chat, then blocks until the human responds.
+        backend_lease: Context manager that keeps a managed backend available
+            while a valid request is forwarded.
     """
     app = web.Application()
     app[_STATE_KEY] = _ProxyState(
@@ -107,6 +117,7 @@ def create_proxy_app(
         trust_map=trust_map or {},
         service_names=service_names or {},
         approval_fn=approval_fn,
+        backend_lease=backend_lease,
     )
     app.router.add_route(
         "*",
@@ -290,6 +301,19 @@ async def _forward_to_backend(
         return web.json_response({"error": "MCP backend unavailable"}, status=502)
 
 
+async def _forward_with_backend_lease(
+    context: _BackendForwardContext,
+) -> web.Response:
+    backend_lease = context.state.backend_lease
+    if backend_lease is None:
+        return await _forward_to_backend(context)
+    try:
+        async with backend_lease(context.instance_id):
+            return await _forward_to_backend(context)
+    except McpBackendUnavailableError:
+        return web.json_response({"error": "MCP backend unavailable"}, status=502)
+
+
 async def _proxy_handler(request: web.Request) -> web.Response:
     """Route an MCP request through SecurityGate to the backend."""
     proxy_request = _proxy_request(request)
@@ -320,7 +344,7 @@ async def _proxy_handler(request: web.Request) -> web.Response:
     session = state.http_session
     if session is None:
         raise RuntimeError(_MCP_PROXY_HTTP_SESSION_UNINITIALIZED)
-    return await _forward_to_backend(
+    return await _forward_with_backend_lease(
         _BackendForwardContext(
             session=session,
             request=request,
@@ -459,8 +483,14 @@ class McpProxy:
     through a single endpoint.
     """
 
-    def __init__(self, *, host: str = "localhost") -> None:
+    def __init__(
+        self,
+        *,
+        host: str = "localhost",
+        backend_lease: BackendLeaseFn | None = None,
+    ) -> None:
         self._host = host
+        self._backend_lease = backend_lease
         self._runner: web.AppRunner | None = None
         self._port: int = 0
 
@@ -493,6 +523,7 @@ class McpProxy:
                 trust_map=trust_map,
                 service_names=service_names,
                 approval_fn=approval_fn,
+                backend_lease=self._backend_lease,
             ),
         )
         self._runner = web.AppRunner(app)
