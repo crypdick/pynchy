@@ -19,7 +19,13 @@ from pynchy.host.git_ops.utils import (
     push_local_commits,
 )
 from pynchy.host.orchestrator.http_control import ControlPlaneRuntime, RequestRateLimiter
-from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.host.orchestrator.http_server import (
+    ControlPlaneReadiness,
+    activate_http_server,
+    create_http_app,
+    prepare_http_server,
+    publish_http_server,
+)
 from pynchy.types import DeployClaim, DeployClaimStatus, ScheduledTask, WorkspaceProfile
 
 if TYPE_CHECKING:
@@ -351,6 +357,49 @@ class TestHealthEndpoint(AioHTTPTestCase):
         head_sha.assert_not_called()
         head_commit.assert_not_called()
         repo_dirty.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_http_preparation_does_not_publish_before_activation(tmp_path) -> None:
+    start_sites = AsyncMock()
+    with (
+        _patch_settings(data_dir=tmp_path),
+        patch(
+            "pynchy.host.orchestrator.http_server.collect_webhook_routes",
+            return_value=(),
+        ),
+        patch(
+            "pynchy.host.orchestrator.http_server.start_control_plane_sites",
+            start_sites,
+        ),
+    ):
+        prepared = await prepare_http_server(MockHttpDeps())
+        start_sites.assert_not_awaited()
+        assert prepared.readiness.accepting_requests is False
+        runner = await activate_http_server(prepared)
+
+    start_sites.assert_awaited_once_with(prepared.runner, prepared.runtime)
+    assert prepared.readiness.accepting_requests is False
+    publish_http_server(prepared)
+    assert prepared.readiness.accepting_requests is True
+    await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_control_plane_gate_rejects_requests_until_publication() -> None:
+    readiness = ControlPlaneReadiness()
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), readiness=readiness)))
+    await client.start_server()
+    try:
+        starting = await client.get("/health")
+        assert starting.status == 503
+        assert await starting.json() == {"status": "starting"}
+
+        readiness.accepting_requests = True
+        ready = await client.get("/health")
+        assert ready.status == 200
+    finally:
+        await client.close()
 
 
 async def test_runtime_harness_ingress_is_absent_from_normal_processes(

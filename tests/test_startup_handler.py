@@ -13,7 +13,9 @@ from pynchy.config.models import NotificationsConfig
 from pynchy.host.orchestrator.startup_handler import (
     auto_rollback,
     check_deploy_continuation,
+    claim_deploy_continuation,
     confirm_deploy_startup,
+    finalize_deploy_startup,
     prepare_interrupted_turn_recovery,
     send_boot_notification,
     validate_plugin_credentials,
@@ -38,6 +40,8 @@ from pynchy.types import (
     InFlightWorkKind,
     WorkspaceProfile,
 )
+
+_ACTIVE_REVISION = DeployRevision("active-sha", "active-config")
 
 # ---------------------------------------------------------------------------
 # validate_plugin_credentials
@@ -314,7 +318,7 @@ class TestCheckDeployContinuation:
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        await check_deploy_continuation(FakeDeps({}))
+        await check_deploy_continuation(FakeDeps({}), active_revision=_ACTIVE_REVISION)
 
         assert not oldest.exists()
         assert old.exists()
@@ -374,7 +378,7 @@ class TestCheckDeployContinuation:
             lambda *a: "test commit",
         )
 
-        resumed_chats = await check_deploy_continuation(deps)
+        resumed_chats = await check_deploy_continuation(deps, active_revision=_ACTIVE_REVISION)
 
         assert deps.broadcast_host_message.await_count == 2
         notified_jids = {call.args[0] for call in deps.broadcast_host_message.await_args_list}
@@ -411,7 +415,7 @@ class TestCheckDeployContinuation:
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        resumed_chats = await check_deploy_continuation(deps)
+        resumed_chats = await check_deploy_continuation(deps, active_revision=_ACTIVE_REVISION)
 
         assert resumed_chats == set()
         deps.broadcast_host_message.assert_not_awaited()
@@ -439,7 +443,7 @@ class TestCheckDeployContinuation:
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        resumed_chats = await check_deploy_continuation(deps)
+        resumed_chats = await check_deploy_continuation(deps, active_revision=_ACTIVE_REVISION)
 
         assert resumed_chats == {current_jid}
         deps.start_interrupted_turn.assert_awaited_once_with("turn-crash", "my-group")
@@ -470,7 +474,7 @@ class TestCheckDeployContinuation:
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        assert await check_deploy_continuation(deps) == set()
+        assert await check_deploy_continuation(deps, active_revision=_ACTIVE_REVISION) == set()
 
         paused = await get_in_flight_turn("turn-pausing")
         assert paused is not None
@@ -504,7 +508,7 @@ class TestCheckDeployContinuation:
             type("S", (), {"data_dir": tmp_path}),
         )
 
-        assert await check_deploy_continuation(deps) == set()
+        assert await check_deploy_continuation(deps, active_revision=_ACTIVE_REVISION) == set()
 
         assert await get_in_flight_turn("turn-resetting") is None
         assert await get_session(folder) is None
@@ -523,6 +527,38 @@ class TestConfirmDeployStartup:
             "pynchy.host.orchestrator.startup_handler.get_settings",
             type("S", (), {"data_dir": tmp_path}),
         )
+
+    @pytest.mark.asyncio
+    async def test_finalizer_does_not_delete_a_new_continuation_generation(
+        self,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        await init_test_database()
+        original = tmp_path / "deploy_continuation.json"
+        original.write_text(json.dumps({"commit_sha": "old-sha"}), encoding="utf-8")
+        self._settings(monkeypatch, tmp_path)
+
+        recovery = await prepare_interrupted_turn_recovery(
+            continuation_path=claim_deploy_continuation(tmp_path)
+        )
+        original.write_text(json.dumps({"commit_sha": "new-sha"}), encoding="utf-8")
+        await finalize_deploy_startup(recovery)
+
+        assert json.loads(original.read_text(encoding="utf-8")) == {"commit_sha": "new-sha"}
+        assert not (tmp_path / "deploy_continuation.startup.json").exists()
+
+    def test_claim_prefers_a_new_canonical_generation(self, tmp_path) -> None:
+        claimed = tmp_path / "deploy_continuation.startup.json"
+        canonical = tmp_path / "deploy_continuation.json"
+        claimed.write_text(json.dumps({"commit_sha": "old-sha"}), encoding="utf-8")
+        canonical.write_text(json.dumps({"commit_sha": "new-sha"}), encoding="utf-8")
+
+        result = claim_deploy_continuation(tmp_path)
+
+        assert result == claimed
+        assert json.loads(claimed.read_text(encoding="utf-8")) == {"commit_sha": "new-sha"}
+        assert not canonical.exists()
 
     @pytest.mark.asyncio
     async def test_promotes_the_continuation_revision_before_sync_can_poll(
@@ -547,11 +583,15 @@ class TestConfirmDeployStartup:
         )
         self._settings(monkeypatch, tmp_path)
 
-        recovery = await prepare_interrupted_turn_recovery()
-        assert continuation_path.exists()
-        await confirm_deploy_startup(recovery)
-
+        recovery = await prepare_interrupted_turn_recovery(
+            continuation_path=claim_deploy_continuation(tmp_path)
+        )
+        claimed_path = tmp_path / "deploy_continuation.startup.json"
+        assert claimed_path.exists()
         assert not continuation_path.exists()
+        await confirm_deploy_startup(recovery, active_revision=target)
+
+        assert not claimed_path.exists()
         assert recovery.deploy_revision == target
         assert await get_deployment_state() == DeploymentState(
             applied=target,
@@ -583,11 +623,15 @@ class TestConfirmDeployStartup:
         )
         self._settings(monkeypatch, tmp_path)
 
-        recovery = await prepare_interrupted_turn_recovery()
-        assert continuation_path.exists()
-        await confirm_deploy_startup(recovery)
-
+        recovery = await prepare_interrupted_turn_recovery(
+            continuation_path=claim_deploy_continuation(tmp_path)
+        )
+        claimed_path = tmp_path / "deploy_continuation.startup.json"
+        assert claimed_path.exists()
         assert not continuation_path.exists()
+        await confirm_deploy_startup(recovery, active_revision=applied)
+
+        assert not claimed_path.exists()
         state = await get_deployment_state()
         assert state.applied == applied
         assert state.pending is None

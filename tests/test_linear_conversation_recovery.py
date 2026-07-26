@@ -32,6 +32,7 @@ from pynchy.conversation.models import (
 )
 from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.http_server import create_http_app
+from pynchy.host.orchestrator.webhook_ingress import recover_webhook_conversations
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
 from pynchy.plugins.integrations.linear_webhooks import parse_linear_webhook
 from pynchy.state import (
@@ -146,6 +147,7 @@ async def test_http_startup_wakes_pending_linear_conversation_delivery(
     wake_time = datetime(2026, 7, 24, 7, 30, tzinfo=UTC)
     with freeze_time(wake_time):
         await client.start_server()
+        await recover_webhook_conversations(app)
     try:
         assert len(harness.ingested) == 1
         resolved = load_resolved_config(folder)
@@ -211,6 +213,7 @@ async def test_http_startup_restores_parent_policy_for_claimed_conversation(
     folder = routed_conversation_folder("project", admission.conversation.id)
 
     await client.start_server()
+    await recover_webhook_conversations(app)
     try:
         resolved = load_resolved_config(folder)
         assert resolved is not None

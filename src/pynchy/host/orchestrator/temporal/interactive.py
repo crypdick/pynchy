@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
-    from pynchy.host.orchestrator.scheduler_deps import SchedulerDependencies
 
 from temporalio import activity
 
@@ -30,18 +29,17 @@ def interactive_message_workflow_id(chat_jid: str) -> str:
 
 async def _run_message_turn_activity(chat_jid: str) -> TurnOutcome:
     """Run one message turn while sending the Temporal heartbeat."""
-    deps = cast("SchedulerDependencies", _require_scheduler_deps())
     async with activity_heartbeats(chat_jid):
-        await deps.startup_readiness.wait()
-        return await _process_interactive_message_turn(deps, chat_jid)
+        return await _process_interactive_message_turn(_require_scheduler_deps(), chat_jid)
 
 
 async def _run_runtime_turn_activity(group_folder: str) -> TurnOutcome:
     """Resolve the runtime's current chat binding for a continuation turn."""
-    deps = cast("SchedulerDependencies", _require_scheduler_deps())
     async with activity_heartbeats(group_folder):
-        await deps.startup_readiness.wait()
-        return await _process_interactive_runtime_turn(deps, group_folder)
+        return await _process_interactive_runtime_turn(
+            _require_scheduler_deps(),
+            group_folder,
+        )
 
 
 @activity.defn(name="run_interactive_message_turn")

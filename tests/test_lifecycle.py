@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pluggy
 import pytest
@@ -12,14 +12,14 @@ from conftest import make_settings
 
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
-from pynchy.host.orchestrator.startup_readiness import StartupReadinessError
 from pynchy.plugins.connections import load_connection_runtimes
 from pynchy.plugins.hookspecs import PynchySpec
 from pynchy.state import get_chat_history, init_test_database
-from pynchy.types import WorkspaceProfile
+from pynchy.types import NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+    from pathlib import Path
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -138,13 +138,25 @@ async def test_connection_self_partial_start_is_closed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_connection_runtime_can_wake_temporal_before_startup_is_ready(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    settings = make_settings(data_dir=tmp_path / "data")
+async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
     app = PynchyApp()
-    app.plugin_manager = MagicMock(spec=pluggy.PluginManager)
+    events: list[str] = []
+
+    class IngestingConnectionRuntime(_ConnectionRuntime):
+        async def start(self, context) -> None:
+            await context.ingest_message(
+                "matrix:room:startup",
+                NewMessage(
+                    id="matrix-startup-delivery",
+                    chat_jid="matrix:room:startup",
+                    sender="@sender:example.com",
+                    sender_name="Sender",
+                    content="Pending delivery",
+                    timestamp="2026-07-26T22:00:00+00:00",
+                ),
+            )
+            await super().start(context)
+
     app.workspaces = {
         "slack:C123": WorkspaceProfile(
             jid="slack:C123",
@@ -153,165 +165,109 @@ async def test_connection_runtime_can_wake_temporal_before_startup_is_ready(
             trigger="always",
         )
     }
-    events: list[str] = []
-    scheduler_started = asyncio.Event()
-    readiness_waiter = asyncio.create_task(app.startup_readiness.wait())
+    app.connection_runtime_owner.set([IngestingConnectionRuntime("matrix", events)])
+    prepared = MagicMock(spec=lifecycle.http_server.PreparedHttpServer)
+    recovery = _interrupted_recovery()
 
-    class WakeOnStartRuntime(_ConnectionRuntime):
-        async def start(self, _context) -> None:
-            events.append("connection:start")
-            await asyncio.wait_for(scheduler_started.wait(), timeout=1)
-            assert not readiness_waiter.done()
-            events.append("workflow:wake")
-            self.ready = True
-
-    app.connection_runtime_owner.set([WakeOnStartRuntime("matrix", events)])
-
-    async def wait_for_shutdown() -> None:
-        await asyncio.Event().wait()
-
-    async def start_scheduler(
-        _deps: Any,
-        *,
-        ready: asyncio.Future[None],
-    ) -> None:
-        events.append("temporal:ready")
-        scheduler_started.set()
-        ready.set_result(None)
-        await wait_for_shutdown()
-
-    def start_http(*_args: Any, **_kwargs: Any) -> Awaitable[object]:
-        assert not readiness_waiter.done()
-        events.append("http:start")
-        return _completed_awaitable(MagicMock())
-
-    def confirm_startup(_recovery: object) -> Awaitable[None]:
-        assert not readiness_waiter.done()
-        events.append("deploy:confirm")
+    def record(name: str) -> Awaitable[None]:
+        events.append(name)
         return _completed_awaitable()
 
-    def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[Any]:
+    def ingest_startup_delivery(
+        _jid: str,
+        _message: NewMessage,
+    ) -> Awaitable[None]:
+        if "temporal:ready" not in events:
+            raise RuntimeError("Connection ingested before Temporal was ready")
+        events.append("connections:ingest")
         return _completed_awaitable()
 
+    monkeypatch.setattr(app, "on_inbound", ingest_startup_delivery)
+    settings = make_settings(data_dir=tmp_path)
     monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
-    monkeypatch.setattr(asyncio.get_running_loop(), "add_signal_handler", lambda *_args: None)
-    monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
-    monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
-    monkeypatch.setattr(lifecycle, "_reconcile_state", lambda _app: _completed_awaitable({}))
+    monkeypatch.setattr(lifecycle, "_initialize_core", lambda _app: record("core"))
+    monkeypatch.setattr(lifecycle, "_setup_channels", lambda _app: record("channels"))
+    monkeypatch.setattr(lifecycle, "_reconcile_state", lambda _app: record("state"))
     monkeypatch.setattr(
         lifecycle.startup_handler,
         "prepare_interrupted_turn_recovery",
-        lambda _app: _completed_awaitable(_interrupted_recovery()),
+        lambda *_args, **_kwargs: _completed_awaitable(recovery),
     )
-    monkeypatch.setattr(lifecycle.startup_handler, "confirm_deploy_startup", confirm_startup)
-    monkeypatch.setattr(lifecycle.dep_factory, "make_scheduler_deps", lambda _app: object())
-    monkeypatch.setattr(lifecycle.dep_factory, "make_ipc_deps", lambda _app: object())
-    monkeypatch.setattr(lifecycle.dep_factory, "make_http_deps", lambda _app: object())
-    monkeypatch.setattr(lifecycle.dep_factory, "make_status_deps", lambda _app: object())
-    monkeypatch.setattr(lifecycle.task_scheduler, "start_scheduler_loop", start_scheduler)
     monkeypatch.setattr(
-        lifecycle.ipc_manager,
-        "start_ipc_watcher",
-        lambda _deps: wait_for_shutdown(),
+        lifecycle,
+        "_prepare_and_bind_control_plane",
+        lambda _app: _completed_awaitable(prepared),
     )
-    monkeypatch.setattr(lifecycle.http_server, "start_http_server", start_http)
-    monkeypatch.setattr(lifecycle.tunnel_plugins, "check_tunnels", lambda _manager: None)
-    monkeypatch.setattr(lifecycle.status, "record_start_time", lambda: None)
-    monkeypatch.setattr(lifecycle.startup_handler, "send_boot_notification", noop_phase)
+    monkeypatch.setattr(lifecycle, "current_deploy_revision", MagicMock())
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "resolve_deploy_startup",
+        lambda *_args, **_kwargs: record("deploy:resolve"),
+    )
+    monkeypatch.setattr(
+        lifecycle.http_server,
+        "recover_http_routes",
+        lambda *_args: record("http:recover"),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "_start_temporal_scheduler",
+        lambda *_args: record("temporal:ready"),
+    )
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "finalize_deploy_startup",
+        lambda *_args: record("deploy:finalize"),
+    )
+    monkeypatch.setattr(
+        lifecycle.http_server,
+        "publish_http_server",
+        lambda *_args: events.append("http:publish"),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "_start_ipc_watcher",
+        lambda *_args: events.append("ipc"),
+    )
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "send_boot_notification",
+        lambda *_args: record("boot"),
+    )
     monkeypatch.setattr(
         lifecycle.startup_handler,
         "dispatch_interrupted_turn_recovery",
         lambda *_args: _completed_awaitable(set()),
     )
-    monkeypatch.setattr(lifecycle.startup_handler, "recover_pending_messages", noop_phase)
-    monkeypatch.setattr(app, "catch_up_channels", noop_phase)
-    monkeypatch.setattr(lifecycle, "start_message_loop", noop_phase)
+    monkeypatch.setattr(
+        lifecycle.startup_handler,
+        "recover_pending_messages",
+        lambda *_args, **_kwargs: record("messages:recover"),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "start_message_loop",
+        lambda *_args: record("message-loop"),
+    )
 
     await lifecycle.run_app(app)
-    await readiness_waiter
 
     assert events == [
+        "core",
+        "channels",
+        "state",
+        "deploy:resolve",
+        "http:recover",
         "temporal:ready",
-        "connection:start",
-        "workflow:wake",
-        "http:start",
-        "deploy:confirm",
+        "connections:ingest",
+        "start:matrix",
+        "deploy:finalize",
+        "http:publish",
+        "ipc",
+        "boot",
+        "messages:recover",
+        "message-loop",
     ]
-    await app.subsystem_tasks.stop()
-
-
-@pytest.mark.asyncio
-async def test_temporal_entry_failure_blocks_connections_and_deploy_confirmation(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    settings = make_settings(data_dir=tmp_path / "data")
-    app = PynchyApp()
-    app.workspaces = {
-        "slack:C123": WorkspaceProfile(
-            jid="slack:C123",
-            name="Test",
-            folder="test",
-            trigger="always",
-        )
-    }
-    runtime_events: list[str] = []
-    app.connection_runtime_owner.set([_ConnectionRuntime("matrix", runtime_events)])
-    readiness_waiter = asyncio.create_task(app.startup_readiness.wait())
-    confirm_startup = AsyncMock()
-    start_ipc = MagicMock()
-
-    class FailingTemporalRuntime:
-        def __init__(self, _deps: Any, _scheduler_config: object) -> None:
-            pass
-
-        async def __aenter__(self) -> None:
-            raise RuntimeError("temporal unavailable")
-
-        async def __aexit__(
-            self,
-            _exc_type: object,
-            _exc: object,
-            _tb: object,
-        ) -> None:
-            pass
-
-    def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[Any]:
-        return _completed_awaitable()
-
-    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
-    monkeypatch.setattr(lifecycle.task_scheduler, "get_settings", lambda: settings)
-    monkeypatch.setattr(asyncio.get_running_loop(), "add_signal_handler", lambda *_args: None)
-    monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
-    monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
-    monkeypatch.setattr(lifecycle, "_reconcile_state", lambda _app: _completed_awaitable({}))
-    monkeypatch.setattr(
-        lifecycle.startup_handler,
-        "prepare_interrupted_turn_recovery",
-        lambda _app: _completed_awaitable(_interrupted_recovery()),
-    )
-    monkeypatch.setattr(
-        lifecycle.startup_handler,
-        "confirm_deploy_startup",
-        confirm_startup,
-    )
-    monkeypatch.setattr(lifecycle.dep_factory, "make_scheduler_deps", lambda _app: object())
-    monkeypatch.setattr(
-        lifecycle.task_scheduler,
-        "TemporalSchedulerRuntime",
-        FailingTemporalRuntime,
-    )
-    monkeypatch.setattr(lifecycle.ipc_manager, "start_ipc_watcher", start_ipc)
-
-    with pytest.raises(RuntimeError, match="temporal unavailable"):
-        await lifecycle.run_app(app)
-    with pytest.raises(StartupReadinessError) as readiness_error:
-        await readiness_waiter
-
-    assert isinstance(readiness_error.value.__cause__, RuntimeError)
-    assert "start:matrix" not in runtime_events
-    start_ipc.assert_not_called()
-    confirm_startup.assert_not_awaited()
 
 
 def test_connection_runtime_loader_rejects_invalid_contribution() -> None:
@@ -379,18 +335,19 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[dict[str, list[str]] | None]:
         return _completed_awaitable({})
 
-    def fake_prepare_recovery(_app: PynchyApp) -> Awaitable[object]:
+    def fake_prepare_recovery(
+        _app: PynchyApp,
+        *,
+        continuation_path: Path,
+    ) -> Awaitable[object]:
+        del continuation_path
         recovery_order.append("prepare")
         return _completed_awaitable(
             MagicMock(spec=lifecycle.startup_handler.InterruptedTurnRecovery)
         )
 
-    def fake_start_subsystems(*_args: Any) -> Awaitable[None]:
+    def fake_start_runtime_owners(*_args: Any) -> Awaitable[None]:
         recovery_order.append("start_worker")
-        return _completed_awaitable()
-
-    def fake_confirm_recovery(*_args: Any) -> Awaitable[None]:
-        recovery_order.append("confirm")
         return _completed_awaitable()
 
     def fake_dispatch_recovery(*_args: Any) -> Awaitable[set[str]]:
@@ -429,7 +386,7 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
     monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
     monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
-    monkeypatch.setattr(lifecycle, "_start_subsystems", fake_start_subsystems)
+    monkeypatch.setattr(lifecycle, "_start_runtime_owners", fake_start_runtime_owners)
     monkeypatch.setattr(lifecycle.startup_handler, "send_boot_notification", noop_phase)
     monkeypatch.setattr(lifecycle.startup_handler, "recover_pending_messages", noop_phase)
     monkeypatch.setattr(
@@ -441,11 +398,6 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
         lifecycle.startup_handler,
         "dispatch_interrupted_turn_recovery",
         fake_dispatch_recovery,
-    )
-    monkeypatch.setattr(
-        lifecycle.startup_handler,
-        "confirm_deploy_startup",
-        fake_confirm_recovery,
     )
     monkeypatch.setattr(lifecycle.startup_handler, "setup_admin_group", noop_phase)
     monkeypatch.setattr(lifecycle, "start_message_loop", fake_start_message_loop)
@@ -461,7 +413,7 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     shutdown_can_finish.set()
     await run_task
     assert shutdown_finished.is_set()
-    assert recovery_order == ["prepare", "start_worker", "confirm", "dispatch"]
+    assert recovery_order == ["prepare", "start_worker", "dispatch"]
 
 
 @pytest.mark.asyncio
@@ -498,11 +450,11 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
     monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
     monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
     monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
-    monkeypatch.setattr(lifecycle, "_start_subsystems", fail_runtime_start)
+    monkeypatch.setattr(lifecycle, "_prepare_and_bind_control_plane", fail_runtime_start)
     monkeypatch.setattr(
         lifecycle.startup_handler,
         "prepare_interrupted_turn_recovery",
-        noop_phase,
+        lambda *_args, **_kwargs: _completed_awaitable(_interrupted_recovery()),
     )
     monkeypatch.setattr(lifecycle.startup_handler, "auto_rollback", record_rollback)
 
@@ -513,7 +465,7 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
 
 
 @pytest.mark.asyncio
-async def test_startup_failure_releases_waiters_and_joins_subsystem_cleanup(
+async def test_startup_failure_joins_subsystem_cleanup_before_rollback(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -522,18 +474,9 @@ async def test_startup_failure_releases_waiters_and_joins_subsystem_cleanup(
     continuation_path = settings.data_dir / "deploy_continuation.json"
     continuation_path.write_text("{}")
     app = PynchyApp()
-    app.workspaces = {
-        "slack:C123": WorkspaceProfile(
-            jid="slack:C123",
-            name="Test",
-            folder="test",
-            trigger="always",
-        )
-    }
     rollback_errors: list[Exception] = []
     owner_cancelled = asyncio.Event()
     allow_owner_teardown = asyncio.Event()
-    readiness_waiter = asyncio.create_task(app.startup_readiness.wait())
 
     async def subsystem_owner() -> None:
         try:
@@ -542,7 +485,7 @@ async def test_startup_failure_releases_waiters_and_joins_subsystem_cleanup(
             owner_cancelled.set()
             await allow_owner_teardown.wait()
 
-    async def fail_startup(received_app: PynchyApp) -> None:
+    async def fail_startup(received_app: PynchyApp, *_args: object) -> None:
         received_app.subsystem_tasks.add(asyncio.create_task(subsystem_owner()))
         await asyncio.sleep(0)
         raise RuntimeError("temporal unavailable")
@@ -551,33 +494,29 @@ async def test_startup_failure_releases_waiters_and_joins_subsystem_cleanup(
         rollback_errors.append(exc)
         return _completed_awaitable()
 
-    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
-    monkeypatch.setattr(asyncio.get_running_loop(), "add_signal_handler", lambda *_args: None)
-    monkeypatch.setattr(
-        lifecycle,
-        "_initialize_core",
-        lambda _app: _completed_awaitable(),
-    )
-    monkeypatch.setattr(
-        lifecycle,
-        "_setup_channels",
-        lambda _app: _completed_awaitable(),
-    )
     monkeypatch.setattr(lifecycle, "_reconcile_state", lambda _app: _completed_awaitable({}))
+    monkeypatch.setattr(lifecycle, "_initialize_core", lambda _app: _completed_awaitable())
+    monkeypatch.setattr(lifecycle, "_setup_channels", lambda _app: _completed_awaitable())
     monkeypatch.setattr(
         lifecycle.startup_handler,
         "prepare_interrupted_turn_recovery",
         lambda *_args, **_kwargs: _completed_awaitable(_interrupted_recovery()),
     )
-    monkeypatch.setattr(lifecycle, "_start_subsystems", fail_startup)
+    monkeypatch.setattr(lifecycle, "_start_runtime_owners", fail_startup)
     monkeypatch.setattr(lifecycle.startup_handler, "auto_rollback", record_rollback)
+
+    app.workspaces = {
+        "slack:C123": WorkspaceProfile(
+            jid="slack:C123",
+            name="Test",
+            folder="test",
+            trigger="always",
+        )
+    }
+    monkeypatch.setattr(lifecycle, "get_settings", lambda: settings)
 
     run_task = asyncio.create_task(lifecycle.run_app(app))
     await owner_cancelled.wait()
-    with pytest.raises(StartupReadinessError) as readiness_error:
-        await readiness_waiter
-
-    assert isinstance(readiness_error.value.__cause__, RuntimeError)
     assert rollback_errors == []
     assert not run_task.done()
 

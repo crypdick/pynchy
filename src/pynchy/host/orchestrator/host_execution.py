@@ -197,7 +197,7 @@ def migrate_host_codex_thread(
 
 
 def _copy_rollout_atomic(source: Path, destination: Path) -> None:
-    """Durably publish a complete rollout without exposing a partial file."""
+    """Publish a complete rollout without exposing a partial file."""
     descriptor, temporary_name = tempfile.mkstemp(
         dir=destination.parent,
         prefix=f".{destination.name}.",
@@ -207,8 +207,6 @@ def _copy_rollout_atomic(source: Path, destination: Path) -> None:
     temporary = Path(temporary_name)
     try:
         shutil.copy2(source, temporary)
-        with temporary.open("rb") as copied:
-            os.fsync(copied.fileno())
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)

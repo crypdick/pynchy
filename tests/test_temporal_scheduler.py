@@ -43,10 +43,6 @@ from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
-from pynchy.host.orchestrator.startup_readiness import (
-    StartupReadiness,
-    StartupReadinessError,
-)
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
     begin_in_flight_turn,
@@ -75,12 +71,6 @@ TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 PAUSED_TASK_RUN_MESSAGE = "paused tasks must not run"
 
 
-def _ready_startup() -> StartupReadiness:
-    readiness = StartupReadiness()
-    readiness.mark_ready()
-    return readiness
-
-
 @dataclass
 class NullSchedulerDeps:
     """Structural fake for SchedulerDependencies."""
@@ -88,7 +78,6 @@ class NullSchedulerDeps:
     queue: GroupQueue = field(default_factory=GroupQueue)
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
     last_agent_timestamp: dict[str, str] = field(default_factory=dict)
-    startup_readiness: StartupReadiness = field(default_factory=_ready_startup)
 
     @property
     def workspaces(self):
@@ -1549,72 +1538,6 @@ class TestTemporalSchedulerRuntime:
         assert status["last_workflow_id"] == "interactive-workflow-completed"
         assert status["last_task_id"] == "slack:C123"
         assert status["last_result"] == "completed"
-
-    @pytest.mark.asyncio
-    async def test_interactive_activities_wait_for_startup_readiness(self, monkeypatch):
-        readiness = StartupReadiness()
-        deps = NullSchedulerDeps(startup_readiness=readiness)
-        message_started = asyncio.Event()
-        runtime_started = asyncio.Event()
-
-        def process_message(_deps, _chat_jid):
-            message_started.set()
-            return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
-
-        def process_runtime(_deps, _group_folder):
-            runtime_started.set()
-            return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
-
-        monkeypatch.setattr(
-            temporal_interactive,
-            "_process_interactive_message_turn",
-            process_message,
-        )
-        monkeypatch.setattr(
-            temporal_interactive,
-            "_process_interactive_runtime_turn",
-            process_runtime,
-        )
-        monkeypatch.setattr(
-            temporal_interactive.activity,
-            "info",
-            lambda: TemporalActivityInfo(workflow_id="startup-gated"),
-        )
-        temporal_scheduler.bind_scheduler_deps(deps)
-
-        message_task = asyncio.create_task(
-            temporal_scheduler.run_interactive_message_turn("slack:C123")
-        )
-        runtime_task = asyncio.create_task(temporal_scheduler.run_interactive_runtime_turn("admin"))
-        await asyncio.sleep(0)
-        assert not message_started.is_set()
-        assert not runtime_started.is_set()
-
-        readiness.mark_ready()
-
-        assert await asyncio.gather(message_task, runtime_task) == [
-            TurnOutcome.COMPLETED.value,
-            TurnOutcome.COMPLETED.value,
-        ]
-
-    @pytest.mark.asyncio
-    async def test_interactive_activity_receives_startup_failure(self, monkeypatch):
-        readiness = StartupReadiness()
-        deps = NullSchedulerDeps(startup_readiness=readiness)
-        monkeypatch.setattr(
-            temporal_interactive.activity,
-            "info",
-            lambda: TemporalActivityInfo(workflow_id="startup-failed"),
-        )
-        temporal_scheduler.bind_scheduler_deps(deps)
-        task = asyncio.create_task(temporal_scheduler.run_interactive_message_turn("slack:C123"))
-
-        readiness.mark_failed(RuntimeError("route recovery failed"))
-
-        with pytest.raises(StartupReadinessError, match="Startup route recovery failed") as error:
-            await task
-
-        assert isinstance(error.value.__cause__, RuntimeError)
 
     @pytest.mark.asyncio
     async def test_run_interactive_message_activity_retries_unhandled_turn(self, monkeypatch):

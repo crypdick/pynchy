@@ -2353,7 +2353,7 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
             ),
             patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.codex_thread_exists_in_host_runtime",
+                "pynchy.host.orchestrator.host_agent_dispatch.migrate_host_codex_thread",
                 return_value=True,
             ),
             patch(
@@ -2581,9 +2581,9 @@ class TestContainerInputAgentCoreConfig:
                 return_value=tmp_path / ".codex",
             ),
             patch(
-                "pynchy.host.orchestrator.host_agent_dispatch.codex_thread_exists_in_host_runtime",
+                "pynchy.host.orchestrator.host_agent_dispatch.migrate_host_codex_thread",
                 return_value=False,
-            ) as thread_exists,
+            ) as migrate_thread,
             patch(
                 "pynchy.host.orchestrator.host_agent_dispatch.host_agent_env_vars",
                 return_value={"CODEX_HOME": str(tmp_path / ".codex")},
@@ -2614,7 +2614,7 @@ class TestContainerInputAgentCoreConfig:
             "codex:gpt-5.5:missing-thread",
             "chat",
         )
-        thread_exists.assert_called_once_with(
+        migrate_thread.assert_called_once_with(
             "codex:gpt-5.5:missing-thread",
             codex_home=tmp_path / ".codex",
         )

@@ -468,110 +468,68 @@ class TestStartSchedulerLoop:
 
     @pytest.mark.asyncio
     async def test_prevents_duplicate_scheduler_start(self, mock_deps):
-        """Should prevent starting multiple scheduler loops."""
+        """A second scheduler owner is rejected instead of becoming an observer."""
         with _patch_scheduler_temporal_runtime() as runtime_cls:
-            # Start first scheduler
-            task1 = asyncio.create_task(start_scheduler_loop(mock_deps))
-            await asyncio.sleep(0.01)  # Let it start
-
-            # Try to start second scheduler
-            task2 = asyncio.create_task(start_scheduler_loop(mock_deps))
+            owner = asyncio.create_task(start_scheduler_loop(mock_deps))
             await asyncio.sleep(0.01)
 
-            # Cancel both
-            task1.cancel()
-            task2.cancel()
+            with pytest.raises(RuntimeError, match="already running"):
+                await start_scheduler_loop(mock_deps)
 
+            owner.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await task1
-
-            with contextlib.suppress(asyncio.CancelledError):
-                await task2
-
+                await owner
         assert len(runtime_cls.instances) == 1
 
     @pytest.mark.asyncio
-    async def test_readiness_waits_for_temporal_runtime_entry(self, mock_deps):
-        """Readiness is not published until the Temporal worker context is active."""
-        entry_started = asyncio.Event()
+    async def test_startup_readiness_waits_for_temporal_runtime_entry(self, mock_deps):
+        """Readiness means the Temporal runtime entered, not that startup was attempted."""
         allow_entry = asyncio.Event()
 
         class BlockingTemporalRuntime(RecordingTemporalRuntime):
             async def __aenter__(self):
-                entry_started.set()
                 await allow_entry.wait()
                 return self
 
         ready = asyncio.get_running_loop().create_future()
         with _patch_scheduler_temporal_runtime(BlockingTemporalRuntime):
-            scheduler = asyncio.create_task(start_scheduler_loop(mock_deps, ready=ready))
-            await entry_started.wait()
+            owner = asyncio.create_task(start_scheduler_loop(mock_deps, ready=ready))
+            await asyncio.sleep(0)
             assert not ready.done()
 
             allow_entry.set()
-            await asyncio.wait_for(asyncio.shield(ready), timeout=1)
-            scheduler.cancel()
+            await ready
+            owner.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await scheduler
+                await owner
 
     @pytest.mark.asyncio
-    async def test_duplicate_start_observes_shared_temporal_failure(self, mock_deps):
-        """Concurrent starters receive the same pre-ready failure without hanging."""
-        entry_started = asyncio.Event()
-        fail_entry = asyncio.Event()
+    async def test_readiness_receives_temporal_start_failure(self, mock_deps):
+        """The lifecycle readiness future receives the actual startup failure."""
+        allow_failure = asyncio.Event()
 
-        class FailingTemporalRuntime(RecordingTemporalRuntime):
-            instances = []
-
+        class FailingTemporalRuntime:
             def __init__(self, deps, scheduler_config):
-                self.deps = deps
-                self.scheduler_config = scheduler_config
-                FailingTemporalRuntime.instances.append(self)
+                del deps, scheduler_config
 
             async def __aenter__(self):
-                entry_started.set()
-                await fail_entry.wait()
+                await allow_failure.wait()
                 raise RuntimeError(TEMPORAL_UNAVAILABLE_MESSAGE)
 
-        owner_ready = asyncio.get_running_loop().create_future()
-        duplicate_ready = asyncio.get_running_loop().create_future()
-        with _patch_scheduler_temporal_runtime(FailingTemporalRuntime) as runtime_cls:
-            owner = asyncio.create_task(start_scheduler_loop(mock_deps, ready=owner_ready))
-            await entry_started.wait()
-            duplicate = asyncio.create_task(start_scheduler_loop(mock_deps, ready=duplicate_ready))
-            await asyncio.sleep(0)
-            fail_entry.set()
-
-            with pytest.raises(RuntimeError, match=TEMPORAL_UNAVAILABLE_MESSAGE):
-                await owner
-            with pytest.raises(RuntimeError, match=TEMPORAL_UNAVAILABLE_MESSAGE):
-                await duplicate
-            with pytest.raises(RuntimeError, match=TEMPORAL_UNAVAILABLE_MESSAGE):
-                await owner_ready
-            with pytest.raises(RuntimeError, match=TEMPORAL_UNAVAILABLE_MESSAGE):
-                await duplicate_ready
-
-        assert len(runtime_cls.instances) == 1
-
-    @pytest.mark.asyncio
-    async def test_cancellation_before_temporal_entry_cancels_readiness(self, mock_deps):
-        """Cancellation settles readiness even while Temporal startup is blocked."""
-        entry_started = asyncio.Event()
-
-        class BlockingTemporalRuntime(RecordingTemporalRuntime):
-            async def __aenter__(self):
-                entry_started.set()
-                await asyncio.Event().wait()
+            async def __aexit__(self, exc_type, exc, _tb):
+                del exc_type, exc, _tb
 
         ready = asyncio.get_running_loop().create_future()
-        with _patch_scheduler_temporal_runtime(BlockingTemporalRuntime):
-            scheduler = asyncio.create_task(start_scheduler_loop(mock_deps, ready=ready))
-            await entry_started.wait()
-            scheduler.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await scheduler
+        with _patch_scheduler_temporal_runtime(FailingTemporalRuntime):
+            owner = asyncio.create_task(start_scheduler_loop(mock_deps, ready=ready))
+            await asyncio.sleep(0)
+            assert not ready.done()
 
-        assert ready.cancelled()
+            allow_failure.set()
+            with pytest.raises(RuntimeError, match=TEMPORAL_UNAVAILABLE_MESSAGE):
+                await ready
+            with pytest.raises(RuntimeError, match=TEMPORAL_UNAVAILABLE_MESSAGE):
+                await owner
 
     @pytest.mark.asyncio
     async def test_scheduler_start_can_retry_after_temporal_start_failure(self, mock_deps):

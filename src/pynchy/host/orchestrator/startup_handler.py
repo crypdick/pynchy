@@ -40,6 +40,9 @@ from pynchy.utils import write_json_atomic
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.concurrency import GroupQueue
 
+_DEPLOY_CONTINUATION_NAME = "deploy_continuation.json"
+_CLAIMED_DEPLOY_CONTINUATION_NAME = "deploy_continuation.startup.json"
+
 
 @runtime_checkable
 class StartupDeps(Protocol):
@@ -220,6 +223,15 @@ def _read_deploy_continuation(continuation_path: Path) -> dict[str, object]:
     return {}
 
 
+def claim_deploy_continuation(data_dir: Path) -> Path:
+    """Atomically claim the newest continuation generation for this startup."""
+    canonical = data_dir / _DEPLOY_CONTINUATION_NAME
+    claimed = data_dir / _CLAIMED_DEPLOY_CONTINUATION_NAME
+    if canonical.exists():
+        canonical.replace(claimed)
+    return claimed
+
+
 @dataclass(frozen=True)
 class InterruptedTurnRecovery:
     """Startup recovery data prepared before the Temporal worker can claim work."""
@@ -235,12 +247,13 @@ class InterruptedTurnRecovery:
 
 async def prepare_interrupted_turn_recovery(
     deps: StartupDeps | None = None,
+    *,
+    continuation_path: Path,
 ) -> InterruptedTurnRecovery:
     """Clear stale claims before Temporal can redeliver interrupted activities."""
-    continuation_path = get_settings().data_dir / "deploy_continuation.json"
     continuation: dict[str, object] = {}
     loaded_continuation_path: Path | None = None
-    if continuation_path.exists():
+    if await asyncio.to_thread(continuation_path.exists):
         try:
             continuation = _read_deploy_continuation(continuation_path)
             loaded_continuation_path = continuation_path
@@ -307,16 +320,35 @@ async def _complete_reset_requests_after_restart(deps: StartupDeps | None) -> No
         )
 
 
-async def confirm_deploy_startup(recovery: InterruptedTurnRecovery) -> None:
-    """Resolve the durable deploy claim before host-sync polling can run."""
+async def resolve_deploy_startup(
+    recovery: InterruptedTurnRecovery,
+    *,
+    active_revision: DeployRevision,
+) -> None:
+    """Resolve durable deployment state while rollback evidence remains claimed."""
     revision = recovery.deploy_revision
     if revision is not None:
         if recovery.rolled_back:
             await clear_pending_deployment(revision)
+            await complete_deployment(active_revision)
         else:
             await complete_deployment(revision)
+
+
+async def finalize_deploy_startup(recovery: InterruptedTurnRecovery) -> None:
+    """Retire only the continuation generation claimed by this startup."""
     if recovery.continuation_path is not None:
-        recovery.continuation_path.unlink(missing_ok=True)
+        await asyncio.to_thread(recovery.continuation_path.unlink, missing_ok=True)
+
+
+async def confirm_deploy_startup(
+    recovery: InterruptedTurnRecovery,
+    *,
+    active_revision: DeployRevision,
+) -> None:
+    """Resolve deployment state and retire this startup's continuation."""
+    await resolve_deploy_startup(recovery, active_revision=active_revision)
+    await finalize_deploy_startup(recovery)
 
 
 async def dispatch_interrupted_turn_recovery(
@@ -380,10 +412,18 @@ async def dispatch_interrupted_turn_recovery(
     return resumed_chats
 
 
-async def check_deploy_continuation(deps: StartupDeps) -> set[str]:
+async def check_deploy_continuation(
+    deps: StartupDeps,
+    *,
+    active_revision: DeployRevision,
+) -> set[str]:
     """Prepare and dispatch recovery when startup ordering is managed by the caller."""
-    recovery = await prepare_interrupted_turn_recovery(deps)
-    await confirm_deploy_startup(recovery)
+    continuation_path = claim_deploy_continuation(get_settings().data_dir)
+    recovery = await prepare_interrupted_turn_recovery(
+        deps,
+        continuation_path=continuation_path,
+    )
+    await confirm_deploy_startup(recovery, active_revision=active_revision)
     return await dispatch_interrupted_turn_recovery(deps, recovery)
 
 

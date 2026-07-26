@@ -78,7 +78,6 @@ from pynchy.utils import create_background_task
 
 _SHUTDOWN_HARD_EXIT_SECONDS = 60
 _PLUGIN_MANAGER_NOT_INITIALIZED = "phase 1 (_initialize_core) must run before {phase}"
-_SCHEDULER_STOPPED_BEFORE_READY = "Temporal scheduler stopped before publishing readiness"
 
 
 def _require_plugin_manager(app: PynchyApp, phase: str) -> pluggy.PluginManager:
@@ -309,44 +308,29 @@ async def start_connection_runtimes(app: PynchyApp) -> None:
         raise
 
 
-def _settle_scheduler_exit(
-    task: asyncio.Future[Any],
-    readiness: asyncio.Future[None],
-) -> None:
-    """Release startup if the scheduler task stops before its own handshake."""
-    if readiness.done():
-        return
-    if task.cancelled():
-        readiness.cancel()
-        return
-    failure = task.exception()
-    readiness.set_exception(failure or RuntimeError(_SCHEDULER_STOPPED_BEFORE_READY))
-
-
 # ---------------------------------------------------------------------------
 # Phase 4: Subsystem startup
 # ---------------------------------------------------------------------------
 
 
-async def _start_subsystems(
+async def _prepare_and_bind_control_plane(
     app: PynchyApp,
-) -> None:
-    """Scheduler, IPC, git sync, HTTP server."""
-    s = get_settings()
-
-    # Temporal must accept work before connection runtimes start: a runtime can
-    # wake a durable workflow during its initial poll. Interactive activities
-    # remain parked on startup_readiness until route recovery finishes.
-    scheduler_deps = dep_factory.make_scheduler_deps(app)
-    scheduler_ready = asyncio.get_running_loop().create_future()
-    scheduler_task = create_background_task(
-        task_scheduler.start_scheduler_loop(scheduler_deps, ready=scheduler_ready),
-        name="scheduler",
+) -> http_server.PreparedHttpServer:
+    """Prepare route callbacks and prove the gated listener can bind."""
+    plugin_manager = _require_plugin_manager(app, "_prepare_and_bind_control_plane")
+    tunnel_plugins.check_tunnels(plugin_manager)
+    status.record_start_time()
+    prepared_http = await http_server.prepare_http_server(
+        dep_factory.make_http_deps(app),
+        status_deps=dep_factory.make_status_deps(app),
     )
-    scheduler_task.add_done_callback(lambda task: _settle_scheduler_exit(task, scheduler_ready))
-    app.subsystem_tasks.add(scheduler_task)
-    await scheduler_ready
+    app.set_http_runner(prepared_http.runner)
+    await http_server.activate_http_server(prepared_http)
+    return prepared_http
 
+
+def _start_ipc_watcher(app: PynchyApp) -> None:
+    """Start IPC only after the deploy continuation is finalized."""
     app.subsystem_tasks.add(
         create_background_task(
             ipc_manager.start_ipc_watcher(dep_factory.make_ipc_deps(app)),
@@ -354,27 +338,54 @@ async def _start_subsystems(
         )
     )
 
-    await start_connection_runtimes(app)
 
-    plugin_manager = _require_plugin_manager(app, "_start_subsystems")
-    tunnel_plugins.check_tunnels(plugin_manager)
-    status.record_start_time()
-    app.set_http_runner(
-        await http_server.start_http_server(
-            dep_factory.make_http_deps(app),
-            status_deps=dep_factory.make_status_deps(app),
+async def _start_temporal_scheduler(app: PynchyApp) -> None:
+    """Start Temporal polling and wait until its worker owns the task queue."""
+    scheduler_deps = dep_factory.make_scheduler_deps(app)
+    ready = asyncio.get_running_loop().create_future()
+    app.subsystem_tasks.add(
+        create_background_task(
+            task_scheduler.start_scheduler_loop(scheduler_deps, ready=ready),
+            name="scheduler",
         )
     )
+    await ready
 
-    logger.info(
-        "HTTP control plane ready",
-        host=s.server.host,
-        port=s.server.port,
-        local=f"http://{s.server.host}:{s.server.port}/status",
-        unix_socket=str(s.server.unix_socket) if s.server.unix_socket else None,
-        public_bind=s.server.allow_public_bind,
-        remote_deploy=s.server.allow_remote_deploy,
+
+async def _activate_runtime_owners(
+    app: PynchyApp,
+    prepared_http: http_server.PreparedHttpServer,
+    interrupted_recovery: startup_handler.InterruptedTurnRecovery,
+) -> None:
+    """Resolve deploy state, restore routes, and start critical pollers."""
+    await startup_handler.resolve_deploy_startup(
+        interrupted_recovery,
+        active_revision=current_deploy_revision(),
     )
+    await http_server.recover_http_routes(prepared_http)
+    await _start_temporal_scheduler(app)
+    await start_connection_runtimes(app)
+
+
+async def _publish_runtime_owners(
+    app: PynchyApp,
+    prepared_http: http_server.PreparedHttpServer,
+    interrupted_recovery: startup_handler.InterruptedTurnRecovery,
+) -> None:
+    """Publish request and IPC surfaces after rollback evidence is retired."""
+    await startup_handler.finalize_deploy_startup(interrupted_recovery)
+    http_server.publish_http_server(prepared_http)
+    _start_ipc_watcher(app)
+
+
+async def _start_runtime_owners(
+    app: PynchyApp,
+    interrupted_recovery: startup_handler.InterruptedTurnRecovery,
+) -> None:
+    """Start preflighted runtime owners in dependency order."""
+    prepared_http = await _prepare_and_bind_control_plane(app)
+    await _activate_runtime_owners(app, prepared_http, interrupted_recovery)
+    await _publish_runtime_owners(app, prepared_http, interrupted_recovery)
 
 
 async def _prepare_state_and_subsystems(
@@ -384,12 +395,12 @@ async def _prepare_state_and_subsystems(
     """Start stateful runtime owners inside the deploy rollback boundary."""
     try:
         await _reconcile_state(app)
-        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery(app)
-        await _start_subsystems(app)
-        await startup_handler.confirm_deploy_startup(interrupted_recovery)
-        app.startup_readiness.mark_ready()
+        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery(
+            app,
+            continuation_path=continuation_path,
+        )
+        await _start_runtime_owners(app, interrupted_recovery)
     except BaseException as exc:  # noqa: BLE001, RUF100 - rollback must also release waiters during cancellation.
-        app.startup_readiness.mark_failed(exc)
         await app.subsystem_tasks.stop()
         try:
             await app.cleanup_http_runner()
@@ -421,12 +432,12 @@ async def run_app(app: PynchyApp) -> None:
     5. Boot finalization (notification, recovery, message loop)
     """
     s = get_settings()
-    continuation_path = s.data_dir / "deploy_continuation.json"
+    continuation_path = startup_handler.claim_deploy_continuation(s.data_dir)
 
     try:
         await _initialize_core(app)
     except Exception as exc:  # noqa: BLE001, RUF100 - startup rollback boundary; any init failure should trigger rollback.
-        if continuation_path.exists():
+        if await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
 
@@ -449,7 +460,7 @@ async def run_app(app: PynchyApp) -> None:
     try:
         await _setup_channels(app)
     except Exception as exc:  # noqa: BLE001, RUF100 - startup rollback boundary; any channel setup failure should trigger rollback.
-        if continuation_path.exists():
+        if await asyncio.to_thread(continuation_path.exists):
             await startup_handler.auto_rollback(continuation_path, exc)
         raise
 
