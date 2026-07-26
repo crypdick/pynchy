@@ -57,6 +57,13 @@ Treat the user as a peer, not someone to serve: push back directly on inelegant 
 
 Use `uv run python` (never bare `python`/`python3`) and `uvx` for CLI tools (`uvx ruff`, `uvx pytest`) — never `pip install` a tool globally. See the [pynchy-dev skill](.claude/skills/pynchy-dev/SKILL.md) for the full command set and development workflow.
 
+## Graphify Artifacts
+
+Run every Graphify workflow from the Git root. Pass `src/` as the scan target
+and write output beneath the root `graphify-out/`; never change into `src/`
+before running Graphify. Use `scripts/graphify_graph.py` for the deterministic
+tracked graph. The wrapper rejects visible nested `graphify-out/` paths.
+
 ## Prek Hooks
 
 `prek.toml` runs custom lint checks (banned `print()`, broad exception handling, file-length budget, dead code, dependency integrity, complexity, temporal language in `src/` comments, and tests crossing private first-party implementation boundaries) plus strict mypy type checking — all blocking. The private-boundary check covers imports, private modules, and known first-party attributes across `pynchy`, `agent_runner`, and first-party `scripts`. It does not inspect dotted patch targets: those substitute collaborators while a test drives public behavior, and are not themselves private-shape assertions.
