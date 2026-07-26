@@ -213,15 +213,57 @@ async def _repair_target_is_available(
         )
         target_session = await session_cursor.fetchone()
         if target_session is not None and target_session["session_id"] != plan.session_id:
+            target_session_id = SessionId(str(target_session["session_id"]))
             message = (
                 f"Routed session target {plan.routed_folder} contains "
-                f"{target_session['session_id']}, not {plan.session_id}"
+                f"{target_session_id}, not {plan.session_id}"
             )
-            if plan.repairs_owner:
+            if not plan.repairs_owner:
+                logger.warning("Legacy routed session migration blocked", reason=message)
+                return False
+            if await _target_session_has_other_owners(database, plan, target_session_id):
                 raise RuntimeOwnershipRepairConflictError(message)
-            logger.warning("Legacy routed session migration blocked", reason=message)
-            return False
+            logger.warning(
+                "Replacing stale routed session during authenticated owner repair",
+                conversation_id=plan.conversation_id,
+                group_folder=plan.routed_folder,
+                stale_session_id=target_session_id,
+            )
     return await _repair_sources_are_available(database, plan)
+
+
+async def _target_session_has_other_owners(
+    database: Connection,
+    plan: _RuntimeOwnershipRepair,
+    target_session_id: SessionId,
+) -> bool:
+    """Return whether replacing a stale target session could steal live state."""
+    cursor = await database.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM routed_conversations
+            WHERE session_id = ? AND id != ?
+            UNION ALL
+            SELECT 1
+            FROM in_flight_turns
+            WHERE session_id = ?
+            UNION ALL
+            SELECT 1
+            FROM sessions
+            WHERE session_id = ? AND group_folder != ?
+        ) AS has_other_owner
+        """,
+        (
+            target_session_id,
+            plan.conversation_id,
+            target_session_id,
+            target_session_id,
+            plan.routed_folder,
+        ),
+    )
+    row = await cursor.fetchone()
+    return row is not None and bool(row["has_other_owner"])
 
 
 async def _repair_sources_are_available(

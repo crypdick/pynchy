@@ -309,6 +309,89 @@ async def test_repair_does_not_overwrite_conflicting_target_session() -> None:
     assert await get_session(routed_folder) == conflicting_session_id
 
 
+async def test_authenticated_owner_repair_replaces_unreferenced_target_session() -> None:
+    thread_jid = ChatJid("discord:channel:stale-target-session")
+    conversation = (
+        await _admit(
+            "delivery-stale-target-session",
+            "issue-stale-target-session",
+            workspace="pynchy-dev",
+        )
+    ).conversation
+    await _bind_control_thread(
+        conversation.id,
+        thread_jid,
+        parent_workspace=GroupFolder("admin"),
+    )
+    source_folder = GroupFolder(routed_conversation_folder("admin", conversation.id))
+    target_folder = GroupFolder(routed_conversation_folder("pynchy-dev", conversation.id))
+    await set_workspace_profile(
+        WorkspaceProfile(
+            jid=thread_jid,
+            name="Corrupt owner",
+            folder=source_folder,
+            trigger="@Pynchy",
+        )
+    )
+    await rebind_conversation_workspace(conversation.id, GroupFolder("admin"))
+    current_session = SessionId("codex:model:current-conversation-session")
+    stale_target_session = SessionId("codex:model:stale-target-session")
+    await set_conversation_session(conversation.id, current_session)
+    await set_session(source_folder, current_session)
+    await set_session(target_folder, stale_target_session)
+    await mark_session_security_taint(source_folder, corruption_tainted=True)
+    await mark_session_security_taint(target_folder, secret_tainted=True)
+
+    assert await prepare_conversation_runtime_ownership_recovery() == 3
+
+    repaired = await get_conversation(conversation.id)
+    assert repaired is not None
+    assert repaired.workspace == GroupFolder("pynchy-dev")
+    assert await get_session(source_folder) is None
+    assert await get_session(target_folder) == current_session
+    taint = await get_session_security_taint(target_folder)
+    assert taint.corruption_tainted is True
+    assert taint.secret_tainted is True
+
+
+async def test_authenticated_owner_repair_rejects_referenced_target_session() -> None:
+    thread_jid = ChatJid("discord:channel:referenced-target-session")
+    conversation = (
+        await _admit(
+            "delivery-referenced-target-session",
+            "issue-referenced-target-session",
+            workspace="pynchy-dev",
+        )
+    ).conversation
+    await _bind_control_thread(
+        conversation.id,
+        thread_jid,
+        parent_workspace=GroupFolder("admin"),
+    )
+    source_folder = GroupFolder(routed_conversation_folder("admin", conversation.id))
+    target_folder = GroupFolder(routed_conversation_folder("pynchy-dev", conversation.id))
+    await rebind_conversation_workspace(conversation.id, GroupFolder("admin"))
+    current_session = SessionId("codex:model:current-session")
+    referenced_target_session = SessionId("codex:model:foreign-session")
+    await set_conversation_session(conversation.id, current_session)
+    await set_session(source_folder, current_session)
+    await set_session(target_folder, referenced_target_session)
+    foreign = await resolve_conversation(
+        _subject("issue-foreign-session-owner"),
+        GroupFolder("other-workspace"),
+    )
+    await set_conversation_session(foreign.id, referenced_target_session)
+
+    with pytest.raises(RuntimeOwnershipRepairConflictError):
+        await prepare_conversation_runtime_ownership_recovery()
+
+    unchanged = await get_conversation(conversation.id)
+    assert unchanged is not None
+    assert unchanged.workspace == GroupFolder("admin")
+    assert await get_session(source_folder) == current_session
+    assert await get_session(target_folder) == referenced_target_session
+
+
 async def test_repair_does_not_take_a_source_folder_owned_by_another_jid() -> None:
     thread_jid = ChatJid("discord:channel:thread-source-conflict")
     conversation = await resolve_conversation(
