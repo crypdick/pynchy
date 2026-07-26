@@ -9,12 +9,12 @@ repo = "builtin"
 hooks = [
     { id = "trailing-whitespace" },
     { id = "end-of-file-fixer" },
-    { id = "check-json" },
+    { id = "check-json", exclude = "^graphify-out/graph\\.json$" },
     { id = "check-toml" },
     { id = "check-yaml" },
     { id = "check-merge-conflict" },
     { id = "detect-private-key" },
-    { id = "check-added-large-files", args = ["--maxkb=500"] },
+    { id = "check-added-large-files", args = ["--maxkb=500"], exclude = "^graphify-out/graph\\.json$" },
     { id = "check-case-conflict" },
     { id = "check-symlinks" },
     { id = "destroyed-symlinks" },
@@ -28,7 +28,7 @@ hooks = [
 repo = "https://github.com/Yelp/detect-secrets"
 rev = "v1.5.0"
 hooks = [
-    { id = "detect-secrets", args = ["--baseline", ".secrets.baseline"], exclude = "uv\\.lock" },
+    { id = "detect-secrets", args = ["--baseline", ".secrets.baseline"], exclude = "(^uv\\.lock$|^graphify-out/graph\\.json$)" },
 ]
 
 [[repos]]
@@ -75,6 +75,14 @@ name = "Convert to f-strings"
 entry = "uv run flynt --line-length=100"
 language = "system"
 types = ["python"]
+
+[[repos.hooks]]
+id = "sync-graphify-graph"
+name = "Rebuild and stage the canonical Graphify graph"
+entry = "uv run python scripts/graphify_graph.py sync-staged"
+language = "system"
+pass_filenames = false
+files = "^(src/|scripts/graphify_graph\\.py$)"
 
 [[repos.hooks]]
 id = "check-print-statements"
