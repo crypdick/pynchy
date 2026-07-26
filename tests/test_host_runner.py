@@ -7,6 +7,7 @@ import json
 import os
 import signal
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -45,12 +46,58 @@ class _FakeStdout:
         return self._lines.pop(0)
 
 
+class _TimedStdout:
+    def __init__(self, lines: list[tuple[float, bytes]]) -> None:
+        self._lines = lines
+
+    def __aiter__(self) -> _TimedStdout:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if not self._lines:
+            raise StopAsyncIteration
+        delay, line = self._lines.pop(0)
+        await asyncio.sleep(delay)
+        return line
+
+
+class _BlockingStdout:
+    def __init__(self, first_line: bytes | None = None) -> None:
+        self.started = asyncio.Event()
+        self._first_line = first_line
+
+    def __aiter__(self) -> _BlockingStdout:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._first_line is not None:
+            line = self._first_line
+            self._first_line = None
+            return line
+        self.started.set()
+        await asyncio.Event().wait()
+        raise StopAsyncIteration
+
+
 class _FakeStderr:
     def __init__(self, data: bytes = b"") -> None:
         self._data = data
 
     async def read(self) -> bytes:
         return self._data
+
+
+class _BlockingStderr:
+    def __init__(self) -> None:
+        self.cancelled = asyncio.Event()
+
+    async def read(self) -> bytes:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        return b""
 
 
 class _FakeProcess:
@@ -192,3 +239,188 @@ async def test_run_host_input_reports_a_planned_boundary_interrupt_without_an_er
 
     assert status == "interrupted"
     assert outputs == []
+
+
+@pytest.mark.asyncio
+async def test_host_progress_refreshes_timeout_before_slow_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A tool event counts before a slow channel callback consumes it."""
+    fake_proc = _FakeProcess([])
+    fake_proc.stdout = _TimedStdout(
+        [
+            (
+                0.02,
+                (
+                    b'{"status":"success","type":"tool_use","tool_name":"exec_command",'
+                    b'"tool_input":{"command":"git commit"},"query_id":"query-hooks"}\n'
+                ),
+            )
+        ]
+    )
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    outputs: list[ContainerOutput] = []
+
+    async def slow_delivery(output: ContainerOutput) -> None:
+        await asyncio.sleep(0.02)
+        outputs.append(output)
+
+    input_data = ContainerInput(
+        messages=[],
+        group_folder="admin-host",
+        chat_jid="slack:C123",
+        is_admin=True,
+        turn_id="turn-hooks",
+        query_id="query-hooks",
+    )
+    status = await run_host_input(
+        input_data,
+        cwd=tmp_path,
+        on_output=slow_delivery,
+        timeout_seconds=0.03,
+    )
+
+    assert status == "success"
+    assert [output.type for output in outputs] == ["tool_use"]
+
+
+@pytest.mark.asyncio
+async def test_host_silence_timeout_stops_process_group_and_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A silent direct worker is stopped without leaking its stderr reader."""
+    fake_proc = _FakeProcess([], returncode=None)
+    stdout = _BlockingStdout()
+    stderr = _BlockingStderr()
+    fake_proc.stdout = stdout
+    fake_proc.stderr = stderr
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    outputs: list[ContainerOutput] = []
+
+    async def on_output(output: ContainerOutput) -> None:
+        await asyncio.sleep(0)
+        outputs.append(output)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[],
+            group_folder="admin-host",
+            chat_jid="slack:C123",
+            is_admin=True,
+            turn_id="turn-silent",
+            query_id="query-silent",
+        ),
+        cwd=tmp_path,
+        on_output=on_output,
+        timeout_seconds=0.02,
+    )
+
+    assert stdout.started.is_set()
+    assert status == "error"
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+    assert stderr.cancelled.is_set()
+    assert outputs[-1].error == "Host agent runner inactivity timeout"
+
+
+@pytest.mark.asyncio
+async def test_host_silent_inflight_tool_does_not_self_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A started tool without new output remains subject to the silence deadline."""
+    tool_start = (
+        b'{"status":"success","type":"tool_use","tool_name":"exec_command",'
+        b'"tool_input":{"command":"git commit"},"query_id":"query-wedged"}\n'
+    )
+    fake_proc = _FakeProcess([], returncode=None)
+    fake_proc.stdout = _BlockingStdout(tool_start)
+    fake_proc.stderr = _BlockingStderr()
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    outputs: list[ContainerOutput] = []
+
+    async def on_output(output: ContainerOutput) -> None:
+        await asyncio.sleep(0)
+        outputs.append(output)
+
+    status = await run_host_input(
+        ContainerInput(
+            messages=[],
+            group_folder="admin-host",
+            chat_jid="slack:C123",
+            is_admin=True,
+            query_id="query-wedged",
+        ),
+        cwd=tmp_path,
+        on_output=on_output,
+        timeout_seconds=0.02,
+    )
+
+    assert status == "error"
+    assert [output.type for output in outputs] == ["tool_use", "result"]
+    assert outputs[-1].error == "Host agent runner inactivity timeout"
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+
+
+@pytest.mark.asyncio
+async def test_host_cancellation_stops_process_group_and_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Temporal cancellation should clean local processes and remain cancellative."""
+    fake_proc = _FakeProcess([], returncode=None)
+    stdout = _BlockingStdout()
+    stderr = _BlockingStderr()
+    fake_proc.stdout = stdout
+    fake_proc.stderr = stderr
+    signals: list[tuple[int, signal.Signals]] = []
+
+    async def fake_create_subprocess_exec(*_cmd: str, **_kwargs: Any) -> _FakeProcess:
+        await asyncio.sleep(0)
+        return fake_proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    turn = asyncio.create_task(
+        run_host_input(
+            ContainerInput(
+                messages=[],
+                group_folder="admin-host",
+                chat_jid="slack:C123",
+                is_admin=True,
+                turn_id="turn-cancelled",
+                query_id="query-cancelled",
+            ),
+            cwd=tmp_path,
+            on_output=AsyncMock(),
+            timeout_seconds=1,
+        )
+    )
+    await stdout.started.wait()
+
+    turn.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await turn
+
+    assert signals == [(fake_proc.pid, signal.SIGINT)]
+    assert stderr.cancelled.is_set()

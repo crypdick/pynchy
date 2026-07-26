@@ -28,12 +28,14 @@ def _isolated_archive(tmp_path, monkeypatch):
     out_dir = tmp_path / "conversations"
     monkeypatch.setattr(ta, "CONVERSATIONS_DIR", out_dir)
 
-    def _noop(*_args, **_kwargs):
-        return asyncio.sleep(0)
+    async def _noop(*_args, **_kwargs):
+        await asyncio.sleep(0)
+        return []
 
-    monkeypatch.setattr(
-        "agent_runner.agent_tools._ipc_request.ipc_service_request", _noop, raising=False
-    )
+    # archive_transcript imports the public facade dynamically. Patch that
+    # call site so this remains isolated even when another test imported the
+    # facade before this fixture ran in a long-lived xdist worker.
+    monkeypatch.setattr("agent_runner.agent_tools.request_host_service", _noop)
     return out_dir
 
 

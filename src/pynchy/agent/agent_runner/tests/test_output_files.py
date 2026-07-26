@@ -89,6 +89,20 @@ class TestWriteOutputCreatesFile:
         content = json.loads(files[0].read_text())
         assert content == output.to_dict()
 
+    def test_query_id_is_serialized_for_progress_correlation(self, output_dir: Path) -> None:
+        output = ContainerOutput(
+            status="success",
+            type="tool_use",
+            tool_name="exec_command",
+            tool_input={"command": "git commit"},
+            query_id="query-hooks",
+        )
+        write_output(output)
+
+        files = list(output_dir.glob("*.json"))
+        content = json.loads(files[0].read_text())
+        assert content["query_id"] == "query-hooks"
+
     def test_thinking_event_serialization(self, output_dir: Path) -> None:
         output = ContainerOutput(
             status="success",

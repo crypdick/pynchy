@@ -66,7 +66,7 @@ class TestEnsureContainerSystemRunning:
             patch(
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 side_effect=inspect_image,
-            ),
+            ) as run,
         ):
             ensure_container_system_running()
 
@@ -74,6 +74,7 @@ class TestEnsureContainerSystemRunning:
         mock_runtime.cleanup_builder.assert_called_once()
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
         assert events[:3] == ["builder", "images", "inspect"]
+        assert run.call_args.kwargs["timeout"] == 30
 
     def test_image_missing_builds(self, mock_runtime, tmp_path):
         """On-demand image validation builds an image that is not present."""

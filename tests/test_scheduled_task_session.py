@@ -100,6 +100,8 @@ def _make_container_input() -> MagicMock:
     """Create a mock ContainerInput with a real invocation_ts float."""
     input_data = MagicMock(spec=ContainerInput)
     input_data.invocation_ts = 0.0
+    input_data.turn_id = "turn-test"
+    input_data.query_id = "query-test"
     return input_data
 
 
@@ -190,7 +192,10 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        self.fake_session.set_output_handler.assert_called_once_with(self.ctx.wrapped_on_output)
+        self.fake_session.set_output_handler.assert_called_once_with(
+            self.ctx.wrapped_on_output,
+            query_id="query-test",
+        )
 
     @pytest.mark.asyncio
     async def test_waits_for_query_done_with_config_timeout(self):
@@ -205,6 +210,39 @@ class TestScheduledTaskUsesSession:
             await self._call()
 
         self.fake_session.wait_for_query_done.assert_awaited_once_with(query_timeout_seconds=300.0)
+
+    @pytest.mark.asyncio
+    async def test_scheduled_progress_extends_configured_silence_timeout(self):
+        """Scheduled turns inherit the shared progress-aware session policy."""
+        self.ctx.config_timeout = 0.1
+        input_data = _make_container_input()
+        session = ContainerSession("test-group", "pynchy-test-group-progress")
+        session.proc = self.fake_proc
+        driver_tasks: list[asyncio.Task[None]] = []
+
+        async def create_progressing_session(*_args: object, **_kwargs: object) -> ContainerSession:
+            async def drive_query() -> None:
+                await asyncio.sleep(0.06)
+                session.signal_query_progress("query-test")
+                await asyncio.sleep(0.06)
+                session.signal_query_done("query-test")
+
+            driver_tasks.append(asyncio.create_task(drive_query()))
+            await asyncio.sleep(0)
+            return session
+
+        with (
+            patch(_P_BUILD, return_value=input_data),
+            patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
+            patch(_P_CREATE, new_callable=AsyncMock, side_effect=create_progressing_session),
+            patch(_P_DESTROY, new_callable=AsyncMock) as mock_destroy,
+            patch(_P_CLEAR_SESSION, new_callable=AsyncMock),
+        ):
+            result = await self._call()
+
+        await asyncio.gather(*driver_tasks)
+        assert result == "success"
+        mock_destroy.assert_not_awaited()
 
     def test_run_container_agent_fully_removed(self):
         """run_container_agent was removed — ensure it doesn't reappear."""

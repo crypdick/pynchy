@@ -42,8 +42,13 @@
 # Container image name (built via ./container/build.sh)
 # image = "pynchy-agent:latest"
 
-# Container timeout in milliseconds (30 minutes default)
+# Maximum silence within an active query, in milliseconds (30 minutes default).
+# Structured output refreshes the deadline; a 4x hard ceiling remains.
 # timeout_ms = 1800000
+
+# Per-container memory limit in MiB (2048 default and hard maximum). Pynchy's
+# test suite scales pytest-xdist workers to the effective cgroup memory limit.
+# memory_mb = 2048
 
 # Maximum container output size in bytes (10MB default)
 # max_output_size = 10485760

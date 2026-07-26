@@ -19,13 +19,31 @@ from collections.abc import Awaitable, Callable
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import ContainerOutput
+from pynchy.utils import create_background_task
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 
 DEFAULT_RM_FORCE_TIMEOUT_SECONDS = 15.0
 DEFAULT_RM_FORCE_KILL_WAIT_SECONDS = 2.0
+DEFAULT_STOP_CLI_KILL_WAIT_SECONDS = 2.0
 _APPLE_RUNTIME_REAP_WAIT_SECONDS = 2.0
 _APPLE_RUNTIME_REAP_POLL_SECONDS = 0.05
+_pending_cli_reapers: set[asyncio.Task[int]] = set()
+
+
+def _retain_cli_reaper(
+    proc: asyncio.subprocess.Process,
+    *,
+    operation: str,
+    container_name: str,
+) -> None:
+    """Keep ownership of a killed CLI child until its delayed exit is observed."""
+    task = create_background_task(
+        proc.wait(),
+        name=f"reap-container-{operation}-{container_name}",
+    )
+    _pending_cli_reapers.add(task)
+    task.add_done_callback(_pending_cli_reapers.discard)
 
 
 def is_query_done_pulse(output: ContainerOutput) -> bool:
@@ -71,9 +89,26 @@ async def _stop_container_process(proc: asyncio.subprocess.Process, container_na
         await asyncio.wait_for(stop_proc.wait(), timeout=7.0)
     except TimeoutError:
         logger.warning(
-            "Graceful stop timed out, force killing",
+            "Graceful stop CLI timed out, killing cleanup CLI and container",
             container=container_name,
         )
+        with contextlib.suppress(ProcessLookupError):
+            stop_proc.kill()
+        try:
+            await asyncio.wait_for(
+                stop_proc.wait(),
+                timeout=DEFAULT_STOP_CLI_KILL_WAIT_SECONDS,
+            )
+        except TimeoutError:
+            logger.error(
+                "Graceful stop CLI did not exit after kill",
+                container=container_name,
+            )
+            _retain_cli_reaper(
+                stop_proc,
+                operation="stop",
+                container_name=container_name,
+            )
         proc.kill()
     if proc.returncode is None:
         try:
@@ -111,8 +146,18 @@ async def _run_rm_force(
         )
         with contextlib.suppress(ProcessLookupError):
             proc.kill()
-        with contextlib.suppress(TimeoutError):
+        try:
             await asyncio.wait_for(proc.wait(), timeout=kill_wait_seconds)
+        except TimeoutError:
+            logger.error(
+                "Container force-remove CLI did not exit after kill",
+                container=container_name,
+            )
+            _retain_cli_reaper(
+                proc,
+                operation="remove",
+                container_name=container_name,
+            )
         return False
     else:
         return True

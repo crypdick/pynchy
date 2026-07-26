@@ -247,12 +247,20 @@ class TestCollectYamlEnvRefs:
         with (
             patch("pynchy.host.container_manager.docker.docker_available", return_value=True),
             patch(f"{_LITELLM_MOD}.docker_available", return_value=True),
-            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock),
-            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock),
-            patch.object(gw, "_start_postgres", new_callable=AsyncMock),
+            patch(f"{_LITELLM_MOD}.ensure_network", new_callable=AsyncMock) as ensure_network,
+            patch(f"{_LITELLM_MOD}.ensure_image", new_callable=AsyncMock) as ensure_image,
+            patch(f"{_LITELLM_MOD}.remove_container", new_callable=AsyncMock) as remove_container,
+            patch(f"{_LITELLM_MOD}.run_docker", new_callable=AsyncMock) as run_docker,
+            patch.object(gw, "_start_postgres", new_callable=AsyncMock) as start_postgres,
             pytest.raises(RuntimeError, match="PHOENIX_COLLECTOR_HTTP_ENDPOINT"),
         ):
             await gw.start()
+
+        ensure_network.assert_not_awaited()
+        start_postgres.assert_not_awaited()
+        ensure_image.assert_not_awaited()
+        remove_container.assert_not_awaited()
+        run_docker.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_start_forwards_phoenix_env_and_content_capture(self, tmp_path: Path):

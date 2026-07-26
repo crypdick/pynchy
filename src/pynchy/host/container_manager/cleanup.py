@@ -140,8 +140,14 @@ def reap_orphaned_agent_containers(
     retention = timedelta(milliseconds=max(0, retention_ms))
     now = datetime.now(UTC)
 
+    try:
+        containers = _list_runtime_containers(resolved_runtime)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("Failed to list orphaned agent containers", err=str(exc))
+        return []
+
     reaped: list[ReapedContainer] = []
-    for container in _list_runtime_containers(resolved_runtime):
+    for container in containers:
         should_reap, reason = _is_stale(
             container,
             active_names=protected,
@@ -152,7 +158,7 @@ def reap_orphaned_agent_containers(
             continue
         try:
             removed = _remove_runtime_container(resolved_runtime, container.name)
-        except OSError as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             logger.warning(
                 "Failed to reap orphaned agent container",
                 container=container.name,

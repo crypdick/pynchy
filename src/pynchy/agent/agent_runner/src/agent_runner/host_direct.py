@@ -23,6 +23,8 @@ from agent_runner.registry import create_agent_core
 def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> AgentCoreConfig:
     """Build core config for direct host execution."""
     extra = dict(container_input.agent_core_config or {})
+    if container_input.query_id is not None:
+        extra["pynchy_query_id"] = container_input.query_id
     mcp_servers: dict[str, dict[str, object]] = {"pynchy": _host_pynchy_mcp_server(container_input)}
     for server in container_input.mcp_direct_servers or []:
         name = server.get("name")
@@ -34,6 +36,7 @@ def build_host_core_config(container_input: ContainerInput, *, cwd: str) -> Agen
         session_id=container_input.session_id,
         group_folder=container_input.group_folder,
         chat_jid=container_input.chat_jid,
+        turn_id=container_input.turn_id,
         is_admin=container_input.is_admin,
         is_scheduled_task=container_input.is_scheduled_task,
         system_prompt_append=container_input.system_prompt_append,
@@ -87,8 +90,20 @@ def _write_output(output: ContainerOutput) -> None:
     sys.stdout.flush()
 
 
-def _write_error(error: str, session_id: str | None = None) -> None:
-    _write_output(ContainerOutput(status="error", new_session_id=session_id, error=error))
+def _write_error(
+    error: str,
+    session_id: str | None = None,
+    *,
+    query_id: str | None = None,
+) -> None:
+    _write_output(
+        ContainerOutput(
+            status="error",
+            new_session_id=session_id,
+            error=error,
+            query_id=query_id,
+        )
+    )
 
 
 def _event_session_id(event: AgentEvent, fallback: str | None) -> str | None:
@@ -99,13 +114,21 @@ def _event_session_id(event: AgentEvent, fallback: str | None) -> str | None:
     return fallback
 
 
-async def _run_query(core: AgentCore, prompt: str, session_id: str | None) -> str | None:
+async def _run_query(
+    core: AgentCore,
+    prompt: str,
+    session_id: str | None,
+    *,
+    query_id: str | None,
+) -> str | None:
     current_session_id = session_id
     async for event in core.query(prompt):
         current_session_id = _event_session_id(event, current_session_id)
         if core.session_id:
             current_session_id = core.session_id
-        _write_output(event_to_output(event, current_session_id))
+        output = event_to_output(event, current_session_id)
+        output.query_id = query_id
+        _write_output(output)
     return core.session_id or current_session_id
 
 
@@ -124,23 +147,30 @@ def _read_envelope() -> tuple[ContainerInput, str]:
 
 
 async def _main_async() -> int:
+    query_id: str | None = None
     try:
         container_input, cwd = _read_envelope()
+        query_id = container_input.query_id
         core = create_agent_core(
             container_input.agent_core_module,
             container_input.agent_core_class,
             build_host_core_config(container_input, cwd=cwd),
         )
     except Exception as exc:  # noqa: BLE001, RUF100 - report startup failures to host.  # allow: exception-handling
-        _write_error(f"Failed to start host runner: {exc}")
+        _write_error(f"Failed to start host runner: {exc}", query_id=query_id)
         return 1
 
     session_id = container_input.session_id
     try:
         await core.start()
-        session_id = await _run_query(core, build_agent_prompt(container_input), session_id)
+        session_id = await _run_query(
+            core,
+            build_agent_prompt(container_input),
+            session_id,
+            query_id=container_input.query_id,
+        )
     except Exception as exc:  # noqa: BLE001, RUF100 - report agent failures to host.  # allow: exception-handling
-        _write_error(str(exc), session_id)
+        _write_error(str(exc), session_id, query_id=container_input.query_id)
         return 1
     finally:
         try:

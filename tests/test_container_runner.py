@@ -16,9 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pluggy
 import pytest
 from conftest import make_settings
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
-from pynchy.config import AgentConfig, GatewayConfig
+from pynchy.config import AgentConfig, ContainerConfig, GatewayConfig
 from pynchy.config.models import (
     LearningConfig,
     ObsidianLearningConfig,
@@ -83,6 +83,7 @@ from pynchy.types import (
     VolumeMount,
     WorkspaceProfile,
 )
+from pynchy.utils import ProgressTimeoutError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -307,18 +308,59 @@ class FakeProcess(asyncio.subprocess.Process):
         return self._returncode
 
 
-class HangingProcess:
-    """Minimal subprocess fake whose wait never completes unless killed."""
+class KillableHangingProcess(asyncio.subprocess.Process):
+    """Subprocess fake that blocks until kill and can then be reaped."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, timeout_first_wait: bool = False) -> None:
         self.killed = False
+        self.wait_calls = 0
+        self._returncode: int | None = None
+        self._timeout_first_wait = timeout_first_wait
+        self._exited = asyncio.Event()
 
     async def wait(self) -> int:
-        await asyncio.Event().wait()
-        return 0
+        self.wait_calls += 1
+        if self._timeout_first_wait and self.wait_calls == 1:
+            raise TimeoutError
+        await self._exited.wait()
+        return -9
 
     def kill(self) -> None:
         self.killed = True
+        self._returncode = -9
+        self._exited.set()
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+
+class DelayedExitProcess(asyncio.subprocess.Process):
+    """Killed child that exits only after its bounded waits have elapsed."""
+
+    def __init__(self) -> None:
+        self.killed = False
+        self.wait_calls = 0
+        self._returncode: int | None = None
+        self._exited = asyncio.Event()
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        if self.wait_calls <= 2:
+            raise TimeoutError
+        await self._exited.wait()
+        return -9
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def release(self) -> None:
+        self._returncode = -9
+        self._exited.set()
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
 
 
 class CompletedProcess:
@@ -337,6 +379,99 @@ class CompletedProcess:
 
 
 class TestContainerProcessHelpers:
+    async def test_delayed_stop_cli_is_retained_until_reaped(self):
+        """A stop child exiting after the kill bound remains explicitly owned."""
+        container_proc = FakeProcess()
+        container_proc.close()
+        stop_proc = DelayedExitProcess()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.get_runtime",
+                return_value=MagicMock(cli="container"),
+            ),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=stop_proc),
+            ),
+        ):
+            await process_mod.graceful_stop(container_proc, "pynchy-delayed-stop")
+
+        pending = {
+            task
+            for task in asyncio.all_tasks()
+            if task.get_name() == "reap-container-stop-pynchy-delayed-stop"
+        }
+        assert {task.get_name() for task in pending} == {"reap-container-stop-pynchy-delayed-stop"}
+        stop_proc.release()
+        await asyncio.gather(*pending)
+        await asyncio.sleep(0)
+        assert all(
+            task.get_name() != "reap-container-stop-pynchy-delayed-stop"
+            for task in asyncio.all_tasks()
+        )
+
+    async def test_delayed_remove_cli_is_retained_until_reaped(self):
+        """A remove child exiting after the kill bound remains explicitly owned."""
+        remove_proc = DelayedExitProcess()
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.get_runtime",
+                return_value=MagicMock(cli="container"),
+            ),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=remove_proc),
+            ),
+            patch(
+                "pynchy.host.container_manager.process.reap_apple_runtime_orphans",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            await process_mod.docker_rm_force(
+                "pynchy-delayed-remove",
+                timeout_seconds=0.01,
+                retry_timeout_seconds=0.01,
+            )
+
+        pending = {
+            task
+            for task in asyncio.all_tasks()
+            if task.get_name() == "reap-container-remove-pynchy-delayed-remove"
+        }
+        assert {task.get_name() for task in pending} == {
+            "reap-container-remove-pynchy-delayed-remove"
+        }
+        remove_proc.release()
+        await asyncio.gather(*pending)
+        await asyncio.sleep(0)
+        assert all(
+            task.get_name() != "reap-container-remove-pynchy-delayed-remove"
+            for task in asyncio.all_tasks()
+        )
+
+    async def test_graceful_stop_kills_and_reaps_timed_out_stop_cli(self):
+        """A wedged management CLI must not outlive graceful container cleanup."""
+        container_proc = KillableHangingProcess()
+        stop_proc = KillableHangingProcess(timeout_first_wait=True)
+
+        with (
+            patch(
+                "pynchy.host.container_manager.process.get_runtime",
+                return_value=MagicMock(cli="container"),
+            ),
+            patch(
+                "pynchy.host.container_manager.process.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=stop_proc),
+            ),
+        ):
+            await process_mod.graceful_stop(container_proc, "pynchy-code-improver")
+
+        assert stop_proc.killed is True
+        assert stop_proc.wait_calls == 2
+        assert container_proc.killed is True
+
     async def test_reap_apple_runtime_orphans_signals_exact_runtime_match(self):
         """Only the runtime process for the exact Apple container UUID is reaped."""
         runtime = MagicMock(cli="container")
@@ -378,7 +513,7 @@ class TestContainerProcessHelpers:
 
     async def test_force_remove_times_out_and_kills_hung_runtime_cli(self):
         """Apple Container cleanup can hang on stopped containers with orphaned runtimes."""
-        proc = HangingProcess()
+        proc = KillableHangingProcess(timeout_first_wait=True)
 
         with (
             patch(
@@ -395,6 +530,7 @@ class TestContainerProcessHelpers:
             )
 
         assert proc.killed is True
+        assert proc.wait_calls == 2
         create_proc.assert_awaited_once_with(
             "container",
             "rm",
@@ -428,7 +564,7 @@ class TestContainerProcessHelpers:
 
     async def test_force_remove_retries_after_reaping_apple_runtime_orphan(self):
         """If Apple delete hangs, reap the orphaned runtime and retry cleanup once."""
-        hung_delete = HangingProcess()
+        hung_delete = KillableHangingProcess(timeout_first_wait=True)
         completed_delete = FakeProcess()
         completed_delete.close(code=1)
 
@@ -677,6 +813,34 @@ class TestContainerArgs:
         assert "-v" in args
         assert f"{host_file}:{ca_container_path}:ro" in args
         assert "--mount" not in args
+
+    def test_apple_runtime_uses_two_gib_agent_memory_ceiling(self):
+        runtime = MagicMock(name="runtime")
+        runtime.name = "apple"
+
+        with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
+            args = build_container_args([], "test-container")
+
+        memory_index = args.index("--memory")
+        assert args[memory_index + 1] == "2048m"
+
+    def test_explicit_memory_limit_applies_to_other_runtimes(self):
+        runtime = MagicMock(name="runtime")
+        runtime.name = "docker"
+        settings = make_settings(container=ContainerConfig(memory_mb=1536))
+
+        with (
+            patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
+            patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
+        ):
+            args = build_container_args([], "test-container")
+
+        memory_index = args.index("--memory")
+        assert args[memory_index + 1] == "1536m"
+
+    def test_agent_memory_limit_cannot_exceed_two_gib(self):
+        with pytest.raises(ValidationError, match="less than or equal to 2048"):
+            ContainerConfig(memory_mb=2049)
 
     def test_includes_name_and_image(self):
         args = build_container_args([], "my-container")
@@ -2481,6 +2645,11 @@ class TestContainerInputAgentCoreConfig:
             patch(
                 "pynchy.host.orchestrator.agent_runner.refresh_learned_agent_skills"
             ) as refresh_skills,
+            patch.object(
+                session,
+                "set_output_handler",
+                wraps=session.set_output_handler,
+            ) as set_output_handler,
             patch(
                 "pynchy.host.orchestrator.agent_runner._await_query",
                 new_callable=AsyncMock,
@@ -2492,6 +2661,8 @@ class TestContainerInputAgentCoreConfig:
         assert result == "success"
         refresh_skills.assert_called_once_with(TEST_GROUP.folder)
         session.send_ipc_message.assert_awaited_once()
+        sent_query_id = session.send_ipc_message.await_args.kwargs["query_id"]
+        assert set_output_handler.call_args.kwargs["query_id"] == sent_query_id
 
 
 class TestAgentRunnerPreContainerHelpers:
@@ -3937,6 +4108,75 @@ class TestContainerSessionSignalQueryDone:
         session.signal_query_done()
         await session.wait_for_query_done(query_timeout_seconds=0.1)
         assert session.output_handler is None
+
+
+class TestContainerSessionProgressTimeout:
+    """Tests for progress-aware query deadlines and waiter cleanup."""
+
+    async def test_current_turn_progress_extends_inactivity_deadline(self):
+        """Structured progress should allow a healthy query past its initial deadline."""
+        session = session_mod.ContainerSession("progress-test", "pynchy-progress-test")
+        session.set_output_handler(AsyncMock(), query_id="query-current")
+
+        waiter = asyncio.create_task(session.wait_for_query_done(query_timeout_seconds=0.1))
+        await asyncio.sleep(0.06)
+        assert session.signal_query_progress("query-current") is True
+        await asyncio.sleep(0.06)
+        assert session.signal_query_done("query-current") is True
+
+        await waiter
+
+    async def test_no_progress_hits_inactivity_timeout(self):
+        """A silent live process should still be diagnosed as wedged."""
+        session = session_mod.ContainerSession("silent-test", "pynchy-silent-test")
+        session.set_output_handler(AsyncMock(), query_id="query-silent")
+
+        with pytest.raises(ProgressTimeoutError, match="inactivity") as caught:
+            await session.wait_for_query_done(query_timeout_seconds=0.02)
+
+        assert caught.value.reason == "inactivity"
+
+    async def test_continuous_progress_still_hits_finite_hard_timeout(self):
+        """A noisy loop may refresh silence but cannot run forever."""
+        session = session_mod.ContainerSession("hard-cap-test", "pynchy-hard-cap-test")
+        session.set_output_handler(AsyncMock(), query_id="query-noisy")
+        waiter = asyncio.create_task(session.wait_for_query_done(query_timeout_seconds=0.03))
+
+        async def keep_reporting_progress() -> None:
+            while not waiter.done():
+                session.signal_query_progress("query-noisy")
+                await asyncio.sleep(0.005)
+
+        progress_task = asyncio.create_task(keep_reporting_progress())
+        with pytest.raises(ProgressTimeoutError, match="hard") as caught:
+            await waiter
+        await progress_task
+
+        assert caught.value.reason == "hard"
+
+    async def test_stale_prior_turn_cannot_refresh_current_query(self):
+        """Delayed output from a completed turn must not mask a current wedge."""
+        session = session_mod.ContainerSession("stale-test", "pynchy-stale-test")
+        session.set_output_handler(AsyncMock(), query_id="query-current")
+
+        assert session.signal_query_progress("query-prior") is False
+        with pytest.raises(ProgressTimeoutError, match="inactivity"):
+            await session.wait_for_query_done(query_timeout_seconds=0.02)
+
+    async def test_cancelled_waiter_leaves_session_reusable(self):
+        """Cancellation must not leave a progress waiter or mutate session state."""
+        session = session_mod.ContainerSession("cancel-test", "pynchy-cancel-test")
+        session.set_output_handler(AsyncMock(), query_id="query-cancelled")
+        waiter = asyncio.create_task(session.wait_for_query_done(query_timeout_seconds=1.0))
+        await asyncio.sleep(0)
+
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+
+        session.set_output_handler(AsyncMock(), query_id="query-resumed")
+        session.signal_query_done("query-resumed")
+        await session.wait_for_query_done(query_timeout_seconds=0.1)
 
 
 class TestGetSessionOutputHandler:

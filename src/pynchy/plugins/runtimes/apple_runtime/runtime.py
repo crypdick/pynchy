@@ -14,6 +14,8 @@ from pynchy.host.container_manager.labels import (
 )
 
 _APPLE_CONTAINER_START_FAILURE_MESSAGE = "Apple Container system is required but failed to start"
+_APPLE_RUNTIME_INSPECT_TIMEOUT_SECONDS = 5
+_APPLE_RUNTIME_CLEANUP_TIMEOUT_SECONDS = 15
 
 
 @dataclass(frozen=True)
@@ -94,8 +96,9 @@ class AppleContainerRuntime:
                 [self.cli, "system", "status"],
                 capture_output=True,
                 check=True,
+                timeout=_APPLE_RUNTIME_INSPECT_TIMEOUT_SECONDS,
             )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (subprocess.SubprocessError, OSError):
             try:
                 subprocess.run(  # noqa: S603, RUF100 - runtime CLI is fixed by this adapter and argv is trusted.
                     [self.cli, "system", "start"],
@@ -111,6 +114,7 @@ class AppleContainerRuntime:
             [self.cli, "ls", "--all", "--format", "json"],
             capture_output=True,
             text=True,
+            timeout=_APPLE_RUNTIME_INSPECT_TIMEOUT_SECONDS,
             check=False,
         )
         containers = json.loads(result.stdout or "[]")
@@ -150,6 +154,7 @@ class AppleContainerRuntime:
             args,
             capture_output=True,
             text=True,
+            timeout=_APPLE_RUNTIME_CLEANUP_TIMEOUT_SECONDS,
             check=False,
         )
         return result.returncode == 0
@@ -162,6 +167,7 @@ class AppleContainerRuntime:
                 [self.cli, *args],
                 capture_output=True,
                 text=True,
+                timeout=_APPLE_RUNTIME_CLEANUP_TIMEOUT_SECONDS,
                 check=False,
             )
             if args[1] == "rm":

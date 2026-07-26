@@ -397,18 +397,10 @@ class LiteLLMGateway:
 
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
-        await ensure_network(self._network_name)
-        await self._start_postgres()
-
-        await ensure_image(self._image)
-
-        # Remove any stale LiteLLM container before starting
-        await remove_container(self._litellm_container)
-
-        # Resolve env vars once — shared by config filtering and env-var forwarding.
+        # Validate and resolve the complete launch configuration before
+        # mutating container-runtime state. A missing required dependency must
+        # not leave a network, database, or partial gateway container behind.
         env = resolve_litellm_environment(self._config_path)
-
-        # Filter the config: remove model entries with missing/placeholder keys
         filtered_config = self._config_preparer.prepare(
             self._config_path,
             self._data_dir,
@@ -418,14 +410,6 @@ class LiteLLMGateway:
         if phoenix_env:
             await self._check_phoenix_ready(phoenix_env[_PHOENIX_ENDPOINT_ENV])
 
-        logger.info(
-            "Starting LiteLLM proxy container",
-            image=self._image,
-            config=str(filtered_config),
-            port=self.port,
-        )
-
-        # Build environment variables
         env_vars = [
             "-e",
             f"LITELLM_MASTER_KEY={self.key}",
@@ -451,6 +435,18 @@ class LiteLLMGateway:
             env_vars.extend(["-e", f"UI_USERNAME={s.gateway.ui_username}"])
         if s.gateway.ui_password:
             env_vars.extend(["-e", f"UI_PASSWORD={s.gateway.ui_password.get_secret_value()}"])
+
+        await ensure_network(self._network_name)
+        await self._start_postgres()
+        await ensure_image(self._image)
+        await remove_container(self._litellm_container)
+
+        logger.info(
+            "Starting LiteLLM proxy container",
+            image=self._image,
+            config=str(filtered_config),
+            port=self.port,
+        )
 
         await run_docker(
             "run", "-d",

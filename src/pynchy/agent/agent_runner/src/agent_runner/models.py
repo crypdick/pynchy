@@ -75,6 +75,7 @@ class ContainerInput:
     chat_jid: str
     is_admin: bool
     turn_id: str | None = None
+    query_id: str | None = None
     session_id: str | None = None
     is_scheduled_task: bool = False
     input_source: str = "user"
@@ -144,6 +145,7 @@ class ContainerOutput:
     tool_result_content: str | None = None
     tool_result_is_error: bool | None = None
     result_metadata: dict[str, Any] | None = None
+    query_id: str | None = None
 
     def _result_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"result": self.result}
@@ -176,6 +178,8 @@ class ContainerOutput:
         format compact.  The ``type`` and ``status`` fields are always present.
         """
         d: dict[str, Any] = {"type": self.type, "status": self.status}
+        if self.query_id is not None:
+            d["query_id"] = self.query_id
 
         if self.type == "result":
             d.update(self._result_payload())

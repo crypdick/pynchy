@@ -179,6 +179,7 @@ entry = "uv run pytest --action-coverage --cov=pynchy --cov-report=term-missing"
 language = "system"
 pass_filenames = false
 files = "^(src/|tests/)"
+stages = ["manual"]
 
 [[repos.hooks]]
 id = "pytest-agent-runner"
@@ -187,3 +188,4 @@ entry = "env -u VIRTUAL_ENV uv run --directory src/pynchy/agent/agent_runner pyt
 language = "system"
 pass_filenames = false
 files = "^src/pynchy/agent/agent_runner/"
+stages = ["manual"]

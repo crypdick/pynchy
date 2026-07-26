@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess  # noqa: S404, RUF100 - synthetic runtime timeout below.
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -148,6 +149,20 @@ def test_ignores_non_agent_pynchy_container() -> None:
 
     assert result == []
     assert runtime.removed == []
+
+
+def test_runtime_list_timeout_does_not_break_orphan_reaper() -> None:
+    class TimedOutRuntime(FakeRuntime):
+        def list_containers(self, prefix: str = "pynchy-") -> list[FakeRuntimeContainer]:
+            raise subprocess.TimeoutExpired(["container", "ls"], timeout=5)
+
+    result = reap_orphaned_agent_containers(
+        runtime=TimedOutRuntime([]),
+        active_names=set(),
+        orphan_age_ms=0,
+    )
+
+    assert result == []
 
 
 def test_cleanup_runtime_images_prunes_dangling_images_only() -> None:

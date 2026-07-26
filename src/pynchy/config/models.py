@@ -142,11 +142,14 @@ class AgentConfig(_StrictModel):
 
 class ContainerConfig(_StrictModel):
     image: str = "pynchy-agent:latest"
-    timeout_ms: int = 1800000  # 30 minutes — hard per-query wall-clock safety net
+    # Maximum silence during a query. Structured output refreshes this deadline;
+    # a separate four-times hard ceiling still bounds continuously noisy wedges.
+    timeout_ms: int = 1800000  # 30 minutes
+    # Agent containers must fit alongside host services on the deployment
+    # machine. Full test suites scale their xdist workers to this cgroup cap.
+    memory_mb: Annotated[int, Field(gt=0, le=2048)] = 2048
     max_output_size: int = 10485760  # 10MB
-    # Idle reclamation timer (resets on every output). Kept well under timeout_ms
-    # so a finished container hibernates gracefully via the cooperative _close
-    # sentinel before the hard timeout would race docker stop -> SIGKILL (137).
+    # Idle reclamation starts only after a query completes.
     idle_timeout_ms: int = 900000  # 15 minutes
     orphan_reap_age_ms: int = 604800000  # 7 days
     max_concurrent: int = 10

@@ -196,6 +196,8 @@ def build_container_args(mounts: list[VolumeMount], container_name: str) -> list
         get_runtime,
     )
 
+    runtime = get_runtime()
+
     # No --rm: persistent sessions need explicit cleanup via docker rm -f
     # (handled in _session.py on stop/create).
     # No -i: stdin is DEVNULL (input arrives via IPC files).
@@ -207,11 +209,13 @@ def build_container_args(mounts: list[VolumeMount], container_name: str) -> list
         f"{AGENT_CONTAINER_LABEL}={AGENT_CONTAINER_LABEL_VALUE}",
     ]
 
+    memory_mb = get_settings().container.memory_mb
+    args.extend(["--memory", f"{memory_mb}m"])
+
     # When the gateway is active and we're using Docker, add a host mapping
     # so containers can reach the host process via ``host.docker.internal``.
     # Docker Desktop sets this automatically; on Linux it requires --add-host.
     gateway = get_gateway()
-    runtime = get_runtime()
     if gateway is not None and runtime.name == "docker":
         args.extend(["--add-host", "host.docker.internal:host-gateway"])
 
