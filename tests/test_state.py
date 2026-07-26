@@ -883,8 +883,6 @@ class TestTaskAdvanced:
                 input_end_cursor="",
                 started_at="2024-01-01T00:00:00Z",
                 task_id=task.id,
-                scheduled_base_chat_jid=task.chat_jid,
-                scheduled_thread_slot=0,
             )
         )
 
@@ -1501,10 +1499,12 @@ class TestEnsureColumns:
             );
             INSERT INTO in_flight_turns (
                 turn_id, chat_jid, group_folder, work_kind, input_messages,
-                input_start_cursor, input_end_cursor, started_at
+                input_start_cursor, input_end_cursor, started_at,
+                scheduled_base_chat_jid, scheduled_thread_slot
             ) VALUES (
                 'legacy-turn', 'slack:C123', 'admin', 'interactive', '[]',
-                '', 'cursor', '2026-07-25T10:00:00+00:00'
+                '', 'cursor', '2026-07-25T10:00:00+00:00',
+                'slack:legacy-parent', 7
             );
         """)
 
@@ -1514,6 +1514,10 @@ class TestEnsureColumns:
             "SELECT turn_id, control_state FROM in_flight_turns WHERE turn_id = 'legacy-turn'"
         )
         assert await cursor.fetchone() == ("legacy-turn", "active")
+        cursor = await db.execute("PRAGMA table_info(in_flight_turns)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        assert "scheduled_base_chat_jid" not in columns
+        assert "scheduled_thread_slot" not in columns
         await db.close()
 
     async def test_adds_task_run_identity_columns_to_existing_ledger(self):

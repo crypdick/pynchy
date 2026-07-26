@@ -32,13 +32,15 @@ from pynchy.host.orchestrator.messaging.host_controls import (
     reclassify_batch_host_controls,
     turn_boundary_lock,
 )
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
-from pynchy.state import get_in_flight_turn_for_chat, get_messages_since, get_new_messages
+from pynchy.state import get_messages_since, get_new_messages, get_oldest_resumable_turn_for_group
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves inbound routing annotations at runtime.
     InFlightWorkKind,
     NewMessage,
     OutboundEvent,
     OutboundEventType,
+    RuntimeId,
     WorkspaceProfile,
 )
 
@@ -128,20 +130,20 @@ async def _pending_messages_for_group(
     if not all_pending:
         logger.info("route_trace", step="skip_no_pending", group=group.name)
         return []
-    if _only_system_notices_while_idle(deps, group_jid, all_pending):
+    if _only_system_notices_while_idle(deps, group, all_pending):
         return []
     return all_pending
 
 
 def _only_system_notices_while_idle(
     deps: MessageHandlerDeps,
-    group_jid: str,
+    group: WorkspaceProfile,
     all_pending: list[NewMessage],
 ) -> bool:
     # System notices (e.g. clean rebase notifications) shouldn't wake a
     # sleeping agent — they're just context for the next real session.
     # Skip if *all* pending messages are notices and no container is running.
-    return not deps.queue.is_active_task(group_jid) and all(
+    return not deps.queue.is_active_task(RuntimeId(group.folder)) and all(
         m.sender == "system_notice" for m in all_pending
     )
 
@@ -208,8 +210,8 @@ async def _intercept_host_control_batch(
             for message in all_pending
         ):
             return True if not all_pending else None
-        active_turn = await get_in_flight_turn_for_chat(
-            group_jid,
+        active_turn = await get_oldest_resumable_turn_for_group(
+            group.folder,
             {InFlightWorkKind.INTERACTIVE},
         )
         defer_lifecycle = (
@@ -234,7 +236,7 @@ async def _intercept_host_control_batch(
         )
         intercepted = False
         if active_turn is not None and has_deferred:
-            deps.queue.enqueue_message_check(group_jid)
+            deps.queue.enqueue_message_check(RuntimeTarget.from_binding(group.folder, group_jid))
             logger.info(
                 "route_trace",
                 step="active_deferred_control_consumed",
@@ -293,7 +295,8 @@ async def _route_pending_messages(
     last_content = agent_pending[-1].content.strip()
     is_btw = last_content.lower().startswith("btw ")
 
-    if deps.queue.is_active_task(group_jid):
+    runtime_id = RuntimeId(group.folder)
+    if deps.queue.is_active_task(runtime_id):
         logger.info("route_trace", step="active_task_forward", group=group.name)
         await _handle_message_during_task(
             _TaskDuringScheduleRequest(
@@ -307,10 +310,10 @@ async def _route_pending_messages(
         )
         return
 
-    if deps.queue.send_message(group_jid, formatted):
+    if deps.queue.send_message(runtime_id, formatted):
         await _forward_to_active_container(
             deps,
-            group_jid,
+            RuntimeTarget.from_binding(group.folder, group_jid),
             agent_pending,
             last_content=last_content,
             is_btw=is_btw,
@@ -320,18 +323,19 @@ async def _route_pending_messages(
     # A host runner has no IPC watcher, so send_message deliberately returns
     # False while one is active. Defer the pending input until Codex finishes
     # its current tool; on an idle group this is a harmless no-op.
-    deps.queue.defer_interrupt_until_tool_result(group_jid)
+    deps.queue.defer_interrupt_until_tool_result(runtime_id)
     await _start_new_interactive_turn(deps, group_jid, group, agent_pending[0])
 
 
 async def _forward_to_active_container(
     deps: MessageHandlerDeps,
-    group_jid: str,
+    target: RuntimeTarget,
     all_pending: list[NewMessage],
     *,
     last_content: str,
     is_btw: bool,
 ) -> None:
+    group_jid = target.chat_jid
     logger.info("route_trace", step="piped_to_container")
     if is_btw:
         # Non-interrupting — forward to active container via IPC but
@@ -341,7 +345,7 @@ async def _forward_to_active_container(
         await deps.broadcast_to_channels(
             group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
         )
-        deps.queue.enqueue_message_check(group_jid)
+        deps.queue.enqueue_message_check(target)
         return
 
     logger.debug(
@@ -382,17 +386,19 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
     the configured canonical board. All other messages interrupt the running
     task.
     """
+    runtime_id = RuntimeId(request.group.folder)
+    target = RuntimeTarget.from_binding(request.group.folder, request.group_jid)
     if request.is_btw:
         # Preserve the fast IPC handoff for persistent containers, but also
         # defer a boundary interruption for host execution and long-running
         # queries. The cursor remains unchanged so drain replays the message.
-        request.deps.queue.send_message(request.group_jid, request.formatted)
-        request.deps.queue.defer_interrupt_until_tool_result(request.group_jid)
+        request.deps.queue.send_message(runtime_id, request.formatted)
+        request.deps.queue.defer_interrupt_until_tool_result(runtime_id)
         msg = f"\u00bb [Forwarded] {request.last_content[:500]}"
         await request.deps.broadcast_to_channels(
             request.group_jid, OutboundEvent(type=OutboundEventType.TEXT, content=msg)
         )
-        request.deps.queue.enqueue_message_check(request.group_jid)
+        request.deps.queue.enqueue_message_check(target)
     elif request.last_content.lower().startswith("todo "):
         # Non-interrupting — host writes the workspace's canonical todo board,
         # then notifies the active agent via IPC.
@@ -422,20 +428,20 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
             )
         board_label = "Linear" if linear_enabled else "your local"
         request.deps.queue.send_message(
-            request.group_jid,
+            runtime_id,
             "[System notice \u2014 no response needed] "
             f"User added a todo item to {board_label} list: {item}",
         )
         # Same as "btw ": don't advance cursor, mark pending so drain
         # reprocesses.
-        request.deps.queue.enqueue_message_check(request.group_jid)
+        request.deps.queue.enqueue_message_check(target)
     else:
         # Queue regular messages until the active agent has completed its
         # current tool. Killing immediately can lose a half-finished tool and
         # makes host-mode agents unresponsive because they have no IPC loop.
-        request.deps.queue.clear_pending_tasks(request.group_jid)
-        request.deps.queue.defer_interrupt_until_tool_result(request.group_jid)
-        request.deps.queue.enqueue_message_check(request.group_jid)
+        request.deps.queue.clear_pending_tasks(runtime_id)
+        request.deps.queue.defer_interrupt_until_tool_result(runtime_id)
+        request.deps.queue.enqueue_message_check(target)
 
 
 async def _poll_incoming_messages(deps: MessageHandlerDeps) -> None:

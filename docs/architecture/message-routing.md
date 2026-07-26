@@ -45,6 +45,23 @@ message reaches the agent.
 
 For how messages are typed and stored, see [Message types](message-types.md).
 
+## Runtime Serialization
+
+Each workspace folder identifies one durable execution runtime. A runtime
+target composes that stable identity with the workspace's current chat address.
+Provider thread replacement can change the address while the folder, worktree,
+provider session, and checkpoint ledger remain the same.
+
+Interactive messages, scheduled tasks, hidden learning work, and interrupted
+turn recovery all enter one queue keyed by the stable runtime identity. The
+queue prevents those work sources from running concurrently against the same
+workspace. Message work takes priority when the queue drains.
+
+Every completed queue operation returns an explicit turn outcome: completed,
+retry requested, continue after a safe interrupt, paused, or reset. Queue and
+Temporal adapters translate that shared outcome instead of inferring control
+flow from booleans or source-specific result types.
+
 ## Interrupted Turn Recovery
 
 Pynchy checkpoints an agent turn in SQLite before it invokes the agent runtime. The checkpoint
@@ -72,10 +89,11 @@ the same row paused.
 The next ordinary message atomically attaches its formatted user input to the
 paused row, updates the occurrence's end cursor, and restores `active`. The
 recovery invocation uses the retained provider session ID, original provenance,
-task ID, scheduled destination, thread slot, and routed-delivery claim. It
-sends one continuation instruction followed by every attached guidance
-message. Only successful completion advances through that guidance and
-completes the delivery claim.
+task ID, durable runtime identity, and routed-delivery claim. It resolves the
+runtime's current chat address before entering the shared queue, then sends one
+continuation instruction followed by every attached guidance message. Only
+successful completion advances through that guidance and completes the delivery
+claim.
 
 A paused scheduled occurrence remains the task's in-flight row. New triggers
 for that task return a paused terminal outcome instead of creating competing

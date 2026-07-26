@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -33,6 +34,7 @@ from pynchy.state import (
     get_in_flight_turn_for_chat,
     get_in_flight_turn_for_task,
     get_messages_since,
+    get_oldest_resumable_turn_for_group,
     get_router_state,
     init_test_database,
     mark_in_flight_output_sent,
@@ -57,8 +59,6 @@ def _turn(
     *,
     work_kind: InFlightWorkKind = InFlightWorkKind.INTERACTIVE,
     task_id: str | None = None,
-    scheduled_base_chat_jid: str | None = None,
-    scheduled_thread_slot: int | None = None,
     conversation_claim_id: str | None = None,
     input_source: str = "user",
     claimed_at: str | None = "2026-07-14T10:00:02+00:00",
@@ -75,8 +75,6 @@ def _turn(
         task_id=task_id,
         session_id="session-before",
         claimed_at=claimed_at,
-        scheduled_base_chat_jid=scheduled_base_chat_jid,
-        scheduled_thread_slot=scheduled_thread_slot,
         conversation_claim_id=conversation_claim_id,
         input_source=input_source,
     )
@@ -90,8 +88,6 @@ async def test_round_trips_turn_and_domain_lookups() -> None:
         "turn-2",
         work_kind=InFlightWorkKind.SCHEDULED,
         task_id="task-2",
-        scheduled_base_chat_jid="slack:C123",
-        scheduled_thread_slot=1,
     )
 
     await begin_in_flight_turn(interactive)
@@ -106,6 +102,30 @@ async def test_round_trips_turn_and_domain_lookups() -> None:
         == interactive
     )
     assert await get_in_flight_turn_for_task("task-2") == scheduled
+
+
+@pytest.mark.asyncio
+async def test_stable_runtime_recovery_selects_oldest_resumable_turn() -> None:
+    await init_test_database()
+    oldest = replace(
+        _turn("turn-oldest"),
+        chat_jid="slack:OLD",
+        started_at="2026-07-14T10:00:01+00:00",
+    )
+    newest = replace(
+        _turn("turn-newest"),
+        chat_jid="slack:CURRENT",
+        started_at="2026-07-14T10:00:02+00:00",
+    )
+    await begin_in_flight_turn(oldest)
+    await begin_in_flight_turn(newest)
+
+    recovered = await get_oldest_resumable_turn_for_group(
+        "group-one",
+        {InFlightWorkKind.INTERACTIVE},
+    )
+
+    assert recovered == oldest
 
 
 @pytest.mark.asyncio

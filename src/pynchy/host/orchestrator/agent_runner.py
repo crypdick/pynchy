@@ -41,7 +41,7 @@ from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
 from pynchy.state import clear_session
-from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
+from pynchy.types import ContainerInput, GroupFolder, RuntimeId, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -205,10 +205,9 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         invocation_ts=request.input_data.invocation_ts,
     )
     request.deps.queue.register_process(
-        request.chat_jid,
+        RuntimeId(request.group.folder),
         proc,
         container_name,
-        request.group.folder,
         request.input_data.invocation_ts,
     )
     session.set_output_handler(request.ctx.wrapped_on_output)
@@ -238,10 +237,9 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
 
     # Register the session's process so send_message() works for follow-ups
     request.deps.queue.register_process(
-        request.chat_jid,
+        RuntimeId(request.group.folder),
         request.session.proc,
         request.session.container_name,
-        request.group.folder,
     )
 
     # Set output handler and format messages

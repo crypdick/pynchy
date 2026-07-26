@@ -7,14 +7,11 @@ from typing import cast
 
 from temporalio import activity
 
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
 from pynchy.host.orchestrator.messaging.in_flight import resume_interrupted_message_turn
-from pynchy.host.orchestrator.messaging.outcomes import (
-    CONTINUE_AFTER_SAFE_INTERRUPT,
-    TURN_PAUSED,
-    TURN_RESET,
-    ProcessGroupResult,
-)
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     resume_interrupted_scheduled_turn,
@@ -23,15 +20,7 @@ from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
 from pynchy.host.orchestrator.temporal.runtime_state import (
     _record_activity_result,
     _require_scheduler_deps,
-)
-from pynchy.host.orchestrator.temporal.workflows import (
-    CONTINUE_AFTER_SAFE_INTERRUPT as CONTINUE_AFTER_SAFE_INTERRUPT_RESULT,
-)
-from pynchy.host.orchestrator.temporal.workflows import (
-    TURN_PAUSED as TURN_PAUSED_RESULT,
-)
-from pynchy.host.orchestrator.temporal.workflows import (
-    TURN_RESET as TURN_RESET_RESULT,
+    settle_turn_activity,
 )
 from pynchy.state import (
     claim_in_flight_turn,
@@ -42,52 +31,44 @@ from pynchy.state import (
 from pynchy.types import CheckpointControlState, InFlightTurn, InFlightWorkKind
 
 
-def _terminal_control_result(
+def _terminal_control_outcome(
     turn: InFlightTurn,
-) -> str | None:
+) -> TurnOutcome | None:
     control_state = turn.control_state
     if control_state in {
         CheckpointControlState.PAUSE_REQUESTED,
         CheckpointControlState.PAUSED,
     }:
-        return TURN_PAUSED_RESULT
+        return TurnOutcome.PAUSED
     if control_state is CheckpointControlState.RESET_REQUESTED:
-        return TURN_RESET_RESULT
+        return TurnOutcome.RESET
     return None
 
 
 async def _finish_interrupted_activity(
     turn_id: str,
-    handled: ProcessGroupResult,
+    outcome: TurnOutcome,
 ) -> str:
-    if handled is CONTINUE_AFTER_SAFE_INTERRUPT:
-        result = CONTINUE_AFTER_SAFE_INTERRUPT_RESULT
-    elif handled is TURN_PAUSED:
-        result = TURN_PAUSED_RESULT
-    elif handled is TURN_RESET:
-        result = TURN_RESET_RESULT
-    elif handled:
-        result = "completed"
-    else:
-        err = "Interrupted agent turn requested retry"
+    if outcome is TurnOutcome.RETRY:
         await release_in_flight_turn_claim(turn_id)
-        _record_activity_result(turn_id, "retry_requested", err)
-        raise RuntimeError(err)
-    _record_activity_result(turn_id, result)
-    return result
+    return settle_turn_activity(
+        turn_id,
+        outcome,
+        retry_error="Interrupted agent turn requested retry",
+    )
 
 
-async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> ProcessGroupResult:
+async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> TurnOutcome:
     turn = await get_in_flight_turn(turn_id)
     if turn is None:
-        return True
+        return TurnOutcome.COMPLETED
     if turn.control_state in {
         CheckpointControlState.PAUSE_REQUESTED,
         CheckpointControlState.PAUSED,
     }:
-        return TURN_PAUSED
+        return TurnOutcome.PAUSED
     if turn.control_state is CheckpointControlState.RESET_REQUESTED:
-        return TURN_RESET
+        return TurnOutcome.RESET
     if turn.work_kind is InFlightWorkKind.SCHEDULED:
         if not turn.task_id:
             await release_in_flight_turn_claim(turn_id)
@@ -96,22 +77,57 @@ async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> ProcessGroup
         if task is None:
             await release_in_flight_turn_claim(turn_id)
             raise RuntimeError(f"Interrupted scheduled task no longer exists: {turn.task_id}")
-        return await resume_interrupted_scheduled_turn(
-            task,
-            cast("SchedulerDependencies", deps),
-            turn,
+        scheduler_deps = cast("SchedulerDependencies", deps)
+        group = resolve_scheduled_group(scheduler_deps.workspaces, turn.group_folder)
+        if group is None:
+            await release_in_flight_turn_claim(turn_id)
+            raise RuntimeError(
+                f"Interrupted scheduled runtime no longer exists: {turn.group_folder}"
+            )
+        resolved_group = group
+
+        async def resume_scheduled() -> TurnOutcome:
+            return await resume_interrupted_scheduled_turn(
+                task,
+                scheduler_deps,
+                turn,
+                resolved_group,
+            )
+
+        return await scheduler_deps.queue.run_serialized_task(
+            RuntimeTarget.from_workspace(resolved_group),
+            f"recovery:{turn_id}",
+            resume_scheduled,
         )
 
     message_deps = cast("messaging_pipeline.MessageHandlerDeps", deps)
-    group = message_deps.workspaces.get(turn.chat_jid)
+    group = next(
+        (
+            workspace
+            for workspace in message_deps.workspaces.values()
+            if workspace.folder == turn.group_folder
+        ),
+        None,
+    )
     if group is None:
         await release_in_flight_turn_claim(turn_id)
-        raise RuntimeError(f"Interrupted turn workspace no longer exists: {turn.chat_jid}")
-    return await resume_interrupted_message_turn(
-        message_deps,
-        group,
-        turn,
-        lambda jid: messaging_pipeline.process_group_messages(message_deps, jid),
+        raise RuntimeError(f"Interrupted turn runtime no longer exists: {turn.group_folder}")
+
+    target = RuntimeTarget.from_workspace(group)
+
+    async def resume_interactive() -> TurnOutcome:
+        return await resume_interrupted_message_turn(
+            message_deps,
+            target,
+            group,
+            turn,
+            lambda _jid: messaging_pipeline.process_group_messages(message_deps, group.jid),
+        )
+
+    return await message_deps.queue.run_serialized_task(
+        target,
+        f"recovery:{turn_id}",
+        resume_interactive,
     )
 
 
@@ -122,9 +138,12 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
     if turn is None:
         _record_activity_result(turn_id, "already_completed")
         return "already_completed"
-    if terminal_result := _terminal_control_result(turn):
-        _record_activity_result(turn_id, terminal_result)
-        return terminal_result
+    if terminal_outcome := _terminal_control_outcome(turn):
+        return settle_turn_activity(
+            turn_id,
+            terminal_outcome,
+            retry_error="Interrupted agent turn requested retry",
+        )
     if not await claim_in_flight_turn(turn_id):
         _record_activity_result(turn_id, "already_claimed")
         return "already_claimed"

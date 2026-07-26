@@ -54,8 +54,6 @@ def _row_to_turn(row: Row) -> InFlightTurn:
         interrupted_at=row["interrupted_at"],
         deploy_id=row["deploy_id"],
         claimed_at=row["claimed_at"],
-        scheduled_base_chat_jid=row["scheduled_base_chat_jid"],
-        scheduled_thread_slot=row["scheduled_thread_slot"],
         conversation_claim_id=row["conversation_claim_id"],
         input_source=row["input_source"],
         control_state=CheckpointControlState(row["control_state"]),
@@ -71,9 +69,8 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             turn_id, chat_jid, group_folder, work_kind, input_messages,
             input_start_cursor, input_end_cursor, started_at, task_id,
             session_id, output_sent, interrupted_at, deploy_id, claimed_at,
-            scheduled_base_chat_jid, scheduled_thread_slot,
             conversation_claim_id, input_source, control_state
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             turn.turn_id,
@@ -90,8 +87,6 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             turn.interrupted_at,
             turn.deploy_id,
             turn.claimed_at,
-            turn.scheduled_base_chat_jid,
-            turn.scheduled_thread_slot,
             turn.conversation_claim_id,
             turn.input_source,
             turn.control_state.value,
@@ -150,8 +145,10 @@ async def get_in_flight_turn_for_task(task_id: str) -> InFlightTurn | None:
     return _row_to_turn(row) if row else None
 
 
-async def get_in_flight_turn_for_group(group_folder: str) -> InFlightTurn | None:
-    """Return the active turn for one workspace, including scheduled task provenance."""
+async def get_in_flight_turn_for_group(
+    group_folder: str,
+) -> InFlightTurn | None:
+    """Return the newest turn of any kind for one stable runtime."""
     db = _get_db()
     cursor = await db.execute(
         """
@@ -161,6 +158,28 @@ async def get_in_flight_turn_for_group(group_folder: str) -> InFlightTurn | None
         LIMIT 1
         """,
         (group_folder,),
+    )
+    row = await cursor.fetchone()
+    return _row_to_turn(row) if row else None
+
+
+async def get_oldest_resumable_turn_for_group(
+    group_folder: str,
+    work_kinds: set[InFlightWorkKind],
+) -> InFlightTurn | None:
+    """Return the oldest resumable checkpoint for one stable runtime."""
+    if not work_kinds:
+        return None
+    db = _get_db()
+    placeholders = ",".join("?" for _ in work_kinds)
+    cursor = await db.execute(
+        f"""
+        SELECT * FROM in_flight_turns
+        WHERE group_folder = ? AND work_kind IN ({placeholders})
+        ORDER BY started_at, turn_id
+        LIMIT 1
+        """,  # noqa: S608, RUF100 - placeholders derive only from the enum set size.
+        (group_folder, *(kind.value for kind in work_kinds)),
     )
     row = await cursor.fetchone()
     return _row_to_turn(row) if row else None

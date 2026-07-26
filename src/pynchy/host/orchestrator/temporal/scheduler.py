@@ -21,7 +21,6 @@ from temporalio import activity
 from temporalio.client import Client
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
-from temporalio.service import RPCError, RPCStatusCode
 from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
@@ -34,12 +33,10 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import (
     LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from pynchy.host.orchestrator.messaging.outcomes import (
-    TURN_PAUSED,
-    TURN_RESET,
-    TurnPaused,
-    TurnReset,
+from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves nested activity annotations.
+    TurnOutcome,
 )
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.scheduled_binding import ensure_scheduled_task_binding
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
@@ -66,6 +63,7 @@ from pynchy.host.orchestrator.temporal.host_jobs import (
 from pynchy.host.orchestrator.temporal.interactive import (
     interactive_message_workflow_id,
     run_interactive_message_turn,
+    run_interactive_runtime_turn,
 )
 from pynchy.host.orchestrator.temporal.interrupted import run_interrupted_agent_turn
 from pynchy.host.orchestrator.temporal.learning import (
@@ -83,6 +81,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _utc_timestamp,
     bind_scheduler_deps,
     parse_temporal_activity_info,
+    settle_turn_activity,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     get_temporal_scheduler_status as _get_temporal_scheduler_status,
@@ -100,11 +99,11 @@ from pynchy.host.orchestrator.temporal.schedules import (
     is_stale_agent_task_once_workflow,
     safe_workflow_fragment,
 )
-from pynchy.host.orchestrator.temporal.workflows import (
-    TURN_PAUSED as TURN_PAUSED_RESULT,
-)
-from pynchy.host.orchestrator.temporal.workflows import (
-    TURN_RESET as TURN_RESET_RESULT,
+from pynchy.host.orchestrator.temporal.workflow_control import (
+    TemporalRuntimeUnavailableError,
+    bind_workflow_client,
+    cancel_scheduled_agent_workflow,
+    unbind_workflow_client,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
     CanaryRunWorkflow,
@@ -144,6 +143,7 @@ class _ActiveRuntimeState:
 
 _state = _ActiveRuntimeState()
 _WORKFLOW_MODULE = "pynchy.host.orchestrator.temporal.workflows"
+_TURN_OUTCOMES_MODULE = "pynchy.host.orchestrator.execution_outcomes"
 _TEMPORAL_SCHEDULER_NOT_STARTED_ERROR = "Temporal scheduler runtime has not been started"
 __all__ = [
     "TemporalRuntimeUnavailableError",
@@ -166,10 +166,6 @@ __all__ = [
     "start_scheduled_agent_task_workflow",
     "temporal_scheduler_runtime_active",
 ]
-
-
-class TemporalRuntimeUnavailableError(RuntimeError):
-    """Raised when a workflow start is requested before the worker is active."""
 
 
 def temporal_scheduler_runtime_active() -> bool:
@@ -214,30 +210,16 @@ async def start_scheduled_agent_task_workflow(task: ScheduledTask) -> None:
     await runtime.start_scheduled_agent_task(task)
 
 
-async def cancel_scheduled_agent_workflow(workflow_id: str) -> bool:
-    """Cancel one active scheduled attempt by its durable Temporal identity."""
-    runtime = await _require_active_runtime()
-    if runtime.client is None:
-        raise TemporalRuntimeUnavailableError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
-    try:
-        await runtime.client.get_workflow_handle(workflow_id).cancel()
-    except RPCError as exc:
-        if exc.status is RPCStatusCode.NOT_FOUND:
-            return False
-        raise
-    return True
-
-
 async def start_interactive_message_workflow(chat_jid: str) -> None:
     """Start a Temporal workflow to process pending messages for one chat."""
     runtime = await _require_active_runtime()
     await runtime.start_interactive_message_turn(chat_jid)
 
 
-async def start_interrupted_turn_workflow(turn_id: str, chat_jid: str) -> None:
+async def start_interrupted_turn_workflow(turn_id: str, group_folder: str) -> None:
     """Start durable semantic recovery for one interrupted agent turn."""
     runtime = await _require_active_runtime()
-    await runtime.start_interrupted_turn(turn_id, chat_jid)
+    await runtime.start_interrupted_turn(turn_id, group_folder)
 
 
 async def start_deploy_workflow(request: DeployRequest) -> DeployClaim:
@@ -258,7 +240,10 @@ def scheduler_workflow_runner() -> WorkflowRunner:
     # installs beartype import hooks, which are host-process instrumentation
     # rather than workflow logic. Pass through only the deterministic workflow
     # definition module so the sandbox does not re-run that package import path.
-    restrictions = SandboxRestrictions.default.with_passthrough_modules(_WORKFLOW_MODULE)
+    restrictions = SandboxRestrictions.default.with_passthrough_modules(
+        _WORKFLOW_MODULE,
+        _TURN_OUTCOMES_MODULE,
+    )
     return SandboxedWorkflowRunner(restrictions=restrictions)
 
 
@@ -286,31 +271,24 @@ async def run_scheduled_agent_task(task_id: str) -> str:
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
-    if completed is False:
-        err = "Scheduled agent task requested retry"
-        _record_activity_result(task_id, "error", err)
-        raise RuntimeError(err)
-    if completed is TURN_PAUSED:
-        _record_activity_result(task_id, TURN_PAUSED_RESULT)
-        return TURN_PAUSED_RESULT
-    if completed is TURN_RESET:
-        _record_activity_result(task_id, TURN_RESET_RESULT)
-        return TURN_RESET_RESULT
-    _record_activity_result(task_id, "completed")
-    return "completed"
+    return settle_turn_activity(
+        task_id,
+        completed,
+        retry_error="Scheduled agent task requested retry",
+    )
 
 
 async def _run_bound_scheduled_agent_task(
     task: ScheduledTask,
-) -> bool | TurnPaused | TurnReset:
+) -> TurnOutcome:
     """Bind and serialize one Temporal occurrence in its thread-owned queue."""
     deps = cast("SchedulerDependencies", _require_scheduler_deps())
     task = await ensure_scheduled_task_binding(task, cast("Any", deps))
-    if task.bound_chat_jid is None:
+    if task.bound_chat_jid is None or task.bound_group_folder is None:
         raise RuntimeError("Scheduled task binding disappeared before queue admission")
     temporal = parse_temporal_activity_info(activity.info())
 
-    async def run_bound_task() -> bool | TurnPaused | TurnReset:
+    async def run_bound_task() -> TurnOutcome:
         return await run_scheduled_agent(
             task,
             deps,
@@ -319,7 +297,7 @@ async def _run_bound_scheduled_agent_task(
 
     async with activity_heartbeats(task.id):
         return await deps.queue.run_serialized_task(
-            task.bound_chat_jid,
+            RuntimeTarget.from_binding(task.bound_group_folder, task.bound_chat_jid),
             task.id,
             run_bound_task,
         )
@@ -426,6 +404,7 @@ class TemporalSchedulerRuntime:
                     run_channel_reconciliation,
                     run_scheduled_canaries,
                     run_interactive_message_turn,
+                    run_interactive_runtime_turn,
                     run_interrupted_agent_turn,
                     run_scheduled_agent_task,
                     clear_terminal_scheduled_turn,
@@ -443,6 +422,9 @@ class TemporalSchedulerRuntime:
             _update_temporal_scheduler_status(worker_running=False, last_error=str(exc))
             raise
         _state.active_runtime = self
+        if self.client is None:
+            raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
+        bind_workflow_client(self.client)
         _update_temporal_scheduler_status(worker_running=True, last_error=None)
         logger.info(
             "Temporal scheduler runtime started",
@@ -460,6 +442,7 @@ class TemporalSchedulerRuntime:
     ) -> None:
         await self._worker_stack.aclose()
         bind_scheduler_deps(None)
+        unbind_workflow_client(self.client)
         if _state.active_runtime is self:
             _state.active_runtime = None
         _update_temporal_scheduler_status(worker_running=False)
@@ -506,7 +489,7 @@ class TemporalSchedulerRuntime:
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         )
 
-    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None:
+    async def start_interrupted_turn(self, turn_id: str, group_folder: str) -> None:
         """Start idempotent recovery for a durable interrupted-turn checkpoint."""
         if self.client is None:
             raise RuntimeError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
@@ -514,7 +497,7 @@ class TemporalSchedulerRuntime:
         await self._start_workflow(
             InterruptedTurnWorkflow.run,
             turn_id,
-            chat_jid,
+            group_folder,
             settings.queue.max_retries + 1,
             float(settings.queue.base_retry_seconds),
             workflow_id=interrupted_turn_workflow_id(turn_id),

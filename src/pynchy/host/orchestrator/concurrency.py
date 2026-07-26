@@ -1,4 +1,4 @@
-"""Per-group concurrency queue with global limits.
+"""Per-runtime concurrency queue with global limits.
 
 State (``active``, ``_active_count``) is set eagerly in the synchronous
 enqueue methods so that a second synchronous call sees the correct state.
@@ -15,83 +15,73 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
 )
 from typing import TypeVar
 
-import pynchy.host.container_manager.process as container_process
-import pynchy.host.container_manager.session as container_session
 from pynchy.config import get_settings
-from pynchy.host.container_manager.ipc.write import (
-    clean_ipc_input_dir,
-    write_ipc_close_sentinel,
-    write_ipc_message,
-)
+from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.security.middleware import PolicyDeniedError
-from pynchy.host.orchestrator.host_runner import stop_host_process
-from pynchy.host.orchestrator.messaging.outcomes import (
-    CONTINUE_AFTER_SAFE_INTERRUPT,
-    TURN_PAUSED,
-    TURN_RESET,
-    ProcessGroupResult,
-)
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.queue_serialization import (
     await_message_turn,
     await_queued_task,
 )
 from pynchy.host.orchestrator.queue_shutdown import shutdown_queue_processes
 from pynchy.host.orchestrator.queue_state import GroupState, HostProcessLease, QueuedTask
+from pynchy.host.orchestrator.runtime_process_control import RuntimeProcessControl
+from pynchy.host.orchestrator.runtime_registry import RuntimeRegistry
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
+from pynchy.types import RuntimeId  # noqa: TC001, RUF100
 from pynchy.utils import create_background_task
 
 _ResultT = TypeVar("_ResultT")
 
 
 class GroupQueue:
-    """Per-group concurrency queue that serializes container runs within each group.
+    """Serialize every work source that targets the same execution runtime.
 
-    Enforces a global concurrency limit across all groups. Messages take
+    Enforces a global concurrency limit across all runtimes. Messages take
     priority over scheduled tasks when draining, since a human is waiting.
     """
 
     def __init__(self) -> None:
-        self._groups: dict[str, GroupState] = {}
-        self._next_host_process_generation = 0
+        self._registry = RuntimeRegistry()
+        self._processes = RuntimeProcessControl(self._registry)
         self._active_count = 0
-        self._waiting_groups: deque[str] = deque()
-        self._process_messages_fn: Callable[[str], Awaitable[ProcessGroupResult]] | None = None
+        self._waiting_groups: deque[RuntimeId] = deque()
+        self._process_messages_fn: Callable[[str], Awaitable[TurnOutcome]] | None = None
         self._shutting_down = False
 
-    def _get_group(self, group_jid: str) -> GroupState:
-        """Return the GroupState for *group_jid*, creating one if needed."""
-        if group_jid not in self._groups:
-            self._groups[group_jid] = GroupState()
-        return self._groups[group_jid]
-
-    def set_process_messages_fn(self, fn: Callable[[str], Awaitable[ProcessGroupResult]]) -> None:
+    def set_process_messages_fn(self, fn: Callable[[str], Awaitable[TurnOutcome]]) -> None:
         """Register the callback that processes pending messages for a group."""
         self._process_messages_fn = fn
 
-    def enqueue_message_check(self, group_jid: str) -> None:
-        """Schedule a message processing run for *group_jid*.
+    def enqueue_message_check(self, target: RuntimeTarget) -> None:
+        """Schedule a message processing run for *target*.
 
-        If the group already has an active container, the check is deferred
-        until the current run finishes.  If the global concurrency limit is
-        reached, the group is added to the waiting queue.
+        If the runtime is already active, the check is deferred until its current
+        run finishes. If the global limit is reached, the runtime waits globally.
         """
         if self._shutting_down:
             return
 
-        state = self._get_group(group_jid)
+        state = self._registry.bind(target)
 
         if state.active:
             state.pending_messages = True
-            logger.debug("Container active, message queued", group_jid=group_jid)
+            logger.debug(
+                "Runtime active, message queued",
+                runtime_id=target.id,
+                chat_jid=target.chat_jid,
+            )
             return
 
         if self._active_count >= get_settings().container.max_concurrent:
             state.pending_messages = True
-            if group_jid not in self._waiting_groups:
-                self._waiting_groups.append(group_jid)
+            if target.id not in self._waiting_groups:
+                self._waiting_groups.append(target.id)
             logger.debug(
                 "At concurrency limit, message queued",
-                group_jid=group_jid,
+                runtime_id=target.id,
+                chat_jid=target.chat_jid,
                 active_count=self._active_count,
             )
             return
@@ -101,14 +91,22 @@ class GroupQueue:
         state.pending_messages = False
         self._active_count += 1
         create_background_task(
-            self._run_for_group(group_jid, "messages"),
-            name=f"process-messages-{group_jid[:20]}",
+            self._run_for_runtime(target.id, "messages"),
+            name=f"process-messages-{target.id[:20]}",
         )
 
-    def enqueue_task(self, group_jid: str, task_id: str, fn: Callable[[], Awaitable[None]]) -> bool:
-        """Queue a scheduled task for *group_jid*.
+    def enqueue_task(
+        self,
+        target: RuntimeTarget,
+        task_id: str,
+        fn: Callable[[], Awaitable[None]],
+    ) -> bool:
+        return self._enqueue_task(target, QueuedTask(id=task_id, fn=fn))
 
-        Deduplicates by *task_id* — if the same task is already queued it is
+    def _enqueue_task(self, target: RuntimeTarget, task: QueuedTask) -> bool:
+        """Queue autonomous work for *target*.
+
+        Deduplicates by logical task ID — if the same task is active or queued it is
         silently skipped.  Respects the same concurrency and per-group
         serialization rules as ``enqueue_message_check``.
 
@@ -118,34 +116,35 @@ class GroupQueue:
         if self._shutting_down:
             return False
 
-        state = self._get_group(group_jid)
+        state = self._registry.bind(target)
 
-        # Prevent double-queuing of the same task
-        if any(t.id == task_id for t in state.pending_tasks):
+        if (state.active_task is not None and state.active_task.id == task.id) or any(
+            pending.id == task.id for pending in state.pending_tasks
+        ):
             logger.debug(
                 "Task already queued, skipping",
-                group_jid=group_jid,
-                task_id=task_id,
+                runtime_id=target.id,
+                task_id=task.id,
             )
             return False
 
         if state.active:
-            state.pending_tasks.append(QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
+            state.pending_tasks.append(task)
             logger.debug(
-                "Container active, task queued",
-                group_jid=group_jid,
-                task_id=task_id,
+                "Runtime active, task queued",
+                runtime_id=target.id,
+                task_id=task.id,
             )
             return True
 
         if self._active_count >= get_settings().container.max_concurrent:
-            state.pending_tasks.append(QueuedTask(id=task_id, group_jid=group_jid, fn=fn))
-            if group_jid not in self._waiting_groups:
-                self._waiting_groups.append(group_jid)
+            state.pending_tasks.append(task)
+            if target.id not in self._waiting_groups:
+                self._waiting_groups.append(target.id)
             logger.debug(
                 "At concurrency limit, task queued",
-                group_jid=group_jid,
-                task_id=task_id,
+                runtime_id=target.id,
+                task_id=task.id,
                 active_count=self._active_count,
             )
             return True
@@ -153,139 +152,124 @@ class GroupQueue:
         # Eagerly mark as active before scheduling
         state.active = True
         state.active_is_task = True
+        state.active_task = task
         self._active_count += 1
         create_background_task(
-            self._run_task(group_jid, QueuedTask(id=task_id, group_jid=group_jid, fn=fn)),
-            name=f"run-task-{task_id[:20]}",
+            self._run_task(target.id, task),
+            name=f"run-task-{task.id[:20]}",
         )
         return True
 
     async def run_serialized_task(
         self,
-        group_jid: str,
+        target: RuntimeTarget,
         task_id: str,
         fn: Callable[[], Awaitable[_ResultT]],
     ) -> _ResultT:
-        return await await_queued_task(self.enqueue_task, group_jid, task_id, fn)
+        return await await_queued_task(
+            self._enqueue_task,
+            self._cancel_queued_task,
+            target,
+            task_id,
+            fn,
+        )
 
-    async def run_message_turn(self, group_jid: str) -> ProcessGroupResult:
+    def _cancel_queued_task(self, runtime_id: RuntimeId, task: QueuedTask) -> bool:
+        """Remove queued work whose awaiting owner was cancelled."""
+        state = self._registry.get(runtime_id)
+        if state is None:
+            return False
+        for pending in state.pending_tasks:
+            if pending is not task:
+                continue
+            state.pending_tasks.remove(pending)
+            return True
+        return False
+
+    async def run_message_turn(self, target: RuntimeTarget) -> TurnOutcome:
         return await await_message_turn(
-            self._get_group,
+            self._registry.bind,
             self.enqueue_message_check,
-            group_jid,
+            target,
             shutting_down=self._shutting_down,
         )
 
-    def register_process(  # noqa: PLR0913, RUF100 - process registration records all queue cleanup state.
+    def register_process(
         self,
-        group_jid: str,
+        runtime_id: RuntimeId,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
-        group_folder: str | None = None,
         invocation_ts: float = 0.0,
         *,
         is_host_process: bool = False,
     ) -> None:
-        """Associate a running container process with a group.
-
-        Called by ``run_container_agent`` so the queue can stop the container
-        on interrupts, send IPC messages, and track liveness.
-        """
-        state = self._get_group(group_jid)
-        state.register_process(
+        self._processes.register_process(
+            runtime_id,
             proc,
             container_name,
-            group_folder,
             invocation_ts,
             is_host_process=is_host_process,
         )
 
-    def acquire_host_process(self, group_jid: str) -> HostProcessLease:
-        """Reserve queue state for one direct host process before it is spawned."""
-        self._next_host_process_generation += 1
-        return self._get_group(group_jid).acquire_host_process(
-            group_jid,
-            self._next_host_process_generation,
-        )
+    def acquire_host_process(self, target: RuntimeTarget) -> HostProcessLease:
+        return self._processes.acquire_host_process(target)
 
-    def register_host_process(  # noqa: PLR0913, RUF100 - records every host process attribute.
+    def register_host_process(
         self,
         lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
-        group_folder: str | None = None,
         invocation_ts: float = 0.0,
     ) -> bool:
-        """Attach a spawned host process to its pre-acquired queue lease."""
-        return self._get_group(lease.group_jid).register_host_process(
+        return self._processes.register_host_process(
             lease,
             proc,
             container_name,
-            group_folder,
             invocation_ts,
         )
 
     def release_host_process(self, lease: HostProcessLease) -> bool:
-        """Release only the direct host process that owns *lease*."""
-        return self._get_group(lease.group_jid).release_host_process(lease)
+        return self._processes.release_host_process(lease)
 
-    def defer_interrupt_until_tool_result(self, group_jid: str) -> None:
-        """Queue an active turn for interruption after its current tool completes."""
-        state = self._get_group(group_jid)
-        if state.active:
-            state.defer_interrupt_until_tool_result = True
-            state.pending_messages = True
+    def defer_interrupt_until_tool_result(self, runtime_id: RuntimeId) -> None:
+        self._processes.defer_interrupt_until_tool_result(runtime_id)
 
-    async def interrupt_after_tool_result(self, group_jid: str) -> bool:
-        """Interrupt a queued active turn only after a completed tool event."""
-        state = self._get_group(group_jid)
-        if not state.defer_interrupt_until_tool_result:
+    async def interrupt_after_tool_result(self, runtime_id: RuntimeId) -> bool:
+        if not self._processes.claim_deferred_interrupt(runtime_id):
             return False
-        state.defer_interrupt_until_tool_result = False
-        state.boundary_interrupt_requested = True
-        await self.stop_active_process(group_jid)
+        await self.stop_active_process(runtime_id)
         return True
 
-    def boundary_interrupt_requested(self, group_jid: str) -> bool:
-        """Whether the active host process was stopped at a tool boundary."""
-        return self._get_group(group_jid).boundary_interrupt_requested
+    def boundary_interrupt_requested(self, runtime_id: RuntimeId) -> bool:
+        return self._processes.boundary_interrupt_requested(runtime_id)
 
-    def is_active_task(self, group_jid: str) -> bool:
-        """Check if the active container for this group is a scheduled task."""
-        state = self._get_group(group_jid)
-        return state.active and state.active_is_task
+    def is_active_task(self, runtime_id: RuntimeId) -> bool:
+        """Check whether a scheduled task owns this runtime's active slot."""
+        state = self._registry.get(runtime_id)
+        return bool(state is not None and state.active and state.active_is_task)
 
-    def has_activity(self, group_jid: str) -> bool:
-        """Return whether a thread has active or queued work."""
-        state = self._get_group(group_jid)
-        return bool(
-            state.active
-            or state.pending_messages
-            or state.pending_tasks
-            or state.host_process_lease is not None
-        )
+    def has_activity(self, runtime_id: RuntimeId) -> bool:
+        """Return whether a runtime has active or queued work."""
+        state = self._registry.get(runtime_id)
+        return self._registry.has_activity(state) if state is not None else False
 
-    def has_active_run(self, group_jid: str) -> bool:
-        """Return whether a process or queue-owned turn can still finalize."""
-        state = self._get_group(group_jid)
-        return state.active or (state.process is not None and state.process.returncode is None)
+    def has_active_run(self, runtime_id: RuntimeId) -> bool:
+        return self._processes.has_active_run(runtime_id)
 
     def has_active_host_process(self, group_folder: str) -> bool:
-        """Return whether a direct host agent is waiting for this group's IPC."""
-        return any(
-            state.active and state.is_host_process and state.group_folder == group_folder
-            for state in self._groups.values()
-        )
+        return self._processes.has_active_host_process(group_folder)
 
     def snapshot(self) -> dict[str, dict[str, object]]:
         """Return a read-only snapshot of queue state for status reporting.
 
-        Returns a dict keyed by group JID, each containing the group's
-        active/pending state.  Also includes ``_meta`` with global counters.
+        Returns a dict keyed by runtime ID, each containing the runtime's current
+        control binding and activity state, plus ``_meta`` global counters.
         """
         per_group: dict[str, dict[str, object]] = {}
-        for jid, state in self._groups.items():
-            per_group[jid] = {
+        for runtime_id, state in self._registry.states.items():
+            per_group[runtime_id] = {
+                "chat_jid": state.target.chat_jid,
+                "folder": state.target.folder,
                 "active": state.active,
                 "is_task": state.active_is_task,
                 "pending_messages": state.pending_messages,
@@ -297,136 +281,86 @@ class GroupQueue:
         }
         return per_group
 
-    def send_message(self, group_jid: str, text: str) -> bool:
-        """Send a follow-up message to the active container via IPC file."""
-        state = self._get_group(group_jid)
-        if not state.active or not state.group_folder:
-            return False
-        if state.is_host_process:
-            # Host runners have no IPC watcher. Returning False leaves the
-            # message pending for the next safe tool-result boundary instead.
-            return False
+    def send_message(self, runtime_id: RuntimeId, text: str) -> bool:
+        return self._processes.send_message(runtime_id, text)
 
-        try:
-            write_ipc_message(state.group_folder, text)
-        except OSError as exc:
-            logger.warning(
-                "Failed to write IPC message to container",
-                group_jid=group_jid,
-                err=str(exc),
-            )
-            return False
-        else:
-            return True
+    def close_stdin(self, runtime_id: RuntimeId) -> None:
+        self._processes.close_stdin(runtime_id)
 
-    def close_stdin(self, group_jid: str) -> None:
-        """Signal the active container to wind down by writing a close sentinel."""
-        state = self._get_group(group_jid)
-        if not state.active or not state.group_folder:
-            return
+    async def stop_active_process(self, runtime_id: RuntimeId) -> None:
+        await self._processes.stop_active_process(runtime_id)
 
-        try:
-            write_ipc_close_sentinel(state.group_folder)
-        except OSError as exc:
-            logger.warning(
-                "Failed to write close sentinel to container",
-                group_jid=group_jid,
-                err=str(exc),
-            )
+    async def stop_active_process_for_control(self, runtime_id: RuntimeId) -> None:
+        await self._processes.stop_active_process_for_control(runtime_id)
 
-    async def stop_active_process(self, group_jid: str) -> None:
-        """Force-stop the active container for a group.
+    def clear_pending_tasks(self, runtime_id: RuntimeId) -> None:
+        """Drop all pending autonomous work for a runtime."""
+        state = self._registry.get(runtime_id)
+        if state is not None:
+            self._cancel_pending_tasks(state)
 
-        Destroys any persistent session first, then writes the cooperative
-        _close sentinel and calls ``docker stop`` with a 15s timeout before killing.
-        """
-        state = self._get_group(group_jid)
-
-        proc = state.process
-        if state.is_host_process:
-            if state.active and proc is not None:
-                await stop_host_process(proc)
-            return
-
-        # Destroy persistent session (handles its own graceful stop + docker rm)
-        if state.group_folder:
-            await container_session.destroy_session(state.group_folder)
-
-        if not state.active:
-            return
-
-        # Cooperative signal first
-        self.close_stdin(group_jid)
-
-        # Force-stop a process that survived persistent-session cleanup.
-        container_name = state.container_name
-        if proc and container_name and proc.returncode is None:
-            await container_process.graceful_stop(proc, container_name)
-
-    async def stop_active_process_for_control(self, group_jid: str) -> None:
-        """Stop a turn immediately and label host-runner exit as human-controlled."""
-        self._get_group(group_jid).boundary_interrupt_requested = True
-        await self.stop_active_process(group_jid)
-
-    def clear_pending_tasks(self, group_jid: str) -> None:
-        """Drop all pending tasks for a group."""
-        state = self._get_group(group_jid)
-        state.pending_tasks.clear()
+    @staticmethod
+    def _cancel_pending_tasks(state: GroupState) -> None:
+        while state.pending_tasks:
+            state.pending_tasks.popleft().cancel()
 
     async def _process_group_messages(
         self,
-        group_jid: str,
         state: GroupState,
-    ) -> ProcessGroupResult:
-        """Process messages for a group and schedule retry on failure."""
+    ) -> TurnOutcome:
+        """Process messages for a runtime and schedule retry on failure."""
         if not self._process_messages_fn:
-            return False
+            return TurnOutcome.RETRY
 
-        result = await self._process_messages_fn(group_jid)
-        if result is TURN_PAUSED or result is TURN_RESET:
+        result = await self._process_messages_fn(state.target.chat_jid)
+        if result in {
+            TurnOutcome.COMPLETED,
+            TurnOutcome.PAUSED,
+            TurnOutcome.RESET,
+        }:
             state.retry_count = 0
-        elif result is CONTINUE_AFTER_SAFE_INTERRUPT:
+        elif result is TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT:
             state.retry_count = 0
             state.pending_messages = True
-        elif result:
-            state.retry_count = 0
-        else:
-            self._schedule_retry(group_jid, state)
+        elif result is TurnOutcome.RETRY:
+            self._schedule_retry(state)
         return result
 
-    async def _run_for_group(self, group_jid: str, reason: str) -> None:
-        """Run the process_messages_fn for a group.
+    async def _run_for_runtime(self, runtime_id: RuntimeId, reason: str) -> None:
+        """Run the message processor for one runtime.
 
         State is already marked active by the caller (enqueue_message_check
-        or _drain_group). We only clean up in finally.
+        or drain). We only clean up in finally.
         """
-        state = self._get_group(group_jid)
+        state = self._registry.require(runtime_id)
 
         logger.debug(
-            "Starting container for group",
-            group_jid=group_jid,
+            "Starting agent for runtime",
+            runtime_id=runtime_id,
+            chat_jid=state.target.chat_jid,
             reason=reason,
             active_count=self._active_count,
         )
 
-        result: ProcessGroupResult = False
+        result = TurnOutcome.RETRY
         error: BaseException | None = None
         try:
-            result = await self._process_group_messages(group_jid, state)
+            result = await self._process_group_messages(state)
         except PolicyDeniedError as exc:
             # Deterministic failure — retrying won't change the outcome
+            result = TurnOutcome.COMPLETED
             logger.warning(
-                "Policy denial for group, not retrying",
-                group_jid=group_jid,
+                "Policy denial for runtime, not retrying",
+                runtime_id=runtime_id,
                 err=str(exc),
             )
         except Exception:  # noqa: BLE001, RUF100 - message-processing is a task boundary; retry happens on drain.
-            error = RuntimeError(f"Error processing messages for {group_jid}")
+            error = RuntimeError(f"Error processing messages for runtime {runtime_id}")
             logger.exception(
-                "Error processing messages for group",
-                group_jid=group_jid,
+                "Error processing messages for runtime",
+                runtime_id=runtime_id,
             )
-            self._schedule_retry(group_jid, state)
+            self._schedule_retry(state)
         finally:
             waiters, state.message_waiters = state.message_waiters, []
             for waiter in waiters:
@@ -438,18 +372,18 @@ class GroupQueue:
                     waiter.set_result(result)
             state.release()
             self._active_count -= 1
-            self._drain_group(group_jid)
+            self._drain_runtime(runtime_id)
 
-    async def _run_task(self, group_jid: str, task: QueuedTask) -> None:
+    async def _run_task(self, runtime_id: RuntimeId, task: QueuedTask) -> None:
         """Run a queued task.
 
         State is already marked active by the caller.
         """
-        state = self._get_group(group_jid)
+        state = self._registry.require(runtime_id)
 
         logger.debug(
             "Running queued task",
-            group_jid=group_jid,
+            runtime_id=runtime_id,
             task_id=task.id,
             active_count=self._active_count,
         )
@@ -459,7 +393,7 @@ class GroupQueue:
         except Exception:  # noqa: BLE001, RUF100 - task execution is a queue boundary and failures stay scoped.
             logger.exception(
                 "Error running task",
-                group_jid=group_jid,
+                runtime_id=runtime_id,
                 task_id=task.id,
             )
         finally:
@@ -467,19 +401,20 @@ class GroupQueue:
             # container — prevents the next container from seeing
             # duplicates of "btw " messages that were best-effort
             # forwarded but never read by the now-dead task container.
-            clean_ipc_input_dir(state.group_folder)
+            clean_ipc_input_dir(state.target.folder)
             state.release()
             self._active_count -= 1
-            self._drain_group(group_jid)
+            self._drain_runtime(runtime_id)
 
-    def _schedule_retry(self, group_jid: str, state: GroupState) -> None:
+    def _schedule_retry(self, state: GroupState) -> None:
         """Re-enqueue a failed message check after exponential backoff."""
+        runtime_id = state.target.id
         s = get_settings()
         state.retry_count += 1
         if state.retry_count > s.queue.max_retries:
             logger.error(
                 "Max retries exceeded, dropping messages (will retry on next incoming message)",
-                group_jid=group_jid,
+                runtime_id=runtime_id,
                 retry_count=state.retry_count,
             )
             state.retry_count = 0
@@ -488,25 +423,26 @@ class GroupQueue:
         delay = s.queue.base_retry_seconds * (2 ** (state.retry_count - 1))
         logger.info(
             "Scheduling retry with backoff",
-            group_jid=group_jid,
+            runtime_id=runtime_id,
             retry_count=state.retry_count,
             delay_seconds=delay,
         )
 
         async def _retry() -> None:
             await asyncio.sleep(delay)
-            if not self._shutting_down:
-                self.enqueue_message_check(group_jid)
+            current = self._registry.get(runtime_id)
+            if not self._shutting_down and current is not None:
+                self.enqueue_message_check(current.target)
 
-        create_background_task(_retry(), name=f"retry-{group_jid[:20]}")
+        create_background_task(_retry(), name=f"retry-{runtime_id[:20]}")
 
-    def _start_next_pending(self, group_jid: str) -> bool:
-        """Try to start the next pending item for *group_jid*.
+    def _start_next_pending(self, runtime_id: RuntimeId) -> bool:
+        """Try to start the next pending item for *runtime_id*.
 
         Messages are drained before tasks (human > autonomous priority).
-        Returns True if work was started, False if the group has nothing pending.
+        Returns True if work was started, False if the runtime has nothing pending.
         """
-        state = self._get_group(group_jid)
+        state = self._registry.require(runtime_id)
 
         if state.pending_messages:
             state.active = True
@@ -514,8 +450,8 @@ class GroupQueue:
             state.pending_messages = False
             self._active_count += 1
             create_background_task(
-                self._run_for_group(group_jid, "drain"),
-                name=f"drain-messages-{group_jid[:20]}",
+                self._run_for_runtime(runtime_id, "drain"),
+                name=f"drain-messages-{runtime_id[:20]}",
             )
             return True
 
@@ -523,35 +459,39 @@ class GroupQueue:
             task = state.pending_tasks.popleft()
             state.active = True
             state.active_is_task = True
+            state.active_task = task
             self._active_count += 1
             create_background_task(
-                self._run_task(group_jid, task),
+                self._run_task(runtime_id, task),
                 name=f"drain-task-{task.id[:20]}",
             )
             return True
 
         return False
 
-    def _drain_group(self, group_jid: str) -> None:
-        """After a run finishes, start the next pending item for this group.
+    def _drain_runtime(self, runtime_id: RuntimeId) -> None:
+        """After a run finishes, start the next pending item for this runtime.
 
-        If nothing is pending for this group, drains the global waiting queue.
+        If nothing is pending for this runtime, drain the global waiting queue.
         """
         if self._shutting_down:
             return
 
-        if not self._start_next_pending(group_jid):
+        if not self._start_next_pending(runtime_id):
             self._drain_waiting()
 
     def _drain_waiting(self) -> None:
         """Start runs for waiting groups until the concurrency limit is hit."""
         while self._waiting_groups and self._active_count < get_settings().container.max_concurrent:
-            next_jid = self._waiting_groups.popleft()
-            self._start_next_pending(next_jid)
+            runtime_id = self._waiting_groups.popleft()
+            self._start_next_pending(runtime_id)
 
     async def shutdown(self) -> None:
         self._shutting_down = True
+        for state in self._registry.values():
+            self._cancel_pending_tasks(state)
+            state.cancel_message_waiters()
         await shutdown_queue_processes(
-            self._groups,
+            self._registry.states,
             active_count=self._active_count,
         )

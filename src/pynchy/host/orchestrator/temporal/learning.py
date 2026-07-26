@@ -17,6 +17,7 @@ from pynchy.host.learning.packet_models import (
     LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
 )
 from pynchy.host.learning.review_runner import run_learning_review as _run_learning_review_agent
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,  # noqa: TC001, RUF100 - beartype resolves Temporal learning annotations at runtime.
 )
@@ -94,7 +95,6 @@ async def _run_agent_via_queue(  # noqa: PLR0913, RUF100 - adapter mirrors Sched
 ) -> str:
     loop = asyncio.get_running_loop()
     result_future: asyncio.Future[str] = loop.create_future()
-    group_jid = chat_jid
 
     async def run_queued_agent() -> None:
         if result_future.cancelled():
@@ -123,7 +123,7 @@ async def _run_agent_via_queue(  # noqa: PLR0913, RUF100 - adapter mirrors Sched
                 result_future.set_result(result)
 
     accepted = deps.queue.enqueue_task(
-        group_jid,
+        RuntimeTarget.from_workspace(group),
         f"learning-review-{uuid4().hex}",
         run_queued_agent,
     )

@@ -6,6 +6,7 @@ All hooks use the "pynchy" namespace and are validated by pluggy at registration
 
 from __future__ import annotations
 
+from collections.abc import Awaitable  # noqa: TC003, RUF100 - hook contracts resolve at runtime.
 from typing import TYPE_CHECKING
 
 import pluggy
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
     from pynchy.plugins.speech import SpeechSynthesizer
     from pynchy.plugins.tunnels import TunnelProvider
     from pynchy.plugins.webhooks import WebhookRoute
-    from pynchy.types import Channel
+    from pynchy.types import Channel, WorkspaceProfile
 
 hookspec = pluggy.HookspecMarker("pynchy")
 
@@ -215,6 +216,14 @@ class PynchySpec:
                 - close() -> coroutine: async teardown
             Or None if this plugin doesn't provide one.
         """
+
+    @hookspec
+    def pynchy_before_context_reset(
+        self,
+        group: WorkspaceProfile,
+    ) -> Awaitable[None]:
+        """Settle one plugin-owned concern before destructive session cleanup."""
+        raise NotImplementedError
 
     @hookspec
     def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:

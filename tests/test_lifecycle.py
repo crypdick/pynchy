@@ -189,7 +189,7 @@ async def test_run_app_waits_for_signal_shutdown_cleanup(monkeypatch, tmp_path) 
     def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[dict[str, list[str]] | None]:
         return _completed_awaitable({})
 
-    def fake_prepare_recovery() -> Awaitable[object]:
+    def fake_prepare_recovery(_app: PynchyApp) -> Awaitable[object]:
         recovery_order.append("prepare")
         return _completed_awaitable(
             MagicMock(spec=lifecycle.startup_handler.InterruptedTurnRecovery)

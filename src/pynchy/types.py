@@ -29,6 +29,7 @@ _CONTAINER_MOUNTS_ERROR = "container_config.additional_mounts: expected list, go
 # boundaries — state-layer signatures and Protocol methods — where a positional
 # swap between same-shaped arguments is most costly.
 GroupFolder = NewType("GroupFolder", str)  # workspace identity (folder under groups/)
+RuntimeId = NewType("RuntimeId", str)  # stable execution identity across control rebinding
 SessionId = NewType("SessionId", str)  # agent session handle
 ChatJid = NewType("ChatJid", str)  # canonical chat identifier
 ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
@@ -322,8 +323,6 @@ class InFlightTurn:
     interrupted_at: str | None = None
     deploy_id: str | None = None
     claimed_at: str | None = None
-    scheduled_base_chat_jid: str | None = None
-    scheduled_thread_slot: int | None = None
     conversation_claim_id: str | None = None
     input_source: str = "user"
     control_state: CheckpointControlState = CheckpointControlState.ACTIVE

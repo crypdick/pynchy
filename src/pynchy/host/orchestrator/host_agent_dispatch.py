@@ -21,6 +21,7 @@ from pynchy.host.orchestrator.host_execution import (
     prepare_host_direct_mcp_servers,
     run_host_agent_turn,
 )
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.plugins.agent_hooks import collect_agent_hook_specs, host_agent_hook_configs
 from pynchy.state import clear_session
@@ -119,7 +120,6 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
                 codex_home=codex_home,
             ),
             queue=deps.queue,
-            chat_jid=chat_jid,
-            group_folder=group.folder,
+            target=RuntimeTarget.from_workspace(group),
         )
     )

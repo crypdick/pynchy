@@ -10,12 +10,11 @@ from typing import Any, Protocol, runtime_checkable
 
 from pynchy.event_bus import AgentActivityEvent, Event
 from pynchy.host.container_manager import OnOutput  # noqa: TC001 - beartype resolves Protocols.
-from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
-from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
-    TURN_PAUSED,
-    TURN_RESET,
-    ProcessGroupResult,
+from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TurnOutcome,
 )
+from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
 from pynchy.state import (
     begin_in_flight_turn,
@@ -81,8 +80,6 @@ class MessageTurnStart:
     input_start_cursor: str
     input_end_cursor: str
     task_id: str | None = None
-    scheduled_base_chat_jid: str | None = None
-    scheduled_thread_slot: int | None = None
     conversation_claim_id: str | None = None
     input_source: str = "user"
 
@@ -97,8 +94,6 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
     input_start_cursor = request.input_start_cursor
     input_end_cursor = request.input_end_cursor
     task_id = request.task_id
-    scheduled_base_chat_jid = request.scheduled_base_chat_jid
-    scheduled_thread_slot = request.scheduled_thread_slot
     started_at = datetime.now(UTC).isoformat()
     session_id = await get_session(GroupFolder(group.folder))
     turn = InFlightTurn(
@@ -113,8 +108,6 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
         task_id=task_id,
         session_id=str(session_id) if session_id else None,
         claimed_at=started_at,
-        scheduled_base_chat_jid=scheduled_base_chat_jid,
-        scheduled_thread_slot=scheduled_thread_slot,
         conversation_claim_id=request.conversation_claim_id,
         input_source=request.input_source,
     )
@@ -197,14 +190,14 @@ async def requested_control_outcome(
     turn_id: str,
     *,
     agent_succeeded: bool,
-) -> ProcessGroupResult | None:
+) -> TurnOutcome | None:
     """Finish a requested control transition after its agent process exits."""
     turn = await get_in_flight_turn(turn_id)
     if turn is None:
         return None
     if turn.control_state is CheckpointControlState.RESET_REQUESTED:
         await clear_in_flight_turn(turn_id)
-        return TURN_RESET
+        return TurnOutcome.RESET
     if (
         turn.control_state
         in {
@@ -214,7 +207,7 @@ async def requested_control_outcome(
         and not agent_succeeded
     ):
         await finalize_in_flight_pause(turn_id)
-        return TURN_PAUSED
+        return TurnOutcome.PAUSED
     return None
 
 
@@ -226,16 +219,18 @@ async def note_output_sent(turn_id: str, *, already_recorded: bool) -> None:
 
 async def _run_resumed_agent(
     deps: InFlightMessageDeps,
+    target: RuntimeTarget,
     group: WorkspaceProfile,
     turn: InFlightTurn,
     on_output: OnOutput,
 ) -> str:
-    await deps.set_typing_on_channels(turn.chat_jid, is_typing=True)
-    deps.emit(AgentActivityEvent(chat_jid=turn.chat_jid, active=True))
+    current_chat_jid = target.chat_jid
+    await deps.set_typing_on_channels(current_chat_jid, is_typing=True)
+    deps.emit(AgentActivityEvent(chat_jid=current_chat_jid, active=True))
     try:
         return await deps.run_agent(
             group,
-            turn.chat_jid,
+            current_chat_jid,
             semantic_resume_messages(turn),
             on_output,
             input_source=turn.input_source,
@@ -243,20 +238,23 @@ async def _run_resumed_agent(
             resume_session_id=turn.session_id,
         )
     finally:
-        await deps.set_typing_on_channels(turn.chat_jid, is_typing=False)
-        deps.emit(AgentActivityEvent(chat_jid=turn.chat_jid, active=False))
+        await deps.set_typing_on_channels(current_chat_jid, is_typing=False)
+        deps.emit(AgentActivityEvent(chat_jid=current_chat_jid, active=False))
 
 
 async def resume_interrupted_message_turn(
     deps: InFlightMessageDeps,
+    target: RuntimeTarget,
     group: WorkspaceProfile,
     turn: InFlightTurn,
-    process_pending: Callable[[str], Awaitable[ProcessGroupResult]],
-) -> ProcessGroupResult:
+    process_pending: Callable[[str], Awaitable[TurnOutcome]],
+) -> TurnOutcome:
     """Resume one claimed interactive/reset turn and then drain newer user input."""
+    current_chat_jid = target.chat_jid
     logger.info(
         "Resuming interrupted agent turn",
-        chat_jid=turn.chat_jid,
+        chat_jid=current_chat_jid,
+        checkpoint_chat_jid=turn.chat_jid,
         group=group.folder,
         turn_id=turn.turn_id,
         work_kind=turn.work_kind.value,
@@ -268,7 +266,7 @@ async def resume_interrupted_message_turn(
     async def on_output(result: ContainerOutput) -> None:
         nonlocal output_sent, had_error
         sent = await deps.handle_streamed_output(
-            turn.chat_jid,
+            current_chat_jid,
             group,
             result,
             turn_id=turn.turn_id,
@@ -280,7 +278,7 @@ async def resume_interrupted_message_turn(
             had_error = True
 
     try:
-        agent_result = await _run_resumed_agent(deps, group, turn, on_output)
+        agent_result = await _run_resumed_agent(deps, target, group, turn, on_output)
     except asyncio.CancelledError:
         if control_outcome := await requested_control_outcome(
             turn.turn_id,
@@ -307,15 +305,15 @@ async def resume_interrupted_message_turn(
         await release_in_flight_turn_claim(turn.turn_id)
         logger.warning(
             "Interrupted agent turn requested retry",
-            chat_jid=turn.chat_jid,
+            chat_jid=current_chat_jid,
             turn_id=turn.turn_id,
         )
-        return False
+        return TurnOutcome.RETRY
 
-    if turn.input_end_cursor:
+    if turn.input_end_cursor and turn.chat_jid == current_chat_jid:
         await complete_turn_with_cursor(
             deps,
-            turn.chat_jid,
+            current_chat_jid,
             turn.input_end_cursor,
             turn.turn_id,
             conversation_claim_id=turn.conversation_claim_id,
@@ -328,7 +326,7 @@ async def resume_interrupted_message_turn(
 
     logger.info(
         "Interrupted agent turn completed",
-        chat_jid=turn.chat_jid,
+        chat_jid=current_chat_jid,
         turn_id=turn.turn_id,
     )
-    return await process_pending(turn.chat_jid)
+    return await process_pending(current_chat_jid)

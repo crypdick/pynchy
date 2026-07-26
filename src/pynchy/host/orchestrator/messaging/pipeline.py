@@ -23,6 +23,9 @@ from pynchy.conversation.events import new_turn_id
 from pynchy.conversation.models import ConversationClaimId
 from pynchy.event_bus import AgentActivityEvent
 from pynchy.host.learning import capture as learning_capture
+from pynchy.host.orchestrator.execution_outcomes import (
+    TurnOutcome,
+)
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor, complete_turn_with_cursor
 from pynchy.host.orchestrator.messaging.deps import MessageHandlerDeps
@@ -41,11 +44,6 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
     begin_message_turn,
 )
-from pynchy.host.orchestrator.messaging.outcomes import (
-    CONTINUE_AFTER_SAFE_INTERRUPT,
-    ContinueAfterSafeInterrupt,
-    ProcessGroupResult,
-)
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
 from pynchy.host.orchestrator.messaging.turn_control import (
     AgentBatch,
@@ -53,6 +51,7 @@ from pynchy.host.orchestrator.messaging.turn_control import (
     prepare_agent_batch,
     run_interactive_agent,
 )
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.state import (
     clear_in_flight_turn,
@@ -188,7 +187,9 @@ def _register_idle_zzz_callback(
     session.set_idle_callback(_send_zzz)
 
 
-async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bool:
+async def _finalize_cursor_and_retry(
+    request: _FinalizeCursorRetryRequest,
+) -> TurnOutcome:
     """Advance the cursor (or signal retry) based on how the agent run went.
 
     Returns True once the batch is considered handled, False if GroupQueue
@@ -234,7 +235,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
             request.chat_jid, "⚠️ Agent error occurred. Will retry on next message."
         )
         logger.warning("Agent error, cursor unchanged for retry", group=request.group.name)
-        return False
+        return TurnOutcome.RETRY
 
     await _execute_deferred_host_controls(
         request.deps,
@@ -250,7 +251,7 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
             "Agent error after output was sent, advanced cursor to prevent retry duplicate",
             group=request.group.name,
         )
-        return True
+        return TurnOutcome.COMPLETED
 
     await learning_capture.start_completed_turn_learning_review(
         request.s,
@@ -262,12 +263,12 @@ async def _finalize_cursor_and_retry(request: _FinalizeCursorRetryRequest) -> bo
         get_messages_since,
     )
 
-    return True
+    return TurnOutcome.COMPLETED
 
 
 async def _continue_after_host_turn(
     request: _FinalizeCursorRetryRequest,
-) -> ContinueAfterSafeInterrupt | None:
+) -> TurnOutcome | None:
     """Commit a completed host boundary before Temporal starts its next activity."""
     if request.agent_result == "interrupted":
         # The host process was stopped only after Codex reported a completed
@@ -295,11 +296,11 @@ async def _continue_after_host_turn(
             request.group,
             request.missed_messages,
         )
-        return CONTINUE_AFTER_SAFE_INTERRUPT
+        return TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
 
     if request.agent_result == "success_with_pending_input":
         await _finalize_cursor_and_retry(replace(request, agent_result="success"))
-        return CONTINUE_AFTER_SAFE_INTERRUPT
+        return TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
 
     return None
 
@@ -372,11 +373,11 @@ async def _announce_processing_complete(
 async def process_group_messages(
     deps: MessageHandlerDeps,
     chat_jid: str,
-) -> ProcessGroupResult:
+) -> TurnOutcome:
     """Process all pending messages for a group. Called by GroupQueue."""
     s, group = get_settings(), deps.workspaces.get(chat_jid)
     if not group:
-        return True
+        return TurnOutcome.COMPLETED
 
     prepared = await prepare_agent_batch(
         deps,
@@ -452,3 +453,14 @@ async def process_group_messages(
     except BaseException:
         await release_in_flight_turn_claim(turn_id)
         raise
+
+
+async def run_queued_message_turn(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+) -> TurnOutcome:
+    """Enter the shared runtime queue before processing interactive messages."""
+    group = deps.workspaces.get(chat_jid)
+    if group is None:
+        return TurnOutcome.COMPLETED
+    return await deps.queue.run_message_turn(RuntimeTarget.from_workspace(group))

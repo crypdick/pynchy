@@ -39,6 +39,9 @@ from pynchy.plugins.integrations.linear_boards import (
     list_workspace_todos,
 )
 from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
+from pynchy.plugins.integrations.linear_session_reset import (
+    cancel_linear_execution_for_reset,
+)
 from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
 from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
@@ -46,7 +49,7 @@ from pynchy.plugins.integrations.linear_work_item_actions import host_action_reg
 from pynchy.plugins.webhooks import (
     WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
 )
-from pynchy.types import ServiceTrustConfig
+from pynchy.types import ServiceTrustConfig, WorkspaceProfile
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 
@@ -125,6 +128,11 @@ class LinearMcpPlugin:
     def pynchy_webhook_routes(self) -> tuple[WebhookRoute, ...]:
         """Expose configured Linear webhook subscriptions to the host ingress."""
         return linear_webhook_routes()
+
+    @hookimpl
+    async def pynchy_before_context_reset(self, group: WorkspaceProfile) -> None:
+        """Settle Linear execution ownership before a session is cleared."""
+        await cancel_linear_execution_for_reset(group)
 
 
 def build_app(*, workspace: str | None = None) -> object:

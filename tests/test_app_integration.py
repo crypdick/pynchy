@@ -21,6 +21,9 @@ from pynchy.host.container_manager.process import is_query_done_pulse
 from pynchy.host.container_manager.session import destroy_all_sessions, get_session
 from pynchy.host.orchestrator import startup_handler
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.dep_factory import make_ipc_deps
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.state import get_chat_history, set_router_state, store_message
@@ -370,6 +373,29 @@ class TestAppImports:
         assert ChannelPluginContext is not None
 
 
+async def test_ipc_context_reset_uses_canonical_lifecycle(app: PynchyApp) -> None:
+    app.sessions["test-group"] = "session-before-reset"
+
+    with (
+        patch.object(app, "prepare_context_reset", new_callable=AsyncMock) as prepare,
+        patch(
+            "pynchy.host.orchestrator.session_handler.destroy_session",
+            new_callable=AsyncMock,
+        ) as destroy,
+        patch(
+            "pynchy.host.orchestrator.session_handler.clear_session",
+            new_callable=AsyncMock,
+        ) as clear,
+    ):
+        await make_ipc_deps(app).clear_session("test-group")
+
+    prepare.assert_awaited_once_with(app.workspaces["group@g.us"])
+    destroy.assert_awaited_once_with("test-group")
+    clear.assert_awaited_once_with("test-group")
+    assert "test-group" not in app.sessions
+    assert "test-group" in app.session_cleared
+
+
 class TestFirstRunBootstrap:
     """Verify first-run workspace bootstrap requires a real channel."""
 
@@ -422,7 +448,7 @@ class TestProcessGroupMessages:
             result = await app.process_group_messages("group@g.us")
 
         await driver
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         assert app.sessions.get("test-group") == "sess-1"
         image_check.assert_called_once_with()
         # Output should have been sent via the channel
@@ -459,7 +485,7 @@ class TestProcessGroupMessages:
             result = await app.process_group_messages("group@g.us")
 
         await driver
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         _assert_trace_order(_sent_texts(channel))
 
     async def test_processes_messages_without_trigger(self, app: PynchyApp):
@@ -471,7 +497,7 @@ class TestProcessGroupMessages:
 
         result = await app.process_group_messages("group@g.us")
 
-        assert result is False
+        assert result is TurnOutcome.RETRY
         run_agent.assert_awaited_once()
 
     async def test_rolls_back_cursor_on_error(self, app: PynchyApp, tmp_path: Path):
@@ -505,7 +531,7 @@ class TestProcessGroupMessages:
             result = await app.process_group_messages("group@g.us")
 
         await driver
-        assert result is False  # Error → should return False for retry
+        assert result is TurnOutcome.RETRY
         # Cursor should NOT have been advanced (rolled back)
         assert not app.last_agent_timestamp.get("group@g.us", "")
 
@@ -554,7 +580,7 @@ class TestProcessGroupMessages:
             result = await app.process_group_messages("main@g.us")
 
         await driver
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
 
 
 class TestRunAgent:
@@ -580,8 +606,14 @@ class TestRunAgent:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app.run_agent(
-                group, "group@g.us", [{"message_type": "user", "content": "test prompt"}]
+            result = await app.queue.run_serialized_task(
+                RuntimeTarget.from_workspace(group),
+                "test-run-agent-success",
+                lambda: app.run_agent(
+                    group,
+                    "group@g.us",
+                    [{"message_type": "user", "content": "test prompt"}],
+                ),
             )
 
         await driver
@@ -599,8 +631,14 @@ class TestRunAgent:
             _patch_test_settings(tmp_path),
         ):
             (tmp_path / "groups" / "test-group").mkdir(parents=True)
-            result = await app.run_agent(
-                group, "group@g.us", [{"message_type": "user", "content": "test prompt"}]
+            result = await app.queue.run_serialized_task(
+                RuntimeTarget.from_workspace(group),
+                "test-run-agent-error",
+                lambda: app.run_agent(
+                    group,
+                    "group@g.us",
+                    [{"message_type": "user", "content": "test prompt"}],
+                ),
             )
 
         assert result == "error"
@@ -870,8 +908,8 @@ class TestDeployContinuationResume:
 
         started: list[tuple[str, str]] = []
 
-        def _start_turn(turn_id: str, chat_jid: str) -> Awaitable[None]:
-            started.append((turn_id, chat_jid))
+        def _start_turn(turn_id: str, group_folder: str) -> Awaitable[None]:
+            started.append((turn_id, group_folder))
             return _completed_awaitable()
 
         app.start_interrupted_turn = _start_turn  # type: ignore[method-assign]
@@ -890,8 +928,8 @@ class TestDeployContinuationResume:
             await check_deploy_continuation(app)
 
         assert set(started) == {
-            ("turn-admin", "admin-1@g.us"),
-            ("turn-team", "team@g.us"),
+            ("turn-admin", "admin-1"),
+            ("turn-team", "team"),
         }
 
         # Both groups should have a deploy resume message in history

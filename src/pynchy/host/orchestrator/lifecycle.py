@@ -333,7 +333,6 @@ async def _start_subsystems(
         )
     )
 
-    app.queue.set_process_messages_fn(app.process_group_messages)
     await start_connection_runtimes(app)
 
     plugin_manager = _require_plugin_manager(app, "_start_subsystems")
@@ -364,7 +363,7 @@ async def _prepare_state_and_subsystems(
     """Start stateful runtime owners inside the deploy rollback boundary."""
     try:
         await _reconcile_state(app)
-        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery()
+        interrupted_recovery = await startup_handler.prepare_interrupted_turn_recovery(app)
         # Provider runtimes may wake orphaned deliveries prepared above, but
         # interrupted durable turns must not be dispatched until every runtime
         # that owns their route is ready.

@@ -27,7 +27,8 @@ from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.host.orchestrator.messaging.outcomes import TURN_PAUSED
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
@@ -45,6 +46,7 @@ from pynchy.types import (
     ContainerOutput,
     InFlightTurn,
     InFlightWorkKind,
+    RuntimeId,
     ScheduledTask,
     SessionPolicy,
     TaskRunLog,
@@ -729,7 +731,7 @@ class TestRunScheduledAgent:
                     mock_deps,
                     occurrence_id="occurrence-1",
                 )
-                is False
+                is TurnOutcome.RETRY
             )
             persisted = await get_task_by_id(task.id)
             assert persisted is not None
@@ -740,7 +742,7 @@ class TestRunScheduledAgent:
                     mock_deps,
                     occurrence_id="occurrence-1",
                 )
-                is True
+                is TurnOutcome.COMPLETED
             )
             persisted = await get_task_by_id(task.id)
             assert persisted is not None
@@ -750,7 +752,7 @@ class TestRunScheduledAgent:
                     mock_deps,
                     occurrence_id="occurrence-2",
                 )
-                is True
+                is TurnOutcome.COMPLETED
             )
 
         assert mock_deps.context_resets == [
@@ -775,7 +777,7 @@ class TestRunScheduledAgent:
                     mock_deps,
                     occurrence_id="occurrence-1",
                 )
-                is True
+                is TurnOutcome.COMPLETED
             )
             assert (
                 await run_scheduled_agent(
@@ -783,7 +785,7 @@ class TestRunScheduledAgent:
                     mock_deps,
                     occurrence_id="occurrence-2",
                 )
-                is True
+                is TurnOutcome.COMPLETED
             )
 
         assert mock_deps.context_resets == []
@@ -856,7 +858,7 @@ class TestRunScheduledAgent:
             patch("pynchy.host.orchestrator.task_scheduler.update_task") as update,
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is TURN_PAUSED
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.PAUSED
 
         assert sample_task.status == "active"
         assert mock_deps.agent_runs == []
@@ -914,7 +916,7 @@ class TestRunScheduledAgent:
             ),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.COMPLETED
 
         assert len(mock_deps.agent_runs) == 1
         resumed = mock_deps.agent_runs[0]
@@ -949,8 +951,8 @@ class TestRunScheduledAgent:
             patch.object(ts_mod.activity, "info", side_effect=temporal_runs),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.COMPLETED
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.COMPLETED
 
         logs = await get_task_run_logs(sample_task.id)
         assert [log.temporal_workflow_id for log in logs] == [
@@ -995,14 +997,14 @@ class TestRunScheduledAgent:
             patch.object(ts_mod.activity, "info", side_effect=temporal_attempts),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.RETRY
             checkpoint = await get_in_flight_turn_for_task(sample_task.id)
             assert checkpoint is not None
 
-            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.RETRY
             await prepare_in_flight_turn_recovery("deploy-sha")
             mock_deps._run_agent_result = "success"
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.COMPLETED
 
         logs = list(reversed(await get_task_run_logs(sample_task.id)))
         assert [log.status for log in logs] == ["error", "error", "success"]
@@ -1266,7 +1268,10 @@ class TestRunScheduledAgent:
         ):
             first_run = asyncio.create_task(
                 mock_deps.queue.run_serialized_task(
-                    sample_task.bound_chat_jid,
+                    RuntimeTarget.from_binding(
+                        sample_group.folder,
+                        sample_task.bound_chat_jid or sample_task.chat_jid,
+                    ),
                     sample_task.id,
                     lambda: run_scheduled_agent(sample_task, mock_deps),
                 )
@@ -1274,7 +1279,10 @@ class TestRunScheduledAgent:
             await first_started.wait()
             second_run = asyncio.create_task(
                 mock_deps.queue.run_serialized_task(
-                    second_task.bound_chat_jid,
+                    RuntimeTarget.from_binding(
+                        sample_group.folder,
+                        second_task.bound_chat_jid or second_task.chat_jid,
+                    ),
                     second_task.id,
                     lambda: run_scheduled_agent(second_task, mock_deps),
                 )
@@ -1298,15 +1306,15 @@ class TestRunScheduledAgent:
         mock_deps.groups[sample_group.jid] = sample_group
         interactive_ran = asyncio.Event()
 
-        async def process_messages(_chat_jid: str) -> bool:
+        async def process_messages(_chat_jid: str) -> TurnOutcome:
             interactive_ran.set()
             await asyncio.sleep(0)
-            return True
+            return TurnOutcome.COMPLETED
 
         mock_deps.queue.set_process_messages_fn(process_messages)
 
-        async def scheduled_run(_group, chat_jid, _messages, on_output, **_kwargs):
-            mock_deps.queue.defer_interrupt_until_tool_result(chat_jid)
+        async def scheduled_run(_group, _chat_jid, _messages, on_output, **_kwargs):
+            mock_deps.queue.defer_interrupt_until_tool_result(RuntimeId(sample_group.folder))
             await on_output(
                 ContainerOutput(
                     type="tool_result",
@@ -1333,7 +1341,10 @@ class TestRunScheduledAgent:
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
             completed = await mock_deps.queue.run_serialized_task(
-                sample_task.bound_chat_jid,
+                RuntimeTarget.from_binding(
+                    sample_group.folder,
+                    sample_task.bound_chat_jid or sample_task.chat_jid,
+                ),
                 sample_task.id,
                 lambda: run_scheduled_agent(
                     sample_task,
@@ -1343,7 +1354,7 @@ class TestRunScheduledAgent:
             )
             await interactive_ran.wait()
 
-        assert completed is False
+        assert completed is TurnOutcome.RETRY
         checkpoint = await get_in_flight_turn_for_task(sample_task.id)
         assert checkpoint is not None
         assert checkpoint.output_sent is True
@@ -1367,8 +1378,6 @@ class TestRunScheduledAgent:
                 input_end_cursor="",
                 started_at=datetime.now(UTC).isoformat(),
                 task_id="prior-task",
-                scheduled_base_chat_jid=sample_task.chat_jid,
-                scheduled_thread_slot=0,
             )
         )
         log_task_run = AsyncMock()
@@ -1544,7 +1553,7 @@ class TestRunScheduledAgent:
             ),
         ):
             for task in tasks:
-                assert await run_scheduled_agent(task, mock_deps) is True
+                assert await run_scheduled_agent(task, mock_deps) is TurnOutcome.COMPLETED
 
         assert mock_deps.thread_lookups == []
         assert mock_deps.agent_runs[0]["group"].folder == "fam-runtime"
@@ -1631,7 +1640,7 @@ class TestRunScheduledAgent:
                 new_callable=AsyncMock,
             ),
         ):
-            assert await run_scheduled_agent(task, mock_deps) is True
+            assert await run_scheduled_agent(task, mock_deps) is TurnOutcome.COMPLETED
 
         assert mock_deps.agent_runs == []
         assert mock_deps.thread_creations == []
@@ -1684,7 +1693,7 @@ class TestRunScheduledAgent:
                 new_callable=AsyncMock,
             ),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.COMPLETED
 
         assert mock_deps.thread_lookups == []
         assert mock_deps.thread_creations == []
@@ -1872,7 +1881,7 @@ class TestRunScheduledAgent:
             patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.RETRY
             reloaded_task = await get_task_by_id(sample_task.id)
             assert reloaded_task is not None
             assert reloaded_task is not sample_task
@@ -1880,7 +1889,7 @@ class TestRunScheduledAgent:
             lookups_before_retry = len(mock_deps.thread_lookups)
             creations_before_retry = len(mock_deps.thread_creations)
             mock_deps._run_agent_result = "success"
-            assert await run_scheduled_agent(reloaded_task, mock_deps) is True
+            assert await run_scheduled_agent(reloaded_task, mock_deps) is TurnOutcome.COMPLETED
 
         assert mock_deps.thread_creations == []
         assert len(mock_deps.thread_lookups) == lookups_before_retry
@@ -1891,17 +1900,28 @@ class TestRunScheduledAgent:
         ]
 
     @pytest.mark.asyncio
-    async def test_resumes_scheduled_task_in_its_original_numbered_thread(
+    async def test_resumed_task_uses_runtime_current_chat_binding(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Deploy recovery never creates a second child thread for the same task."""
-        mock_deps.groups["test-jid"] = sample_group
-        child_jid = "discord:channel:scheduled-1"
+        """Deploy recovery keeps stable runtime identity after its JID is replaced."""
+        checkpoint_jid = "discord:channel:scheduled-old"
+        current_jid = "discord:channel:scheduled-current"
         child_folder = "test-group__thread_discord-channel-scheduled-1"
+        current_group = replace(
+            sample_group,
+            jid=current_jid,
+            folder=child_folder,
+        )
+        mock_deps.groups[current_jid] = current_group
+        sample_task = replace(
+            sample_task,
+            bound_chat_jid=current_jid,
+            bound_group_folder=child_folder,
+        )
         await begin_in_flight_turn(
             InFlightTurn(
                 turn_id="scheduled-turn",
-                chat_jid=child_jid,
+                chat_jid=checkpoint_jid,
                 group_folder=child_folder,
                 work_kind=InFlightWorkKind.SCHEDULED,
                 input_messages=[{"content": sample_task.prompt}],
@@ -1909,8 +1929,6 @@ class TestRunScheduledAgent:
                 input_end_cursor="",
                 started_at=datetime.now(UTC).isoformat(),
                 task_id=sample_task.id,
-                scheduled_base_chat_jid=sample_task.chat_jid,
-                scheduled_thread_slot=1,
             )
         )
 
@@ -1926,7 +1944,7 @@ class TestRunScheduledAgent:
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
         assert mock_deps.thread_creations == []
-        assert mock_deps.agent_runs[0]["chat_jid"] == child_jid
+        assert mock_deps.agent_runs[0]["chat_jid"] == current_jid
         assert mock_deps.agent_runs[0]["group"].folder == child_folder
 
     @pytest.mark.asyncio
@@ -1958,12 +1976,12 @@ class TestRunScheduledAgent:
             patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            assert await run_scheduled_agent(sample_task, mock_deps) is False
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.RETRY
             checkpoint = await get_in_flight_turn_for_task(sample_task.id)
             assert checkpoint is not None
 
             mock_deps._run_agent_result = "success"
-            assert await run_scheduled_agent(sample_task, mock_deps) is True
+            assert await run_scheduled_agent(sample_task, mock_deps) is TurnOutcome.COMPLETED
 
         assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
@@ -2145,7 +2163,7 @@ class TestRunScheduledAgent:
         ):
             completed = await run_scheduled_agent(sample_task, mock_deps)
 
-        assert completed is True
+        assert completed is TurnOutcome.COMPLETED
         assert [run.status for run in logged_runs] == [expected_run_status]
         assert completions == [("task-1", expected_result, True)]
 
@@ -2171,7 +2189,7 @@ class TestRunScheduledAgent:
                 with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
                     completed = await run_scheduled_agent(sample_task, mock_deps)
 
-        assert completed is False
+        assert completed is TurnOutcome.RETRY
         assert completions == [("task-1", "Error: Agent returned error", False)]
 
     @pytest.mark.asyncio

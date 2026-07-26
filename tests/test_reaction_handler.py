@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pynchy.host.orchestrator.messaging.reaction_handler import handle_reaction
-from pynchy.types import WorkspaceProfile
+from pynchy.types import RuntimeId, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,8 +82,9 @@ class TestHandleReaction:
         with patch("pynchy.utils.create_background_task") as mock_bg:
             await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "x")
 
-        deps.queue.is_active_task.assert_called_once_with(TEST_JID)
-        deps.queue.clear_pending_tasks.assert_called_once_with(TEST_JID)
+        runtime_id = RuntimeId(TEST_GROUP.folder)
+        deps.queue.is_active_task.assert_called_once_with(runtime_id)
+        deps.queue.clear_pending_tasks.assert_called_once_with(runtime_id)
         # stop_active_process should be scheduled as a background task
         mock_bg.assert_called_once()
         deps.broadcast_to_channels.assert_called_once()
@@ -96,7 +97,7 @@ class TestHandleReaction:
         """X emoji with no active task should not interrupt anything."""
         deps = FakeReactionDeps(groups={TEST_JID: TEST_GROUP}, is_active=False)
         await handle_reaction(deps, TEST_JID, "msg-ts", "user-1", "x")
-        deps.queue.is_active_task.assert_called_once_with(TEST_JID)
+        deps.queue.is_active_task.assert_called_once_with(RuntimeId(TEST_GROUP.folder))
         deps.queue.clear_pending_tasks.assert_not_called()
         deps.broadcast_to_channels.assert_not_called()
 

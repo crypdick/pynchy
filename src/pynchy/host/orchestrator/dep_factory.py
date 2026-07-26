@@ -22,6 +22,7 @@ from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolve
 )
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.host.orchestrator import session_handler
 from pynchy.host.orchestrator.adapters import (
     GroupMetadataManager,
     GroupRegistrationManager,
@@ -205,9 +206,21 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         get_available_groups = metadata_manager.get_available_groups
         write_groups_snapshot = staticmethod(_write_groups_snapshot)
         has_active_session = session_manager.has_active_session
-        clear_session = session_manager.clear_session
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
+
+        async def clear_session(self, group_folder: str) -> None:
+            group = next(
+                (
+                    workspace
+                    for workspace in app.workspaces.values()
+                    if workspace.folder == group_folder
+                ),
+                None,
+            )
+            if group is None:
+                raise RuntimeError(f"Context-reset runtime no longer exists: {group_folder}")
+            await session_handler.clear_durable_context(app, group)
 
         def enqueue_message_check(self, group_jid: str) -> None:
             _schedule_interactive_turn(app, group_jid)
@@ -247,17 +260,11 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
         def get_queue_snapshot(self) -> dict[str, Any]:
             raw = app.queue.snapshot()
             meta = raw.pop("_meta", {})
-            # Resolve JID → folder name for display
-            per_group: dict[str, Any] = {}
-            for jid, data in raw.items():
-                ws = app.workspaces.get(jid)
-                label = ws.folder if ws else jid
-                per_group[label] = data
             return {
                 "active_containers": meta.get("active_count", 0),
                 "max_concurrent": get_settings().container.max_concurrent,
                 "groups_waiting": meta.get("waiting_count", 0),
-                "per_group": per_group,
+                "per_group": raw,
             }
 
         def get_gateway_info(self) -> dict[str, Any]:

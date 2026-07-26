@@ -24,6 +24,9 @@ from pynchy.host.orchestrator import agent_runner, session_handler, update_offer
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
+from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TurnOutcome,
+)
 from pynchy.host.orchestrator.messaging import (
     ask_user_handler,
     channel_handler,
@@ -34,9 +37,6 @@ from pynchy.host.orchestrator.messaging import (
 )
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
-)
-from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
-    ProcessGroupResult,
 )
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
@@ -51,6 +51,7 @@ from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves a
 from pynchy.plugins.observers import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     ObserverProvider,
 )
+from pynchy.plugins.session_lifecycle import prepare_context_reset
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     SpeechSynthesizer,
 )
@@ -93,6 +94,9 @@ class PynchyApp(ThreadRouting):
         self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
         self.queue: GroupQueue = GroupQueue()
+        self.queue.set_process_messages_fn(
+            lambda chat_jid: message_handler.process_group_messages(self, chat_jid)
+        )
         self.channels: list[Channel] = []
         self.event_bus: EventBus = EventBus()
         self._shutting_down: bool = False
@@ -249,6 +253,10 @@ class PynchyApp(ThreadRouting):
         await session_handler.handle_context_reset(
             self, chat_jid, group, timestamp, source_message=source_message
         )
+
+    async def prepare_context_reset(self, group: WorkspaceProfile) -> None:
+        """Await plugin-owned teardown before clearing a session."""
+        await prepare_context_reset(self.plugin_manager, group)
 
     async def reset_scheduled_context(
         self,
@@ -436,20 +444,16 @@ class PynchyApp(ThreadRouting):
     # Message processing delegation
     # ------------------------------------------------------------------
 
-    async def _process_group_messages(self, chat_jid: str) -> ProcessGroupResult:
-        """Delegates group processing to the message handler module."""
-        return await message_handler.process_group_messages(self, chat_jid)
-
-    async def process_group_messages(self, chat_jid: str) -> ProcessGroupResult:
-        return await self._process_group_messages(chat_jid)
+    async def process_group_messages(self, chat_jid: str) -> TurnOutcome:
+        return await message_handler.run_queued_message_turn(self, chat_jid)
 
     async def start_interactive_turn(self, chat_jid: str) -> None:
         """Start durable Temporal processing for pending messages in one chat."""
         await temporal_scheduler.start_interactive_message_workflow(chat_jid)
 
-    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None:
+    async def start_interrupted_turn(self, turn_id: str, group_folder: str) -> None:
         """Start durable semantic recovery for one interrupted agent turn."""
-        await temporal_scheduler.start_interrupted_turn_workflow(turn_id, chat_jid)
+        await temporal_scheduler.start_interrupted_turn_workflow(turn_id, group_folder)
 
     # ------------------------------------------------------------------
     # Internal delegation for session_handler (used by dep_factory adapters)

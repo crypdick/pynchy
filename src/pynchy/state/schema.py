@@ -19,6 +19,9 @@ from pynchy.logger import logger
 from pynchy.state.action_intent_schema import ACTION_INTENT_SCHEMA
 from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
 from pynchy.state.in_flight_turn_schema import IN_FLIGHT_TURN_SCHEMA
+from pynchy.state.in_flight_turn_schema_migrations import (
+    drop_legacy_scheduled_runtime_metadata,
+)
 from pynchy.state.task_schema_migrations import (
     clear_temporal_owned_next_runs,
     migrate_cached_task_thread_binding,
@@ -469,6 +472,7 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await database.executescript(_SCHEMA)
     await _rename_conversation_event_trace_ref(database)
     await _ensure_columns(database)
+    await drop_legacy_scheduled_runtime_metadata(database)
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
     await _migrate_repo_access_column(database)

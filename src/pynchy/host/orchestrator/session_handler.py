@@ -27,6 +27,7 @@ from pynchy.types import (
     NewMessage,
     OutboundEvent,
     OutboundEventType,
+    RuntimeId,
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
@@ -36,14 +37,21 @@ if TYPE_CHECKING:
 
 
 @runtime_checkable
-class SessionDeps(Protocol):
-    """Dependencies for session lifecycle operations."""
+class ContextResetDeps(Protocol):
+    """Minimal collaborators needed to discard durable agent context."""
 
     @property
     def sessions(self) -> dict[str, str]: ...
 
     @property
     def session_cleared(self) -> set[str]: ...
+
+    async def prepare_context_reset(self, group: WorkspaceProfile) -> None: ...
+
+
+@runtime_checkable
+class SessionDeps(ContextResetDeps, Protocol):
+    """Dependencies for the complete session lifecycle."""
 
     @property
     def last_agent_timestamp(self) -> dict[str, str]: ...
@@ -66,11 +74,12 @@ class SessionDeps(Protocol):
     def emit(self, event: Event) -> None: ...
 
 
-async def _clear_durable_context(
-    deps: SessionDeps,
+async def clear_durable_context(
+    deps: ContextResetDeps,
     group: WorkspaceProfile,
 ) -> None:
     """Clear every session-owned runtime and security reference."""
+    await deps.prepare_context_reset(group)
     await destroy_session(group.folder)
     deps.sessions.pop(group.folder, None)
     deps.session_cleared.add(group.folder)
@@ -94,15 +103,7 @@ async def _teardown_group(
     logger.info("teardown_trace", step="start", group=group.name, clear_context=clear_context)
 
     if clear_context:
-        await deps.queue.stop_active_process_for_control(chat_jid)
-        # Imported lazily because Linear is an optional integration. Stopping
-        # the worker first lets the durable checkpoint settle its reset
-        # request before the owning execution and checkpoint are retired.
-        from pynchy.plugins.integrations.linear_session_reset import (  # noqa: PLC0415, RUF100
-            cancel_linear_execution_for_reset,
-        )
-
-        await cancel_linear_execution_for_reset(group)
+        await deps.queue.stop_active_process_for_control(RuntimeId(group.folder))
     else:
         create_background_task(
             destroy_session(group.folder),
@@ -110,13 +111,14 @@ async def _teardown_group(
         )
     if clear_context:
         logger.info("teardown_trace", step="clear_session_start", group=group.name)
-        await _clear_durable_context(deps, group)
+        await clear_durable_context(deps, group)
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
-    deps.queue.clear_pending_tasks(chat_jid)
+    runtime_id = RuntimeId(group.folder)
+    deps.queue.clear_pending_tasks(runtime_id)
     if not clear_context:
         create_background_task(
-            deps.queue.stop_active_process(chat_jid),
+            deps.queue.stop_active_process(runtime_id),
             name=f"stop-container-{chat_jid[:20]}",
         )
     logger.info("teardown_trace", step="save_state_start", group=group.name)
@@ -163,7 +165,7 @@ async def handle_scheduled_context_reset(
         occurrence_id=occurrence_id,
         group=group.name,
     )
-    await _clear_durable_context(deps, group)
+    await clear_durable_context(deps, group)
     await send_clear_confirmation(deps, group.jid)
 
 

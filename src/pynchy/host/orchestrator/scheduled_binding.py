@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from pynchy.config.workspace_names import dynamic_thread_folder
-from pynchy.conversation.models import ConversationId, ConversationSubjectKey
+from pynchy.conversation.models import ConversationId
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
@@ -16,7 +15,7 @@ from pynchy.host.orchestrator.conversation_control import (
 )
 from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001, RUF100
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
-from pynchy.state import get_conversation, get_conversation_for_subject_key, update_task
+from pynchy.state import get_conversation, update_task
 from pynchy.types import (
     Channel,
     ChatJid,
@@ -30,9 +29,6 @@ from pynchy.types import (
 
 class ScheduledTaskOwnershipError(RuntimeError):
     """A scheduled task has no durable runtime destination."""
-
-
-_LINEAR_ISSUE_ID = re.compile(r'"issue_id"\s*:\s*"([^"]+)"')
 
 
 @runtime_checkable
@@ -173,18 +169,7 @@ async def ensure_scheduled_task_binding(
             task = replace(task, session_policy=SessionPolicy.CONTINUE)
             ownership_updates["session_policy"] = SessionPolicy.CONTINUE
         if task.conversation_id is None:
-            match = _LINEAR_ISSUE_ID.search(task.prompt)
-            if match is None:
-                raise ScheduledTaskOwnershipError("Linear task has no durable issue identity")
-            conversation = await get_conversation_for_subject_key(
-                ConversationSubjectKey(match.group(1)),
-                workspace=GroupFolder(task.group_folder),
-                namespace_suffix=":issue",
-            )
-            if conversation is None:
-                raise ScheduledTaskOwnershipError("Linear task has no routed issue conversation")
-            task = replace(task, conversation_id=str(conversation.id))
-            ownership_updates["conversation_id"] = task.conversation_id
+            raise ScheduledTaskOwnershipError("Linear task has no durable issue conversation")
     if ownership_updates:
         await update_task(task.id, ownership_updates)
 

@@ -144,3 +144,19 @@ async def test_existing_linear_task_is_migrated_to_continue_before_execution() -
     persisted = await get_task_by_id(task.id)
     assert persisted is not None
     assert persisted.session_policy is SessionPolicy.CONTINUE
+
+
+async def test_linear_task_without_conversation_fails_before_execution() -> None:
+    owner = _profile()
+    task = replace(
+        _task(),
+        input_source="external:linear:human_approved",
+        prompt='{"issue_id": "SYN-89"}',
+    )
+    await create_task(task)
+
+    with pytest.raises(
+        ScheduledTaskOwnershipError,
+        match="no durable issue conversation",
+    ):
+        await ensure_scheduled_task_binding(task, _BindingDeps({owner.jid: owner}))

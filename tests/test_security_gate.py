@@ -17,8 +17,13 @@ from pynchy.host.container_manager.security.gate import (
 )
 from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
-from pynchy.types import ContainerInput, ServiceTrustConfig, WorkspaceSecurity
+from pynchy.types import (
+    ContainerInput,
+    ServiceTrustConfig,
+    WorkspaceSecurity,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -429,8 +434,7 @@ class TestGateLifecycle:
         """A warm container turn must retain the worker's security state."""
         create_gate("test-ws", 100.0, WorkspaceSecurity())
 
-        state = GroupState()
-        state.group_folder = "test-ws"
+        state = GroupState(target=RuntimeTarget.from_binding("test-ws", "test@g.us"))
         state.invocation_ts = 100.0
         state.active = True
 
@@ -442,8 +446,7 @@ class TestGateLifecycle:
 
     def test_release_without_gate_is_noop(self):
         """Release when no gate exists should not raise."""
-        state = GroupState()
-        state.group_folder = "some-group"
+        state = GroupState(target=RuntimeTarget.from_binding("some-group", "some@g.us"))
         state.invocation_ts = 999.0
         state.active = True
 
@@ -487,14 +490,13 @@ class TestRegisterHostProcessInvocation:
         """A registered host process releases the gate for its invocation."""
         queue = GroupQueue()
         gate = create_gate("test-ws", 42.0, WorkspaceSecurity())
-        lease = queue.acquire_host_process("test@g.us")
+        lease = queue.acquire_host_process(RuntimeTarget.from_binding("test-ws", "test@g.us"))
 
         assert (
             queue.register_host_process(
                 lease,
                 None,
                 "pynchy-test",
-                group_folder="test-ws",
                 invocation_ts=42.0,
             )
             is True

@@ -5,7 +5,7 @@ from __future__ import annotations
 import aiohttp
 from temporalio.service import RPCError
 
-from pynchy.host.orchestrator.temporal.scheduler import (
+from pynchy.host.orchestrator.temporal.workflow_control import (
     TemporalRuntimeUnavailableError,
     cancel_scheduled_agent_workflow,
 )

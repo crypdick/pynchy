@@ -244,10 +244,13 @@ class FakeDeps:
         self.queue = FakeQueue()
         self.last_agent_timestamp: dict[str, str] = {}
         self.channels: list = []
+        self.sessions: dict[str, str] = {}
+        self.session_cleared: set[str] = set()
         self.broadcast_host_message = AsyncMock()
         self.start_interactive_turn = AsyncMock()
         self.start_interrupted_turn = AsyncMock()
         self.register_workspace = AsyncMock()
+        self.prepare_context_reset = AsyncMock()
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:
@@ -377,8 +380,8 @@ class TestCheckDeployContinuation:
         notified_jids = {call.args[0] for call in deps.broadcast_host_message.await_args_list}
         assert notified_jids == {periodic_jid, interactive_jid}
         assert {call.args for call in deps.start_interrupted_turn.await_args_list} == {
-            ("turn-scheduled", periodic_jid),
-            ("turn-interactive", interactive_jid),
+            ("turn-scheduled", "code-improver"),
+            ("turn-interactive", "my-group"),
         }
         assert resumed_chats == {periodic_jid, interactive_jid}
         deps.start_interactive_turn.assert_not_awaited()
@@ -420,12 +423,13 @@ class TestCheckDeployContinuation:
     async def test_recovers_after_crash_without_continuation_file(self, tmp_path, monkeypatch):
         """The DB ledger is authoritative even when no deploy file was written."""
         await init_test_database()
-        jid = "slack:INTERRUPTED"
-        deps = FakeDeps({jid: _make_workspace(jid, "my-group")})
+        previous_jid = "slack:INTERRUPTED"
+        current_jid = "slack:CURRENT"
+        deps = FakeDeps({current_jid: _make_workspace(current_jid, "my-group")})
         await begin_in_flight_turn(
             self._turn(
                 "turn-crash",
-                jid,
+                previous_jid,
                 "my-group",
                 InFlightWorkKind.INTERACTIVE,
             )
@@ -437,8 +441,10 @@ class TestCheckDeployContinuation:
 
         resumed_chats = await check_deploy_continuation(deps)
 
-        assert resumed_chats == {jid}
-        deps.start_interrupted_turn.assert_awaited_once_with("turn-crash", jid)
+        assert resumed_chats == {current_jid}
+        deps.start_interrupted_turn.assert_awaited_once_with("turn-crash", "my-group")
+        deps.broadcast_host_message.assert_awaited_once()
+        assert deps.broadcast_host_message.await_args.args[0] == current_jid
         notice = deps.broadcast_host_message.await_args.args[1]
         assert "Pynchy restarted" in notice
         assert "Deploy complete" not in notice
@@ -481,6 +487,7 @@ class TestCheckDeployContinuation:
         jid = "slack:RESETTING"
         folder = GroupFolder("reset-group")
         deps = FakeDeps({jid: _make_workspace(jid, str(folder))})
+        deps.sessions[str(folder)] = "provider-thread"
         await set_session(folder, "provider-thread")
         await begin_in_flight_turn(
             self._turn(
@@ -501,6 +508,9 @@ class TestCheckDeployContinuation:
 
         assert await get_in_flight_turn("turn-resetting") is None
         assert await get_session(folder) is None
+        assert str(folder) not in deps.sessions
+        assert str(folder) in deps.session_cleared
+        deps.prepare_context_reset.assert_awaited_once_with(deps.workspaces[jid])
         deps.start_interrupted_turn.assert_not_awaited()
 
 

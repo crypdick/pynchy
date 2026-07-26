@@ -11,38 +11,46 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype validates datacl
 from dataclasses import dataclass, field
 
 import pynchy.host.container_manager.security.gate as security_gate
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
+from pynchy.types import RuntimeId  # noqa: TC001, RUF100
 
 
-@dataclass
+@dataclass(eq=False)
 class QueuedTask:
-    """One scheduled task awaiting execution for a group."""
+    """One autonomous work item awaiting execution for a runtime."""
 
     id: str
-    group_jid: str
     fn: Callable[[], Awaitable[None]]
+    cancel_waiter: Callable[[], None] | None = None
+
+    def cancel(self) -> None:
+        """Settle an external owner whose queued work will never run."""
+        if self.cancel_waiter is not None:
+            self.cancel_waiter()
 
 
 @dataclass(frozen=True)
 class HostProcessLease:
-    """Identifies one direct host process that owns a group's active slot."""
+    """Identifies one direct host process that owns a runtime's active slot."""
 
-    group_jid: str
+    runtime_id: RuntimeId
     generation: int
     owns_slot: bool
 
 
 @dataclass
 class GroupState:
-    """Transient queue state for one group."""
+    """Transient queue state for one stable runtime."""
 
+    target: RuntimeTarget
     active: bool = False
     active_is_task: bool = False
     pending_messages: bool = False
     pending_tasks: deque[QueuedTask] = field(default_factory=deque)
+    active_task: QueuedTask | None = None
     process: asyncio.subprocess.Process | None = None
     container_name: str | None = None
-    group_folder: str | None = None
     invocation_ts: float = 0.0
     retry_count: int = 0
     defer_interrupt_until_tool_result: bool = False
@@ -52,11 +60,17 @@ class GroupState:
     boundary_interrupt_requested: bool = False
     message_waiters: list[asyncio.Future[object]] = field(default_factory=list)
 
+    def cancel_message_waiters(self) -> None:
+        """Settle callers whose interactive turn cannot finish during shutdown."""
+        waiters, self.message_waiters = self.message_waiters, []
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.cancel()
+
     def register_process(
         self,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
-        group_folder: str | None,
         invocation_ts: float,
         *,
         is_host_process: bool,
@@ -64,18 +78,16 @@ class GroupState:
         """Associate the active process with this group state."""
         self.process = proc
         self.container_name = container_name
-        if group_folder:
-            self.group_folder = group_folder
         self.invocation_ts = invocation_ts
         self.is_host_process = is_host_process
 
-    def acquire_host_process(self, group_jid: str, generation: int) -> HostProcessLease:
-        """Attach a host process to a queued turn or reserve an idle group."""
+    def acquire_host_process(self, generation: int) -> HostProcessLease:
+        """Attach a host process to a queued turn or reserve an idle runtime."""
         if self.host_process_lease is not None:
-            raise RuntimeError(f"A host process is already registered for {group_jid}")
+            raise RuntimeError(f"A host process is already registered for {self.target.id}")
         owns_slot = not self.active
         lease = HostProcessLease(
-            group_jid=group_jid,
+            runtime_id=self.target.id,
             generation=generation,
             owns_slot=owns_slot,
         )
@@ -90,21 +102,19 @@ class GroupState:
         lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
-        group_folder: str | None,
         invocation_ts: float,
     ) -> bool:
         """Attach a spawned host process only when it still owns this state."""
         if self.host_process_lease != lease:
             logger.warning(
                 "Ignoring stale host process registration",
-                group_jid=lease.group_jid,
+                runtime_id=lease.runtime_id,
                 generation=lease.generation,
             )
             return False
         self.register_process(
             proc,
             container_name,
-            group_folder,
             invocation_ts,
             is_host_process=True,
         )
@@ -115,7 +125,7 @@ class GroupState:
         if self.host_process_lease != lease:
             logger.warning(
                 "Ignoring stale host process release",
-                group_jid=lease.group_jid,
+                runtime_id=lease.runtime_id,
                 generation=lease.generation,
             )
             return False
@@ -138,9 +148,9 @@ class GroupState:
         self._destroy_host_security_gate()
         self.active = False
         self.active_is_task = False
+        self.active_task = None
         self.process = None
         self.container_name = None
-        self.group_folder = None
         self.invocation_ts = 0.0
         self.defer_interrupt_until_tool_result = False
         self.is_host_process = False
@@ -154,5 +164,5 @@ class GroupState:
         Container gates belong to their durable ``ContainerSession`` and must
         survive queue release so warm turns retain the same security state.
         """
-        if self.is_host_process and self.group_folder and self.invocation_ts:
-            security_gate.destroy_gate(self.group_folder, self.invocation_ts)
+        if self.is_host_process and self.invocation_ts:
+            security_gate.destroy_gate(self.target.folder, self.invocation_ts)

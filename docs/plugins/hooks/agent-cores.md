@@ -66,3 +66,23 @@ bypass the owned gate.
 
 Agent hook modules execute as trusted code in the agent runner. Install them
 only from trusted plugin authors.
+
+## `pynchy_before_context_reset`
+
+Settle one plugin-owned concern before Pynchy clears a workspace's provider
+session, chat history, and security taint.
+Use this hook when a plugin owns durable execution, leases, or provider state
+that a context reset must cancel or transition first.
+
+```python
+from pynchy.types import WorkspaceProfile
+
+
+@hookimpl
+async def pynchy_before_context_reset(self, group: WorkspaceProfile) -> None:
+    await cancel_plugin_execution(group.folder)
+```
+
+Pynchy awaits every implementation before destructive cleanup. Keep each hook
+focused on one plugin concern. If an implementation raises or returns a
+non-awaitable result, the reset stops before Pynchy clears the session.

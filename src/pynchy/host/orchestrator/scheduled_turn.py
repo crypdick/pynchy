@@ -7,12 +7,12 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Awaitable,
     Callable,
 )
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pynchy.host.orchestrator.messaging.outcomes import ProcessGroupResult
+    from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
@@ -37,6 +37,7 @@ from pynchy.types import (
     ContainerOutput,
     InFlightTurn,
     InFlightWorkKind,
+    RuntimeId,
     ScheduledTask,
     WorkspaceProfile,
 )
@@ -53,14 +54,7 @@ class TaskAgentRequest:
     idle_enabled: bool
     idle_timeout: float
     resume_turn: InFlightTurn | None = None
-    on_started: Callable[[ScheduledTask], Awaitable[None]] | None = None
-
-
-@dataclass(frozen=True)
-class _ScheduledTaskTarget:
-    task: ScheduledTask
-    group: WorkspaceProfile
-    thread_slot: int
+    on_started: Callable[[str], Awaitable[None]] | None = None
 
 
 @dataclass
@@ -68,7 +62,7 @@ class _TaskAgentStreamState:
     result: str | None = None
     error: str | None = None
     output_sent: bool = False
-    terminal_outcome: ProcessGroupResult | None = None
+    terminal_outcome: TurnOutcome | None = None
 
 
 @dataclass(frozen=True)
@@ -78,13 +72,12 @@ class TaskAgentResult:
     turn_id: str
     result: str | None
     error: str | None
-    terminal_outcome: ProcessGroupResult | None = None
+    terminal_outcome: TurnOutcome | None = None
 
 
 @dataclass(frozen=True)
-class _TargetAgentRun:
+class _TaskAgentRun:
     request: TaskAgentRequest
-    target: _ScheduledTaskTarget
     state: _TaskAgentStreamState
     turn_id: str
     input_messages: list[dict[str, Any]]
@@ -105,14 +98,13 @@ def _scheduled_task_message(task: ScheduledTask) -> dict[str, Any]:
 
 def _scheduled_idle_timer(
     request: TaskAgentRequest,
-    target: _ScheduledTaskTarget,
 ) -> IdleTimer | None:
     if not request.idle_enabled:
         return None
 
     def _idle_timeout_callback() -> None:
         logger.debug("Scheduled task idle timeout, closing stdin", task_id=request.task.id)
-        request.deps.queue.close_stdin(target.task.chat_jid)
+        request.deps.queue.close_stdin(RuntimeId(request.group.folder))
 
     return IdleTimer(request.idle_timeout, _idle_timeout_callback)
 
@@ -125,66 +117,42 @@ def _task_agent_messages(request: TaskAgentRequest) -> list[dict[str, Any]]:
     )
 
 
-async def _new_task_target(
+async def _checkpoint_new_task(
     request: TaskAgentRequest,
     turn_id: str,
     input_messages: list[dict[str, Any]],
-) -> _ScheduledTaskTarget:
+) -> None:
     """Checkpoint one occurrence in its already-bound durable runtime."""
     if (
         request.task.bound_chat_jid != request.group.jid
         or request.task.bound_group_folder != request.group.folder
     ):
         raise RuntimeError("Scheduled task runtime binding does not match its queue owner")
-    target = _ScheduledTaskTarget(
-        task=replace(
-            request.task,
-            group_folder=request.group.folder,
-            chat_jid=request.group.jid,
-        ),
-        group=request.group,
-        thread_slot=0,
-    )
     await begin_message_turn(
         MessageTurnStart(
             turn_id=turn_id,
-            chat_jid=target.task.chat_jid,
-            group=target.group,
+            chat_jid=request.group.jid,
+            group=request.group,
             work_kind=InFlightWorkKind.SCHEDULED,
             input_messages=input_messages,
             input_start_cursor="",
             input_end_cursor="",
             task_id=request.task.id,
-            scheduled_base_chat_jid=request.group.jid,
-            scheduled_thread_slot=0,
             input_source=request.task.input_source,
         )
-    )
-    return target
-
-
-def _resumed_task_target(request: TaskAgentRequest, turn: InFlightTurn) -> _ScheduledTaskTarget:
-    """Rebuild the durable conversation assignment for an interrupted task."""
-    target_group = replace(request.group, jid=turn.chat_jid, folder=turn.group_folder)
-    target_task = replace(request.task, group_folder=turn.group_folder, chat_jid=turn.chat_jid)
-    return _ScheduledTaskTarget(
-        task=target_task,
-        group=target_group,
-        thread_slot=turn.scheduled_thread_slot or 0,
     )
 
 
 def _task_output_handler(
     request: TaskAgentRequest,
-    target: _ScheduledTaskTarget,
     state: _TaskAgentStreamState,
     turn_id: str,
     idle_timer: IdleTimer | None,
 ) -> OnOutput:
     async def _on_output(streamed: ContainerOutput) -> None:
         sent = await request.deps.handle_streamed_output(
-            target.task.chat_jid,
-            target.group,
+            request.group.jid,
+            request.group,
             streamed,
             turn_id=turn_id,
         )
@@ -198,29 +166,28 @@ def _task_output_handler(
         if streamed.status == "error":
             state.error = streamed.error or "Unknown error"
         if streamed.type == "tool_result":
-            await request.deps.queue.interrupt_after_tool_result(target.task.chat_jid)
+            await request.deps.queue.interrupt_after_tool_result(RuntimeId(request.group.folder))
 
     return _on_output
 
 
-async def _run_target_agent(run: _TargetAgentRun) -> None:
+async def _run_target_agent(run: _TaskAgentRun) -> None:
     request = run.request
-    target = run.target
     state = run.state
     if request.on_started is not None and run.is_new_turn:
-        await request.on_started(target.task)
-    idle_timer = _scheduled_idle_timer(request, target)
-    on_output = _task_output_handler(request, target, state, run.turn_id, idle_timer)
+        await request.on_started(request.group.jid)
+    idle_timer = _scheduled_idle_timer(request)
+    on_output = _task_output_handler(request, state, run.turn_id, idle_timer)
     if idle_timer:
         idle_timer.reset()
     try:
         agent_result = await request.deps.run_agent(
-            target.group,
-            target.task.chat_jid,
+            request.group,
+            request.group.jid,
             run.input_messages,
             on_output,
             is_scheduled_task=True,
-            repo_access_override=target.task.repo_access,
+            repo_access_override=request.task.repo_access,
             input_source=(
                 request.resume_turn.input_source
                 if request.resume_turn is not None
@@ -236,7 +203,7 @@ async def _run_target_agent(run: _TargetAgentRun) -> None:
         if state.terminal_outcome is not None:
             state.error = None
             return
-        if request.deps.queue.boundary_interrupt_requested(target.task.chat_jid):
+        if request.deps.queue.boundary_interrupt_requested(RuntimeId(request.group.folder)):
             state.error = SCHEDULED_TURN_INTERRUPTED
         elif agent_result == "error":
             state.error = state.error or "Agent returned error"
@@ -251,7 +218,7 @@ async def _finish_checkpoint(
     *,
     interrupted: bool,
     error: str | None,
-    terminal_outcome: ProcessGroupResult | None,
+    terminal_outcome: TurnOutcome | None,
 ) -> None:
     if interrupted:
         return
@@ -277,16 +244,12 @@ async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
     checkpoint_started = resume_turn is not None
 
     try:
-        target = (
-            _resumed_task_target(request, resume_turn)
-            if resume_turn is not None
-            else await _new_task_target(request, turn_id, input_messages)
-        )
+        if resume_turn is None:
+            await _checkpoint_new_task(request, turn_id, input_messages)
         checkpoint_started = True
         await _run_target_agent(
-            _TargetAgentRun(
+            _TaskAgentRun(
                 request=request,
-                target=target,
                 state=state,
                 turn_id=turn_id,
                 input_messages=input_messages,
