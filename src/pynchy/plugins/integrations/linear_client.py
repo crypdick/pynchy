@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, Protocol, cast, runtime_checkable
 
 import aiohttp
+
+from pynchy.plugins.integrations.linear_statuses import TERMINAL_STATE_TYPES
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 _LINEAR_DATA_OBJECT_MISSING = "Linear response did not include a data object"
@@ -14,11 +18,65 @@ _LINEAR_ISSUE_CREATE_ISSUE_MISSING = "Linear issueCreate response did not includ
 _LINEAR_ISSUE_DELETE_FAILED = "Linear did not delete the issue"
 _LINEAR_COMMENT_NOT_CREATED = "Linear did not create the comment"
 _LINEAR_COMMENT_MISSING = "Linear commentCreate response did not include a comment"
+_LINEAR_COMMENT_EVIDENCE_MISSING = "Linear commentCreate response lacks self-echo evidence"
+_LINEAR_COMMENT_ISSUE_MISMATCH = "Linear commentCreate response belongs to another issue"
+_LINEAR_ISSUE_STATE_EVIDENCE_MISSING = "Linear issueUpdate response lacks self-echo evidence"
+_LINEAR_ISSUE_STATE_ISSUE_MISMATCH = "Linear issueUpdate response belongs to another issue"
+_LINEAR_ISSUE_STATE_TARGET_MISMATCH = "Linear issueUpdate response has another state"
 _LINEAR_ATTACHMENT_NOT_CREATED = "Linear did not create the attachment"
 _LINEAR_ATTACHMENT_MISSING = "Linear attachmentCreate response did not include an attachment"
 _LINEAR_ISSUE_NOT_FOUND = "Entity not found: Issue"
 _LINEAR_CONNECTION_MISSING = "Linear response did not include {key}"
 _LINEAR_NODES_MISSING = "Linear response did not include {key}.nodes"
+
+CommentCreatedRecorder = Callable[[dict[str, Any]], Awaitable[None]]
+IssueStateUpdatedRecorder = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+@runtime_checkable
+class LinearQueryClient(Protocol):
+    """Minimal Linear boundary shared by mutation helpers and query-only clients."""
+
+    async def query(self, query: str, **variables: object) -> dict[str, Any]:
+        """Run a Linear GraphQL operation."""
+
+
+@runtime_checkable
+class LinearIssueStateUpdateRecorder(Protocol):
+    """Optional host boundary that persists state-update echo evidence."""
+
+    async def record_issue_state_update(
+        self,
+        issue: dict[str, Any],
+        *,
+        issue_id: str,
+        state_id: str,
+    ) -> None:
+        """Persist a callback marker for a confirmed host-owned state update."""
+
+
+async def record_issue_state_update_if_supported(
+    client: object,
+    issue: dict[str, Any],
+    *,
+    issue_id: str,
+    state_id: str,
+) -> None:
+    """Persist a state marker only when this client owns the host echo ledger."""
+    if isinstance(client, LinearIssueStateUpdateRecorder):
+        await client.record_issue_state_update(
+            issue,
+            issue_id=issue_id,
+            state_id=state_id,
+        )
+
+
+@dataclass(frozen=True)
+class LinearSelfEchoRecorder:
+    """Host-owned callbacks that persist exact provider self-echo evidence."""
+
+    comment_created: CommentCreatedRecorder | None = None
+    issue_state_updated: IssueStateUpdatedRecorder | None = None
 
 
 class _AuthorizationSecret(str):
@@ -44,6 +102,7 @@ class LinearClient:
         session: object,
         endpoint: str = LINEAR_API_URL,
         team_key: str | None = None,
+        self_echo_recorder: LinearSelfEchoRecorder | None = None,
     ) -> None:
         # aiohttp requires a string header value, while rich tracebacks
         # render frame locals with repr(). Keeping the semantic secret wrapper
@@ -52,6 +111,7 @@ class LinearClient:
         self._session = session
         self._endpoint = endpoint
         self._team_key = team_key
+        self._self_echo_recorder = self_echo_recorder
 
     @property
     def team_key(self) -> str | None:
@@ -211,13 +271,13 @@ class LinearClient:
         return issue
 
     async def create_comment(self, issue_id: str, body: str) -> dict[str, Any]:
-        """Add an ordinary comment to an issue."""
+        """Add an ordinary comment and retain its exact provider revision evidence."""
         data = await self.query(
             """
             mutation CreateComment($issue_id: String!, $body: String!) {
               commentCreate(input: { issueId: $issue_id, body: $body }) {
                 success
-                comment { id body createdAt }
+                comment { id body createdAt updatedAt issue { id } }
               }
             }
             """,
@@ -230,7 +290,31 @@ class LinearClient:
         comment = result.get("comment")
         if not isinstance(comment, dict):
             raise LinearError(_LINEAR_COMMENT_MISSING)
-        return comment
+        evidence = _comment_create_evidence(comment, issue_id)
+        recorder = self._self_echo_recorder
+        if recorder is not None and recorder.comment_created is not None:
+            await recorder.comment_created(evidence)
+        return evidence
+
+    async def record_issue_state_update(
+        self,
+        issue: dict[str, Any],
+        *,
+        issue_id: str,
+        state_id: str,
+    ) -> None:
+        """Persist one host-owned nonterminal state callback marker from a receipt."""
+        recorder = getattr(self, "_self_echo_recorder", None)
+        if recorder is None or recorder.issue_state_updated is None:
+            return
+        evidence = _issue_state_update_evidence(
+            issue,
+            issue_id=issue_id,
+            state_id=state_id,
+        )
+        if evidence.get("stateType") in TERMINAL_STATE_TYPES:
+            return
+        await recorder.issue_state_updated(evidence)
 
     async def create_attachment(
         self,
@@ -313,6 +397,59 @@ class LinearClient:
         result = data.get("issueDelete")
         if not isinstance(result, dict) or not result.get("success"):
             raise LinearError(_LINEAR_ISSUE_DELETE_FAILED)
+
+
+def _comment_create_evidence(comment: dict[str, Any], issue_id: str) -> dict[str, Any]:
+    """Normalize only response fields that prove the echo is the write we made."""
+    comment_id = comment.get("id")
+    created_at = comment.get("createdAt")
+    updated_at = comment.get("updatedAt")
+    issue = comment.get("issue")
+    response_issue_id = (
+        comment.get("issueId")
+        if isinstance(comment.get("issueId"), str)
+        else issue.get("id")
+        if isinstance(issue, dict)
+        else None
+    )
+    evidence = (comment_id, response_issue_id, created_at, updated_at)
+    if not all(isinstance(value, str) and value for value in evidence):
+        raise LinearError(_LINEAR_COMMENT_EVIDENCE_MISSING)
+    if response_issue_id != issue_id:
+        raise LinearError(_LINEAR_COMMENT_ISSUE_MISMATCH)
+    return {
+        **comment,
+        "id": comment_id,
+        "issueId": response_issue_id,
+        "createdAt": created_at,
+        "updatedAt": updated_at,
+    }
+
+
+def _issue_state_update_evidence(
+    issue: dict[str, Any],
+    *,
+    issue_id: str,
+    state_id: str,
+) -> dict[str, Any]:
+    """Normalize only response fields shared with a Linear Issue/update callback."""
+    response_issue_id = issue.get("id")
+    updated_at = issue.get("updatedAt")
+    state = issue.get("state")
+    response_state_id = state.get("id") if isinstance(state, dict) else None
+    evidence = (response_issue_id, response_state_id, updated_at)
+    if not all(isinstance(value, str) and value for value in evidence):
+        raise LinearError(_LINEAR_ISSUE_STATE_EVIDENCE_MISSING)
+    if response_issue_id != issue_id:
+        raise LinearError(_LINEAR_ISSUE_STATE_ISSUE_MISMATCH)
+    if response_state_id != state_id:
+        raise LinearError(_LINEAR_ISSUE_STATE_TARGET_MISMATCH)
+    return {
+        "id": response_issue_id,
+        "stateId": response_state_id,
+        "updatedAt": updated_at,
+        "stateType": state.get("type") if isinstance(state, dict) else None,
+    }
 
 
 def _nodes(data: dict[str, Any], key: str) -> list[dict[str, Any]]:

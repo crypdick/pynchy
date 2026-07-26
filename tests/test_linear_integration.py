@@ -285,6 +285,8 @@ class TestLinearClient:
                         "id": "comment-1",
                         "body": "Validation passed.",
                         "createdAt": "2026-07-25T17:00:00Z",
+                        "updatedAt": "2026-07-25T17:00:00Z",
+                        "issue": {"id": "issue-1"},
                     },
                 }
             }
@@ -293,6 +295,8 @@ class TestLinearClient:
         result = await client.create_comment("issue-1", "Validation passed.")
 
         assert result["id"] == "comment-1"
+        assert result["issueId"] == "issue-1"
+        assert result["updatedAt"] == "2026-07-25T17:00:00Z"
         assert client.query.await_args.kwargs == {
             "issue_id": "issue-1",
             "body": "Validation passed.",
@@ -409,7 +413,6 @@ class TestLinearMcpServer:
                 "linear_create_issue",
                 "linear_list_todos",
                 "linear_create_todo",
-                "linear_create_comment",
                 "linear_create_attachment",
                 "linear_find_issues_by_attachment_url",
             }
@@ -620,45 +623,6 @@ class TestLinearMcpServer:
         assert proposal.priority == 4
         assert kwargs["team_key"] is None
         assert kwargs["status"] == "agent_proposed"
-
-    @pytest.mark.action("linear.comment.create")
-    async def test_mcp_creates_an_ordinary_issue_comment(self, monkeypatch):
-        monkeypatch.setenv("LINEAR_API_KEY", "lin_api_test")
-        fake_client = LinearClient(api_key="lin_api_test", session=AsyncMock())
-        fake_client.create_comment = AsyncMock(
-            return_value={
-                "id": "comment-1",
-                "body": "Validation passed.",
-                "createdAt": "2026-07-25T17:00:00Z",
-            }
-        )
-        with patch("pynchy.plugins.integrations.linear.LinearClient", return_value=fake_client):
-            client = await start_mcp_client()
-            try:
-                response = await client.post(
-                    "/mcp",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/call",
-                        "params": {
-                            "name": "linear_create_comment",
-                            "arguments": {
-                                "issue_id": "issue-1",
-                                "body": "Validation passed.",
-                            },
-                        },
-                    },
-                )
-                payload = await response.json()
-            finally:
-                await client.close()
-
-        assert json.loads(payload["result"]["content"][0]["text"])["id"] == "comment-1"
-        fake_client.create_comment.assert_awaited_once_with(
-            "issue-1",
-            "Validation passed.",
-        )
 
     @pytest.mark.action("linear.attachment.create")
     async def test_mcp_attaches_pull_request_to_issue(self, monkeypatch):

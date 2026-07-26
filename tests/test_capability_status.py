@@ -34,7 +34,7 @@ from pynchy.capabilities import (
     IdempotencyMode,
     ProbeStatus,
 )
-from pynchy.config.models import WorkspaceConfig
+from pynchy.config.models import LinearTool, WorkspaceConfig
 from pynchy.config.profiles import CapabilityTomlConfig, ProfileConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.security.gate import create_gate, destroy_gate
@@ -43,6 +43,7 @@ from pynchy.host.orchestrator.capability_status import (
     resolve_workspace_capabilities,
 )
 from pynchy.plugins.host_actions import HostActionCatalog
+from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 from pynchy.types import CapabilityRule, WorkspaceProfile, WorkspaceSecurity
 
 _TOOL_NAME = "matrix_route_read"
@@ -172,6 +173,37 @@ async def test_declared_workspace_requirement_controls_action_readiness():
     assert ready.status is CapabilityStatus.READY
     assert missing.status is CapabilityStatus.UNCONFIGURED
     assert missing.reason == "Tool linear is not enabled for this workspace"
+
+
+@pytest.mark.asyncio
+async def test_named_linear_account_satisfies_stable_host_action_requirement():
+    """A credential-bearing account name must still expose the Linear capability."""
+    settings = make_settings(
+        profiles={"synapse": ProfileConfig(tools=["linear_synapse"])},
+        workspaces={"test-ws": WorkspaceConfig(profiles=["synapse"])},
+        tools={
+            "linear_synapse": LinearTool(
+                type="linear",
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            )
+        },
+    )
+    action = next(
+        action
+        for action in host_action_registration().actions
+        if action.tool_name == "linear_list_work_items"
+    )
+
+    snapshot = await resolve_workspace_capabilities(
+        "test-ws",
+        settings=settings,
+        catalog=HostActionCatalog(actions=(action,), action_specs=()),
+    )
+
+    assert snapshot.capabilities[0].status is CapabilityStatus.READY
 
 
 @pytest.mark.asyncio

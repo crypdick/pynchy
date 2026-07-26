@@ -338,13 +338,19 @@ async def _dispatch_admitted_event(
     workspace: WorkspaceProfile | None,
 ) -> None:
     dispatcher = ingress.conversation_dispatcher
-    if event.conversation is not None and admission.receipt.disposition == "routed":
+    if event.conversation is not None and admission.receipt.disposition in {
+        "routed",
+        "lifecycle",
+    }:
         if dispatcher is None:
             raise RuntimeError("Routed webhook dispatcher disappeared after startup")
+        prompt = (
+            _prompt_for_event(route, event) if admission.receipt.disposition == "routed" else None
+        )
         conversation_id = await dispatcher.admit(
             route,
             event,
-            _prompt_for_event(route, event),
+            prompt,
         )
         if conversation_id is not None:
             await dispatcher.wake(conversation_id)
@@ -385,9 +391,11 @@ async def handle_webhook(request: web.Request) -> web.Response:
 
     received_at_text = received_at.isoformat()
     task = _task_for_event(route, event, workspace, received_at_text)
-    disposition: Literal["accepted", "routed", "notified", "ignored"]
+    disposition: Literal["accepted", "routed", "lifecycle", "notified", "ignored"]
     if task is not None:
         disposition = "accepted"
+    elif event.lifecycle is not None:
+        disposition = "lifecycle"
     elif event.conversation is not None:
         disposition = "routed"
     elif event.host_message is not None:
@@ -409,7 +417,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
         occurred_at=event.occurred_at,
         received_at=received_at_text,
     )
-    admission = await admit_webhook_receipt(receipt, task)
+    admission = await admit_webhook_receipt(receipt, task, self_echo=event.self_echo)
     await _dispatch_admitted_event(ingress, route, event, admission, workspace)
     logger.info(
         "Webhook delivery admitted",
@@ -423,7 +431,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
         {
             "status": (
                 "accepted"
-                if admission.receipt.disposition == "routed"
+                if admission.receipt.disposition in {"routed", "lifecycle"}
                 else admission.receipt.disposition
             ),
             "duplicate": not admission.created,

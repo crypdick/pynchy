@@ -90,4 +90,5 @@ async def test_host_client_uses_the_workspace_accounts_exact_key(
         api_key="lin_synapse",  # pragma: allowlist secret
         session=ANY,
         team_key="SYN",
+        self_echo_recorder=ANY,
     )

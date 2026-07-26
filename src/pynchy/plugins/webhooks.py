@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -10,10 +11,16 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pynchy.conversation.models import (
+    ConversationId,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
     ConversationSubject,  # noqa: TC001, RUF100 - beartype resolves webhook targets.
+    ExternalDeliveryIdentity,  # noqa: TC001, RUF100 - beartype resolves lifecycle payloads.
 )
 from pynchy.logger import logger
-from pynchy.types import WorkspaceProfile
+from pynchy.state.webhook_models import (
+    LinearCommentSelfEcho,  # noqa: TC001, RUF100 - beartype resolves webhook markers.
+    LinearIssueStateSelfEcho,  # noqa: TC001, RUF100 - beartype resolves webhook markers.
+)
+from pynchy.types import GroupFolder, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -57,6 +64,37 @@ WebhookExternalContext = str | Mapping[str, object]
 
 
 @dataclass(frozen=True)
+class WebhookLifecycle:
+    """Provider-owned lifecycle work that must run at a conversation FIFO head.
+
+    The optional context is durable route-owned data, not prompt content.  A
+    lifecycle delivery closes its existing control before the route callback
+    runs, then completes without starting an agent turn.
+    """
+
+    context: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        if self.context is None:
+            return
+        try:
+            json.dumps(self.context, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Webhook lifecycle context must be JSON serializable") from exc
+
+
+@dataclass(frozen=True)
+class WebhookLifecycleDelivery:
+    """Durable provider context supplied to a lifecycle callback at FIFO head."""
+
+    identity: ExternalDeliveryIdentity
+    conversation_id: ConversationId
+    subject_id: str
+    workspace: GroupFolder
+    context: Mapping[str, object] | None
+
+
+@dataclass(frozen=True)
 class WebhookActor:
     """Provider-authenticated actor identity attached to one delivery."""
 
@@ -69,10 +107,11 @@ class WebhookEvent:
     """Closed provider event admitted by a plugin-owned route parser.
 
     A provider parser chooses exactly one disposition: an isolated agent task,
-    a routed conversation turn, a literal host notification, or an ignored
-    delivery. Host notifications are for deterministic status updates only;
-    provider text stays separate from host instructions. The route's source-trust
-    declaration determines whether the host fences that context before dispatch.
+    a routed conversation turn, a lifecycle-only FIFO callback, a literal host
+    notification, or an ignored delivery. Host notifications are for
+    deterministic status updates only; provider text stays separate from host
+    instructions. The route's source-trust declaration determines whether the
+    host fences that context before dispatch.
     """
 
     delivery_id: str
@@ -87,6 +126,8 @@ class WebhookEvent:
     conversation: WebhookConversation | None = None
     actor: WebhookActor | None = None
     changed_fields: frozenset[str] = frozenset()
+    lifecycle: WebhookLifecycle | None = None
+    self_echo: LinearCommentSelfEcho | LinearIssueStateSelfEcho | None = None
 
     def __post_init__(self) -> None:
         if (self.instructions is None) != (self.external_context is None):
@@ -94,21 +135,32 @@ class WebhookEvent:
         actionable = bool(self.instructions) and self.external_context is not None
         if self.host_message is not None and not self.host_message.strip():
             raise ValueError("Webhook host notifications cannot be blank")
-        routed = actionable and self.conversation is not None
+        lifecycle = self.lifecycle is not None
+        if lifecycle and (self.instructions is not None or self.external_context is not None):
+            raise ValueError("Lifecycle webhook events cannot carry prompt context")
+        if lifecycle and (
+            self.conversation is None or self.conversation.control_closed is not True
+        ):
+            raise ValueError("Lifecycle webhook events require a closed routed control")
+        routed = actionable and self.conversation is not None and not lifecycle
         isolated = actionable and self.conversation is None
         dispositions = (
             isolated,
             routed,
+            lifecycle,
             self.host_message is not None,
             bool(self.ignored_reason),
         )
         if sum(dispositions) != 1:
-            raise ValueError("Webhook event must be isolated, routed, notified, or ignored")
+            raise ValueError(
+                "Webhook event must be isolated, routed, lifecycle-only, notified, or ignored"
+            )
 
 
 WebhookParser = Callable[[bytes, Mapping[str, str], str, datetime], WebhookEvent]
 WebhookEventPreparer = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
 WebhookEventProcessor = Callable[[WebhookEvent], Awaitable[WebhookEvent]]
+WebhookLifecycleProcessor = Callable[[WebhookLifecycleDelivery], Awaitable[None]]
 WebhookWorkspaceValidator = Callable[[WorkspaceProfile], str | None]
 
 
@@ -135,6 +187,7 @@ class WebhookRoute:
     routes_conversations: bool = False
     candidate_workspaces: tuple[str, ...] = ()
     allow_admin_workspaces: bool = False
+    process_lifecycle: WebhookLifecycleProcessor | None = None
 
     @property
     def path(self) -> str:

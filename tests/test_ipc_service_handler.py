@@ -4,22 +4,30 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import NullIpcDeps, make_host_action_catalog
+from conftest import NullIpcDeps, make_host_action_catalog, make_settings
 
 from pynchy import state
 from pynchy.capabilities import ApprovalMode
 from pynchy.config.merge import ResolvedWorkspaceConfig
-from pynchy.config.models import ProfileConfig, WorkspaceConfig
+from pynchy.config.models import LinearTool, ProfileConfig, WorkspaceConfig
 from pynchy.host.container_manager.ipc import registry
 from pynchy.host.container_manager.ipc.approval_replay import (
     ApprovalDecisionContext,
     approval_replay_validation_error,
 )
 from pynchy.host.container_manager.ipc.handlers_service import clear_plugin_handler_cache
-from pynchy.host.container_manager.security.gate import SecurityGate, create_gate, destroy_gate
+from pynchy.host.container_manager.security.gate import (
+    SecurityGate,
+    build_workspace_security,
+    create_gate,
+    destroy_gate,
+)
+from pynchy.plugins.host_actions import HostActionCatalog
+from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
 from pynchy.types import CapabilityRule, ServiceTrustConfig, WorkspaceProfile, WorkspaceSecurity
 
 
@@ -190,6 +198,65 @@ async def test_plugin_dispatch_calls_handler(tmp_path, register_gate):
 
 
 @pytest.mark.asyncio
+async def test_named_linear_account_admits_stable_host_service_action(tmp_path):
+    """A named Linear credential enables host actions requiring the `linear` alias."""
+    mock_handler = AsyncMock(return_value={"result": {"work_items": []}})
+    registered_action = next(
+        action
+        for action in host_action_registration().actions
+        if action.tool_name == "linear_list_work_items"
+    )
+    action = replace(registered_action, handler=mock_handler)
+    catalog = HostActionCatalog(actions=(action,))
+    settings = make_settings(
+        data_dir=tmp_path,
+        profiles={"synapse": ProfileConfig(tools=["linear_synapse"])},
+        workspaces={"test-ws": WorkspaceConfig(profiles=["synapse"])},
+        tools={
+            "linear_synapse": LinearTool(
+                type="linear",
+                public_source=False,
+                secret_data=False,
+                public_sink=False,
+                dangerous_writes=False,
+            )
+        },
+    )
+    resolved = settings.resolved_workspace_config("test-ws")
+    assert resolved is not None
+    create_gate("test-ws", 1000.0, build_workspace_security(settings, resolved))
+    deps = FakeDeps({"test@g.us": TEST_GROUP})
+
+    with (
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service.get_settings",
+            return_value=settings,
+        ),
+        patch("pynchy.host.container_manager.ipc.write.get_settings", return_value=settings),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service._get_action_catalog",
+            return_value=catalog,
+        ),
+        patch(
+            "pynchy.host.container_manager.ipc.handlers_service."
+            "workspace_config.load_resolved_config",
+            return_value=resolved,
+        ),
+    ):
+        await registry.dispatch(_make_request("linear_list_work_items"), "test-ws", False, deps)
+
+    mock_handler.assert_awaited_once_with(
+        {
+            "type": "service:linear_list_work_items",
+            "request_id": "test-req-1",
+            "source_group": "test-ws",
+        }
+    )
+    response = json.loads((tmp_path / "ipc/test-ws/responses/test-req-1.json").read_text())
+    assert response == {"result": {"work_items": []}}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tool_name", ["matrix_route_read", "matrix_route_send"])
 async def test_raw_ipc_cannot_invoke_route_tool_omitted_by_runtime_policy(
     tmp_path,
@@ -287,8 +354,7 @@ async def test_forbidden_tool_denied(tmp_path, register_gate):
         forbidden_tool=ServiceTrustConfig(dangerous_writes="forbidden"),
     )
 
-    settings = _make_settings()
-    settings.data_dir = tmp_path
+    settings = make_settings(data_dir=tmp_path)
 
     deps = FakeDeps({"test@g.us": TEST_GROUP})
 

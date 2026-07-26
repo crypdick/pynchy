@@ -157,10 +157,16 @@ def _service_action_and_gate(
             {"error": f"Service tool is not enabled for this route: {request.tool_name}"},
         )
         return None
-    if (
-        resolved is not None
-        and (missing_tool := missing_workspace_tool(action, resolved.tools)) is not None
-    ):
+    if resolved is not None:
+        configured_security = build_workspace_security(get_settings(), resolved)
+        missing_tool = missing_workspace_tool(
+            action,
+            resolved.tools,
+            service_aliases=configured_security.services,
+        )
+    else:
+        missing_tool = None
+    if missing_tool is not None:
         # Host dispatch is authoritative even though the built-in MCP proxy
         # advertises a stable tool schema to every agent runtime.
         logger.warning(

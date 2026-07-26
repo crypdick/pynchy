@@ -38,6 +38,12 @@ Provider adapters own authentication and subject parsing. Downstream routing
 accepts only typed `ExternalDeliveryIdentity` and `ConversationSubject` values,
 so unparsed webhook payload shapes do not leak into conversation state.
 
+A conversation receipt can represent either an ordinary prompt-bearing delivery
+or lifecycle-only work. Both persist and link through the same immutable delivery
+identity. A lifecycle-only entry retains provider-owned durable context, but no
+prompt content, so it can update provider or control lifecycle without waking an
+agent.
+
 ## FIFO Claims And Recovery
 
 Each admitted delivery enters a durable per-conversation FIFO with three states:
@@ -45,13 +51,27 @@ Each admitted delivery enters a durable per-conversation FIFO with three states:
 delivery only when that conversation has no claimed delivery. Different
 conversations can hold claims concurrently.
 
-Once agent execution begins, the in-flight turn durably owns the delivery claim.
-An agent or finalization exception retains both records for semantic recovery;
-only explicit abandonment returns the delivery to `pending`. Successful
-finalization advances the message cursor, removes the turn, and marks the
-delivery `completed` in one transaction. After that commit, a process-local
+Once ordinary agent execution begins, the in-flight turn durably owns the
+delivery claim. An agent or finalization exception retains both records for
+semantic recovery; only explicit abandonment returns the delivery to `pending`.
+Successful finalization advances the message cursor, removes the turn, and marks
+the delivery `completed` in one transaction. After that commit, a process-local
 provider callback can claim and inject the next sibling. Callback failure never
 rolls back the completed turn; startup scans the durable FIFO again.
+
+A lifecycle-only delivery uses the same FIFO without constructing a `NewMessage`
+or agent turn. At its FIFO head, the dispatcher conditionally closes an existing
+control binding, invokes the route's lifecycle callback with the durable delivery
+identity and provider context, marks the delivery completed, then wakes its next
+sibling. A lifecycle-only delivery that arrives first creates neither a runtime
+workspace nor a Discord thread.
+
+Lifecycle callbacks have at-least-once delivery. The dispatcher attempts the
+durable close before the callback. A callback error releases the claim; a process
+stop after a callback but before completion leaves an orphaned claim for startup
+recovery. In either case, the same FIFO head retries before later deliveries can
+run. Route callbacks must make provider side effects idempotent with the full
+external delivery identity and tolerate an already-closed control.
 
 A context reset commits the control thread's clear boundary together with its
 conversation state. It removes the routed session and completes pending work,
@@ -103,6 +123,11 @@ reapplies the durable intent before waking the next FIFO sibling. Startup
 reconciles idle bindings, which repairs a crash after delivery completion but
 before the channel lifecycle edit.
 
+A lifecycle-only delivery changes closed intent only when a binding already
+exists. It never registers a binding or changes the routed conversation's
+workspace placement, so a lifecycle callback that arrives before any ordinary
+delivery has no control thread to create or archive.
+
 ## Integration Boundary
 
 This layer provides persistence, typed identities, claims, sessions, and control
@@ -114,10 +139,11 @@ not perform provider writes or interpret provider payloads.
 
 The built-in Linear webhook adapter maps each authenticated `Comment` or `Issue`
 event to `linear:<organization-id>:issue` plus the immutable Linear issue ID.
-The webhook receipt retains the delivery UUID, while the conversation delivery
-stores only the host-parsed prompt, readable control title, and closed event
-metadata needed to wake the agent. Raw provider shapes do not cross the routing
-boundary.
+The webhook receipt retains the delivery UUID. Ordinary entries retain only the
+host-parsed prompt, readable control title, and control metadata needed to wake
+the agent; terminal issue entries retain closed metadata and the parsed workflow
+state ID for lifecycle-only delivery. Raw provider shapes do not cross the
+routing boundary.
 
 An issue update that requests planning, waits for plan approval, or acquires or
 confirms an active execution lease is the exception: the Linear integration
@@ -128,11 +154,38 @@ establish that authority. The Temporal controller runs planning and execution
 in the issue conversation's existing runtime. Comment events and progress
 questions join the same ordered thread.
 
+For an `Issue` callback, the adapter reads state ID, display name, and type from
+either `data.state` or `data.issue.state`. Only the typed Linear workflow values
+`completed` and `canceled` produce terminal lifecycle entries. A display name
+such as `Done` never supplies a fallback classification. A typed terminal entry
+waits in the issue FIFO, closes an existing control binding, and never creates an
+LLM turn or a terminal-first Discord thread.
+
+When present, the terminal entry retains the callback's parsed state ID. At its
+FIFO head, the Linear lifecycle callback compares that ID with the managed
+board's exact `Done` state ID and completes reviewed work only when they match.
+It does not infer completion from the issue's mutable state at callback time.
+`Duplicate`, `Canceled`, and other typed terminal states close the control but do
+not complete the work item unless their exact state ID matches managed `Done`.
+
 Webhook admission persists the receipt before linking the FIFO delivery. An
 exact provider replay always attempts the link again, which repairs a crash
 between those writes. Duplicate delivery IDs reuse the existing FIFO entry.
 Separate issue subjects can hold claims concurrently; deliveries for one issue
 wait behind its claimed FIFO head.
+
+After a confirmed host-owned Linear comment or nonterminal workflow-state update,
+Pynchy records an exact one-time echo marker. A comment marker contains the
+account name, comment ID, issue ID, `data.updatedAt` revision, and `create`
+action; a state marker contains the account name, issue ID, state ID,
+`data.updatedAt` revision, and `update` action. Receipt admission atomically
+consumes only a callback with every matching value and persists it as ignored
+before conversation admission. A replay of that delivery reuses the ignored
+receipt. Pynchy does not suppress by actor identity, so comments from a person
+sharing the same Linear account, comment edits, and callbacks with missing or
+mismatched evidence remain actionable. Terminal state callbacks never use this
+marker path because their lifecycle handling must still close the control and
+reconcile managed `Done` work.
 
 The adapter places the stable routed workspace behind a Discord child thread of
 the configured Linear workspace. A first callback derives a title such as
@@ -157,11 +210,10 @@ to perform board membership checks. Explicit Linear lifecycle actions still
 enforce planning and execution workflow state.
 
 The adapter maps Linear workflow state types `completed` and `canceled` to
-closed control intent and other typed states to open intent. It retains a
-`Done` name fallback for older payloads without a state type. Events without
-issue state, such as minimal Comment payloads, preserve the binding's current
-intent. This keeps Linear authoritative without deriving lifecycle from mutable
-Discord state.
+closed control intent and other typed states to open intent. Events without a
+workflow state, such as minimal `Comment` payloads, preserve the binding's
+current intent. This keeps Linear authoritative without deriving lifecycle from
+mutable Discord state.
 
 ## Matrix Routes
 

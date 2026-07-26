@@ -137,10 +137,10 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         "linear_create_todo",
         canary="linear.workspace.round.trip",
     ),
-    mcp_action(
+    agent_action(
         "linear.comment.create",
         "linear",
-        "Add a comment to a Linear issue.",
+        "Add a Linear comment through the host-owned write boundary.",
         "linear_create_comment",
         canary="linear.workspace.round.trip",
     ),

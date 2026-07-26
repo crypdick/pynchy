@@ -4,9 +4,9 @@
 
 Provide a provider-authenticated HTTP callback. The plugin owns provider schema,
 signature verification, replay detection, and the closed mapping from provider
-events to a scheduled task, routed conversation, host notification, or ignored
-result. The host owns the public path, size/rate limits, workspace boundary,
-durable receipt, and dispatch.
+events to a scheduled task, routed conversation, lifecycle-only callback, host
+notification, or ignored result. The host owns the public path, size/rate limits,
+workspace boundary, durable receipt, and dispatch.
 
 ```python
 class ExamplePlugin:
@@ -50,9 +50,8 @@ Use `prepare_event` for a read-only provider check that must run before receipt 
 conversation admission. The host runs preparation on delivery replays, so the
 callback must remain idempotent. Use `process_event` for an idempotent host effect
 that runs only before the first receipt admission. It must return the resulting
-`WebhookEvent`; a provider may return a new event with a different closed
-disposition when the host effect transfers execution ownership to another
-durable subsystem.
+`WebhookEvent`; a provider may return a new event with a different disposition
+when the host effect transfers execution ownership to another durable subsystem.
 
 Set `routes_conversations=True` when actionable events target durable subjects.
 Return a `WebhookConversation` with an immutable `ConversationSubject` and a
@@ -60,3 +59,27 @@ readable control title. `control_closed=True` requests a closed control after
 the routed turn completes, `False` requests an open control, and `None` preserves
 the conversation's persisted lifecycle intent. The channel owns the native
 mapping; Discord maps closed controls to archived threads.
+
+## Lifecycle-only callbacks
+
+Use `WebhookLifecycle` when a provider callback must change conversation
+lifecycle state without prompting the agent. A lifecycle event must omit
+`instructions` and `external_context`, and it must carry a `WebhookConversation`
+with `control_closed=True`. Its optional `context` must contain JSON-serializable,
+provider-owned data rather than prompt content.
+
+Set `WebhookRoute.process_lifecycle` to an async callback that accepts a
+`WebhookLifecycleDelivery`. The host persists a `lifecycle` receipt and joins the
+delivery to the subject's FIFO. At the FIFO head, it closes only an existing
+control binding, preserves conversation workspace placement, invokes the route
+callback with the immutable delivery identity, subject, workspace, and context,
+then completes the delivery and wakes the next sibling. A lifecycle-only delivery
+does not construct a `NewMessage`, an agent turn, a runtime workspace, or a
+first-time control thread.
+
+Lifecycle callbacks have at-least-once delivery. If the callback fails, or the
+host stops after the callback but before delivery completion, recovery retries
+the same FIFO head before later deliveries run. Make provider effects idempotent
+with `WebhookLifecycleDelivery.identity`; do not depend on a callback running
+exactly once. A callback must also tolerate a control that already closed during
+an earlier attempt.

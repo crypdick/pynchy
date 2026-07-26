@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from pynchy.conversation.dispatch import (
+    notify_conversation_delivery_completed,
     register_conversation_delivery_waker,
     unregister_conversation_delivery_waker,
 )
@@ -37,11 +39,13 @@ from pynchy.host.orchestrator.workspace_placement import resolve_workspace_place
 from pynchy.logger import logger
 from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves dispatcher inputs.
     WebhookEvent,
+    WebhookLifecycleDelivery,
     WebhookRoute,
 )
 from pynchy.state import (
     admit_conversation_delivery,
     claim_next_conversation_delivery,
+    complete_conversation_delivery,
     get_conversation,
     get_conversation_control_binding,
     list_idle_conversation_ids,
@@ -49,6 +53,7 @@ from pynchy.state import (
     list_route_conversation_ids,
     release_conversation_delivery_claim,
 )
+from pynchy.state.conversation_controls import close_conversation_control
 from pynchy.types import (
     Channel,
     ChatJid,
@@ -121,7 +126,7 @@ class WebhookConversationDispatcher:
         self,
         route: WebhookRoute,
         event: WebhookEvent,
-        prompt: str,
+        prompt: str | None,
     ) -> ConversationId | None:
         """Idempotently link one routed event to its immutable subject."""
         target = event.conversation
@@ -135,22 +140,32 @@ class WebhookConversationDispatcher:
             route=ExternalRoute(route.name),
             delivery_id=ExternalDeliveryId(event.delivery_id),
         )
+        if event.lifecycle is None and prompt is None:
+            raise ValueError("Routed webhook delivery has no prompt")
+        payload: dict[str, object] = {
+            "control_title": target.control_title,
+            "control_closed": target.control_closed,
+            "event_type": event.event_type,
+            "event_action": event.action,
+            "public_source": (
+                target.public_source if target.public_source is not None else route.public_source
+            ),
+        }
+        if event.lifecycle is not None:
+            payload.update(
+                {
+                    "delivery_mode": "lifecycle",
+                    "lifecycle_context": event.lifecycle.context,
+                    "subject_id": event.subject_id,
+                }
+            )
+        else:
+            payload["prompt"] = prompt
         admission = await admit_conversation_delivery(
             identity,
             target.subject,
             GroupFolder(workspace),
-            payload={
-                "prompt": prompt,
-                "control_title": target.control_title,
-                "control_closed": target.control_closed,
-                "event_type": event.event_type,
-                "event_action": event.action,
-                "public_source": (
-                    target.public_source
-                    if target.public_source is not None
-                    else route.public_source
-                ),
-            },
+            payload=payload,
         )
         return admission.conversation.id
 
@@ -161,11 +176,78 @@ class WebhookConversationDispatcher:
         if delivery is None:
             return
         try:
+            if self._is_lifecycle_delivery(delivery):
+                await self._complete_lifecycle_delivery(delivery, claim_id)
+                return
             workspace_jid, message = await self._prepare_message(delivery, claim_id)
             await self.deps.ingest_message(workspace_jid, message)
         except BaseException:
             await release_conversation_delivery_claim(claim_id)
             raise
+
+    @staticmethod
+    def _is_lifecycle_delivery(delivery: ConversationDelivery) -> bool:
+        payload = delivery.payload
+        return payload is not None and payload.get("delivery_mode") == "lifecycle"
+
+    async def _complete_lifecycle_delivery(
+        self,
+        delivery: ConversationDelivery,
+        claim_id: ConversationClaimId,
+    ) -> None:
+        """Run a route lifecycle callback without constructing an agent turn.
+
+        The claim makes this the conversation's FIFO head.  The durable close
+        occurs before the route-owned side effect; a failed callback releases
+        the claim through ``wake`` so startup or a replay can retry it.
+        """
+        payload = delivery.payload or {}
+        proposed_closed = payload.get("control_closed")
+        subject_id = payload.get("subject_id")
+        context = payload.get("lifecycle_context")
+        if proposed_closed is not True:
+            raise TypeError("Lifecycle webhook delivery must close its routed control")
+        if not isinstance(subject_id, str) or not subject_id:
+            raise TypeError("Lifecycle webhook delivery lost its provider subject")
+        if context is not None and not isinstance(context, Mapping):
+            raise TypeError("Lifecycle webhook delivery has an invalid provider context")
+
+        route = self._route_for_delivery(delivery)
+        conversation = await get_conversation(delivery.conversation_id)
+        if conversation is None:
+            raise RuntimeError("Lifecycle webhook delivery references a missing conversation")
+
+        await close_conversation_control(conversation.id)
+        await self._sync_control_state(route, conversation.id)
+        if route.process_lifecycle is not None:
+            await route.process_lifecycle(
+                WebhookLifecycleDelivery(
+                    identity=delivery.identity,
+                    conversation_id=conversation.id,
+                    subject_id=subject_id,
+                    workspace=conversation.workspace,
+                    context=context,
+                )
+            )
+
+        completed = await complete_conversation_delivery(claim_id)
+        if completed is None:
+            raise RuntimeError("Lifecycle webhook delivery lost its FIFO claim")
+        await notify_conversation_delivery_completed(
+            ConversationDeliveryCompletion(
+                identity=completed.identity,
+                conversation_id=completed.conversation_id,
+            )
+        )
+
+    def _route_for_delivery(self, delivery: ConversationDelivery) -> WebhookRoute:
+        for route in self.routes:
+            if (route.provider, route.name) == (
+                delivery.identity.provider,
+                delivery.identity.route,
+            ):
+                return route
+        raise RuntimeError("Lifecycle webhook delivery belongs to an unavailable route")
 
     async def after_completion(self, completed: ConversationDeliveryCompletion) -> None:
         """Wake only a pending sibling owned by this route registry."""

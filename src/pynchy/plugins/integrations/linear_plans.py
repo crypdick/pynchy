@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
-from pynchy.plugins.integrations.linear_client import LinearError
+from pynchy.plugins.integrations.linear_client import (
+    LinearError,
+    LinearQueryClient,
+    record_issue_state_update_if_supported,
+)
 
 PLAN_START = "<!-- pynchy.plan:start -->"
 PLAN_END = "<!-- pynchy.plan:end -->"
 _PLAN_HEADING = "## Pynchy implementation plan"
-
-
-@runtime_checkable
-class LinearPlanClient(Protocol):
-    async def query(self, query: str, **variables: object) -> dict[str, Any]:
-        """Run a Linear GraphQL mutation."""
 
 
 def description_with_plan(description: object, plan: str) -> str:
@@ -39,7 +37,7 @@ def description_with_plan(description: object, plan: str) -> str:
 
 
 async def update_issue_plan(
-    client: LinearPlanClient,
+    client: LinearQueryClient,
     *,
     issue_id: str,
     state_id: str,
@@ -76,4 +74,10 @@ async def update_issue_plan(
     issue = result.get("issue")
     if not isinstance(issue, dict):
         raise LinearError("Linear plan response did not include an issue")
+    await record_issue_state_update_if_supported(
+        client,
+        issue,
+        issue_id=issue_id,
+        state_id=state_id,
+    )
     return issue

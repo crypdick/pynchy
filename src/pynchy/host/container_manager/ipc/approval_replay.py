@@ -63,7 +63,16 @@ async def approval_replay_validation_error(
         if (
             resolved is not None
             and context.action is not None
-            and (missing_tool := missing_workspace_tool(context.action, resolved.tools)) is not None
+            and (
+                missing_tool := missing_workspace_tool(
+                    context.action,
+                    resolved.tools,
+                    service_aliases=(
+                        context.gate.service_names if context.gate is not None else ()
+                    ),
+                )
+            )
+            is not None
         ):
             return f"host tool {missing_tool} is no longer enabled for this workspace"
     time_error = _approval_time_error(context)
