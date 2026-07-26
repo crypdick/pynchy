@@ -520,7 +520,7 @@ class TestScheduledReportFollowupContext:
             query_id="query-scheduled",
         )
         followup = IpcMessage(
-            text=f'<messages><message sender="Ricardo">{human_reply}</message></messages>',
+            text=f'<messages><message sender="Operator">{human_reply}</message></messages>',
             turn_id="turn-human",
             query_id="query-human",
         )
