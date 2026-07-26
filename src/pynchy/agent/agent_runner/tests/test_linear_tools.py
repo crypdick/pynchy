@@ -24,7 +24,18 @@ async def test_linear_tools_preserve_planning_gate_and_generic_execution_actions
         "rejected",
     ]
     assert set(move.inputSchema["required"]) == {"issue_id", "status"}
+    outcome = move.inputSchema["properties"]["outcome"]
+    assert outcome["type"] == "object"
+    assert outcome["additionalProperties"] is False
+    assert set(outcome["properties"]) == {
+        "summary",
+        "blocker",
+        "handoff_to",
+        "evidence_refs",
+    }
+    assert outcome["properties"]["evidence_refs"]["items"]["minLength"] == 1
     assert "Follow-ups" in (move.description or "")
+    assert "typed outcome" in (move.description or "")
     assert set(submit_plan.inputSchema["required"]) == {"issue_id", "plan"}
     assert "Awaiting Plan Approval" in (submit_plan.description or "")
     assert "revise" in (submit_plan.description or "")

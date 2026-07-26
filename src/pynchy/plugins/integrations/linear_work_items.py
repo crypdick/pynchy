@@ -49,6 +49,16 @@ class _LinkedMove:
     expected_statuses: set[str]
 
 
+@dataclass(frozen=True)
+class _MoveOutcome:
+    """Typed durable evidence supplied with one generic lifecycle move."""
+
+    summary: str | None
+    blocker: str | None
+    handoff_to: str | None
+    evidence_refs: tuple[str, ...] | None
+
+
 _LINKED_MOVES = {
     "awaiting_review": _LinkedMove(
         target_status="awaiting_review",
@@ -104,7 +114,11 @@ async def handle_move_todo(data: dict[str, Any]) -> dict[str, object]:
     latest = active or await get_work_item_execution_for_issue(issue_id, workspace=workspace)
     move = _LINKED_MOVES.get(status)
     if latest is not None and move is not None and _move_applies_to_execution(latest, status):
-        return await _move_linked(data, latest, move, source_group)
+        try:
+            outcome = _linked_move_outcome(data, status)
+        except (TypeError, ValueError) as exc:
+            return {"error": str(exc)}
+        return await _move_linked(data, latest, move, source_group, outcome)
     if active is not None:
         return {
             "error": (
@@ -165,11 +179,19 @@ async def _move_linked(
     execution: WorkItemExecution,
     move: _LinkedMove,
     source_group: str,
+    outcome: _MoveOutcome,
 ) -> dict[str, object]:
     request_id = _required_str(data, "request_id", "request_id is required")
+    turn = await get_in_flight_turn_for_group(source_group)
+    if turn is None:
+        return {"error": "A current agent turn is required to report a linked outcome"}
     try:
         if execution.status.is_active:
-            execution = await _bind_turn(execution, source_group)
+            execution = await bind_work_item_execution_to_turn(
+                execution.id,
+                turn_id=turn.turn_id,
+                task_id=turn.task_id,
+            )
         async with linear_client(workspace=execution.workspace) as client:
             updated = await transition_linked_work_item(
                 client,
@@ -181,26 +203,17 @@ async def _move_linked(
                     operation=f"move_to_{move.target_status}",
                     target_status=move.target_status,
                     result_execution_status=move.result_status,
+                    summary=outcome.summary,
+                    blocker=outcome.blocker,
+                    handoff_to=outcome.handoff_to,
+                    evidence_refs=outcome.evidence_refs,
+                    requester_delivery_turn_id=turn.turn_id,
                 ),
                 move.expected_statuses,
             )
     except (LinearError, ValueError) as exc:
         return {"error": str(exc)}
     return _execution_response(updated)
-
-
-async def _bind_turn(
-    execution: WorkItemExecution,
-    source_group: str,
-) -> WorkItemExecution:
-    turn = await get_in_flight_turn_for_group(source_group)
-    if turn is None:
-        return execution
-    return await bind_work_item_execution_to_turn(
-        execution.id,
-        turn_id=turn.turn_id,
-        task_id=turn.task_id,
-    )
 
 
 async def _move_provider_issue(
@@ -280,6 +293,57 @@ def _required_str(data: dict[str, Any], key: str, error: str) -> str:
     return value
 
 
+def _linked_move_outcome(data: dict[str, Any], status: str) -> _MoveOutcome:
+    raw = data.get("outcome")
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise TypeError("outcome must be an object")
+    unexpected = set(raw) - {"summary", "blocker", "handoff_to", "evidence_refs"}
+    if unexpected:
+        raise ValueError(f"outcome contains unsupported fields: {', '.join(sorted(unexpected))}")
+
+    summary = _outcome_text(raw, "summary")
+    blocker = _outcome_text(raw, "blocker")
+    handoff_to = _outcome_text(raw, "handoff_to")
+    evidence_refs = _outcome_evidence_refs(raw)
+    if status == "blocked":
+        if blocker is None:
+            raise ValueError("outcome.blocker is required when moving work to Blocked")
+        summary = summary or blocker
+    elif status in {"awaiting_review", "follow_ups", "done"} and summary is None:
+        raise ValueError(f"outcome.summary is required when moving work to {status}")
+    if status != "blocked" and (blocker is not None or handoff_to is not None):
+        raise ValueError("outcome.blocker and outcome.handoff_to are only valid for Blocked work")
+    return _MoveOutcome(summary, blocker, handoff_to, evidence_refs)
+
+
+def _outcome_text(outcome: dict[str, object], key: str) -> str | None:
+    value = outcome.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"outcome.{key} must be text")
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(f"outcome.{key} must not be empty")
+    return stripped
+
+
+def _outcome_evidence_refs(outcome: dict[str, object]) -> tuple[str, ...] | None:
+    if "evidence_refs" not in outcome:
+        return None
+    value = outcome["evidence_refs"]
+    if not isinstance(value, list):
+        raise TypeError("outcome.evidence_refs must be an array")
+    refs: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError("outcome.evidence_refs must contain non-empty strings")
+        refs.append(item.strip())
+    return tuple(dict.fromkeys(refs))
+
+
 def _status_error() -> str:
     return "status must be one of: " + ", ".join(sorted(TOOL_SETTABLE_STATUSES))
 
@@ -312,6 +376,7 @@ def work_item_execution_to_dict(execution: WorkItemExecution) -> dict[str, objec
         "evidence_refs": list(execution.evidence_refs),
         "requester_delivery": {
             "status": execution.requester_delivery_status,
+            "turn_id": execution.requester_delivery_turn_id,
             "error": execution.requester_delivery_error,
             "delivered_at": execution.requester_delivered_at,
         },

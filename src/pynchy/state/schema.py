@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS work_item_executions (
     handoff_to TEXT,
     evidence_refs TEXT NOT NULL DEFAULT '[]',
     requester_delivery_status TEXT NOT NULL DEFAULT 'not_requested',
+    requester_delivery_turn_id TEXT,
     requester_delivery_error TEXT,
     requester_delivered_at TEXT,
     created_at TEXT NOT NULL,

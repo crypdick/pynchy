@@ -129,6 +129,20 @@ state accurate. Returning a final response doesn't imply a state transition.
 
 `Awaiting Review`, `Follow-ups`, `Blocked`, and `Done` are agent-managed
 outcomes. The agent exercises judgment rather than satisfying a harness rule.
+The generic `linear_move_todo` action accepts a typed `outcome` object for
+these linked transitions. `Awaiting Review`, `Follow-ups`, and `Done` require a
+nonempty `summary`; `Blocked` requires a nonempty `blocker` and defaults its
+summary to that blocker. The action can also record `handoff_to` and
+`evidence_refs`. Omitted outcome fields preserve evidence already stored on the
+execution.
+
+The execution's `turn_id` remains immutable provenance for the turn that first
+owned the lease. Each reporting transition separately records the current
+requester-delivery turn. A later resumed or follow-up turn replaces that
+delivery correlation atomically. Only successful delivery of the visible final
+for the matching turn marks the outcome delivered; a different turn or failed
+channel send leaves it pending.
+
 `Follow-ups` covers work such as deployment verification, preserving useful
 logs before teardown, cleaning feature resources, and updating or unblocking
 related issues. The agent can move the issue to `Done` when the whole job is
@@ -273,7 +287,7 @@ host-managed lease record:
 | `linear_submit_plan` | Atomically persists an initial or revised plan and leaves it `Awaiting Plan Approval`. |
 | `linear_reconcile_work_item` | Resolves an uncertain provider transition. |
 | `linear_list_work_items` | Lists durable execution records for the workspace. |
-| `linear_move_todo` | Moves work to an agent-managed outcome or a directly human-authorized state. |
+| `linear_move_todo` | Moves work to an agent-managed outcome with typed evidence, or to a directly human-authorized state. |
 
 ## Inspect executions
 
@@ -283,9 +297,9 @@ Operators can inspect the read-only work-item projection through:
 GET /work-items?workspace=<workspace>&limit=100
 ```
 
-The response includes the issue, workspace, turn and task links, lifecycle
-state, evidence, delivery outcome, and timestamps. It doesn't fetch issue
-descriptions.
+The response includes the issue, workspace, immutable owner turn and task
+links, lifecycle state, evidence, requester-delivery turn and outcome, and
+timestamps. It doesn't fetch issue descriptions.
 
 Linear is a public sink by default because issue creation sends data outside
 Pynchy. A deployment that trusts its private Linear workspace and every member

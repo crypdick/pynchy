@@ -41,6 +41,7 @@ def row_to_execution(row: Row) -> WorkItemExecution:
         handoff_to=row["handoff_to"],
         evidence_refs=tuple(json.loads(row["evidence_refs"])),
         requester_delivery_status=row["requester_delivery_status"],
+        requester_delivery_turn_id=row["requester_delivery_turn_id"],
         requester_delivery_error=row["requester_delivery_error"],
         requester_delivered_at=row["requester_delivered_at"],
         created_at=row["created_at"],

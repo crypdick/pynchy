@@ -122,7 +122,7 @@ async def broadcast(  # noqa: PLR0913, RUF100 - outbound bus keeps the full rout
     suppress_errors: bool = True,
     skip_channel: str | None = None,
     source: str = "broadcast",
-) -> None:
+) -> bool:
     """Send an event to all connected channels.
 
     This is the single broadcast path for all outbound messages. Callers
@@ -138,6 +138,9 @@ async def broadcast(  # noqa: PLR0913, RUF100 - outbound bus keeps the full rout
         skip_channel: If set, skip the channel with this name (used for
             cross-channel echo to avoid sending back to the source).
         source: Ledger source label (e.g. ``"broadcast"``, ``"cross_post"``).
+
+    Returns:
+        True when at least one channel accepted the event.
     """
     caught: tuple[type[BaseException], ...] = (
         (OSError, TimeoutError, ConnectionError) if suppress_errors else (Exception,)
@@ -150,14 +153,16 @@ async def broadcast(  # noqa: PLR0913, RUF100 - outbound bus keeps the full rout
         chat_jid, event.content, source, [ch.name for ch, _ in targets]
     )
 
-    # Deliver to each target
+    delivered = False
     for ch, target_jid in targets:
         try:
             await ch.send_event(target_jid, event)
             await _mark_success(ledger_id, ch.name)
+            delivered = True
         except caught as exc:
             logger.warning("Channel send failed", channel=ch.name, err=str(exc))
             await _mark_error(ledger_id, ch.name, str(exc))
+    return delivered
 
 
 async def finalize_stream_or_broadcast(
@@ -167,7 +172,7 @@ async def finalize_stream_or_broadcast(
     stream_message_ids: dict[str, str] | None,
     *,
     suppress_errors: bool = True,
-) -> None:
+) -> bool:
     """Finalize streaming messages or fall back to normal broadcast.
 
     For channels that were actively streaming (have a message_id in
@@ -181,10 +186,18 @@ async def finalize_stream_or_broadcast(
         stream_message_ids: Mapping of channel_name -> message_id from
             streaming. Pass None or empty dict to broadcast normally.
         suppress_errors: Error handling mode (same as ``broadcast``).
+
+    Returns:
+        True when at least one stream update or channel send succeeded.
     """
     if not stream_message_ids:
-        await broadcast(deps, chat_jid, event, suppress_errors=suppress_errors, source="agent")
-        return
+        return await broadcast(
+            deps,
+            chat_jid,
+            event,
+            suppress_errors=suppress_errors,
+            source="agent",
+        )
 
     caught = _caught_errors(suppress_errors=suppress_errors)
     send_targets = _resolve_send_targets(deps, chat_jid)
@@ -195,8 +208,9 @@ async def finalize_stream_or_broadcast(
 
     all_target_names = sorted(stream_target_names | send_target_names)
     ledger_id = await _record_to_ledger(chat_jid, event.content, "agent", all_target_names)
-    await _deliver_stream_targets(stream_targets, event, ledger_id, caught)
-    await _deliver_send_targets(send_targets, event, ledger_id, caught)
+    updated = await _deliver_stream_targets(stream_targets, event, ledger_id, caught)
+    sent = await _deliver_send_targets(send_targets, event, ledger_id, caught)
+    return updated or sent
 
 
 def _caught_errors(*, suppress_errors: bool) -> tuple[type[BaseException], ...]:
@@ -228,21 +242,25 @@ async def _deliver_stream_targets(
     event: OutboundEvent,
     ledger_id: int | None,
     caught: tuple[type[BaseException], ...],
-) -> None:
+) -> bool:
     # update_event failures always fall back to send_event (catch Exception);
     # send_event failures respect suppress_errors via `caught`.
+    delivered = False
     for ch, msg_id, target_jid in stream_targets:
         try:
             await ch.update_event(target_jid, msg_id, event)
             await _mark_success(ledger_id, ch.name)
+            delivered = True
         except Exception:  # noqa: BLE001, RUF100 - stream update retry keeps delivery moving.
             logger.warning("Stream update failed, falling back to send_event", channel=ch.name)
             try:
                 await ch.send_event(target_jid, event)
                 await _mark_success(ledger_id, ch.name)
+                delivered = True
             except caught as exc:
                 logger.warning("Fallback send_event also failed", channel=ch.name, err=str(exc))
                 await _mark_error(ledger_id, ch.name, str(exc))
+    return delivered
 
 
 async def _deliver_send_targets(
@@ -250,11 +268,14 @@ async def _deliver_send_targets(
     event: OutboundEvent,
     ledger_id: int | None,
     caught: tuple[type[BaseException], ...],
-) -> None:
+) -> bool:
+    delivered = False
     for ch, target_jid in send_targets:
         try:
             await ch.send_event(target_jid, event)
             await _mark_success(ledger_id, ch.name)
+            delivered = True
         except caught as exc:
             logger.warning("Channel send failed", channel=ch.name, err=str(exc))
             await _mark_error(ledger_id, ch.name, str(exc))
+    return delivered

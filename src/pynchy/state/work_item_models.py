@@ -48,7 +48,8 @@ class WorkItemTransitionRequest:
     operation: str
     target_status: str
     result_execution_status: WorkItemExecutionStatus
-    evidence_refs: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] | None = None
     summary: str | None = None
     blocker: str | None = None
     handoff_to: str | None = None
+    requester_delivery_turn_id: str | None = None

@@ -1542,6 +1542,40 @@ class TestUpdateById:
 class TestEnsureColumns:
     """Test that _ensure_columns adds missing columns to existing tables."""
 
+    async def test_adds_requester_delivery_turn_without_losing_executions(self):
+        """Existing execution owners survive the new delivery correlation column."""
+        db = await aiosqlite.connect(":memory:")
+        await create_schema(db)
+        await db.execute(
+            """
+            INSERT INTO work_item_executions (
+                id, workspace, linear_issue_id, linear_issue_identifier,
+                linear_issue_url, turn_id, attempt, initiated_by,
+                observed_state_id, observed_state_name, status, evidence_refs,
+                requester_delivery_status, created_at, updated_at
+            ) VALUES (
+                'execution-1', 'pynchy', 'issue-1', 'SYN-1',
+                'https://linear.app/example/issue/SYN-1', 'owner-turn', 1,
+                'linear-webhook:test', 'state-in-progress', 'In Progress',
+                'in_progress', '[]', 'not_requested',
+                '2026-07-26T00:00:00Z', '2026-07-26T00:00:00Z'
+            )
+            """
+        )
+        await db.execute("ALTER TABLE work_item_executions DROP COLUMN requester_delivery_turn_id")
+
+        await create_schema(db)
+
+        cursor = await db.execute("PRAGMA table_info(work_item_executions)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        assert "requester_delivery_turn_id" in columns
+        cursor = await db.execute(
+            "SELECT turn_id, requester_delivery_turn_id "
+            "FROM work_item_executions WHERE id = 'execution-1'"
+        )
+        assert await cursor.fetchone() == ("owner-turn", None)
+        await db.close()
+
     async def test_adds_occurrence_state_to_existing_scheduled_tasks(self):
         """Existing one-shot tasks gain the initial generation without row loss."""
         db = await aiosqlite.connect(":memory:")

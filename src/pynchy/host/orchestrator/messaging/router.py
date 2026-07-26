@@ -351,13 +351,13 @@ async def _handle_result_metadata(deps: OutputDeps, chat_jid: str, meta: dict[st
     )
 
 
-async def _handle_final_result(request: _FinalResultRequest) -> bool:
+async def _handle_final_result(request: _FinalResultRequest) -> tuple[bool, bool]:
     """Handle the final result event — store, broadcast, and emit.
 
-    Returns True if a user-visible result was sent.
+    Returns whether a visible result existed and whether a channel received it.
     """
     if not request.result.result:
-        return False
+        return False, False
 
     raw = (
         request.result.result
@@ -366,7 +366,7 @@ async def _handle_final_result(request: _FinalResultRequest) -> bool:
     )
     text = format_internal_tags(raw)
     if not text:
-        return False
+        return False, False
 
     s = get_settings()
     is_host, content = parse_host_tag(text)
@@ -404,7 +404,7 @@ async def _handle_final_result(request: _FinalResultRequest) -> bool:
     # For channels that were streaming, finalize the existing message.
     # For all others, post normally via broadcast.
     stream_ids = request.stream_state.message_ids if request.stream_state else None
-    await finalize_stream_or_broadcast(
+    delivered = await finalize_stream_or_broadcast(
         request.deps,
         request.chat_jid,
         event,
@@ -425,7 +425,7 @@ async def _handle_final_result(request: _FinalResultRequest) -> bool:
             is_bot=True,
         )
     )
-    return True
+    return True, delivered
 
 
 def pop_last_result_ids(chat_jid: str) -> dict[str, str] | None:
@@ -448,7 +448,7 @@ async def handle_streamed_output(
 
     Dispatches to type-specific handlers for trace events (thinking,
     tool_use, tool_result, system, text) and final results.
-    Returns True if a user-visible result was sent.
+    Returns True if a user-visible result was produced.
     """
     ts = datetime.now(UTC).isoformat()
 
@@ -481,7 +481,7 @@ async def handle_streamed_output(
     await close_trace_run(chat_jid)
 
     resolved_turn_id = turn_id or new_turn_id()
-    sent = await _handle_final_result(
+    sent, delivered = await _handle_final_result(
         _FinalResultRequest(
             deps=deps,
             chat_jid=chat_jid,
@@ -492,7 +492,7 @@ async def handle_streamed_output(
             turn_id=resolved_turn_id,
         )
     )
-    if sent:
+    if delivered:
         try:
             await mark_work_item_delivery_delivered_for_turn(resolved_turn_id)
         except RuntimeError:
