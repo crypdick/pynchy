@@ -41,6 +41,7 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
@@ -283,6 +284,7 @@ class TestTemporalSchedulerRuntime:
         }.issubset(set(captured["workflows"]))
         assert {
             temporal_scheduler.run_interactive_message_turn,
+            temporal_scheduler.run_interactive_runtime_turn,
             temporal_scheduler.run_interrupted_agent_turn,
             temporal_scheduler.clear_terminal_scheduled_turn,
             temporal_scheduler.run_learning_review,
@@ -343,6 +345,9 @@ class TestTemporalSchedulerRuntime:
 
         assert (
             "pynchy.host.orchestrator.temporal.workflows" in runner.restrictions.passthrough_modules
+        )
+        assert (
+            "pynchy.host.orchestrator.execution_outcomes" in runner.restrictions.passthrough_modules
         )
 
     def test_agent_task_workflow_id_is_stable_and_temporal_safe(self, temporal_task):
@@ -508,11 +513,11 @@ class TestTemporalSchedulerRuntime:
         )
         runtime.client = client
 
-        await runtime.start_interrupted_turn("turn-123", "slack:C123")
+        await runtime.start_interrupted_turn("turn-123", "admin")
 
         workflow, args, kwargs = client.started_workflows[0]
         assert workflow == temporal_workflows.InterruptedTurnWorkflow.run
-        assert args[:2] == ("turn-123", "slack:C123")
+        assert args[:2] == ("turn-123", "admin")
         assert len(args) == 4
         assert kwargs["id"] == "pynchy-interrupted-turn-turn-123"
         assert kwargs["task_queue"] == "pynchy-test"
@@ -1142,7 +1147,7 @@ class TestTemporalSchedulerRuntime:
     async def test_worker_lifecycle_updates_running_status(self, monkeypatch):
 
         def fake_connect(*args, **kwargs):
-            return asyncio.sleep(0, result=object())
+            return asyncio.sleep(0, result=FakeScheduleClient())
 
         @asynccontextmanager
         async def fake_worker(*args, **kwargs):
@@ -1166,7 +1171,7 @@ class TestTemporalSchedulerRuntime:
         captured = {}
 
         def fake_connect(*args, **kwargs):
-            return asyncio.sleep(0, result=object())
+            return asyncio.sleep(0, result=FakeScheduleClient())
 
         monkeypatch.setattr(temporal_scheduler.Client, "connect", fake_connect)
         monkeypatch.setattr(temporal_scheduler, "Worker", self._capturing_worker(captured))
@@ -1228,7 +1233,7 @@ class TestTemporalSchedulerRuntime:
             called["task"] = task
             called["deps"] = runner_deps
             called["occurrence_id"] = occurrence_id
-            return asyncio.sleep(0, result=True)
+            return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(
@@ -1289,14 +1294,14 @@ class TestTemporalSchedulerRuntime:
             "run_scheduled_agent",
             lambda _task, _deps, *, occurrence_id: asyncio.sleep(
                 0,
-                result=temporal_scheduler.TURN_PAUSED,
+                result=TurnOutcome.PAUSED,
             ),
         )
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
         result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
-        assert result == temporal_workflows.TURN_PAUSED
+        assert result == TurnOutcome.PAUSED.value
 
     @pytest.mark.asyncio
     async def test_run_learning_review_activity_uses_bound_deps(self, monkeypatch, learning_packet):
@@ -1336,7 +1341,7 @@ class TestTemporalSchedulerRuntime:
         def fake_process_message_turn(runner_deps, chat_jid):
             called["deps"] = runner_deps
             called["chat_jid"] = chat_jid
-            return asyncio.sleep(0, result=True)
+            return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
 
         monkeypatch.setattr(
             temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
@@ -1362,7 +1367,7 @@ class TestTemporalSchedulerRuntime:
     async def test_run_interactive_message_activity_retries_unhandled_turn(self, monkeypatch):
 
         def fake_process_message_turn(_runner_deps, _chat_jid):
-            return asyncio.sleep(0, result=False)
+            return asyncio.sleep(0, result=TurnOutcome.RETRY)
 
         monkeypatch.setattr(
             temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
@@ -1377,9 +1382,7 @@ class TestTemporalSchedulerRuntime:
         self, monkeypatch
     ):
         def fake_process_message_turn(_runner_deps, _chat_jid):
-            return asyncio.sleep(
-                0, result=temporal_interactive.messaging_pipeline.CONTINUE_AFTER_SAFE_INTERRUPT
-            )
+            return asyncio.sleep(0, result=TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT)
 
         monkeypatch.setattr(
             temporal_interactive, "_process_interactive_message_turn", fake_process_message_turn
@@ -1388,20 +1391,40 @@ class TestTemporalSchedulerRuntime:
 
         result = await temporal_scheduler.run_interactive_message_turn("slack:C123")
 
-        assert result == temporal_interactive.CONTINUE_AFTER_SAFE_INTERRUPT
+        assert result == TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value
+
+    @pytest.mark.asyncio
+    async def test_runtime_continuation_resolves_replacement_chat_binding(self):
+        current = WorkspaceProfile(
+            jid="slack:CURRENT",
+            name="Current",
+            folder="admin",
+            trigger="@pynchy",
+        )
+        deps = NullSchedulerDeps(groups={current.jid: current})
+        run_turn = AsyncMock(return_value=TurnOutcome.COMPLETED)
+        deps.queue.run_message_turn = run_turn  # type: ignore[method-assign]
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        result = await temporal_scheduler.run_interactive_runtime_turn("admin")
+
+        assert result == TurnOutcome.COMPLETED.value
+        target = run_turn.await_args.args[0]
+        assert target.folder == "admin"
+        assert target.chat_jid == current.jid
 
     @pytest.mark.asyncio
     async def test_run_interactive_message_activity_returns_terminal_pause(self, monkeypatch):
         monkeypatch.setattr(
             temporal_interactive,
             "_process_interactive_message_turn",
-            lambda _deps, _chat_jid: asyncio.sleep(0, result=temporal_interactive.TURN_PAUSED),
+            lambda _deps, _chat_jid: asyncio.sleep(0, result=TurnOutcome.PAUSED),
         )
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
         result = await temporal_scheduler.run_interactive_message_turn("slack:C123")
 
-        assert result == temporal_workflows.TURN_PAUSED
+        assert result == TurnOutcome.PAUSED.value
 
     @pytest.mark.asyncio
     async def test_interrupted_turn_activity_preserves_safe_interrupt_continuation(
@@ -1430,13 +1453,13 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_interrupted,
             "_dispatch_interrupted_turn",
-            AsyncMock(return_value=temporal_interrupted.CONTINUE_AFTER_SAFE_INTERRUPT),
+            AsyncMock(return_value=TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT),
         )
         monkeypatch.setattr(temporal_interrupted, "_require_scheduler_deps", get_scheduler_deps)
 
         result = await temporal_interrupted.run_interrupted_agent_turn("turn-123")
 
-        assert result == temporal_workflows.CONTINUE_AFTER_SAFE_INTERRUPT
+        assert result == TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value
 
     @pytest.mark.asyncio
     async def test_interrupted_turn_activity_does_not_claim_paused_checkpoint(self, monkeypatch):
@@ -1459,7 +1482,7 @@ class TestTemporalSchedulerRuntime:
 
         result = await temporal_interrupted.run_interrupted_agent_turn("turn-paused")
 
-        assert result == temporal_workflows.TURN_PAUSED
+        assert result == TurnOutcome.PAUSED.value
         claim.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -1875,7 +1898,7 @@ class TestTemporalSchedulerRuntime:
 
         def fake_run_scheduled_agent(task, runner_deps, *, occurrence_id):
             assert occurrence_id == "occurrence-failed"
-            return asyncio.sleep(0, result=False)
+            return asyncio.sleep(0, result=TurnOutcome.RETRY)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(
@@ -2036,7 +2059,7 @@ class TestTemporalSchedulerRuntime:
         def fake_run_scheduled_agent(task, runner_deps):
             called["task_id"] = task.id
             called["deps"] = runner_deps
-            return asyncio.sleep(0, result=None)
+            return asyncio.sleep(0, result=TurnOutcome.COMPLETED)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
         monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)

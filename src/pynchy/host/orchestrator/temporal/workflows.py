@@ -12,10 +12,9 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+
 ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
-CONTINUE_AFTER_SAFE_INTERRUPT = "continue_after_safe_interrupt"
-TURN_PAUSED = "paused"
-TURN_RESET = "reset"
 
 
 @workflow.defn
@@ -35,7 +34,7 @@ class InteractiveMessageWorkflow:
                 maximum_attempts,
                 initial_retry_seconds,
             )
-            if result != CONTINUE_AFTER_SAFE_INTERRUPT:
+            if result != TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value:
                 return result
 
 
@@ -86,7 +85,7 @@ class InterruptedTurnWorkflow:
     async def run(
         self,
         turn_id: str,
-        chat_jid: str,
+        group_folder: str,
         maximum_attempts: int,
         initial_retry_seconds: float,
     ) -> str:
@@ -104,13 +103,35 @@ class InterruptedTurnWorkflow:
                 ),
             ),
         )
-        while result == CONTINUE_AFTER_SAFE_INTERRUPT:
-            result = await _run_interactive_message_turn(
-                chat_jid,
+        while result == TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value:
+            result = await _run_interactive_runtime_turn(
+                group_folder,
                 maximum_attempts,
                 initial_retry_seconds,
             )
         return result
+
+
+async def _run_interactive_runtime_turn(
+    group_folder: str,
+    maximum_attempts: int,
+    initial_retry_seconds: float,
+) -> str:
+    """Execute one continuation after resolving the runtime's current address."""
+    return cast(
+        "str",
+        await workflow.execute_activity(
+            "run_interactive_runtime_turn",
+            group_folder,
+            start_to_close_timeout=timedelta(hours=12),
+            heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+            retry_policy=RetryPolicy(
+                maximum_attempts=maximum_attempts,
+                initial_interval=timedelta(seconds=initial_retry_seconds),
+                backoff_coefficient=2.0,
+            ),
+        ),
+    )
 
 
 @workflow.defn

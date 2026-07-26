@@ -24,6 +24,7 @@ from pynchy.logger import logger
 from pynchy.state import rebind_workspace_profile, set_workspace_profile
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
     Channel,
+    RuntimeId,
     ServiceTrustConfig,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -45,7 +46,7 @@ class _WorkspaceResolutionChannel(Protocol):
 
 
 class _WorkspaceActivityQueue(Protocol):
-    def has_activity(self, group_jid: str) -> bool: ...
+    def has_activity(self, runtime_id: RuntimeId) -> bool: ...
 
 
 async def rebind_workspace_runtime(
@@ -62,7 +63,7 @@ async def rebind_workspace_runtime(
         ),
         None,
     )
-    if old_jid is not None and queue.has_activity(old_jid):
+    if old_jid is not None and queue.has_activity(RuntimeId(profile.folder)):
         raise RuntimeError(f"Cannot rebind active workspace {profile.folder!r} from {old_jid!r}")
     persisted_old_jid = await rebind_workspace_profile(profile)
     prior_jid = old_jid or persisted_old_jid

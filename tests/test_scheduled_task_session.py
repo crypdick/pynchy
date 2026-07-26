@@ -18,7 +18,8 @@ from pynchy.host.container_manager import orchestrator as container_orchestrator
 from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
 from pynchy.host.orchestrator import agent_runner
 from pynchy.host.orchestrator.concurrency import GroupQueue
-from pynchy.types import ContainerInput, WorkspaceProfile
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
+from pynchy.types import ContainerInput, RuntimeId, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -130,13 +131,17 @@ class TestScheduledTaskUsesSession:
     async def _call(self):
         """Drive the public agent entry point through its scheduled-task path."""
         with patch(_P_PREFLIGHT, new_callable=AsyncMock, return_value=self.ctx):
-            return await agent_runner.run_agent(
-                self.deps,
-                self.group,
-                "test@g.us",
-                [{"content": "do stuff", "sender": "task"}],
-                is_scheduled_task=True,
-                input_source="scheduled_task",
+            return await self.deps.queue.run_serialized_task(
+                RuntimeTarget.from_workspace(self.group),
+                "test-scheduled-task",
+                lambda: agent_runner.run_agent(
+                    self.deps,
+                    self.group,
+                    "test@g.us",
+                    [{"content": "do stuff", "sender": "task"}],
+                    is_scheduled_task=True,
+                    input_source="scheduled_task",
+                ),
             )
 
     @pytest.mark.asyncio
@@ -262,8 +267,8 @@ class TestScheduledTaskUsesSession:
         """Should register the container process for send_message() support."""
         registered = []
 
-        def track_register(chat_jid, proc, name, folder, invocation_ts=0.0):
-            registered.append((chat_jid, proc, name, folder))
+        def track_register(runtime_id, proc, name, invocation_ts=0.0):
+            registered.append((runtime_id, proc, name, invocation_ts))
 
         self.deps.queue.register_process = track_register
 
@@ -277,7 +282,7 @@ class TestScheduledTaskUsesSession:
             await self._call()
 
         assert len(registered) == 1
-        assert registered[0] == ("test@g.us", self.fake_proc, "c-123", "test-group")
+        assert registered[0] == (RuntimeId("test-group"), self.fake_proc, "c-123", 0.0)
 
     @pytest.mark.asyncio
     async def test_spawn_failure_returns_error(self):

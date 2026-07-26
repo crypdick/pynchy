@@ -9,17 +9,18 @@ from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype re
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ContainerOutput,
+    RuntimeId,
     WorkspaceProfile,
 )
 
 
 @runtime_checkable
 class ScheduledTurnQueue(Protocol):
-    def close_stdin(self, chat_jid: str) -> None: ...
+    def close_stdin(self, runtime_id: RuntimeId) -> None: ...
 
-    def boundary_interrupt_requested(self, chat_jid: str) -> bool: ...
+    def boundary_interrupt_requested(self, runtime_id: RuntimeId) -> bool: ...
 
-    async def interrupt_after_tool_result(self, chat_jid: str) -> bool: ...
+    async def interrupt_after_tool_result(self, runtime_id: RuntimeId) -> bool: ...
 
 
 @runtime_checkable

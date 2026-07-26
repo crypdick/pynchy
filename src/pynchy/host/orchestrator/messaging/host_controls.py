@@ -12,6 +12,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
     MessageHandlerDeps,
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.state import (
     clear_in_flight_turn,
@@ -81,14 +82,15 @@ async def _handle_pause(
     group: types.WorkspaceProfile,
     message: types.NewMessage,
 ) -> None:
-    had_active_run = deps.queue.has_active_run(chat_jid)
+    runtime_id = types.RuntimeId(group.folder)
+    had_active_run = deps.queue.has_active_run(runtime_id)
     turn = await _consume_checkpoint_control(
         deps,
         chat_jid,
         message,
         types.CheckpointControlState.PAUSE_REQUESTED,
     )
-    await deps.queue.stop_active_process_for_control(chat_jid)
+    await deps.queue.stop_active_process_for_control(runtime_id)
     await destroy_session(group.folder)
     if turn is not None and not had_active_run:
         await finalize_in_flight_pause(turn.turn_id)
@@ -111,7 +113,7 @@ async def _intercept_checkpoint_command(
     if not commands.is_context_reset(content):
         return False
     logger.info("intercept_trace", step="context_reset_start", group=group.name)
-    had_active_run = deps.queue.has_active_run(chat_jid)
+    had_active_run = deps.queue.has_active_run(types.RuntimeId(group.folder))
     turn = await _consume_checkpoint_control(
         deps,
         chat_jid,
@@ -217,7 +219,7 @@ async def intercept_immediate_checkpoint_controls(
     ):
         # Drain after the stopping queue coroutine releases; forwarding here
         # can write into dead container IPC.
-        deps.queue.enqueue_message_check(chat_jid)
+        deps.queue.enqueue_message_check(RuntimeTarget.from_binding(group.folder, chat_jid))
     return True
 
 

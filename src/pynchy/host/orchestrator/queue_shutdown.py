@@ -11,10 +11,11 @@ from pynchy.host.orchestrator.queue_state import (  # noqa: TC001, RUF100 - bear
     GroupState,
 )
 from pynchy.logger import logger
+from pynchy.types import RuntimeId  # noqa: TC001, RUF100
 
 
 async def shutdown_queue_processes(
-    groups: dict[str, GroupState],
+    groups: dict[RuntimeId, GroupState],
     *,
     active_count: int,
 ) -> None:

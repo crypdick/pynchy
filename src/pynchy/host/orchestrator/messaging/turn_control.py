@@ -11,6 +11,9 @@ import pynchy.types as types
 from pynchy.config.settings import Settings  # noqa: TC001, RUF100 - beartype resolves annotations.
 from pynchy.event_bus import AgentActivityEvent
 from pynchy.host.learning import capture as learning_capture
+from pynchy.host.orchestrator.execution_outcomes import (
+    TurnOutcome,
+)
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     MessageHandlerDeps,
 )
@@ -23,24 +26,20 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     requested_control_outcome,
     resume_interrupted_message_turn,
 )
-from pynchy.host.orchestrator.messaging.outcomes import (
-    TURN_PAUSED,
-    TURN_RESET,
-    ProcessGroupResult,
-)
 from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
 from pynchy.host.orchestrator.messaging.turn_recovery import (
     handle_reset_handoff,
     resume_interrupted_message_if_present,
 )
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.state import (
     clear_in_flight_turn,
-    get_in_flight_turn_for_chat,
+    get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,
     resume_paused_in_flight_turn,
 )
 
-ProcessPending = Callable[[str], Awaitable[ProcessGroupResult]]
+ProcessPending = Callable[[str], Awaitable[TurnOutcome]]
 GetPendingMessages = Callable[[str, str], Awaitable[list[types.NewMessage]]]
 _MESSAGE_WORK_KINDS = {
     types.InFlightWorkKind.INTERACTIVE,
@@ -78,19 +77,19 @@ class _PausedResumeRequest:
     process_pending: ProcessPending
 
 
-async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> ProcessGroupResult:
+async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> TurnOutcome:
     """Attach pending guidance and resume the frozen occurrence exactly once."""
     deps = request.deps
     turn = request.turn
     if turn.control_state is types.CheckpointControlState.PAUSE_REQUESTED:
         # A reply can race the process shutdown. Its interactive workflow may
         # retry, but the paused occurrence itself never retries automatically.
-        return False
+        return TurnOutcome.RETRY
     if turn.control_state is types.CheckpointControlState.RESET_REQUESTED:
         await clear_in_flight_turn(turn.turn_id)
-        return TURN_RESET
+        return TurnOutcome.RESET
     if turn.control_state is not types.CheckpointControlState.PAUSED:
-        return True
+        return TurnOutcome.COMPLETED
 
     is_scheduled = turn.work_kind is types.InFlightWorkKind.SCHEDULED
     resumed = await resume_paused_in_flight_turn(
@@ -100,15 +99,16 @@ async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> ProcessGro
         claim=not is_scheduled,
     )
     if resumed is None:
-        return True
+        return TurnOutcome.COMPLETED
 
     mark_dispatched(deps, request.chat_jid, request.missed_messages[-1].timestamp)
     if is_scheduled:
-        await deps.start_interrupted_turn(resumed.turn_id, resumed.chat_jid)
-        return True
+        await deps.start_interrupted_turn(resumed.turn_id, request.group.folder)
+        return TurnOutcome.COMPLETED
 
     return await resume_interrupted_message_turn(
         deps,
+        RuntimeTarget.from_binding(request.group.folder, request.chat_jid),
         request.group,
         resumed,
         request.process_pending,
@@ -121,7 +121,7 @@ async def prepare_agent_batch(
     group: types.WorkspaceProfile,
     settings: Settings,
     callbacks: TurnPreparationCallbacks,
-) -> AgentBatch | ProcessGroupResult:
+) -> AgentBatch | TurnOutcome:
     """Resume durable work or prepare pending messages for an interactive turn."""
     resumed = await resume_interrupted_message_if_present(
         deps,
@@ -134,19 +134,22 @@ async def prepare_agent_batch(
 
     reset_file = settings.data_dir / "ipc" / group.folder / "reset_prompt.json"
     if await handle_reset_handoff(deps, chat_jid, group, reset_file, settings) is False:
-        return False
+        return TurnOutcome.RETRY
 
     since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
     missed_messages = await callbacks.get_pending_messages(chat_jid, since_timestamp)
-    checkpoint = await get_in_flight_turn_for_chat(chat_jid, _MESSAGE_WORK_KINDS)
+    checkpoint = await get_oldest_resumable_turn_for_group(group.folder, _MESSAGE_WORK_KINDS)
     if await should_skip_batch(deps, chat_jid, group, missed_messages):
-        checkpoint = await get_in_flight_turn_for_chat(chat_jid, _MESSAGE_WORK_KINDS)
+        checkpoint = await get_oldest_resumable_turn_for_group(
+            group.folder,
+            _MESSAGE_WORK_KINDS,
+        )
         if checkpoint is not None and checkpoint.control_state in {
             types.CheckpointControlState.PAUSE_REQUESTED,
             types.CheckpointControlState.PAUSED,
         }:
-            return TURN_PAUSED
-        return True
+            return TurnOutcome.PAUSED
+        return TurnOutcome.COMPLETED
 
     messages, reset_system_notices = prepare_message_context(
         settings,
@@ -185,7 +188,7 @@ class InteractiveAgentRun:
     had_error: bool
     output_sent_to_user: bool
     learning_summary: learning_capture.LearningRunSummary
-    control_outcome: ProcessGroupResult | None
+    control_outcome: TurnOutcome | None
 
 
 async def _requested_control_after_agent_exit(
@@ -194,7 +197,7 @@ async def _requested_control_after_agent_exit(
     turn_id: str,
     *,
     agent_succeeded: bool,
-) -> ProcessGroupResult | None:
+) -> TurnOutcome | None:
     outcome = await requested_control_outcome(
         turn_id,
         agent_succeeded=agent_succeeded,
@@ -234,9 +237,9 @@ async def run_interactive_agent(
         if result.status == "error":
             had_error = True
         if result.type == "tool_result":
-            await deps.queue.interrupt_after_tool_result(chat_jid)
+            await deps.queue.interrupt_after_tool_result(types.RuntimeId(group.folder))
 
-    control_outcome: ProcessGroupResult | None = None
+    control_outcome: TurnOutcome | None = None
     try:
         agent_result = await deps.run_agent(
             group,

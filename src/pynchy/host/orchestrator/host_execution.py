@@ -21,8 +21,9 @@ from pynchy.host.learning.paths import resolve_learning_paths
 from pynchy.host.learning.skill_activation import prepare_agent_homes
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
 from pynchy.logger import logger
-from pynchy.types import ContainerInput, ContainerOutput
+from pynchy.types import ContainerInput, ContainerOutput, RuntimeId  # noqa: TC001, RUF100
 
 if TYPE_CHECKING:
     import asyncio
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
     import pluggy
 
     from pynchy.host.orchestrator.queue_state import HostProcessLease
-
 _CODEX_SESSION_PREFIX = "codex:"
 HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 
@@ -39,18 +39,17 @@ HostOutput = Callable[[ContainerOutput], Awaitable[None]]
 class HostProcessQueue(Protocol):
     """Queue operations that bridge a direct Temporal host process."""
 
-    def acquire_host_process(self, group_jid: str) -> HostProcessLease: ...
+    def acquire_host_process(self, target: RuntimeTarget) -> HostProcessLease: ...
 
     def register_host_process(  # noqa: PLR0913, RUF100 - mirrors GroupQueue's process-registration contract.
         self,
         lease: HostProcessLease,
         proc: asyncio.subprocess.Process | None,
         container_name: str,
-        group_folder: str | None = None,
         invocation_ts: float = 0.0,
     ) -> bool: ...
 
-    def boundary_interrupt_requested(self, group_jid: str) -> bool: ...
+    def boundary_interrupt_requested(self, runtime_id: RuntimeId) -> bool: ...
 
     def release_host_process(self, lease: HostProcessLease) -> bool: ...
 
@@ -65,8 +64,7 @@ class HostAgentTurnRequest:
     timeout_seconds: int | float
     env: dict[str, str]
     queue: HostProcessQueue
-    chat_jid: str
-    group_folder: str
+    target: RuntimeTarget
 
 
 def codex_thread_id(session_id: str | None) -> str | None:
@@ -230,14 +228,13 @@ async def prepare_host_direct_mcp_servers(
 
 async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
     """Run a host turn while exposing its process to inbound message routing."""
-    lease = request.queue.acquire_host_process(request.chat_jid)
+    lease = request.queue.acquire_host_process(request.target)
 
     def register_spawned_process(proc: asyncio.subprocess.Process) -> None:
         if not request.queue.register_host_process(
             lease,
             proc,
             "host-agent-runner",
-            request.group_folder,
             request.input_data.invocation_ts,
         ):
             raise RuntimeError("Host process lease expired before process registration")
@@ -252,7 +249,7 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
             on_process_started=lambda proc: register_spawned_process(
                 cast("asyncio.subprocess.Process", proc)
             ),
-            is_interrupted=lambda: request.queue.boundary_interrupt_requested(request.chat_jid),
+            is_interrupted=lambda: request.queue.boundary_interrupt_requested(request.target.id),
         )
     except BaseException:
         request.queue.release_host_process(lease)

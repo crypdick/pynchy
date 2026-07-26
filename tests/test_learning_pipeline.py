@@ -12,6 +12,7 @@ import pytest
 from conftest import make_settings
 
 from pynchy.config.models import LearningConfig, ObsidianLearningConfig
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging.pipeline import MessageHandlerDeps, process_group_messages
 from pynchy.state import init_test_database
 from pynchy.types import ContainerOutput, NewMessage, WorkspaceProfile
@@ -157,7 +158,7 @@ async def test_clean_successful_turn_starts_temporal_learning_review_after_curso
         settings.return_value = _settings_mock(tmp_path, learning=LearningConfig(enabled=True))
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     mock_start.assert_awaited_once()
     args = mock_start.await_args.args
     assert args[:5] == (
@@ -209,7 +210,7 @@ async def test_enabled_learning_logs_capture_attempt(
         learning_path_settings.return_value = enabled_settings
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     assert "Completed-turn learning capture finished" in caplog.text
     assert "learning-" in caplog.text
 
@@ -265,7 +266,7 @@ async def test_learning_review_packet_includes_follow_up_dispatched_during_activ
 
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     assert deps.last_agent_timestamp["g@g.us"] == follow_up.timestamp
     assert mock_messages_since.await_args_list == [
         call("g@g.us", previous_cursor),
@@ -320,7 +321,7 @@ async def test_learning_review_is_skipped_when_expanded_fetch_fails(tmp_path: Pa
 
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
     assert mock_messages_since.await_args_list == [
         call("g@g.us", "old-ts"),
@@ -346,7 +347,7 @@ async def test_retryable_failure_does_not_start_learning_review(tmp_path: Path) 
         settings.return_value = _settings_mock(tmp_path)
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is False
+    assert result is TurnOutcome.RETRY
     mock_start.assert_not_awaited()
 
 
@@ -374,7 +375,7 @@ async def test_partial_output_failure_does_not_start_learning_review(tmp_path: P
         settings.return_value = _settings_mock(tmp_path)
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
     mock_start.assert_not_awaited()
 
@@ -417,7 +418,7 @@ async def test_review_after_turn_false_skips_follow_up_expansion_and_learning_st
 
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
     assert mock_messages_since.await_count == 1
     temporal_start.assert_not_awaited()
@@ -450,7 +451,7 @@ async def test_learning_observation_failure_does_not_block_streamed_output(
     ):
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     deps.handle_streamed_output.assert_awaited_once()
     args = deps.handle_streamed_output.await_args
     assert args.args == ("g@g.us", group, output)
@@ -494,7 +495,7 @@ async def test_learning_disabled_skips_follow_up_expansion_and_learning_start(
 
         result = await process_group_messages(deps, "g@g.us")
 
-    assert result is True
+    assert result is TurnOutcome.COMPLETED
     assert deps.last_agent_timestamp["g@g.us"] == follow_up_timestamp
     assert mock_messages_since.await_count == 1
     temporal_start.assert_not_awaited()

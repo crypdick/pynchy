@@ -10,6 +10,9 @@ from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
 
 from pynchy.config.settings import Settings  # noqa: TC001 - beartype resolves annotations.
 from pynchy.conversation.events import new_turn_id
+from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TurnOutcome,
+)
 from pynchy.host.orchestrator.messaging.in_flight import (
     InFlightMessageDeps,
     MessageTurnStart,
@@ -17,14 +20,12 @@ from pynchy.host.orchestrator.messaging.in_flight import (
     note_output_sent,
     resume_interrupted_message_turn,
 )
-from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
-    ProcessGroupResult,
-)
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.logger import logger
 from pynchy.state import (
     claim_in_flight_turn,
     clear_in_flight_turn,
-    get_in_flight_turn_for_chat,
+    get_oldest_resumable_turn_for_group,
     release_in_flight_turn_claim,
 )
 from pynchy.types import CheckpointControlState, ContainerOutput, InFlightWorkKind, WorkspaceProfile
@@ -123,11 +124,11 @@ async def resume_interrupted_message_if_present(
     deps: InFlightMessageDeps,
     chat_jid: str,
     group: WorkspaceProfile,
-    process_pending: Callable[[str], Awaitable[ProcessGroupResult]],
-) -> ProcessGroupResult | None:
+    process_pending: Callable[[str], Awaitable[TurnOutcome]],
+) -> TurnOutcome | None:
     """Claim and resume the oldest interrupted message turn for one chat."""
-    turn = await get_in_flight_turn_for_chat(
-        chat_jid,
+    turn = await get_oldest_resumable_turn_for_group(
+        group.folder,
         {
             InFlightWorkKind.INTERACTIVE,
             InFlightWorkKind.RESET_HANDOFF,
@@ -143,9 +144,10 @@ async def resume_interrupted_message_if_present(
             chat_jid=chat_jid,
             turn_id=turn.turn_id,
         )
-        return True
+        return TurnOutcome.COMPLETED
     return await resume_interrupted_message_turn(
         deps,
+        RuntimeTarget.from_binding(group.folder, chat_jid),
         group,
         turn,
         process_pending,

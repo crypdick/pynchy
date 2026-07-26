@@ -33,18 +33,18 @@ from pynchy.conversation.models import (
     ExternalRoute,
 )
 from pynchy.host.orchestrator import session_handler
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.messaging.cursor import (
     complete_turn_with_cursor as persist_completed_turn,
 )
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
-from pynchy.host.orchestrator.messaging.outcomes import TURN_PAUSED
 from pynchy.host.orchestrator.messaging.pipeline import (
-    CONTINUE_AFTER_SAFE_INTERRUPT,
     MessageHandlerDeps,
     execute_direct_command,
     intercept_special_command,
     process_group_messages,
 )
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
@@ -66,6 +66,7 @@ from pynchy.types import (
     InFlightTurn,
     InFlightWorkKind,
     NewMessage,
+    RuntimeId,
     WorkspaceProfile,
 )
 from pynchy.utils import ShellResult
@@ -371,7 +372,7 @@ class TestInterceptSpecialCommand:
         history = await get_chat_history(jid)
         assert next(message for message in history if message.id == msg.id).message_type == "host"
         assert deps.last_agent_timestamp[jid] == msg.timestamp
-        deps.queue.stop_active_process_for_control.assert_awaited_once_with(jid)
+        deps.queue.stop_active_process_for_control.assert_awaited_once_with(RuntimeId(group.folder))
         destroy.assert_awaited_once_with(group.folder)
         deps.broadcast_host_message.assert_awaited_once_with(jid, "⏸️")
 
@@ -703,10 +704,10 @@ class TestProcessGroupMessages:
 
     @pytest.mark.asyncio
     async def test_returns_true_for_unknown_group(self):
-        """Unknown group JID should return True (skip)."""
+        """Unknown group JID should complete without work."""
         deps = _make_deps(groups={})
         result = await process_group_messages(deps, "unknown@g.us")
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
 
     @pytest.mark.asyncio
     async def test_reset_handoff_file_processed(self, tmp_path):
@@ -726,7 +727,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_awaited_once()
         assert not reset_file.exists()
 
@@ -755,7 +756,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         assert (ipc_dir / "needs_dirty_check.json").exists()
 
     @pytest.mark.asyncio
@@ -776,13 +777,13 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_not_awaited()
         assert not reset_file.exists()
 
     @pytest.mark.asyncio
     async def test_no_messages_returns_true(self, tmp_path):
-        """No pending messages → early return True."""
+        """No pending messages completes without starting an agent."""
         group = _make_group()
         deps = _make_deps(groups={"g@g.us": group})
 
@@ -793,7 +794,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -856,7 +857,7 @@ class TestProcessGroupMessages:
                 new_callable=AsyncMock,
             ) as handle_approval,
         ):
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         handle_approval.assert_awaited_once_with(
             deps,
@@ -923,7 +924,7 @@ class TestProcessGroupMessages:
             handle_approval.assert_awaited_once()
             assert not deps.last_agent_timestamp.get(jid, "")
             release_agent.set()
-            assert await processing is True
+            assert await processing is TurnOutcome.COMPLETED
 
         delivery = await get_conversation_delivery(identity)
         assert delivery is not None
@@ -975,7 +976,7 @@ class TestProcessGroupMessages:
             await store_message(approval)
             await _run_loop_once(deps)
             release_agent.set()
-            assert await processing is False
+            assert await processing is TurnOutcome.RETRY
 
             delivery = await get_conversation_delivery(identity)
             assert delivery is not None
@@ -984,7 +985,7 @@ class TestProcessGroupMessages:
             assert not deps.last_agent_timestamp.get(jid, "")
 
             deps.run_agent = AsyncMock(return_value="success")
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         handle_approval.assert_awaited_once()
         retried_delivery = await get_conversation_delivery(identity)
@@ -1048,11 +1049,11 @@ class TestProcessGroupMessages:
             await store_message(follow_up)
             await _run_loop_once(deps)
             release_agent.set()
-            assert await processing is True
+            assert await processing is TurnOutcome.COMPLETED
 
         handle_approval.assert_awaited_once()
         deps.queue.send_message.assert_called_once_with(
-            jid,
+            RuntimeId(group.folder),
             f"{follow_up.sender_name}: {follow_up.content}",
         )
         assert "approve" not in deps.queue.send_message.call_args.args[1]
@@ -1117,7 +1118,7 @@ class TestProcessGroupMessages:
             routing = asyncio.create_task(_run_loop_once(deps))
             await asyncio.wait_for(pending_loaded.wait(), timeout=1.0)
             release_finalization.set()
-            assert await processing is True
+            assert await processing is TurnOutcome.COMPLETED
             await routing
 
         handle_approval.assert_awaited_once()
@@ -1165,7 +1166,7 @@ class TestProcessGroupMessages:
             polling = asyncio.create_task(_run_loop_once(deps))
             await asyncio.sleep(0)
             release_handler.set()
-            assert await recovery_queue is True
+            assert await recovery_queue is TurnOutcome.COMPLETED
             await polling
 
         handle_approval.assert_awaited_once()
@@ -1204,8 +1205,8 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
-        assert result is True
-        deps.queue.interrupt_after_tool_result.assert_awaited_once_with(jid)
+        assert result is TurnOutcome.COMPLETED
+        deps.queue.interrupt_after_tool_result.assert_awaited_once_with(RuntimeId(group.folder))
 
     @pytest.mark.asyncio
     async def test_boundary_interrupt_preserves_the_follow_up_for_the_next_turn(self, tmp_path):
@@ -1241,7 +1242,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
-        assert result is CONTINUE_AFTER_SAFE_INTERRUPT
+        assert result is TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT
         assert completed == [(jid, "current-ts")]
         assert deps.pop_dispatched.call_args.args == (jid, "current-ts")
 
@@ -1259,7 +1260,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path, trigger_pattern=re.compile(r"(?!)"))
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -1283,7 +1284,9 @@ class TestProcessGroupMessages:
         ):
             await _run_loop_once(deps)
 
-        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(
+            RuntimeId(group.folder)
+        )
         deps.start_interactive_turn.assert_awaited_once_with(jid)
 
     @pytest.mark.asyncio
@@ -1337,7 +1340,7 @@ class TestProcessGroupMessages:
             _patch_intercept(),
             _patch_fmt_sdk(),
         ):
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         assert deps.run_agent.await_args.kwargs["input_source"] == "trusted:linear"
 
@@ -1374,7 +1377,7 @@ class TestProcessGroupMessages:
             assert checkpoint.input_source == "external:matrix"
 
             deps.run_agent = AsyncMock(return_value="success")
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         completed = await get_conversation_delivery(identity)
         assert completed is not None
@@ -1421,7 +1424,7 @@ class TestProcessGroupMessages:
             patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
             _patch_msgs_since([]),
         ):
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         completed = await get_conversation_delivery(identity)
         assert completed is not None
@@ -1482,7 +1485,7 @@ class TestProcessGroupMessages:
                 return "success"
 
             deps.run_agent = AsyncMock(side_effect=resumed_run)
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         assert len(recovered_messages) == 1
         recovery_prompt = recovered_messages[0]
@@ -1497,6 +1500,45 @@ class TestProcessGroupMessages:
             is None
         )
         assert deps.last_agent_timestamp[jid] == "new-ts"
+
+    @pytest.mark.asyncio
+    async def test_recovery_uses_runtime_current_chat_binding(self, tmp_path):
+        """A replacement JID changes delivery, not the checkpoint's stable owner."""
+        old_jid = "slack:old-thread"
+        current_jid = "slack:current-thread"
+        group = _make_group(folder="stable-runtime", is_admin=True)
+        deps = _make_deps(
+            groups={current_jid: group},
+            last_agent_ts={current_jid: "current-cursor"},
+        )
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-before-rebind",
+                chat_jid=old_jid,
+                group_folder=group.folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"sender_name": "Alice", "content": "Finish the job."}],
+                input_start_cursor="old-start",
+                input_end_cursor="old-end",
+                started_at="2026-07-25T10:00:00+00:00",
+                claimed_at=None,
+            )
+        )
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            _patch_msgs_since([]),
+        ):
+            assert await process_group_messages(deps, current_jid) is TurnOutcome.COMPLETED
+
+        run = deps.run_agent.await_args
+        assert run.args[1] == current_jid
+        assert deps.set_typing_on_channels.await_args_list == [
+            call(current_jid, is_typing=True),
+            call(current_jid, is_typing=False),
+        ]
+        assert await get_in_flight_turn("turn-before-rebind") is None
+        assert deps.last_agent_timestamp[current_jid] == "current-cursor"
 
     @pytest.mark.asyncio
     async def test_pause_stops_active_turn_without_retry_or_error_warning(self, tmp_path):
@@ -1545,7 +1587,7 @@ class TestProcessGroupMessages:
             )
             await store_message(pause)
             assert await intercept_special_command(deps, jid, group, pause) is True
-            assert await processing is TURN_PAUSED
+            assert await processing is TurnOutcome.PAUSED
 
         checkpoint = await get_in_flight_turn_for_chat(
             jid,
@@ -1600,7 +1642,7 @@ class TestProcessGroupMessages:
         await store_message(guidance)
 
         with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         deps.run_agent.assert_awaited_once()
         run = deps.run_agent.await_args
@@ -1641,8 +1683,6 @@ class TestProcessGroupMessages:
                 started_at="2026-07-25T10:00:00+00:00",
                 task_id="weekly-report",
                 session_id="scheduled-provider-thread",
-                scheduled_base_chat_jid=jid,
-                scheduled_thread_slot=2,
                 input_source="scheduled_task",
                 control_state=CheckpointControlState.PAUSED,
             )
@@ -1656,17 +1696,18 @@ class TestProcessGroupMessages:
         await store_message(guidance)
 
         with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
-            assert await process_group_messages(deps, jid) is True
+            assert await process_group_messages(deps, jid) is TurnOutcome.COMPLETED
 
         deps.run_agent.assert_not_awaited()
-        deps.start_interrupted_turn.assert_awaited_once_with("scheduled-paused", jid)
+        deps.start_interrupted_turn.assert_awaited_once_with(
+            "scheduled-paused",
+            group.folder,
+        )
         checkpoint = await get_in_flight_turn("scheduled-paused")
         assert checkpoint is not None
         assert checkpoint.control_state is CheckpointControlState.ACTIVE
         assert checkpoint.claimed_at is None
         assert checkpoint.session_id == "scheduled-provider-thread"
-        assert checkpoint.scheduled_base_chat_jid == jid
-        assert checkpoint.scheduled_thread_slot == 2
         assert checkpoint.input_end_cursor == guidance.timestamp
         assert checkpoint.input_messages[-1]["content"] == guidance.content
 
@@ -1692,7 +1733,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is False
+        assert result is TurnOutcome.RETRY
         assert deps.last_agent_timestamp["g@g.us"] == "old-ts"
         deps.broadcast_host_message.assert_awaited_once()
         host_text = deps.broadcast_host_message.call_args[0][1]
@@ -1728,7 +1769,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         assert deps.last_agent_timestamp["g@g.us"] == "new-ts"
         deps.broadcast_host_message.assert_not_awaited()
 
@@ -1851,7 +1892,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -1886,7 +1927,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -1905,7 +1946,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
 
     @pytest.mark.asyncio
     async def test_zzz_reaction_registered_on_session_idle_callback(self, tmp_path):
@@ -1951,7 +1992,7 @@ class TestProcessGroupMessages:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, jid)
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         # The reaction should NOT be sent immediately
         deps.send_reaction_to_outbound.assert_not_awaited()
         # Instead, set_idle_callback should be called on the session
@@ -2179,7 +2220,7 @@ class TestHandleResetHandoff:
     """process_group_messages consumes an agent-written reset_prompt.json before
     handling normal traffic: a valid prompt runs a handoff turn, an empty/absent
     prompt falls through, a malformed prompt is discarded, and a handoff error
-    signals GroupQueue to retry (process returns False).
+    signals GroupQueue to retry the turn.
     """
 
     @pytest.fixture(autouse=True)
@@ -2204,7 +2245,7 @@ class TestHandleResetHandoff:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -2222,7 +2263,7 @@ class TestHandleResetHandoff:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_awaited_once()
         assert not reset_file.exists()
 
@@ -2241,7 +2282,7 @@ class TestHandleResetHandoff:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_not_awaited()
         assert not reset_file.exists()
 
@@ -2260,13 +2301,13 @@ class TestHandleResetHandoff:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is True
+        assert result is TurnOutcome.COMPLETED
         deps.run_agent.assert_not_awaited()
         assert not reset_file.exists()
 
     @pytest.mark.asyncio
     async def test_handoff_agent_error_signals_retry(self, tmp_path):
-        """Handoff agent returning 'error' → process returns False (retry)."""
+        """Handoff agent returning 'error' requests a retry."""
         group = _make_group(is_admin=True)
         deps = _make_deps(groups={"g@g.us": group}, last_agent_ts={})
         deps.run_agent = AsyncMock(return_value="error")
@@ -2280,7 +2321,7 @@ class TestHandleResetHandoff:
             ms.return_value = _settings_mock(tmp_path)
             result = await process_group_messages(deps, "g@g.us")
 
-        assert result is False
+        assert result is TurnOutcome.RETRY
 
 
 # ---------------------------------------------------------------------------
@@ -2381,7 +2422,9 @@ async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc()
         await _run_loop_once(deps)
 
     deps.queue.send_message.assert_not_called()
-    deps.queue.enqueue_message_check.assert_called_once_with(jid)
+    deps.queue.enqueue_message_check.assert_called_once_with(
+        RuntimeTarget.from_binding(group.folder, jid)
+    )
     checkpoint = await get_in_flight_turn("turn-pausing-with-reply")
     assert checkpoint is not None
     assert checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED
@@ -2435,9 +2478,14 @@ class TestBtwNonInterruptingMessages:
             await _run_loop_once(deps)
 
         # IPC forwarded (best-effort)
-        deps.queue.send_message.assert_called_once_with(jid, "Alice: btw here's some extra context")
+        deps.queue.send_message.assert_called_once_with(
+            RuntimeId(group.folder),
+            "Alice: btw here's some extra context",
+        )
         # Marked for reprocessing after task exits
-        deps.queue.enqueue_message_check.assert_called_once_with(jid)
+        deps.queue.enqueue_message_check.assert_called_once_with(
+            RuntimeTarget.from_binding(group.folder, jid)
+        )
 
         # Task NOT interrupted
         deps.queue.stop_active_process.assert_not_awaited()
@@ -2545,8 +2593,10 @@ class TestBtwNonInterruptingMessages:
         ):
             await _run_loop_once(deps)
 
-        deps.queue.clear_pending_tasks.assert_called_once_with(jid)
-        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.clear_pending_tasks.assert_called_once_with(RuntimeId(group.folder))
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(
+            RuntimeId(group.folder)
+        )
         deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -2578,8 +2628,10 @@ class TestBtwNonInterruptingMessages:
         ):
             await _run_loop_once(deps)
 
-        deps.queue.clear_pending_tasks.assert_called_once_with(jid)
-        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.clear_pending_tasks.assert_called_once_with(RuntimeId(group.folder))
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(
+            RuntimeId(group.folder)
+        )
         deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -2669,7 +2721,9 @@ class TestBtwNonInterruptingMessages:
         # IPC forwarded
         deps.queue.send_message.assert_called_once()
         # Marked for reprocessing after agent turn ends
-        deps.queue.enqueue_message_check.assert_called_once_with(jid)
+        deps.queue.enqueue_message_check.assert_called_once_with(
+            RuntimeTarget.from_binding(group.folder, jid)
+        )
         # Cursor NOT advanced
         assert deps.last_agent_timestamp.get(jid) == "old-ts"
         # No reaction sent (non-interrupting, will be reprocessed)
@@ -2753,8 +2807,10 @@ class TestBtwNonInterruptingMessages:
             await _run_loop_once(deps)
 
         # The notice queues delivery at the active turn's next tool boundary.
-        deps.queue.clear_pending_tasks.assert_called_once_with(jid)
-        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(jid)
+        deps.queue.clear_pending_tasks.assert_called_once_with(RuntimeId(group.folder))
+        deps.queue.defer_interrupt_until_tool_result.assert_called_once_with(
+            RuntimeId(group.folder)
+        )
         deps.queue.stop_active_process.assert_not_awaited()
 
     @pytest.mark.asyncio

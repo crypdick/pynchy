@@ -15,12 +15,11 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager import credentials
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.host.migration_backups import prune_migration_backups
-from pynchy.host.orchestrator import adapters
+from pynchy.host.orchestrator import adapters, session_handler
 from pynchy.logger import logger
 from pynchy.state import (
     clear_in_flight_turn,
     clear_pending_deployment,
-    clear_session,
     complete_deployment,
     get_active_task_for_group,
     get_in_flight_turns,
@@ -32,7 +31,6 @@ from pynchy.state import (
 from pynchy.types import (
     CheckpointControlState,
     DeployRevision,
-    GroupFolder,
     InFlightTurn,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -57,13 +55,21 @@ class StartupDeps(Protocol):
     @property
     def channels(self) -> list[Any]: ...
 
+    @property
+    def sessions(self) -> dict[str, str]: ...
+
+    @property
+    def session_cleared(self) -> set[str]: ...
+
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
-    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None: ...
+    async def start_interrupted_turn(self, turn_id: str, group_folder: str) -> None: ...
 
     async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
+
+    async def prepare_context_reset(self, group: WorkspaceProfile) -> None: ...
 
 
 async def send_boot_notification(deps: StartupDeps) -> None:
@@ -227,7 +233,9 @@ class InterruptedTurnRecovery:
     continuation_path: Path | None
 
 
-async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
+async def prepare_interrupted_turn_recovery(
+    deps: StartupDeps | None = None,
+) -> InterruptedTurnRecovery:
     """Clear stale claims before Temporal can redeliver interrupted activities."""
     continuation_path = get_settings().data_dir / "deploy_continuation.json"
     continuation: dict[str, object] = {}
@@ -250,7 +258,7 @@ async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
     if continuation:
         _prune_migration_backups(get_settings().data_dir)
     deploy_id = commit_sha if isinstance(commit_sha, str) and commit_sha != "unknown" else None
-    await _complete_reset_requests_after_restart()
+    await _complete_reset_requests_after_restart(deps)
     await prepare_conversation_delivery_recovery()
     interrupted_turns = await prepare_in_flight_turn_recovery(deploy_id)
     commit_text = commit_sha if isinstance(commit_sha, str) else "unknown"
@@ -271,18 +279,30 @@ async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
     )
 
 
-async def _complete_reset_requests_after_restart() -> None:
+async def _complete_reset_requests_after_restart(deps: StartupDeps | None) -> None:
     """Finish reset transitions that lost their in-process command handler."""
     reset_at = datetime.now(UTC).isoformat()
     for turn in await get_in_flight_turns():
         if turn.control_state is not CheckpointControlState.RESET_REQUESTED:
             continue
+        if deps is None:
+            raise RuntimeError("Startup reset requires initialized lifecycle dependencies")
+        group = next(
+            (
+                workspace
+                for workspace in deps.workspaces.values()
+                if workspace.folder == turn.group_folder
+            ),
+            None,
+        )
+        if group is None:
+            raise RuntimeError(f"Reset runtime no longer exists: {turn.group_folder}")
+        await session_handler.clear_durable_context(deps, group)
         await clear_in_flight_turn(turn.turn_id)
-        await clear_session(GroupFolder(turn.group_folder))
-        await set_chat_cleared_at(turn.chat_jid, reset_at)
+        await set_chat_cleared_at(group.jid, reset_at)
         logger.info(
             "Startup completed checkpoint reset",
-            chat_jid=turn.chat_jid,
+            chat_jid=group.jid,
             turn_id=turn.turn_id,
         )
 
@@ -325,18 +345,35 @@ async def dispatch_interrupted_turn_recovery(
     resumed_chats: set[str] = set()
 
     for turn in interrupted_turns:
+        current = next(
+            (
+                workspace
+                for workspace in deps.workspaces.values()
+                if workspace.folder == turn.group_folder
+            ),
+            None,
+        )
+        if current is None:
+            logger.error(
+                "Interrupted turn runtime no longer exists",
+                group_folder=turn.group_folder,
+                turn_id=turn.turn_id,
+            )
+            await deps.start_interrupted_turn(turn.turn_id, turn.group_folder)
+            continue
         restart_label = (
             f"Deploy complete -- {label}."
             if recovery.had_deploy_continuation
             else "Pynchy restarted."
         )
         notice = f"{restart_label} Resuming interrupted work. {recovery.resume_prompt}"
-        await deps.broadcast_host_message(turn.chat_jid, notice)
-        await deps.start_interrupted_turn(turn.turn_id, turn.chat_jid)
-        resumed_chats.add(turn.chat_jid)
+        await deps.broadcast_host_message(current.jid, notice)
+        await deps.start_interrupted_turn(turn.turn_id, turn.group_folder)
+        resumed_chats.add(current.jid)
         logger.info(
             "Interrupted turn recovery dispatched",
-            chat_jid=turn.chat_jid,
+            chat_jid=current.jid,
+            group_folder=turn.group_folder,
             turn_id=turn.turn_id,
             work_kind=turn.work_kind.value,
         )
@@ -345,7 +382,7 @@ async def dispatch_interrupted_turn_recovery(
 
 async def check_deploy_continuation(deps: StartupDeps) -> set[str]:
     """Prepare and dispatch recovery when startup ordering is managed by the caller."""
-    recovery = await prepare_interrupted_turn_recovery()
+    recovery = await prepare_interrupted_turn_recovery(deps)
     await confirm_deploy_startup(recovery)
     return await dispatch_interrupted_turn_recovery(deps, recovery)
 

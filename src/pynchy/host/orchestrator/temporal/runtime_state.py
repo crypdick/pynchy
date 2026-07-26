@@ -8,6 +8,8 @@ from typing import Any, cast
 
 from temporalio import activity
 
+from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+
 _SCHEDULER_DEPS_NOT_BOUND = "Temporal scheduler dependencies are not bound"
 
 
@@ -104,6 +106,19 @@ def _record_activity_result(task_id: str, result: str, error: str | None = None)
         last_completed_at=_utc_timestamp(),
         last_error=error,
     )
+
+
+def settle_turn_activity(
+    task_id: str,
+    outcome: TurnOutcome,
+    *,
+    retry_error: str,
+) -> str:
+    """Record one typed turn outcome and translate retry into activity failure."""
+    _record_activity_result(task_id, outcome.value)
+    if outcome is TurnOutcome.RETRY:
+        raise RuntimeError(retry_error)
+    return outcome.value
 
 
 def _record_tracked_activity_result(task_id: str, result: str, error: str | None = None) -> None:

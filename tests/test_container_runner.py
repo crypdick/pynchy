@@ -71,6 +71,7 @@ from pynchy.host.orchestrator.agent_runner import (
     session_tracking_output_handler,
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.state import SessionSecurityTaint
 from pynchy.types import (
@@ -2131,12 +2132,11 @@ class TestContainerInputAgentCoreConfig:
         on_process_started = run_host_input.await_args.kwargs["on_process_started"]
         host_process = MagicMock(spec=asyncio.subprocess.Process)
         on_process_started(host_process)
-        deps.queue.acquire_host_process.assert_called_once_with("chat")
+        deps.queue.acquire_host_process.assert_called_once_with(RuntimeTarget.from_workspace(group))
         deps.queue.register_host_process.assert_called_once_with(
             deps.queue.acquire_host_process.return_value,
             host_process,
             "host-agent-runner",
-            "host-group",
             input_data.invocation_ts,
         )
 
