@@ -121,6 +121,7 @@ class GroupState:
             return False
         has_pending_messages = self.pending_messages
         if not lease.owns_slot:
+            self._destroy_host_security_gate()
             self.host_process_lease = None
             self.process = None
             self.container_name = None
@@ -134,8 +135,7 @@ class GroupState:
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
-        if self.group_folder and self.invocation_ts:
-            security_gate.destroy_gate(self.group_folder, self.invocation_ts)
+        self._destroy_host_security_gate()
         self.active = False
         self.active_is_task = False
         self.process = None
@@ -147,3 +147,12 @@ class GroupState:
         self.is_external_run = False
         self.host_process_lease = None
         self.boundary_interrupt_requested = False
+
+    def _destroy_host_security_gate(self) -> None:
+        """Retire the gate owned by a disposable direct-host process.
+
+        Container gates belong to their durable ``ContainerSession`` and must
+        survive queue release so warm turns retain the same security state.
+        """
+        if self.is_host_process and self.group_folder and self.invocation_ts:
+            security_gate.destroy_gate(self.group_folder, self.invocation_ts)

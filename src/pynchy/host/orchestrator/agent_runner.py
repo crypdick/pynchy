@@ -202,6 +202,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         container_name,
         proc,
         idle_timeout_override=request.idle_timeout,
+        invocation_ts=request.input_data.invocation_ts,
     )
     request.deps.queue.register_process(
         request.chat_jid,

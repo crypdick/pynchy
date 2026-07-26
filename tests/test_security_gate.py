@@ -1,6 +1,8 @@
-"""Tests for SecurityGate -- session-scoped security enforcement."""
+"""Tests for SecurityGate worker-scoped security enforcement."""
 
 from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -13,6 +15,7 @@ from pynchy.host.container_manager.security.gate import (
     get_gate_for_group,
     resolve_security,
 )
+from pynchy.host.container_manager.session import ContainerSession
 from pynchy.host.orchestrator.concurrency import GroupQueue, GroupState
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.types import ContainerInput, ServiceTrustConfig, WorkspaceSecurity
@@ -421,9 +424,9 @@ class TestGateCreatedAtSpawn:
         assert gate is not None
 
 
-class TestGateDestroyedOnRelease:
-    def test_group_state_release_destroys_gate(self):
-        """GroupState.release() should call destroy_gate."""
+class TestGateLifecycle:
+    def test_container_queue_release_retains_durable_worker_gate(self):
+        """A warm container turn must retain the worker's security state."""
         create_gate("test-ws", 100.0, WorkspaceSecurity())
 
         state = GroupState()
@@ -433,8 +436,9 @@ class TestGateDestroyedOnRelease:
 
         state.release()
 
-        assert get_gate("test-ws", 100.0) is None
+        assert get_gate("test-ws", 100.0) is not None
         assert state.invocation_ts == 0
+        destroy_gate("test-ws", 100.0)
 
     def test_release_without_gate_is_noop(self):
         """Release when no gate exists should not raise."""
@@ -444,6 +448,23 @@ class TestGateDestroyedOnRelease:
         state.active = True
 
         state.release()  # Should not raise
+
+    async def test_container_session_stop_destroys_worker_gate(self):
+        """Stopping the durable worker retires its gate."""
+        create_gate("test-ws", 100.0, WorkspaceSecurity())
+        session = ContainerSession(
+            "test-ws",
+            "pynchy-test-ws",
+            invocation_ts=100.0,
+        )
+
+        with patch(
+            "pynchy.host.container_manager.session.docker_rm_force",
+            new_callable=AsyncMock,
+        ):
+            await session.stop()
+
+        assert get_gate("test-ws", 100.0) is None
 
 
 class TestInvocationTsOnContainerInput:

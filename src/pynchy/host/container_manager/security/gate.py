@@ -1,11 +1,11 @@
-"""Session-scoped security enforcement for all tool calls.
+"""Worker-scoped security enforcement for all tool calls.
 
-One SecurityGate per container invocation, shared by IPC and MCP callers.
+One SecurityGate per durable worker process, shared by IPC and MCP callers.
 Wraps SecurityPolicy to provide sticky taint tracking and a uniform
 evaluate interface.
 
-Registry keyed by (group_folder, invocation_ts) to support future
-concurrent containers for the same group.
+Registry keys retain the worker invocation timestamp so direct-host turns and
+container workers use the same IPC/MCP lookup contract.
 """
 
 from __future__ import annotations
@@ -159,7 +159,7 @@ def create_gate(
     public_source_input: bool = False,
     secret_source_input: bool = False,
 ) -> SecurityGate:
-    """Create and register a SecurityGate for a container invocation."""
+    """Create and register a SecurityGate for a worker process."""
     gate = SecurityGate(security)
     if public_source_input:
         gate.notify_public_source_input()
@@ -188,7 +188,7 @@ def get_gate_for_group(source_group: str) -> SecurityGate | None:
 
 
 def destroy_gate(source_group: str, invocation_ts: float) -> None:
-    """Remove a SecurityGate when its container exits."""
+    """Remove a SecurityGate when its owning worker exits."""
     _gates.pop((source_group, invocation_ts), None)
 
 

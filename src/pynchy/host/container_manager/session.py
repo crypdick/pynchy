@@ -42,6 +42,7 @@ from pynchy.host.container_manager.process import (
     graceful_stop,
     reap_apple_runtime_orphans,
 )
+from pynchy.host.container_manager.security.gate import destroy_gate
 from pynchy.logger import logger
 from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import (
@@ -119,11 +120,13 @@ class ContainerSession:
         group_folder: str,
         container_name: str,
         *,
+        invocation_ts: float = 0.0,
         runtime_probe: Callable[[str], Awaitable[bool]] = runtime_container_running,
         runtime_monitor_policy: RuntimeMonitorPolicy = DEFAULT_RUNTIME_MONITOR_POLICY,
     ) -> None:
         self.group_folder = group_folder
         self.container_name = container_name
+        self.invocation_ts = invocation_ts
         self.proc: asyncio.subprocess.Process | None = None
         self._proc_monitor_task: asyncio.Future[Any] | None = None
         self._runtime_monitor_task: asyncio.Future[Any] | None = None
@@ -242,6 +245,7 @@ class ContainerSession:
         """Stop the container and clean up resources."""
         self._cancel_idle_timer()
         self._dead = True
+        self._destroy_security_gate()
 
         # Write close sentinel
         with contextlib.suppress(OSError):
@@ -390,6 +394,7 @@ class ContainerSession:
         was_stopping = self._dead
         self._runtime_alive_after_proc_exit = False
         self._dead = True
+        self._destroy_security_gate()
 
         if was_stopping:
             self._query_done.set()
@@ -422,6 +427,13 @@ class ContainerSession:
                 docker_rm_force(self.container_name),
                 name=f"remove-exited-container-{self.container_name}",
             )
+
+    def _destroy_security_gate(self) -> None:
+        """Retire the gate with the worker process that owns it."""
+        if not self.invocation_ts:
+            return
+        destroy_gate(self.group_folder, self.invocation_ts)
+        self.invocation_ts = 0.0
 
     async def _read_stderr(self, stream: asyncio.StreamReader) -> None:
         """Long-lived stderr reader — logs container stderr lines."""
@@ -483,6 +495,8 @@ async def create_session(
     container_name: str,
     proc: asyncio.subprocess.Process,
     idle_timeout_override: float | None = None,
+    *,
+    invocation_ts: float = 0.0,
 ) -> ContainerSession:
     """Create and register a session for a group.
 
@@ -506,7 +520,11 @@ async def create_session(
     clean_ipc_input_dir(group_folder, preserve_initial=True)
     _clean_ipc_output(group_folder)
 
-    session = ContainerSession(group_folder, container_name)
+    session = ContainerSession(
+        group_folder,
+        container_name,
+        invocation_ts=invocation_ts,
+    )
     if idle_timeout_override is not None:
         session.set_idle_timeout(idle_timeout_override)
     session.start(proc)
