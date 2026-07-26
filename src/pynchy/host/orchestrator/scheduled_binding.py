@@ -8,12 +8,14 @@ from typing import Protocol, runtime_checkable
 
 from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.conversation.models import ConversationId
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
     ensure_conversation_workspace,
 )
 from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001, RUF100
+from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.state import get_conversation, update_task
 from pynchy.types import (
@@ -29,6 +31,9 @@ from pynchy.types import (
 
 class ScheduledTaskOwnershipError(RuntimeError):
     """A scheduled task has no durable runtime destination."""
+
+
+_LINEAR_INPUT_SOURCE_PREFIXES = ("external:linear:", "trusted:linear:")
 
 
 @runtime_checkable
@@ -60,6 +65,10 @@ def _task_thread_name(task: ScheduledTask) -> str:
     if task.derived_thread_name is not None and task.derived_thread_name.strip():
         return task.derived_thread_name
     return f"Scheduled | {task.id}"[:100]
+
+
+def _is_linear_task(task: ScheduledTask) -> bool:
+    return task.input_source.startswith(_LINEAR_INPUT_SOURCE_PREFIXES)
 
 
 def resolve_scheduled_group(
@@ -136,6 +145,18 @@ async def _bind_routed_conversation(
         raise ScheduledTaskOwnershipError(
             f"Conversation owner workspace is unavailable: {conversation.workspace}"
         )
+    if _is_linear_task(task):
+        namespace = str(conversation.subject.namespace)
+        if not namespace.startswith("linear:") or not namespace.endswith(":issue"):
+            raise ScheduledTaskOwnershipError(
+                "Linear task references a non-Linear issue conversation"
+            )
+        # Linear controller-created conversations bypass webhook dispatcher registration.
+        # Agent preflight needs this exact owner mapping to resolve inherited repo mounts.
+        ensure_runtime_workspace_policy_owner(
+            routed_conversation_folder(conversation.workspace, conversation.id),
+            placement.owner.folder,
+        )
     title = _task_thread_name(task)
     ensured = await ensure_conversation_workspace(
         ConversationWorkspaceContext(
@@ -164,7 +185,7 @@ async def ensure_scheduled_task_binding(
 ) -> ScheduledTask:
     """Persist and return the one thread runtime owned by a scheduled task."""
     ownership_updates: dict[str, object] = {}
-    if ":linear:" in task.input_source:
+    if _is_linear_task(task):
         if task.session_policy is not SessionPolicy.CONTINUE:
             task = replace(task, session_policy=SessionPolicy.CONTINUE)
             ownership_updates["session_policy"] = SessionPolicy.CONTINUE
