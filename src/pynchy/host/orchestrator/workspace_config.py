@@ -84,6 +84,22 @@ def register_runtime_workspace_restriction(
     _runtime_restrictions[folder] = restriction
 
 
+def ensure_runtime_workspace_policy_owner(
+    folder: str,
+    parent_workspace: str,
+) -> None:
+    """Install an owner mapping without replacing narrower route policy."""
+    existing = _runtime_restrictions.get(folder)
+    if existing is None:
+        register_runtime_workspace_restriction(
+            folder,
+            RuntimeWorkspaceRestriction(parent_workspace=parent_workspace),
+        )
+        return
+    if existing.parent_workspace != parent_workspace:
+        raise ValueError("Runtime workspace restriction has a different policy owner")
+
+
 def clear_runtime_workspace_restrictions() -> None:
     """Clear connection-owned runtime restrictions during lifecycle teardown/tests."""
     _runtime_restrictions.clear()

@@ -8,19 +8,46 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from conftest import make_settings
+from linear_webhook_test_support import DiscordThreadChannel
 
+from pynchy.config import WorkspaceConfig
+from pynchy.config.models import ProfileConfig
+from pynchy.conversation.models import (
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+)
+from pynchy.conversation.workspaces import routed_conversation_folder
+from pynchy.host.git_ops.repo import resolve_repos_for_group
 from pynchy.host.orchestrator.scheduled_binding import (
     ScheduledTaskOwnershipError,
     ensure_scheduled_task_binding,
 )
 from pynchy.host.orchestrator.threads import EnsuredThread
-from pynchy.state import create_task, get_task_by_id, init_test_database
-from pynchy.types import ScheduledTask, SessionId, SessionPolicy, WorkspaceProfile
+from pynchy.host.orchestrator.workspace_config import (
+    RuntimeWorkspaceRestriction,
+    clear_runtime_workspace_restrictions,
+    load_resolved_config,
+    register_runtime_workspace_restriction,
+)
+from pynchy.plugins.integrations.linear_webhook_effects import process_linear_webhook_event
+from pynchy.plugins.webhooks import WebhookConversation, WebhookEvent
+from pynchy.state import (
+    create_task,
+    get_conversation_for_subject,
+    get_task_by_id,
+    init_test_database,
+    set_workspace_profile,
+)
+from pynchy.types import CapabilityRule, ScheduledTask, SessionId, SessionPolicy, WorkspaceProfile
 
 
 @pytest.fixture(autouse=True)
 async def _database() -> None:
     await init_test_database()
+    clear_runtime_workspace_restrictions()
+    yield
+    clear_runtime_workspace_restrictions()
 
 
 def _profile(*, jid: str = "discord:channel:parent", folder: str = "owner") -> WorkspaceProfile:
@@ -144,6 +171,92 @@ async def test_existing_linear_task_is_migrated_to_continue_before_execution() -
     persisted = await get_task_by_id(task.id)
     assert persisted is not None
     assert persisted.session_policy is SessionPolicy.CONTINUE
+
+
+async def test_scheduled_linear_binding_restores_webhook_conversation_repo_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(
+        profiles={
+            "owner": ProfileConfig(
+                repo="crypdick/pynchy",
+                tools=["repo_read", "repo_write"],
+                capabilities={"repo.write": {"decision": "allow"}},
+            )
+        },
+        workspaces={"owner": WorkspaceConfig(profiles=["owner"])},
+    )
+    monkeypatch.setattr("pynchy.config.settings._state.settings", settings)
+    owner = _profile()
+    await set_workspace_profile(owner)
+    subject = ConversationSubject(
+        namespace=ConversationSubjectNamespace("linear:synapse:issue"),
+        key=ConversationSubjectKey("issue-1"),
+    )
+    event = WebhookEvent(
+        delivery_id="delivery-1",
+        event_type="Issue",
+        action="update",
+        subject_id="issue-1",
+        occurred_at=datetime.now(UTC).isoformat(),
+        instructions="Execute the approved issue.",
+        external_context={"identifier": "SYN-1"},
+        conversation=WebhookConversation(
+            subject=subject,
+            control_title="[SYN-1] Routed policy",
+            workspace=owner.folder,
+        ),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhook_effects._controller_owns_event",
+        AsyncMock(return_value=True),
+    )
+
+    processed = await process_linear_webhook_event(event)
+    conversation = await get_conversation_for_subject(subject)
+
+    assert processed.conversation is None
+    assert conversation is not None
+    folder = routed_conversation_folder(conversation.workspace, conversation.id)
+    assert load_resolved_config(folder) is None
+
+    task = replace(
+        _task(),
+        input_source="trusted:linear:authorized",
+        conversation_id=str(conversation.id),
+        derived_thread_name="[SYN-1] Routed policy",
+    )
+    await create_task(task)
+    deps = _BindingDeps(
+        {owner.jid: owner},
+        channels=[DiscordThreadChannel()],
+    )
+
+    bound = await ensure_scheduled_task_binding(task, deps)
+
+    assert bound.repo_access is None
+    assert bound.bound_group_folder == folder
+    resolved = load_resolved_config(folder)
+    assert resolved is not None
+    assert resolved.repo == ["crypdick/pynchy"]
+    assert [repo.slug for repo in resolve_repos_for_group(folder)] == ["crypdick/pynchy"]
+
+    clear_runtime_workspace_restrictions()
+    register_runtime_workspace_restriction(
+        folder,
+        RuntimeWorkspaceRestriction(
+            parent_workspace=owner.folder,
+            tools=("repo_read",),
+            capabilities={"repo.write": CapabilityRule(decision="deny")},
+        ),
+    )
+
+    await ensure_scheduled_task_binding(bound, deps)
+
+    narrowed = load_resolved_config(folder)
+    assert narrowed is not None
+    assert narrowed.tools == ["repo_read"]
+    assert narrowed.capabilities["repo.write"].decision == "deny"
 
 
 async def test_linear_task_without_conversation_fails_before_execution() -> None:
