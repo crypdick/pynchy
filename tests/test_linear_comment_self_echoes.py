@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -25,6 +25,7 @@ from pynchy.plugins.integrations.linear_client import (
     LinearError,
     LinearSelfEchoRecorder,
 )
+from pynchy.plugins.integrations.linear_comment_actions import handle_create_comment
 from pynchy.plugins.integrations.linear_webhook_evidence import comment_webhook_evidence
 from pynchy.state import (
     WebhookConversationRequest,
@@ -52,6 +53,17 @@ from pynchy.webhook_effects import WebhookEffectId, WebhookEffectScope
 _RECEIVED_AT = "2026-07-26T16:00:00+00:00"
 _REVISION = "2026-07-26T16:00:01+00:00"
 _ISSUE_ID = "issue-1"
+
+
+class _LinearClientContext:
+    def __init__(self, client: MagicMock) -> None:
+        self._client = client
+
+    async def __aenter__(self) -> MagicMock:
+        return self._client
+
+    async def __aexit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        return None
 
 
 @pytest.fixture(autouse=True)
@@ -441,6 +453,42 @@ async def test_comment_client_begins_before_query_and_confirms_exact_response() 
     await client.create_comment(_ISSUE_ID, "Validation passed.")
 
     assert calls == ["begin", "executing", "query", "confirm"]
+
+
+@pytest.mark.action("linear.comment.create")
+async def test_host_comment_action_preserves_workspace_and_provider_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MagicMock()
+    client.create_comment = AsyncMock(
+        return_value={
+            "id": "comment-1",
+            "issueId": _ISSUE_ID,
+            "createdAt": _RECEIVED_AT,
+            "updatedAt": _REVISION,
+        }
+    )
+    workspace_issue = AsyncMock()
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_comment_actions.linear_client",
+        lambda *, workspace: _LinearClientContext(client),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_comment_actions.workspace_issue",
+        workspace_issue,
+    )
+
+    result = await handle_create_comment(
+        {
+            "source_group": "project",
+            "issue_id": _ISSUE_ID,
+            "body": "Validation passed.",
+        }
+    )
+
+    assert result["result"] == client.create_comment.return_value
+    workspace_issue.assert_awaited_once_with(client, "project", _ISSUE_ID)
+    client.create_comment.assert_awaited_once_with(_ISSUE_ID, "Validation passed.")
 
 
 async def test_transport_failure_stays_quarantined_as_outcome_unknown() -> None:
