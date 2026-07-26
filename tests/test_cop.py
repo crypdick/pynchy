@@ -9,6 +9,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
+from pynchy import state
 from pynchy.host.container_manager.security.cop import (
     CopCommandDecision,
     CopCommandRisk,
@@ -149,10 +150,14 @@ async def test_outbound_sends_bounded_context_and_proposed_action():
     bodies: list[dict[str, object]] = []
     context = CopInspectionContext(
         availability=CopContextAvailability.AVAILABLE,
-        current_user_intent="Fix the typo",
+        current_user_intent="I'm going to sleep. Keep working on this.",
         recent_messages=(("user", "Please fix it"), ("assistant", "I will inspect it")),
         recent_agent_updates=("The fix is in place; running focused tests.",),
         completed_tool_actions=("Read", "ApplyPatch"),
+        execution_authority=state.SecurityExecutionAuthority(
+            kind=state.SecurityExecutionAuthorityKind.LINEAR_WORK_ITEM_LEASE,
+            work_item_identifier="SYN-88",
+        ),
     )
     with (
         patch(
@@ -167,10 +172,16 @@ async def test_outbound_sends_bounded_context_and_proposed_action():
         await inspect_outbound("sync_worktree_to_main", "diff: typo fix", context)
 
     request_text = str(bodies[0]["messages"])
-    assert "Fix the typo" in request_text
+    assert "Keep working on this" in request_text
     assert "running focused tests" in request_text
     assert "ApplyPatch" in request_text
     assert "diff: typo fix" in request_text
+    assert "linear_work_item_lease" in request_text
+    assert "publish its isolated worktree branch as a pull request" in request_text
+    system_prompt = " ".join(str(bodies[0]["system"]).split())
+    assert "statement about the user's availability or sleep" in system_prompt
+    assert "deploying to production" in system_prompt
+    assert "unapproved plan does not authorize" in system_prompt
 
 
 @pytest.mark.asyncio

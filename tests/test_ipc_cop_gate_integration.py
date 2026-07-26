@@ -14,6 +14,7 @@ Tested handlers:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -132,8 +133,8 @@ async def deps():
 class TestSyncWorktreeCopGate:
     """sync_worktree_to_main should call cop_gate and block on flag."""
 
-    async def test_blocked_by_cop_writes_no_merge_result(self, deps, tmp_path):
-        """When cop_gate returns False, no merge or response file is written."""
+    async def test_blocked_by_cop_returns_prompt_failure(self, deps, tmp_path):
+        """A blocked publication returns to the caller instead of timing out."""
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -153,11 +154,11 @@ class TestSyncWorktreeCopGate:
             )
 
         mock_cop.assert_called_once()
-        # Verify operation name is passed
         assert mock_cop.call_args.args[0] == "sync_worktree_to_main"
-        # No merge_results file should exist
-        result_dir = tmp_path / "data" / "ipc" / "admin-1" / "merge_results"
-        assert not result_dir.exists() or not list(result_dir.iterdir())
+        result_file = tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "req-1.json"
+        result = json.loads(result_file.read_text())
+        assert result["success"] is False
+        assert "requires human approval" in result["message"]
 
     async def test_cop_receives_request_id(self, deps, tmp_path):
         """sync_worktree_to_main passes request_id to cop_gate (request-reply)."""

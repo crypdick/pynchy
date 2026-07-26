@@ -167,6 +167,8 @@ from pynchy.state.security_context import (
     RecentSecurityContext,
     SecurityContextMessage,
     SecurityContextRole,
+    SecurityExecutionAuthority,
+    SecurityExecutionAuthorityKind,
     load_recent_security_context,
 )
 from pynchy.state.sessions import (
@@ -298,6 +300,8 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "RecentSecurityContext",
     "SecurityContextMessage",
     "SecurityContextRole",
+    "SecurityExecutionAuthority",
+    "SecurityExecutionAuthorityKind",
     "load_recent_security_context",
     # external_deliveries
     "admit_external_delivery_receipt",

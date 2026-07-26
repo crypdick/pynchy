@@ -372,6 +372,51 @@ class TestIpcPolicyRouting:
         result = json.loads((merge_results_dir / "req-pr.json").read_text())
         assert "pull/7" in result["repos"]["owner/repo"]["message"]
 
+    async def test_publication_failure_diagnostic_is_redacted_and_bounded(
+        self,
+        deps: MockDeps,
+        tmp_path: Path,
+    ) -> None:
+        merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"
+        merge_results_dir.mkdir(parents=True)
+        fake_repo_ctx = RepoContext(slug="owner/repo", root=tmp_path, worktrees_dir=tmp_path / "wt")
+        unsafe_message = (
+            "Push failed: https://credential-value@github.com/owner/repo returned HTTP 403 "
+            + ("details " * 300)
+        )
+
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
+            ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={"success": False, "message": unsafe_message},
+            ),
+        ):
+            await dispatch(
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-pr-failure",
+                    "publication": "pull-request",
+                },
+                "agent-1",
+                False,
+                deps,
+            )
+
+        result = json.loads((merge_results_dir / "req-pr-failure.json").read_text())
+        diagnostic = result["repos"]["owner/repo"]["message"]
+        assert "credential-value" not in diagnostic
+        assert "https://***@github.com/owner/repo" in diagnostic
+        assert "HTTP 403" in diagnostic
+        assert len(diagnostic) <= 1000
+
     async def test_merge_policy_calls_host_sync(self, deps: MockDeps, tmp_path: Path):
         """sync_worktree_to_main calls host_sync_worktree."""
         merge_results_dir = tmp_path / "data" / "ipc" / "agent-1" / "merge_results"

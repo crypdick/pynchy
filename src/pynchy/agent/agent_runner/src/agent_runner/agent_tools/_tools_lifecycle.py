@@ -18,6 +18,27 @@ from ._registry import tool, tool_error
 # -- sync_worktree_to_main --
 
 
+def _publication_result_message(result: dict[str, Any]) -> str:
+    """Prefer actionable per-repository diagnostics over an aggregate status."""
+    repo_results = result.get("repos")
+    messages = (
+        [
+            f"{slug}: {repo_result['message']}"
+            for slug, repo_result in repo_results.items()
+            if isinstance(slug, str)
+            and isinstance(repo_result, dict)
+            and isinstance(repo_result.get("message"), str)
+            and repo_result["message"]
+        ]
+        if isinstance(repo_results, dict)
+        else []
+    )
+    if messages:
+        return "\n".join(messages)
+    message = result.get("message")
+    return str(message) if message else "Publication failed without a diagnostic."
+
+
 @tool(
     "sync_worktree_to_main",
     (
@@ -53,23 +74,13 @@ async def _sync_worktree_handle(_arguments: dict[str, Any]) -> list[TextContent]
                 continue
 
             if result.get("success"):
-                repo_results = result.get("repos")
-                messages = (
-                    [
-                        str(repo_result["message"])
-                        for repo_result in repo_results.values()
-                        if isinstance(repo_result, dict) and repo_result.get("message")
-                    ]
-                    if isinstance(repo_results, dict)
-                    else []
-                )
                 return [
                     TextContent(
                         type="text",
-                        text="\n".join(messages) if messages else result["message"],
+                        text=_publication_result_message(result),
                     )
                 ]
-            return tool_error(result["message"])
+            return tool_error(_publication_result_message(result))
         await asyncio.sleep(0.3)
 
     return tool_error("Timed out (120s). Retry or check with the host.")

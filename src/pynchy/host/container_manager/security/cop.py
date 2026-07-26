@@ -29,7 +29,11 @@ from pynchy.host.container_manager.security.cop_prompts import (
 )
 from pynchy.host.container_manager.security.llm_redaction import RedactionSession
 from pynchy.logger import logger
-from pynchy.state import RecentSecurityContext, load_recent_security_context
+from pynchy.state import (
+    RecentSecurityContext,
+    SecurityExecutionAuthority,  # noqa: TC001, RUF100 - beartype resolves dataclass annotations at runtime.
+    load_recent_security_context,
+)
 
 
 class CopContextAvailability(StrEnum):
@@ -48,6 +52,7 @@ class CopInspectionContext:
     recent_messages: tuple[tuple[str, str], ...] = ()
     recent_agent_updates: tuple[str, ...] = ()
     completed_tool_actions: tuple[str, ...] = ()
+    execution_authority: SecurityExecutionAuthority | None = None
     unavailable_reason: str | None = None
 
 
@@ -77,6 +82,7 @@ def _inspection_context_from_recent(context: RecentSecurityContext) -> CopInspec
         ),
         recent_agent_updates=context.recent_agent_updates,
         completed_tool_actions=context.completed_tool_actions,
+        execution_authority=context.execution_authority,
     )
 
 
@@ -337,6 +343,24 @@ def _action_review_content(
         ],
         "recent_agent_updates": list(context.recent_agent_updates),
         "completed_tool_actions": list(context.completed_tool_actions),
+        "durable_execution_authority": (
+            {
+                "kind": context.execution_authority.kind.value,
+                "work_item_identifier": context.execution_authority.work_item_identifier,
+                "authorized_scope": [
+                    "implement and validate the leased work item",
+                    "publish its isolated worktree branch as a pull request for review",
+                    "attach the pull request and update the approved work-item lifecycle",
+                ],
+                "excluded_scope": [
+                    "merge a pull request",
+                    "deploy to production",
+                    "perform unrelated external writes",
+                ],
+            }
+            if context.execution_authority is not None
+            else None
+        ),
         "unavailable_reason": context.unavailable_reason,
     }
     return (
