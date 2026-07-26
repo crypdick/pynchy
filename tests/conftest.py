@@ -120,7 +120,7 @@ def pytest_xdist_auto_num_workers(config: pytest.Config) -> int | None:
 
 
 def pytest_addoption(parser):
-    """Register the opt-in complete action-coverage gate for full CI runs."""
+    """Register the opt-in dynamic action-coverage collection gate."""
     parser.addoption(
         "--action-coverage",
         action="store_true",

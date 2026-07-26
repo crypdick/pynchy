@@ -20,6 +20,8 @@ jobs:
           enable-cache: true
       - name: Install Python dependencies
         run: uv sync --locked --all-groups
+      - name: Check semantic action coverage
+        run: uv run python scripts/prek_hooks/check_action_coverage.py
       - name: Run Python tests
         run: uv run pytest
       - name: Install agent-runner test dependencies
