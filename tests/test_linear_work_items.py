@@ -497,7 +497,7 @@ async def test_later_blocked_outcome_rebinds_only_requester_delivery(
         status="blocked",
         outcome={
             "blocker": "The deployment credential is unavailable.",
-            "handoff_to": "Ricardo",
+            "handoff_to": "release operator",
         },
     )
 
@@ -505,7 +505,7 @@ async def test_later_blocked_outcome_rebinds_only_requester_delivery(
     assert work_item["turn_id"] == "turn-owner"
     assert work_item["summary"] == "The deployment credential is unavailable."
     assert work_item["blocker"] == "The deployment credential is unavailable."
-    assert work_item["handoff_to"] == "Ricardo"
+    assert work_item["handoff_to"] == "release operator"
     assert work_item["evidence_refs"] == ["tests:focused", "deploy:staging"]
     assert work_item["requester_delivery"] == {
         "status": "pending",
