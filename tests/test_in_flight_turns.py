@@ -26,18 +26,30 @@ from pynchy.state import (
     claim_next_conversation_delivery,
     clear_unclaimed_in_flight_turn_for_task,
     complete_in_flight_turn,
+    consume_in_flight_control_message,
+    finalize_in_flight_pause,
     get_conversation_delivery,
     get_in_flight_turn,
     get_in_flight_turn_for_chat,
     get_in_flight_turn_for_task,
+    get_messages_since,
     get_router_state,
     init_test_database,
     mark_in_flight_output_sent,
     prepare_conversation_delivery_recovery,
     prepare_in_flight_turn_recovery,
+    request_in_flight_turn_control,
+    resume_paused_in_flight_turn,
+    store_message,
     update_in_flight_session,
 )
-from pynchy.types import GroupFolder, InFlightTurn, InFlightWorkKind
+from pynchy.types import (
+    CheckpointControlState,
+    GroupFolder,
+    InFlightTurn,
+    InFlightWorkKind,
+    NewMessage,
+)
 
 
 def _turn(
@@ -112,6 +124,101 @@ async def test_recovery_releases_old_claim_and_is_claimed_only_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pause_transition_is_restart_safe_and_resumes_with_guidance() -> None:
+    await init_test_database()
+    await begin_in_flight_turn(_turn(input_source="external:matrix"))
+
+    requested = await request_in_flight_turn_control(
+        "slack:C123",
+        CheckpointControlState.PAUSE_REQUESTED,
+    )
+
+    assert requested is not None
+    assert requested.control_state is CheckpointControlState.PAUSE_REQUESTED
+    assert await prepare_in_flight_turn_recovery("deploy-sha") == []
+    paused = await get_in_flight_turn("turn-1")
+    assert paused is not None
+    assert paused.control_state is CheckpointControlState.PAUSED
+    assert paused.claimed_at is None
+    assert await claim_in_flight_turn("turn-1") is False
+
+    guidance = {
+        "message_type": "user",
+        "sender": "alice",
+        "sender_name": "Alice",
+        "content": "Continue, but leave the draft unpublished.",
+        "timestamp": "2026-07-14T10:05:00+00:00",
+    }
+    resumed = await resume_paused_in_flight_turn(
+        "turn-1",
+        [guidance],
+        guidance["timestamp"],
+        claim=True,
+    )
+
+    assert resumed is not None
+    assert resumed.control_state is CheckpointControlState.ACTIVE
+    assert resumed.claimed_at is not None
+    assert resumed.session_id == "session-before"
+    assert resumed.input_source == "external:matrix"
+    assert resumed.input_end_cursor == guidance["timestamp"]
+    assert resumed.input_messages[-1]["metadata"]["checkpoint_guidance"] is True
+
+
+@pytest.mark.asyncio
+async def test_control_message_consumption_advances_cursor_and_hides_command_atomically() -> None:
+    await init_test_database()
+    await begin_in_flight_turn(_turn())
+    command = NewMessage(
+        id="pause-command",
+        chat_jid="slack:C123",
+        sender="alice",
+        sender_name="Alice",
+        content="pause",
+        timestamp="2026-07-14T10:01:00+00:00",
+        metadata={"source": "slack", "deferred_host_control": True},
+    )
+    await store_message(command)
+    cursors = {"slack:C123": "2026-07-14T10:00:00+00:00"}
+
+    turn = await consume_in_flight_control_message(
+        command.id,
+        command.chat_jid,
+        command.timestamp,
+        cursors,
+        CheckpointControlState.PAUSE_REQUESTED,
+    )
+
+    assert turn is not None
+    assert turn.control_state is CheckpointControlState.PAUSE_REQUESTED
+    stored_messages = await get_messages_since(command.chat_jid, "")
+    stored_command = next(message for message in stored_messages if message.id == command.id)
+    assert stored_command.message_type == "host"
+    assert stored_command.metadata == {"source": "slack"}
+    stored_cursor = await get_router_state("last_agent_timestamp")
+    assert stored_cursor is not None
+    assert json.loads(stored_cursor)[command.chat_jid] == command.timestamp
+
+
+@pytest.mark.asyncio
+async def test_reset_request_never_enters_automatic_recovery() -> None:
+    await init_test_database()
+    await begin_in_flight_turn(_turn())
+
+    requested = await request_in_flight_turn_control(
+        "slack:C123",
+        CheckpointControlState.RESET_REQUESTED,
+    )
+
+    assert requested is not None
+    assert requested.control_state is CheckpointControlState.RESET_REQUESTED
+    assert await prepare_in_flight_turn_recovery("deploy-sha") == []
+    retained = await get_in_flight_turn("turn-1")
+    assert retained is not None
+    assert retained.control_state is CheckpointControlState.RESET_REQUESTED
+
+
+@pytest.mark.asyncio
 async def test_terminal_scheduled_cleanup_preserves_claimed_recovery() -> None:
     await init_test_database()
     await begin_in_flight_turn(
@@ -135,6 +242,28 @@ async def test_terminal_scheduled_cleanup_preserves_claimed_recovery() -> None:
 
     assert await clear_unclaimed_in_flight_turn_for_task("task-1") is False
     assert await get_in_flight_turn("turn-claimed") is not None
+
+
+@pytest.mark.asyncio
+async def test_terminal_scheduled_cleanup_preserves_paused_occurrence() -> None:
+    await init_test_database()
+    await begin_in_flight_turn(
+        _turn(
+            work_kind=InFlightWorkKind.SCHEDULED,
+            task_id="task-1",
+            claimed_at=None,
+        )
+    )
+    await request_in_flight_turn_control(
+        "slack:C123",
+        CheckpointControlState.PAUSE_REQUESTED,
+    )
+    await finalize_in_flight_pause("turn-1")
+
+    assert await clear_unclaimed_in_flight_turn_for_task("task-1") is False
+    paused = await get_in_flight_turn("turn-1")
+    assert paused is not None
+    assert paused.control_state is CheckpointControlState.PAUSED
 
 
 @pytest.mark.asyncio

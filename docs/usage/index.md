@@ -43,6 +43,30 @@ When the agent is busy (handling a user message or scheduled task), new messages
 
 A normal message (no prefix) interrupts the active task — the container stops and your new message starts fresh.
 
+### Pause and Resume Unfinished Work
+
+Send exactly `stop` or `pause` to freeze the current agent turn immediately.
+Matching is case-insensitive and accepts the workspace trigger, such as
+`@pynchy pause`. Longer sentences such as `please pause` are ordinary agent
+messages, not control commands.
+
+Pynchy acknowledges the command with ⏸️, hibernates the runtime, and retains
+the unfinished checkpoint and provider conversation. Your next ordinary
+message becomes guidance for that same turn; Pynchy reopens the same provider
+thread and continues the original work once. Pausing cannot undo side effects
+that completed before Pynchy received the command.
+
+If no turn is running, `stop` and `pause` only hibernate the existing runtime.
+For a scheduled turn, the command freezes that occurrence without disabling or
+editing the recurring task. Later schedule triggers skip while the occurrence
+is frozen. Reply in the occurrence's chat or thread to resume it.
+
+Use `reset context` to discard the current or frozen occurrence and its
+provider conversation. A recurring task stays active, and its next occurrence
+starts with fresh context. Existing finish commands such as `done` and
+`end session` keep their finish-and-hibernate behavior; they do not preserve
+unfinished work.
+
 ## Customizing
 
 Start conversationally, then put repeatable channel, workspace, and security

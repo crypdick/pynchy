@@ -27,7 +27,7 @@ from pynchy.state import (
     get_in_flight_turn_for_chat,
     release_in_flight_turn_claim,
 )
-from pynchy.types import ContainerOutput, InFlightWorkKind, WorkspaceProfile
+from pynchy.types import CheckpointControlState, ContainerOutput, InFlightWorkKind, WorkspaceProfile
 
 
 async def handle_reset_handoff(
@@ -134,6 +134,8 @@ async def resume_interrupted_message_if_present(
         },
     )
     if turn is None:
+        return None
+    if turn.control_state is not CheckpointControlState.ACTIVE:
         return None
     if not await claim_in_flight_turn(turn.turn_id):
         logger.info(

@@ -87,6 +87,8 @@ class MessageHandlerDeps(Protocol):
 
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
+    async def start_interrupted_turn(self, turn_id: str, chat_jid: str) -> None: ...
+
     def emit(self, event: Event) -> None: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - protocol preserves orchestration call shape.
@@ -99,6 +101,7 @@ class MessageHandlerDeps(Protocol):
         *,
         input_source: str = "user",
         turn_id: str | None = None,
+        resume_session_id: str | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(

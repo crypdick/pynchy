@@ -114,6 +114,12 @@ from pynchy.state.host_jobs import (
     record_host_job_completion,
     update_host_job,
 )
+from pynchy.state.in_flight_controls import (
+    consume_in_flight_control_message,
+    finalize_in_flight_pause,
+    request_in_flight_turn_control,
+    resume_paused_in_flight_turn,
+)
 from pynchy.state.in_flight_turns import (
     begin_in_flight_turn,
     claim_in_flight_turn,
@@ -338,6 +344,8 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "clear_in_flight_turn",
     "clear_unclaimed_in_flight_turn_for_task",
     "complete_in_flight_turn",
+    "consume_in_flight_control_message",
+    "finalize_in_flight_pause",
     "get_in_flight_turn",
     "get_in_flight_turn_for_chat",
     "get_in_flight_turn_for_group",
@@ -346,6 +354,8 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "mark_in_flight_output_sent",
     "prepare_in_flight_turn_recovery",
     "release_in_flight_turn_claim",
+    "request_in_flight_turn_control",
+    "resume_paused_in_flight_turn",
     "update_in_flight_session",
     # work_items
     "WorkItemClaimConflictError",

@@ -22,13 +22,18 @@ from pynchy.state import (
     begin_in_flight_turn,
     claim_deployment,
     get_deployment_state,
+    get_in_flight_turn,
     get_router_state,
+    get_session,
     init_test_database,
     initialize_deployment_state,
+    set_session,
 )
 from pynchy.types import (
+    CheckpointControlState,
     DeploymentState,
     DeployRevision,
+    GroupFolder,
     InFlightTurn,
     InFlightWorkKind,
     WorkspaceProfile,
@@ -260,6 +265,8 @@ class TestCheckDeployContinuation:
         work_kind: InFlightWorkKind,
         *,
         task_id: str | None = None,
+        control_state: CheckpointControlState = CheckpointControlState.ACTIVE,
+        claimed_at: str | None = "2026-07-14T10:00:01+00:00",
     ) -> InFlightTurn:
         return InFlightTurn(
             turn_id=turn_id,
@@ -271,7 +278,8 @@ class TestCheckDeployContinuation:
             input_end_cursor="after",
             started_at="2026-07-14T10:00:00+00:00",
             task_id=task_id,
-            claimed_at="2026-07-14T10:00:01+00:00",
+            claimed_at=claimed_at,
+            control_state=control_state,
         )
 
     @pytest.mark.asyncio
@@ -434,6 +442,66 @@ class TestCheckDeployContinuation:
         notice = deps.broadcast_host_message.await_args.args[1]
         assert "Pynchy restarted" in notice
         assert "Deploy complete" not in notice
+
+    @pytest.mark.asyncio
+    async def test_startup_finishes_pause_transition_without_dispatching_it(
+        self, tmp_path, monkeypatch
+    ):
+        await init_test_database()
+        jid = "slack:PAUSED"
+        deps = FakeDeps({jid: _make_workspace(jid, "paused-group")})
+        await begin_in_flight_turn(
+            self._turn(
+                "turn-pausing",
+                jid,
+                "paused-group",
+                InFlightWorkKind.INTERACTIVE,
+                control_state=CheckpointControlState.PAUSE_REQUESTED,
+            )
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_settings",
+            type("S", (), {"data_dir": tmp_path}),
+        )
+
+        assert await check_deploy_continuation(deps) == set()
+
+        paused = await get_in_flight_turn("turn-pausing")
+        assert paused is not None
+        assert paused.control_state is CheckpointControlState.PAUSED
+        assert paused.claimed_at is None
+        deps.start_interrupted_turn.assert_not_awaited()
+        deps.broadcast_host_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_startup_completes_reset_and_discards_provider_session(
+        self, tmp_path, monkeypatch
+    ):
+        await init_test_database()
+        jid = "slack:RESETTING"
+        folder = GroupFolder("reset-group")
+        deps = FakeDeps({jid: _make_workspace(jid, str(folder))})
+        await set_session(folder, "provider-thread")
+        await begin_in_flight_turn(
+            self._turn(
+                "turn-resetting",
+                jid,
+                str(folder),
+                InFlightWorkKind.SCHEDULED,
+                task_id="recurring-task",
+                control_state=CheckpointControlState.RESET_REQUESTED,
+            )
+        )
+        monkeypatch.setattr(
+            "pynchy.host.orchestrator.startup_handler.get_settings",
+            type("S", (), {"data_dir": tmp_path}),
+        )
+
+        assert await check_deploy_continuation(deps) == set()
+
+        assert await get_in_flight_turn("turn-resetting") is None
+        assert await get_session(folder) is None
+        deps.start_interrupted_turn.assert_not_awaited()
 
 
 class TestConfirmDeployStartup:

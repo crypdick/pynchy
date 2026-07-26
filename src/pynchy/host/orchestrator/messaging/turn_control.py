@@ -1,0 +1,284 @@
+"""Pause-aware message preparation and interactive agent execution."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+import pynchy.types as types
+from pynchy.config.settings import Settings  # noqa: TC001, RUF100 - beartype resolves annotations.
+from pynchy.event_bus import AgentActivityEvent
+from pynchy.host.learning import capture as learning_capture
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    MessageHandlerDeps,
+)
+from pynchy.host.orchestrator.messaging.host_controls import (
+    mark_dispatched,
+    should_skip_batch,
+)
+from pynchy.host.orchestrator.messaging.in_flight import (
+    note_output_sent,
+    requested_control_outcome,
+    resume_interrupted_message_turn,
+)
+from pynchy.host.orchestrator.messaging.outcomes import (
+    TURN_PAUSED,
+    TURN_RESET,
+    ProcessGroupResult,
+)
+from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
+from pynchy.host.orchestrator.messaging.turn_recovery import (
+    handle_reset_handoff,
+    resume_interrupted_message_if_present,
+)
+from pynchy.state import (
+    clear_in_flight_turn,
+    get_in_flight_turn_for_chat,
+    release_in_flight_turn_claim,
+    resume_paused_in_flight_turn,
+)
+
+ProcessPending = Callable[[str], Awaitable[ProcessGroupResult]]
+GetPendingMessages = Callable[[str, str], Awaitable[list[types.NewMessage]]]
+_MESSAGE_WORK_KINDS = {
+    types.InFlightWorkKind.INTERACTIVE,
+    types.InFlightWorkKind.RESET_HANDOFF,
+    types.InFlightWorkKind.SCHEDULED,
+}
+
+
+@dataclass(frozen=True)
+class AgentBatch:
+    """Prepared ordinary input that should start a fresh interactive checkpoint."""
+
+    since_timestamp: str
+    missed_messages: list[types.NewMessage]
+    messages: list[dict[str, Any]]
+    reset_system_notices: list[str]
+
+
+@dataclass(frozen=True)
+class TurnPreparationCallbacks:
+    """Pipeline-owned operations used while preparing an agent batch."""
+
+    process_pending: ProcessPending
+    get_pending_messages: GetPendingMessages
+
+
+@dataclass(frozen=True)
+class _PausedResumeRequest:
+    deps: MessageHandlerDeps
+    chat_jid: str
+    group: types.WorkspaceProfile
+    turn: types.InFlightTurn
+    missed_messages: list[types.NewMessage]
+    messages: list[dict[str, Any]]
+    process_pending: ProcessPending
+
+
+async def _resume_paused_checkpoint(request: _PausedResumeRequest) -> ProcessGroupResult:
+    """Attach pending guidance and resume the frozen occurrence exactly once."""
+    deps = request.deps
+    turn = request.turn
+    if turn.control_state is types.CheckpointControlState.PAUSE_REQUESTED:
+        # A reply can race the process shutdown. Its interactive workflow may
+        # retry, but the paused occurrence itself never retries automatically.
+        return False
+    if turn.control_state is types.CheckpointControlState.RESET_REQUESTED:
+        await clear_in_flight_turn(turn.turn_id)
+        return TURN_RESET
+    if turn.control_state is not types.CheckpointControlState.PAUSED:
+        return True
+
+    is_scheduled = turn.work_kind is types.InFlightWorkKind.SCHEDULED
+    resumed = await resume_paused_in_flight_turn(
+        turn.turn_id,
+        request.messages,
+        request.missed_messages[-1].timestamp,
+        claim=not is_scheduled,
+    )
+    if resumed is None:
+        return True
+
+    mark_dispatched(deps, request.chat_jid, request.missed_messages[-1].timestamp)
+    if is_scheduled:
+        await deps.start_interrupted_turn(resumed.turn_id, resumed.chat_jid)
+        return True
+
+    return await resume_interrupted_message_turn(
+        deps,
+        request.group,
+        resumed,
+        request.process_pending,
+    )
+
+
+async def prepare_agent_batch(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: types.WorkspaceProfile,
+    settings: Settings,
+    callbacks: TurnPreparationCallbacks,
+) -> AgentBatch | ProcessGroupResult:
+    """Resume durable work or prepare pending messages for an interactive turn."""
+    resumed = await resume_interrupted_message_if_present(
+        deps,
+        chat_jid,
+        group,
+        callbacks.process_pending,
+    )
+    if resumed is not None:
+        return resumed
+
+    reset_file = settings.data_dir / "ipc" / group.folder / "reset_prompt.json"
+    if await handle_reset_handoff(deps, chat_jid, group, reset_file, settings) is False:
+        return False
+
+    since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
+    missed_messages = await callbacks.get_pending_messages(chat_jid, since_timestamp)
+    checkpoint = await get_in_flight_turn_for_chat(chat_jid, _MESSAGE_WORK_KINDS)
+    if await should_skip_batch(deps, chat_jid, group, missed_messages):
+        checkpoint = await get_in_flight_turn_for_chat(chat_jid, _MESSAGE_WORK_KINDS)
+        if checkpoint is not None and checkpoint.control_state in {
+            types.CheckpointControlState.PAUSE_REQUESTED,
+            types.CheckpointControlState.PAUSED,
+        }:
+            return TURN_PAUSED
+        return True
+
+    messages, reset_system_notices = prepare_message_context(
+        settings,
+        group,
+        missed_messages,
+        is_admin_group=group.is_admin,
+    )
+    if (
+        checkpoint is not None
+        and checkpoint.control_state is not types.CheckpointControlState.ACTIVE
+    ):
+        return await _resume_paused_checkpoint(
+            _PausedResumeRequest(
+                deps=deps,
+                chat_jid=chat_jid,
+                group=group,
+                turn=checkpoint,
+                missed_messages=missed_messages,
+                messages=messages,
+                process_pending=callbacks.process_pending,
+            )
+        )
+    return AgentBatch(
+        since_timestamp=since_timestamp,
+        missed_messages=missed_messages,
+        messages=messages,
+        reset_system_notices=reset_system_notices,
+    )
+
+
+@dataclass(frozen=True)
+class InteractiveAgentRun:
+    """Agent result plus the stream evidence needed for turn finalization."""
+
+    agent_result: str
+    had_error: bool
+    output_sent_to_user: bool
+    learning_summary: learning_capture.LearningRunSummary
+    control_outcome: ProcessGroupResult | None
+
+
+async def _requested_control_after_agent_exit(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    turn_id: str,
+    *,
+    agent_succeeded: bool,
+) -> ProcessGroupResult | None:
+    outcome = await requested_control_outcome(
+        turn_id,
+        agent_succeeded=agent_succeeded,
+    )
+    if outcome is not None:
+        await deps.set_typing_on_channels(chat_jid, is_typing=False)
+        deps.emit(AgentActivityEvent(chat_jid=chat_jid, active=False))
+    return outcome
+
+
+async def run_interactive_agent(
+    deps: MessageHandlerDeps,
+    group: types.WorkspaceProfile,
+    messages: list[dict[str, Any]],
+    reset_system_notices: list[str],
+    turn: types.InFlightTurn,
+) -> InteractiveAgentRun:
+    """Invoke one checkpointed interactive turn and settle control requests."""
+    chat_jid = turn.chat_jid
+    had_error = False
+    output_sent_to_user = False
+    learning_summary = learning_capture.LearningRunSummary()
+
+    async def on_output(result: types.ContainerOutput) -> None:
+        nonlocal had_error, output_sent_to_user
+
+        learning_capture.observe_learning_output(learning_summary, result)
+        sent = await deps.handle_streamed_output(
+            chat_jid,
+            group,
+            result,
+            turn_id=turn.turn_id,
+        )
+        if sent:
+            await note_output_sent(turn.turn_id, already_recorded=output_sent_to_user)
+            output_sent_to_user = True
+        if result.status == "error":
+            had_error = True
+        if result.type == "tool_result":
+            await deps.queue.interrupt_after_tool_result(chat_jid)
+
+    control_outcome: ProcessGroupResult | None = None
+    try:
+        agent_result = await deps.run_agent(
+            group,
+            chat_jid,
+            messages,
+            on_output,
+            reset_system_notices or None,
+            input_source=turn.input_source,
+            turn_id=turn.turn_id,
+        )
+    except asyncio.CancelledError:
+        control_outcome = await _requested_control_after_agent_exit(
+            deps,
+            chat_jid,
+            turn.turn_id,
+            agent_succeeded=False,
+        )
+        if control_outcome is None:
+            raise
+        agent_result = "error"
+    except BaseException:
+        control_outcome = await _requested_control_after_agent_exit(
+            deps,
+            chat_jid,
+            turn.turn_id,
+            agent_succeeded=False,
+        )
+        if control_outcome is None:
+            await release_in_flight_turn_claim(turn.turn_id)
+            raise
+        agent_result = "error"
+    else:
+        control_outcome = await _requested_control_after_agent_exit(
+            deps,
+            chat_jid,
+            turn.turn_id,
+            agent_succeeded=agent_result == "success" and not had_error,
+        )
+    return InteractiveAgentRun(
+        agent_result=agent_result,
+        had_error=had_error,
+        output_sent_to_user=output_sent_to_user,
+        learning_summary=learning_summary,
+        control_outcome=control_outcome,
+    )

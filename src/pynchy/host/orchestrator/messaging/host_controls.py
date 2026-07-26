@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import pynchy.types as types  # noqa: TC001, RUF100 - beartype resolves control annotations.
+from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.orchestrator.messaging import approval_handler, commands
 from pynchy.host.orchestrator.messaging.cursor import advance_cursor
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves control annotations.
@@ -12,7 +13,15 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
 )
 from pynchy.host.orchestrator.messaging.direct_command import execute_direct_command
 from pynchy.logger import logger
-from pynchy.state import mark_message_as_host
+from pynchy.state import (
+    clear_in_flight_turn,
+    consume_in_flight_control_message,
+    finalize_in_flight_pause,
+    get_messages_since,
+    mark_message_as_host,
+    message_exists,
+    request_in_flight_turn_control,
+)
 
 _turn_boundary_locks: dict[str, asyncio.Lock] = {}
 
@@ -20,6 +29,105 @@ _turn_boundary_locks: dict[str, asyncio.Lock] = {}
 def turn_boundary_lock(chat_jid: str) -> asyncio.Lock:
     """Serialize active-control classification with turn finalization."""
     return _turn_boundary_locks.setdefault(chat_jid, asyncio.Lock())
+
+
+async def _consume_checkpoint_control(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    message: types.NewMessage,
+    requested_state: types.CheckpointControlState,
+) -> types.InFlightTurn | None:
+    """Persist command consumption and its checkpoint transition before stopping work."""
+    if await message_exists(message.id, chat_jid):
+        turn = await consume_in_flight_control_message(
+            message.id,
+            chat_jid,
+            message.timestamp,
+            deps.last_agent_timestamp,
+            requested_state,
+        )
+        deps.last_agent_timestamp[chat_jid] = max(
+            deps.last_agent_timestamp.get(chat_jid, ""),
+            message.timestamp,
+        )
+    else:
+        # Synthetic callers do not have a persisted channel message. Production
+        # intake always takes the atomic branch above.
+        turn = await request_in_flight_turn_control(chat_jid, requested_state)
+        await advance_cursor(deps, chat_jid, message.timestamp)
+    message.message_type = "host"
+    message.metadata = {
+        key: value
+        for key, value in (message.metadata or {}).items()
+        if key != "deferred_host_control"
+    }
+    return turn
+
+
+async def _send_pause_confirmation(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    message: types.NewMessage,
+) -> None:
+    if any(channel.owns_jid(chat_jid) for channel in deps.channels):
+        await deps.send_reaction_to_channels(chat_jid, message.id, message.sender, "⏸️")
+    else:
+        await deps.broadcast_host_message(chat_jid, "⏸️")
+
+
+async def _handle_pause(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: types.WorkspaceProfile,
+    message: types.NewMessage,
+) -> None:
+    had_active_run = deps.queue.has_active_run(chat_jid)
+    turn = await _consume_checkpoint_control(
+        deps,
+        chat_jid,
+        message,
+        types.CheckpointControlState.PAUSE_REQUESTED,
+    )
+    await deps.queue.stop_active_process_for_control(chat_jid)
+    await destroy_session(group.folder)
+    if turn is not None and not had_active_run:
+        await finalize_in_flight_pause(turn.turn_id)
+    await _send_pause_confirmation(deps, chat_jid, message)
+
+
+async def _intercept_checkpoint_command(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: types.WorkspaceProfile,
+    message: types.NewMessage,
+    content: str,
+) -> bool:
+    if commands.is_pause(content):
+        logger.info("intercept_trace", step="pause_start", group=group.name)
+        await _handle_pause(deps, chat_jid, group, message)
+        logger.info("Agent turn paused", group=group.name)
+        return True
+
+    if not commands.is_context_reset(content):
+        return False
+    logger.info("intercept_trace", step="context_reset_start", group=group.name)
+    had_active_run = deps.queue.has_active_run(chat_jid)
+    turn = await _consume_checkpoint_control(
+        deps,
+        chat_jid,
+        message,
+        types.CheckpointControlState.RESET_REQUESTED,
+    )
+    await deps.handle_context_reset(
+        chat_jid,
+        group,
+        message.timestamp,
+        source_message=message,
+    )
+    if turn is not None and not had_active_run:
+        await clear_in_flight_turn(turn.turn_id)
+    logger.info("Context reset", group=group.name)
+    return True
 
 
 async def intercept_special_command(
@@ -36,15 +144,7 @@ async def intercept_special_command(
     content = message.content.strip()
     logger.info("intercept_trace", step="start", group=group.name, content=content[:50])
 
-    if commands.is_context_reset(content):
-        logger.info("intercept_trace", step="context_reset_start", group=group.name)
-        await deps.handle_context_reset(
-            chat_jid,
-            group,
-            message.timestamp,
-            source_message=message,
-        )
-        logger.info("Context reset", group=group.name)
+    if await _intercept_checkpoint_command(deps, chat_jid, group, message, content):
         return True
 
     if commands.is_end_session(content):
@@ -80,6 +180,47 @@ async def intercept_special_command(
     return True
 
 
+async def intercept_immediate_checkpoint_controls(
+    deps: MessageHandlerDeps,
+    chat_jid: str,
+    group: types.WorkspaceProfile,
+    pending: list[types.NewMessage],
+) -> bool | None:
+    """Execute pause/reset controls before forwarding any active-turn input."""
+    if not any(
+        message.message_type != "host"
+        and (commands.is_pause(message.content) or commands.is_context_reset(message.content))
+        for message in pending
+    ):
+        return None
+
+    async with turn_boundary_lock(chat_jid):
+        pending[:] = await get_messages_since(
+            chat_jid,
+            deps.routing_cursor(chat_jid),
+        )
+        handled = False
+        for message in pending:
+            if message.message_type == "host":
+                continue
+            if not (
+                commands.is_pause(message.content) or commands.is_context_reset(message.content)
+            ):
+                continue
+            if await intercept_special_command(deps, chat_jid, group, message):
+                handled = True
+
+    if not handled:
+        return None
+    if any(
+        message.message_type != "host" and message.sender != "system_notice" for message in pending
+    ):
+        # Drain after the stopping queue coroutine releases; forwarding here
+        # can write into dead container IPC.
+        deps.queue.enqueue_message_check(chat_jid)
+    return True
+
+
 def mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str) -> None:
     """Record an in-memory active-container boundary without persisting it."""
     deps.mark_dispatched(chat_jid, new_timestamp)
@@ -94,7 +235,8 @@ def host_control_kind(message: types.NewMessage) -> tuple[bool, bool]:
         or (content.startswith("!") and content[1:])
     )
     deferred = bool(
-        commands.is_context_reset(content)
+        commands.is_pause(content)
+        or commands.is_context_reset(content)
         or commands.is_end_session(content)
         or commands.is_redeploy(content)
     )
@@ -151,6 +293,8 @@ async def reclassify_batch_host_controls(
     handled = 0
     for message in messages:
         inline_control, deferred_control = host_control_kind(message)
+        if commands.is_pause(message.content) or commands.is_context_reset(message.content):
+            continue
         if not inline_control and not (deferred_control and defer_lifecycle):
             continue
         if await reclassify_host_control(deps, chat_jid, group, message):

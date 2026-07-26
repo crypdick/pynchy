@@ -9,6 +9,7 @@ from __future__ import annotations
 from pynchy.host.orchestrator.messaging.commands import (
     is_context_reset,
     is_end_session,
+    is_pause,
     is_redeploy,
 )
 
@@ -157,6 +158,34 @@ class TestIsEndSession:
     def test_not_triggered_by_partial(self):
         assert not is_end_session("end")
         assert not is_end_session("session")
+
+
+# ---------------------------------------------------------------------------
+# is_pause
+# ---------------------------------------------------------------------------
+
+
+class TestIsPause:
+    def test_aliases_are_exact_and_case_insensitive(self):
+        assert is_pause("stop")
+        assert is_pause("PAUSE")
+        assert is_pause("  Pause  ")
+
+    def test_trigger_prefixes_are_stripped(self):
+        assert is_pause("@pynchy pause")
+        assert is_pause("@ghost STOP")
+
+    def test_sentences_and_partial_matches_are_rejected(self):
+        assert not is_pause("please pause")
+        assert not is_pause("stop now")
+        assert not is_pause("stopping")
+        assert not is_pause("paused")
+
+    def test_does_not_conflict_with_existing_lifecycle_commands(self):
+        assert not is_pause("reset context")
+        assert not is_pause("end session")
+        assert not is_pause("done")
+        assert not is_end_session("stop")
 
 
 # ---------------------------------------------------------------------------

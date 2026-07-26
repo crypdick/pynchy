@@ -12,17 +12,23 @@ from pynchy.event_bus import AgentActivityEvent, Event
 from pynchy.host.container_manager import OnOutput  # noqa: TC001 - beartype resolves Protocols.
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
 from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TURN_PAUSED,
+    TURN_RESET,
     ProcessGroupResult,
 )
 from pynchy.logger import logger
 from pynchy.state import (
     begin_in_flight_turn,
+    clear_in_flight_turn,
     complete_in_flight_turn,
+    finalize_in_flight_pause,
+    get_in_flight_turn,
     get_session,
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
 )
 from pynchy.types import (
+    CheckpointControlState,
     ContainerOutput,
     GroupFolder,
     InFlightTurn,
@@ -48,6 +54,7 @@ class InFlightMessageDeps(Protocol):
         *,
         input_source: str = "user",
         turn_id: str | None = None,
+        resume_session_id: str | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(
@@ -118,6 +125,8 @@ async def begin_message_turn(request: MessageTurnStart) -> InFlightTurn:
 def _original_input_text(turn: InFlightTurn) -> str:
     parts: list[str] = []
     for message in turn.input_messages:
+        if (message.get("metadata") or {}).get("checkpoint_guidance") is True:
+            continue
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
             continue
@@ -129,19 +138,37 @@ def _original_input_text(turn: InFlightTurn) -> str:
 
 def interrupted_resume_message(turn: InFlightTurn) -> dict[str, Any]:
     """Build an actionable continuation message without replaying the user role input."""
+    paused = any(
+        (message.get("metadata") or {}).get("checkpoint_guidance") is True
+        for message in turn.input_messages
+    )
     prior_output = (
         "Some output may already have been shown to the user. Do not repeat it."
         if turn.output_sent
         else "No user-visible output was recorded before interruption."
     )
-    content = (
-        "[Deployment recovery]\n"
-        "Pynchy restarted while you were working on the request below. Rehydrate the existing "
-        "conversation and continue the unfinished job from its last durable state. Inspect the "
-        "prior transcript, tool results, and current workspace before acting. Do not restart "
-        "completed steps or repeat side effects. Finish the original request and report the final "
-        f"result. {prior_output}\n\nOriginal request for reference:\n{_original_input_text(turn)}"
-    )
+    if paused:
+        content = (
+            "[Paused turn continuation]\n"
+            "The user paused this unfinished request and has now sent new guidance. Rehydrate "
+            "the same conversation and continue from its last durable state. Inspect the prior "
+            "transcript, tool results, and current workspace before acting. Do not restart "
+            "completed steps or repeat side effects. Incorporate the following user messages, "
+            f"finish the original request, and report the final result. {prior_output}"
+            f"\n\nOriginal request for reference:\n{_original_input_text(turn)}"
+        )
+        source = "pause_continuation"
+    else:
+        content = (
+            "[Deployment recovery]\n"
+            "Pynchy restarted while you were working on the request below. Rehydrate the existing "
+            "conversation and continue the unfinished job from its last durable state. Inspect the "
+            "prior transcript, tool results, and current workspace before acting. Do not restart "
+            "completed steps or repeat side effects. Finish the original request and report the "
+            f"final result. {prior_output}\n\nOriginal request for reference:\n"
+            f"{_original_input_text(turn)}"
+        )
+        source = "deploy_continuation"
     return {
         "message_type": "user",
         "sender": "system",
@@ -149,11 +176,46 @@ def interrupted_resume_message(turn: InFlightTurn) -> dict[str, Any]:
         "content": content,
         "timestamp": datetime.now(UTC).isoformat(),
         "metadata": {
-            "source": "deploy_continuation",
+            "source": source,
             "interrupted_turn_id": turn.turn_id,
             "deploy_id": turn.deploy_id,
         },
     }
+
+
+def semantic_resume_messages(turn: InFlightTurn) -> list[dict[str, Any]]:
+    """Return recovery context followed by every durably attached user reply."""
+    guidance = [
+        message
+        for message in turn.input_messages
+        if (message.get("metadata") or {}).get("checkpoint_guidance") is True
+    ]
+    return [interrupted_resume_message(turn), *guidance]
+
+
+async def requested_control_outcome(
+    turn_id: str,
+    *,
+    agent_succeeded: bool,
+) -> ProcessGroupResult | None:
+    """Finish a requested control transition after its agent process exits."""
+    turn = await get_in_flight_turn(turn_id)
+    if turn is None:
+        return None
+    if turn.control_state is CheckpointControlState.RESET_REQUESTED:
+        await clear_in_flight_turn(turn_id)
+        return TURN_RESET
+    if (
+        turn.control_state
+        in {
+            CheckpointControlState.PAUSE_REQUESTED,
+            CheckpointControlState.PAUSED,
+        }
+        and not agent_succeeded
+    ):
+        await finalize_in_flight_pause(turn_id)
+        return TURN_PAUSED
+    return None
 
 
 async def note_output_sent(turn_id: str, *, already_recorded: bool) -> None:
@@ -174,10 +236,11 @@ async def _run_resumed_agent(
         return await deps.run_agent(
             group,
             turn.chat_jid,
-            [interrupted_resume_message(turn)],
+            semantic_resume_messages(turn),
             on_output,
             input_source=turn.input_source,
             turn_id=turn.turn_id,
+            resume_session_id=turn.session_id,
         )
     finally:
         await deps.set_typing_on_channels(turn.chat_jid, is_typing=False)
@@ -219,10 +282,26 @@ async def resume_interrupted_message_turn(
     try:
         agent_result = await _run_resumed_agent(deps, group, turn, on_output)
     except asyncio.CancelledError:
+        if control_outcome := await requested_control_outcome(
+            turn.turn_id,
+            agent_succeeded=False,
+        ):
+            return control_outcome
         raise
     except BaseException:
+        if control_outcome := await requested_control_outcome(
+            turn.turn_id,
+            agent_succeeded=False,
+        ):
+            return control_outcome
         await release_in_flight_turn_claim(turn.turn_id)
         raise
+
+    if control_outcome := await requested_control_outcome(
+        turn.turn_id,
+        agent_succeeded=agent_result == "success" and not had_error,
+    ):
+        return control_outcome
 
     if agent_result == "error" or had_error:
         await release_in_flight_turn_claim(turn.turn_id)

@@ -5,6 +5,9 @@ name = "pynchy"
 trigger_aliases = ["ghost"]
 default_core = "openai"
 
+[commands.pause]
+aliases = ["stop", "pause"]
+
 [container]
 image = "pynchy-agent:latest"
 timeout_ms = 1800000

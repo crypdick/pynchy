@@ -11,6 +11,8 @@ from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
 from pynchy.host.orchestrator.messaging.in_flight import resume_interrupted_message_turn
 from pynchy.host.orchestrator.messaging.outcomes import (
     CONTINUE_AFTER_SAFE_INTERRUPT,
+    TURN_PAUSED,
+    TURN_RESET,
     ProcessGroupResult,
 )
 from pynchy.host.orchestrator.task_scheduler import (
@@ -25,19 +27,67 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
 from pynchy.host.orchestrator.temporal.workflows import (
     CONTINUE_AFTER_SAFE_INTERRUPT as CONTINUE_AFTER_SAFE_INTERRUPT_RESULT,
 )
+from pynchy.host.orchestrator.temporal.workflows import (
+    TURN_PAUSED as TURN_PAUSED_RESULT,
+)
+from pynchy.host.orchestrator.temporal.workflows import (
+    TURN_RESET as TURN_RESET_RESULT,
+)
 from pynchy.state import (
     claim_in_flight_turn,
     get_in_flight_turn,
     get_task_by_id,
     release_in_flight_turn_claim,
 )
-from pynchy.types import InFlightWorkKind
+from pynchy.types import CheckpointControlState, InFlightTurn, InFlightWorkKind
+
+
+def _terminal_control_result(
+    turn: InFlightTurn,
+) -> str | None:
+    control_state = turn.control_state
+    if control_state in {
+        CheckpointControlState.PAUSE_REQUESTED,
+        CheckpointControlState.PAUSED,
+    }:
+        return TURN_PAUSED_RESULT
+    if control_state is CheckpointControlState.RESET_REQUESTED:
+        return TURN_RESET_RESULT
+    return None
+
+
+async def _finish_interrupted_activity(
+    turn_id: str,
+    handled: ProcessGroupResult,
+) -> str:
+    if handled is CONTINUE_AFTER_SAFE_INTERRUPT:
+        result = CONTINUE_AFTER_SAFE_INTERRUPT_RESULT
+    elif handled is TURN_PAUSED:
+        result = TURN_PAUSED_RESULT
+    elif handled is TURN_RESET:
+        result = TURN_RESET_RESULT
+    elif handled:
+        result = "completed"
+    else:
+        err = "Interrupted agent turn requested retry"
+        await release_in_flight_turn_claim(turn_id)
+        _record_activity_result(turn_id, "retry_requested", err)
+        raise RuntimeError(err)
+    _record_activity_result(turn_id, result)
+    return result
 
 
 async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> ProcessGroupResult:
     turn = await get_in_flight_turn(turn_id)
     if turn is None:
         return True
+    if turn.control_state in {
+        CheckpointControlState.PAUSE_REQUESTED,
+        CheckpointControlState.PAUSED,
+    }:
+        return TURN_PAUSED
+    if turn.control_state is CheckpointControlState.RESET_REQUESTED:
+        return TURN_RESET
     if turn.work_kind is InFlightWorkKind.SCHEDULED:
         if not turn.task_id:
             await release_in_flight_turn_claim(turn_id)
@@ -72,6 +122,9 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
     if turn is None:
         _record_activity_result(turn_id, "already_completed")
         return "already_completed"
+    if terminal_result := _terminal_control_result(turn):
+        _record_activity_result(turn_id, terminal_result)
+        return terminal_result
     if not await claim_in_flight_turn(turn_id):
         _record_activity_result(turn_id, "already_claimed")
         return "already_claimed"
@@ -93,13 +146,4 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
         _record_activity_result(turn_id, "error", str(exc))
         raise
 
-    if handled is CONTINUE_AFTER_SAFE_INTERRUPT:
-        _record_activity_result(turn_id, CONTINUE_AFTER_SAFE_INTERRUPT_RESULT)
-        return CONTINUE_AFTER_SAFE_INTERRUPT_RESULT
-    if not handled:
-        err = "Interrupted agent turn requested retry"
-        await release_in_flight_turn_claim(turn_id)
-        _record_activity_result(turn_id, "retry_requested", err)
-        raise RuntimeError(err)
-    _record_activity_result(turn_id, "completed")
-    return "completed"
+    return await _finish_interrupted_activity(turn_id, handled)
