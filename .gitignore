@@ -66,13 +66,3 @@ config-from-pynchy-server.toml
 /graphify-out/*
 !/graphify-out/GRAPH_REPORT.md
 !/graphify-out/graph.json
-!/graphify-out/memory/
-/graphify-out/memory/*
-!/graphify-out/memory/*.md
-!/graphify-out/reflections/
-/graphify-out/reflections/*
-!/graphify-out/reflections/*.md
-!/graphify-out/wiki/
-/graphify-out/wiki/*
-!/graphify-out/wiki/**/
-!/graphify-out/wiki/**/*.md

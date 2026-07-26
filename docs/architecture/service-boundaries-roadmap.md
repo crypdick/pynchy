@@ -381,19 +381,24 @@ The `prek` hook invokes `sync-staged` after source-formatting hooks. The generic
 large-file, JSON, and secret-scanning hooks exclude this exact artifact because
 the wrapper validates its schema, portability, and deterministic
 serialization. No other generated Graphify files receive automatic
-maintenance.
+maintenance. The managed merge workflow invokes the same command after its
+no-commit source merge, when the Git index contains the integrated tree, and
+before it tests or commits that tree. A feature-branch graph can be fresh before
+the merge and stale afterward, so branch-local hooks cannot replace this
+integrated reconstruction.
 
-Manual Graphify sessions may commit their human-readable Markdown output:
+Manual Graphify sessions may update the committed
+`graphify-out/GRAPH_REPORT.md`. Treat it as a reviewed historical analysis
+snapshot: it may become stale and does not participate in auto-staging,
+freshness checks, or CI reconstruction. Record its source commit and generation
+metadata, distinguish extracted facts from inference, and consolidate repeated
+findings into current-state prose.
 
-- `graphify-out/GRAPH_REPORT.md`;
-- `graphify-out/memory/*.md`;
-- `graphify-out/reflections/*.md`; and
-- optional `graphify-out/wiki/**/*.md` articles.
-
-Treat these files as historical analysis snapshots. They may become stale and
-do not participate in auto-staging, freshness checks, or CI reconstruction.
-Commit an update only after reviewing it, and preserve any generated
-provenance, corrections, and source-node references.
+Keep per-query memories, reflections, wiki exports, and other generated
+Markdown local and ignored. They form an optional Graphify feedback cache, not
+repository documentation. Promote a durable finding into `GRAPH_REPORT.md`, a
+canonical architecture page, or a code comment instead of committing the raw
+conversation artifact.
 
 Operational evidence may remain when it describes product behavior that could
 affect other users, such as a reproducible crash loop, degraded subsystem, or
@@ -406,7 +411,8 @@ manual refresh, remove or rewrite resolved operational findings so the snapshot
 describes the source commit's current behavior.
 
 Keep manifests, caches, labels, token-cost records, HTML, clustered graph
-state, replaced memories, and other machine-oriented output ignored.
+state, query memories, reflections, wiki exports, and other machine-oriented
+output ignored.
 
 The wrapper also contains a deliberately narrow compatibility repair for a
 Graphify 0.9.26 portability defect. A 2026-07-26 clean-root test produced
