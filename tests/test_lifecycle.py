@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pluggy
 import pytest
@@ -12,10 +12,17 @@ from conftest import make_settings
 
 from pynchy.host.orchestrator import lifecycle
 from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.startup_readiness import StartupReadinessError
 from pynchy.plugins.connections import load_connection_runtimes
 from pynchy.plugins.hookspecs import PynchySpec
-from pynchy.state import get_chat_history, init_test_database
-from pynchy.types import NewMessage, WorkspaceProfile
+from pynchy.state import (
+    claim_deployment,
+    get_chat_history,
+    get_deployment_state,
+    init_test_database,
+    initialize_deployment_state,
+)
+from pynchy.types import DeploymentState, DeployRevision, NewMessage, WorkspaceProfile
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -139,8 +146,10 @@ async def test_connection_self_partial_start_is_closed() -> None:
 
 @pytest.mark.asyncio
 async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
+    """Commit only after handshaked owners, then publish synchronous gates."""
     app = PynchyApp()
     events: list[str] = []
+    readiness_waiter = asyncio.create_task(app.startup_readiness.wait())
 
     class IngestingConnectionRuntime(_ConnectionRuntime):
         async def start(self, context) -> None:
@@ -179,6 +188,7 @@ async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
     ) -> Awaitable[None]:
         if "temporal:ready" not in events:
             raise RuntimeError("Connection ingested before Temporal was ready")
+        assert not readiness_waiter.done()
         events.append("connections:ingest")
         return _completed_awaitable()
 
@@ -251,16 +261,17 @@ async def test_runtime_owner_activation_order(monkeypatch, tmp_path) -> None:
     )
 
     await lifecycle.run_app(app)
+    await readiness_waiter
 
     assert events == [
         "core",
         "channels",
         "state",
-        "deploy:resolve",
         "http:recover",
         "temporal:ready",
         "connections:ingest",
         "start:matrix",
+        "deploy:resolve",
         "deploy:finalize",
         "http:publish",
         "ipc",
@@ -421,10 +432,18 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
     monkeypatch,
     tmp_path,
 ) -> None:
+    await init_test_database()
+    applied = DeployRevision("applied-sha", "applied-config")
+    target = DeployRevision("target-sha", "target-config")
+    await initialize_deployment_state(applied)
+    await claim_deployment(target, force=False)
     settings = make_settings(data_dir=tmp_path / "data")
     settings.data_dir.mkdir(parents=True)
     continuation_path = settings.data_dir / "deploy_continuation.json"
-    continuation_path.write_text("{}")
+    continuation_path.write_text(
+        '{"previous_commit_sha":"applied-sha","commit_sha":"target-sha",'
+        '"config_hash":"target-config"}'
+    )
     app = PynchyApp()
     app.workspaces = {
         "slack:C123": WorkspaceProfile(
@@ -435,6 +454,8 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
         )
     }
     rollback_errors: list[Exception] = []
+    resolve_deployment = AsyncMock()
+    prepared = MagicMock(spec=lifecycle.http_server.PreparedHttpServer)
 
     def noop_phase(*_args: Any, **_kwargs: Any) -> Awaitable[Any]:
         return _completed_awaitable({})
@@ -450,11 +471,26 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
     monkeypatch.setattr(lifecycle, "_initialize_core", noop_phase)
     monkeypatch.setattr(lifecycle, "_setup_channels", noop_phase)
     monkeypatch.setattr(lifecycle, "_reconcile_state", noop_phase)
-    monkeypatch.setattr(lifecycle, "_prepare_and_bind_control_plane", fail_runtime_start)
+    monkeypatch.setattr(
+        lifecycle,
+        "_prepare_and_bind_control_plane",
+        lambda _app: _completed_awaitable(prepared),
+    )
+    monkeypatch.setattr(
+        lifecycle.http_server,
+        "recover_http_routes",
+        lambda _prepared: _completed_awaitable(),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "_start_temporal_scheduler",
+        lambda _app: _completed_awaitable(),
+    )
+    monkeypatch.setattr(lifecycle, "start_connection_runtimes", fail_runtime_start)
     monkeypatch.setattr(
         lifecycle.startup_handler,
-        "prepare_interrupted_turn_recovery",
-        lambda *_args, **_kwargs: _completed_awaitable(_interrupted_recovery()),
+        "resolve_deploy_startup",
+        resolve_deployment,
     )
     monkeypatch.setattr(lifecycle.startup_handler, "auto_rollback", record_rollback)
 
@@ -462,6 +498,11 @@ async def test_connection_runtime_start_failure_stays_inside_deploy_rollback_bou
         await lifecycle.run_app(app)
 
     assert [str(exc) for exc in rollback_errors] == ["matrix runtime failed"]
+    resolve_deployment.assert_not_awaited()
+    assert await get_deployment_state() == DeploymentState(
+        applied=applied,
+        pending=target,
+    )
 
 
 @pytest.mark.asyncio
@@ -477,6 +518,7 @@ async def test_startup_failure_joins_subsystem_cleanup_before_rollback(
     rollback_errors: list[Exception] = []
     owner_cancelled = asyncio.Event()
     allow_owner_teardown = asyncio.Event()
+    readiness_waiter = asyncio.create_task(app.startup_readiness.wait())
 
     async def subsystem_owner() -> None:
         try:
@@ -517,6 +559,10 @@ async def test_startup_failure_joins_subsystem_cleanup_before_rollback(
 
     run_task = asyncio.create_task(lifecycle.run_app(app))
     await owner_cancelled.wait()
+    with pytest.raises(StartupReadinessError) as readiness_error:
+        await readiness_waiter
+
+    assert isinstance(readiness_error.value.__cause__, RuntimeError)
     assert rollback_errors == []
     assert not run_task.done()
 

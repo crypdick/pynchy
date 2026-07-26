@@ -89,6 +89,8 @@ def _runtime_source_folders(
 
 def _plan_runtime_ownership_repair(
     evidence: _RuntimeOwnershipEvidence,
+    *,
+    allow_owner_reassignment: bool,
 ) -> _RuntimeOwnershipRepair:
     """Derive a repair without mutating any durable projection."""
     profile_workspace_name = (
@@ -104,7 +106,8 @@ def _plan_runtime_ownership_repair(
     # control surface can accidentally overwrite either mutable projection.
     authoritative_workspace = evidence.delivery_workspace or profile_workspace
     should_repair_owner = (
-        authoritative_workspace is not None
+        allow_owner_reassignment
+        and authoritative_workspace is not None
         and authoritative_workspace != evidence.original_workspace
         and evidence.original_workspace == evidence.parent_workspace
     )
@@ -134,7 +137,11 @@ def _plan_runtime_ownership_repair(
     )
 
 
-async def repair_conversation_runtime_ownership(database: Connection) -> int:
+async def repair_conversation_runtime_ownership(
+    database: Connection,
+    *,
+    allow_owner_reassignment: bool,
+) -> int:
     """Collapse thread-derived runtimes into their routed conversation owner."""
     cursor = await database.execute(
         """
@@ -179,7 +186,8 @@ async def repair_conversation_runtime_ownership(database: Connection) -> int:
                     if row["delivery_workspace"] is not None
                     else None
                 ),
-            )
+            ),
+            allow_owner_reassignment=allow_owner_reassignment,
         )
         if not await _repair_target_is_available(database, plan):
             continue

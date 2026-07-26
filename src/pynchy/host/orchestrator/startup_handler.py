@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves startup annotations at runtime.
@@ -16,6 +15,10 @@ from pynchy.host.container_manager import credentials
 from pynchy.host.git_ops.utils import get_head_commit_message, get_head_sha, is_repo_dirty, run_git
 from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters, session_handler
+from pynchy.host.orchestrator.startup_rollback import (
+    ensure_rollback_evidence_durable,
+    terminate_failed_startup,
+)
 from pynchy.logger import logger
 from pynchy.state import (
     clear_in_flight_turn,
@@ -207,9 +210,14 @@ async def auto_rollback(continuation_path: Path, exc: Exception) -> None:
         f"Rolled back to {previous_sha}. Server health: healthy (recovered after rollback)."
     )
     write_json_atomic(boot_warning_path, warnings)
+    await asyncio.to_thread(
+        ensure_rollback_evidence_durable,
+        continuation_path,
+        boot_warning_path,
+    )
 
     logger.info("Rollback complete, exiting for service restart")
-    sys.exit(1)
+    terminate_failed_startup()
 
 
 def _read_deploy_continuation(continuation_path: Path) -> dict[str, object]:

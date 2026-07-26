@@ -1,5 +1,6 @@
 """Tests for direct host-execution session discovery."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from beartype import beartype
 from conftest import make_settings
 
 from pynchy.host.learning.paths import LearningPaths
-from pynchy.host.orchestrator import host_execution
+from pynchy.host.orchestrator import codex_rollouts, host_execution
 from pynchy.host.orchestrator.host_execution import codex_thread_exists_in_host_runtime
 
 
@@ -17,13 +18,19 @@ def test_host_agent_turn_request_is_runtime_decoratable() -> None:
     assert callable(beartype(host_execution.HostAgentTurnRequest))
 
 
-def _write_rollout(codex_home: Path, thread_id: str) -> None:
+def _write_rollout(
+    codex_home: Path,
+    thread_id: str,
+    *,
+    header_id: str | None = None,
+    body: str = "",
+) -> Path:
     rollout_dir = codex_home / "sessions" / "2026" / "07" / "14"
-    rollout_dir.mkdir(parents=True)
-    header = {"type": "session_meta", "payload": {"id": thread_id}}
-    (rollout_dir / f"rollout-2026-07-14T07-27-55-{thread_id}.jsonl").write_text(
-        json.dumps(header) + "\n"
-    )
+    rollout_dir.mkdir(parents=True, exist_ok=True)
+    header = {"type": "session_meta", "payload": {"id": header_id or thread_id}}
+    rollout = rollout_dir / f"rollout-2026-07-14T07-27-55-{thread_id}.jsonl"
+    rollout.write_text(json.dumps(header) + "\n" + body)
+    return rollout
 
 
 def test_host_codex_thread_exists_when_rollout_is_absent_from_stale_index(
@@ -81,6 +88,8 @@ def test_host_codex_thread_inspection_error_is_not_treated_as_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    (tmp_path / "sessions").mkdir()
+
     def fail_inspection(_path: Path, _pattern: str):
         raise OSError("storage unavailable")
 
@@ -177,7 +186,225 @@ def test_host_codex_thread_migrates_from_legacy_global_home(tmp_path: Path) -> N
     )
 
 
-def test_host_codex_thread_copy_error_is_not_treated_as_missing(
+def test_host_codex_thread_migrates_from_scoped_sibling_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    source_home = settings.data_dir / "sessions" / "old-workspace" / ".codex"
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    source = _write_rollout(source_home, thread_id, body='{"type":"response"}\n')
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    migrated = host_execution.migrate_host_codex_thread(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=target_home,
+        legacy_codex_home=tmp_path / "empty-legacy-home",
+    )
+
+    destination = target_home / "sessions" / source.relative_to(source_home / "sessions")
+    assert migrated is True
+    assert destination.read_bytes() == source.read_bytes()
+    assert source.exists()
+    assert source != destination
+
+
+def test_host_codex_thread_rejects_divergent_global_and_sibling_rollouts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    legacy_home = tmp_path / "legacy-codex"
+    sibling_home = settings.data_dir / "sessions" / "old-workspace" / ".codex"
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    global_source = _write_rollout(legacy_home, thread_id, body="global history\n")
+    sibling_source = _write_rollout(sibling_home, thread_id, body="sibling history\n")
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    with pytest.raises(
+        host_execution.CodexRolloutInspectionError,
+        match="Divergent Codex rollout sources",
+    ):
+        host_execution.migrate_host_codex_thread(
+            f"codex:gpt-5.5:{thread_id}",
+            codex_home=target_home,
+            legacy_codex_home=legacy_home,
+        )
+
+    assert global_source.exists()
+    assert sibling_source.exists()
+    assert not (target_home / "sessions").exists()
+
+
+def test_host_codex_thread_rejects_divergent_sibling_rollouts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    first_home = settings.data_dir / "sessions" / "first-workspace" / ".codex"
+    second_home = settings.data_dir / "sessions" / "second-workspace" / ".codex"
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    first_source = _write_rollout(first_home, thread_id, body="first history\n")
+    second_source = _write_rollout(second_home, thread_id, body="second history\n")
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    with pytest.raises(
+        host_execution.CodexRolloutInspectionError,
+        match="Divergent Codex rollout sources",
+    ):
+        host_execution.migrate_host_codex_thread(
+            f"codex:gpt-5.5:{thread_id}",
+            codex_home=target_home,
+            legacy_codex_home=tmp_path / "empty-legacy-home",
+        )
+
+    assert first_source.exists()
+    assert second_source.exists()
+    assert not (target_home / "sessions").exists()
+
+
+def test_host_codex_thread_accepts_identical_global_and_sibling_rollouts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    legacy_home = tmp_path / "legacy-codex"
+    first_home = settings.data_dir / "sessions" / "first-workspace" / ".codex"
+    second_home = settings.data_dir / "sessions" / "second-workspace" / ".codex"
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    sources = (
+        _write_rollout(legacy_home, thread_id, body="identical history\n"),
+        _write_rollout(first_home, thread_id, body="identical history\n"),
+        _write_rollout(second_home, thread_id, body="identical history\n"),
+    )
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    assert host_execution.migrate_host_codex_thread(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=target_home,
+        legacy_codex_home=legacy_home,
+    )
+
+    destination = target_home / "sessions" / sources[0].relative_to(legacy_home / "sessions")
+    assert destination.read_bytes() == sources[0].read_bytes()
+    assert all(source.exists() for source in sources)
+
+
+def test_host_codex_thread_ignores_sibling_rollout_with_mismatched_header(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    source_home = settings.data_dir / "sessions" / "old-workspace" / ".codex"
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    source = _write_rollout(source_home, thread_id, header_id="different-thread")
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    migrated = host_execution.migrate_host_codex_thread(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=target_home,
+        legacy_codex_home=tmp_path / "empty-legacy-home",
+    )
+
+    assert migrated is False
+    assert source.exists()
+    assert not (target_home / "sessions").exists()
+
+
+def test_host_codex_thread_rejects_sibling_sessions_symlink_outside_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    workspace = settings.data_dir / "sessions" / "old-workspace"
+    outside_home = tmp_path / "outside" / ".codex"
+    _write_rollout(outside_home, thread_id)
+    (workspace / ".codex").mkdir(parents=True)
+    (workspace / ".codex" / "sessions").symlink_to(
+        outside_home / "sessions",
+        target_is_directory=True,
+    )
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    with pytest.raises(host_execution.CodexRolloutInspectionError):
+        host_execution.migrate_host_codex_thread(
+            f"codex:gpt-5.5:{thread_id}",
+            codex_home=target_home,
+            legacy_codex_home=tmp_path / "empty-legacy-home",
+        )
+
+    assert not (target_home / "sessions").exists()
+
+
+def test_host_codex_thread_sibling_path_error_is_not_treated_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    sessions_root = settings.data_dir / "sessions"
+    sessions_root.mkdir(parents=True)
+    target_home = sessions_root / "new-workspace" / ".codex"
+    original_iterdir = Path.iterdir
+
+    def fail_sibling_scan(path: Path):
+        if path == sessions_root:
+            raise OSError("storage unavailable")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+    monkeypatch.setattr(Path, "iterdir", fail_sibling_scan)
+
+    with pytest.raises(host_execution.CodexRolloutInspectionError):
+        host_execution.migrate_host_codex_thread(
+            f"codex:gpt-5.5:{thread_id}",
+            codex_home=target_home,
+            legacy_codex_home=tmp_path / "empty-legacy-home",
+        )
+
+    assert not (target_home / "sessions").exists()
+
+
+def test_host_codex_thread_collision_preserves_both_raw_rollouts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    settings = make_settings(data_dir=tmp_path / "data")
+    source_home = settings.data_dir / "sessions" / "old-workspace" / ".codex"
+    target_home = settings.data_dir / "sessions" / "new-workspace" / ".codex"
+    source = _write_rollout(source_home, thread_id, body="source raw\n")
+    colliding = _write_rollout(
+        target_home,
+        thread_id,
+        header_id="different-thread",
+        body="target raw\n",
+    )
+    source_raw = source.read_bytes()
+    target_raw = colliding.read_bytes()
+    monkeypatch.setattr(host_execution, "get_settings", lambda: settings)
+
+    assert host_execution.migrate_host_codex_thread(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=target_home,
+        legacy_codex_home=tmp_path / "empty-legacy-home",
+    )
+
+    digest = hashlib.sha256(source_raw).hexdigest()
+    recovered = target_home / "sessions" / "recovered" / thread_id / digest / source.name
+    assert source.read_bytes() == source_raw
+    assert colliding.read_bytes() == target_raw
+    assert recovered.read_bytes() == source_raw
+
+
+def test_host_codex_thread_fsyncs_copy_before_publish(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -185,12 +412,32 @@ def test_host_codex_thread_copy_error_is_not_treated_as_missing(
     legacy_home = tmp_path / "legacy-codex"
     scoped_home = tmp_path / "scoped-codex"
     _write_rollout(legacy_home, thread_id)
+    fsynced: list[int] = []
+    monkeypatch.setattr(codex_rollouts.os, "fsync", fsynced.append)
+
+    assert host_execution.migrate_host_codex_thread(
+        f"codex:gpt-5.5:{thread_id}",
+        codex_home=scoped_home,
+        legacy_codex_home=legacy_home,
+    )
+
+    assert len(fsynced) == 1
+
+
+def test_host_codex_thread_copy_error_is_not_treated_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    thread_id = "019f6106-fd23-7292-bac5-7dbb7da29002"
+    legacy_home = tmp_path / "legacy-codex"
+    scoped_home = tmp_path / "scoped-codex"
+    source = _write_rollout(legacy_home, thread_id)
 
     def fail_copy(*_args) -> None:
         Path(_args[1]).write_text('{"type":"session_meta"', encoding="utf-8")
         raise OSError("disk unavailable")
 
-    monkeypatch.setattr(host_execution.shutil, "copy2", fail_copy)
+    monkeypatch.setattr(codex_rollouts.shutil, "copy2", fail_copy)
 
     with pytest.raises(host_execution.CodexRolloutInspectionError):
         host_execution.migrate_host_codex_thread(
@@ -202,3 +449,4 @@ def test_host_codex_thread_copy_error_is_not_treated_as_missing(
         f"codex:gpt-5.5:{thread_id}",
         codex_home=scoped_home,
     )
+    assert source.exists()

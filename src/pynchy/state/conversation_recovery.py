@@ -2,16 +2,45 @@
 
 from __future__ import annotations
 
+from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery annotations at runtime.
+    Connection,
+)
+
 from pynchy.state.connection import atomic_write
 from pynchy.state.conversation_runtime_repair import (
     repair_conversation_runtime_ownership,
 )
 
+_RUNTIME_OWNER_MIGRATION_KEY = "migration:conversation_runtime_receipt_owner:v1"
+_MIGRATION_COMPLETE = "complete"
+
+
+async def _repair_conversation_runtime_ownership(database: Connection) -> int:
+    """Run receipt-based owner repair once while retaining safe normalization."""
+    cursor = await database.execute(
+        "SELECT value FROM router_state WHERE key = ?",
+        (_RUNTIME_OWNER_MIGRATION_KEY,),
+    )
+    marker = await cursor.fetchone()
+    allow_owner_reassignment = marker is None or marker["value"] != _MIGRATION_COMPLETE
+    migrated = await repair_conversation_runtime_ownership(
+        database,
+        allow_owner_reassignment=allow_owner_reassignment,
+    )
+    if allow_owner_reassignment:
+        # This marker shares the repair transaction: a fail-closed ownership
+        # conflict rolls back both, so the authenticated migration can retry.
+        await database.execute(
+            "INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)",
+            (_RUNTIME_OWNER_MIGRATION_KEY, _MIGRATION_COMPLETE),
+        )
+    return migrated
+
 
 async def prepare_conversation_runtime_ownership_recovery() -> int:
     """Move thread-derived runtimes to conversation ownership before state load."""
     async with atomic_write() as database:
-        return await repair_conversation_runtime_ownership(database)
+        return await _repair_conversation_runtime_ownership(database)
 
 
 async def prepare_conversation_delivery_recovery() -> int:
@@ -23,7 +52,7 @@ async def prepare_conversation_delivery_recovery() -> int:
     discarded work from post-reset deliveries.
     """
     async with atomic_write() as database:
-        migrated_runtime_state = await repair_conversation_runtime_ownership(database)
+        migrated_runtime_state = await _repair_conversation_runtime_ownership(database)
         await database.execute(
             """
             UPDATE routed_conversations

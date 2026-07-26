@@ -43,6 +43,10 @@ from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
 from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
 from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
+from pynchy.host.orchestrator.startup_readiness import (
+    StartupReadiness,
+    StartupReadinessError,
+)
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
     begin_in_flight_turn,
@@ -71,6 +75,12 @@ TEMPORAL_UNAVAILABLE_MESSAGE = "temporal unavailable"
 PAUSED_TASK_RUN_MESSAGE = "paused tasks must not run"
 
 
+def _ready_startup() -> StartupReadiness:
+    readiness = StartupReadiness()
+    readiness.mark_ready()
+    return readiness
+
+
 @dataclass
 class NullSchedulerDeps:
     """Structural fake for SchedulerDependencies."""
@@ -78,6 +88,7 @@ class NullSchedulerDeps:
     queue: GroupQueue = field(default_factory=GroupQueue)
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
     last_agent_timestamp: dict[str, str] = field(default_factory=dict)
+    startup_readiness: StartupReadiness = field(default_factory=_ready_startup)
 
     @property
     def workspaces(self):
@@ -1540,6 +1551,76 @@ class TestTemporalSchedulerRuntime:
         assert status["last_result"] == "completed"
 
     @pytest.mark.asyncio
+    async def test_interactive_activity_waits_for_recovered_workspace_route(self, monkeypatch):
+        readiness = StartupReadiness()
+        deps = NullSchedulerDeps(startup_readiness=readiness)
+        run_turn = AsyncMock(return_value=TurnOutcome.COMPLETED)
+        deps.queue.run_message_turn = run_turn  # type: ignore[method-assign]
+        temporal_scheduler.bind_scheduler_deps(deps)
+        task = asyncio.create_task(temporal_scheduler.run_interactive_message_turn("slack:C123"))
+
+        await asyncio.sleep(0)
+        assert not task.done()
+        run_turn.assert_not_awaited()
+
+        workspace = WorkspaceProfile(
+            jid="slack:C123",
+            name="Recovered",
+            folder="recovered",
+            trigger="@pynchy",
+        )
+        deps.groups[workspace.jid] = workspace
+        readiness.mark_ready()
+
+        assert await task == TurnOutcome.COMPLETED.value
+        target = run_turn.await_args.args[0]
+        assert target.folder == workspace.folder
+        assert target.chat_jid == workspace.jid
+
+    @pytest.mark.asyncio
+    async def test_missing_workspace_cannot_complete_before_startup_recovery(self, monkeypatch):
+        readiness = StartupReadiness()
+        deps = NullSchedulerDeps(startup_readiness=readiness)
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+        monkeypatch.setattr(
+            temporal_interactive.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="missing-before-recovery"),
+        )
+        task = asyncio.create_task(temporal_scheduler.run_interactive_message_turn("slack:MISSING"))
+
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert temporal_scheduler.get_temporal_scheduler_status()["last_result"] is None
+
+        readiness.mark_ready()
+
+        assert await task == TurnOutcome.COMPLETED.value
+        assert temporal_scheduler.get_temporal_scheduler_status()["last_result"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_interactive_activity_receives_startup_failure(self, monkeypatch):
+        readiness = StartupReadiness()
+        deps = NullSchedulerDeps(startup_readiness=readiness)
+        temporal_scheduler.reset_temporal_scheduler_status()
+        temporal_scheduler.bind_scheduler_deps(deps)
+        monkeypatch.setattr(
+            temporal_interactive.activity,
+            "info",
+            lambda: TemporalActivityInfo(workflow_id="startup-failed"),
+        )
+        task = asyncio.create_task(temporal_scheduler.run_interactive_message_turn("slack:C123"))
+
+        readiness.mark_failed(RuntimeError("route recovery failed"))
+
+        with pytest.raises(StartupReadinessError, match="Startup route recovery failed") as error:
+            await task
+
+        assert isinstance(error.value.__cause__, RuntimeError)
+        assert temporal_scheduler.get_temporal_scheduler_status()["last_result"] == "error"
+
+    @pytest.mark.asyncio
     async def test_run_interactive_message_activity_retries_unhandled_turn(self, monkeypatch):
 
         def fake_process_message_turn(_runner_deps, _chat_jid):
@@ -1619,9 +1700,9 @@ class TestTemporalSchedulerRuntime:
             )
         )
         claim_turn = AsyncMock(return_value=True)
-        scheduler_deps = object()
+        scheduler_deps = NullSchedulerDeps()
 
-        def get_scheduler_deps() -> object:
+        def get_scheduler_deps() -> NullSchedulerDeps:
             return scheduler_deps
 
         monkeypatch.setattr(temporal_interrupted, "get_in_flight_turn", get_turn)
@@ -1636,6 +1717,90 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_interrupted.run_interrupted_agent_turn("turn-123")
 
         assert result == TurnOutcome.CONTINUE_AFTER_SAFE_INTERRUPT.value
+
+    @pytest.mark.asyncio
+    async def test_interrupted_turn_waits_for_startup_before_claiming_or_running(
+        self,
+        monkeypatch,
+    ) -> None:
+        await init_test_database()
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-waits-for-routes",
+                chat_jid="matrix:room:startup",
+                group_folder="matrix-runtime",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"sender_name": "User", "content": "finish the job"}],
+                input_start_cursor="old",
+                input_end_cursor="new",
+                started_at="2026-07-22T03:43:18+00:00",
+            )
+        )
+        readiness = StartupReadiness()
+        deps = NullSchedulerDeps(startup_readiness=readiness)
+        dispatch = AsyncMock(return_value=TurnOutcome.COMPLETED)
+        heartbeat_active = asyncio.Event()
+
+        @asynccontextmanager
+        async def recording_heartbeats(_details):
+            heartbeat_active.set()
+            yield
+
+        monkeypatch.setattr(temporal_interrupted, "_dispatch_interrupted_turn", dispatch)
+        monkeypatch.setattr(temporal_interrupted, "activity_heartbeats", recording_heartbeats)
+        temporal_scheduler.bind_scheduler_deps(deps)
+
+        activity_task = asyncio.create_task(
+            temporal_interrupted.run_interrupted_agent_turn("turn-waits-for-routes")
+        )
+        await heartbeat_active.wait()
+
+        checkpoint = await get_in_flight_turn("turn-waits-for-routes")
+        assert checkpoint is not None
+        assert checkpoint.claimed_at is None
+        dispatch.assert_not_awaited()
+
+        readiness.mark_ready()
+
+        assert await activity_task == TurnOutcome.COMPLETED.value
+        dispatch.assert_awaited_once_with("turn-waits-for-routes", deps)
+
+    @pytest.mark.asyncio
+    async def test_interrupted_turn_startup_failure_leaves_checkpoint_unclaimed(
+        self,
+        monkeypatch,
+    ) -> None:
+        await init_test_database()
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-startup-failed",
+                chat_jid="matrix:room:startup",
+                group_folder="matrix-runtime",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"sender_name": "User", "content": "finish the job"}],
+                input_start_cursor="old",
+                input_end_cursor="new",
+                started_at="2026-07-22T03:43:18+00:00",
+            )
+        )
+        readiness = StartupReadiness()
+        deps = NullSchedulerDeps(startup_readiness=readiness)
+        dispatch = AsyncMock()
+        monkeypatch.setattr(temporal_interrupted, "_dispatch_interrupted_turn", dispatch)
+        temporal_scheduler.bind_scheduler_deps(deps)
+        activity_task = asyncio.create_task(
+            temporal_interrupted.run_interrupted_agent_turn("turn-startup-failed")
+        )
+
+        readiness.mark_failed(RuntimeError("route recovery failed"))
+
+        with pytest.raises(StartupReadinessError, match="Startup route recovery failed"):
+            await activity_task
+
+        checkpoint = await get_in_flight_turn("turn-startup-failed")
+        assert checkpoint is not None
+        assert checkpoint.claimed_at is None
+        dispatch.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_interrupted_turn_activity_does_not_claim_paused_checkpoint(self, monkeypatch):
@@ -1655,6 +1820,7 @@ class TestTemporalSchedulerRuntime:
         )
         claim = AsyncMock(wraps=claim_in_flight_turn)
         monkeypatch.setattr(temporal_interrupted, "claim_in_flight_turn", claim)
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
         result = await temporal_interrupted.run_interrupted_agent_turn("turn-paused")
 
@@ -1683,7 +1849,7 @@ class TestTemporalSchedulerRuntime:
             "_dispatch_interrupted_turn",
             AsyncMock(side_effect=asyncio.CancelledError),
         )
-        temporal_scheduler.bind_scheduler_deps(object())
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
         with pytest.raises(asyncio.CancelledError):
             await temporal_interrupted.run_interrupted_agent_turn("turn-cancelled")
@@ -1716,7 +1882,7 @@ class TestTemporalSchedulerRuntime:
             "_dispatch_interrupted_turn",
             AsyncMock(side_effect=RuntimeError("resume failed")),
         )
-        temporal_scheduler.bind_scheduler_deps(object())
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
         with pytest.raises(RuntimeError, match="resume failed"):
             await temporal_interrupted.run_interrupted_agent_turn("turn-failed")

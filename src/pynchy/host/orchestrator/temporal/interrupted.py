@@ -134,6 +134,10 @@ async def _dispatch_interrupted_turn(turn_id: str, deps: object) -> TurnOutcome:
 @activity.defn(name="run_interrupted_agent_turn")
 async def run_interrupted_agent_turn(turn_id: str) -> str:
     """Claim and resume one interrupted turn independently of its source workflow."""
+    deps = cast("SchedulerDependencies", _require_scheduler_deps())
+    async with activity_heartbeats(turn_id):
+        await deps.startup_readiness.wait()
+
     turn = await get_in_flight_turn(turn_id)
     if turn is None:
         _record_activity_result(turn_id, "already_completed")
@@ -150,7 +154,7 @@ async def run_interrupted_agent_turn(turn_id: str) -> str:
 
     try:
         async with activity_heartbeats(turn_id):
-            handled = await _dispatch_interrupted_turn(turn_id, _require_scheduler_deps())
+            handled = await _dispatch_interrupted_turn(turn_id, deps)
 
     except asyncio.CancelledError:
         # Temporal closes a cancelled workflow before this activity can report a
