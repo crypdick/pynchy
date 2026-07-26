@@ -18,7 +18,7 @@ from pynchy.state import (
     get_task_run_logs,
     log_task_run,
 )
-from pynchy.types import ScheduledTask, TaskRunLog, WorkspaceProfile
+from pynchy.types import ScheduledTask, SessionPolicy, TaskRunLog, WorkspaceProfile
 
 
 class TestJobReconcile:
@@ -77,7 +77,7 @@ class TestJobReconcile:
         assert task.prompt == "Run the daily triage memo."
         assert task.schedule_type == "cron"
         assert task.schedule_value == "0 8 * * *"
-        assert task.context_mode == "isolated"
+        assert task.session_policy is SessionPolicy.RESET_BEFORE_RUN
         assert task.repo_access is None
         assert task.config_job_name == "daily-triage"
 
@@ -117,6 +117,35 @@ class TestJobReconcile:
         assert task.group_folder == "relationships"
         assert task.chat_jid == "discord:channel:relationships"
         assert task.config_job_name == "fam_daily_checkin"
+
+    async def test_agent_job_can_continue_its_durable_session(self, db, monkeypatch, tmp_path):
+        self._patch_settings(
+            monkeypatch,
+            tmp_path,
+            jobs={
+                "ongoing-research": JobConfig(
+                    schedule="0 8 * * *",
+                    workspace="admin",
+                    prompt="Continue the research.",
+                    reset_before_run=False,
+                )
+            },
+        )
+        registered = {
+            "discord:channel:admin": WorkspaceProfile(
+                jid="discord:channel:admin",
+                name="Admin",
+                folder="admin",
+                trigger="@Pynchy",
+                is_admin=True,
+            )
+        }
+
+        await reconcile_workspaces(registered, [], AsyncMock())
+
+        tasks = await get_all_tasks()
+        assert len(tasks) == 1
+        assert tasks[0].session_policy is SessionPolicy.CONTINUE
 
     async def test_scoped_jobs_bind_policy_owner_to_its_physical_parent(
         self, db, monkeypatch, tmp_path
@@ -242,7 +271,7 @@ class TestJobReconcile:
                 prompt="Run the daily triage memo.",
                 schedule_type="cron",
                 schedule_value="0 8 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=datetime(2026, 7, 8, 8, 0, tzinfo=UTC).isoformat(),
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
@@ -297,7 +326,7 @@ class TestJobReconcile:
                 prompt="Run the daily triage memo.",
                 schedule_type="cron",
                 schedule_value="0 8 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
                 config_job_name="daily-triage",
@@ -340,7 +369,7 @@ class TestJobReconcile:
                 prompt="Run the daily triage memo.",
                 schedule_type="cron",
                 schedule_value="0 8 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
             )
@@ -374,7 +403,7 @@ class TestJobReconcile:
                 prompt="Run the daily triage memo.",
                 schedule_type="cron",
                 schedule_value="0 8 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 status="paused",
                 created_at=datetime.now(UTC).isoformat(),
                 config_job_name="daily-triage",

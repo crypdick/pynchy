@@ -4,7 +4,7 @@
 
 Provide a provider-authenticated HTTP callback. The plugin owns provider schema,
 signature verification, replay detection, and the closed mapping from provider
-events to an isolated task, routed conversation, host notification, or ignored
+events to a scheduled task, routed conversation, host notification, or ignored
 result. The host owns the public path, size/rate limits, workspace boundary,
 durable receipt, and dispatch.
 

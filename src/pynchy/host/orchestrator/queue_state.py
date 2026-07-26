@@ -29,6 +29,7 @@ class HostProcessLease:
 
     group_jid: str
     generation: int
+    owns_slot: bool
 
 
 @dataclass
@@ -49,6 +50,7 @@ class GroupState:
     is_external_run: bool = False
     host_process_lease: HostProcessLease | None = None
     boundary_interrupt_requested: bool = False
+    message_waiters: list[asyncio.Future[object]] = field(default_factory=list)
 
     def register_process(
         self,
@@ -68,15 +70,19 @@ class GroupState:
         self.is_host_process = is_host_process
 
     def acquire_host_process(self, group_jid: str, generation: int) -> HostProcessLease:
-        """Reserve an idle group for one direct host process before it is spawned."""
+        """Attach a host process to a queued turn or reserve an idle group."""
         if self.host_process_lease is not None:
             raise RuntimeError(f"A host process is already registered for {group_jid}")
-        if self.active:
-            raise RuntimeError(f"Cannot start a host process while {group_jid} is active")
-        lease = HostProcessLease(group_jid=group_jid, generation=generation)
+        owns_slot = not self.active
+        lease = HostProcessLease(
+            group_jid=group_jid,
+            generation=generation,
+            owns_slot=owns_slot,
+        )
         self.host_process_lease = lease
-        self.active = True
-        self.is_external_run = True
+        if owns_slot:
+            self.active = True
+            self.is_external_run = True
         return lease
 
     def register_host_process(
@@ -114,6 +120,14 @@ class GroupState:
             )
             return False
         has_pending_messages = self.pending_messages
+        if not lease.owns_slot:
+            self._destroy_host_security_gate()
+            self.host_process_lease = None
+            self.process = None
+            self.container_name = None
+            self.invocation_ts = 0.0
+            self.is_host_process = False
+            return has_pending_messages
         self.host_process_lease = None
         self.release()
         self.pending_messages = False
@@ -121,8 +135,7 @@ class GroupState:
 
     def release(self) -> None:
         """Reset transient per-run state when a container slot is freed."""
-        if self.group_folder and self.invocation_ts:
-            security_gate.destroy_gate(self.group_folder, self.invocation_ts)
+        self._destroy_host_security_gate()
         self.active = False
         self.active_is_task = False
         self.process = None
@@ -134,3 +147,12 @@ class GroupState:
         self.is_external_run = False
         self.host_process_lease = None
         self.boundary_interrupt_requested = False
+
+    def _destroy_host_security_gate(self) -> None:
+        """Retire the gate owned by a disposable direct-host process.
+
+        Container gates belong to their durable ``ContainerSession`` and must
+        survive queue release so warm turns retain the same security state.
+        """
+        if self.is_host_process and self.group_folder and self.invocation_ts:
+            security_gate.destroy_gate(self.group_folder, self.invocation_ts)

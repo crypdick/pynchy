@@ -66,6 +66,17 @@ class SessionDeps(Protocol):
     def emit(self, event: Event) -> None: ...
 
 
+async def _clear_durable_context(
+    deps: SessionDeps,
+    group: WorkspaceProfile,
+) -> None:
+    """Clear every session-owned runtime and security reference."""
+    await destroy_session(group.folder)
+    deps.sessions.pop(group.folder, None)
+    deps.session_cleared.add(group.folder)
+    await clear_session(GroupFolder(group.folder))
+
+
 async def _teardown_group(
     deps: SessionDeps,
     group: WorkspaceProfile,
@@ -84,18 +95,22 @@ async def _teardown_group(
 
     if clear_context:
         await deps.queue.stop_active_process_for_control(chat_jid)
-        await destroy_session(group.folder)
+        # Imported lazily because Linear is an optional integration. Stopping
+        # the worker first lets the durable checkpoint settle its reset
+        # request before the owning execution and checkpoint are retired.
+        from pynchy.plugins.integrations.linear_session_reset import (  # noqa: PLC0415, RUF100
+            cancel_linear_execution_for_reset,
+        )
+
+        await cancel_linear_execution_for_reset(group)
     else:
         create_background_task(
             destroy_session(group.folder),
             name=f"destroy-session-{group.folder}",
         )
-
     if clear_context:
-        deps.sessions.pop(group.folder, None)
-        deps.session_cleared.add(group.folder)
         logger.info("teardown_trace", step="clear_session_start", group=group.name)
-        await clear_session(GroupFolder(group.folder))
+        await _clear_durable_context(deps, group)
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
     deps.queue.clear_pending_tasks(chat_jid)
@@ -128,6 +143,28 @@ async def handle_context_reset(
     logger.info("teardown_trace", step="send_clear_confirmation_start", group=group.name)
     await send_clear_confirmation(deps, chat_jid, source_message=source_message)
     logger.info("teardown_trace", step="send_clear_confirmation_done", group=group.name)
+
+
+async def handle_scheduled_context_reset(
+    deps: SessionDeps,
+    task_id: str,
+    group: WorkspaceProfile,
+    occurrence_id: str,
+) -> None:
+    """Reset a bound thread once before a scheduled occurrence starts.
+
+    Queue admission already serialized this operation with interactive work.
+    Do not stop the queue's current slot or drop later work; no agent process
+    for this occurrence exists yet.
+    """
+    logger.info(
+        "scheduled_context_reset",
+        task_id=task_id,
+        occurrence_id=occurrence_id,
+        group=group.name,
+    )
+    await _clear_durable_context(deps, group)
+    await send_clear_confirmation(deps, group.jid)
 
 
 async def handle_end_session(

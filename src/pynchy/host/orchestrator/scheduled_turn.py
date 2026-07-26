@@ -18,29 +18,18 @@ from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
     OnOutput,
 )
-from pynchy.host.orchestrator.config_job_execution import derived_thread_name
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
     begin_message_turn,
     requested_control_outcome,
     semantic_resume_messages,
 )
-from pynchy.host.orchestrator.scheduled_targeting import (
-    ScheduledTargetBusyError,
-    active_parent_participant_ids,
-    base_channel_is_reserved,
-    numbered_slot_is_reserved,
-    thread_is_reserved,
-    thread_name,
-)
 from pynchy.host.orchestrator.scheduled_turn_deps import (  # noqa: TC001, RUF100 - beartype resolves request annotations.
     ScheduledTurnDeps,
 )
-from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.logger import logger
 from pynchy.state import (
     clear_in_flight_turn,
-    get_in_flight_turns,
     mark_in_flight_output_sent,
     release_in_flight_turn_claim,
 )
@@ -53,7 +42,7 @@ from pynchy.types import (
 )
 from pynchy.utils import IdleTimer
 
-_scheduled_target_lock = asyncio.Lock()
+SCHEDULED_TURN_INTERRUPTED = "__scheduled_turn_interrupted__"
 
 
 @dataclass(frozen=True)
@@ -65,7 +54,6 @@ class TaskAgentRequest:
     idle_timeout: float
     resume_turn: InFlightTurn | None = None
     on_started: Callable[[ScheduledTask], Awaitable[None]] | None = None
-    on_target_created: Callable[[WorkspaceProfile], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True)
@@ -142,107 +130,21 @@ async def _new_task_target(
     turn_id: str,
     input_messages: list[dict[str, Any]],
 ) -> _ScheduledTaskTarget:
-    """Claim a config-job thread or a numbered child conversation."""
-    async with _scheduled_target_lock:
-        if request.task.derived_thread_name is not None or request.task.config_job_name is not None:
-            return await _derived_thread_task_target(request, turn_id, input_messages)
-        turns = await get_in_flight_turns()
-        if not base_channel_is_reserved(request.task, turns):
-            slot = 0
-            target = _ScheduledTaskTarget(request.task, request.group, thread_slot=slot)
-        elif not await request.deps.supports_thread_creation(request.task.chat_jid):
-            # NOTE: Update docs/usage/scheduled-tasks.md § Agent Tasks if this
-            # isolation behavior changes. Reusing or rerouting a reserved target
-            # can interleave output with its durable in-flight owner.
-            raise ScheduledTargetBusyError(
-                "Scheduled task target is reserved and cannot host child threads"
-            )
-        else:
-            slot = 1
-            participant_ids = active_parent_participant_ids(request.task, turns)
-            while numbered_slot_is_reserved(request.task, slot, turns):
-                slot += 1
-            name = thread_name(request.task, slot)
-            child_jid = await request.deps.find_thread(request.task.chat_jid, name)
-            while child_jid and thread_is_reserved(child_jid, request.task, turns):
-                slot += 1
-                while numbered_slot_is_reserved(request.task, slot, turns):
-                    slot += 1
-                name = thread_name(request.task, slot)
-                child_jid = await request.deps.find_thread(request.task.chat_jid, name)
-            if child_jid is None:
-                child_jid = await request.deps.create_thread(
-                    request.task.chat_jid,
-                    name,
-                    participant_ids=participant_ids,
-                )
-            else:
-                await request.deps.add_thread_participants(child_jid, participant_ids)
-            if not child_jid:
-                raise RuntimeError("Scheduled task thread creation returned no chat JID")
-            child_group = replace(
-                request.group,
-                jid=child_jid,
-                name=f"{request.group.name}/{name}",
-                folder=dynamic_thread_folder(request.group.folder, child_jid),
-            )
-            target = _ScheduledTaskTarget(
-                task=replace(request.task, group_folder=child_group.folder, chat_jid=child_jid),
-                group=child_group,
-                thread_slot=slot,
-            )
-        await begin_message_turn(
-            MessageTurnStart(
-                turn_id=turn_id,
-                chat_jid=target.task.chat_jid,
-                group=target.group,
-                work_kind=InFlightWorkKind.SCHEDULED,
-                input_messages=input_messages,
-                input_start_cursor="",
-                input_end_cursor="",
-                task_id=request.task.id,
-                scheduled_base_chat_jid=request.task.chat_jid,
-                scheduled_thread_slot=slot,
-                input_source=request.task.input_source,
-            )
-        )
-        return target
-
-
-async def _derived_thread_task_target(
-    request: TaskAgentRequest,
-    turn_id: str,
-    input_messages: list[dict[str, Any]],
-) -> _ScheduledTaskTarget:
-    """Resolve the derived child workspace assigned to a config-backed job.
-
-    Config jobs never use their child thread as a parent. Each run derives
-    the current human-readable name and resolves it through the idempotent
-    thread path, so archived or deleted destinations never rely on cached JIDs.
-    """
-    name = derived_thread_name(request.task)
-    ensured = await request.deps.ensure_thread(request.task.chat_jid, name)
-    child_jid = ensured.jid
-    if child_jid is None:
-        raise RuntimeError("Config scheduled-job thread returned no chat JID")
-
-    child_group = replace(
-        request.group,
-        jid=child_jid,
-        name=f"{request.group.name}/{name}",
-        folder=dynamic_thread_folder(request.group.folder, child_jid),
-    )
+    """Checkpoint one occurrence in its already-bound durable runtime."""
+    if (
+        request.task.bound_chat_jid != request.group.jid
+        or request.task.bound_group_folder != request.group.folder
+    ):
+        raise RuntimeError("Scheduled task runtime binding does not match its queue owner")
     target = _ScheduledTaskTarget(
         task=replace(
             request.task,
-            group_folder=child_group.folder,
-            chat_jid=child_jid,
+            group_folder=request.group.folder,
+            chat_jid=request.group.jid,
         ),
-        group=child_group,
+        group=request.group,
         thread_slot=0,
     )
-    if request.on_target_created is not None:
-        await request.on_target_created(child_group)
     await begin_message_turn(
         MessageTurnStart(
             turn_id=turn_id,
@@ -253,7 +155,8 @@ async def _derived_thread_task_target(
             input_start_cursor="",
             input_end_cursor="",
             task_id=request.task.id,
-            scheduled_base_chat_jid=request.task.chat_jid,
+            scheduled_base_chat_jid=request.group.jid,
+            scheduled_thread_slot=0,
             input_source=request.task.input_source,
         )
     )
@@ -294,6 +197,8 @@ def _task_output_handler(
             state.result = streamed.result
         if streamed.status == "error":
             state.error = streamed.error or "Unknown error"
+        if streamed.type == "tool_result":
+            await request.deps.queue.interrupt_after_tool_result(target.task.chat_jid)
 
     return _on_output
 
@@ -331,7 +236,9 @@ async def _run_target_agent(run: _TargetAgentRun) -> None:
         if state.terminal_outcome is not None:
             state.error = None
             return
-        if agent_result == "error":
+        if request.deps.queue.boundary_interrupt_requested(target.task.chat_jid):
+            state.error = SCHEDULED_TURN_INTERRUPTED
+        elif agent_result == "error":
             state.error = state.error or "Agent returned error"
     finally:
         if idle_timer:
@@ -388,8 +295,6 @@ async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
         )
     except asyncio.CancelledError:
         interrupted = True
-        raise
-    except ScheduledTargetBusyError:
         raise
     except Exception as exc:  # noqa: BLE001, RUF100 - agent invocation returns task errors.
         state.terminal_outcome = await requested_control_outcome(

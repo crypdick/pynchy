@@ -16,8 +16,6 @@ ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
 CONTINUE_AFTER_SAFE_INTERRUPT = "continue_after_safe_interrupt"
 TURN_PAUSED = "paused"
 TURN_RESET = "reset"
-SCHEDULED_TARGET_DEFERRED = "scheduled_target_deferred"
-SCHEDULED_TARGET_RETRY_DELAY = timedelta(minutes=1)
 
 
 @workflow.defn
@@ -202,36 +200,32 @@ class ScheduledAgentTaskWorkflow:
 
     @workflow.run
     async def run(self, task_id: str) -> str:
-        while True:
-            try:
-                result = cast(
-                    "str",
-                    await workflow.execute_activity(
-                        "run_scheduled_agent_task",
-                        task_id,
-                        start_to_close_timeout=timedelta(hours=12),
-                        heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
-                        retry_policy=RetryPolicy(
-                            maximum_attempts=3,
-                            initial_interval=timedelta(seconds=5),
-                            backoff_coefficient=2.0,
-                        ),
-                    ),
-                )
-            except ActivityError:
-                # Activity retries reuse the checkpoint. Once Temporal exhausts
-                # them, remove only an unclaimed checkpoint so a concurrent
-                # restart-recovery workflow retains ownership.
+        try:
+            return cast(
+                "str",
                 await workflow.execute_activity(
-                    "clear_terminal_scheduled_turn",
+                    "run_scheduled_agent_task",
                     task_id,
-                    start_to_close_timeout=timedelta(minutes=1),
-                    retry_policy=RetryPolicy(maximum_attempts=3),
-                )
-                raise
-            if result != SCHEDULED_TARGET_DEFERRED:
-                return result
-            await workflow.sleep(SCHEDULED_TARGET_RETRY_DELAY)
+                    start_to_close_timeout=timedelta(hours=12),
+                    heartbeat_timeout=timedelta(seconds=ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS),
+                    retry_policy=RetryPolicy(
+                        maximum_attempts=3,
+                        initial_interval=timedelta(seconds=5),
+                        backoff_coefficient=2.0,
+                    ),
+                ),
+            )
+        except ActivityError:
+            # Activity retries reuse the checkpoint. Once Temporal exhausts
+            # them, remove only an unclaimed checkpoint so a concurrent
+            # restart-recovery workflow retains ownership.
+            await workflow.execute_activity(
+                "clear_terminal_scheduled_turn",
+                task_id,
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
+            raise
 
 
 @workflow.defn

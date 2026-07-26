@@ -19,6 +19,7 @@ from pynchy.types import (
     MountAllowlist,
     NewMessage,
     ScheduledTask,
+    SessionPolicy,
     TaskRunLog,
     VolumeMount,
 )
@@ -163,7 +164,7 @@ class TestScheduledTask:
             prompt="Check for updates",
             schedule_type="cron",
             schedule_value="0 9 * * *",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             next_run="2024-02-01T09:00:00Z",
             status="active",
         )
@@ -188,7 +189,7 @@ class TestScheduledTask:
             prompt="Clean up",
             schedule_type="interval",
             schedule_value="3600000",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
             last_run="2024-01-31T08:00:00Z",
             last_result="OK",
         )
@@ -207,7 +208,7 @@ class TestScheduledTask:
             prompt="do stuff",
             schedule_type="once",
             schedule_value="2024-03-01T12:00:00",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
         )
         snapshot = task.to_snapshot_dict()
         assert snapshot["next_run"] is None
@@ -221,7 +222,7 @@ class TestScheduledTask:
             prompt="p",
             schedule_type="cron",
             schedule_value="* * * * *",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
         )
         assert task.next_run is None
         assert task.last_run is None
@@ -241,7 +242,7 @@ class TestScheduledTask:
                 prompt="p",
                 schedule_type="cron",
                 schedule_value="* * * * *",
-                context_mode="group",
+                session_policy=SessionPolicy.CONTINUE,
                 status="cancelled",
             )
 

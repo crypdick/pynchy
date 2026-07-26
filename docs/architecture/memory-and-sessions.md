@@ -46,12 +46,20 @@ V1 learning deliberately mounts the configured vault root as a broad namespace. 
 
 ## Session Management
 
-- Each group maintains a conversation session via the agent core SDK
+- Each visible Discord thread owns exactly one durable runtime: workspace,
+  worktree, provider session, queue, and checkpoint ledger.
+- Interactive and scheduled turns in that thread use the same agent-core
+  session. Worker processes are disposable and can resume the stored session.
+- Scheduled tasks either continue the current session or visibly reset it
+  before an occurrence. Pynchy doesn't support ephemeral scheduled sessions.
 - Sessions auto-compact when context grows too long (an SDK feature, not Pynchy's)
 - Session data lives under `data/sessions/{group}/` on the host. Pynchy mounts
   its scoped `.claude/` and `.codex/` homes at `/home/agent/.claude` and
   `/home/agent/.codex` respectively.
 - Direct-host Codex workspaces use `data/sessions/{group}/.codex/` as their scoped Codex home. This gives them the same injected skill registry and Pynchy MCP tools as container sessions, while preserving host execution.
+- Public-source and secret-source security taint is sticky for the lifetime of
+  the durable session. Continuation can't clear it; the unified context reset
+  clears both the provider session and its persisted taint.
 - The PreCompact hook archives conversation transcripts before compaction (see [Usage — Memory § Conversation Archives](../usage/memory.md#conversation-archives))
 
 A persisted session means Pynchy can rehydrate that conversation; it does not mean an agent

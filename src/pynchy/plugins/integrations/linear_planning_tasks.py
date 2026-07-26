@@ -14,9 +14,10 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
 from pynchy.plugins.integrations.linear_work_item_tasks import (
     DecisionIssue,
     ensure_task_active,
+    linear_issue_conversation_id,
 )
 from pynchy.state import get_all_tasks
-from pynchy.types import ScheduledTask
+from pynchy.types import ScheduledTask, SessionPolicy
 
 _PLANNING_CONTRACT = (
     "Objective: produce a concrete implementation plan for the exact Ready for Planning "
@@ -84,11 +85,12 @@ async def admit_planning_issue(
         prompt=f"{_PLANNING_CONTRACT}\n\n{context}",
         schedule_type="once",
         schedule_value=occurred_at,
-        context_mode="isolated",
+        session_policy=SessionPolicy.CONTINUE,
         next_run=occurred_at,
         created_at=occurred_at,
         input_source=(f"{'external' if public_source else 'trusted'}:linear:ready_for_planning"),
         derived_thread_name=f"[{issue.identifier}] {issue.title}"[:100],
+        conversation_id=await linear_issue_conversation_id(issue.id, workspace.folder),
     )
     active_task, admitted = await ensure_task_active(task, observed_at=observed_at)
     return active_task if admitted else None

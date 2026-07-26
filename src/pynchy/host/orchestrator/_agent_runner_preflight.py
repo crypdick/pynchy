@@ -24,6 +24,8 @@ from pynchy.state import (
     get_all_host_jobs,
     get_all_tasks,
     get_conversation_control_by_thread,
+    get_session_security_taint,
+    mark_session_security_taint,
     set_conversation_session,
     set_session,
     update_in_flight_session,
@@ -55,6 +57,9 @@ class PreContainerResult:
     snapshot_ms: float
     turn_id: str | None = None
     input_source: str = "user"
+    is_scheduled_task: bool = False
+    corruption_tainted: bool = False
+    secret_tainted: bool = False
 
 
 @dataclass(frozen=True)
@@ -101,8 +106,10 @@ def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire input
         chat_jid=chat_jid,
         is_admin=ctx.is_admin,
         system_notices=ctx.system_notices or None,
-        is_scheduled_task=is_scheduled_task,
+        is_scheduled_task=is_scheduled_task or ctx.is_scheduled_task,
         input_source=ctx.input_source,
+        corruption_tainted=ctx.corruption_tainted,
+        secret_tainted=ctx.secret_tainted,
         repo_access=ctx.repo_access,
         repo_accesses=ctx.repo_accesses,
         system_prompt_append=ctx.system_prompt_append,
@@ -145,6 +152,17 @@ def session_id_from_output(output: ContainerOutput) -> str | None:
 
 async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainerResult:
     """Common pre-container setup for both warm and cold paths."""
+    folder = GroupFolder(request.group.folder)
+    public_source = request.input_source.startswith(("webhook:", "external:"))
+    secret_source = request.input_source == "external:matrix"
+    if public_source or secret_source:
+        taint = await mark_session_security_taint(
+            folder,
+            corruption_tainted=public_source,
+            secret_tainted=secret_source,
+        )
+    else:
+        taint = await get_session_security_taint(folder)
     is_admin, repo_access, repo_accesses, system_prompt_append, session_id = (
         resolved_pre_container_context(
             request.deps,
@@ -166,7 +184,6 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         request.group.folder,
         request.chat_jid,
         request.on_output,
-        track_interactive_session=not request.is_scheduled_task,
     )
     system_notices = merged_system_notices(
         build_admin_system_notices(
@@ -194,6 +211,9 @@ async def pre_container_setup(request: PreContainerSetupRequest) -> PreContainer
         config_timeout=config_timeout,
         snapshot_ms=snapshot_ms,
         input_source=request.input_source,
+        is_scheduled_task=request.is_scheduled_task,
+        corruption_tainted=taint.corruption_tainted,
+        secret_tainted=taint.secret_tainted,
     )
 
 
@@ -247,31 +267,22 @@ def session_tracking_output_handler(
     group_folder: str,
     chat_jid: str,
     on_output: OnOutput | None,
-    *,
-    track_interactive_session: bool = True,
 ) -> OnOutput:
-    """Track provider sessions in their durable owner, if the run has one.
-
-    Scheduled invocations are one-shot and recover from their in-flight
-    checkpoint rather than their provider rollout. The output may share a
-    human-facing thread with a routed conversation, but the scheduled session
-    must remain independent from that conversation's interactive session.
-    """
+    """Track provider sessions in the durable runtime owned by this thread."""
 
     async def wrapped_on_output(output: ContainerOutput) -> None:
         if (
             session_id := session_id_from_output(output)
         ) and group_folder not in deps.session_cleared:
-            if track_interactive_session:
-                deps.sessions[group_folder] = session_id
-                await set_session(GroupFolder(group_folder), SessionId(session_id))
-                # Workspace folder slugs sanitize opaque conversation IDs and are not
-                # reversible. The exact durable identity belongs to the thread binding.
-                if binding := await get_conversation_control_by_thread(ChatJid(chat_jid)):
-                    await set_conversation_session(
-                        binding.conversation_id,
-                        SessionId(session_id),
-                    )
+            deps.sessions[group_folder] = session_id
+            await set_session(GroupFolder(group_folder), SessionId(session_id))
+            # Workspace folder slugs sanitize opaque conversation IDs and are not
+            # reversible. The exact durable identity belongs to the thread binding.
+            if binding := await get_conversation_control_by_thread(ChatJid(chat_jid)):
+                await set_conversation_session(
+                    binding.conversation_id,
+                    SessionId(session_id),
+                )
             await update_in_flight_session(group_folder, session_id)
         if on_output:
             await on_output(output)

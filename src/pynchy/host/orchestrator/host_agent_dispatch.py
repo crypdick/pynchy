@@ -73,20 +73,19 @@ async def run_host_execution(  # noqa: PLR0913, RUF100 - mirrors the shared agen
     *,
     is_scheduled_task: bool,
 ) -> str:
-    """Run an interactive or one-shot scheduled turn through the host runtime."""
+    """Run one durable thread turn through the direct-host runtime."""
     codex_home = prepare_host_codex_home(group.folder, deps.plugin_manager)
-    if not is_scheduled_task:
-        migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
-        if not codex_thread_exists_in_host_runtime(ctx.session_id, codex_home=codex_home):
-            logger.info(
-                "Stored Codex session is not available to host runtime; starting fresh",
-                group=group.name,
-                session_id=ctx.session_id,
-            )
-            await destroy_session(group.folder)
-            await clear_session(GroupFolder(group.folder))
-            deps.sessions.pop(group.folder, None)
-            ctx.session_id = None
+    migrate_host_codex_thread(ctx.session_id, codex_home=codex_home)
+    if not codex_thread_exists_in_host_runtime(ctx.session_id, codex_home=codex_home):
+        logger.info(
+            "Stored Codex session is not available to host runtime; starting fresh",
+            group=group.name,
+            session_id=ctx.session_id,
+        )
+        await destroy_session(group.folder)
+        await clear_session(GroupFolder(group.folder))
+        deps.sessions.pop(group.folder, None)
+        ctx.session_id = None
     logger.info(
         "run_agent host execution",
         group=group.name,

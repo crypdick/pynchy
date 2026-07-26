@@ -62,6 +62,7 @@ class ConversationWorkspaceContext:
     register_workspace: Callable[[WorkspaceProfile], Awaitable[None]]
     unregister_workspace: Callable[[str], Awaitable[None]]
     bind_session: Callable[[str, SessionId], Awaitable[None]]
+    rebind_workspace: Callable[[WorkspaceProfile], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,10 +194,6 @@ async def ensure_conversation_workspace(
         raise RuntimeError("Conversation disappeared while placing its workspace")
     folder = routed_conversation_folder(owner_folder, conversation.id)
 
-    for jid, existing in list(context.workspaces().items()):
-        if existing.folder == folder and jid != control.binding.thread_jid:
-            await context.unregister_workspace(jid)
-
     profile = WorkspaceProfile(
         jid=control.binding.thread_jid,
         name=f"{owner.name}/{control.binding.title}",
@@ -208,7 +205,20 @@ async def ensure_conversation_workspace(
         added_at=datetime.now(UTC).isoformat(),
     )
     current = context.workspaces().get(profile.jid)
-    if current is None or _workspace_shape(current) != _workspace_shape(profile):
+    prior_jid = next(
+        (
+            jid
+            for jid, existing in context.workspaces().items()
+            if existing.folder == folder and jid != profile.jid
+        ),
+        None,
+    )
+    if prior_jid is not None and context.rebind_workspace is not None:
+        await context.rebind_workspace(profile)
+    elif prior_jid is not None:
+        await context.unregister_workspace(prior_jid)
+        await context.register_workspace(profile)
+    elif current is None or _workspace_shape(current) != _workspace_shape(profile):
         await context.register_workspace(profile)
     if conversation.session_id is not None:
         await context.bind_session(folder, conversation.session_id)

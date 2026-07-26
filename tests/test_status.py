@@ -25,7 +25,7 @@ from pynchy.host.orchestrator.http_server import create_http_app
 from pynchy.host.orchestrator.status import collect_status, record_start_time
 from pynchy.plugins.speech import SpeechSynthesisResult, SpeechSynthesizerHealth
 from pynchy.state import init_test_database
-from pynchy.types import HostJob, ScheduledTask, TaskRunLog
+from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -538,7 +538,7 @@ class TestCollectTasks:
                 prompt="check health",
                 schedule_type="cron",
                 schedule_value="0 9 * * *",
-                context_mode="group",
+                session_policy=SessionPolicy.CONTINUE,
                 status="active",
                 next_run="2026-02-21T09:00:00",
                 last_run="2026-02-20T09:00:00",
@@ -569,7 +569,7 @@ class TestCollectTasks:
             prompt="check health",
             schedule_type="cron",
             schedule_value="0 9 * * *",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
             status="active",
             next_run="2026-02-21T09:00:00+00:00",
         )
@@ -607,7 +607,7 @@ class TestCollectTasks:
             prompt="check health",
             schedule_type="cron",
             schedule_value="0 9 * * *",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
             status="active",
             next_run="2026-02-21T09:00:00+00:00",
         )
@@ -646,7 +646,7 @@ class TestCollectTasks:
                 prompt="check health",
                 schedule_type="cron",
                 schedule_value="0 9 * * *",
-                context_mode="group",
+                session_policy=SessionPolicy.CONTINUE,
                 status="paused",
             ),
         ]

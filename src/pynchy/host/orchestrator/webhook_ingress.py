@@ -35,7 +35,7 @@ from pynchy.state import (
     admit_webhook_receipt,
     get_webhook_receipt,
 )
-from pynchy.types import ScheduledTask, WorkspaceProfile
+from pynchy.types import ScheduledTask, SessionPolicy, WorkspaceProfile
 
 
 @runtime_checkable
@@ -287,7 +287,7 @@ def _task_for_event(
         prompt=_prompt_for_event(route, event),
         schedule_type="once",
         schedule_value=received_at,
-        context_mode="isolated",
+        session_policy=SessionPolicy.RESET_BEFORE_RUN,
         next_run=received_at,
         created_at=received_at,
         input_source=(

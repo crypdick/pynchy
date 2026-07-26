@@ -3,24 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from pynchy.config.scheduler_models import SchedulerConfig
-    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from temporalio import activity
 
 from pynchy.config import get_settings
-from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves runtime annotations.
-    OnOutput,
-)
 from pynchy.host.orchestrator.config_job_execution import (
     ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
     prepare_config_job,
-    register_scheduled_target,
     run_deterministic_config_job,
 )
 from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
@@ -30,6 +24,7 @@ from pynchy.host.orchestrator.messaging.outcomes import (
     TurnPaused,
     TurnReset,
 )
+from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
 from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
 from pynchy.host.orchestrator.scheduled_failure_policy import (
     NO_PROGRESS_THRESHOLD,
@@ -37,16 +32,20 @@ from pynchy.host.orchestrator.scheduled_failure_policy import (
     recent_failure_run,
     scheduled_failure_decision,
 )
+from pynchy.host.orchestrator.scheduled_session_policy import apply_scheduled_session_policy
 from pynchy.host.orchestrator.scheduled_turn import (
+    SCHEDULED_TURN_INTERRUPTED,
     ScheduledTurnDeps,
     TaskAgentRequest,
     run_task_agent,
+)
+from pynchy.host.orchestrator.scheduler_deps import (  # noqa: TC001, RUF100 - public runtime re-export.
+    SchedulerDependencies,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     TemporalActivityInfo,
     parse_temporal_activity_info,
 )
-from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.state import (
     claim_in_flight_turn,
@@ -60,61 +59,12 @@ from pynchy.state import (
 )
 from pynchy.types import (
     CheckpointControlState,
-    ContainerOutput,
     InFlightTurn,
     OutboundEvent,
     OutboundEventType,
     ScheduledTask,
     TaskRunLog,
-    WorkspaceProfile,
 )
-
-
-@runtime_checkable
-class SchedulerDependencies(Protocol):
-    """Dependencies for the task scheduler."""
-
-    @property
-    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
-
-    @property
-    def last_agent_timestamp(self) -> dict[str, str]: ...
-
-    @property
-    def queue(self) -> GroupQueue: ...
-
-    async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
-
-    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
-
-    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
-
-    async def save_state(self) -> None: ...
-
-    async def run_agent(  # noqa: PLR0913, RUF100 - scheduler protocol preserves the full agent execution contract.
-        self,
-        group: WorkspaceProfile,
-        chat_jid: str,
-        messages: list[dict[str, Any]],
-        on_output: OnOutput | None = None,
-        extra_system_notices: list[str] | None = None,
-        *,
-        is_scheduled_task: bool = False,
-        repo_access_override: str | None = None,
-        input_source: str = "user",
-        turn_id: str | None = None,
-        resume_session_id: str | None = None,
-    ) -> str: ...
-
-    async def handle_streamed_output(
-        self,
-        chat_jid: str,
-        group: WorkspaceProfile,
-        result: ContainerOutput,
-        *,
-        turn_id: str | None = None,
-    ) -> bool: ...
-
 
 _scheduler_lock = asyncio.Lock()
 _config_job_run_locks: dict[str, asyncio.Lock] = {}
@@ -177,18 +127,6 @@ def _temporal_run_metadata() -> TemporalActivityInfo | None:
         return parse_temporal_activity_info(activity.info())
     except RuntimeError:
         return None
-
-
-def _scheduled_group(
-    deps: SchedulerDependencies,
-    group_folder: str,
-) -> WorkspaceProfile | None:
-    groups = deps.workspaces
-    exact = next((group for group in groups.values() if group.folder == group_folder), None)
-    if exact is not None:
-        return exact
-    placement = resolve_workspace_placement(groups.values(), group_folder)
-    return placement.owner if placement is not None else None
 
 
 async def _log_task_error(
@@ -300,7 +238,11 @@ async def resume_interrupted_scheduled_turn(
     turn: InFlightTurn,
 ) -> bool | TurnPaused | TurnReset:
     """Resume a claimed scheduled agent turn and finish its scheduler bookkeeping."""
-    group = _scheduled_group(deps, task.group_folder)
+    group = (
+        resolve_scheduled_group(deps.workspaces, task.bound_group_folder)
+        if task.bound_group_folder is not None
+        else None
+    )
     if group is None:
         await release_in_flight_turn_claim(turn.turn_id)
         return False
@@ -346,34 +288,60 @@ async def resume_interrupted_scheduled_turn(
 async def run_scheduled_agent(
     task: ScheduledTask,
     deps: SchedulerDependencies,
+    *,
+    occurrence_id: str | None = None,
 ) -> bool | TurnPaused | TurnReset:
     """Execute a single scheduled agent task via the unified run_agent path."""
     if task.config_job_name is None:
-        return await _run_scheduled_agent(task, deps)
+        return await _run_scheduled_agent(task, deps, occurrence_id=occurrence_id)
 
     # Temporal BUFFER_ONE serializes normal schedule overlap durably. This
     # process-local lock also serializes duplicate/manual activity delivery so
     # every execution stays in the task's one derived thread.
     lock = _config_job_run_locks.setdefault(task.id, asyncio.Lock())
     async with lock:
-        return await _run_scheduled_agent(task, deps)
+        return await _run_scheduled_agent(task, deps, occurrence_id=occurrence_id)
 
 
 async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler terminal outcomes.
-    task: ScheduledTask, deps: SchedulerDependencies
+    task: ScheduledTask,
+    deps: SchedulerDependencies,
+    *,
+    occurrence_id: str | None,
 ) -> bool | TurnPaused | TurnReset:
     """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
     interrupted_turn = await get_in_flight_turn_for_task(task.id)
+    if interrupted_turn is not None and interrupted_turn.control_state in {
+        CheckpointControlState.PAUSE_REQUESTED,
+        CheckpointControlState.PAUSED,
+    }:
+        return TURN_PAUSED
+    if (
+        interrupted_turn is not None
+        and interrupted_turn.control_state is CheckpointControlState.RESET_REQUESTED
+    ):
+        await clear_in_flight_turn(interrupted_turn.turn_id)
+        return TURN_RESET
+
+    runtime_folder = task.bound_group_folder
+    runtime_jid = task.bound_chat_jid
+    if runtime_folder is None or runtime_jid is None:
+        await _log_task_error(
+            task.id,
+            start_time=start_time,
+            error="Scheduled task has no durable conversation binding",
+        )
+        return False
+    group = resolve_scheduled_group(deps.workspaces, runtime_folder)
+    if group is None or group.jid != runtime_jid:
+        await _log_task_error(
+            task.id,
+            start_time=start_time,
+            error=f"Scheduled task runtime is not registered: {runtime_folder}",
+        )
+        return False
     if interrupted_turn is not None:
-        if interrupted_turn.control_state in {
-            CheckpointControlState.PAUSE_REQUESTED,
-            CheckpointControlState.PAUSED,
-        }:
-            return TURN_PAUSED
-        if interrupted_turn.control_state is CheckpointControlState.RESET_REQUESTED:
-            await clear_in_flight_turn(interrupted_turn.turn_id)
-            return TURN_RESET
         if not await claim_in_flight_turn(interrupted_turn.turn_id):
             logger.info(
                 "Interrupted scheduled turn already claimed",
@@ -382,21 +350,20 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
             )
             return True
         return await resume_interrupted_scheduled_turn(task, deps, interrupted_turn)
+
+    resolved_occurrence = occurrence_id or f"direct:{task.id}:{start_time.isoformat()}"
+    task = await apply_scheduled_session_policy(
+        task,
+        group,
+        resolved_occurrence,
+        deps.reset_scheduled_context,
+        update_task,
+    )
     s = get_settings()
-    group_dir = s.groups_dir / task.group_folder
+    group_dir = s.groups_dir / runtime_folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Running scheduled task", task_id=task.id, group=task.group_folder)
-
-    group = _scheduled_group(deps, task.group_folder)
-    if not group:
-        logger.error(
-            "Group not found for task",
-            task_id=task.id,
-            group_folder=task.group_folder,
-        )
-        await _log_missing_group(task, start_time)
-        return False
+    logger.info("Running scheduled task", task_id=task.id, group=runtime_folder)
 
     circuit_decision = await _scheduled_task_circuit_breaker(task.id)
     if circuit_decision is not None:
@@ -429,28 +396,9 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
         )
 
     execution_task = prepared_task
-    if execution_task.derived_thread_name is not None or execution_task.config_job_name is not None:
-        placement = resolve_workspace_placement(
-            deps.workspaces.values(),
-            execution_task.group_folder,
-        )
-        if placement is None:
-            await _log_task_error(
-                task.id,
-                start_time=start_time,
-                error=f"Workspace placement not found: {task.group_folder}",
-            )
-            return False
-        execution_task = replace(
-            execution_task,
-            chat_jid=placement.control_parent.jid,
-        )
 
     async def on_started(target_task: ScheduledTask) -> None:
         await _broadcast_task_start(deps, target_task)
-
-    async def on_target_created(profile: WorkspaceProfile) -> None:
-        await register_scheduled_target(cast("ConfigJobExecutionDeps", deps), profile)
 
     agent_run = await run_task_agent(
         TaskAgentRequest(
@@ -460,13 +408,19 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
             idle_enabled=True,
             idle_timeout=s.idle_timeout,
             on_started=on_started,
-            on_target_created=on_target_created,
         )
     )
     if agent_run.terminal_outcome is TURN_PAUSED:
         return TURN_PAUSED
     if agent_run.terminal_outcome is TURN_RESET:
         return TURN_RESET
+    if agent_run.error == SCHEDULED_TURN_INTERRUPTED:
+        logger.info(
+            "Scheduled task yielded to an interactive turn",
+            task_id=task.id,
+            turn_id=agent_run.turn_id,
+        )
+        return False
     return await _finish_scheduled_agent_run(
         task,
         start_time=start_time,

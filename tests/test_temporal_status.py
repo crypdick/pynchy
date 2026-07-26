@@ -12,7 +12,7 @@ from temporalio.client import WorkflowExecutionStatus
 
 from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.orchestrator.temporal import status as temporal_status
-from pynchy.types import HostJob, ScheduledTask
+from pynchy.types import HostJob, ScheduledTask, SessionPolicy
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ def _recurring_task() -> ScheduledTask:
         prompt="Check scheduled work.",
         schedule_type="cron",
         schedule_value="0 9 * * *",
-        context_mode="isolated",
+        session_policy=SessionPolicy.RESET_BEFORE_RUN,
         next_run="2026-01-01T09:00:00+00:00",
         status="active",
     )

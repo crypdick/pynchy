@@ -30,7 +30,7 @@ from pynchy.state import (
     update_host_job,
     update_task,
 )
-from pynchy.types import GroupFolder, ScheduledTask, WorkspaceProfile
+from pynchy.types import GroupFolder, ScheduledTask, SessionPolicy, WorkspaceProfile
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,7 @@ class _ScheduledTaskRequest:
     schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
     target_folder: GroupFolder
+    session_policy: SessionPolicy
 
 
 @dataclass(frozen=True)
@@ -134,9 +135,10 @@ async def _handle_schedule_task(
             prompt=request.prompt,
             schedule_type=request.schedule_type,
             schedule_value=request.schedule_value,
-            context_mode="isolated",
+            session_policy=request.session_policy,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
+            derived_thread_name=f"Scheduled | {task_id}",
         )
     )
     logger.info(
@@ -144,7 +146,7 @@ async def _handle_schedule_task(
         task_id=task_id,
         source_group=source_group,
         target_folder=request.target_folder,
-        context_mode="isolated",
+        session_policy=request.session_policy,
     )
 
 
@@ -164,7 +166,13 @@ def _scheduled_task_request(data: dict[str, Any]) -> _ScheduledTaskRequest | Non
         schedule_type=parsed_schedule_type,
         schedule_value=schedule_value,
         target_folder=target_folder,
+        session_policy=_session_policy(data.get("context_mode")),
     )
+
+
+def _session_policy(value: object) -> SessionPolicy:
+    """Translate tool-facing scheduling vocabulary at the IPC boundary."""
+    return SessionPolicy.CONTINUE if value == "group" else SessionPolicy.RESET_BEFORE_RUN
 
 
 def _host_job_request(data: dict[str, Any]) -> _HostJobRequest | None:

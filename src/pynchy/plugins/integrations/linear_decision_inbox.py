@@ -129,7 +129,7 @@ async def reconcile_linear_decision_inbox(
     now: datetime | None = None,
     public_source: bool = True,
 ) -> list[ScheduledTask]:
-    """Admit one isolated task for every newly observed actionable decision."""
+    """Admit one issue-conversation task for every actionable decision."""
     project_workspaces = _project_workspaces(workspaces, boards)
     created: list[ScheduledTask] = []
     observed_at = now or datetime.now(UTC)

@@ -41,7 +41,7 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.host.orchestrator.deploy import BuildResult, RollbackResult
-from pynchy.host.orchestrator.scheduled_targeting import ScheduledTargetBusyError
+from pynchy.host.orchestrator.scheduled_binding import ScheduledTaskOwnershipError
 from pynchy.host.orchestrator.temporal.runtime_state import TemporalActivityInfo
 from pynchy.state import (
     begin_in_flight_turn,
@@ -61,6 +61,7 @@ from pynchy.types import (
     InFlightTurn,
     InFlightWorkKind,
     ScheduledTask,
+    SessionPolicy,
     WorkspaceProfile,
 )
 from pynchy.utils import ShellResult
@@ -75,6 +76,7 @@ class NullSchedulerDeps:
 
     queue: GroupQueue = field(default_factory=GroupQueue)
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
+    last_agent_timestamp: dict[str, str] = field(default_factory=dict)
 
     @property
     def workspaces(self):
@@ -85,6 +87,10 @@ class NullSchedulerDeps:
     async def broadcast_host_message(self, chat_jid, text) -> None: ...
 
     async def broadcast_system_notice(self, chat_jid, text) -> None: ...
+
+    async def reset_scheduled_context(self, task, group, occurrence_id) -> None: ...
+
+    async def save_state(self) -> None: ...
 
     async def run_agent(self, *args, **kwargs) -> str:
         return "success"
@@ -242,7 +248,9 @@ def temporal_task() -> ScheduledTask:
         prompt="Test task",
         schedule_type="cron",
         schedule_value="0 9 * * *",
-        context_mode="isolated",
+        session_policy=SessionPolicy.RESET_BEFORE_RUN,
+        bound_chat_jid="test@g.us",
+        bound_group_folder="test-group",
         next_run=datetime(2026, 7, 7, 9, 0, tzinfo=UTC).isoformat(),
         status="active",
     )
@@ -1216,17 +1224,26 @@ class TestTemporalSchedulerRuntime:
         def fake_get_task_by_id(task_id: str):
             return asyncio.sleep(0, result=temporal_task if task_id == temporal_task.id else None)
 
-        def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps, *, occurrence_id):
             called["task"] = task
             called["deps"] = runner_deps
-            return asyncio.sleep(0, result=None)
+            called["occurrence_id"] = occurrence_id
+            return asyncio.sleep(0, result=True)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "ensure_scheduled_task_binding",
+            AsyncMock(return_value=temporal_task),
+        )
         monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: TemporalActivityInfo(workflow_id="workflow-completed"),
+            lambda: TemporalActivityInfo(
+                workflow_id="workflow-completed",
+                workflow_run_id="occurrence-completed",
+            ),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(deps)
@@ -1234,7 +1251,11 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
         assert result == "completed"
-        assert called == {"task": temporal_task, "deps": deps}
+        assert called == {
+            "task": temporal_task,
+            "deps": deps,
+            "occurrence_id": "occurrence-completed",
+        }
         status = temporal_scheduler.get_temporal_scheduler_status()
         assert status["last_workflow_id"] == "workflow-completed"
         assert status["last_task_id"] == temporal_task.id
@@ -1252,8 +1273,24 @@ class TestTemporalSchedulerRuntime:
         )
         monkeypatch.setattr(
             temporal_scheduler,
+            "ensure_scheduled_task_binding",
+            AsyncMock(return_value=temporal_task),
+        )
+        monkeypatch.setattr(
+            temporal_scheduler.activity,
+            "info",
+            lambda: TemporalActivityInfo(
+                workflow_id="workflow-paused",
+                workflow_run_id="occurrence-paused",
+            ),
+        )
+        monkeypatch.setattr(
+            temporal_scheduler,
             "run_scheduled_agent",
-            lambda _task, _deps: asyncio.sleep(0, result=temporal_scheduler.TURN_PAUSED),
+            lambda _task, _deps, *, occurrence_id: asyncio.sleep(
+                0,
+                result=temporal_scheduler.TURN_PAUSED,
+            ),
         )
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
@@ -1836,15 +1873,24 @@ class TestTemporalSchedulerRuntime:
         def fake_get_task_by_id(task_id: str):
             return asyncio.sleep(0, result=temporal_task)
 
-        def fake_run_scheduled_agent(task, runner_deps):
+        def fake_run_scheduled_agent(task, runner_deps, *, occurrence_id):
+            assert occurrence_id == "occurrence-failed"
             return asyncio.sleep(0, result=False)
 
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "ensure_scheduled_task_binding",
+            AsyncMock(return_value=temporal_task),
+        )
         monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", fake_run_scheduled_agent)
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: TemporalActivityInfo(workflow_id="workflow-failed"),
+            lambda: TemporalActivityInfo(
+                workflow_id="workflow-failed",
+                workflow_run_id="occurrence-failed",
+            ),
         )
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
@@ -1852,49 +1898,46 @@ class TestTemporalSchedulerRuntime:
             await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
     @pytest.mark.asyncio
-    async def test_run_scheduled_agent_activity_defers_reserved_non_nestable_target(
+    async def test_run_scheduled_agent_activity_rejects_missing_durable_owner(
         self, monkeypatch, temporal_task
     ):
         def fake_get_task_by_id(task_id: str):
             return asyncio.sleep(0, result=temporal_task)
 
-        async def busy_target(_task, _runner_deps):
-            await asyncio.sleep(0)
-            raise ScheduledTargetBusyError(
-                "Scheduled task target is reserved and cannot host child threads"
-            )
-
         monkeypatch.setattr(temporal_scheduler, "get_task_by_id", fake_get_task_by_id)
-        monkeypatch.setattr(temporal_scheduler, "run_scheduled_agent", busy_target)
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "ensure_scheduled_task_binding",
+            AsyncMock(
+                side_effect=ScheduledTaskOwnershipError(
+                    "Scheduled task owner workspace is unavailable"
+                )
+            ),
+        )
         monkeypatch.setattr(
             temporal_scheduler.activity,
             "info",
-            lambda: TemporalActivityInfo(workflow_id="workflow-deferred"),
+            lambda: TemporalActivityInfo(workflow_id="workflow-unowned"),
         )
         temporal_scheduler.reset_temporal_scheduler_status()
         temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
 
-        result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+        with pytest.raises(ScheduledTaskOwnershipError, match="owner workspace is unavailable"):
+            await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
 
-        assert result == temporal_workflows.SCHEDULED_TARGET_DEFERRED
         status = temporal_scheduler.get_temporal_scheduler_status()
-        assert status["last_workflow_id"] == "workflow-deferred"
-        assert status["last_result"] == "deferred"
+        assert status["last_workflow_id"] == "workflow-unowned"
+        assert status["last_result"] == "error"
 
     @pytest.mark.asyncio
-    async def test_scheduled_agent_workflow_waits_durably_for_reserved_target(self, monkeypatch):
-        execute_activity = AsyncMock(
-            side_effect=[temporal_workflows.SCHEDULED_TARGET_DEFERRED, "completed"]
-        )
-        sleep = AsyncMock()
+    async def test_scheduled_agent_workflow_runs_one_owned_activity(self, monkeypatch):
+        execute_activity = AsyncMock(return_value="completed")
         monkeypatch.setattr(temporal_workflows.workflow, "execute_activity", execute_activity)
-        monkeypatch.setattr(temporal_workflows.workflow, "sleep", sleep)
 
         result = await temporal_workflows.ScheduledAgentTaskWorkflow().run("task-1")
 
         assert result == "completed"
-        assert execute_activity.await_count == 2
-        sleep.assert_awaited_once_with(temporal_workflows.SCHEDULED_TARGET_RETRY_DELAY)
+        execute_activity.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_scheduled_agent_workflow_clears_terminal_checkpoint(self, monkeypatch):

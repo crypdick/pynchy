@@ -33,6 +33,7 @@ from pynchy.state import (
 )
 from pynchy.types import (
     ScheduledTask,
+    SessionPolicy,
     TaskRunLog,
     WorkItemExecutionStatus,
     WorkItemTransitionStatus,
@@ -44,6 +45,11 @@ class _Workspace:
     folder: str
     name: str
     jid: str
+
+
+@dataclass(frozen=True)
+class _LinearAccount:
+    name: str
 
 
 def _state(status: str) -> dict[str, str]:
@@ -230,7 +236,7 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert execution.temporal_workflow_id.startswith("pynchy-agent-task-")
     assert task.group_folder == "beta"
     assert task.input_source == "external:linear:authorized"
-    assert task.context_mode == "isolated"
+    assert task.session_policy is SessionPolicy.CONTINUE
     assert task.derived_thread_name == "[SYN-3] Execute an approved task"
     assert "Objective:" in task.prompt
     assert "Authority:" in task.prompt
@@ -285,6 +291,52 @@ async def test_reconcile_recovers_ready_planning_without_execution_authority() -
     assert await get_active_work_item_execution("issue-plan") is None
 
 
+async def test_planning_and_execution_reuse_one_issue_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"] = []
+    issue = _issue(
+        "issue-plan",
+        "SYN-89",
+        "Unify the issue runtime",
+        "ready_for_planning",
+        "project-beta",
+    )
+    client.issues_by_state["state-ready"] = [issue]
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_tasks.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    workspaces = [_Workspace("beta", "Beta", "linear:beta")]
+    boards = {"beta": _board("project-beta")}
+
+    planning = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=datetime(2026, 7, 25, 20, 5, tzinfo=UTC),
+    )
+    client.issues_by_state["state-ready"].remove(issue)
+    issue["state"] = _state("human_approved")
+    issue["updatedAt"] = "2026-07-25T21:00:00+00:00"
+    client.issues_by_state["state-approved"].append(issue)
+    execution = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=datetime(2026, 7, 25, 21, 5, tzinfo=UTC),
+    )
+
+    assert len(planning) == 1
+    assert len(execution) == 1
+    assert planning[0].id != execution[0].id
+    assert planning[0].conversation_id is not None
+    assert execution[0].conversation_id == planning[0].conversation_id
+    assert planning[0].session_policy is SessionPolicy.CONTINUE
+    assert execution[0].session_policy is SessionPolicy.CONTINUE
+
+
 async def test_reconcile_reactivates_a_quiet_ready_planning_task() -> None:
     client = _DecisionClient()
     client.issues_by_state["state-approved"] = []
@@ -308,7 +360,7 @@ async def test_reconcile_reactivates_a_quiet_ready_planning_task() -> None:
             ),
             schedule_type="once",
             schedule_value="2026-07-25T19:00:00+00:00",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             status="completed",
             last_run="2026-07-25T19:00:00+00:00",
             created_at="2026-07-25T19:00:00+00:00",
@@ -558,7 +610,7 @@ async def test_reconcile_adopts_completed_legacy_plan_as_approval_evidence() -> 
             ),
             schedule_type="once",
             schedule_value="2026-07-19T08:00:00+00:00",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             status="completed",
             created_at="2026-07-19T08:00:00+00:00",
         )
@@ -574,7 +626,7 @@ async def test_reconcile_adopts_completed_legacy_plan_as_approval_evidence() -> 
             ),
             schedule_type="once",
             schedule_value="2026-07-19T08:00:00+00:00",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             status="completed",
             created_at="2026-07-19T08:00:00+00:00",
         )

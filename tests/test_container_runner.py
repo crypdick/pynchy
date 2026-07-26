@@ -72,6 +72,7 @@ from pynchy.host.orchestrator.agent_runner import (
 )
 from pynchy.host.orchestrator.concurrency import GroupQueue
 from pynchy.plugins.contracts import AgentCoreSpec
+from pynchy.state import SessionSecurityTaint
 from pynchy.types import (
     ChatJid,
     ContainerInput,
@@ -465,6 +466,8 @@ class TestInputSerialization:
             "is_admin": True,
             "is_scheduled_task": False,
             "input_source": "user",
+            "corruption_tainted": False,
+            "secret_tainted": False,
             "invocation_ts": 0.0,
             "agent_core_module": "agent_runner.cores.openai",
             "agent_core_class": "OpenAIAgentCore",
@@ -1935,6 +1938,11 @@ class TestContainerInputAgentCoreConfig:
                 return_value=0.0,
             ),
             patch(
+                "pynchy.host.orchestrator._agent_runner_preflight.get_session_security_taint",
+                new_callable=AsyncMock,
+                return_value=SessionSecurityTaint(),
+            ),
+            patch(
                 "pynchy.host.container_manager.orchestrator.system_checks.ensure_agent_image_available"
             ),
             patch(
@@ -2133,7 +2141,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
     @pytest.mark.asyncio
-    async def test_scheduled_run_dispatches_host_mode_as_one_shot(self, tmp_path: Path):
+    async def test_scheduled_run_reuses_durable_host_session(self, tmp_path: Path):
         parent_folder = "host-group"
         child_folder = dynamic_thread_folder(parent_folder, "discord:daily-review")
         group = WorkspaceProfile(
@@ -2181,14 +2189,14 @@ class TestContainerInputAgentCoreConfig:
                 new_callable=AsyncMock,
             ),
             patch(
+                "pynchy.host.orchestrator.host_agent_dispatch.codex_thread_exists_in_host_runtime",
+                return_value=True,
+            ),
+            patch(
                 "pynchy.host.orchestrator.host_agent_dispatch.run_host_agent_turn",
                 new_callable=AsyncMock,
                 return_value="success",
             ) as run_host_agent_turn,
-            patch(
-                "pynchy.host.orchestrator.agent_runner._run_scheduled_task",
-                new_callable=AsyncMock,
-            ) as run_scheduled_container,
             patch(
                 "pynchy.host.orchestrator.agent_runner.destroy_session",
                 new_callable=AsyncMock,
@@ -2207,15 +2215,13 @@ class TestContainerInputAgentCoreConfig:
             )
 
         assert result == "success"
-        run_scheduled_container.assert_not_awaited()
         run_host_agent_turn.assert_awaited_once()
         input_data = run_host_agent_turn.await_args.args[0].input_data
         assert input_data.is_scheduled_task is True
-        assert input_data.session_id is None
-        assert destroy_session.await_count == 2
-        destroy_session.assert_awaited_with(group.folder)
-        clear_session.assert_awaited_once_with(GroupFolder(group.folder))
-        assert deps.sessions == {}
+        assert input_data.session_id == "interactive-session"
+        destroy_session.assert_not_awaited()
+        clear_session.assert_not_awaited()
+        assert deps.sessions == {child_folder: "interactive-session"}
 
     @pytest.mark.asyncio
     async def test_scheduled_host_cancellation_preserves_recovery_state(self, tmp_path: Path):
@@ -2273,7 +2279,7 @@ class TestContainerInputAgentCoreConfig:
                 is_scheduled_task=True,
             )
 
-        destroy_session.assert_awaited_once_with(group.folder)
+        destroy_session.assert_not_awaited()
         clear_session.assert_not_awaited()
         assert deps.sessions == {"host-group": "interrupted-session"}
 
@@ -2590,8 +2596,18 @@ class TestAgentRunnerPreContainerHelpers:
         persist_conversation.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_scheduled_session_tracks_only_its_recovery_checkpoint(self):
+    async def test_scheduled_session_tracks_durable_runtime_and_checkpoint(self):
         deps = _AgentRunnerDeps()
+        conversation_id = ConversationId("conv_scheduled-thread")
+        binding = ConversationControlBinding(
+            conversation_id=conversation_id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("project"),
+            parent_jid=ChatJid("discord:channel:project"),
+            thread_jid=ChatJid("discord:channel:linear-thread"),
+            title="Scheduled issue",
+            updated_at="2026-07-25T23:00:00+00:00",
+        )
         output = ContainerOutput(
             status="success",
             type="system",
@@ -2611,6 +2627,7 @@ class TestAgentRunnerPreContainerHelpers:
             patch(
                 "pynchy.host.orchestrator._agent_runner_preflight.get_conversation_control_by_thread",
                 new_callable=AsyncMock,
+                return_value=binding,
             ) as get_binding,
             patch(
                 "pynchy.host.orchestrator._agent_runner_preflight.set_conversation_session",
@@ -2622,14 +2639,21 @@ class TestAgentRunnerPreContainerHelpers:
                 "project__thread_discord-channel-linear-thread",
                 "discord:channel:linear-thread",
                 None,
-                track_interactive_session=False,
             )
             await handler(output)
 
-        assert deps.sessions == {}
-        persist.assert_not_awaited()
-        get_binding.assert_not_awaited()
-        persist_conversation.assert_not_awaited()
+        assert deps.sessions == {
+            "project__thread_discord-channel-linear-thread": "codex:scheduled-thread"
+        }
+        persist.assert_awaited_once_with(
+            GroupFolder("project__thread_discord-channel-linear-thread"),
+            SessionId("codex:scheduled-thread"),
+        )
+        get_binding.assert_awaited_once_with(ChatJid("discord:channel:linear-thread"))
+        persist_conversation.assert_awaited_once_with(
+            conversation_id,
+            SessionId("codex:scheduled-thread"),
+        )
         update_checkpoint.assert_awaited_once_with(
             "project__thread_discord-channel-linear-thread",
             "codex:scheduled-thread",

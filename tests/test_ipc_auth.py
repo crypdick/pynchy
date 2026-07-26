@@ -19,7 +19,7 @@ from pynchy.state import (
     get_task_run_logs,
     set_workspace_profile,
 )
-from pynchy.types import ScheduledTask, WorkspaceProfile
+from pynchy.types import ScheduledTask, SessionPolicy, WorkspaceProfile
 
 ADMIN_GROUP = WorkspaceProfile(
     jid="admin-1@g.us",
@@ -203,7 +203,7 @@ class TestPauseTaskAuth:
                 prompt="admin task",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -217,7 +217,7 @@ class TestPauseTaskAuth:
                 prompt="other task",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -267,7 +267,7 @@ class TestResumeTaskAuth:
                 prompt="paused task",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="paused",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -318,7 +318,7 @@ class TestCancelTaskAuth:
                 prompt="cancel me",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=None,
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -337,7 +337,7 @@ class TestCancelTaskAuth:
                 prompt="my task",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=None,
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -361,7 +361,7 @@ class TestCancelTaskAuth:
                 prompt="not yours",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=None,
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -578,7 +578,7 @@ class TestScheduledTaskIsolation:
         )
 
         tasks = await get_all_tasks()
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.CONTINUE
 
     async def test_accepts_isolated_context(self, deps):
         await dispatch(
@@ -596,7 +596,7 @@ class TestScheduledTaskIsolation:
         )
 
         tasks = await get_all_tasks()
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
 
     async def test_defaults_invalid_context_mode_to_isolated(self, deps):
         await dispatch(
@@ -614,7 +614,7 @@ class TestScheduledTaskIsolation:
         )
 
         tasks = await get_all_tasks()
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
 
     async def test_defaults_missing_context_mode_to_isolated(self, deps):
         await dispatch(
@@ -631,7 +631,7 @@ class TestScheduledTaskIsolation:
         )
 
         tasks = await get_all_tasks()
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
 
 
 # --- register_group success ---
@@ -771,7 +771,7 @@ class TestAuthorizedTaskActionEdges:
                 prompt="should not change",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",

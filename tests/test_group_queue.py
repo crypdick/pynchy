@@ -79,8 +79,8 @@ class TestGroupQueue:
         assert queue.has_active_host_process("group-one") is True
         assert queue.release_host_process(second_lease) is False
 
-    async def test_host_process_cannot_overwrite_an_active_group(self, queue: GroupQueue) -> None:
-        """A direct host turn must not replace an active task's process metadata."""
+    async def test_host_process_attaches_to_active_queue_slot(self, queue: GroupQueue) -> None:
+        """A queued turn exposes its direct-host worker without taking a second slot."""
         task_complete = asyncio.Event()
 
         async def task_fn() -> None:
@@ -90,8 +90,16 @@ class TestGroupQueue:
         await asyncio.sleep(0.02)
         assert queue.is_active_task("group1@g.us") is True
 
-        with pytest.raises(RuntimeError, match="Cannot start a host process"):
-            queue.acquire_host_process("group1@g.us")
+        lease = queue.acquire_host_process("group1@g.us")
+        assert lease.owns_slot is False
+        assert queue.register_host_process(
+            lease,
+            None,
+            "host-agent-runner",
+            "group-one",
+        )
+        assert queue.release_host_process(lease) is False
+        assert queue.is_active_task("group1@g.us") is True
 
         task_complete.set()
         await asyncio.sleep(0.05)
@@ -109,7 +117,7 @@ class TestGroupQueue:
                 new_callable=AsyncMock,
             ),
             patch(
-                "pynchy.host.orchestrator.concurrency.stop_host_process",
+                "pynchy.host.orchestrator.queue_shutdown.stop_host_process",
                 new_callable=AsyncMock,
             ) as stop_host,
             patch(

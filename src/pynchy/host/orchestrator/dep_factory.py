@@ -174,6 +174,9 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
         async def unregister_workspace(self, jid: str) -> None:
             await app.unregister_workspace(jid)
 
+        async def rebind_workspace(self, profile: WorkspaceProfile) -> None:
+            await app.rebind_workspace(profile)
+
         async def bind_session(self, folder: str, session_id: SessionId) -> None:
             await app.bind_routed_session(folder, session_id)
 

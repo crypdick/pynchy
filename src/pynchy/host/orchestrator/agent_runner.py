@@ -3,12 +3,10 @@
 Supports two execution paths:
   Cold path: first message or after reset — spawn container, create session
   Warm path: subsequent messages — send via IPC to existing session
-  One-shot: scheduled tasks — spawn fresh with session for real-time streaming
 """
 
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -27,7 +25,6 @@ from pynchy.host.container_manager import (
 )
 from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
-    oneshot_container_name,
     stable_container_name,
 )
 from pynchy.host.learning.skill_activation import refresh_learned_agent_skills
@@ -43,8 +40,8 @@ from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
-from pynchy.state import clear_session, get_in_flight_turn
-from pynchy.types import CheckpointControlState, ContainerInput, GroupFolder, WorkspaceProfile
+from pynchy.state import clear_session
+from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -179,8 +176,8 @@ async def _await_query(
 async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
     """Spawn a container, create a session, and wait for the query to complete.
 
-    Shared by _cold_start and _run_scheduled_task to avoid duplicating the
-    spawn → register → create_session → set_handler → await_query sequence.
+    Keeps the spawn → register → create_session → set_handler → await-query
+    sequence together for every durable cold start.
     """
     try:
         proc, container_name, _mounts, mcp_startup_failures = await _spawn_container(
@@ -193,7 +190,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         logger.error("Failed to spawn container", error=str(exc), container=request.container_name)
         return "error"
 
-    if mcp_startup_failures and not request.input_data.is_scheduled_task:
+    if mcp_startup_failures:
         await notify_mcp_startup_failures(
             request.deps.broadcast_host_message,
             request.chat_jid,
@@ -205,6 +202,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         container_name,
         proc,
         idle_timeout_override=request.idle_timeout,
+        invocation_ts=request.input_data.invocation_ts,
     )
     request.deps.queue.register_process(
         request.chat_jid,
@@ -301,56 +299,6 @@ async def _cold_start(
     )
 
 
-async def _run_scheduled_execution(
-    deps: AgentRunnerDeps,
-    group: WorkspaceProfile,
-    chat_jid: str,
-    messages: list[dict[str, Any]],
-    ctx: PreContainerResult,
-) -> str:
-    """Run one scheduled invocation in the profile's selected execution mode."""
-    host_cwd = _host_execution_cwd(group.folder)
-    if host_cwd is None:
-        # The one-shot container has a fresh provider home, so it cannot
-        # resume a durable interactive Codex rollout. Pynchy's in-flight turn
-        # supplies its own semantic recovery context when a task restarts.
-        logger.info(
-            "run_agent scheduled task (one-shot)",
-            group=group.name,
-            snapshot_ms=round(ctx.snapshot_ms),
-        )
-        return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
-
-    interrupted = False
-    result: str | None = None
-    try:
-        result = await _run_host_execution(
-            deps,
-            group,
-            chat_jid,
-            messages,
-            ctx,
-            host_cwd,
-            build_container_input,
-            is_scheduled_task=True,
-        )
-    except asyncio.CancelledError:
-        interrupted = True
-        raise
-    except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"
-        logger.exception("Scheduled host task error", group=group.name)
-        return "error"
-    else:
-        return result
-    finally:
-        if not interrupted and not await _paused_session_must_survive(ctx.turn_id, result):
-            # Mirror scheduled-container teardown: the host runner may have
-            # published a provider session while streaming its final output.
-            await destroy_session(group.folder)
-            await clear_session(GroupFolder(group.folder))
-            deps.sessions.pop(group.folder, None)
-
-
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -373,9 +321,9 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     """Run the container agent for a group. Returns 'success' or 'error'.
 
     This is the single public entry point for all agent invocations.
-    Uses persistent sessions for interactive messages (warm path reuses an
-    existing container, cold path spawns one). Scheduled tasks use a fresh
-    one-shot invocation in the workspace profile's selected execution mode.
+    Every invocation uses the durable session owned by the visible thread.
+    A live worker is reused when possible; otherwise a disposable worker
+    resumes the stored provider session.
 
     Args:
         is_scheduled_task: Whether this is a scheduled task run.
@@ -388,11 +336,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     run_agent_start = time.monotonic()
     resolved_turn_id = turn_id or new_turn_id()
 
-    # Scheduled tasks need a clean slate — destroy any persistent session first.
-    if is_scheduled_task:
-        await destroy_session(group.folder)
-
-    # Pre-container setup is shared by all paths (warm, cold, scheduled).
+    # Pre-container setup is shared by all durable worker paths.
     ctx = await pre_container_setup(
         PreContainerSetupRequest(
             deps=deps,
@@ -407,15 +351,9 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         )
     )
     ctx.turn_id = resolved_turn_id
-    if is_scheduled_task or resume_session_id is not None:
+    if resume_session_id is not None:
         ctx.session_id = resume_session_id
 
-    # Resolve host mode before the scheduled container branch. Scheduled host
-    # jobs still use one-shot provider state and semantic checkpoint recovery.
-    if is_scheduled_task:
-        return await _run_scheduled_execution(deps, group, chat_jid, messages, ctx)
-
-    # --- Interactive messages: warm/cold session path ---
     agent_core_config = _agent_core_config_from_settings(group.folder)
     if _session_model_mismatch(ctx.session_id, agent_core_config):
         logger.info(
@@ -472,78 +410,3 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     except Exception:  # noqa: BLE001, RUF100 - outer agent boundary returns "error"
         logger.exception("Agent error", group=group.name)
         return "error"
-
-
-# ---------------------------------------------------------------------------
-# Scheduled task path (one-shot, no persistent session)
-# ---------------------------------------------------------------------------
-
-
-async def _run_scheduled_task(
-    deps: AgentRunnerDeps,
-    group: WorkspaceProfile,
-    chat_jid: str,
-    messages: list[dict[str, Any]],
-    ctx: PreContainerResult,
-) -> str:
-    """Run a scheduled task in a one-shot container with real-time output streaming.
-
-    Pre-container setup and session teardown are handled by run_agent before
-    this is called.  Uses _spawn_and_await for the spawn/session/wait sequence.
-
-    On CancelledError (deploy SIGTERM), the session is preserved so the
-    durable in-flight turn can resume the task on restart.
-    """
-    input_data = build_container_input(
-        messages,
-        ctx,
-        chat_jid,
-        group,
-        is_scheduled_task=True,
-    )
-    container_name = oneshot_container_name(group.folder)
-    interrupted = False
-    result: str | None = None
-
-    try:
-        result = await _spawn_and_await(
-            _SpawnAndAwaitRequest(
-                deps=deps,
-                group=group,
-                chat_jid=chat_jid,
-                input_data=input_data,
-                container_name=container_name,
-                ctx=ctx,
-                idle_timeout=get_settings().idle_timeout,
-                label="scheduled task",
-            )
-        )
-    except asyncio.CancelledError:
-        # Deploy SIGTERM — preserve the session referenced by the durable
-        # in-flight turn so startup recovery can continue the same thread.
-        interrupted = True
-        raise
-    except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"
-        logger.exception("Scheduled task error", group=group.name)
-        return "error"
-    else:
-        return result
-    finally:
-        if not interrupted and not await _paused_session_must_survive(ctx.turn_id, result):
-            # Clean up the session created by the one-shot container.
-            # Without this, the workspace appears "active" and receives
-            # deploy resume messages that trigger unnecessary agent runs.
-            await destroy_session(group.folder)
-            await clear_session(GroupFolder(group.folder))
-            deps.sessions.pop(group.folder, None)
-
-
-async def _paused_session_must_survive(turn_id: str | None, result: str | None) -> bool:
-    """Preserve provider state only when a requested pause interrupted the run."""
-    if turn_id is None or result == "success":
-        return False
-    turn = await get_in_flight_turn(turn_id)
-    return turn is not None and turn.control_state in {
-        CheckpointControlState.PAUSE_REQUESTED,
-        CheckpointControlState.PAUSED,
-    }

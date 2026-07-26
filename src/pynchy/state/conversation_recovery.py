@@ -8,7 +8,7 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery anno
 
 from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.conversation.models import ConversationId
-from pynchy.conversation.workspaces import conversation_id_from_folder
+from pynchy.conversation.workspaces import routed_conversation_folder
 from pynchy.state.connection import atomic_write
 
 
@@ -21,7 +21,7 @@ async def prepare_conversation_delivery_recovery() -> int:
     discarded work from post-reset deliveries.
     """
     async with atomic_write() as database:
-        repaired_sessions = await _repair_scheduled_session_bindings(database)
+        migrated_sessions = await _migrate_legacy_scheduled_session_bindings(database)
         await database.execute(
             """
             UPDATE routed_conversations
@@ -80,17 +80,11 @@ async def prepare_conversation_delivery_recovery() -> int:
               )
             """
         )
-        return repaired_sessions + retired.rowcount + released.rowcount
+        return migrated_sessions + retired.rowcount + released.rowcount
 
 
-async def _repair_scheduled_session_bindings(database: Connection) -> int:
-    """Forget routed sessions copied from a scheduled run sharing its control thread.
-
-    Scheduled and routed work use different runtime folders even when they post
-    to the same provider thread. A matching session under both identities can
-    only occur when session binding crosses invocation ownership and uses the
-    shared thread JID instead.
-    """
+async def _migrate_legacy_scheduled_session_bindings(database: Connection) -> int:
+    """Collapse thread-JID runtimes into their routed conversation owner."""
     cursor = await database.execute(
         """
         SELECT conversation.id, conversation.workspace, conversation.session_id,
@@ -101,27 +95,62 @@ async def _repair_scheduled_session_bindings(database: Connection) -> int:
         WHERE conversation.session_id IS NOT NULL
         """
     )
-    repaired = 0
+    migrated = 0
     for row in await cursor.fetchall():
         conversation_id = ConversationId(row["id"])
-        scheduled_folder = dynamic_thread_folder(row["workspace"], row["thread_jid"])
+        legacy_folder = dynamic_thread_folder(row["workspace"], row["thread_jid"])
         sessions_cursor = await database.execute(
             "SELECT group_folder FROM sessions WHERE session_id = ?",
             (row["session_id"],),
         )
         session_folders = [session["group_folder"] for session in await sessions_cursor.fetchall()]
-        if scheduled_folder not in session_folders:
+        if legacy_folder not in session_folders:
             continue
 
         await database.execute(
-            "UPDATE routed_conversations SET session_id = NULL WHERE id = ?",
-            (conversation_id,),
+            """
+            INSERT INTO sessions (group_folder, session_id)
+            VALUES (?, ?)
+            ON CONFLICT(group_folder) DO UPDATE SET
+                session_id = excluded.session_id
+            """,
+            (
+                routed_conversation_folder(row["workspace"], conversation_id),
+                row["session_id"],
+            ),
         )
-        for folder in session_folders:
-            if folder == scheduled_folder or conversation_id_from_folder(folder) == conversation_id:
-                await database.execute(
-                    "DELETE FROM sessions WHERE group_folder = ?",
-                    (folder,),
+        routed_folder = routed_conversation_folder(row["workspace"], conversation_id)
+        await database.execute(
+            """
+            INSERT INTO session_security_taint (
+                group_folder, corruption_tainted, secret_tainted, updated_at
+            )
+            SELECT ?, corruption_tainted, secret_tainted, updated_at
+            FROM session_security_taint
+            WHERE group_folder = ?
+            ON CONFLICT(group_folder) DO UPDATE SET
+                corruption_tainted = MAX(
+                    session_security_taint.corruption_tainted,
+                    excluded.corruption_tainted
+                ),
+                secret_tainted = MAX(
+                    session_security_taint.secret_tainted,
+                    excluded.secret_tainted
+                ),
+                updated_at = MAX(
+                    session_security_taint.updated_at,
+                    excluded.updated_at
                 )
-        repaired += 1
-    return repaired
+            """,
+            (routed_folder, legacy_folder),
+        )
+        await database.execute(
+            "DELETE FROM sessions WHERE group_folder = ?",
+            (legacy_folder,),
+        )
+        await database.execute(
+            "DELETE FROM session_security_taint WHERE group_folder = ?",
+            (legacy_folder,),
+        )
+        migrated += 1
+    return migrated

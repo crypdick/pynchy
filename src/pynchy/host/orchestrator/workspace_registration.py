@@ -21,7 +21,7 @@ from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
 )
 from pynchy.logger import logger
-from pynchy.state import set_workspace_profile
+from pynchy.state import rebind_workspace_profile, set_workspace_profile
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves workspace registration annotations at runtime.
     Channel,
     ServiceTrustConfig,
@@ -42,6 +42,64 @@ class _WorkspaceResolutionChannel(Protocol):
     name: str
 
     async def resolve_chat_jid(self, chat_name: str) -> str | None: ...
+
+
+class _WorkspaceActivityQueue(Protocol):
+    def has_activity(self, group_jid: str) -> bool: ...
+
+
+async def rebind_workspace_runtime(
+    profile: WorkspaceProfile,
+    workspaces: dict[str, WorkspaceProfile],
+    queue: _WorkspaceActivityQueue,
+) -> None:
+    """Move one workspace to an explicitly authorized thread JID."""
+    old_jid = next(
+        (
+            jid
+            for jid, existing in workspaces.items()
+            if existing.folder == profile.folder and jid != profile.jid
+        ),
+        None,
+    )
+    if old_jid is not None and queue.has_activity(old_jid):
+        raise RuntimeError(f"Cannot rebind active workspace {profile.folder!r} from {old_jid!r}")
+    persisted_old_jid = await rebind_workspace_profile(profile)
+    prior_jid = old_jid or persisted_old_jid
+    if prior_jid is not None and prior_jid != profile.jid:
+        workspaces.pop(prior_jid, None)
+    workspaces[profile.jid] = profile
+    logger.info(
+        "Workspace rebound",
+        folder=profile.folder,
+        old_jid=prior_jid,
+        jid=profile.jid,
+    )
+
+
+def available_workspace_groups(
+    chats: list[dict[str, Any]],
+    workspaces: dict[str, WorkspaceProfile],
+    channels: list[Channel],
+) -> list[dict[str, Any]]:
+    """Project visible channel metadata for the agent workspace snapshot."""
+
+    def is_visible(jid: str) -> bool:
+        if jid == "__group_sync__":
+            return False
+        return not channels or any(channel.owns_jid(jid) for channel in channels)
+
+    registered_jids = set(workspaces)
+    return [
+        {
+            "jid": chat["jid"],
+            "name": chat["name"],
+            "lastActivity": chat["last_message_time"],
+            "isRegistered": chat["jid"] in registered_jids,
+        }
+        for chat in chats
+        if is_visible(chat["jid"])
+    ]
 
 
 def resolve_display_name(folder: str) -> str:
@@ -122,9 +180,9 @@ async def ensure_workspace_registered(  # noqa: PLR0913, RUF100 - registration b
         is_admin=resolved.is_admin,
         security=workspace_security(config, resolved),
     )
+    await register_fn(profile)
     workspaces[created_jid] = profile
     folder_to_jid[folder] = created_jid
-    await register_fn(profile)
     logger.info("Registered configured workspace", folder=folder, jid=created_jid)
     return created_jid
 

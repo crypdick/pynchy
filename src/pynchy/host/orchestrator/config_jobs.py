@@ -23,6 +23,7 @@ from pynchy.logger import logger
 from pynchy.state import create_task, get_task_by_id, rebind_task_root, resume_task, update_task
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves job reconciliation annotations at runtime.
     ScheduledTask,
+    SessionPolicy,
     WorkspaceProfile,
 )
 
@@ -73,7 +74,7 @@ class _AgentJobTaskDetails:
     prompt: str
     schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
-    context_mode: Literal["isolated"]
+    session_policy: SessionPolicy
     derived_thread_name: str
 
 
@@ -136,7 +137,7 @@ async def _create_agent_job_task(
             prompt=details.prompt,
             schedule_type=details.schedule_type,
             schedule_value=details.schedule_value,
-            context_mode=details.context_mode,
+            session_policy=details.session_policy,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
             config_job_name=job_name,
@@ -161,8 +162,8 @@ def _agent_job_updates(
         updates["schedule_type"] = details.schedule_type
     if existing.schedule_value != details.schedule_value:
         updates["schedule_value"] = details.schedule_value
-    if existing.context_mode != details.context_mode:
-        updates["context_mode"] = details.context_mode
+    if existing.session_policy is not details.session_policy:
+        updates["session_policy"] = details.session_policy
     if existing.repo_access is not None:
         updates["repo_access"] = None
     if existing.config_job_name != job_name:
@@ -212,7 +213,9 @@ async def reconcile_agent_jobs(
             prompt=prompt,
             schedule_type=schedule_type,
             schedule_value=schedule_value,
-            context_mode="isolated",
+            session_policy=(
+                SessionPolicy.RESET_BEFORE_RUN if job.reset_before_run else SessionPolicy.CONTINUE
+            ),
             derived_thread_name=(f"{context.root_folder} | {job.display_name or job_name}"),
         )
         desired_task_ids.add(task_id)

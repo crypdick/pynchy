@@ -13,6 +13,7 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves queue a
     Awaitable,
     Callable,
 )
+from typing import TypeVar
 
 import pynchy.host.container_manager.process as container_process
 import pynchy.host.container_manager.session as container_session
@@ -30,9 +31,16 @@ from pynchy.host.orchestrator.messaging.outcomes import (
     TURN_RESET,
     ProcessGroupResult,
 )
+from pynchy.host.orchestrator.queue_serialization import (
+    await_message_turn,
+    await_queued_task,
+)
+from pynchy.host.orchestrator.queue_shutdown import shutdown_queue_processes
 from pynchy.host.orchestrator.queue_state import GroupState, HostProcessLease, QueuedTask
 from pynchy.logger import logger
 from pynchy.utils import create_background_task
+
+_ResultT = TypeVar("_ResultT")
 
 
 class GroupQueue:
@@ -152,6 +160,22 @@ class GroupQueue:
         )
         return True
 
+    async def run_serialized_task(
+        self,
+        group_jid: str,
+        task_id: str,
+        fn: Callable[[], Awaitable[_ResultT]],
+    ) -> _ResultT:
+        return await await_queued_task(self.enqueue_task, group_jid, task_id, fn)
+
+    async def run_message_turn(self, group_jid: str) -> ProcessGroupResult:
+        return await await_message_turn(
+            self._get_group,
+            self.enqueue_message_check,
+            group_jid,
+            shutting_down=self._shutting_down,
+        )
+
     def register_process(  # noqa: PLR0913, RUF100 - process registration records all queue cleanup state.
         self,
         group_jid: str,
@@ -231,11 +255,20 @@ class GroupQueue:
         state = self._get_group(group_jid)
         return state.active and state.active_is_task
 
+    def has_activity(self, group_jid: str) -> bool:
+        """Return whether a thread has active or queued work."""
+        state = self._get_group(group_jid)
+        return bool(
+            state.active
+            or state.pending_messages
+            or state.pending_tasks
+            or state.host_process_lease is not None
+        )
+
     def has_active_run(self, group_jid: str) -> bool:
         """Return whether a process or queue-owned turn can still finalize."""
         state = self._get_group(group_jid)
-        proc_alive = state.process is not None and state.process.returncode is None
-        return state.active or proc_alive
+        return state.active or (state.process is not None and state.process.returncode is None)
 
     def has_active_host_process(self, group_folder: str) -> bool:
         """Return whether a direct host agent is waiting for this group's IPC."""
@@ -325,7 +358,7 @@ class GroupQueue:
         # Cooperative signal first
         self.close_stdin(group_jid)
 
-        # Force-stop the container process (for one-shot containers without sessions)
+        # Force-stop a process that survived persistent-session cleanup.
         container_name = state.container_name
         if proc and container_name and proc.returncode is None:
             await container_process.graceful_stop(proc, container_name)
@@ -340,10 +373,14 @@ class GroupQueue:
         state = self._get_group(group_jid)
         state.pending_tasks.clear()
 
-    async def _process_group_messages(self, group_jid: str, state: GroupState) -> None:
+    async def _process_group_messages(
+        self,
+        group_jid: str,
+        state: GroupState,
+    ) -> ProcessGroupResult:
         """Process messages for a group and schedule retry on failure."""
         if not self._process_messages_fn:
-            return
+            return False
 
         result = await self._process_messages_fn(group_jid)
         if result is TURN_PAUSED or result is TURN_RESET:
@@ -355,6 +392,7 @@ class GroupQueue:
             state.retry_count = 0
         else:
             self._schedule_retry(group_jid, state)
+        return result
 
     async def _run_for_group(self, group_jid: str, reason: str) -> None:
         """Run the process_messages_fn for a group.
@@ -371,8 +409,10 @@ class GroupQueue:
             active_count=self._active_count,
         )
 
+        result: ProcessGroupResult = False
+        error: BaseException | None = None
         try:
-            await self._process_group_messages(group_jid, state)
+            result = await self._process_group_messages(group_jid, state)
         except PolicyDeniedError as exc:
             # Deterministic failure — retrying won't change the outcome
             logger.warning(
@@ -381,12 +421,21 @@ class GroupQueue:
                 err=str(exc),
             )
         except Exception:  # noqa: BLE001, RUF100 - message-processing is a task boundary; retry happens on drain.
+            error = RuntimeError(f"Error processing messages for {group_jid}")
             logger.exception(
                 "Error processing messages for group",
                 group_jid=group_jid,
             )
             self._schedule_retry(group_jid, state)
         finally:
+            waiters, state.message_waiters = state.message_waiters, []
+            for waiter in waiters:
+                if waiter.done():
+                    continue
+                if error is not None:
+                    waiter.set_exception(error)
+                else:
+                    waiter.set_result(result)
             state.release()
             self._active_count -= 1
             self._drain_group(group_jid)
@@ -502,42 +551,7 @@ class GroupQueue:
 
     async def shutdown(self) -> None:
         self._shutting_down = True
-        logger.info(
-            "GroupQueue shutdown starting",
-            active_groups=len(self._groups),
+        await shutdown_queue_processes(
+            self._groups,
             active_count=self._active_count,
-        )
-
-        # Destroy all persistent sessions first
-        await container_session.destroy_all_sessions()
-
-        # Stop remaining one-shot runners through their native shutdown path.
-        active: list[tuple[asyncio.subprocess.Process, str, bool]] = []
-        for state in self._groups.values():
-            proc_alive = getattr(state.process, "returncode", None) is None
-            if state.process and state.container_name and proc_alive:
-                active.append((state.process, state.container_name, state.is_host_process))
-
-        if not active:
-            logger.info("GroupQueue shutdown complete (no active containers)")
-            return
-
-        logger.info(
-            "GroupQueue shutting down, stopping containers",
-            active_count=len(active),
-            containers=[name for _, name, _ in active],
-        )
-
-        await asyncio.gather(
-            *(
-                stop_host_process(proc)
-                if is_host_process
-                else container_process.graceful_stop(proc, name)
-                for proc, name, is_host_process in active
-            ),
-            return_exceptions=True,
-        )
-        logger.info(
-            "GroupQueue shutdown complete",
-            stopped_count=len(active),
         )

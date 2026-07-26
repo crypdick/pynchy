@@ -22,7 +22,13 @@ from pynchy.host.orchestrator.workspace_threads import (
     reconcile_workspace_threads,
 )
 from pynchy.state import create_task
-from pynchy.types import InboundFetchResult, OutboundEvent, ScheduledTask, WorkspaceProfile
+from pynchy.types import (
+    InboundFetchResult,
+    OutboundEvent,
+    ScheduledTask,
+    SessionPolicy,
+    WorkspaceProfile,
+)
 
 
 class _ThreadChannel:
@@ -257,7 +263,7 @@ async def test_active_legacy_scheduled_task_blocks_retirement(monkeypatch, tmp_p
             prompt="Do the old task.",
             schedule_type="cron",
             schedule_value="0 9 * * *",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
             next_run=None,
             status="active",
             created_at=datetime.now(UTC).isoformat(),

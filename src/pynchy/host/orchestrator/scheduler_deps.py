@@ -1,31 +1,50 @@
-"""Runtime dependency contracts for scheduled agent turns."""
+"""Runtime dependency contract for scheduled agent execution."""
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.concurrency import GroupQueue
 
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     OnOutput,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ContainerOutput,
+    OutboundEvent,
+    ScheduledTask,
     WorkspaceProfile,
 )
 
 
 @runtime_checkable
-class ScheduledTurnQueue(Protocol):
-    def close_stdin(self, chat_jid: str) -> None: ...
+class SchedulerDependencies(Protocol):
+    """Dependencies shared by the task scheduler and Temporal activities."""
 
-    def boundary_interrupt_requested(self, chat_jid: str) -> bool: ...
-
-    async def interrupt_after_tool_result(self, chat_jid: str) -> bool: ...
-
-
-@runtime_checkable
-class ScheduledTurnDeps(Protocol):
     @property
-    def queue(self) -> ScheduledTurnQueue: ...
+    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
+
+    @property
+    def last_agent_timestamp(self) -> dict[str, str]: ...
+
+    @property
+    def queue(self) -> GroupQueue: ...
+
+    async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
+
+    async def reset_scheduled_context(
+        self,
+        task: ScheduledTask,
+        group: WorkspaceProfile,
+        occurrence_id: str,
+    ) -> None: ...
+
+    async def save_state(self) -> None: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
         self,

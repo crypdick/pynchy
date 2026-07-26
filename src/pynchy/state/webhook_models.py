@@ -34,7 +34,7 @@ class WebhookReceipt:
         if self.disposition == "routed" and (
             self.task_id is not None or self.ignored_reason is not None
         ):
-            raise ValueError("Routed webhook receipts cannot create isolated tasks")
+            raise ValueError("Routed webhook receipts cannot create separate tasks")
         if self.disposition == "notified" and (
             self.task_id is not None or self.ignored_reason is not None
         ):

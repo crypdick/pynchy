@@ -31,7 +31,7 @@ from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.orchestrator import workspace_config
 from pynchy.logger import logger
 from pynchy.state import create_task
-from pynchy.types import ScheduledTask, WorkspaceProfile
+from pynchy.types import ScheduledTask, SessionPolicy, WorkspaceProfile
 
 
 @runtime_checkable
@@ -227,7 +227,7 @@ async def _create_periodic_agent(request: CreatePeriodicAgentRequest, deps: IpcD
             prompt=request.prompt,
             schedule_type="cron",
             schedule_value=request.schedule,
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             status="active",
             created_at=datetime.now(UTC).isoformat(),
         )
