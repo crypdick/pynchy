@@ -62,7 +62,9 @@ Use `uv run python` (never bare `python`/`python3`) and `uvx` for CLI tools (`uv
 Run every Graphify workflow from the Git root. Pass `src/` as the scan target
 and write output beneath the root `graphify-out/`; never change into `src/`
 before running Graphify. Use `scripts/graphify_graph.py` for the deterministic
-tracked graph. The wrapper rejects visible nested `graphify-out/` paths.
+tracked graph. The wrapper rejects visible nested `graphify-out/` paths. Commit
+only `graph.json` and the manually reviewed `GRAPH_REPORT.md`; keep query
+memories, reflections, wiki exports, and other generated output local.
 
 ## Prek Hooks
 

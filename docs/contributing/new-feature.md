@@ -130,9 +130,11 @@ new-feature teardown <slug>
 Merge stops the development sandbox, starts a fresh deterministic runtime from the current
 worktree, and runs the runtime suite. Its harness always stops live runtime resources before
 prek hooks run. It then performs a no-commit merge into `main` and runs both Pynchy and
-agent-runner tests against the integrated tree. A failed check aborts the merge; runtime logs and
-data remain available for diagnosis. Merge does not push `main`, so deployment remains an explicit
-operator action.
+agent-runner tests against the integrated tree. Before those tests, it rebuilds and stages the
+tracked graph from the integrated Git index; see the
+[Graphify freshness policy](../architecture/service-boundaries-roadmap.md#4-enforce-graphify-freshness-not-graphify-conclusions).
+A failed check aborts the merge; runtime logs and data remain available for diagnosis. Merge does
+not push `main`, so deployment remains an explicit operator action.
 
 Teardown stops any remaining processes, removes only the feature's namespaced LiteLLM and
 PostgreSQL resources, and then removes the worktree, branch, manifest entry, and local databases.

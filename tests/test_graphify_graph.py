@@ -7,13 +7,10 @@ import re
 import shutil
 import subprocess  # noqa: S404 - tests invoke git in isolated temporary repositories.
 import unicodedata
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 from scripts import graphify_graph
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _normalize_id(value: str) -> str:
@@ -206,3 +203,28 @@ def test_update_ignores_graphify_output_in_ignored_worktrees(tmp_path: Path) -> 
     graphify_graph.update_graph(repo, builder=lambda _: b"{}\n")
 
     assert (repo / "graphify-out" / "graph.json").read_bytes() == b"{}\n"
+
+
+@pytest.mark.parametrize(
+    ("path", "ignored"),
+    [
+        ("graphify-out/memory/query.md", True),
+        ("graphify-out/reflections/LESSONS.md", True),
+        ("graphify-out/wiki/index.md", True),
+        ("graphify-out/GRAPH_REPORT.md", False),
+        ("graphify-out/graph.json", False),
+    ],
+)
+def test_repository_tracks_only_reviewed_graphify_outputs(path: str, ignored: bool) -> None:
+    """Raw graph memory stays local while the graph and reviewed report remain visible."""
+    repo = Path(__file__).parents[1]
+    git = shutil.which("git")
+    assert git is not None
+
+    result = subprocess.run(  # noqa: S603 - fixed git query against repository policy.
+        [git, "check-ignore", "--no-index", "-q", "--", path],
+        cwd=repo,
+        check=False,
+    )
+
+    assert (result.returncode == 0) is ignored
