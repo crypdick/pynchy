@@ -1,5 +1,7 @@
 """Behavior tests for the fast semantic action marker audit."""
 
+import os
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -44,11 +46,32 @@ CASES = [
     )
 
 
+def test_extracts_imported_pytest_mark_alias() -> None:
+    source = """
+from pytest import mark as pm
+
+@pm.action("task.create")
+def test_create():
+    pass
+"""
+
+    assert extract_action_markers(source, path=Path("test_tasks.py")) == ("task.create",)
+
+
 @pytest.mark.parametrize(
     ("marker", "message"),
     [
         (
             "@pytest.mark.action(ACTION_ID)\ndef test_dynamic():\n    pass\n",
+            "action marker IDs must be string literals",
+        ),
+        (
+            (
+                "from pytest import mark as pm\n"
+                "@pm.action(ACTION_ID)\n"
+                "def test_dynamic_alias():\n"
+                "    pass\n"
+            ),
             "action marker IDs must be string literals",
         ),
         (
@@ -72,10 +95,25 @@ def test_rejects_unauditable_action_markers(marker: str, message: str) -> None:
         extract_action_markers(source, path=Path("test_invalid.py"))
 
 
+def test_rejects_direct_action_marker_factory_alias() -> None:
+    source = """
+import pytest
+
+action = pytest.mark.action
+
+@action("task.create")
+def test_create():
+    pass
+"""
+
+    with pytest.raises(ActionCoverageAuditError, match="factory aliases are not supported"):
+        extract_action_markers(source, path=Path("test_invalid.py"))
+
+
 def test_audit_reports_missing_and_unknown_literal_actions(tmp_path: Path) -> None:
     test_file = tmp_path / "test_actions.py"
     test_file.write_text(
-        'import pytest\n@pytest.mark.action("task.unknown")\ndef test_action():\n    pass\n',
+        'from pytest import mark as pm\n@pm.action("task.unknown")\ndef test_action():\n    pass\n',
         encoding="utf-8",
     )
 
@@ -117,13 +155,37 @@ def test_collection_command_rejects_an_empty_marker_file_set() -> None:
         pytest_collection_command(())
 
 
-def test_collection_failure_return_code_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_collection_failure_preserves_environment_and_clears_pytest_addopts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FailedCollection:
         returncode = 7
 
+    received: dict[str, object] = {}
+
+    def fake_run(command, *, check, env):
+        received.update(command=command, check=check, env=env)
+        return FailedCollection()
+
+    monkeypatch.setenv("PYTEST_ADDOPTS", "tests")
+    monkeypatch.setenv("ACTION_COVERAGE_TEST_SENTINEL", "preserved")
     monkeypatch.setattr(
         "scripts.prek_hooks.check_action_coverage.subprocess.run",
-        lambda command, *, check: FailedCollection(),
+        fake_run,
     )
 
     assert collect_marked_tests((Path("tests/test_one.py"),)) == 7
+    assert received["check"] is False
+    environment = received["env"]
+    assert isinstance(environment, dict)
+    assert not environment["PYTEST_ADDOPTS"]
+    assert environment["ACTION_COVERAGE_TEST_SENTINEL"] == "preserved"
+    assert environment is not os.environ
+
+
+def test_prek_action_gate_runs_for_deletion_only_commits() -> None:
+    config = tomllib.loads(Path("prek.toml").read_text(encoding="utf-8"))
+    hooks = next(repo["hooks"] for repo in config["repos"] if repo["repo"] == "local")
+    action_coverage = next(hook for hook in hooks if hook["id"] == "action-coverage")
+
+    assert action_coverage["always_run"] is True

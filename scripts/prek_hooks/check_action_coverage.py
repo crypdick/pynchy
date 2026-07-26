@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import os
 import subprocess  # noqa: S404 - invokes the current Python interpreter with fixed pytest flags.
 import sys
 from dataclasses import dataclass
@@ -28,6 +29,12 @@ class ActionMarkerAudit:
     marker_files: tuple[Path, ...]
 
 
+@dataclass(frozen=True)
+class _PytestBindings:
+    module_aliases: frozenset[str]
+    mark_aliases: frozenset[str]
+
+
 def _attribute_path(node: ast.expr) -> tuple[str, ...] | None:
     parts: list[str] = []
     while isinstance(node, ast.Attribute):
@@ -39,53 +46,71 @@ def _attribute_path(node: ast.expr) -> tuple[str, ...] | None:
     return tuple(reversed(parts))
 
 
-def _pytest_aliases(tree: ast.AST) -> frozenset[str]:
-    aliases = {"pytest"}
+def _pytest_bindings(tree: ast.AST) -> _PytestBindings:
+    module_aliases = {"pytest"}
+    mark_aliases: set[str] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Import):
-            continue
-        aliases.update(alias.asname or "pytest" for alias in node.names if alias.name == "pytest")
-    return frozenset(aliases)
+        if isinstance(node, ast.Import):
+            module_aliases.update(
+                alias.asname or "pytest" for alias in node.names if alias.name == "pytest"
+            )
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            mark_aliases.update(
+                alias.asname or "mark" for alias in node.names if alias.name == "mark"
+            )
+    return _PytestBindings(frozenset(module_aliases), frozenset(mark_aliases))
 
 
-def _is_pytest_call(call: ast.Call, aliases: frozenset[str], *attributes: str) -> bool:
+def _is_pytest_call(call: ast.Call, bindings: _PytestBindings, *attributes: str) -> bool:
     path = _attribute_path(call.func)
     return (
         path is not None
         and len(path) == len(attributes) + 1
-        and (path[0] in aliases and path[1:] == attributes)
+        and (path[0] in bindings.module_aliases and path[1:] == attributes)
     )
 
 
-def _action_calls_in_marks(node: ast.expr, aliases: frozenset[str]) -> tuple[ast.Call, ...]:
-    if isinstance(node, ast.Call) and _is_pytest_call(node, aliases, "mark", "action"):
+def _is_action_reference(node: ast.expr, bindings: _PytestBindings) -> bool:
+    path = _attribute_path(node)
+    if path is None:
+        return False
+    return (
+        len(path) == 3 and path[0] in bindings.module_aliases and path[1:] == ("mark", "action")
+    ) or (len(path) == 2 and path[0] in bindings.mark_aliases and path[1] == "action")
+
+
+def _is_action_call(call: ast.Call, bindings: _PytestBindings) -> bool:
+    return _is_action_reference(call.func, bindings)
+
+
+def _action_calls_in_marks(node: ast.expr, bindings: _PytestBindings) -> tuple[ast.Call, ...]:
+    if isinstance(node, ast.Call) and _is_action_call(node, bindings):
         return (node,)
     if isinstance(node, (ast.List, ast.Tuple)):
         return tuple(
             action_call
             for element in node.elts
-            for action_call in _action_calls_in_marks(element, aliases)
+            for action_call in _action_calls_in_marks(element, bindings)
         )
     return ()
 
 
-def _attached_action_calls(tree: ast.AST, aliases: frozenset[str]) -> set[int]:
+def _attached_action_calls(tree: ast.AST, bindings: _PytestBindings) -> set[int]:
     attached: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             attached.update(
                 id(decorator)
                 for decorator in node.decorator_list
-                if isinstance(decorator, ast.Call)
-                and _is_pytest_call(decorator, aliases, "mark", "action")
+                if isinstance(decorator, ast.Call) and _is_action_call(decorator, bindings)
             )
-        if not isinstance(node, ast.Call) or not _is_pytest_call(node, aliases, "param"):
+        if not isinstance(node, ast.Call) or not _is_pytest_call(node, bindings, "param"):
             continue
         for keyword in node.keywords:
             if keyword.arg == "marks":
                 attached.update(
                     id(action_call)
-                    for action_call in _action_calls_in_marks(keyword.value, aliases)
+                    for action_call in _action_calls_in_marks(keyword.value, bindings)
                 )
     return attached
 
@@ -105,13 +130,31 @@ def extract_action_markers(source: str, *, path: Path) -> tuple[str, ...]:
             f"{path}:{line}:{column}: invalid Python syntax: {error.msg}"
         ) from error
 
-    aliases = _pytest_aliases(tree)
-    attached = _attached_action_calls(tree, aliases)
+    bindings = _pytest_bindings(tree)
+    action_factory_aliases = sorted(
+        (
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
+            and node.value is not None
+            and _is_action_reference(node.value, bindings)
+        ),
+        key=lambda node: (node.lineno, node.col_offset),
+    )
+    if action_factory_aliases:
+        alias_errors = [
+            f"{_location(path, value)}: action marker factory aliases are not supported; "
+            "call pytest.mark.action directly"
+            for value in action_factory_aliases
+        ]
+        raise ActionCoverageAuditError("\n".join(alias_errors))
+
+    attached = _attached_action_calls(tree, bindings)
     action_calls = sorted(
         (
             node
             for node in ast.walk(tree)
-            if isinstance(node, ast.Call) and _is_pytest_call(node, aliases, "mark", "action")
+            if isinstance(node, ast.Call) and _is_action_call(node, bindings)
         ),
         key=lambda node: (node.lineno, node.col_offset),
     )
@@ -204,9 +247,12 @@ def pytest_collection_command(marker_files: Sequence[Path]) -> tuple[str, ...]:
 
 def collect_marked_tests(marker_files: Sequence[Path]) -> int:
     """Ask pytest to prove the statically valid markers attach to collected tests."""
+    environment = os.environ.copy()
+    environment["PYTEST_ADDOPTS"] = ""
     completed = subprocess.run(  # noqa: S603 - fixed interpreter/module and flags.
         pytest_collection_command(marker_files),
         check=False,
+        env=environment,
     )
     return completed.returncode
 

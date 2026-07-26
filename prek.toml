@@ -178,6 +178,7 @@ name = "Check semantic action coverage"
 entry = "uv run python scripts/prek_hooks/check_action_coverage.py"
 language = "system"
 pass_filenames = false
+always_run = true
 files = "^(src/pynchy/.*action.*\\.py|tests/|scripts/prek_hooks/check_action_coverage\\.py)"
 
 [[repos.hooks]]
