@@ -172,6 +172,8 @@ def build_core_config(container_input: ContainerInput) -> AgentCoreConfig:
 
     # Build extra config from agent_core_config
     extra = dict(container_input.agent_core_config or {})
+    if container_input.query_id is not None:
+        extra["pynchy_query_id"] = container_input.query_id
     if container_input.turn_id:
         metadata = dict(extra.get("metadata") or {})
         metadata.update(
@@ -349,7 +351,9 @@ async def _create_and_start_core(
         core_ref = f"{container_input.agent_core_module}.{container_input.agent_core_class}"
         write_output(
             ContainerOutput(
-                status="error", error=f"Failed to create agent core '{core_ref}': {exc}"
+                status="error",
+                error=f"Failed to create agent core '{core_ref}': {exc}",
+                query_id=container_input.query_id,
             )
         )
         sys.exit(1)
@@ -357,14 +361,24 @@ async def _create_and_start_core(
     try:
         await core.start()
     except Exception as exc:  # allow: exception-handling; report to host  # noqa: BLE001, RUF100
-        write_output(ContainerOutput(status="error", error=f"Failed to start agent core: {exc}"))
+        write_output(
+            ContainerOutput(
+                status="error",
+                error=f"Failed to start agent core: {exc}",
+                query_id=container_input.query_id,
+            )
+        )
         sys.exit(1)
 
     return core, core_config
 
 
 async def _run_single_query(
-    core: AgentCore, prompt: str, session_id: str | None
+    core: AgentCore,
+    prompt: str,
+    session_id: str | None,
+    *,
+    query_id: str | None,
 ) -> tuple[str | None, int, bool]:
     """Run one query to completion, streaming events to the host.
 
@@ -398,15 +412,20 @@ async def _run_single_query(
 
         # Convert event to output and write
         output = event_to_output(event, new_session_id or session_id)
+        output.query_id = query_id
         write_output(output)
 
     return new_session_id, result_count, closed_during_query
 
 
 def apply_followup_metadata(
-    core_config: AgentCoreConfig, *, turn_id: str | None, metadata: dict[str, object]
+    core_config: AgentCoreConfig,
+    *,
+    turn_id: str | None,
+    query_id: str | None = None,
+    metadata: dict[str, object],
 ) -> None:
-    if turn_id is None and not metadata:
+    if turn_id is None and query_id is None and not metadata:
         return
 
     merged = dict(core_config.extra.get("metadata") or {})
@@ -415,6 +434,13 @@ def apply_followup_metadata(
         core_config.turn_id = turn_id
         merged.update(_turn_metadata(turn_id, core_config.chat_jid, core_config.group_folder))
     core_config.extra["metadata"] = merged
+    if query_id is not None:
+        core_config.extra["pynchy_query_id"] = query_id
+
+
+def _query_id(core_config: AgentCoreConfig) -> str | None:
+    value = core_config.extra.get("pynchy_query_id")
+    return value if isinstance(value, str) else None
 
 
 async def _drive_conversation_loop(
@@ -426,7 +452,10 @@ async def _drive_conversation_loop(
     """Run the conversation loop until the host closes the IPC channel."""
     while True:
         new_session_id, result_count, closed_during_query = await _run_single_query(
-            core, prompt, session_id
+            core,
+            prompt,
+            session_id,
+            query_id=_query_id(core_config),
         )
 
         # Update session ID from core after query
@@ -443,7 +472,14 @@ async def _drive_conversation_loop(
             break
 
         # Emit session update so host can track it
-        write_output(ContainerOutput(status="success", result=None, new_session_id=session_id))
+        write_output(
+            ContainerOutput(
+                status="success",
+                result=None,
+                new_session_id=session_id,
+                query_id=_query_id(core_config),
+            )
+        )
 
         log("Query ended, waiting for next IPC message...")
 
@@ -452,7 +488,12 @@ async def _drive_conversation_loop(
             log("Close sentinel received, exiting")
             break
 
-        apply_followup_metadata(core_config, turn_id=followup.turn_id, metadata=followup.metadata)
+        apply_followup_metadata(
+            core_config,
+            turn_id=followup.turn_id,
+            query_id=followup.query_id,
+            metadata=followup.metadata,
+        )
         log(f"Got new message ({len(followup.text)} chars), starting new query")
         prompt = followup.text
 
@@ -471,7 +512,12 @@ async def _run_conversation_loop(
         error_message = str(exc)
         log(f"Agent error: {error_message}")
         write_output(
-            ContainerOutput(status="error", new_session_id=session_id, error=error_message)
+            ContainerOutput(
+                status="error",
+                new_session_id=session_id,
+                error=error_message,
+                query_id=_query_id(core_config),
+            )
         )
         sys.exit(1)
     finally:

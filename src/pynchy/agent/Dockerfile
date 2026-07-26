@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     jq \
     procps \
+    rsync \
+    sqlite3 \
     sudo \
     gpg \
     libmagic1 \

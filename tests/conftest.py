@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -73,6 +74,49 @@ __all__ = [
     "init_test_database",
     "make_host_action_catalog",
 ]
+
+_CGROUP_MEMORY_LIMIT_PATHS = (
+    Path("/sys/fs/cgroup/memory.max"),
+    Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+)
+_UNBOUNDED_CGROUP_LIMIT = 1 << 60
+_PYTEST_CONTROLLER_RESERVE_BYTES = 768 * 1024 * 1024
+_PYTEST_WORKER_BUDGET_BYTES = 1024 * 1024 * 1024
+
+
+def cgroup_memory_limit_bytes(
+    paths: tuple[Path, ...] = _CGROUP_MEMORY_LIMIT_PATHS,
+) -> int | None:
+    """Read a finite cgroup v2 or v1 memory limit."""
+    for path in paths:
+        try:
+            raw_limit = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if raw_limit == "max":
+            continue
+        try:
+            limit = int(raw_limit)
+        except ValueError:
+            continue
+        if 0 < limit < _UNBOUNDED_CGROUP_LIMIT:
+            return limit
+    return None
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int | None:
+    """Scale ``-n auto`` down when the test process is memory-constrained."""
+    _ = config
+    configured = os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS")
+    if configured is not None and configured.isdigit() and int(configured) > 0:
+        return int(configured)
+
+    memory_limit = cgroup_memory_limit_bytes()
+    if memory_limit is None:
+        return None
+    available_for_workers = max(0, memory_limit - _PYTEST_CONTROLLER_RESERVE_BYTES)
+    memory_workers = max(1, available_for_workers // _PYTEST_WORKER_BUDGET_BYTES)
+    return min(os.process_cpu_count() or 1, memory_workers)
 
 
 def pytest_addoption(parser):

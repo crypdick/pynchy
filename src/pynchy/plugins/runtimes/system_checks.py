@@ -32,6 +32,7 @@ _CONTAINER_BUILD_STATE_CLEANUP_FAILED_ERROR = (
 _PLUGIN_REQUIREMENTS_GENERATION_FAILED_ERROR = "Failed to generate container plugin requirements"
 _RUNTIME_HARNESS_ENV = "PYNCHY_RUNTIME_HARNESS"
 _AGENT_IMAGE_LOCK = threading.Lock()
+_RUNTIME_INSPECT_TIMEOUT_SECONDS = 30
 
 
 def _generate_plugin_requirements(container_dir: Path, project_root: Path) -> None:
@@ -64,6 +65,7 @@ def _ensure_agent_image_available(runtime: object) -> None:
         [runtime_cli, "image", "inspect", image],
         capture_output=True,
         check=False,
+        timeout=_RUNTIME_INSPECT_TIMEOUT_SECONDS,
     )
     if result.returncode != 0:
         if not cleanup_runtime_build_state(runtime):

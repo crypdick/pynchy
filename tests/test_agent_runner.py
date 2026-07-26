@@ -11,7 +11,7 @@ import json
 # We need to adjust the import path since agent_runner lives in src/pynchy/agent/
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -30,6 +30,7 @@ from agent_runner.main import (
     build_sdk_messages,
     event_to_output,
 )
+from agent_runner.main import main as run_agent_main
 from agent_runner.models import ContainerInput, ContainerOutput
 
 # ---------------------------------------------------------------------------
@@ -399,6 +400,59 @@ class TestEventToOutput:
         assert out.status == "success"
 
 
+class TestCoreStartupErrors:
+    """Startup failures retain their query-generation correlation."""
+
+    @staticmethod
+    def _input() -> ContainerInput:
+        return ContainerInput(
+            messages=[],
+            group_folder="test-group",
+            chat_jid="test@g.us",
+            is_admin=False,
+            query_id="query-startup",
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_failure_keeps_query_id(self, tmp_path: Path):
+        outputs: list[ContainerOutput] = []
+        input_dir = tmp_path / "input"
+        with (
+            patch("agent_runner.main.read_initial_input", return_value=self._input()),
+            patch("agent_runner.main.build_initial_prompt", return_value="prompt"),
+            patch("agent_runner.main.create_agent_core", side_effect=RuntimeError("bad core")),
+            patch("agent_runner.main.write_output", side_effect=outputs.append),
+            patch("agent_runner.main.IPC_INPUT_DIR", input_dir),
+            patch("agent_runner.main.IPC_INPUT_CLOSE_SENTINEL", input_dir / "_close"),
+            pytest.raises(SystemExit),
+        ):
+            await run_agent_main()
+
+        assert outputs[0].query_id == "query-startup"
+        assert outputs[0].error is not None
+        assert "Failed to create agent core" in outputs[0].error
+
+    @pytest.mark.asyncio
+    async def test_start_failure_keeps_query_id(self, tmp_path: Path):
+        outputs: list[ContainerOutput] = []
+        input_dir = tmp_path / "input"
+        core = AsyncMock()
+        core.start.side_effect = RuntimeError("startup failed")
+        with (
+            patch("agent_runner.main.read_initial_input", return_value=self._input()),
+            patch("agent_runner.main.build_initial_prompt", return_value="prompt"),
+            patch("agent_runner.main.create_agent_core", return_value=core),
+            patch("agent_runner.main.write_output", side_effect=outputs.append),
+            patch("agent_runner.main.IPC_INPUT_DIR", input_dir),
+            patch("agent_runner.main.IPC_INPUT_CLOSE_SENTINEL", input_dir / "_close"),
+            pytest.raises(SystemExit),
+        ):
+            await run_agent_main()
+
+        assert outputs[0].query_id == "query-startup"
+        assert outputs[0].error == "Failed to start agent core: startup failed"
+
+
 # ---------------------------------------------------------------------------
 # should_close
 # ---------------------------------------------------------------------------
@@ -449,6 +503,7 @@ class TestDrainIpcInput:
                     "type": "message",
                     "text": "hello",
                     "turn_id": "turn_2",
+                    "query_id": "query_2",
                     "metadata": {"pynchy_turn_id": "turn_2", "source": "warm"},
                 }
             )
@@ -459,6 +514,7 @@ class TestDrainIpcInput:
         assert len(result) == 1
         assert result[0].text == "hello"
         assert result[0].turn_id == "turn_2"
+        assert result[0].query_id == "query_2"
         assert result[0].metadata == {"pynchy_turn_id": "turn_2", "source": "warm"}
 
     def test_multiple_messages_sorted(self, tmp_path):
@@ -666,6 +722,8 @@ class TestBuildHostCoreConfig:
         ci = ContainerInput(
             messages=[],
             session_id="sess-1",
+            turn_id="turn-host",
+            query_id="query-host",
             group_folder="admin-host",
             chat_jid="slack:C123",
             is_admin=True,
@@ -681,6 +739,8 @@ class TestBuildHostCoreConfig:
 
         assert config.cwd == "/workspace/project"
         assert config.session_id == "sess-1"
+        assert config.turn_id == "turn-host"
+        assert config.extra["pynchy_query_id"] == "query-host"
         assert config.group_folder == "admin-host"
         assert config.chat_jid == "slack:C123"
         assert config.is_admin is True
@@ -696,7 +756,10 @@ class TestBuildHostCoreConfig:
             "PYNCHY_IPC_DIR": str(ipc_dir),
         }
         assert config.plugin_hooks == [{"name": "audit", "module_path": str(hook_path)}]
-        assert config.extra == {"approval_policy": "never"}
+        assert config.extra == {
+            "approval_policy": "never",
+            "pynchy_query_id": "query-host",
+        }
 
     def test_host_core_routes_direct_mcp_servers_through_local_proxy(self):
         ci = ContainerInput(

@@ -42,12 +42,20 @@ def _get_output_handler(group_folder: str) -> OnOutput | None:
     return session_manager.get_session_output_handler(GroupFolder(group_folder))
 
 
-def _signal_query_done(group_folder: str) -> None:
-    """Signal query completion for a group's session."""
+def _signal_query_progress(group_folder: str, query_id: str | None) -> bool | None:
+    """Refresh the active query, or report output from another generation."""
+    session = session_manager.get_session(GroupFolder(group_folder))
+    if session is None or session.output_handler is None:
+        return None
+    return session.signal_query_progress(query_id) is not False
+
+
+def _signal_query_done(group_folder: str, query_id: str | None) -> bool:
+    """Signal query completion for a group's matching active generation."""
     session = session_manager.get_session(GroupFolder(group_folder))
     if session is None:
-        return
-    session.signal_query_done()
+        return False
+    return session.signal_query_done(query_id) is not False
 
 
 async def process_output_file(
@@ -90,6 +98,17 @@ async def _handle_claimed_output_file(file_path: Path, source_group: str) -> Non
 
     output = parse_container_output(json_str)
 
+    progress_accepted = _signal_query_progress(source_group, output.query_id)
+    if progress_accepted is False:
+        logger.warning(
+            "Discarding stale output from a prior query generation",
+            group=source_group,
+            query_id=output.query_id,
+        )
+        with contextlib.suppress(FileNotFoundError):
+            await asyncio.to_thread(_unlink_path, file_path)
+        return
+
     handler = _get_output_handler(source_group)
     if handler is not None:
         try:
@@ -100,11 +119,11 @@ async def _handle_claimed_output_file(file_path: Path, source_group: str) -> Non
                 group=source_group,
             )
 
-    if is_query_done_pulse(output):
-        _signal_query_done(source_group)
+    if is_query_done_pulse(output) and _signal_query_done(source_group, output.query_id):
         logger.info(
             "Query done pulse received via output file",
             group=source_group,
+            query_id=output.query_id,
         )
 
     if handler is not None:

@@ -65,7 +65,7 @@ class TestWorkspaceMcpStartup:
             started.add(instance.instance_id)
             if len(started) == 2:
                 both_started.set()
-            await asyncio.wait_for(both_started.wait(), timeout=0.1)
+            await both_started.wait()
             if instance.instance_id == "broken":
                 raise TimeoutError("test timeout")
 
@@ -147,6 +147,13 @@ class TestWorkspaceMcpStartup:
         release_idle_check = asyncio.Event()
         events: list[str] = []
         backend_running = True
+        clock = [1000.0]
+
+        monkeypatch.setattr(
+            mcp_manager,
+            "time",
+            MagicMock(monotonic=MagicMock(side_effect=lambda: clock[0])),
+        )
 
         async def is_running(_container_name: str) -> bool:
             events.append("idle-check")
@@ -170,8 +177,13 @@ class TestWorkspaceMcpStartup:
         monkeypatch.setattr(mcp_manager, "stop_container", stop)
         monkeypatch.setattr(mcp_manager, "ensure_docker_running", ensure)
 
+        async with manager.proxy_backend_lease("healthy"):
+            pass
+        events.clear()
+        clock[0] = 1601.0
+
         idle_task = asyncio.create_task(manager.stop_idle())
-        await asyncio.wait_for(idle_check_started.wait(), timeout=0.1)
+        await idle_check_started.wait()
 
         async def proxy_request() -> None:
             async with manager.proxy_backend_lease("healthy"):
@@ -274,7 +286,7 @@ class TestWorkspaceMcpStartup:
                 await never.wait()
 
         request = asyncio.create_task(proxy_request())
-        await asyncio.wait_for(entered.wait(), timeout=0.1)
+        await entered.wait()
         clock[0] = 2000.0
         request.cancel()
         with pytest.raises(asyncio.CancelledError):

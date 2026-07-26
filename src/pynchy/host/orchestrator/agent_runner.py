@@ -210,7 +210,10 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
         container_name,
         request.input_data.invocation_ts,
     )
-    session.set_output_handler(request.ctx.wrapped_on_output)
+    session.set_output_handler(
+        request.ctx.wrapped_on_output,
+        query_id=request.input_data.query_id,
+    )
 
     return await _await_query(session, request.group, request.ctx.config_timeout, request.label)
 
@@ -242,15 +245,20 @@ async def _warm_query(request: _WarmQueryRequest) -> str:
         request.session.container_name,
     )
 
-    # Set output handler and format messages
-    request.session.set_output_handler(request.ctx.wrapped_on_output)
+    # Bind output/progress to this query before sending its IPC message.
+    turn_id = request.ctx.turn_id or new_turn_id()
+    query_id = new_turn_id()
+    request.session.set_output_handler(
+        request.ctx.wrapped_on_output,
+        query_id=query_id,
+    )
     formatted = format_messages_for_ipc(request.messages, request.ctx.system_notices or None)
 
     # Send via IPC
-    turn_id = request.ctx.turn_id or new_turn_id()
     await request.session.send_ipc_message(
         formatted,
         turn_id=turn_id,
+        query_id=query_id,
         metadata=_turn_metadata(turn_id, request.chat_jid, request.group.folder),
     )
 

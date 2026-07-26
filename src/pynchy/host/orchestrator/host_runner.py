@@ -15,6 +15,7 @@ from pynchy.config import get_settings
 from pynchy.host.container_manager.serialization import input_to_dict, parse_container_output
 from pynchy.logger import logger
 from pynchy.types import ContainerInput, ContainerOutput
+from pynchy.utils import ProgressTimeoutError, wait_for_progress
 
 OnOutput = Callable[[ContainerOutput], Awaitable[None]]
 IsInterrupted = Callable[[], bool]
@@ -90,7 +91,11 @@ async def _read_stderr(proc: _HostRunnerProcess) -> str:
     return (await proc.stderr.read()).decode(errors="replace")
 
 
-async def _stream_outputs(proc: _HostRunnerProcess, on_output: OnOutput) -> bool:
+async def _stream_outputs(
+    proc: _HostRunnerProcess,
+    on_output: OnOutput,
+    progress_event: asyncio.Event,
+) -> bool:
     if proc.stdout is None:
         raise RuntimeError("host runner subprocess missing stdout")
 
@@ -101,6 +106,8 @@ async def _stream_outputs(proc: _HostRunnerProcess, on_output: OnOutput) -> bool
             continue
         output = parse_container_output(line)
         saw_error = saw_error or output.status == "error"
+        # Count real structured activity before potentially slow channel delivery.
+        progress_event.set()
         await on_output(output)
     return saw_error
 
@@ -119,6 +126,8 @@ async def stop_host_process(proc: _HostRunnerProcess) -> None:
     except TimeoutError:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=5)
 
 
 async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps execution inputs explicit.
@@ -146,17 +155,53 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
         on_process_started(proc)
     await _write_payload(proc, _host_runner_payload(input_data, cwd))
     stderr_task = asyncio.create_task(_read_stderr(proc), name="host-runner-stderr")
+    progress_event = asyncio.Event()
 
     try:
-        saw_error = await asyncio.wait_for(_stream_outputs(proc, on_output), timeout_seconds)
+        saw_error = await wait_for_progress(
+            _stream_outputs(proc, on_output, progress_event),
+            progress_event=progress_event,
+            inactivity_timeout_seconds=timeout_seconds,
+        )
         return_code = await asyncio.wait_for(proc.wait(), timeout=5)
-    except TimeoutError:
-        proc.kill()
-        logger.error("Host agent runner timed out", group=input_data.group_folder)
-        await on_output(ContainerOutput(status="error", error="Host agent runner timed out"))
+        stderr_text = await stderr_task
+    except ProgressTimeoutError as exc:
+        await stop_host_process(proc)
+        logger.error(
+            "Host agent runner timed out",
+            group=input_data.group_folder,
+            timeout_reason=exc.reason,
+            inactivity_timeout_seconds=exc.inactivity_timeout_seconds,
+            hard_timeout_seconds=exc.hard_timeout_seconds,
+        )
+        await on_output(
+            ContainerOutput(
+                status="error",
+                error=f"Host agent runner {exc.reason} timeout",
+                query_id=input_data.query_id,
+            )
+        )
         return "error"
+    except TimeoutError:
+        await stop_host_process(proc)
+        logger.error("Host agent runner did not exit", group=input_data.group_folder)
+        await on_output(
+            ContainerOutput(
+                status="error",
+                error="Host agent runner did not exit",
+                query_id=input_data.query_id,
+            )
+        )
+        return "error"
+    except asyncio.CancelledError:
+        await stop_host_process(proc)
+        raise
+    finally:
+        if not stderr_task.done():
+            stderr_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await stderr_task
 
-    stderr_text = await stderr_task
     if stderr_text:
         logger.debug("Host agent runner stderr", group=input_data.group_folder, stderr=stderr_text)
     if return_code != 0:

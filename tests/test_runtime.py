@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from conftest import make_settings
@@ -217,6 +217,31 @@ class TestDockerRuntime:
 
 
 class TestAppleRuntime:
+    def test_ensure_running_bounds_status_probe(self):
+        rt = AppleContainerRuntime()
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            rt.ensure_running()
+
+        mock_run.assert_called_once_with(
+            ["container", "system", "status"],
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
+
+    def test_status_timeout_falls_through_to_bounded_start(self):
+        rt = AppleContainerRuntime()
+        with patch(
+            "pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run",
+            side_effect=[
+                subprocess.TimeoutExpired(["container", "system", "status"], timeout=5),
+                MagicMock(returncode=0),
+            ],
+        ) as mock_run:
+            rt.ensure_running()
+
+        assert mock_run.call_args_list[1].kwargs["timeout"] == 30
+
     def test_parses_container_status_object_format(self):
         rt = AppleContainerRuntime()
         output = json.dumps(
@@ -239,6 +264,7 @@ class TestAppleRuntime:
             mock_run.return_value.stdout = output
             result = rt.list_running_containers("pynchy-")
         assert result == ["pynchy-admin-1"]
+        assert mock_run.call_args.kwargs["timeout"] == 5
 
     def test_list_containers_marks_agent_by_label_or_legacy_image(self):
         rt = AppleContainerRuntime()
@@ -291,6 +317,15 @@ class TestAppleRuntime:
             "rm",
             "--force",
         ]
+        assert all(call.kwargs["timeout"] == 15 for call in mock_run.call_args_list)
+
+    def test_remove_container_is_bounded(self):
+        rt = AppleContainerRuntime()
+        with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            assert rt.remove_container("pynchy-stale") is True
+
+        assert mock_run.call_args.kwargs["timeout"] == 15
 
     def test_prune_images_prunes_dangling_images(self):
         rt = AppleContainerRuntime()

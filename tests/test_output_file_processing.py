@@ -187,6 +187,7 @@ class TestQueryDonePulse:
                 "result": None,
                 "new_session_id": "sess-abc123",
                 "type": "result",
+                "query_id": "query-result",
             },
         )
 
@@ -201,7 +202,8 @@ class TestQueryDonePulse:
         ):
             await process_output_file(file_path, "test-group", ipc_dir)
 
-        session.signal_query_done.assert_called_once()
+        session.signal_query_progress.assert_called_once_with("query-result")
+        session.signal_query_done.assert_called_once_with("query-result")
         assert not file_path.exists()
 
     async def test_text_event_does_not_signal_query_done(self, tmp_path: Path):
@@ -305,7 +307,9 @@ class TestQueryDonePulse:
             observed.append("handler")
 
         session = MagicMock()
-        session.signal_query_done.side_effect = lambda: observed.append("query-done")
+        session.signal_query_done.side_effect = lambda _query_id: (
+            observed.append("query-done") or True
+        )
         with (
             patch(
                 "pynchy.host.container_manager.session.get_session_output_handler",
@@ -316,6 +320,73 @@ class TestQueryDonePulse:
             await process_output_file(file_path, "test-group", ipc_dir)
 
         assert observed == ["handler", "query-done"]
+
+    async def test_progress_refreshes_before_slow_output_delivery(self, tmp_path: Path):
+        """Internal tool activity counts before channel delivery can block."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(
+            ipc_dir,
+            "test-group",
+            {
+                "status": "success",
+                "type": "tool_use",
+                "tool_name": "exec_command",
+                "tool_input": {"command": "git commit"},
+                "query_id": "query-hooks",
+            },
+        )
+        observed: list[str] = []
+
+        async def handler(_output: ContainerOutput) -> None:
+            await asyncio.sleep(0)
+            observed.append("handler")
+
+        session = MagicMock()
+        session.output_handler = handler
+        session.signal_query_progress.side_effect = lambda _query_id: (
+            observed.append("progress") or True
+        )
+        with (
+            patch(
+                "pynchy.host.container_manager.session.get_session_output_handler",
+                return_value=handler,
+            ),
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
+        ):
+            await process_output_file(file_path, "test-group", ipc_dir)
+
+        assert observed == ["progress", "handler"]
+
+    async def test_stale_prior_turn_output_is_discarded(self, tmp_path: Path):
+        """A delayed prior-turn event cannot refresh or reach the current handler."""
+        ipc_dir = tmp_path / "ipc"
+        file_path = _write_output_file(
+            ipc_dir,
+            "test-group",
+            {
+                "status": "success",
+                "type": "text",
+                "text": "late prior output",
+                "query_id": "query-prior",
+            },
+        )
+        handler = AsyncMock()
+        session = MagicMock()
+        session.output_handler = handler
+        session.signal_query_progress.return_value = False
+
+        with (
+            patch(
+                "pynchy.host.container_manager.session.get_session_output_handler",
+                return_value=handler,
+            ),
+            patch("pynchy.host.container_manager.session.get_session", return_value=session),
+        ):
+            await process_output_file(file_path, "test-group", ipc_dir)
+
+        session.signal_query_progress.assert_called_once_with("query-prior")
+        handler.assert_not_awaited()
+        assert not file_path.exists()
 
 
 # ---------------------------------------------------------------------------

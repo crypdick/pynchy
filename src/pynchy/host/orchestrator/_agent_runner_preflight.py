@@ -101,6 +101,7 @@ def build_container_input(  # noqa: PLR0913, RUF100 - explicit runner wire input
     return ContainerInput(
         messages=messages,
         turn_id=resolved_turn_id,
+        query_id=new_turn_id(),
         session_id=ctx.session_id,
         group_folder=group.folder,
         chat_jid=chat_jid,

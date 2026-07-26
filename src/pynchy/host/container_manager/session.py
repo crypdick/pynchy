@@ -27,7 +27,6 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves session
     Callable,
     Coroutine,
 )
-from dataclasses import dataclass
 from typing import Any
 
 from pynchy.config import get_settings
@@ -42,13 +41,18 @@ from pynchy.host.container_manager.process import (
     graceful_stop,
     reap_apple_runtime_orphans,
 )
+from pynchy.host.container_manager.runtime_monitor import (
+    DEFAULT_RUNTIME_MONITOR_POLICY,
+    RuntimeMonitorPolicy,
+    runtime_container_running,
+    wait_for_runtime_poll_interval,
+)
 from pynchy.host.container_manager.security.gate import destroy_gate
 from pynchy.logger import logger
-from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import (
     GroupFolder,  # noqa: TC001, RUF100 - beartype resolves session lookup signatures at runtime.
 )
-from pynchy.utils import create_background_task
+from pynchy.utils import ProgressTimeoutError, create_background_task, wait_for_progress
 
 
 class SessionDiedError(Exception):
@@ -57,51 +61,6 @@ class SessionDiedError(Exception):
 
 _MISSING_STDERR_PIPE_ERROR = "Container {container_name} spawned without stderr pipe"
 _CONTAINER_DIED_DURING_QUERY_ERROR = "Container {container_name} died during query"
-
-
-@dataclass(frozen=True)
-class RuntimeMonitorPolicy:
-    """Timing policy for checking a container runtime outside its CLI process."""
-
-    poll_interval_seconds: float = 0.5
-    start_grace_seconds: float = 5.0
-    cli_kill_wait_seconds: float = 2.0
-
-
-DEFAULT_RUNTIME_MONITOR_POLICY = RuntimeMonitorPolicy()
-
-
-async def _wait_for_runtime_poll_interval(interval_seconds: float) -> None:
-    """Wait for the runtime poll cadence without sleep-polling inside loops."""
-    loop = asyncio.get_running_loop()
-    waiter = loop.create_future()
-    handle = loop.call_later(interval_seconds, waiter.set_result, None)
-    try:
-        await waiter
-    finally:
-        handle.cancel()
-
-
-async def runtime_container_running(container_name: str) -> bool:
-    """Return whether the runtime still reports the named container running."""
-    if sys.platform != "darwin":
-        return False
-
-    def _check() -> bool:
-        runtime = get_runtime()
-        if runtime.name != "apple":
-            return False
-        return container_name in runtime.list_running_containers(prefix=container_name)
-
-    try:
-        return await asyncio.to_thread(_check)
-    except Exception as exc:  # noqa: BLE001, RUF100 - best-effort runtime probe should degrade to not running.
-        logger.debug(
-            "Failed to inspect runtime container state",
-            container=container_name,
-            err=str(exc),
-        )
-        return False
 
 
 class ContainerSession:
@@ -132,7 +91,9 @@ class ContainerSession:
         self._runtime_monitor_task: asyncio.Future[Any] | None = None
         self._stderr_task: asyncio.Future[Any] | None = None
         self._on_output: OnOutput | None = None
+        self._active_query_id: str | None = None
         self._query_done = asyncio.Event()
+        self._query_progress = asyncio.Event()
         self._dead = False
         self._died_before_pulse = False
         self._runtime_alive_after_proc_exit = False
@@ -188,51 +149,86 @@ class ContainerSession:
             )
         self._reset_idle_timer()
 
-    def set_output_handler(self, on_output: OnOutput | None) -> None:
-        """Set callback for the next query and clear the query_done event."""
+    def set_output_handler(
+        self,
+        on_output: OnOutput | None,
+        *,
+        query_id: str | None = None,
+    ) -> None:
+        """Start one query generation with its output callback and identity."""
         self._on_output = on_output
+        self._active_query_id = query_id
         self._query_done.clear()
+        self._query_progress.clear()
         self._died_before_pulse = False
         self._cancel_idle_timer()
 
-    def signal_query_done(self) -> None:
+    def signal_query_progress(self, query_id: str | None) -> bool:
+        """Refresh the silence deadline for output from the active query only."""
+        if self._on_output is None or self._active_query_id != query_id:
+            return False
+        self._query_progress.set()
+        return True
+
+    def signal_query_done(self, query_id: str | None = None) -> bool:
         """Signal that the current query is complete.
 
         Called by the IPC watcher when it detects a query-done pulse in an
         output file.  Sets the _query_done event, clears the output handler,
         and resets the idle timer.
         """
+        if self._on_output is not None and self._active_query_id != query_id:
+            return False
         self._query_done.set()
+        self._query_progress.set()
         self._on_output = None
+        self._active_query_id = None
         self._reset_idle_timer()
+        return True
 
     async def send_ipc_message(
         self,
         text: str,
         *,
         turn_id: str | None = None,
+        query_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Write a JSON message file to the container's IPC input directory."""
-        write_ipc_message(self.group_folder, text, turn_id=turn_id, metadata=metadata)
+        write_ipc_message(
+            self.group_folder,
+            text,
+            turn_id=turn_id,
+            query_id=query_id,
+            metadata=metadata,
+        )
 
     async def wait_for_query_done(self, query_timeout_seconds: float) -> None:
-        """Wait for the query-done pulse or container death.
+        """Wait for completion while structured output refreshes the deadline.
 
-        Raises TimeoutError if the query doesn't complete in time.
+        ``query_timeout_seconds`` is the maximum silence between progress
+        events. A separate four-times hard ceiling bounds noisy wedges.
+
+        Raises TimeoutError if either deadline expires.
         Raises SessionDiedError if the container exits *before* the pulse.
 
         If the pulse is detected and then the container exits (EOF after pulse),
         this is not an error — the pulse already confirmed query completion.
         """
         try:
-            await asyncio.wait_for(self._query_done.wait(), timeout=query_timeout_seconds)
-        except TimeoutError:
+            await wait_for_progress(
+                self._query_done.wait(),
+                progress_event=self._query_progress,
+                inactivity_timeout_seconds=query_timeout_seconds,
+            )
+        except ProgressTimeoutError as exc:
             logger.error(
                 "Session query timed out",
                 group=self.group_folder,
                 container=self.container_name,
                 query_timeout_seconds=query_timeout_seconds,
+                timeout_reason=exc.reason,
+                hard_timeout_seconds=exc.hard_timeout_seconds,
             )
             raise
 
@@ -267,6 +263,7 @@ class ContainerSession:
 
         # Signal anyone waiting on query_done
         self._query_done.set()
+        self._query_progress.set()
 
     def _reset_idle_timer(self) -> None:
         """Start or restart the idle expiry timer."""
@@ -367,9 +364,7 @@ class ContainerSession:
                 )
                 await self._kill_stuck_runtime_cli(proc)
                 return
-            await _wait_for_runtime_poll_interval(
-                self._runtime_monitor_policy.poll_interval_seconds
-            )
+            await wait_for_runtime_poll_interval(self._runtime_monitor_policy.poll_interval_seconds)
 
     async def _kill_stuck_runtime_cli(self, proc: asyncio.subprocess.Process) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -384,9 +379,7 @@ class ContainerSession:
     async def _monitor_runtime_container(self, cli_exit_code: int) -> None:
         """Poll runtime state after the CLI client exits before the container."""
         while await self._runtime_probe(self.container_name):
-            await _wait_for_runtime_poll_interval(
-                self._runtime_monitor_policy.poll_interval_seconds
-            )
+            await wait_for_runtime_poll_interval(self._runtime_monitor_policy.poll_interval_seconds)
         await self._mark_container_exited(cli_exit_code)
 
     async def _mark_container_exited(self, exit_code: int) -> None:
@@ -398,6 +391,7 @@ class ContainerSession:
 
         if was_stopping:
             self._query_done.set()
+            self._query_progress.set()
         elif not self._query_done.is_set():
             if exit_code == 0:
                 logger.info(
@@ -415,6 +409,7 @@ class ContainerSession:
                     exit_code=exit_code,
                 )
             self._query_done.set()
+            self._query_progress.set()
 
         logger.info(
             "Session proc exited",

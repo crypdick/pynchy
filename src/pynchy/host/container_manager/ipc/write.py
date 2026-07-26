@@ -32,6 +32,7 @@ def write_ipc_message(
     text: str,
     *,
     turn_id: str | None = None,
+    query_id: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     """Write a JSON message file to a group's IPC input directory.
@@ -44,6 +45,8 @@ def write_ipc_message(
     payload: dict[str, object] = {"type": "message", "text": text}
     if turn_id is not None:
         payload["turn_id"] = turn_id
+    if query_id is not None:
+        payload["query_id"] = query_id
     if metadata:
         payload["metadata"] = metadata
     write_json_atomic(input_dir / filename, payload)

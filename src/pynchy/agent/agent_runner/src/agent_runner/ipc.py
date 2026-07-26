@@ -42,6 +42,7 @@ class IpcMessage:
 
     text: str
     turn_id: str | None = None
+    query_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -111,11 +112,13 @@ def _parse_ipc_message(data: object) -> IpcMessage | None:
         return None
 
     turn_id = data.get("turn_id")
+    query_id = data.get("query_id")
     raw_metadata = data.get("metadata")
     metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
     return IpcMessage(
         text=text,
         turn_id=turn_id if isinstance(turn_id, str) else None,
+        query_id=query_id if isinstance(query_id, str) else None,
         metadata=metadata,
     )
 
@@ -181,10 +184,11 @@ class _InputEventHandler(FileSystemEventHandler):
 def _combine_ipc_messages(messages: list[IpcMessage]) -> IpcMessage:
     text = "\n".join(message.text for message in messages)
     turn_id = next((message.turn_id for message in reversed(messages) if message.turn_id), None)
+    query_id = next((message.query_id for message in reversed(messages) if message.query_id), None)
     metadata: dict[str, Any] = {}
     for message in messages:
         metadata.update(message.metadata)
-    return IpcMessage(text=text, turn_id=turn_id, metadata=metadata)
+    return IpcMessage(text=text, turn_id=turn_id, query_id=query_id, metadata=metadata)
 
 
 async def wait_for_ipc_followup() -> IpcMessage | None:
