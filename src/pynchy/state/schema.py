@@ -23,6 +23,7 @@ from pynchy.state.in_flight_turn_schema_migrations import (
     drop_legacy_scheduled_runtime_metadata,
 )
 from pynchy.state.task_schema_migrations import (
+    TASK_SCHEMA,
     clear_temporal_owned_next_runs,
     migrate_cached_task_thread_binding,
     migrate_scheduled_session_policy,
@@ -55,50 +56,9 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
 CREATE INDEX IF NOT EXISTS idx_messages_by_chat ON messages(chat_jid, timestamp);
 
-CREATE TABLE IF NOT EXISTS scheduled_tasks (
-    id TEXT PRIMARY KEY,
-    group_folder TEXT NOT NULL,
-    chat_jid TEXT NOT NULL,
-    prompt TEXT NOT NULL,
-    schedule_type TEXT NOT NULL,
-    schedule_value TEXT NOT NULL,
-    next_run TEXT,
-    last_run TEXT,
-    last_result TEXT,
-    status TEXT DEFAULT 'active',
-    created_at TEXT NOT NULL,
-    session_policy TEXT NOT NULL DEFAULT 'reset_before_run',
-    repo_access TEXT,
-    input_source TEXT NOT NULL DEFAULT 'scheduled_task',
-    config_job_name TEXT,
-    derived_thread_name TEXT,
-    bound_chat_jid TEXT,
-    bound_group_folder TEXT,
-    conversation_id TEXT,
-    last_reset_occurrence TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
-CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
-CREATE INDEX IF NOT EXISTS idx_group_folder ON scheduled_tasks(group_folder);
-
-CREATE TABLE IF NOT EXISTS task_run_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    run_at TEXT NOT NULL,
-    duration_ms INTEGER NOT NULL,
-    status TEXT NOT NULL,
-    result TEXT,
-    error TEXT,
-    temporal_workflow_id TEXT,
-    temporal_workflow_run_id TEXT,
-    temporal_attempt INTEGER,
-    turn_id TEXT,
-    error_signature TEXT,
-    escalation_reason TEXT,
-    FOREIGN KEY (task_id) REFERENCES scheduled_tasks(id)
-);
-CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
-
+"""
+    + TASK_SCHEMA
+    + """
 CREATE TABLE IF NOT EXISTS host_jobs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,

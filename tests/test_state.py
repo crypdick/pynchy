@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 
 import aiosqlite
 import pytest
+from freezegun import freeze_time
 
+from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.state import (
     begin_in_flight_turn,
     clear_session,
@@ -1023,9 +1026,106 @@ class TestTaskAdvanced:
         logs = await get_task_run_logs("resume-task")
         assert task is not None
         assert task.status == "active"
+        assert task.schedule_value == self._TASK_TEMPLATE.schedule_value
+        assert task.occurrence_generation == 0
         assert [log.status for log in logs] == ["resumed", "error"]
         assert logs[0].temporal_workflow_run_id is None
         assert logs[0].turn_id is None
+
+    async def test_once_task_resume_creates_one_fresh_occurrence_under_race(self):
+        original = replace(
+            self._TASK_TEMPLATE,
+            id="resume-once",
+            schedule_type="once",
+            schedule_value="2026-07-25T05:16:14+00:00",
+            status="paused",
+            repo_access="crypdick/pynchy",
+            conversation_id="conv-linear-issue",
+        )
+        previous_workflow_id = agent_task_workflow_id(original)
+        await create_task(original)
+        # Temporal treats the workflow's PAUSED outcome as a successful completion,
+        # while Pynchy records the circuit-breaker reason as task error evidence.
+        await log_task_run(
+            TaskRunLog(
+                task_id=original.id,
+                run_at="2026-07-25T05:16:14+00:00",
+                duration_ms=1,
+                status="error",
+                error="Same error repeated",
+                temporal_workflow_id=previous_workflow_id,
+                temporal_workflow_run_id="successful-paused-run",
+                escalation_reason="stagnation",
+            )
+        )
+
+        resumed_at = "2026-07-26T06:00:00+00:00"
+        with freeze_time(resumed_at):
+            await asyncio.gather(
+                resume_task(original.id),
+                resume_task(original.id),
+                resume_task(original.id),
+            )
+
+        resumed = await get_task_by_id(original.id)
+        logs = await get_task_run_logs(original.id)
+        assert resumed is not None
+        assert resumed.status == "active"
+        assert resumed.schedule_value == original.schedule_value
+        assert resumed.occurrence_due_at == resumed_at
+        assert resumed.occurrence_generation == 1
+        assert resumed.superseded_occurrence_due_at == original.schedule_value
+        assert resumed.superseded_occurrence_generation == 0
+        assert resumed.repo_access == original.repo_access
+        assert resumed.conversation_id == original.conversation_id
+        resumed_workflow_id = agent_task_workflow_id(resumed)
+        assert resumed_workflow_id != previous_workflow_id
+        assert resumed_workflow_id.endswith("-resume-1")
+        assert [log.status for log in logs] == ["resumed", "error"]
+
+        await resume_task(original.id)
+
+        unchanged = await get_task_by_id(original.id)
+        assert unchanged is not None
+        assert unchanged.occurrence_generation == 1
+        assert len(await get_task_run_logs(original.id)) == 2
+
+        await update_task(original.id, {"status": "paused"})
+        with freeze_time(resumed_at):
+            await resume_task(original.id)
+
+        resumed_again = await get_task_by_id(original.id)
+        assert resumed_again is not None
+        assert resumed_again.schedule_value == original.schedule_value
+        assert resumed_again.occurrence_due_at == resumed_at
+        assert resumed_again.occurrence_generation == 2
+        assert resumed_again.superseded_occurrence_due_at == resumed_at
+        assert resumed_again.superseded_occurrence_generation == 1
+        assert agent_task_workflow_id(resumed_again) != resumed_workflow_id
+        assert agent_task_workflow_id(resumed_again).endswith("-resume-2")
+
+    async def test_resume_task_ignores_missing_and_non_paused_rows(self):
+        completed = replace(
+            self._TASK_TEMPLATE,
+            id="completed-once",
+            schedule_type="once",
+            schedule_value="2026-07-25T05:16:14+00:00",
+            status="completed",
+        )
+        await create_task(completed)
+
+        await resume_task(completed.id)
+        await resume_task("missing-task")
+
+        unchanged = await get_task_by_id(completed.id)
+        assert unchanged is not None
+        assert unchanged.status == "completed"
+        assert unchanged.schedule_value == completed.schedule_value
+        assert unchanged.occurrence_generation == 0
+        assert unchanged.occurrence_due_at is None
+        assert unchanged.superseded_occurrence_generation is None
+        assert unchanged.superseded_occurrence_due_at is None
+        assert await get_task_run_logs(completed.id) == []
 
     async def test_create_task_with_repo_access(self):
         await create_task(
@@ -1441,6 +1541,52 @@ class TestUpdateById:
 @pytest.mark.anyio
 class TestEnsureColumns:
     """Test that _ensure_columns adds missing columns to existing tables."""
+
+    async def test_adds_occurrence_state_to_existing_scheduled_tasks(self):
+        """Existing one-shot tasks gain the initial generation without row loss."""
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE scheduled_tasks (
+                id TEXT PRIMARY KEY,
+                group_folder TEXT NOT NULL,
+                chat_jid TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                schedule_type TEXT NOT NULL,
+                schedule_value TEXT NOT NULL,
+                next_run TEXT,
+                last_run TEXT,
+                last_result TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                session_policy TEXT NOT NULL DEFAULT 'reset_before_run',
+                repo_access TEXT,
+                input_source TEXT NOT NULL DEFAULT 'scheduled_task',
+                config_job_name TEXT,
+                derived_thread_name TEXT,
+                bound_chat_jid TEXT,
+                bound_group_folder TEXT,
+                conversation_id TEXT,
+                last_reset_occurrence TEXT
+            );
+            INSERT INTO scheduled_tasks (
+                id, group_folder, chat_jid, prompt, schedule_type,
+                schedule_value, status, created_at
+            ) VALUES (
+                'legacy-once', 'admin', 'slack:CADMIN', 'Continue work',
+                'once', '2026-07-25T05:16:14+00:00', 'paused',
+                '2026-07-25T04:45:00+00:00'
+            );
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute(
+            "SELECT occurrence_generation, occurrence_due_at, "
+            "superseded_occurrence_generation, superseded_occurrence_due_at "
+            "FROM scheduled_tasks WHERE id = 'legacy-once'"
+        )
+        assert await cursor.fetchone() == (0, None, None, None)
+        await db.close()
 
     async def test_adds_missing_column_to_existing_table(self):
         """Simulate an old DB missing a column, then run create_schema."""

@@ -36,6 +36,10 @@ def _row_to_task(row: Row) -> ScheduledTask:
         bound_group_folder=row["bound_group_folder"] or None,
         conversation_id=row["conversation_id"] or None,
         last_reset_occurrence=row["last_reset_occurrence"] or None,
+        occurrence_generation=row["occurrence_generation"],
+        occurrence_due_at=row["occurrence_due_at"] or None,
+        superseded_occurrence_generation=row["superseded_occurrence_generation"],
+        superseded_occurrence_due_at=row["superseded_occurrence_due_at"] or None,
     )
 
 
@@ -65,8 +69,10 @@ async def create_task(task: ScheduledTask) -> None:
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
              repo_access, input_source, config_job_name, derived_thread_name,
-             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
+             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
+             superseded_occurrence_due_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -87,6 +93,10 @@ async def create_task(task: ScheduledTask) -> None:
             task.bound_group_folder,
             task.conversation_id,
             task.last_reset_occurrence,
+            task.occurrence_generation,
+            task.occurrence_due_at,
+            task.superseded_occurrence_generation,
+            task.superseded_occurrence_due_at,
         ),
     )
     await db.commit()
@@ -101,8 +111,10 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
              repo_access, input_source, config_job_name, derived_thread_name,
-             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
+             occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
+             superseded_occurrence_due_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -123,6 +135,10 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             task.bound_group_folder,
             task.conversation_id,
             task.last_reset_occurrence,
+            task.occurrence_generation,
+            task.occurrence_due_at,
+            task.superseded_occurrence_generation,
+            task.superseded_occurrence_due_at,
         ),
     )
     await db.commit()
@@ -199,13 +215,34 @@ async def cancel_task_and_checkpoint(task_id: str) -> None:
 
 
 async def resume_task(task_id: str) -> None:
-    """Reactivate a task and begin a fresh circuit-breaker failure window."""
+    """Reactivate a task and begin one fresh circuit-breaker failure window."""
     now = datetime.now(UTC).isoformat()
     async with atomic_write() as db:
-        await db.execute(
-            "UPDATE scheduled_tasks SET status = 'active' WHERE id = ?",
-            (task_id,),
+        cursor = await db.execute(
+            """
+            UPDATE scheduled_tasks
+            SET status = 'active',
+                superseded_occurrence_due_at = CASE
+                    WHEN schedule_type = 'once'
+                    THEN COALESCE(occurrence_due_at, schedule_value)
+                    ELSE superseded_occurrence_due_at
+                END,
+                superseded_occurrence_generation = CASE
+                    WHEN schedule_type = 'once' THEN occurrence_generation
+                    ELSE superseded_occurrence_generation
+                END,
+                occurrence_due_at = CASE
+                    WHEN schedule_type = 'once' THEN ?
+                    ELSE occurrence_due_at
+                END,
+                occurrence_generation = occurrence_generation
+                    + CASE WHEN schedule_type = 'once' THEN 1 ELSE 0 END
+            WHERE id = ? AND status = 'paused'
+            """,
+            (now, task_id),
         )
+        if cursor.rowcount != 1:
+            return
         await db.execute(
             """
             INSERT INTO task_run_logs (
@@ -213,11 +250,9 @@ async def resume_task(task_id: str) -> None:
                 temporal_workflow_id, temporal_workflow_run_id, temporal_attempt,
                 turn_id, error_signature, escalation_reason
             )
-            SELECT id, ?, 0, 'resumed', 'Task resumed', NULL, NULL, NULL, NULL, NULL, NULL, NULL
-            FROM scheduled_tasks
-            WHERE id = ?
+            VALUES (?, ?, 0, 'resumed', 'Task resumed', NULL, NULL, NULL, NULL, NULL, NULL, NULL)
             """,
-            (now, task_id),
+            (task_id, now),
         )
 
 

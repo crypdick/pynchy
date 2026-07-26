@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -13,7 +13,7 @@ import pytest
 from conftest import make_settings
 from temporalio import activity
 from temporalio.client import ScheduleOverlapPolicy, WorkflowFailureError
-from temporalio.exceptions import ActivityError
+from temporalio.exceptions import ActivityError, WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -187,6 +187,21 @@ class FakeScheduleClient:
         self.started_workflows.append((workflow, posargs or workflow_args, kwargs))
 
 
+class DeduplicatingFakeScheduleClient(FakeScheduleClient):
+    """Model Temporal's workflow-ID idempotency across reconciliations."""
+
+    def __init__(self):
+        super().__init__()
+        self.workflow_ids = set()
+
+    async def start_workflow(self, workflow, *posargs, **kwargs):
+        workflow_id = kwargs["id"]
+        if workflow_id in self.workflow_ids:
+            raise WorkflowAlreadyStartedError(workflow_id, workflow.__qualname__)
+        self.workflow_ids.add(workflow_id)
+        await super().start_workflow(workflow, *posargs, **kwargs)
+
+
 class AwaitableScheduleListClient(FakeScheduleClient):
     def list_schedules(self):
         return asyncio.sleep(0, result=super().list_schedules())
@@ -354,6 +369,33 @@ class TestTemporalSchedulerRuntime:
         workflow_id = temporal_scheduler.agent_task_workflow_id(temporal_task)
 
         assert workflow_id == "pynchy-agent-task-task-with-spaces-0-9"
+
+    def test_resumed_once_task_workflow_id_has_durable_occurrence(self, temporal_task):
+        temporal_task.occurrence_generation = 2
+        temporal_task.occurrence_due_at = "2026-07-26T06:00:00+00:00"
+
+        workflow_id = temporal_scheduler.agent_task_workflow_id(temporal_task)
+
+        assert "-603cf887c3ffad1a-" in workflow_id
+        assert workflow_id.endswith("-2026-07-26T06-00-00-00-00-resume-2")
+
+        temporal_task.schedule_value = "2027-01-01T00:00:00+00:00"
+        assert temporal_scheduler.agent_task_workflow_id(temporal_task) == workflow_id
+
+    def test_resumed_once_task_workflow_id_distinguishes_normalization_collisions(
+        self, temporal_task
+    ):
+        temporal_task.schedule_type = "once"
+        temporal_task.id = "task/a"
+        temporal_task.occurrence_generation = 1
+        colliding_task = replace(temporal_task, id="task?a")
+
+        assert temporal_schedules.safe_workflow_fragment(
+            temporal_task.id
+        ) == temporal_schedules.safe_workflow_fragment(colliding_task.id)
+        assert temporal_scheduler.agent_task_workflow_id(
+            temporal_task
+        ) != temporal_scheduler.agent_task_workflow_id(colliding_task)
 
     def test_agent_task_schedule_id_is_stable_and_temporal_safe(self, temporal_task):
         schedule_id = temporal_scheduler.agent_task_schedule_id(temporal_task)
@@ -666,6 +708,140 @@ class TestTemporalSchedulerRuntime:
         assert kwargs["task_queue"] == "pynchy-test"
         assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE_FAILED_ONLY"
         assert 0 < kwargs["start_delay"].total_seconds() <= 300
+
+    @pytest.mark.asyncio
+    async def test_reconcile_starts_resumed_once_task_exactly_once(
+        self, monkeypatch, temporal_task
+    ):
+        temporal_task.schedule_type = "once"
+        previous_workflow_id = temporal_schedules.agent_task_workflow_id(temporal_task)
+        temporal_task.superseded_occurrence_due_at = temporal_task.schedule_value
+        temporal_task.superseded_occurrence_generation = 0
+        temporal_task.occurrence_due_at = datetime.now(UTC).isoformat()
+        temporal_task.occurrence_generation = 1
+        client = DeduplicatingFakeScheduleClient()
+        client.workflow_ids.add(previous_workflow_id)
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(),
+            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await asyncio.gather(runtime.reconcile_schedules(), runtime.reconcile_schedules())
+
+        assert len(client.started_workflows) == 1
+        _workflow, _args, kwargs = client.started_workflows[0]
+        assert kwargs["id"] != previous_workflow_id
+        assert kwargs["id"].endswith("-resume-1")
+        assert kwargs["id_reuse_policy"].name == "ALLOW_DUPLICATE_FAILED_ONLY"
+
+    @pytest.mark.asyncio
+    async def test_reconcile_cancels_running_prior_occurrence_before_resume(
+        self, monkeypatch, temporal_task
+    ):
+        temporal_task.schedule_type = "once"
+        previous_workflow_id = temporal_schedules.agent_task_workflow_id(temporal_task)
+        temporal_task.superseded_occurrence_due_at = temporal_task.schedule_value
+        temporal_task.superseded_occurrence_generation = 0
+        temporal_task.occurrence_due_at = datetime.now(UTC).isoformat()
+        temporal_task.occurrence_generation = 1
+        previous_run_id = "prior-running-occurrence"
+        client = DeduplicatingFakeScheduleClient()
+        client.workflow_ids.add(previous_workflow_id)
+        client.workflow_executions = [
+            _WorkflowListEntry(
+                id=previous_workflow_id,
+                run_id=previous_run_id,
+                workflow_type="ScheduledAgentTaskWorkflow",
+                execution_time=datetime.now(UTC),
+            )
+        ]
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(),
+            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler, "get_all_tasks", AsyncMock(return_value=[temporal_task])
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert client.workflow_handles[previous_workflow_id, previous_run_id].cancelled is True
+        assert client.started_workflows == []
+
+        client.workflow_executions = []
+        await asyncio.gather(runtime.reconcile_schedules(), runtime.reconcile_schedules())
+
+        assert len(client.started_workflows) == 1
+        assert client.started_workflows[0][2]["id"].endswith("-resume-1")
+
+    @pytest.mark.asyncio
+    async def test_resumed_task_progresses_without_cancelling_colliding_legacy_workflow(
+        self, monkeypatch, temporal_task
+    ):
+        temporal_task.id = "task/a"
+        temporal_task.schedule_type = "once"
+        temporal_task.schedule_value = "2026-07-25T05:16:14+00:00"
+        temporal_task.superseded_occurrence_due_at = temporal_task.schedule_value
+        temporal_task.superseded_occurrence_generation = 0
+        temporal_task.occurrence_due_at = datetime.now(UTC).isoformat()
+        temporal_task.occurrence_generation = 1
+        unrelated = replace(
+            temporal_task,
+            id="task?a",
+            schedule_value=temporal_task.schedule_value,
+            occurrence_due_at=None,
+            occurrence_generation=0,
+            superseded_occurrence_due_at=None,
+            superseded_occurrence_generation=None,
+        )
+        unrelated_workflow_id = temporal_schedules.agent_task_workflow_id(unrelated)
+        unrelated_run_id = "unrelated-running-occurrence"
+        client = DeduplicatingFakeScheduleClient()
+        client.workflow_ids.add(unrelated_workflow_id)
+        client.workflow_executions = [
+            _WorkflowListEntry(
+                id=unrelated_workflow_id,
+                run_id=unrelated_run_id,
+                workflow_type="ScheduledAgentTaskWorkflow",
+                execution_time=datetime.now(UTC),
+            )
+        ]
+        runtime = temporal_scheduler.TemporalSchedulerRuntime(
+            deps=NullSchedulerDeps(),
+            scheduler_config=SchedulerConfig(temporal_task_queue="pynchy-test"),
+        )
+        runtime.client = client
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "get_all_tasks",
+            AsyncMock(return_value=[temporal_task, unrelated]),
+        )
+        monkeypatch.setattr(temporal_scheduler, "get_all_host_jobs", AsyncMock(return_value=[]))
+        settings = make_settings(timezone="UTC", scheduler=runtime.scheduler_config, jobs={})
+        monkeypatch.setattr(temporal_scheduler, "get_settings", lambda: settings)
+        monkeypatch.setattr(temporal_schedules, "get_settings", lambda: settings)
+
+        await runtime.reconcile_schedules()
+
+        assert (unrelated_workflow_id, unrelated_run_id) not in client.workflow_handles
+        assert len(client.started_workflows) == 1
+        assert client.started_workflows[0][1] == (temporal_task.id,)
+        resumed_workflow_id = client.started_workflows[0][2]["id"]
+        assert resumed_workflow_id == temporal_schedules.agent_task_workflow_id(temporal_task)
+        assert resumed_workflow_id != unrelated_workflow_id
 
     @pytest.mark.asyncio
     async def test_reconcile_starts_once_database_host_job_as_delayed_workflow(self, monkeypatch):
