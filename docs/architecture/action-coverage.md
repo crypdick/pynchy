@@ -175,14 +175,26 @@ async def test_create_event_success():
     ...
 ```
 
-Run the complete hermetic contract with:
+Run the fast marker contract with:
+
+```bash
+uv run python scripts/prek_hooks/check_action_coverage.py
+```
+
+The repository gate fails when a built-in action has no marked test or when a
+test uses an unknown built-in action ID. It also rejects dynamic, unattached,
+or malformed action markers, then asks pytest to collect only the files that
+contain valid markers. Prek and GitHub CI run this command.
+
+The full test suite can independently repeat the dynamic collection check:
 
 ```bash
 uv run pytest --action-coverage
 ```
 
-The repository gate fails when a built-in action has no marked test or when a
-test uses an unknown built-in action ID. Prek runs the same command.
+The manual full-suite Prek hook does not add this flag because the fast gate
+already runs the authoritative marker-file collection and the full tests
+should execute only once.
 Third-party packages must apply the same `assess_hermetic_coverage` contract to
 their contributed specifications in their own CI. Mark tests that prove the
 action's behavior; do not add a marker to a test that only checks tool
@@ -195,7 +207,8 @@ visibility or a data class.
 3. Add or identify behavioral hermetic tests and mark them with the action ID.
 4. For a provider-dependent effect, select `hermetic_and_agentic` and name a
    scenario that includes independent verification and cleanup.
-5. Run `uv run pytest --action-coverage` before submitting the change.
+5. Run `uv run python scripts/prek_hooks/check_action_coverage.py` before
+   submitting the change.
 
 The built-in catalog covers calendars, memories, task lifecycle, todos,
 outbound delivery, vault-backed skill discovery and access, workspace and

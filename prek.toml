@@ -173,9 +173,17 @@ pass_filenames = false
 files = "^(docs/|mkdocs\\.yml)"
 
 [[repos.hooks]]
+id = "action-coverage"
+name = "Check semantic action coverage"
+entry = "uv run python scripts/prek_hooks/check_action_coverage.py"
+language = "system"
+pass_filenames = false
+files = "^(src/pynchy/.*action.*\\.py|tests/|scripts/prek_hooks/check_action_coverage\\.py)"
+
+[[repos.hooks]]
 id = "pytest"
-name = "Run host tests with semantic and branch coverage"
-entry = "uv run pytest --action-coverage --cov=pynchy --cov-report=term-missing"
+name = "Run host tests with branch coverage"
+entry = "uv run pytest --cov=pynchy --cov-report=term-missing"
 language = "system"
 pass_filenames = false
 files = "^(src/|tests/)"
