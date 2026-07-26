@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import re
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -24,7 +23,20 @@ from pynchy.host.orchestrator.config_job_execution import (
     register_scheduled_target,
     run_deterministic_config_job,
 )
+from pynchy.host.orchestrator.messaging.cursor import complete_turn_with_cursor
+from pynchy.host.orchestrator.messaging.outcomes import (
+    TURN_PAUSED,
+    TURN_RESET,
+    TurnPaused,
+    TurnReset,
+)
 from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
+from pynchy.host.orchestrator.scheduled_failure_policy import (
+    NO_PROGRESS_THRESHOLD,
+    error_signature,
+    recent_failure_run,
+    scheduled_failure_decision,
+)
 from pynchy.host.orchestrator.scheduled_turn import (
     ScheduledTurnDeps,
     TaskAgentRequest,
@@ -47,6 +59,7 @@ from pynchy.state import (
     update_task,
 )
 from pynchy.types import (
+    CheckpointControlState,
     ContainerOutput,
     InFlightTurn,
     OutboundEvent,
@@ -65,6 +78,9 @@ class SchedulerDependencies(Protocol):
     def workspaces(self) -> dict[str, WorkspaceProfile]: ...
 
     @property
+    def last_agent_timestamp(self) -> dict[str, str]: ...
+
+    @property
     def queue(self) -> GroupQueue: ...
 
     async def broadcast_to_channels(self, jid: str, event: OutboundEvent) -> None: ...
@@ -72,6 +88,8 @@ class SchedulerDependencies(Protocol):
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
+
+    async def save_state(self) -> None: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - scheduler protocol preserves the full agent execution contract.
         self,
@@ -85,6 +103,7 @@ class SchedulerDependencies(Protocol):
         repo_access_override: str | None = None,
         input_source: str = "user",
         turn_id: str | None = None,
+        resume_session_id: str | None = None,
     ) -> str: ...
 
     async def handle_streamed_output(
@@ -100,53 +119,9 @@ class SchedulerDependencies(Protocol):
 _scheduler_lock = asyncio.Lock()
 _config_job_run_locks: dict[str, asyncio.Lock] = {}
 TemporalSchedulerRuntime: Any | None = None
-_STAGNATION_THRESHOLD = 3
-_NO_PROGRESS_THRESHOLD = 5
 
 
-@dataclass
-class _SchedulerState:
-    scheduler_running: bool = False
-
-
-_state = _SchedulerState()
-
-
-def _recent_failure_run(logs: list[TaskRunLog]) -> list[TaskRunLog]:
-    failure_run: list[TaskRunLog] = []
-    for log in logs:
-        if log.status != "error":
-            break
-        failure_run.append(log)
-    return failure_run
-
-
-def _stagnation_circuit_decision(failure_run: list[TaskRunLog]) -> tuple[str, str] | None:
-    if len(failure_run) < _STAGNATION_THRESHOLD:
-        return None
-
-    last_signature = failure_run[0].error_signature or error_signature(failure_run[0].error or "")
-    same = 0
-    for log in failure_run:
-        signature = log.error_signature or error_signature(log.error or "")
-        if signature != last_signature:
-            break
-        same += 1
-    if same < _STAGNATION_THRESHOLD:
-        return None
-    return (
-        "stagnation",
-        f'Same error repeated {same} times in a row: "{last_signature}".',
-    )
-
-
-def _no_progress_circuit_decision(failure_run: list[TaskRunLog]) -> tuple[str, str] | None:
-    if len(failure_run) < _NO_PROGRESS_THRESHOLD:
-        return None
-    return (
-        "no-progress",
-        f"{len(failure_run)} consecutive scheduled-task failures with no success.",
-    )
+_scheduler_state = {"running": False}
 
 
 @runtime_checkable
@@ -166,17 +141,13 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: objec
     return runtime_cls(deps, cast("SchedulerConfig", scheduler_config))
 
 
-def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:
-    return deps.workspaces
-
-
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
     """Start the scheduler polling loop."""
     async with _scheduler_lock:
-        if _state.scheduler_running:
+        if _scheduler_state["running"]:
             logger.debug("Scheduler loop already running, skipping duplicate start")
             return
-        _state.scheduler_running = True
+        _scheduler_state["running"] = True
 
     try:
         scheduler_config = get_settings().scheduler
@@ -185,7 +156,7 @@ async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
             await _run_scheduler_loop(deps, temporal_runtime)
     finally:
         async with _scheduler_lock:
-            _state.scheduler_running = False
+            _scheduler_state["running"] = False
 
 
 async def _run_scheduler_loop(
@@ -201,12 +172,6 @@ async def _run_scheduler_loop(
         await asyncio.sleep(get_settings().scheduler.poll_interval)
 
 
-def error_signature(error: str) -> str:
-    """Normalize volatile details so repeated failures can be grouped."""
-    first_line = next((line.strip() for line in error.splitlines() if line.strip()), "")
-    return re.sub(r"\s+", " ", re.sub(r"\b\d+\b", "#", first_line)).strip()
-
-
 def _temporal_run_metadata() -> TemporalActivityInfo | None:
     try:
         return parse_temporal_activity_info(activity.info())
@@ -218,7 +183,7 @@ def _scheduled_group(
     deps: SchedulerDependencies,
     group_folder: str,
 ) -> WorkspaceProfile | None:
-    groups = _workspace_map(deps)
+    groups = deps.workspaces
     exact = next((group for group in groups.values() if group.folder == group_folder), None)
     if exact is not None:
         return exact
@@ -282,9 +247,8 @@ async def _broadcast_task_start(deps: SchedulerDependencies, task: ScheduledTask
 
 
 async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | None:
-    logs = await get_task_run_logs(task_id, limit=_NO_PROGRESS_THRESHOLD)
-    failure_run = _recent_failure_run(logs)
-    return _stagnation_circuit_decision(failure_run) or _no_progress_circuit_decision(failure_run)
+    logs = await get_task_run_logs(task_id, limit=NO_PROGRESS_THRESHOLD)
+    return scheduled_failure_decision(recent_failure_run(logs))
 
 
 async def _finish_scheduled_agent_run(
@@ -334,7 +298,7 @@ async def resume_interrupted_scheduled_turn(
     task: ScheduledTask,
     deps: SchedulerDependencies,
     turn: InFlightTurn,
-) -> bool:
+) -> bool | TurnPaused | TurnReset:
     """Resume a claimed scheduled agent turn and finish its scheduler bookkeeping."""
     group = _scheduled_group(deps, task.group_folder)
     if group is None:
@@ -344,7 +308,7 @@ async def resume_interrupted_scheduled_turn(
         start_time = datetime.fromisoformat(turn.started_at)
     except ValueError:
         start_time = datetime.now(UTC)
-    turn_id, result, error = await run_task_agent(
+    agent_run = await run_task_agent(
         TaskAgentRequest(
             task=task,
             deps=cast("ScheduledTurnDeps", deps),
@@ -354,19 +318,35 @@ async def resume_interrupted_scheduled_turn(
             resume_turn=turn,
         )
     )
+    if agent_run.terminal_outcome is TURN_PAUSED:
+        return TURN_PAUSED
+    if agent_run.terminal_outcome is TURN_RESET:
+        return TURN_RESET
     completed = await _finish_scheduled_agent_run(
         task,
         start_time=start_time,
-        result=result,
-        error=error,
-        turn_id=turn_id,
+        result=agent_run.result,
+        error=agent_run.error,
+        turn_id=agent_run.turn_id,
     )
     if completed:
-        await clear_in_flight_turn(turn.turn_id)
+        if turn.input_end_cursor:
+            await complete_turn_with_cursor(
+                deps,
+                turn.chat_jid,
+                turn.input_end_cursor,
+                turn.turn_id,
+                conversation_claim_id=turn.conversation_claim_id,
+            )
+        else:
+            await clear_in_flight_turn(turn.turn_id)
     return completed
 
 
-async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
+async def run_scheduled_agent(
+    task: ScheduledTask,
+    deps: SchedulerDependencies,
+) -> bool | TurnPaused | TurnReset:
     """Execute a single scheduled agent task via the unified run_agent path."""
     if task.config_job_name is None:
         return await _run_scheduled_agent(task, deps)
@@ -381,11 +361,19 @@ async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) 
 
 async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler terminal outcomes.
     task: ScheduledTask, deps: SchedulerDependencies
-) -> bool:
+) -> bool | TurnPaused | TurnReset:
     """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
     interrupted_turn = await get_in_flight_turn_for_task(task.id)
     if interrupted_turn is not None:
+        if interrupted_turn.control_state in {
+            CheckpointControlState.PAUSE_REQUESTED,
+            CheckpointControlState.PAUSED,
+        }:
+            return TURN_PAUSED
+        if interrupted_turn.control_state is CheckpointControlState.RESET_REQUESTED:
+            await clear_in_flight_turn(interrupted_turn.turn_id)
+            return TURN_RESET
         if not await claim_in_flight_turn(interrupted_turn.turn_id):
             logger.info(
                 "Interrupted scheduled turn already claimed",
@@ -443,7 +431,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
     execution_task = prepared_task
     if execution_task.derived_thread_name is not None or execution_task.config_job_name is not None:
         placement = resolve_workspace_placement(
-            _workspace_map(deps).values(),
+            deps.workspaces.values(),
             execution_task.group_folder,
         )
         if placement is None:
@@ -464,7 +452,7 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
     async def on_target_created(profile: WorkspaceProfile) -> None:
         await register_scheduled_target(cast("ConfigJobExecutionDeps", deps), profile)
 
-    turn_id, result, error = await run_task_agent(
+    agent_run = await run_task_agent(
         TaskAgentRequest(
             task=execution_task,
             deps=cast("ScheduledTurnDeps", deps),
@@ -475,10 +463,14 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
             on_target_created=on_target_created,
         )
     )
+    if agent_run.terminal_outcome is TURN_PAUSED:
+        return TURN_PAUSED
+    if agent_run.terminal_outcome is TURN_RESET:
+        return TURN_RESET
     return await _finish_scheduled_agent_run(
         task,
         start_time=start_time,
-        result=result,
-        error=error,
-        turn_id=turn_id,
+        result=agent_run.result,
+        error=agent_run.error,
+        turn_id=agent_run.turn_id,
     )

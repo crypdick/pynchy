@@ -82,11 +82,14 @@ async def _teardown_group(
     """
     logger.info("teardown_trace", step="start", group=group.name, clear_context=clear_context)
 
-    # Destroy persistent session (kills container)
-    create_background_task(
-        destroy_session(group.folder),
-        name=f"destroy-session-{group.folder}",
-    )
+    if clear_context:
+        await deps.queue.stop_active_process_for_control(chat_jid)
+        await destroy_session(group.folder)
+    else:
+        create_background_task(
+            destroy_session(group.folder),
+            name=f"destroy-session-{group.folder}",
+        )
 
     if clear_context:
         deps.sessions.pop(group.folder, None)
@@ -96,10 +99,11 @@ async def _teardown_group(
         logger.info("teardown_trace", step="clear_session_done", group=group.name)
 
     deps.queue.clear_pending_tasks(chat_jid)
-    create_background_task(
-        deps.queue.stop_active_process(chat_jid),
-        name=f"stop-container-{chat_jid[:20]}",
-    )
+    if not clear_context:
+        create_background_task(
+            deps.queue.stop_active_process(chat_jid),
+            name=f"stop-container-{chat_jid[:20]}",
+        )
     logger.info("teardown_trace", step="save_state_start", group=group.name)
     await advance_cursor(deps, chat_jid, timestamp)
     logger.info("teardown_trace", step="done", group=group.name)
@@ -114,7 +118,13 @@ async def handle_context_reset(
     source_message: NewMessage | None = None,
 ) -> None:
     """Clear session state, destroy the session, and confirm the context reset."""
-    await _teardown_group(deps, group, chat_jid, timestamp, clear_context=True)
+    await _teardown_group(
+        deps,
+        group,
+        chat_jid,
+        timestamp,
+        clear_context=True,
+    )
     logger.info("teardown_trace", step="send_clear_confirmation_start", group=group.name)
     await send_clear_confirmation(deps, chat_jid, source_message=source_message)
     logger.info("teardown_trace", step="send_clear_confirmation_done", group=group.name)

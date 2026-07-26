@@ -14,6 +14,7 @@ from conftest import make_settings
 from pynchy.config import ContainerConfig, QueueConfig
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.messaging.outcomes import TURN_PAUSED
 
 TASK_EXPLODED_MESSAGE = "task exploded"
 
@@ -459,6 +460,18 @@ class TestGroupQueueRetry:
             # Second retry after 0.2s (BASE_RETRY_SECONDS * 2^1)
             await asyncio.sleep(0.25)
             assert call_count == 3
+
+    async def test_paused_turn_is_terminal_without_retry(self):
+        with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):
+            queue = GroupQueue()
+            process_messages = AsyncMock(return_value=TURN_PAUSED)
+            queue.set_process_messages_fn(process_messages)
+
+            queue.enqueue_message_check("group1@g.us")
+            await asyncio.sleep(0.1)
+
+            process_messages.assert_awaited_once_with("group1@g.us")
+            assert queue.snapshot()["group1@g.us"]["active"] is False
 
     async def test_stops_retrying_after_max_retries(self):
         with _patch_settings(max_concurrent=2, base_retry_seconds=0.01):

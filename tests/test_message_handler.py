@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from conftest import make_settings
@@ -37,6 +37,7 @@ from pynchy.host.orchestrator.messaging.cursor import (
     complete_turn_with_cursor as persist_completed_turn,
 )
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
+from pynchy.host.orchestrator.messaging.outcomes import TURN_PAUSED
 from pynchy.host.orchestrator.messaging.pipeline import (
     CONTINUE_AFTER_SAFE_INTERRUPT,
     MessageHandlerDeps,
@@ -47,9 +48,11 @@ from pynchy.host.orchestrator.messaging.pipeline import (
 from pynchy.state import (
     admit_conversation_delivery,
     admit_external_delivery_receipt,
+    begin_in_flight_turn,
     claim_next_conversation_delivery,
     get_chat_history,
     get_conversation_delivery,
+    get_in_flight_turn,
     get_in_flight_turn_for_chat,
     init_test_database,
     prepare_in_flight_turn_recovery,
@@ -57,8 +60,10 @@ from pynchy.state import (
 )
 from pynchy.state import get_messages_since as get_stored_messages_since
 from pynchy.types import (
+    CheckpointControlState,
     ContainerOutput,
     GroupFolder,
+    InFlightTurn,
     InFlightWorkKind,
     NewMessage,
     WorkspaceProfile,
@@ -127,6 +132,7 @@ def _make_deps(
     deps.set_typing_on_channels = AsyncMock()
     deps.emit = MagicMock()
     deps.start_interactive_turn = AsyncMock()
+    deps.start_interrupted_turn = AsyncMock()
     deps.run_agent = AsyncMock(return_value="success")
     deps.handle_streamed_output = AsyncMock(return_value=True)
 
@@ -137,6 +143,9 @@ def _make_deps(
     deps.queue.enqueue_message_check = MagicMock()
     deps.queue.clear_pending_tasks = MagicMock()
     deps.queue.stop_active_process = AsyncMock()
+    deps.queue.stop_active_process_for_control = AsyncMock()
+    deps.queue.has_active_run = MagicMock(return_value=False)
+    deps.queue.interrupt_after_tool_result = AsyncMock(return_value=False)
     deps.queue.close_stdin = MagicMock()
 
     return deps
@@ -245,6 +254,10 @@ def _patch_fmt_sdk():
 
 
 class TestInterceptSpecialCommand:
+    @pytest.fixture(autouse=True)
+    async def _isolated_turn_ledger(self):
+        await init_test_database()
+
     @pytest.mark.parametrize("content", ["approve ab", "deny ab", "redeploy", "!whoami"])
     @pytest.mark.asyncio
     async def test_external_route_text_is_never_a_control_command(self, content: str):
@@ -316,6 +329,99 @@ class TestInterceptSpecialCommand:
         deps.handle_context_reset.assert_awaited_once_with(
             "g@g.us", group, msg.timestamp, source_message=msg
         )
+
+    @pytest.mark.asyncio
+    async def test_pause_consumes_command_and_requests_checkpoint_stop(self):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        deps.queue.has_active_run.return_value = True
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-pause",
+                chat_jid=jid,
+                group_folder=group.folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[{"sender_name": "Alice", "content": "finish this"}],
+                input_start_cursor="old-ts",
+                input_end_cursor="input-ts",
+                started_at="2026-07-25T10:00:00+00:00",
+                session_id="provider-thread",
+                claimed_at="2026-07-25T10:00:01+00:00",
+            )
+        )
+        msg = _make_message(
+            "pause",
+            message_id="pause-command",
+            chat_jid=jid,
+            timestamp="pause-ts",
+        )
+        await store_message(msg)
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
+            new_callable=AsyncMock,
+        ) as destroy:
+            assert await intercept_special_command(deps, jid, group, msg) is True
+
+        checkpoint = await get_in_flight_turn("turn-pause")
+        assert checkpoint is not None
+        assert checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED
+        assert checkpoint.session_id == "provider-thread"
+        history = await get_chat_history(jid)
+        assert next(message for message in history if message.id == msg.id).message_type == "host"
+        assert deps.last_agent_timestamp[jid] == msg.timestamp
+        deps.queue.stop_active_process_for_control.assert_awaited_once_with(jid)
+        destroy.assert_awaited_once_with(group.folder)
+        deps.broadcast_host_message.assert_awaited_once_with(jid, "⏸️")
+
+    @pytest.mark.asyncio
+    async def test_repeated_pause_is_idempotent(self):
+        jid = "g@g.us"
+        group = _make_group()
+        deps = _make_deps(groups={jid: group})
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-paused",
+                chat_jid=jid,
+                group_folder=group.folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-25T10:00:00+00:00",
+                control_state=CheckpointControlState.PAUSED,
+            )
+        )
+        commands = [
+            _make_message(
+                "stop",
+                message_id="stop-one",
+                chat_jid=jid,
+                timestamp="2026-07-25T10:01:00+00:00",
+            ),
+            _make_message(
+                "pause",
+                message_id="pause-two",
+                chat_jid=jid,
+                timestamp="2026-07-25T10:02:00+00:00",
+            ),
+        ]
+        for command in commands:
+            await store_message(command)
+
+        with patch(
+            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
+            new_callable=AsyncMock,
+        ):
+            for command in commands:
+                assert await intercept_special_command(deps, jid, group, command) is True
+
+        checkpoint = await get_in_flight_turn("turn-paused")
+        assert checkpoint is not None
+        assert checkpoint.control_state is CheckpointControlState.PAUSED
+        assert checkpoint.claimed_at is None
+        assert deps.broadcast_host_message.await_count == 2
 
     @pytest.mark.asyncio
     async def test_end_session_intercepted(self):
@@ -1393,6 +1499,178 @@ class TestProcessGroupMessages:
         assert deps.last_agent_timestamp[jid] == "new-ts"
 
     @pytest.mark.asyncio
+    async def test_pause_stops_active_turn_without_retry_or_error_warning(self, tmp_path):
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        deps = _make_deps(
+            groups={jid: group},
+            last_agent_ts={jid: "2026-07-25T09:59:00+00:00"},
+        )
+        deps.queue.has_active_run.return_value = True
+        original = _make_message(
+            "do the whole job",
+            message_id="original",
+            chat_jid=jid,
+            timestamp="2026-07-25T10:00:00+00:00",
+        )
+        await store_message(original)
+        agent_entered = asyncio.Event()
+        stop_agent = asyncio.Event()
+
+        async def interrupted_run(*_args, **_kwargs):
+            agent_entered.set()
+            await stop_agent.wait()
+            return "error"
+
+        def stop_for_control(_jid):
+            stop_agent.set()
+
+        deps.run_agent.side_effect = interrupted_run
+        deps.queue.stop_active_process_for_control.side_effect = stop_for_control
+
+        with (
+            patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)),
+            patch(
+                "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
+                new_callable=AsyncMock,
+            ),
+        ):
+            processing = asyncio.create_task(process_group_messages(deps, jid))
+            await asyncio.wait_for(agent_entered.wait(), timeout=1.0)
+            pause = _make_message(
+                "pause",
+                message_id="pause-active",
+                chat_jid=jid,
+                timestamp="2026-07-25T10:00:01+00:00",
+            )
+            await store_message(pause)
+            assert await intercept_special_command(deps, jid, group, pause) is True
+            assert await processing is TURN_PAUSED
+
+        checkpoint = await get_in_flight_turn_for_chat(
+            jid,
+            {InFlightWorkKind.INTERACTIVE},
+        )
+        assert checkpoint is not None
+        assert checkpoint.control_state is CheckpointControlState.PAUSED
+        assert checkpoint.claimed_at is None
+        assert checkpoint.input_end_cursor == original.timestamp
+        assert deps.last_agent_timestamp[jid] == pause.timestamp
+        assert deps.broadcast_host_message.await_args_list == [
+            call(jid, "⏸️"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_next_message_resumes_paused_turn_in_same_provider_session(self, tmp_path):
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        pause_timestamp = "2026-07-25T10:00:01+00:00"
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: pause_timestamp})
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-paused-resume",
+                chat_jid=jid,
+                group_folder=group.folder,
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[
+                    {
+                        "message_type": "user",
+                        "sender": "alice",
+                        "sender_name": "Alice",
+                        "content": "Write and publish the draft.",
+                        "timestamp": "2026-07-25T10:00:00+00:00",
+                        "metadata": None,
+                    }
+                ],
+                input_start_cursor="old-ts",
+                input_end_cursor="2026-07-25T10:00:00+00:00",
+                started_at="2026-07-25T10:00:00+00:00",
+                session_id="provider-thread-123",
+                conversation_claim_id=None,
+                input_source="trusted:linear",
+                control_state=CheckpointControlState.PAUSED,
+            )
+        )
+        guidance = _make_message(
+            "Continue, but leave it unpublished.",
+            message_id="resume-guidance",
+            chat_jid=jid,
+            timestamp="2026-07-25T10:00:02+00:00",
+        )
+        await store_message(guidance)
+
+        with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
+            assert await process_group_messages(deps, jid) is True
+
+        deps.run_agent.assert_awaited_once()
+        run = deps.run_agent.await_args
+        assert run.kwargs["turn_id"] == "turn-paused-resume"
+        assert run.kwargs["resume_session_id"] == "provider-thread-123"
+        assert run.kwargs["input_source"] == "trusted:linear"
+        resumed_messages = run.args[2]
+        assert resumed_messages[0]["metadata"]["source"] == "pause_continuation"
+        assert resumed_messages[1]["content"] == guidance.content
+        assert resumed_messages[1]["metadata"]["checkpoint_guidance"] is True
+        assert await get_in_flight_turn("turn-paused-resume") is None
+        assert deps.last_agent_timestamp[jid] == guidance.timestamp
+
+    @pytest.mark.asyncio
+    async def test_reply_reactivates_frozen_scheduled_occurrence(self, tmp_path):
+        jid = "g@g.us"
+        group = _make_group(is_admin=True)
+        pause_timestamp = "2026-07-25T10:00:01+00:00"
+        deps = _make_deps(groups={jid: group}, last_agent_ts={jid: pause_timestamp})
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="scheduled-paused",
+                chat_jid=jid,
+                group_folder=group.folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[
+                    {
+                        "message_type": "user",
+                        "sender": "system",
+                        "sender_name": "System",
+                        "content": "Run the weekly report.",
+                        "timestamp": "2026-07-25T10:00:00+00:00",
+                        "metadata": {"source": "scheduled_task"},
+                    }
+                ],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-25T10:00:00+00:00",
+                task_id="weekly-report",
+                session_id="scheduled-provider-thread",
+                scheduled_base_chat_jid=jid,
+                scheduled_thread_slot=2,
+                input_source="scheduled_task",
+                control_state=CheckpointControlState.PAUSED,
+            )
+        )
+        guidance = _make_message(
+            "Resume and omit the finance section.",
+            message_id="scheduled-guidance",
+            chat_jid=jid,
+            timestamp="2026-07-25T10:00:02+00:00",
+        )
+        await store_message(guidance)
+
+        with patch(_P_SETTINGS, return_value=_settings_mock(tmp_path)):
+            assert await process_group_messages(deps, jid) is True
+
+        deps.run_agent.assert_not_awaited()
+        deps.start_interrupted_turn.assert_awaited_once_with("scheduled-paused", jid)
+        checkpoint = await get_in_flight_turn("scheduled-paused")
+        assert checkpoint is not None
+        assert checkpoint.control_state is CheckpointControlState.ACTIVE
+        assert checkpoint.claimed_at is None
+        assert checkpoint.session_id == "scheduled-provider-thread"
+        assert checkpoint.scheduled_base_chat_jid == jid
+        assert checkpoint.scheduled_thread_slot == 2
+        assert checkpoint.input_end_cursor == guidance.timestamp
+        assert checkpoint.input_messages[-1]["content"] == guidance.content
+
+    @pytest.mark.asyncio
     async def test_agent_error_rolls_back_cursor(self, tmp_path):
         """Agent error with no output → cursor unchanged (never advanced), user notified."""
         group = _make_group(is_admin=True)
@@ -2046,6 +2324,68 @@ async def test_message_loop_does_not_run_channel_reconciliation_locally():
         await _run_loop_once(deps)
 
     deps.catch_up_channels.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reply_arriving_with_pause_is_queued_instead_of_sent_to_dead_ipc():
+    await init_test_database()
+    jid = "group@g.us"
+    group = _make_group(is_admin=True)
+    deps = _make_deps(groups={jid: group})
+    deps.queue.has_active_run.return_value = True
+    deps.queue.send_message.return_value = True
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="turn-pausing-with-reply",
+            chat_jid=jid,
+            group_folder=group.folder,
+            work_kind=InFlightWorkKind.INTERACTIVE,
+            input_messages=[{"sender_name": "Alice", "content": "original work"}],
+            input_start_cursor="",
+            input_end_cursor="2026-07-25T10:00:00+00:00",
+            started_at="2026-07-25T10:00:00+00:00",
+            claimed_at="2026-07-25T10:00:00+00:00",
+        )
+    )
+    pause = _make_message(
+        "pause",
+        message_id="pause-race",
+        chat_jid=jid,
+        timestamp="2026-07-25T10:00:01+00:00",
+    )
+    guidance = _make_message(
+        "Continue without publishing.",
+        message_id="guidance-race",
+        chat_jid=jid,
+        timestamp="2026-07-25T10:00:02+00:00",
+    )
+    await store_message(pause)
+    await store_message(guidance)
+
+    with (
+        patch(_PR_SETTINGS, return_value=_loop_settings_mock()),
+        patch(
+            _PR_NEW_MSGS,
+            new_callable=AsyncMock,
+            return_value=([pause, guidance], guidance.timestamp),
+        ),
+        patch(
+            "pynchy.config.access.filter_allowed_messages",
+            side_effect=lambda messages, *_args: messages,
+        ),
+        patch(
+            "pynchy.host.orchestrator.messaging.host_controls.destroy_session",
+            new_callable=AsyncMock,
+        ),
+    ):
+        await _run_loop_once(deps)
+
+    deps.queue.send_message.assert_not_called()
+    deps.queue.enqueue_message_check.assert_called_once_with(jid)
+    checkpoint = await get_in_flight_turn("turn-pausing-with-reply")
+    assert checkpoint is not None
+    assert checkpoint.control_state is CheckpointControlState.PAUSE_REQUESTED
+    assert deps.last_agent_timestamp[jid] == pause.timestamp
 
 
 class TestBtwNonInterruptingMessages:

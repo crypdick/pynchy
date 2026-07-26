@@ -29,10 +29,15 @@ class _RedeployWords(_StrictModel):
     verbs: list[str] = ["redeploy", "deploy"]
 
 
+class _PauseWords(_StrictModel):
+    aliases: list[str] = ["stop", "pause"]
+
+
 class CommandWordsConfig(_StrictModel):
     reset: _ResetWords = _ResetWords()
     end_session: _EndSessionWords = _EndSessionWords()
     redeploy: _RedeployWords = _RedeployWords()
+    pause: _PauseWords = _PauseWords()
 
 
 class SchedulerConfig(_StrictModel):

@@ -21,6 +21,10 @@
 # Codex CLI only. The selected model and account must support the effort.
 # model_reasoning_effort = "ultra"
 
+# Exact, case-insensitive commands that freeze unfinished work for later resumption.
+# [commands.pause]
+# aliases = ["stop", "pause"]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # API Credentials
 # ─────────────────────────────────────────────────────────────────────────────

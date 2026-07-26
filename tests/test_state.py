@@ -1409,6 +1409,47 @@ class TestEnsureColumns:
 
         await db.close()
 
+    async def test_adds_active_control_state_to_existing_in_flight_turns(self):
+        """Old checkpoints migrate to the active control state without row loss."""
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE in_flight_turns (
+                turn_id TEXT PRIMARY KEY,
+                chat_jid TEXT NOT NULL,
+                group_folder TEXT NOT NULL,
+                work_kind TEXT NOT NULL,
+                input_messages TEXT NOT NULL,
+                input_start_cursor TEXT NOT NULL,
+                input_end_cursor TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                task_id TEXT,
+                session_id TEXT,
+                output_sent INTEGER NOT NULL DEFAULT 0,
+                interrupted_at TEXT,
+                deploy_id TEXT,
+                claimed_at TEXT,
+                scheduled_base_chat_jid TEXT,
+                scheduled_thread_slot INTEGER,
+                conversation_claim_id TEXT,
+                input_source TEXT NOT NULL DEFAULT 'user'
+            );
+            INSERT INTO in_flight_turns (
+                turn_id, chat_jid, group_folder, work_kind, input_messages,
+                input_start_cursor, input_end_cursor, started_at
+            ) VALUES (
+                'legacy-turn', 'slack:C123', 'admin', 'interactive', '[]',
+                '', 'cursor', '2026-07-25T10:00:00+00:00'
+            );
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute(
+            "SELECT turn_id, control_state FROM in_flight_turns WHERE turn_id = 'legacy-turn'"
+        )
+        assert await cursor.fetchone() == ("legacy-turn", "active")
+        await db.close()
+
     async def test_adds_task_run_identity_columns_to_existing_ledger(self):
         """Startup migration preserves old rows while adding explicit run identity."""
         db = await aiosqlite.connect(":memory:")

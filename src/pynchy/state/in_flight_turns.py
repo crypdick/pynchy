@@ -6,6 +6,10 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves transactional annotations at runtime.
+    Connection,
+)
+
 from pynchy.conversation.models import (
     ConversationDeliveryCompletion,
     ConversationId,
@@ -21,7 +25,7 @@ else:
     Row = Any
 
 from pynchy.state.connection import _get_db, atomic_write
-from pynchy.types import InFlightTurn, InFlightWorkKind
+from pynchy.types import CheckpointControlState, InFlightTurn, InFlightWorkKind
 
 # NOTE: Update docs/architecture/message-routing.md § Interrupted Turn Recovery
 # when this ledger's lifecycle or source-of-truth semantics change.
@@ -54,6 +58,7 @@ def _row_to_turn(row: Row) -> InFlightTurn:
         scheduled_thread_slot=row["scheduled_thread_slot"],
         conversation_claim_id=row["conversation_claim_id"],
         input_source=row["input_source"],
+        control_state=CheckpointControlState(row["control_state"]),
     )
 
 
@@ -67,8 +72,8 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             input_start_cursor, input_end_cursor, started_at, task_id,
             session_id, output_sent, interrupted_at, deploy_id, claimed_at,
             scheduled_base_chat_jid, scheduled_thread_slot,
-            conversation_claim_id, input_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            conversation_claim_id, input_source, control_state
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             turn.turn_id,
@@ -89,6 +94,7 @@ async def begin_in_flight_turn(turn: InFlightTurn) -> None:
             turn.scheduled_thread_slot,
             turn.conversation_claim_id,
             turn.input_source,
+            turn.control_state.value,
         ),
     )
     await db.commit()
@@ -164,8 +170,12 @@ async def claim_in_flight_turn(turn_id: str) -> bool:
     """Atomically claim a turn so competing Temporal workflows cannot duplicate it."""
     db = _get_db()
     cursor = await db.execute(
-        "UPDATE in_flight_turns SET claimed_at = ? WHERE turn_id = ? AND claimed_at IS NULL",
-        (_timestamp(), turn_id),
+        """
+        UPDATE in_flight_turns
+        SET claimed_at = ?
+        WHERE turn_id = ? AND claimed_at IS NULL AND control_state = ?
+        """,
+        (_timestamp(), turn_id, CheckpointControlState.ACTIVE.value),
     )
     await db.commit()
     return cursor.rowcount == 1
@@ -193,8 +203,17 @@ async def update_in_flight_session(group_folder: str, session_id: str) -> None:
     await db.commit()
 
 
+async def _get_in_flight_turn_in_transaction(
+    db: Connection,
+    turn_id: str,
+) -> InFlightTurn | None:
+    cursor = await db.execute("SELECT * FROM in_flight_turns WHERE turn_id = ?", (turn_id,))
+    row = await cursor.fetchone()
+    return _row_to_turn(row) if row else None
+
+
 async def prepare_in_flight_turn_recovery(deploy_id: str | None) -> list[InFlightTurn]:
-    """Mark surviving rows interrupted and release claims left by the stopped process."""
+    """Complete pause transitions and prepare only active rows for automatic recovery."""
     db = _get_db()
     interrupted_at = _timestamp()
     await db.execute(
@@ -203,11 +222,24 @@ async def prepare_in_flight_turn_recovery(deploy_id: str | None) -> list[InFligh
         SET interrupted_at = COALESCE(interrupted_at, ?),
             deploy_id = COALESCE(?, deploy_id),
             claimed_at = NULL
+        WHERE control_state = ?
         """,
-        (interrupted_at, deploy_id),
+        (interrupted_at, deploy_id, CheckpointControlState.ACTIVE.value),
+    )
+    await db.execute(
+        """
+        UPDATE in_flight_turns
+        SET control_state = ?, claimed_at = NULL
+        WHERE control_state = ?
+        """,
+        (
+            CheckpointControlState.PAUSED.value,
+            CheckpointControlState.PAUSE_REQUESTED.value,
+        ),
     )
     await db.commit()
-    return await get_in_flight_turns()
+    turns = await get_in_flight_turns()
+    return [turn for turn in turns if turn.control_state is CheckpointControlState.ACTIVE]
 
 
 async def clear_in_flight_turn(turn_id: str) -> None:
@@ -223,8 +255,13 @@ async def clear_unclaimed_in_flight_turn_for_task(task_id: str) -> bool:
         """
         DELETE FROM in_flight_turns
         WHERE task_id = ? AND work_kind = ? AND claimed_at IS NULL
+          AND control_state = ?
         """,
-        (task_id, InFlightWorkKind.SCHEDULED.value),
+        (
+            task_id,
+            InFlightWorkKind.SCHEDULED.value,
+            CheckpointControlState.ACTIVE.value,
+        ),
     )
     await db.commit()
     return cursor.rowcount > 0

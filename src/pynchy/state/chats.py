@@ -66,6 +66,7 @@ async def set_chat_cleared_at(
                           SELECT 1 FROM in_flight_turns
                           WHERE in_flight_turns.conversation_claim_id =
                               conversation_deliveries.claim_id
+                            AND in_flight_turns.control_state != 'reset_requested'
                       )
                   )
               )
@@ -90,6 +91,7 @@ async def set_chat_cleared_at(
                           SELECT 1 FROM in_flight_turns
                           WHERE in_flight_turns.conversation_claim_id =
                               conversation_deliveries.claim_id
+                            AND in_flight_turns.control_state != 'reset_requested'
                       )
                   )
               )

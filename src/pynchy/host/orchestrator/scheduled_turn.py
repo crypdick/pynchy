@@ -9,7 +9,10 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 )
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pynchy.host.orchestrator.messaging.outcomes import ProcessGroupResult
 
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
@@ -19,7 +22,8 @@ from pynchy.host.orchestrator.config_job_execution import derived_thread_name
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
     begin_message_turn,
-    interrupted_resume_message,
+    requested_control_outcome,
+    semantic_resume_messages,
 )
 from pynchy.host.orchestrator.scheduled_targeting import (
     ScheduledTargetBusyError,
@@ -29,8 +33,8 @@ from pynchy.host.orchestrator.scheduled_targeting import (
     thread_is_reserved,
     thread_name,
 )
-from pynchy.host.orchestrator.threads import (
-    EnsuredThread,  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
+from pynchy.host.orchestrator.scheduled_turn_deps import (  # noqa: TC001, RUF100 - beartype resolves request annotations.
+    ScheduledTurnDeps,
 )
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
 from pynchy.logger import logger
@@ -50,66 +54,6 @@ from pynchy.types import (
 from pynchy.utils import IdleTimer
 
 _scheduled_target_lock = asyncio.Lock()
-
-
-@runtime_checkable
-class ScheduledTurnQueue(Protocol):
-    def close_stdin(self, chat_jid: str) -> None: ...
-
-
-@runtime_checkable
-class ScheduledTurnDeps(Protocol):
-    @property
-    def queue(self) -> ScheduledTurnQueue: ...
-
-    async def supports_thread_creation(self, parent_jid: str) -> bool: ...
-
-    async def create_thread(
-        self,
-        parent_jid: str,
-        name: str,
-        *,
-        participant_ids: tuple[str, ...] = (),
-    ) -> str: ...
-
-    async def find_thread(self, parent_jid: str, name: str) -> str | None: ...
-
-    async def add_thread_participants(
-        self,
-        child_jid: str,
-        participant_ids: tuple[str, ...],
-    ) -> None: ...
-
-    async def ensure_thread(
-        self,
-        parent_jid: str,
-        name: str,
-        *,
-        participant_ids: tuple[str, ...] = (),
-    ) -> EnsuredThread: ...
-
-    async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
-        self,
-        group: WorkspaceProfile,
-        chat_jid: str,
-        messages: list[dict[str, Any]],
-        on_output: OnOutput | None = None,
-        extra_system_notices: list[str] | None = None,
-        *,
-        is_scheduled_task: bool = False,
-        repo_access_override: str | None = None,
-        input_source: str = "user",
-        turn_id: str | None = None,
-    ) -> str: ...
-
-    async def handle_streamed_output(
-        self,
-        chat_jid: str,
-        group: WorkspaceProfile,
-        result: ContainerOutput,
-        *,
-        turn_id: str | None = None,
-    ) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -136,6 +80,17 @@ class _TaskAgentStreamState:
     result: str | None = None
     error: str | None = None
     output_sent: bool = False
+    terminal_outcome: ProcessGroupResult | None = None
+
+
+@dataclass(frozen=True)
+class TaskAgentResult:
+    """Result of one scheduled agent invocation and its checkpoint transition."""
+
+    turn_id: str
+    result: str | None
+    error: str | None
+    terminal_outcome: ProcessGroupResult | None = None
 
 
 @dataclass(frozen=True)
@@ -176,7 +131,7 @@ def _scheduled_idle_timer(
 
 def _task_agent_messages(request: TaskAgentRequest) -> list[dict[str, Any]]:
     return (
-        [interrupted_resume_message(request.resume_turn)]
+        semantic_resume_messages(request.resume_turn)
         if request.resume_turn
         else [_scheduled_task_message(request.task)]
     )
@@ -367,7 +322,15 @@ async def _run_target_agent(run: _TargetAgentRun) -> None:
                 else request.task.input_source
             ),
             turn_id=run.turn_id,
+            resume_session_id=request.resume_turn.session_id if request.resume_turn else None,
         )
+        state.terminal_outcome = await requested_control_outcome(
+            run.turn_id,
+            agent_succeeded=agent_result == "success" and state.error is None,
+        )
+        if state.terminal_outcome is not None:
+            state.error = None
+            return
         if agent_result == "error":
             state.error = state.error or "Agent returned error"
     finally:
@@ -381,8 +344,11 @@ async def _finish_checkpoint(
     *,
     interrupted: bool,
     error: str | None,
+    terminal_outcome: ProcessGroupResult | None,
 ) -> None:
     if interrupted:
+        return
+    if terminal_outcome is not None:
         return
     if error:
         # Keep the checkpoint for a first attempt as well as a resumed one.
@@ -394,7 +360,7 @@ async def _finish_checkpoint(
         await clear_in_flight_turn(turn_id)
 
 
-async def run_task_agent(request: TaskAgentRequest) -> tuple[str, str | None, str | None]:
+async def run_task_agent(request: TaskAgentRequest) -> TaskAgentResult:
     """Run or semantically resume one checkpointed scheduled agent invocation."""
     resume_turn = request.resume_turn
     turn_id = resume_turn.turn_id if resume_turn else new_turn_id()
@@ -426,11 +392,31 @@ async def run_task_agent(request: TaskAgentRequest) -> tuple[str, str | None, st
     except ScheduledTargetBusyError:
         raise
     except Exception as exc:  # noqa: BLE001, RUF100 - agent invocation returns task errors.
-        state.error = str(exc)
-        logger.error("Task failed", task_id=request.task.id, error=state.error)
-        return turn_id, state.result, state.error
+        state.terminal_outcome = await requested_control_outcome(
+            turn_id,
+            agent_succeeded=False,
+        )
+        logger.info(
+            "Scheduled agent process exited",
+            task_id=request.task.id,
+            controlled=state.terminal_outcome is not None,
+        )
+        if state.terminal_outcome is None:
+            state.error = str(exc)
+            logger.error("Task failed", task_id=request.task.id, error=state.error)
+        return TaskAgentResult(
+            turn_id,
+            state.result,
+            state.error,
+            terminal_outcome=state.terminal_outcome,
+        )
     else:
-        return turn_id, state.result, state.error
+        return TaskAgentResult(
+            turn_id,
+            state.result,
+            state.error,
+            terminal_outcome=state.terminal_outcome,
+        )
     finally:
         if checkpoint_started:
             await _finish_checkpoint(
@@ -438,4 +424,5 @@ async def run_task_agent(request: TaskAgentRequest) -> tuple[str, str | None, st
                 resume_turn,
                 interrupted=interrupted,
                 error=state.error,
+                terminal_outcome=state.terminal_outcome,
             )

@@ -53,6 +53,7 @@ from pynchy.state import (
 from pynchy.types import (
     CanaryOutcome,
     CanaryRun,
+    CheckpointControlState,
     DeployChangeKind,
     DeployClaimStatus,
     DeployRevision,
@@ -1241,6 +1242,26 @@ class TestTemporalSchedulerRuntime:
         assert status["last_completed_at"] is not None
 
     @pytest.mark.asyncio
+    async def test_run_scheduled_agent_activity_returns_terminal_pause(
+        self, monkeypatch, temporal_task
+    ):
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "get_task_by_id",
+            lambda _task_id: asyncio.sleep(0, result=temporal_task),
+        )
+        monkeypatch.setattr(
+            temporal_scheduler,
+            "run_scheduled_agent",
+            lambda _task, _deps: asyncio.sleep(0, result=temporal_scheduler.TURN_PAUSED),
+        )
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        result = await temporal_scheduler.run_scheduled_agent_task(temporal_task.id)
+
+        assert result == temporal_workflows.TURN_PAUSED
+
+    @pytest.mark.asyncio
     async def test_run_learning_review_activity_uses_bound_deps(self, monkeypatch, learning_packet):
 
         deps = NullSchedulerDeps()
@@ -1333,10 +1354,34 @@ class TestTemporalSchedulerRuntime:
         assert result == temporal_interactive.CONTINUE_AFTER_SAFE_INTERRUPT
 
     @pytest.mark.asyncio
+    async def test_run_interactive_message_activity_returns_terminal_pause(self, monkeypatch):
+        monkeypatch.setattr(
+            temporal_interactive,
+            "_process_interactive_message_turn",
+            lambda _deps, _chat_jid: asyncio.sleep(0, result=temporal_interactive.TURN_PAUSED),
+        )
+        temporal_scheduler.bind_scheduler_deps(NullSchedulerDeps())
+
+        result = await temporal_scheduler.run_interactive_message_turn("slack:C123")
+
+        assert result == temporal_workflows.TURN_PAUSED
+
+    @pytest.mark.asyncio
     async def test_interrupted_turn_activity_preserves_safe_interrupt_continuation(
         self, monkeypatch
     ):
-        get_turn = AsyncMock(return_value=object())
+        get_turn = AsyncMock(
+            return_value=InFlightTurn(
+                turn_id="turn-123",
+                chat_jid="slack:C123",
+                group_folder="admin",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-22T03:43:18+00:00",
+            )
+        )
         claim_turn = AsyncMock(return_value=True)
         scheduler_deps = object()
 
@@ -1355,6 +1400,30 @@ class TestTemporalSchedulerRuntime:
         result = await temporal_interrupted.run_interrupted_agent_turn("turn-123")
 
         assert result == temporal_workflows.CONTINUE_AFTER_SAFE_INTERRUPT
+
+    @pytest.mark.asyncio
+    async def test_interrupted_turn_activity_does_not_claim_paused_checkpoint(self, monkeypatch):
+        await init_test_database()
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="turn-paused",
+                chat_jid="slack:C123",
+                group_folder="admin",
+                work_kind=InFlightWorkKind.INTERACTIVE,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-22T03:43:18+00:00",
+                control_state=CheckpointControlState.PAUSED,
+            )
+        )
+        claim = AsyncMock(wraps=claim_in_flight_turn)
+        monkeypatch.setattr(temporal_interrupted, "claim_in_flight_turn", claim)
+
+        result = await temporal_interrupted.run_interrupted_agent_turn("turn-paused")
+
+        assert result == temporal_workflows.TURN_PAUSED
+        claim.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cancelled_interrupted_turn_activity_releases_durable_claim(self, monkeypatch):

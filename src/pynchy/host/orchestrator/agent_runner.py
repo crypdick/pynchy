@@ -43,8 +43,8 @@ from pynchy.host.orchestrator.host_execution import host_execution_cwd as _host_
 from pynchy.host.orchestrator.ipc_message_formatting import format_messages_for_ipc
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.logger import logger
-from pynchy.state import clear_session
-from pynchy.types import ContainerInput, GroupFolder, WorkspaceProfile
+from pynchy.state import clear_session, get_in_flight_turn
+from pynchy.types import CheckpointControlState, ContainerInput, GroupFolder, WorkspaceProfile
 
 if TYPE_CHECKING:
     import pluggy
@@ -309,7 +309,6 @@ async def _run_scheduled_execution(
     ctx: PreContainerResult,
 ) -> str:
     """Run one scheduled invocation in the profile's selected execution mode."""
-    ctx.session_id = None
     host_cwd = _host_execution_cwd(group.folder)
     if host_cwd is None:
         # The one-shot container has a fresh provider home, so it cannot
@@ -323,8 +322,9 @@ async def _run_scheduled_execution(
         return await _run_scheduled_task(deps, group, chat_jid, messages, ctx)
 
     interrupted = False
+    result: str | None = None
     try:
-        return await _run_host_execution(
+        result = await _run_host_execution(
             deps,
             group,
             chat_jid,
@@ -340,8 +340,10 @@ async def _run_scheduled_execution(
     except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"
         logger.exception("Scheduled host task error", group=group.name)
         return "error"
+    else:
+        return result
     finally:
-        if not interrupted:
+        if not interrupted and not await _paused_session_must_survive(ctx.turn_id, result):
             # Mirror scheduled-container teardown: the host runner may have
             # published a provider session while streaming its final output.
             await destroy_session(group.folder)
@@ -366,6 +368,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     repo_access_override: str | None = None,
     input_source: str = "user",
     turn_id: str | None = None,
+    resume_session_id: str | None = None,
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
 
@@ -404,6 +407,8 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         )
     )
     ctx.turn_id = resolved_turn_id
+    if is_scheduled_task or resume_session_id is not None:
+        ctx.session_id = resume_session_id
 
     # Resolve host mode before the scheduled container branch. Scheduled host
     # jobs still use one-shot provider state and semantic checkpoint recovery.
@@ -498,9 +503,10 @@ async def _run_scheduled_task(
     )
     container_name = oneshot_container_name(group.folder)
     interrupted = False
+    result: str | None = None
 
     try:
-        return await _spawn_and_await(
+        result = await _spawn_and_await(
             _SpawnAndAwaitRequest(
                 deps=deps,
                 group=group,
@@ -520,11 +526,24 @@ async def _run_scheduled_task(
     except Exception:  # noqa: BLE001, RUF100 - scheduled task boundary returns "error"
         logger.exception("Scheduled task error", group=group.name)
         return "error"
+    else:
+        return result
     finally:
-        if not interrupted:
+        if not interrupted and not await _paused_session_must_survive(ctx.turn_id, result):
             # Clean up the session created by the one-shot container.
             # Without this, the workspace appears "active" and receives
             # deploy resume messages that trigger unnecessary agent runs.
             await destroy_session(group.folder)
             await clear_session(GroupFolder(group.folder))
             deps.sessions.pop(group.folder, None)
+
+
+async def _paused_session_must_survive(turn_id: str | None, result: str | None) -> bool:
+    """Preserve provider state only when a requested pause interrupted the run."""
+    if turn_id is None or result == "success":
+        return False
+    turn = await get_in_flight_turn(turn_id)
+    return turn is not None and turn.control_state in {
+        CheckpointControlState.PAUSE_REQUESTED,
+        CheckpointControlState.PAUSED,
+    }

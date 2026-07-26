@@ -242,6 +242,15 @@ class InFlightWorkKind(StrEnum):
     SCHEDULED = "scheduled"
 
 
+class CheckpointControlState(StrEnum):
+    """Durable human control over one unfinished agent checkpoint."""
+
+    ACTIVE = "active"
+    PAUSE_REQUESTED = "pause_requested"
+    PAUSED = "paused"
+    RESET_REQUESTED = "reset_requested"
+
+
 class WorkItemExecutionStatus(StrEnum):
     """Pynchy's durable lifecycle for one linked Linear work item."""
 
@@ -347,6 +356,7 @@ class InFlightTurn:
     scheduled_thread_slot: int | None = None
     conversation_claim_id: str | None = None
     input_source: str = "user"
+    control_state: CheckpointControlState = CheckpointControlState.ACTIVE
 
 
 @dataclass
