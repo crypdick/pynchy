@@ -9,7 +9,14 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery anno
 from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import routed_conversation_folder
+from pynchy.logger import logger
 from pynchy.state.connection import atomic_write
+
+
+async def prepare_conversation_runtime_ownership_recovery() -> int:
+    """Move thread-derived runtimes to conversation ownership before state load."""
+    async with atomic_write() as database:
+        return await _migrate_legacy_conversation_runtime_ownership(database)
 
 
 async def prepare_conversation_delivery_recovery() -> int:
@@ -21,7 +28,7 @@ async def prepare_conversation_delivery_recovery() -> int:
     discarded work from post-reset deliveries.
     """
     async with atomic_write() as database:
-        migrated_sessions = await _migrate_legacy_scheduled_session_bindings(database)
+        migrated_runtime_state = await _migrate_legacy_conversation_runtime_ownership(database)
         await database.execute(
             """
             UPDATE routed_conversations
@@ -80,11 +87,11 @@ async def prepare_conversation_delivery_recovery() -> int:
               )
             """
         )
-        return migrated_sessions + retired.rowcount + released.rowcount
+        return migrated_runtime_state + retired.rowcount + released.rowcount
 
 
-async def _migrate_legacy_scheduled_session_bindings(database: Connection) -> int:
-    """Collapse thread-JID runtimes into their routed conversation owner."""
+async def _migrate_legacy_conversation_runtime_ownership(database: Connection) -> int:
+    """Collapse thread-derived runtimes into their routed conversation owner."""
     cursor = await database.execute(
         """
         SELECT conversation.id, conversation.workspace, conversation.session_id,
@@ -92,13 +99,39 @@ async def _migrate_legacy_scheduled_session_bindings(database: Connection) -> in
         FROM routed_conversations AS conversation
         JOIN conversation_control_bindings AS binding
           ON binding.conversation_id = conversation.id
-        WHERE conversation.session_id IS NOT NULL
         """
     )
     migrated = 0
     for row in await cursor.fetchall():
         conversation_id = ConversationId(row["id"])
         legacy_folder = dynamic_thread_folder(row["workspace"], row["thread_jid"])
+        routed_folder = routed_conversation_folder(row["workspace"], conversation_id)
+        target_cursor = await database.execute(
+            "SELECT jid FROM registered_groups WHERE folder = ?",
+            (routed_folder,),
+        )
+        target = await target_cursor.fetchone()
+        if target is not None and target["jid"] != row["thread_jid"]:
+            logger.warning(
+                "Legacy routed workspace ownership migration blocked",
+                conversation_id=conversation_id,
+                legacy_folder=legacy_folder,
+                routed_folder=routed_folder,
+                target_jid=target["jid"],
+            )
+            continue
+        moved_workspace = await database.execute(
+            """
+            UPDATE registered_groups
+            SET folder = ?
+            WHERE jid = ? AND folder = ?
+            """,
+            (routed_folder, row["thread_jid"], legacy_folder),
+        )
+        migrated += moved_workspace.rowcount
+
+        if row["session_id"] is None:
+            continue
         sessions_cursor = await database.execute(
             "SELECT group_folder FROM sessions WHERE session_id = ?",
             (row["session_id"],),
@@ -115,11 +148,10 @@ async def _migrate_legacy_scheduled_session_bindings(database: Connection) -> in
                 session_id = excluded.session_id
             """,
             (
-                routed_conversation_folder(row["workspace"], conversation_id),
+                routed_folder,
                 row["session_id"],
             ),
         )
-        routed_folder = routed_conversation_folder(row["workspace"], conversation_id)
         await database.execute(
             """
             INSERT INTO session_security_taint (

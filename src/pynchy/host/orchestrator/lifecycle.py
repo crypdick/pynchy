@@ -64,6 +64,7 @@ from pynchy.plugins.runtimes import system_checks
 from pynchy.state import (
     init_database,
     initialize_deployment_state,
+    prepare_conversation_runtime_ownership_recovery,
     recover_incomplete_action_intents,
     store_chat_metadata,
 )
@@ -177,6 +178,7 @@ async def _initialize_core(app: PynchyApp) -> None:
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
     await init_database()
+    await prepare_conversation_runtime_ownership_recovery()
     # A crash can leave an external write without a receipt. Recovery fails closed
     # rather than replaying that side effect.
     await recover_incomplete_action_intents()

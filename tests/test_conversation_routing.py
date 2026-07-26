@@ -51,8 +51,10 @@ from pynchy.state import (
     get_session,
     get_session_security_taint,
     get_webhook_receipt,
+    get_workspace_profile,
     mark_session_security_taint,
     prepare_conversation_delivery_recovery,
+    prepare_conversation_runtime_ownership_recovery,
     resolve_conversation,
     set_chat_cleared_at,
     set_conversation_control_binding,
@@ -450,6 +452,68 @@ async def test_startup_recovery_consolidates_legacy_scheduled_session() -> None:
     assert preserved is not None
     assert preserved.session_id == legitimate_session
     assert await get_session(GroupFolder(legitimate_folder)) == legitimate_session
+
+
+async def test_startup_recovery_migrates_legacy_thread_runtime_ownership() -> None:
+    thread_jid = ChatJid("discord:channel:thread-runtime-owner")
+    conversation = await resolve_conversation(
+        _subject("issue-runtime-owner"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(conversation.id, thread_jid)
+    legacy_folder = dynamic_thread_folder("triage", thread_jid)
+    routed_folder = routed_conversation_folder("triage", conversation.id)
+    await set_workspace_profile(
+        WorkspaceProfile(
+            jid=thread_jid,
+            name="Legacy issue thread",
+            folder=legacy_folder,
+            trigger="@Pynchy",
+        )
+    )
+
+    recovered = await prepare_conversation_runtime_ownership_recovery()
+
+    profile = await get_workspace_profile(thread_jid)
+    assert recovered == 1
+    assert profile is not None
+    assert profile.folder == routed_folder
+
+
+async def test_startup_recovery_does_not_steal_routed_workspace_folder() -> None:
+    thread_jid = ChatJid("discord:channel:thread-runtime-conflict")
+    conversation = await resolve_conversation(
+        _subject("issue-runtime-conflict"),
+        GroupFolder("triage"),
+    )
+    await _bind_control_thread(conversation.id, thread_jid)
+    legacy_folder = dynamic_thread_folder("triage", thread_jid)
+    routed_folder = routed_conversation_folder("triage", conversation.id)
+    legacy = WorkspaceProfile(
+        jid=thread_jid,
+        name="Legacy issue thread",
+        folder=legacy_folder,
+        trigger="@Pynchy",
+    )
+    existing = WorkspaceProfile(
+        jid="discord:channel:other-runtime",
+        name="Existing routed owner",
+        folder=routed_folder,
+        trigger="@Pynchy",
+    )
+    await set_workspace_profile(legacy)
+    await set_workspace_profile(existing)
+    session_id = SessionId("conflicting-runtime-session")
+    await set_conversation_session(conversation.id, session_id)
+    await set_session(GroupFolder(legacy_folder), session_id)
+
+    recovered = await prepare_conversation_runtime_ownership_recovery()
+
+    assert recovered == 0
+    assert await get_workspace_profile(thread_jid) == legacy
+    assert await get_workspace_profile(existing.jid) == existing
+    assert await get_session(GroupFolder(legacy_folder)) == session_id
+    assert await get_session(GroupFolder(routed_folder)) is None
 
 
 class _ClearConfirmationDeps:
