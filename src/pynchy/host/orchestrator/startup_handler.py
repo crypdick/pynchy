@@ -18,14 +18,25 @@ from pynchy.host.migration_backups import prune_migration_backups
 from pynchy.host.orchestrator import adapters
 from pynchy.logger import logger
 from pynchy.state import (
+    clear_in_flight_turn,
     clear_pending_deployment,
+    clear_session,
     complete_deployment,
     get_active_task_for_group,
+    get_in_flight_turns,
     get_messages_since,
     prepare_conversation_delivery_recovery,
     prepare_in_flight_turn_recovery,
+    set_chat_cleared_at,
 )
-from pynchy.types import DeployRevision, InFlightTurn, WorkspaceProfile, WorkspaceSecurity
+from pynchy.types import (
+    CheckpointControlState,
+    DeployRevision,
+    GroupFolder,
+    InFlightTurn,
+    WorkspaceProfile,
+    WorkspaceSecurity,
+)
 from pynchy.utils import write_json_atomic
 
 if TYPE_CHECKING:
@@ -239,6 +250,7 @@ async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
     if continuation:
         _prune_migration_backups(get_settings().data_dir)
     deploy_id = commit_sha if isinstance(commit_sha, str) and commit_sha != "unknown" else None
+    await _complete_reset_requests_after_restart()
     await prepare_conversation_delivery_recovery()
     interrupted_turns = await prepare_in_flight_turn_recovery(deploy_id)
     commit_text = commit_sha if isinstance(commit_sha, str) else "unknown"
@@ -257,6 +269,22 @@ async def prepare_interrupted_turn_recovery() -> InterruptedTurnRecovery:
         rolled_back=continuation.get("rolled_back") is True,
         continuation_path=loaded_continuation_path,
     )
+
+
+async def _complete_reset_requests_after_restart() -> None:
+    """Finish reset transitions that lost their in-process command handler."""
+    reset_at = datetime.now(UTC).isoformat()
+    for turn in await get_in_flight_turns():
+        if turn.control_state is not CheckpointControlState.RESET_REQUESTED:
+            continue
+        await clear_in_flight_turn(turn.turn_id)
+        await clear_session(GroupFolder(turn.group_folder))
+        await set_chat_cleared_at(turn.chat_jid, reset_at)
+        logger.info(
+            "Startup completed checkpoint reset",
+            chat_jid=turn.chat_jid,
+            turn_id=turn.turn_id,
+        )
 
 
 async def confirm_deploy_startup(recovery: InterruptedTurnRecovery) -> None:

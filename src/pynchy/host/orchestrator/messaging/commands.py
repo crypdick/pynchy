@@ -1,7 +1,7 @@
 """Magic command word matching.
 
-Detects special single-word or two-word commands (context reset, end session,
-redeploy) using configurable word lists from layered settings. Also detects
+Detects special single-word or two-word commands (pause, context reset, end
+session, redeploy) using configurable word lists from layered settings. Also detects
 approval gate commands (approve/deny/pending).
 """
 
@@ -71,9 +71,16 @@ def is_redeploy(text: str) -> bool:
     return word in aliases or word in verbs
 
 
+def is_pause(text: str) -> bool:
+    """Check if a message is an exact resumable-pause command."""
+    text = _strip_trigger(text)
+    word = text.strip().lower()
+    return word in set(get_settings().commands.pause.aliases)
+
+
 def is_any_magic_command(text: str) -> bool:
-    """Check if a message matches any magic command (reset, end session, redeploy)."""
-    return is_context_reset(text) or is_end_session(text) or is_redeploy(text)
+    """Check if a message matches any lifecycle magic command."""
+    return is_pause(text) or is_context_reset(text) or is_end_session(text) or is_redeploy(text)
 
 
 # -- Approval gate commands ----------------------------------------------------

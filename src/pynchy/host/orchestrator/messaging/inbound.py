@@ -26,6 +26,7 @@ from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - b
 )
 from pynchy.host.orchestrator.messaging.host_controls import (
     host_control_kind,
+    intercept_immediate_checkpoint_controls,
     intercept_special_command,
     mark_dispatched,
     reclassify_batch_host_controls,
@@ -181,7 +182,18 @@ async def _intercept_host_control_batch(
     group: WorkspaceProfile,
     all_pending: list[NewMessage],
 ) -> bool | None:
-    if not any(any(host_control_kind(message)) for message in all_pending):
+    immediate_result = await intercept_immediate_checkpoint_controls(
+        deps,
+        group_jid,
+        group,
+        all_pending,
+    )
+    if immediate_result is not None:
+        return immediate_result
+    if not any(
+        message.message_type != "host" and any(host_control_kind(message))
+        for message in all_pending
+    ):
         return None
     async with turn_boundary_lock(group_jid):
         # This lock may have waited for the active turn to finalize. Refresh
@@ -191,7 +203,10 @@ async def _intercept_host_control_batch(
             group_jid,
             _routing_cursor(deps, group_jid),
         )
-        if not any(any(host_control_kind(message)) for message in all_pending):
+        if not any(
+            message.message_type != "host" and any(host_control_kind(message))
+            for message in all_pending
+        ):
             return True if not all_pending else None
         active_turn = await get_in_flight_turn_for_chat(
             group_jid,

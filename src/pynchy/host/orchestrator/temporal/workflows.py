@@ -14,6 +14,8 @@ from temporalio.exceptions import ActivityError
 
 ACTIVITY_HEARTBEAT_TIMEOUT_SECONDS = 30
 CONTINUE_AFTER_SAFE_INTERRUPT = "continue_after_safe_interrupt"
+TURN_PAUSED = "paused"
+TURN_RESET = "reset"
 
 
 @workflow.defn

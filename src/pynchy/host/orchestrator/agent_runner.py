@@ -315,6 +315,7 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
     repo_access_override: str | None = None,
     input_source: str = "user",
     turn_id: str | None = None,
+    resume_session_id: str | None = None,
 ) -> str:
     """Run the container agent for a group. Returns 'success' or 'error'.
 
@@ -349,6 +350,8 @@ async def run_agent(  # noqa: PLR0913, RUF100 - public orchestrator entry point 
         )
     )
     ctx.turn_id = resolved_turn_id
+    if resume_session_id is not None:
+        ctx.session_id = resume_session_id
 
     agent_core_config = _agent_core_config_from_settings(group.folder)
     if _session_model_mismatch(ctx.session_id, agent_core_config):

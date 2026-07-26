@@ -256,12 +256,7 @@ class PynchyApp(ThreadRouting):
         group: WorkspaceProfile,
         occurrence_id: str,
     ) -> None:
-        await session_handler.handle_scheduled_context_reset(
-            self,
-            task.id,
-            group,
-            occurrence_id,
-        )
+        await session_handler.handle_scheduled_context_reset(self, task.id, group, occurrence_id)
 
     async def handle_end_session(
         self,
@@ -307,6 +302,7 @@ class PynchyApp(ThreadRouting):
         repo_access_override: str | None = None,
         input_source: str = "user",
         turn_id: str | None = None,
+        resume_session_id: str | None = None,
     ) -> str:
         return await agent_runner.run_agent(
             self,
@@ -319,6 +315,7 @@ class PynchyApp(ThreadRouting):
             repo_access_override=repo_access_override,
             input_source=input_source,
             turn_id=turn_id,
+            resume_session_id=resume_session_id,
         )
 
     def emit(self, event: Event) -> None:

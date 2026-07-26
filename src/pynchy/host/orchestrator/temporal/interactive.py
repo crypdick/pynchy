@@ -8,6 +8,8 @@ from temporalio import activity
 
 from pynchy.host.orchestrator.messaging import pipeline as messaging_pipeline
 from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
+    TURN_PAUSED,
+    TURN_RESET,
     ProcessGroupResult,
 )
 from pynchy.host.orchestrator.temporal.heartbeats import activity_heartbeats
@@ -16,7 +18,15 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _require_scheduler_deps,
 )
 from pynchy.host.orchestrator.temporal.schedules import safe_workflow_fragment
-from pynchy.host.orchestrator.temporal.workflows import CONTINUE_AFTER_SAFE_INTERRUPT
+from pynchy.host.orchestrator.temporal.workflows import (
+    CONTINUE_AFTER_SAFE_INTERRUPT,
+)
+from pynchy.host.orchestrator.temporal.workflows import (
+    TURN_PAUSED as TURN_PAUSED_RESULT,
+)
+from pynchy.host.orchestrator.temporal.workflows import (
+    TURN_RESET as TURN_RESET_RESULT,
+)
 
 _INTERACTIVE_TURN_RETRY_REQUESTED = "Interactive message turn requested retry"
 
@@ -37,6 +47,12 @@ def _activity_result(chat_jid: str, handled: ProcessGroupResult) -> str:
     if handled is messaging_pipeline.CONTINUE_AFTER_SAFE_INTERRUPT:
         _record_activity_result(chat_jid, CONTINUE_AFTER_SAFE_INTERRUPT)
         return CONTINUE_AFTER_SAFE_INTERRUPT
+    if handled is TURN_PAUSED:
+        _record_activity_result(chat_jid, TURN_PAUSED_RESULT)
+        return TURN_PAUSED_RESULT
+    if handled is TURN_RESET:
+        _record_activity_result(chat_jid, TURN_RESET_RESULT)
+        return TURN_RESET_RESULT
     if not handled:
         _record_activity_result(chat_jid, "retry_requested")
         raise RuntimeError(_INTERACTIVE_TURN_RETRY_REQUESTED)

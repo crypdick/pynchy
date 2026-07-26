@@ -34,6 +34,12 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import (
     LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
+from pynchy.host.orchestrator.messaging.outcomes import (
+    TURN_PAUSED,
+    TURN_RESET,
+    TurnPaused,
+    TurnReset,
+)
 from pynchy.host.orchestrator.scheduled_binding import ensure_scheduled_task_binding
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
@@ -93,6 +99,12 @@ from pynchy.host.orchestrator.temporal.schedules import (
     channel_reconciliation_schedule_id,
     is_stale_agent_task_once_workflow,
     safe_workflow_fragment,
+)
+from pynchy.host.orchestrator.temporal.workflows import (
+    TURN_PAUSED as TURN_PAUSED_RESULT,
+)
+from pynchy.host.orchestrator.temporal.workflows import (
+    TURN_RESET as TURN_RESET_RESULT,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
     CanaryRunWorkflow,
@@ -278,11 +290,19 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         err = "Scheduled agent task requested retry"
         _record_activity_result(task_id, "error", err)
         raise RuntimeError(err)
+    if completed is TURN_PAUSED:
+        _record_activity_result(task_id, TURN_PAUSED_RESULT)
+        return TURN_PAUSED_RESULT
+    if completed is TURN_RESET:
+        _record_activity_result(task_id, TURN_RESET_RESULT)
+        return TURN_RESET_RESULT
     _record_activity_result(task_id, "completed")
     return "completed"
 
 
-async def _run_bound_scheduled_agent_task(task: ScheduledTask) -> bool:
+async def _run_bound_scheduled_agent_task(
+    task: ScheduledTask,
+) -> bool | TurnPaused | TurnReset:
     """Bind and serialize one Temporal occurrence in its thread-owned queue."""
     deps = cast("SchedulerDependencies", _require_scheduler_deps())
     task = await ensure_scheduled_task_binding(task, cast("Any", deps))
@@ -290,7 +310,7 @@ async def _run_bound_scheduled_agent_task(task: ScheduledTask) -> bool:
         raise RuntimeError("Scheduled task binding disappeared before queue admission")
     temporal = parse_temporal_activity_info(activity.info())
 
-    async def run_bound_task() -> bool:
+    async def run_bound_task() -> bool | TurnPaused | TurnReset:
         return await run_scheduled_agent(
             task,
             deps,

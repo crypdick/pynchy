@@ -53,6 +53,43 @@ reached the user. It also records the original input provenance and any routed-d
 that supplied the input. A completed interactive turn advances its durable message cursor,
 completes that routed claim, and removes the checkpoint in the same database transaction.
 
+Each checkpoint has a durable control state:
+
+| State | Meaning |
+|-------|---------|
+| `active` | The occurrence can run or enter automatic recovery. |
+| `pause_requested` | The host consumed a pause command and is stopping the runtime. |
+| `paused` | The occurrence is frozen, unclaimed, and waiting for a user reply. |
+| `reset_requested` | The host consumed a context reset and is discarding the occurrence. |
+
+The router consumes an exact pause or reset command as a host message and
+updates the checkpoint and durable input cursor in one SQLite transaction. A
+stopped pause request becomes `paused` and releases its execution claim.
+Pause is a terminal orchestration outcome, so the queue and Temporal do not
+emit an error warning or retry the frozen work. Repeated pause commands leave
+the same row paused.
+
+The next ordinary message atomically attaches its formatted user input to the
+paused row, updates the occurrence's end cursor, and restores `active`. The
+recovery invocation uses the retained provider session ID, original provenance,
+task ID, scheduled destination, thread slot, and routed-delivery claim. It
+sends one continuation instruction followed by every attached guidance
+message. Only successful completion advances through that guidance and
+completes the delivery claim.
+
+A paused scheduled occurrence remains the task's in-flight row. New triggers
+for that task return a paused terminal outcome instead of creating competing
+work. A reply in the occurrence's chat or thread starts its dedicated
+interrupted-turn workflow. Scheduler completion bookkeeping runs only after
+that original occurrence finishes.
+
+`reset context` moves an active or paused row to `reset_requested` before
+stopping execution. Reset retires any routed-delivery claim, removes the
+checkpoint, and clears provider session and chat history without changing the
+recurring task definition. Startup finishes incomplete pause and reset
+transitions; it never dispatches `paused` or `reset_requested` rows through
+automatic recovery.
+
 Startup releases only delivery claims with no surviving in-flight turn, then clears the stopped
 process's execution claims. Provider runtimes start before Pynchy dispatches each surviving
 checkpoint through a stable recovery workflow. The recovery activity rehydrates the existing

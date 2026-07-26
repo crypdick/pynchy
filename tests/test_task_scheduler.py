@@ -27,6 +27,7 @@ from pynchy.config.jobs import JobConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.host.orchestrator import task_scheduler as ts_mod
 from pynchy.host.orchestrator.concurrency import GroupQueue
+from pynchy.host.orchestrator.messaging.outcomes import TURN_PAUSED
 from pynchy.host.orchestrator.task_scheduler import run_scheduled_agent, start_scheduler_loop
 from pynchy.host.orchestrator.threads import EnsuredThread
 from pynchy.host.orchestrator.workspace_config import dynamic_thread_folder
@@ -40,6 +41,7 @@ from pynchy.state import (
     prepare_in_flight_turn_recovery,
 )
 from pynchy.types import (
+    CheckpointControlState,
     ContainerOutput,
     InFlightTurn,
     InFlightWorkKind,
@@ -240,6 +242,7 @@ class MockSchedulerDeps:
         self.thread_creations: list[tuple[str, str]] = []
         self.thread_participants: list[tuple[str, ...]] = []
         self.existing_threads: dict[str, str] = {}
+        self.last_agent_timestamp: dict[str, str] = {}
         self.thread_lookups: list[tuple[str, str]] = []
         self.reused_thread_participants: list[tuple[str, tuple[str, ...]]] = []
         self.thread_creation_supported = True
@@ -247,6 +250,9 @@ class MockSchedulerDeps:
         self._run_agent_result: str = "success"
         # Configurable side effect for run_agent (to call on_output)
         self._run_agent_side_effect = None
+
+    async def save_state(self) -> None:
+        return None
 
     @property
     def workspaces(self) -> dict[str, WorkspaceProfile]:
@@ -332,6 +338,7 @@ class MockSchedulerDeps:
         repo_access_override=None,
         input_source="user",
         turn_id=None,
+        resume_session_id=None,
     ) -> str:
         self.agent_runs.append(
             {
@@ -343,9 +350,13 @@ class MockSchedulerDeps:
                 "repo_access_override": repo_access_override,
                 "input_source": input_source,
                 "turn_id": turn_id,
+                "resume_session_id": resume_session_id,
             }
         )
         if self._run_agent_side_effect:
+            resume_kwargs = (
+                {"resume_session_id": resume_session_id} if resume_session_id is not None else {}
+            )
             result = self._run_agent_side_effect(
                 group,
                 chat_jid,
@@ -355,6 +366,7 @@ class MockSchedulerDeps:
                 repo_access_override=repo_access_override,
                 input_source=input_source,
                 turn_id=turn_id,
+                **resume_kwargs,
             )
             if inspect.isawaitable(result):
                 return await result
@@ -815,6 +827,102 @@ class TestRunScheduledAgent:
         assert resumed_run["turn_id"] == original_turn_id
         assert resumed_run["input_source"] == "scheduled_task"
         assert "continue the unfinished job" in resumed_run["messages"][0]["content"]
+        assert await get_in_flight_turn_for_task(sample_task.id) is None
+
+    @pytest.mark.asyncio
+    async def test_later_schedule_trigger_skips_frozen_occurrence(
+        self, mock_deps, sample_task, tmp_path
+    ):
+        sample_task.status = "active"
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="scheduled-paused",
+                chat_jid=sample_task.chat_jid,
+                group_folder=sample_task.group_folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[{"sender_name": "System", "content": sample_task.prompt}],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-25T10:00:00+00:00",
+                task_id=sample_task.id,
+                session_id="scheduled-thread",
+                control_state=CheckpointControlState.PAUSED,
+            )
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run") as log_run,
+            patch("pynchy.host.orchestrator.task_scheduler.record_task_completion") as record,
+            patch("pynchy.host.orchestrator.task_scheduler.update_task") as update,
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            assert await run_scheduled_agent(sample_task, mock_deps) is TURN_PAUSED
+
+        assert sample_task.status == "active"
+        assert mock_deps.agent_runs == []
+        log_run.assert_not_called()
+        record.assert_not_called()
+        update.assert_not_called()
+        paused = await get_in_flight_turn_for_task(sample_task.id)
+        assert paused is not None
+        assert paused.control_state is CheckpointControlState.PAUSED
+
+    @pytest.mark.asyncio
+    async def test_scheduled_reply_resume_reuses_session_and_finishes_original_occurrence(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        mock_deps.groups["test-jid"] = sample_group
+        guidance_timestamp = "2026-07-25T10:05:00+00:00"
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="scheduled-resume",
+                chat_jid=sample_task.chat_jid,
+                group_folder=sample_task.group_folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[
+                    {
+                        "message_type": "user",
+                        "sender": "system",
+                        "sender_name": "System",
+                        "content": sample_task.prompt,
+                        "timestamp": "2026-07-25T10:00:00+00:00",
+                        "metadata": {"source": "scheduled_task"},
+                    },
+                    {
+                        "message_type": "user",
+                        "sender": "alice",
+                        "sender_name": "Alice",
+                        "content": "Resume without the finance section.",
+                        "timestamp": guidance_timestamp,
+                        "metadata": {"checkpoint_guidance": True},
+                    },
+                ],
+                input_start_cursor="",
+                input_end_cursor=guidance_timestamp,
+                started_at="2026-07-25T10:00:00+00:00",
+                task_id=sample_task.id,
+                session_id="scheduled-provider-thread",
+                input_source="scheduled_task",
+            )
+        )
+
+        with (
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            assert await run_scheduled_agent(sample_task, mock_deps) is True
+
+        assert len(mock_deps.agent_runs) == 1
+        resumed = mock_deps.agent_runs[0]
+        assert resumed["turn_id"] == "scheduled-resume"
+        assert resumed["resume_session_id"] == "scheduled-provider-thread"
+        assert resumed["messages"][0]["metadata"]["source"] == "pause_continuation"
+        assert resumed["messages"][1]["content"] == "Resume without the finance section."
+        assert mock_deps.last_agent_timestamp[sample_task.chat_jid] == guidance_timestamp
         assert await get_in_flight_turn_for_task(sample_task.id) is None
 
     @pytest.mark.asyncio

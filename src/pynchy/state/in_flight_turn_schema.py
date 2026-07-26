@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS in_flight_turns (
     scheduled_base_chat_jid TEXT,
     scheduled_thread_slot INTEGER,
     conversation_claim_id TEXT,
-    input_source TEXT NOT NULL DEFAULT 'user'
+    input_source TEXT NOT NULL DEFAULT 'user',
+    control_state TEXT NOT NULL DEFAULT 'active'
 );
 CREATE INDEX IF NOT EXISTS idx_in_flight_turns_chat
 ON in_flight_turns(chat_jid, started_at);

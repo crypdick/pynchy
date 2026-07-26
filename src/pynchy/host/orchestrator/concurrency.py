@@ -27,6 +27,8 @@ from pynchy.host.container_manager.security.middleware import PolicyDeniedError
 from pynchy.host.orchestrator.host_runner import stop_host_process
 from pynchy.host.orchestrator.messaging.outcomes import (
     CONTINUE_AFTER_SAFE_INTERRUPT,
+    TURN_PAUSED,
+    TURN_RESET,
     ProcessGroupResult,
 )
 from pynchy.host.orchestrator.queue_serialization import (
@@ -263,6 +265,11 @@ class GroupQueue:
             or state.host_process_lease is not None
         )
 
+    def has_active_run(self, group_jid: str) -> bool:
+        """Return whether a process or queue-owned turn can still finalize."""
+        state = self._get_group(group_jid)
+        return state.active or (state.process is not None and state.process.returncode is None)
+
     def has_active_host_process(self, group_folder: str) -> bool:
         """Return whether a direct host agent is waiting for this group's IPC."""
         return any(
@@ -356,6 +363,11 @@ class GroupQueue:
         if proc and container_name and proc.returncode is None:
             await container_process.graceful_stop(proc, container_name)
 
+    async def stop_active_process_for_control(self, group_jid: str) -> None:
+        """Stop a turn immediately and label host-runner exit as human-controlled."""
+        self._get_group(group_jid).boundary_interrupt_requested = True
+        await self.stop_active_process(group_jid)
+
     def clear_pending_tasks(self, group_jid: str) -> None:
         """Drop all pending tasks for a group."""
         state = self._get_group(group_jid)
@@ -371,7 +383,9 @@ class GroupQueue:
             return False
 
         result = await self._process_messages_fn(group_jid)
-        if result is CONTINUE_AFTER_SAFE_INTERRUPT:
+        if result is TURN_PAUSED or result is TURN_RESET:
+            state.retry_count = 0
+        elif result is CONTINUE_AFTER_SAFE_INTERRUPT:
             state.retry_count = 0
             state.pending_messages = True
         elif result:

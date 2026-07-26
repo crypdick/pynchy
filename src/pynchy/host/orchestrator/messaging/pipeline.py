@@ -9,7 +9,6 @@ Message routing and the polling loop live in :mod:`_message_routing`.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass, replace
 from typing import Any
@@ -38,13 +37,9 @@ from pynchy.host.orchestrator.messaging.host_controls import (
 from pynchy.host.orchestrator.messaging.host_controls import (
     mark_dispatched as _mark_dispatched,
 )
-from pynchy.host.orchestrator.messaging.host_controls import (
-    should_skip_batch as _should_skip_batch,
-)
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
     begin_message_turn,
-    note_output_sent,
 )
 from pynchy.host.orchestrator.messaging.outcomes import (
     CONTINUE_AFTER_SAFE_INTERRUPT,
@@ -52,10 +47,11 @@ from pynchy.host.orchestrator.messaging.outcomes import (
     ProcessGroupResult,
 )
 from pynchy.host.orchestrator.messaging.router import pop_last_result_ids
-from pynchy.host.orchestrator.messaging.run_context import prepare_message_context
-from pynchy.host.orchestrator.messaging.turn_recovery import (
-    handle_reset_handoff,
-    resume_interrupted_message_if_present,
+from pynchy.host.orchestrator.messaging.turn_control import (
+    AgentBatch,
+    TurnPreparationCallbacks,
+    prepare_agent_batch,
+    run_interactive_agent,
 )
 from pynchy.logger import logger
 from pynchy.state import (
@@ -382,45 +378,23 @@ async def process_group_messages(
     if not group:
         return True
 
-    resumed = await resume_interrupted_message_if_present(
+    prepared = await prepare_agent_batch(
         deps,
         chat_jid,
         group,
-        lambda jid: process_group_messages(deps, jid),
+        s,
+        TurnPreparationCallbacks(
+            process_pending=lambda jid: process_group_messages(deps, jid),
+            get_pending_messages=get_messages_since,
+        ),
     )
-    if resumed is not None:
-        return resumed
+    if not isinstance(prepared, AgentBatch):
+        return prepared
+    since_timestamp = prepared.since_timestamp
+    missed_messages = prepared.missed_messages
+    messages = prepared.messages
+    reset_system_notices = prepared.reset_system_notices
 
-    # Check for agent-initiated context reset prompt
-    reset_file = s.data_dir / "ipc" / group.folder / "reset_prompt.json"
-    reset_result = await handle_reset_handoff(deps, chat_jid, group, reset_file, s)
-    if reset_result is False:
-        # Handoff failed — return False so GroupQueue will retry.
-        return False
-    # reset_result is None (no file) or True (handoff ran) — fall through to
-    # process any pending user messages in the same cycle.  Falling through
-    # ensures the message that triggered this run (e.g. the user's first
-    # message after a context reset) is processed now rather than sitting
-    # unprocessed until the next incoming message.
-
-    since_timestamp = deps.last_agent_timestamp.get(chat_jid, "")
-    missed_messages = await get_messages_since(chat_jid, since_timestamp)
-
-    if await _should_skip_batch(
-        deps,
-        chat_jid,
-        group,
-        missed_messages,
-    ):
-        return True
-
-    messages, reset_system_notices = prepare_message_context(
-        s, group, missed_messages, is_admin_group=group.is_admin
-    )
-
-    had_error = False
-    output_sent_to_user = False
-    learning_summary = learning_capture.LearningRunSummary()
     turn = await _begin_interactive_message_turn(
         chat_jid,
         group,
@@ -437,40 +411,25 @@ async def process_group_messages(
         # semantics as a clean agent failure.
         raise
 
-    async def on_output(result: types.ContainerOutput) -> None:
-        nonlocal had_error, output_sent_to_user
-
-        learning_capture.observe_learning_output(learning_summary, result)
-        sent = await deps.handle_streamed_output(chat_jid, group, result, turn_id=turn_id)
-        if sent:
-            await note_output_sent(turn_id, already_recorded=output_sent_to_user)
-            output_sent_to_user = True
-        if result.status == "error":
-            had_error = True
-        if result.type == "tool_result":
-            await deps.queue.interrupt_after_tool_result(chat_jid)
-
-    try:
-        agent_result = await deps.run_agent(
-            group,
-            chat_jid,
-            messages,
-            on_output,
-            reset_system_notices or None,
-            input_source=turn.input_source,
-            turn_id=turn_id,
-        )
-    except asyncio.CancelledError:
-        raise
-    except BaseException:
-        await release_in_flight_turn_claim(turn_id)
-        raise
+    agent_run = await run_interactive_agent(
+        deps,
+        group,
+        messages,
+        reset_system_notices,
+        turn,
+    )
+    if agent_run.control_outcome is not None:
+        return agent_run.control_outcome
 
     await _announce_processing_complete(
         deps,
         chat_jid,
         group,
-        _ProcessingOutcome(process_start, had_error, output_sent_to_user),
+        _ProcessingOutcome(
+            process_start,
+            agent_run.had_error,
+            agent_run.output_sent_to_user,
+        ),
     )
 
     try:
@@ -479,10 +438,10 @@ async def process_group_messages(
             chat_jid=chat_jid,
             group=group,
             missed_messages=missed_messages,
-            agent_result=agent_result,
-            had_error=had_error,
-            output_sent_to_user=output_sent_to_user,
-            learning_summary=learning_summary,
+            agent_result=agent_run.agent_result,
+            had_error=agent_run.had_error,
+            output_sent_to_user=agent_run.output_sent_to_user,
+            learning_summary=agent_run.learning_summary,
             s=s,
             turn_id=turn_id,
             conversation_claim_id=turn.conversation_claim_id,
