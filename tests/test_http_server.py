@@ -90,7 +90,7 @@ def test_is_repo_dirty_failure():
 
 def test_get_head_commit_message_success():
     """get_head_commit_message returns commit subject."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.return_value = _cp(
             returncode=0,
             stdout="Add feature X\n",
@@ -101,7 +101,7 @@ def test_get_head_commit_message_success():
 def test_get_head_commit_message_truncation():
     """get_head_commit_message truncates long subjects."""
     long_msg = "A" * 80
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.return_value = _cp(returncode=0, stdout=f"{long_msg}\n")
         result = get_head_commit_message(max_length=72)
         assert len(result) == 72
@@ -110,14 +110,14 @@ def test_get_head_commit_message_truncation():
 
 def test_get_head_commit_message_failure():
     """get_head_commit_message returns empty string on failure."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.return_value = _cp(returncode=1, stdout="")
         assert not get_head_commit_message()
 
 
 def test_get_head_commit_message_exception():
     """get_head_commit_message returns empty string when subprocess raises."""
-    with patch("subprocess.run", side_effect=OSError):
+    with patch("pynchy.host.git_ops.utils._run_git_process", side_effect=OSError):
         assert not get_head_commit_message()
 
 
@@ -128,7 +128,7 @@ def test_get_head_commit_message_exception():
 
 def testpush_local_commits_nothing_to_push():
     """push_local_commits returns True when no local commits exist."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
             _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             _cp(returncode=0),  # fetch
@@ -139,7 +139,7 @@ def testpush_local_commits_nothing_to_push():
 
 def testpush_local_commits_success():
     """push_local_commits returns True when push succeeds."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
             _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             _cp(returncode=0),  # fetch
@@ -152,14 +152,14 @@ def testpush_local_commits_success():
 
 def testpush_local_commits_fetch_failure():
     """push_local_commits returns False when fetch fails."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.return_value = _cp(returncode=1, stderr="network error", stdout="")
         assert push_local_commits() is False
 
 
 def testpush_local_commits_rebase_failure_retries_and_fails():
     """push_local_commits retries once after rebase failure, then gives up."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
             _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             _cp(returncode=0),  # fetch
@@ -175,7 +175,7 @@ def testpush_local_commits_rebase_failure_retries_and_fails():
 
 def testpush_local_commits_rebase_retry_succeeds():
     """push_local_commits succeeds on retry when origin advanced mid-push."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
             _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             _cp(returncode=0),  # fetch
@@ -191,7 +191,7 @@ def testpush_local_commits_rebase_retry_succeeds():
 
 def testpush_local_commits_push_failure():
     """push_local_commits returns False when push is rejected."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
             _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             _cp(returncode=0),  # fetch
@@ -204,7 +204,7 @@ def testpush_local_commits_push_failure():
 
 def testpush_local_commits_skip_fetch():
     """push_local_commits skips fetch when skip_fetch=True."""
-    with patch("subprocess.run") as mock_run:
+    with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
         mock_run.side_effect = [
             _cp(returncode=0, stdout="refs/remotes/origin/main\n"),  # detect_main_branch
             _cp(returncode=0, stdout="0\n"),  # rev-list
@@ -214,7 +214,10 @@ def testpush_local_commits_skip_fetch():
 
 def testpush_local_commits_exception():
     """push_local_commits returns False on unexpected exception."""
-    with patch("subprocess.run", side_effect=OSError("disk error")):
+    with patch(
+        "pynchy.host.git_ops.utils._run_git_process",
+        side_effect=OSError("disk error"),
+    ):
         assert push_local_commits() is False
 
 

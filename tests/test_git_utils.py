@@ -7,9 +7,12 @@ with retry logic and error recovery that warrant thorough testing.
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
+import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, call, patch
 
 from pynchy.host.git_ops.utils import (
     count_commits,
@@ -40,28 +43,107 @@ def _fail(stderr: str = "error") -> subprocess.CompletedProcess[str]:
 
 class TestRunGit:
     def test_uses_bounded_noninteractive_ssh_defaults(self):
-        with patch("subprocess.run", return_value=_ok("ok\n")) as mock_run:
+        process = MagicMock(spec=subprocess.Popen)
+        process.communicate.return_value = ("ok\n", "")
+        process.returncode = 0
+        with patch("subprocess.Popen", return_value=process) as mock_popen:
             result = run_git("ls-remote", "origin", cwd=Path("/repo"))
 
         assert result.returncode == 0
         assert result.stdout == "ok\n"
-        kwargs = mock_run.call_args.kwargs
+        kwargs = mock_popen.call_args.kwargs
         assert kwargs["start_new_session"] is True
-        assert kwargs["timeout"] == 30
+        process.communicate.assert_called_once_with(timeout=30)
         assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
         assert "BatchMode=yes" in kwargs["env"]["GIT_SSH_COMMAND"]
         assert "ConnectTimeout=10" in kwargs["env"]["GIT_SSH_COMMAND"]
+        assert "ConnectionAttempts=1" in kwargs["env"]["GIT_SSH_COMMAND"]
 
     def test_returns_failure_result_when_git_times_out(self):
-        with patch(
-            "subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="git fetch origin", timeout=30),
+        process = MagicMock(spec=subprocess.Popen)
+        process.pid = 123
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired(cmd="git fetch origin", timeout=30),
+            ("", ""),
+        ]
+        with (
+            patch("subprocess.Popen", return_value=process),
+            patch("os.killpg") as killpg,
         ):
             result = run_git("fetch", "origin", cwd=Path("/repo"))
 
         assert result.returncode == 124
         assert not result.stdout
         assert result.stderr == "git command timed out after 30 seconds"
+        killpg.assert_called_once_with(123, signal.SIGTERM)
+
+    def test_force_kills_process_group_when_graceful_termination_times_out(self):
+        process = MagicMock(spec=subprocess.Popen)
+        process.pid = 123
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired(cmd="git fetch origin", timeout=30),
+            subprocess.TimeoutExpired(cmd="git fetch origin", timeout=2),
+            ("", ""),
+        ]
+        with (
+            patch("subprocess.Popen", return_value=process),
+            patch("os.killpg") as killpg,
+        ):
+            result = run_git("fetch", "origin", cwd=Path("/repo"))
+
+        assert result.returncode == 124
+        assert killpg.call_args_list == [
+            call(123, signal.SIGTERM),
+            call(123, signal.SIGKILL),
+        ]
+
+    def test_timeout_signals_descendant_processes(self, tmp_path: Path):
+        ready_path = tmp_path / "child-ready"
+        signal_path = tmp_path / "child-signal"
+        fake_git = tmp_path / "git"
+        fake_git.write_text(
+            f"""#!{sys.executable}
+import os
+import signal
+import subprocess
+import sys
+import time
+
+child_code = '''
+import os
+import signal
+import time
+
+def handle_term(_signum, _frame):
+    with open(os.environ["CHILD_SIGNAL_PATH"], "w") as marker:
+        marker.write("SIGTERM")
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, handle_term)
+with open(os.environ["CHILD_READY_PATH"], "w") as marker:
+    marker.write("ready")
+time.sleep(60)
+'''
+subprocess.Popen([sys.executable, "-c", child_code], env=os.environ.copy())
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+deadline = time.monotonic() + 0.5
+while not os.path.exists(os.environ["CHILD_READY_PATH"]) and time.monotonic() < deadline:
+    time.sleep(0.01)
+time.sleep(60)
+"""
+        )
+        fake_git.chmod(0o755)
+        env = {
+            "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+            "CHILD_READY_PATH": str(ready_path),
+            "CHILD_SIGNAL_PATH": str(signal_path),
+        }
+
+        result = run_git("fetch", cwd=tmp_path, timeout=1, env=env)
+
+        assert result.returncode == 124
+        assert ready_path.read_text() == "ready"
+        assert signal_path.read_text() == "SIGTERM"
 
 
 # ---------------------------------------------------------------------------

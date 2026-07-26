@@ -202,7 +202,10 @@ class TestTokenScrubbingInLogs:
         )
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=token),
-            patch("subprocess.run", side_effect=lambda *a, **k: _fail(stderr)),
+            patch(
+                "pynchy.host.git_ops.utils._run_git_process",
+                side_effect=lambda *a, **k: _fail(stderr),
+            ),
             patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             assert ensure_repo_cloned(repo_ctx) is False
@@ -260,7 +263,10 @@ class TestEnsureRepoCloned:
 
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_CREDENTIAL),
-            patch("subprocess.run", side_effect=_successful_clone_mock(calls)),
+            patch(
+                "pynchy.host.git_ops.utils._run_git_process",
+                side_effect=_successful_clone_mock(calls),
+            ),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
 
@@ -284,7 +290,10 @@ class TestEnsureRepoCloned:
 
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=None),
-            patch("subprocess.run", side_effect=_successful_clone_mock(calls)),
+            patch(
+                "pynchy.host.git_ops.utils._run_git_process",
+                side_effect=_successful_clone_mock(calls),
+            ),
         ):
             assert ensure_repo_cloned(repo_ctx) is True
 
@@ -305,7 +314,7 @@ class TestEnsureRepoCloned:
 
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=SCOPED_CREDENTIAL),
-            patch("subprocess.run", side_effect=mock_run),
+            patch("pynchy.host.git_ops.utils._run_git_process", side_effect=mock_run),
             patch("pynchy.host.git_ops.repo.logger") as mock_logger,
         ):
             assert ensure_repo_cloned(repo_ctx) is False
@@ -322,8 +331,13 @@ class TestEnsureRepoCloned:
         with (
             patch("pynchy.host.git_ops.repo.get_repo_token", return_value=None),
             patch(
-                "subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd="git clone", timeout=30),
+                "pynchy.host.git_ops.utils._run_git_process",
+                return_value=subprocess.CompletedProcess(
+                    args=["git", "clone"],
+                    returncode=124,
+                    stdout="",
+                    stderr="git command timed out after 30 seconds",
+                ),
             ),
         ):
             assert ensure_repo_cloned(repo_ctx) is False

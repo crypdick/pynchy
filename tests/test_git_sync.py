@@ -544,7 +544,7 @@ class TestWriteIpcResponse:
 
 class TestPollingHelpers:
     def test_host_get_origin_main_sha_success(self, tmp_path: Path):
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="main-sha-001\trefs/heads/main\n"
             )
@@ -552,14 +552,14 @@ class TestPollingHelpers:
             assert sha == "main-sha-001"
 
     def test_host_get_origin_main_sha_failure(self, tmp_path: Path):
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=1, stdout="")
             sha = sync_poll.host_get_origin_main_sha(tmp_path)
             assert sha is None
 
     def test_origin_probe_retains_redacted_failure_diagnostic(self, tmp_path: Path):
         credential = "repo-secret-value"
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
                 subprocess.CompletedProcess(
@@ -583,7 +583,7 @@ class TestPollingHelpers:
 
     def test_update_failure_retains_redacted_fetch_diagnostic(self, tmp_path: Path):
         credential = "repo-secret-value"
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.side_effect = [
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
                 subprocess.CompletedProcess(
@@ -606,14 +606,14 @@ class TestPollingHelpers:
         assert "git fetch origin failed with exit 128" in result.error
 
     def test_container_files_change_triggers_rebuild(self):
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
             assert needs_container_rebuild("abc", "def") is True
 
     def test_no_container_files_change_skips_rebuild(self):
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             assert needs_container_rebuild("abc", "def") is False
 
@@ -626,7 +626,7 @@ class TestPollingHelpers:
 class TestNeedsDeploy:
     def test_needs_deploy_src_changes(self):
         """src/ changes require a deploy."""
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             # files_changed_between calls git diff --name-only with path filter.
             # First call (src/pynchy/agent/) returns empty, second (src/) returns a file.
             mock_run.side_effect = [
@@ -637,7 +637,7 @@ class TestNeedsDeploy:
 
     def test_needs_deploy_container_changes(self):
         """src/pynchy/agent/ changes require a deploy."""
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
@@ -645,19 +645,19 @@ class TestNeedsDeploy:
 
     def test_needs_deploy_no_relevant_changes(self):
         """Changes outside src/ don't need a deploy."""
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             assert needs_deploy("aaa", "bbb") is False
 
     def test_needs_container_rebuild_src_only(self):
         """src/ changes don't need a container rebuild."""
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             assert needs_container_rebuild("aaa", "bbb") is False
 
     def test_needs_container_rebuild_container_changes(self):
         """src/pynchy/agent/ changes need a container rebuild."""
-        with patch("subprocess.run") as mock_run:
+        with patch("pynchy.host.git_ops.utils._run_git_process") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="src/pynchy/agent/Dockerfile\n"
             )
