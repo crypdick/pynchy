@@ -6,7 +6,7 @@ test_ipc_watcher.py (which focuses on the file scanning loop).
 
 Key coverage gaps addressed:
 - sync_worktree_to_main result file writing
-- sync_worktree_to_main notification on success vs failure
+- sync_worktree_to_main PR-only publication failures
 - deploy fallback when chatJid is missing
 - deploy with no admin group registered
 """
@@ -118,7 +118,7 @@ class TestSyncWorktreeToMain:
     """Tests for the sync_worktree_to_main IPC command handler."""
 
     async def test_writes_result_file_on_success(self, deps: MockDeps, tmp_path: Path):
-        """sync_worktree_to_main should write a result JSON for the blocking MCP tool."""
+        """PR publication writes a result JSON for the blocking MCP tool."""
         merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
         merge_results_dir.mkdir(parents=True)
         fake_repo_ctx = RepoContext(
@@ -135,18 +135,15 @@ class TestSyncWorktreeToMain:
                 return_value=[fake_repo_ctx],
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "Merged 1 commit(s)"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={"success": True, "message": "Opened pull request"},
             ),
         ):
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "request_id": "req-123",
+                    "publication": "pull-request",
                 },
                 "other-group",
                 False,
@@ -157,12 +154,15 @@ class TestSyncWorktreeToMain:
         assert result_file.exists()
         data = json.loads(result_file.read_text())
         assert data["success"] is True
-        assert "Merged" in data["repos"]["owner/pynchy"]["message"]
+        assert "Opened pull request" in data["repos"]["owner/pynchy"]["message"]
 
     async def test_writes_result_file_on_failure(self, deps: MockDeps, tmp_path: Path):
-        """Failure result should also be written so the MCP tool can read it."""
+        """PR failure is returned immediately with its repository diagnostic."""
         merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
         merge_results_dir.mkdir(parents=True)
+        fake_repo_ctx = RepoContext(
+            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
+        )
 
         with (
             patch(
@@ -170,18 +170,19 @@ class TestSyncWorktreeToMain:
                 return_value=_test_settings(data_dir=tmp_path / "data"),
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": False, "message": "uncommitted changes"},
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+                return_value=[fake_repo_ctx],
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={"success": False, "message": "GitHub returned HTTP 403"},
             ),
         ):
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "request_id": "req-fail",
+                    "publication": "pull-request",
                 },
                 "other-group",
                 False,
@@ -192,173 +193,8 @@ class TestSyncWorktreeToMain:
         assert result_file.exists()
         data = json.loads(result_file.read_text())
         assert data["success"] is False
-
-    async def test_notifies_other_worktrees_on_success(self, deps: MockDeps, tmp_path: Path):
-        """On successful sync, other worktrees should be notified of changes."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(
-            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
-        )
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[fake_repo_ctx],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "done"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ) as mock_notify,
-        ):
-            await dispatch(
-                {
-                    "type": "sync_worktree_to_main",
-                    "request_id": "req-456",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-        mock_notify.assert_called_once()
-        # Source group should be the first positional arg
-        assert mock_notify.call_args[0][0] == "other-group"
-
-    async def test_skips_notification_on_failure(self, deps: MockDeps, tmp_path: Path):
-        """On failed sync, worktree notification should be skipped."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": False, "message": "conflict"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ) as mock_notify,
-        ):
-            await dispatch(
-                {
-                    "type": "sync_worktree_to_main",
-                    "request_id": "req-789",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-        mock_notify.assert_not_called()
-
-    async def test_sync_worktree_triggers_deploy_on_src_changes(
-        self, deps: MockDeps, tmp_path: Path
-    ):
-        """Successful sync with src/ changes should trigger deploy."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-        fake_repo_ctx = RepoContext(
-            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
-        )
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[fake_repo_ctx],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "Merged 1 commit(s)"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_head_sha",
-                side_effect=["pre-sha-111", "post-sha-222"],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.needs_deploy",
-                return_value=True,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.needs_container_rebuild",
-                return_value=False,
-            ),
-        ):
-            await dispatch(
-                {
-                    "type": "sync_worktree_to_main",
-                    "request_id": "req-deploy",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-        assert len(deps.deploy_calls) == 1
-        sha, rebuild = deps.deploy_calls[0]
-        assert sha == "pre-sha-111"
-        assert rebuild is False
-
-    async def test_sync_worktree_no_deploy_on_irrelevant_changes(
-        self, deps: MockDeps, tmp_path: Path
-    ):
-        """Successful sync with only docs changes should not trigger deploy."""
-        merge_results_dir = tmp_path / "data" / "ipc" / "other-group" / "merge_results"
-        merge_results_dir.mkdir(parents=True)
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "Merged 1 commit(s)"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_head_sha",
-                side_effect=["pre-sha-111", "post-sha-222"],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.needs_deploy",
-                return_value=False,
-            ),
-        ):
-            await dispatch(
-                {
-                    "type": "sync_worktree_to_main",
-                    "request_id": "req-nodeploy",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-        assert len(deps.deploy_calls) == 0
+        assert "HTTP 403" in data["repos"]["owner/pynchy"]["message"]
+        assert deps.deploy_calls == []
 
 
 # ---------------------------------------------------------------------------

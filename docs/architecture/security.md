@@ -338,11 +338,26 @@ Some IPC operations change what code runs on the host machine. These are **host-
 | Cop or bounded context unavailable (request-reply) | Human approval required |
 | Cop or bounded context unavailable (fire-and-forget) | Operation blocked, warning broadcast |
 
+When Cop blocks a request-reply publication, the lifecycle tool receives an
+immediate no-publication result instead of waiting for its timeout. The
+payload-bound approval remains pending and can replay the exact operation if a
+human approves it later.
+
+`sync_worktree_to_main` is PR-only at the host boundary. Missing or alternate
+publication modes are rejected before approval receipts or Cop authority are
+evaluated, so this agent action cannot merge into the host branch or trigger a
+deployment.
+
 The Cop receives a bounded SQLite view of the current user intent, the four
-most recent user or assistant messages (500 characters each), and the eight
-most recent completed tool names. Tool inputs and full history do not cross
-this boundary. The proposed action is included separately. Missing context is
-explicit rather than replaced with guessed values.
+most recent user or assistant messages (500 characters each), the eight most
+recent completed tool names, and any active host-derived Linear execution
+authority for that exact chat. The authority is present only while the linked
+scheduled task, in-flight occurrence, and execution lease are all active. Its
+scope includes publishing that work item's isolated branch as a pull request,
+but excludes merging, deploying, and unrelated external writes. Tool inputs
+and full history do not cross this boundary. The proposed action is included
+separately. Missing context is explicit rather than replaced with guessed
+values.
 
 ### 5d. Admin Clean Room
 

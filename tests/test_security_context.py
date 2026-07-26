@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pytest
 
 from pynchy import state
+from pynchy.types import (
+    CheckpointControlState,
+    InFlightTurn,
+    InFlightWorkKind,
+    ScheduledTask,
+    SessionPolicy,
+    WorkItemExecutionStatus,
+    WorkItemTransitionStatus,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -64,4 +75,125 @@ async def test_recent_security_context_is_bounded_and_omits_tool_inputs() -> Non
     assert context.recent_agent_updates[0].startswith("update-1-")
     assert all(len(update) == 500 for update in context.recent_agent_updates)
     assert context.completed_tool_actions == tuple(f"Tool{index}" for index in range(2, 10))
+    assert context.execution_authority is None
     assert "must-not-cross-context-boundary" not in repr(context)
+
+
+async def _seed_linear_execution(
+    *,
+    task_status: Literal["active", "paused", "completed", "cancelled"] = "active",
+    control_state: CheckpointControlState = CheckpointControlState.ACTIVE,
+    resolve_lease: bool = True,
+) -> None:
+    chat_jid = "discord:thread:syn-88"
+    task_id = "linear-execute-syn-88"
+    await state.create_task(
+        ScheduledTask(
+            id=task_id,
+            group_folder="pynchy",
+            chat_jid="discord:project",
+            prompt="Deliver SYN-88.",
+            schedule_type="once",
+            schedule_value="2026-07-26T00:00:00+00:00",
+            session_policy=SessionPolicy.CONTINUE,
+            status=task_status,
+            created_at="2026-07-26T00:00:00+00:00",
+            bound_chat_jid=chat_jid,
+            bound_group_folder="pynchy-thread",
+        )
+    )
+    issue = {
+        "id": "issue-syn-88",
+        "identifier": "SYN-88",
+        "url": "https://linear.app/example/issue/SYN-88",
+        "updatedAt": "2026-07-26T00:00:00+00:00",
+        "state": {"id": "human-approved", "name": "Human Approved"},
+    }
+    execution = await state.create_work_item_claim(
+        state.WorkItemClaimRequest(
+            workspace="pynchy",
+            issue=issue,
+            turn_id=None,
+            task_id=task_id,
+            initiated_by="linear-work-item-controller",
+            request_id="syn-88-lease",
+        )
+    )
+    if resolve_lease:
+        transition = await state.get_work_item_transition_by_request("syn-88-lease")
+        assert transition is not None
+        execution = await state.resolve_work_item_transition(
+            transition=transition,
+            execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+            transition_status=WorkItemTransitionStatus.SUCCEEDED,
+            issue={
+                **issue,
+                "state": {"id": "in-progress", "name": "In Progress"},
+            },
+        )
+        assert execution.status is WorkItemExecutionStatus.IN_PROGRESS
+    await state.begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="scheduled-syn-88",
+            chat_jid=chat_jid,
+            group_folder="pynchy-thread",
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[{"content": "Deliver SYN-88."}],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at="2026-07-26T00:00:01+00:00",
+            task_id=task_id,
+            input_source="trusted:linear:authorized",
+            control_state=control_state,
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_active_linear_lease_is_exposed_as_durable_execution_authority() -> None:
+    await _seed_linear_execution()
+    await state.store_message_direct(
+        message_id="keep-working",
+        chat_jid="discord:thread:syn-88",
+        sender="user",
+        sender_name="User",
+        content="I'm going to sleep. Keep working on this.",
+        timestamp="2026-07-26T00:00:02+00:00",
+        is_from_me=False,
+        message_type="user",
+    )
+
+    context = await state.load_recent_security_context("discord:thread:syn-88")
+
+    assert context.current_user_intent == "I'm going to sleep. Keep working on this."
+    assert context.execution_authority is not None
+    assert context.execution_authority.kind.value == "linear_work_item_lease"
+    assert context.execution_authority.work_item_identifier == "SYN-88"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("task_status", "control_state", "resolve_lease"),
+    [
+        ("paused", CheckpointControlState.ACTIVE, True),
+        ("cancelled", CheckpointControlState.ACTIVE, True),
+        ("active", CheckpointControlState.PAUSE_REQUESTED, True),
+        ("active", CheckpointControlState.PAUSED, True),
+        ("active", CheckpointControlState.RESET_REQUESTED, True),
+        ("active", CheckpointControlState.ACTIVE, False),
+    ],
+)
+async def test_frozen_or_unleased_work_has_no_durable_execution_authority(
+    task_status: Literal["active", "paused", "completed", "cancelled"],
+    control_state: CheckpointControlState,
+    resolve_lease: bool,
+) -> None:
+    await _seed_linear_execution(
+        task_status=task_status,
+        control_state=control_state,
+        resolve_lease=resolve_lease,
+    )
+
+    context = await state.load_recent_security_context("discord:thread:syn-88")
+
+    assert context.execution_authority is None

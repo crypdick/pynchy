@@ -21,12 +21,26 @@ class SecurityContextRole(StrEnum):
     ASSISTANT = "assistant"
 
 
+class SecurityExecutionAuthorityKind(StrEnum):
+    """Host-derived execution contracts exposed to the Cop."""
+
+    LINEAR_WORK_ITEM_LEASE = "linear_work_item_lease"
+
+
 @dataclass(frozen=True)
 class SecurityContextMessage:
     """One bounded recent message without sender identifiers."""
 
     role: SecurityContextRole
     content: str
+
+
+@dataclass(frozen=True)
+class SecurityExecutionAuthority:
+    """One active durable execution contract for the inspected chat."""
+
+    kind: SecurityExecutionAuthorityKind
+    work_item_identifier: str
 
 
 @dataclass(frozen=True)
@@ -37,6 +51,35 @@ class RecentSecurityContext:
     recent_messages: tuple[SecurityContextMessage, ...]
     recent_agent_updates: tuple[str, ...]
     completed_tool_actions: tuple[str, ...]
+    execution_authority: SecurityExecutionAuthority | None
+
+
+async def _load_execution_authority(chat_jid: str) -> SecurityExecutionAuthority | None:
+    """Load authority only for the active, unfrozen occurrence in this chat."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT execution.linear_issue_identifier
+        FROM in_flight_turns AS turn
+        JOIN scheduled_tasks AS task ON task.id = turn.task_id
+        JOIN work_item_executions AS execution ON execution.task_id = turn.task_id
+        WHERE turn.chat_jid = ?
+          AND turn.work_kind = 'scheduled'
+          AND turn.control_state = 'active'
+          AND task.status = 'active'
+          AND execution.status = 'in_progress'
+        ORDER BY turn.started_at DESC, execution.updated_at DESC
+        LIMIT 1
+        """,
+        (chat_jid,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return SecurityExecutionAuthority(
+        kind=SecurityExecutionAuthorityKind.LINEAR_WORK_ITEM_LEASE,
+        work_item_identifier=str(row["linear_issue_identifier"])[:100],
+    )
 
 
 async def load_recent_security_context(chat_jid: str) -> RecentSecurityContext:
@@ -126,4 +169,5 @@ async def load_recent_security_context(chat_jid: str) -> RecentSecurityContext:
         recent_messages=messages,
         recent_agent_updates=tuple(updates),
         completed_tool_actions=tuple(tools),
+        execution_authority=await _load_execution_authority(chat_jid),
     )

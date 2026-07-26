@@ -14,6 +14,7 @@ Tested handlers:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -132,8 +133,8 @@ async def deps():
 class TestSyncWorktreeCopGate:
     """sync_worktree_to_main should call cop_gate and block on flag."""
 
-    async def test_blocked_by_cop_writes_no_merge_result(self, deps, tmp_path):
-        """When cop_gate returns False, no merge or response file is written."""
+    async def test_blocked_by_cop_returns_prompt_failure(self, deps, tmp_path):
+        """A blocked publication returns to the caller instead of timing out."""
         with (
             patch(
                 "pynchy.host.container_manager.security.cop_gate.cop_gate",
@@ -146,18 +147,22 @@ class TestSyncWorktreeCopGate:
             ),
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "request_id": "req-1"},
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-1",
+                    "publication": "pull-request",
+                },
                 "admin-1",
                 True,
                 deps,
             )
 
         mock_cop.assert_called_once()
-        # Verify operation name is passed
         assert mock_cop.call_args.args[0] == "sync_worktree_to_main"
-        # No merge_results file should exist
-        result_dir = tmp_path / "data" / "ipc" / "admin-1" / "merge_results"
-        assert not result_dir.exists() or not list(result_dir.iterdir())
+        result_file = tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "req-1.json"
+        result = json.loads(result_file.read_text())
+        assert result["success"] is False
+        assert "requires human approval" in result["message"]
 
     async def test_cop_receives_request_id(self, deps, tmp_path):
         """sync_worktree_to_main passes request_id to cop_gate (request-reply)."""
@@ -173,13 +178,57 @@ class TestSyncWorktreeCopGate:
             ),
         ):
             await dispatch(
-                {"type": "sync_worktree_to_main", "request_id": "req-42"},
+                {
+                    "type": "sync_worktree_to_main",
+                    "request_id": "req-42",
+                    "publication": "pull-request",
+                },
                 "admin-1",
                 True,
                 deps,
             )
 
         assert mock_cop.call_args.kwargs.get("request_id") == "req-42"
+
+    @pytest.mark.parametrize("publication", [None, "merge-to-main", "deploy"])
+    async def test_non_pr_publication_cannot_reach_cop_or_host_mutation(
+        self,
+        deps,
+        tmp_path,
+        publication,
+    ):
+        """Missing or forged publication modes fail before authority inspection."""
+        request = {
+            "type": "sync_worktree_to_main",
+            "request_id": "req-policy",
+        }
+        if publication is not None:
+            request["publication"] = publication
+        with (
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
+                return_value=make_settings(data_dir=tmp_path / "data"),
+            ),
+            patch(
+                "pynchy.host.container_manager.security.cop_gate.cop_gate",
+                new_callable=AsyncMock,
+            ) as cop,
+            patch(
+                "pynchy.host.git_ops.repo.resolve_repos_for_group",
+            ) as resolve_repos,
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+            ) as create_pr,
+        ):
+            await dispatch(request, "admin-1", True, deps)
+
+        cop.assert_not_awaited()
+        resolve_repos.assert_not_called()
+        create_pr.assert_not_called()
+        result_file = tmp_path / "data" / "ipc" / "admin-1" / "merge_results" / "req-policy.json"
+        result = json.loads(result_file.read_text())
+        assert result["success"] is False
+        assert "Direct merge and deployment are not authorized" in result["message"]
 
     async def test_caller_asserted_approval_does_not_skip_gate(self, deps, tmp_path):
         """An untrusted caller boolean cannot bypass Cop inspection."""
@@ -203,6 +252,7 @@ class TestSyncWorktreeCopGate:
                 {
                     "type": "sync_worktree_to_main",
                     "request_id": "req-ok",
+                    "publication": "pull-request",
                     "_cop_approved": True,
                 },
                 "admin-1",

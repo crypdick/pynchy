@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, cast
+from typing import Any
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.ipc.deps import (
@@ -14,64 +14,32 @@ from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.ipc.write import write_ipc_response
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.host.git_ops import repo
-from pynchy.host.git_ops._worktree_notify import host_notify_worktree_updates
 from pynchy.host.git_ops.sync import (
     GIT_POLICY_PR,
     host_create_pr_from_worktree,
-    host_sync_worktree,
 )
-from pynchy.host.git_ops.sync_poll import needs_container_rebuild, needs_deploy
-from pynchy.host.git_ops.utils import get_head_sha
+from pynchy.host.git_ops.utils import redact_git_diagnostic
 from pynchy.logger import logger
 
 
-def _sync_merge_and_check_deploy(
-    source_group: str, repo_ctx: object
-) -> tuple[dict[str, Any], str, bool | None]:
-    """Synchronous git merge + deploy check — runs on a thread.
-
-    Returns (merge_result, pre_merge_sha, deploy_info) where deploy_info
-    is None if no deploy is needed, or a bool indicating whether a
-    container rebuild is required.
-    """
-    typed_repo_ctx = cast("repo.RepoContext", repo_ctx)
-    pre_merge_sha = get_head_sha(cwd=typed_repo_ctx.root)
-    result = host_sync_worktree(source_group, typed_repo_ctx)
-
-    deploy_info: bool | None = None
-    if result.get("success"):
-        post_merge_sha = get_head_sha(cwd=typed_repo_ctx.root)
-        if pre_merge_sha not in {"unknown", post_merge_sha} and needs_deploy(
-            pre_merge_sha, post_merge_sha
-        ):
-            deploy_info = needs_container_rebuild(pre_merge_sha, post_merge_sha)
-
-    return result, pre_merge_sha, deploy_info
-
-
-def _aggregate_sync_results(
-    sync_results: list[tuple[Any, dict[str, Any], str, bool | None]],
-) -> tuple[dict[str, Any], str, bool | None]:
-    success = all(result.get("success") for _repo_ctx, result, _sha, _deploy in sync_results)
-    deploy_item = next(
-        (
-            (pre_merge_sha, deploy_info)
-            for _repo_ctx, _result, pre_merge_sha, deploy_info in sync_results
-            if deploy_info is not None
-        ),
-        ("unknown", None),
-    )
-    return (
-        {
-            "success": success,
-            "message": "All repo worktrees synced."
-            if success
-            else "One or more repo syncs failed.",
-            "repos": {repo_ctx.slug: result for repo_ctx, result, _sha, _deploy in sync_results},
-        },
-        deploy_item[0],
-        deploy_item[1],
-    )
+def _aggregate_publication_results(
+    publication_results: list[tuple[repo.RepoContext, dict[str, Any]]],
+) -> dict[str, Any]:
+    success = all(result.get("success") for _repo_ctx, result in publication_results)
+    safe_results = {}
+    for repo_ctx, result in publication_results:
+        safe_result = dict(result)
+        message = safe_result.get("message")
+        if isinstance(message, str):
+            safe_result["message"] = redact_git_diagnostic(message)
+        safe_results[repo_ctx.slug] = safe_result
+    return {
+        "success": success,
+        "message": "All repo worktree branches published for review."
+        if success
+        else "One or more repo publications failed.",
+        "repos": safe_results,
+    }
 
 
 async def _handle_reset_context(
@@ -122,11 +90,38 @@ async def _handle_sync_worktree_to_main(
     deps: IpcDeps,
 ) -> None:
     request_id = data.get("request_id", "")
+    result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
+    publication = data.get("publication")
+    if publication != GIT_POLICY_PR:
+        write_ipc_response(
+            result_dir / f"{request_id}.json",
+            {
+                "success": False,
+                "message": (
+                    "Publication blocked: sync_worktree_to_main only pushes the isolated "
+                    "worktree branch and opens or updates a pull request. Direct merge and "
+                    "deployment are not authorized."
+                ),
+            },
+        )
+        logger.warning(
+            "Rejected non-PR worktree publication",
+            group=source_group,
+            publication=publication,
+        )
+        return
 
     receipt = await cop_gate_module.verify_approval_receipt(
         "sync_worktree_to_main", data, source_group, deps
     )
     if receipt is cop_gate_module.ReceiptVerification.INVALID:
+        write_ipc_response(
+            result_dir / f"{request_id}.json",
+            {
+                "success": False,
+                "message": "Publication blocked: invalid or replayed approval receipt.",
+            },
+        )
         return
     if receipt is not cop_gate_module.ReceiptVerification.VALID:
         summary = f"publish committed worktree from '{source_group}'"
@@ -139,9 +134,17 @@ async def _handle_sync_worktree_to_main(
             request_id=request_id,
         )
         if not allowed:
+            write_ipc_response(
+                result_dir / f"{request_id}.json",
+                {
+                    "success": False,
+                    "message": (
+                        "Publication requires human approval; no branch or pull request "
+                        "was published."
+                    ),
+                },
+            )
             return
-
-    result_dir = get_settings().data_dir / "ipc" / source_group / "merge_results"
 
     repo_contexts = repo.resolve_repos_for_group(source_group)
     if not repo_contexts:
@@ -152,31 +155,16 @@ async def _handle_sync_worktree_to_main(
         logger.info("sync_worktree_to_main: no repo_ctx", group=source_group)
         return
 
-    sync_results: list[tuple[Any, dict[str, Any], str, bool | None]] = []
-    publication = data.get("publication")
+    publication_results: list[tuple[repo.RepoContext, dict[str, Any]]] = []
     for repo_ctx in repo_contexts:
-        if publication == GIT_POLICY_PR:
-            repo_result = await asyncio.to_thread(
-                host_create_pr_from_worktree,
-                source_group,
-                repo_ctx,
-            )
-            repo_pre_merge_sha, repo_deploy_info = "unknown", None
-        else:
-            repo_result, repo_pre_merge_sha, repo_deploy_info = await asyncio.to_thread(
-                _sync_merge_and_check_deploy, source_group, repo_ctx
-            )
-        sync_results.append((repo_ctx, repo_result, repo_pre_merge_sha, repo_deploy_info))
-    result, pre_merge_sha, deploy_info = _aggregate_sync_results(sync_results)
+        repo_result = await asyncio.to_thread(
+            host_create_pr_from_worktree,
+            source_group,
+            repo_ctx,
+        )
+        publication_results.append((repo_ctx, repo_result))
+    result = _aggregate_publication_results(publication_results)
     write_ipc_response(result_dir / f"{request_id}.json", result)
-
-    if result.get("success") and publication != GIT_POLICY_PR:
-        # IpcDeps satisfies WorktreeNotifyDeps directly.
-        for repo_ctx, _repo_result, _repo_sha, _repo_deploy in sync_results:
-            await host_notify_worktree_updates(source_group, deps, repo_ctx)
-
-        if deploy_info is not None:
-            await deps.trigger_deploy(pre_merge_sha, rebuild=deploy_info)
 
     logger.info(
         "sync_worktree_to_main handled",

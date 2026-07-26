@@ -384,18 +384,15 @@ class TestSyncWorktreeIpc:
                 return_value=[fake_repo_ctx],
             ),
             patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "Merged 1 commit(s)"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
+                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
+                return_value={"success": True, "message": "Opened pull request"},
             ),
         ):
             await dispatch(
                 {
                     "type": "sync_worktree_to_main",
                     "request_id": "req-123",
+                    "publication": "pull-request",
                 },
                 "other-group",
                 False,
@@ -406,69 +403,3 @@ class TestSyncWorktreeIpc:
         assert result_file.exists()
         data = json.loads(result_file.read_text())
         assert data["success"] is True
-
-    async def test_notifies_other_worktrees_on_success(self, deps, tmp_path: Path):
-        """On successful sync, other worktrees should be notified."""
-        fake_repo_ctx = RepoContext(
-            slug="owner/pynchy", root=tmp_path, worktrees_dir=tmp_path / "wt"
-        )
-
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.git_ops.repo.resolve_repos_for_group",
-                return_value=[fake_repo_ctx],
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": True, "message": "done"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ) as mock_notify,
-        ):
-            await dispatch(
-                {
-                    "type": "sync_worktree_to_main",
-                    "request_id": "req-456",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-        mock_notify.assert_called_once()
-        # Source group should be passed as exclude_group (first positional arg)
-        assert mock_notify.call_args[0][0] == "other-group"
-
-    async def test_skips_notification_on_failure(self, deps, tmp_path: Path):
-        """On failed sync, worktree notification should be skipped."""
-        with (
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.get_settings",
-                return_value=_test_settings(data_dir=tmp_path / "data"),
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_sync_worktree",
-                return_value={"success": False, "message": "conflict"},
-            ),
-            patch(
-                "pynchy.host.container_manager.ipc.handlers_lifecycle.host_notify_worktree_updates",
-                new_callable=AsyncMock,
-            ) as mock_notify,
-        ):
-            await dispatch(
-                {
-                    "type": "sync_worktree_to_main",
-                    "request_id": "req-789",
-                },
-                "other-group",
-                False,
-                deps,
-            )
-
-        mock_notify.assert_not_called()
