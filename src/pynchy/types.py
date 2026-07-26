@@ -364,6 +364,8 @@ class ScheduledTask:
     bound_group_folder: str | None = None
     conversation_id: str | None = None
     last_reset_occurrence: str | None = None
+    occurrence_generation: int = 0
+    occurrence_due_at: str | None = None
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.

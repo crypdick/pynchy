@@ -53,10 +53,23 @@ def safe_workflow_fragment(value: str) -> str:
     return TEMPORAL_SAFE.sub("-", value).strip("-").replace("+", "-")
 
 
+def agent_task_workflow_prefix(task_id: str) -> str:
+    """Return the workflow-ID ownership prefix for one agent task."""
+    return f"pynchy-agent-task-{safe_workflow_fragment(task_id)}-"
+
+
+def agent_task_occurrence_due_at(task: ScheduledTask) -> str:
+    """Return the effective due time for the task's current occurrence."""
+    return task.occurrence_due_at or task.schedule_value
+
+
 def agent_task_workflow_id(task: ScheduledTask) -> str:
     """Return the idempotency key for a one-time scheduled agent task."""
-    due_at = task.schedule_value
-    return f"pynchy-agent-task-{safe_workflow_fragment(task.id)}-{safe_workflow_fragment(due_at)}"
+    due_at = agent_task_occurrence_due_at(task)
+    base = f"{agent_task_workflow_prefix(task.id)}{safe_workflow_fragment(due_at)}"
+    if task.occurrence_generation == 0:
+        return base
+    return f"{base}-resume-{task.occurrence_generation}"
 
 
 def is_stale_agent_task_once_workflow(task: ScheduledTask, workflow_id: str) -> bool:

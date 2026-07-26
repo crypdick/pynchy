@@ -24,8 +24,10 @@ from temporalio.service import RPCError, RPCStatusCode
 from pynchy.host.git_ops.repo import repo_host_root
 from pynchy.host.orchestrator.temporal.schedules import (
     SCHEDULE_PREFIXES,
+    agent_task_occurrence_due_at,
     agent_task_schedule_id,
     agent_task_workflow_id,
+    agent_task_workflow_prefix,
     canary_schedule_id,
     channel_reconciliation_schedule_id,
     config_host_cron_schedule_id,
@@ -75,10 +77,17 @@ async def reconcile_temporal_schedules(
     tasks = await get_tasks()
     host_jobs = await get_host_jobs()
     desired_once_workflow_ids = _desired_once_workflow_ids(tasks, host_jobs)
+    deferred_once_task_ids = await _cancel_superseded_resumed_agent_workflows(client, tasks)
 
     await _reconcile_builtin_schedules(client, settings, desired_schedule_ids)
     await _reconcile_external_repo_sync_schedules(client, settings, desired_schedule_ids)
-    await _reconcile_task_schedules(runtime, client, tasks, desired_schedule_ids)
+    await _reconcile_task_schedules(
+        runtime,
+        client,
+        tasks,
+        desired_schedule_ids,
+        deferred_once_task_ids=deferred_once_task_ids,
+    )
     await _reconcile_host_job_schedules(runtime, client, host_jobs, desired_schedule_ids)
     await _reconcile_config_cron_schedules(client, settings, desired_schedule_ids)
 
@@ -143,6 +152,8 @@ async def _reconcile_task_schedules(
     client: object,
     tasks: list[ScheduledTask],
     desired_schedule_ids: set[str],
+    *,
+    deferred_once_task_ids: set[str],
 ) -> None:
     runtime_any = cast("Any", runtime)
     client_any = cast("Any", client)
@@ -150,6 +161,8 @@ async def _reconcile_task_schedules(
         if task.status != "active":
             continue
         if task.schedule_type == "once":
+            if task.id in deferred_once_task_ids:
+                continue
             await _start_once_agent_task(runtime_any, task)
             continue
         schedule_id = agent_task_schedule_id(task)
@@ -213,7 +226,7 @@ async def _start_once_agent_task(runtime: object, task: ScheduledTask) -> None:
         task.id,
         workflow_id=workflow_id,
         status_id=task.id,
-        start_delay=start_delay_until(once_due_at(task.schedule_value)),
+        start_delay=start_delay_until(once_due_at(agent_task_occurrence_due_at(task))),
         id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
     )
 
@@ -267,6 +280,51 @@ async def _cancel_stale_delayed_workflows(client: object, desired_workflow_ids: 
         except RPCError as exc:
             if exc.status != RPCStatusCode.NOT_FOUND:
                 raise
+
+
+async def _cancel_superseded_resumed_agent_workflows(
+    client: object,
+    tasks: list[ScheduledTask],
+) -> set[str]:
+    """Cancel an older running occurrence before starting an explicit resume."""
+    once_tasks = [task for task in tasks if task.schedule_type == "once"]
+    resumed_tasks = {
+        task.id: task
+        for task in once_tasks
+        if task.status == "active" and task.occurrence_generation > 0
+    }
+    if not resumed_tasks:
+        return set()
+
+    prefixes = sorted(
+        ((agent_task_workflow_prefix(task.id), task) for task in once_tasks),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    client_any = cast("Any", client)
+    workflow_iter: object = client_any.list_workflows('ExecutionStatus = "Running"')
+    if inspect.isawaitable(workflow_iter):
+        workflow_iter = await cast("Any", workflow_iter)
+    deferred: set[str] = set()
+    async for execution in cast("Any", workflow_iter):
+        if execution.workflow_type != ScheduledAgentTaskWorkflow.__name__:
+            continue
+        owner = next(
+            (task for prefix, task in prefixes if execution.id.startswith(prefix)),
+            None,
+        )
+        if owner is None or owner.id not in resumed_tasks:
+            continue
+        if execution.id == agent_task_workflow_id(owner):
+            continue
+        handle = client_any.get_workflow_handle(execution.id, run_id=execution.run_id)
+        try:
+            await handle.cancel()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+        deferred.add(owner.id)
+    return deferred
 
 
 async def _delete_stale_schedules(client: object, desired_schedule_ids: set[str]) -> None:
