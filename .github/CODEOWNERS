@@ -4,5 +4,16 @@
 /package.json @gavrielc
 /package-lock.json @gavrielc
 
+# Architecture policy - maintainer only
+/architecture.toml @gavrielc
+/architecture-baseline.toml @gavrielc
+/scripts/prek_hooks/architecture_imports.py @gavrielc
+/scripts/prek_hooks/architecture_policy.py @gavrielc
+/scripts/prek_hooks/check_architecture_boundaries.py @gavrielc
+/tests/test_check_architecture_boundaries.py @gavrielc
+/prek.toml @gavrielc
+/.github/workflows/test.yml @gavrielc
+/.github/CODEOWNERS @gavrielc
+
 # Skills - open to contributors
 /.claude/skills/
