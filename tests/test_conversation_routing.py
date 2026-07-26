@@ -183,6 +183,33 @@ async def test_subject_identity_survives_workspace_move_and_keeps_session() -> N
     assert with_session.created_at == moved.created_at
 
 
+async def test_control_binding_does_not_replace_conversation_workspace_owner() -> None:
+    admin_jid = ChatJid("discord:channel:admin-control-parent")
+    await _register_workspace(admin_jid, "admin")
+    conversation = await resolve_conversation(
+        _subject("issue-control-parent"),
+        GroupFolder("pynchy-dev"),
+    )
+    ensured = await ensure_conversation_control(
+        [_DiscordThreadChannel()],
+        ConversationControlRequest(
+            conversation_id=conversation.id,
+            parent_workspace=GroupFolder("admin"),
+            parent_jid=admin_jid,
+            title="[SYN-35] Routed control",
+            owner_workspace=GroupFolder("pynchy-dev"),
+        ),
+    )
+
+    stored = await get_conversation(conversation.id)
+    binding = await get_conversation_control_binding(conversation.id)
+    assert stored is not None
+    assert stored.workspace == GroupFolder("pynchy-dev")
+    assert binding is not None
+    assert binding == ensured.binding
+    assert binding.parent_workspace == GroupFolder("admin")
+
+
 async def test_authenticated_deliveries_dedupe_and_join_by_stable_subject() -> None:
     first = await _admit("delivery-1", "issue-1")
     second = await _admit("delivery-2", "issue-1")
@@ -519,6 +546,46 @@ async def test_startup_recovery_moves_same_conversation_to_new_workspace_owner()
     assert await get_session(GroupFolder(new_folder)) == session_id
     assert old_taint.secret_tainted is False
     assert new_taint.secret_tainted is True
+
+
+async def test_startup_recovery_repairs_owner_overwritten_by_control_parent() -> None:
+    thread_jid = ChatJid("discord:channel:control-parent-owner")
+    conversation = await resolve_conversation(
+        _subject("issue-control-parent-owner"),
+        GroupFolder("pynchy-dev"),
+    )
+    await store_chat_metadata(thread_jid, "2026-07-19T12:00:00+00:00")
+    await set_conversation_control_binding(
+        ConversationControlBinding(
+            conversation_id=conversation.id,
+            surface=ControlSurface.DISCORD,
+            parent_workspace=GroupFolder("admin"),
+            parent_jid=ChatJid("discord:channel:admin"),
+            thread_jid=thread_jid,
+            title="[SYN-35] Routed control",
+            updated_at="2026-07-19T12:00:00+00:00",
+        )
+    )
+    routed_folder = routed_conversation_folder("pynchy-dev", conversation.id)
+    await set_workspace_profile(
+        WorkspaceProfile(
+            jid=thread_jid,
+            name="Pynchy Dev/SYN-35",
+            folder=routed_folder,
+            trigger="@Pynchy",
+        )
+    )
+    await rebind_conversation_workspace(conversation.id, GroupFolder("admin"))
+
+    recovered = await prepare_conversation_runtime_ownership_recovery()
+
+    repaired = await get_conversation(conversation.id)
+    profile = await get_workspace_profile(thread_jid)
+    assert recovered == 1
+    assert repaired is not None
+    assert repaired.workspace == GroupFolder("pynchy-dev")
+    assert profile is not None
+    assert profile.folder == routed_folder
 
 
 async def test_startup_recovery_does_not_steal_routed_workspace_folder() -> None:

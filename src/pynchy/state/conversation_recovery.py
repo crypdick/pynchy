@@ -6,7 +6,7 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves recovery anno
     Connection,
 )
 
-from pynchy.config.workspace_names import dynamic_thread_folder
+from pynchy.config.workspace_names import dynamic_thread_folder, parent_workspace_name
 from pynchy.conversation.models import ConversationId
 from pynchy.conversation.workspaces import (
     conversation_id_from_folder,
@@ -113,7 +113,7 @@ async def _migrate_legacy_conversation_runtime_ownership(database: Connection) -
     cursor = await database.execute(
         """
         SELECT conversation.id, conversation.workspace, conversation.session_id,
-               binding.thread_jid
+               binding.parent_workspace, binding.thread_jid
         FROM routed_conversations AS conversation
         JOIN conversation_control_bindings AS binding
           ON binding.conversation_id = conversation.id
@@ -122,8 +122,33 @@ async def _migrate_legacy_conversation_runtime_ownership(database: Connection) -
     migrated = 0
     for row in await cursor.fetchall():
         conversation_id = ConversationId(row["id"])
-        legacy_folder = dynamic_thread_folder(row["workspace"], row["thread_jid"])
-        routed_folder = routed_conversation_folder(row["workspace"], conversation_id)
+        profile_cursor = await database.execute(
+            "SELECT folder FROM registered_groups WHERE jid = ?",
+            (row["thread_jid"],),
+        )
+        profile = await profile_cursor.fetchone()
+        profile_folder = str(profile["folder"]) if profile is not None else None
+        workspace = str(row["workspace"])
+        profile_workspace = (
+            parent_workspace_name(profile_folder)
+            if profile_folder is not None
+            and conversation_id_from_folder(profile_folder) == conversation_id
+            else None
+        )
+        if (
+            profile_workspace is not None
+            and profile_workspace != workspace
+            and workspace == row["parent_workspace"]
+        ):
+            repaired_owner = await database.execute(
+                "UPDATE routed_conversations SET workspace = ? WHERE id = ? AND workspace = ?",
+                (profile_workspace, conversation_id, workspace),
+            )
+            migrated += repaired_owner.rowcount
+            workspace = profile_workspace
+
+        legacy_folder = dynamic_thread_folder(workspace, row["thread_jid"])
+        routed_folder = routed_conversation_folder(workspace, conversation_id)
         target_cursor = await database.execute(
             "SELECT jid FROM registered_groups WHERE folder = ?",
             (routed_folder,),
@@ -138,12 +163,6 @@ async def _migrate_legacy_conversation_runtime_ownership(database: Connection) -
                 target_jid=target["jid"],
             )
             continue
-        profile_cursor = await database.execute(
-            "SELECT folder FROM registered_groups WHERE jid = ?",
-            (row["thread_jid"],),
-        )
-        profile = await profile_cursor.fetchone()
-        profile_folder = str(profile["folder"]) if profile is not None else None
         # A hierarchy migration can change only the owner prefix while retaining
         # the immutable conversation identity and control JID. Recognize that
         # shape without ever moving a folder owned by another conversation.

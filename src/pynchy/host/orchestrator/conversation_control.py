@@ -143,7 +143,10 @@ async def ensure_conversation_control(
             closed=closed,
         )
         try:
-            await set_conversation_control_binding(binding)
+            await set_conversation_control_binding(
+                binding,
+                owner_workspace=request.owner_workspace or request.parent_workspace,
+            )
         except sqlite3.IntegrityError:
             # Another connection runtime may have claimed this readable name
             # between lookup and persistence. Retry with the next readable

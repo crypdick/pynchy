@@ -106,8 +106,10 @@ async def close_conversation_control(conversation_id: ConversationId) -> bool:
 
 async def set_conversation_control_binding(
     binding: ConversationControlBinding,
+    *,
+    owner_workspace: GroupFolder | None = None,
 ) -> ConversationControlBinding:
-    """Atomically move placement and set presentation without changing identity."""
+    """Atomically move a control and, only when explicit, its runtime owner."""
     async with atomic_write() as database:
         cursor = await database.execute(
             "SELECT 1 FROM routed_conversations WHERE id = ?",
@@ -115,10 +117,11 @@ async def set_conversation_control_binding(
         )
         if await cursor.fetchone() is None:
             raise ValueError(f"Unknown conversation: {binding.conversation_id}")
-        await database.execute(
-            "UPDATE routed_conversations SET workspace = ?, updated_at = ? WHERE id = ?",
-            (binding.parent_workspace, binding.updated_at, binding.conversation_id),
-        )
+        if owner_workspace is not None:
+            await database.execute(
+                "UPDATE routed_conversations SET workspace = ?, updated_at = ? WHERE id = ?",
+                (owner_workspace, binding.updated_at, binding.conversation_id),
+            )
         await database.execute(
             """
             INSERT INTO conversation_control_bindings (
