@@ -40,6 +40,10 @@ from pynchy.host.orchestrator.messaging.outcomes import (  # noqa: TC001, RUF100
 )
 from pynchy.host.orchestrator.temporal import scheduler as temporal_scheduler
 from pynchy.host.orchestrator.thread_routing import ThreadRouting
+from pynchy.host.orchestrator.workspace_registration import (
+    available_workspace_groups,
+    rebind_workspace_runtime,
+)
 from pynchy.logger import logger
 from pynchy.plugins.memory import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
     MemoryProvider,
@@ -68,6 +72,7 @@ from pynchy.types import (
     GroupFolder,
     NewMessage,
     OutboundEvent,
+    ScheduledTask,
     SessionId,
     WorkspaceProfile,
 )
@@ -245,6 +250,19 @@ class PynchyApp(ThreadRouting):
             self, chat_jid, group, timestamp, source_message=source_message
         )
 
+    async def reset_scheduled_context(
+        self,
+        task: ScheduledTask,
+        group: WorkspaceProfile,
+        occurrence_id: str,
+    ) -> None:
+        await session_handler.handle_scheduled_context_reset(
+            self,
+            task.id,
+            group,
+            occurrence_id,
+        )
+
     async def handle_end_session(
         self,
         chat_jid: str,
@@ -384,8 +402,8 @@ class PynchyApp(ThreadRouting):
 
     async def _register_workspace(self, profile: WorkspaceProfile) -> None:
         """Register a workspace and persist it."""
-        self.workspaces[profile.jid] = profile
         await set_workspace_profile(profile)
+        self.workspaces[profile.jid] = profile
 
         workspace_dir = get_settings().groups_dir / profile.folder
         (workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
@@ -401,40 +419,21 @@ class PynchyApp(ThreadRouting):
         """Register a workspace from subsystem adapters."""
         await self._register_workspace(profile)
 
-    async def _unregister_workspace(self, jid: str) -> None:
+    async def rebind_workspace(self, profile: WorkspaceProfile) -> None:
+        await rebind_workspace_runtime(profile, self.workspaces, self.queue)
+
+    async def unregister_workspace(self, jid: str) -> None:
         """Remove an orphaned workspace registration."""
         self.workspaces.pop(jid, None)
         await delete_workspace_profile(jid)
 
-    async def unregister_workspace(self, jid: str) -> None:
-        await self._unregister_workspace(jid)
-
     async def get_available_groups(self) -> list[dict[str, Any]]:
         """Get available groups list for the agent, ordered by most recent activity."""
-        chats = await get_all_chats()
-        registered_jids = set(self.workspaces.keys())
-
-        def is_channel_visible(jid: str) -> bool:
-            if jid == "__group_sync__":
-                return False
-
-            # During startup/tests there may be no channels loaded yet; expose all
-            # persisted chats so metadata APIs and snapshots remain available.
-            if not self.channels:
-                return True
-
-            return any(ch.owns_jid(jid) for ch in self.channels)
-
-        return [
-            {
-                "jid": c["jid"],
-                "name": c["name"],
-                "lastActivity": c["last_message_time"],
-                "isRegistered": c["jid"] in registered_jids,
-            }
-            for c in chats
-            if is_channel_visible(c["jid"])
-        ]
+        return available_workspace_groups(
+            await get_all_chats(),
+            self.workspaces,
+            self.channels,
+        )
 
     # ------------------------------------------------------------------
     # Message processing delegation

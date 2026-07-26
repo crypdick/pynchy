@@ -57,7 +57,8 @@ A context reset commits the control thread's clear boundary together with its
 conversation state. It removes the routed session and completes pending work,
 plus orphan claims without a surviving turn, received at or before that
 boundary. Deliveries received after the boundary remain pending and start with
-fresh agent context after the reset acknowledgement.
+fresh agent context after the reset acknowledgement. The same reset operation
+stops the current worker and clears session-scoped security taint.
 
 Startup applies the same clear-boundary repair before returning other orphan
 claims to `pending`. Sequence numbers remain unchanged, so a retryable FIFO
@@ -86,7 +87,9 @@ exists, reconciliation creates a replacement and updates the binding.
 Deleting, renaming, or moving a control thread never changes conversation
 identity or agent session. Titles remain readable operator-facing text rather
 than protocol-shaped IDs. The registered parent workspace constrains where the
-binding can move.
+binding can move. Replacing a missing Discord thread uses an explicit atomic
+workspace rebind. Ordinary registration rejects duplicate ownership of either
+the thread JID or runtime folder.
 
 The control binding is also the authoritative runtime lookup from an exact
 thread JID to its opaque conversation ID. Workspace folder names are sanitized
@@ -118,12 +121,12 @@ boundary.
 
 An issue update that requests planning, waits for plan approval, or acquires or
 confirms an active execution lease is the exception: the Linear integration
-records it as controller-owned instead of creating a conversation delivery. A
-signed update whose user actor changed the state directly to `In Progress` can
-establish the lease in place. Current provider state alone cannot establish
-that authority. A Temporal-reconciled isolated task owns planning or execution,
-so the generic issue conversation cannot start a second agent against the same
-work. Comment events remain ordered conversation input.
+records it as controller-owned instead of creating a second conversation
+delivery. A signed update whose user actor changed the state directly to `In
+Progress` can establish the lease in place. Current provider state alone cannot
+establish that authority. The Temporal controller runs planning and execution
+in the issue conversation's existing runtime. Comment events and progress
+questions join the same ordered thread.
 
 Webhook admission persists the receipt before linking the FIFO delivery. An
 exact provider replay always attempts the link again, which repairs a crash
@@ -138,9 +141,11 @@ binding. If Discord no longer has that thread, reconciliation creates a
 replacement, moves the runtime workspace to the replacement JID, and rebinds
 the conversation's existing agent session.
 
-An isolated planning or execution task can post in the same Discord thread, but
-its one-shot provider session belongs only to its in-flight checkpoint. Session
-tracking never binds that scheduled rollout to the routed conversation.
+Planning, execution, follow-ups, retries, recovery, and interactive questions
+all use that routed workspace, worktree, provider session, queue, and
+checkpoint ledger. A worker process can stop between turns without discarding
+the provider session. Startup consolidates legacy scheduled-thread session
+records into this routed owner.
 
 Before admission, the host uses the API key from the route's named Linear account
 to fetch the current issue and rejects a delivery that does not belong to the
@@ -151,10 +156,12 @@ paths preserve a short, provider-owned wake-up prompt instead of asking the mode
 to perform board membership checks. Explicit Linear lifecycle actions still
 enforce planning and execution workflow state.
 
-The adapter maps the current Linear `Done` state to closed control intent and any
-other named issue state to open intent. Events without issue state, such as
-minimal Comment payloads, preserve the binding's current intent. This keeps
-Linear authoritative without deriving lifecycle from mutable Discord state.
+The adapter maps Linear workflow state types `completed` and `canceled` to
+closed control intent and other typed states to open intent. It retains a
+`Done` name fallback for older payloads without a state type. Events without
+issue state, such as minimal Comment payloads, preserve the binding's current
+intent. This keeps Linear authoritative without deriving lifecycle from mutable
+Discord state.
 
 ## Matrix Routes
 

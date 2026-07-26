@@ -205,8 +205,8 @@ async def prepare_host_direct_mcp_servers(
         group_folder,
         invocation_ts,
         security,
-        public_source_input=input_data.input_source.startswith(("webhook:", "external:")),
-        secret_source_input=input_data.input_source == "external:matrix",
+        public_source_input=input_data.corruption_tainted,
+        secret_source_input=input_data.secret_tainted,
     )
     input_data.invocation_ts = invocation_ts
 
@@ -259,7 +259,7 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
         raise
 
     has_pending_messages = request.queue.release_host_process(lease) is True
-    if result == "success" and has_pending_messages:
+    if result in {"success", "interrupted"} and has_pending_messages:
         return "success_with_pending_input"
     return result
 

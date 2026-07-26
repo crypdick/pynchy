@@ -21,8 +21,10 @@ from pynchy.state.external_routing_schema import EXTERNAL_ROUTING_SCHEMA
 from pynchy.state.in_flight_turn_schema import IN_FLIGHT_TURN_SCHEMA
 from pynchy.state.task_schema_migrations import (
     clear_temporal_owned_next_runs,
-    drop_derived_task_thread_columns,
+    migrate_cached_task_thread_binding,
+    migrate_scheduled_session_policy,
 )
+from pynchy.state.work_item_schema_migrations import migrate_work_item_active_index
 
 _CHANNEL_CURSORS_COUNT_MISSING_ERROR = "COUNT(*) query on channel_cursors returned no row"
 
@@ -62,11 +64,15 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     last_result TEXT,
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL,
-    context_mode TEXT DEFAULT 'isolated',
+    session_policy TEXT NOT NULL DEFAULT 'reset_before_run',
     repo_access TEXT,
     input_source TEXT NOT NULL DEFAULT 'scheduled_task',
     config_job_name TEXT,
-    derived_thread_name TEXT
+    derived_thread_name TEXT,
+    bound_chat_jid TEXT,
+    bound_group_folder TEXT,
+    conversation_id TEXT,
+    last_reset_occurrence TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
 CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -154,6 +160,12 @@ CREATE TABLE IF NOT EXISTS deployment_state (
 CREATE TABLE IF NOT EXISTS sessions (
     group_folder TEXT PRIMARY KEY,
     session_id TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS session_security_taint (
+    group_folder TEXT PRIMARY KEY,
+    corruption_tainted INTEGER NOT NULL DEFAULT 0,
+    secret_tainted INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS work_item_executions (
     id TEXT PRIMARY KEY,
@@ -396,20 +408,6 @@ async def _migrate_repo_access_column(database: aiosqlite.Connection) -> None:
     await database.commit()
 
 
-async def _migrate_work_item_active_index(database: aiosqlite.Connection) -> None:
-    """Keep execution leases limited to work that can still be running."""
-    await database.execute("DROP INDEX IF EXISTS idx_work_item_executions_active_issue")
-    await database.execute("DROP INDEX IF EXISTS idx_work_item_executions_active_issue_v2")
-    await database.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_work_item_executions_active_issue_v3
-        ON work_item_executions(linear_issue_id)
-        WHERE status IN ('claiming', 'in_progress', 'unknown')
-        """
-    )
-    await database.commit()
-
-
 async def _seed_channel_cursors(database: aiosqlite.Connection) -> None:
     """Seed channel_cursors from existing last_agent_timestamp (one-time migration).
 
@@ -474,7 +472,8 @@ async def create_schema(database: aiosqlite.Connection) -> None:
     await _migrate_renamed_columns(database)
     await _drop_is_god_column(database)
     await _migrate_repo_access_column(database)
-    await _migrate_work_item_active_index(database)
-    await drop_derived_task_thread_columns(database)
+    await migrate_scheduled_session_policy(database)
+    await migrate_cached_task_thread_binding(database)
+    await migrate_work_item_active_index(database)
     await clear_temporal_owned_next_runs(database)
     await _seed_channel_cursors(database)

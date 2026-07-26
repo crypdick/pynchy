@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.types import GroupFolder, SessionId
 
@@ -42,6 +45,14 @@ async def save_router_state_batch(pairs: dict[str, str]) -> None:
 # --- Sessions ---
 
 
+@dataclass(frozen=True, slots=True)
+class SessionSecurityTaint:
+    """Sticky security facts owned by one durable conversation session."""
+
+    corruption_tainted: bool = False
+    secret_tainted: bool = False
+
+
 async def get_session(group_folder: GroupFolder) -> SessionId | None:
     """Get the session ID for a group."""
     db = _get_db()
@@ -63,10 +74,69 @@ async def set_session(group_folder: GroupFolder, session_id: SessionId) -> None:
 
 
 async def clear_session(group_folder: GroupFolder) -> None:
-    """Delete the session for a group, forcing a fresh session on next run."""
+    """Delete a durable session and all security state scoped to that session."""
+    async with atomic_write() as db:
+        await db.execute("DELETE FROM sessions WHERE group_folder = ?", (group_folder,))
+        await db.execute(
+            "DELETE FROM session_security_taint WHERE group_folder = ?",
+            (group_folder,),
+        )
+
+
+async def get_session_security_taint(group_folder: GroupFolder) -> SessionSecurityTaint:
+    """Return sticky security taint for a durable session."""
     db = _get_db()
-    await db.execute("DELETE FROM sessions WHERE group_folder = ?", (group_folder,))
+    cursor = await db.execute(
+        """
+        SELECT corruption_tainted, secret_tainted
+        FROM session_security_taint
+        WHERE group_folder = ?
+        """,
+        (group_folder,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return SessionSecurityTaint()
+    return SessionSecurityTaint(
+        corruption_tainted=bool(row["corruption_tainted"]),
+        secret_tainted=bool(row["secret_tainted"]),
+    )
+
+
+async def mark_session_security_taint(
+    group_folder: GroupFolder,
+    *,
+    corruption_tainted: bool = False,
+    secret_tainted: bool = False,
+) -> SessionSecurityTaint:
+    """Atomically add sticky taint without allowing a continuation to clear it."""
+    now = datetime.now(UTC).isoformat()
+    db = _get_db()
+    await db.execute(
+        """
+        INSERT INTO session_security_taint (
+            group_folder, corruption_tainted, secret_tainted, updated_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(group_folder) DO UPDATE SET
+            corruption_tainted = MAX(
+                session_security_taint.corruption_tainted,
+                excluded.corruption_tainted
+            ),
+            secret_tainted = MAX(
+                session_security_taint.secret_tainted,
+                excluded.secret_tainted
+            ),
+            updated_at = excluded.updated_at
+        """,
+        (
+            group_folder,
+            int(corruption_tainted),
+            int(secret_tainted),
+            now,
+        ),
+    )
     await db.commit()
+    return await get_session_security_taint(group_folder)
 
 
 async def get_all_sessions() -> dict[str, str]:

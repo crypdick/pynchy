@@ -1,4 +1,4 @@
-"""Tests that scheduled task execution uses session-based real-time streaming.
+"""Tests that scheduled work uses the thread's durable provider session.
 
 These tests verify the session-based orchestration in the public agent entry point
 (create_session → IPC watcher streams events in real-time), NOT the
@@ -156,9 +156,9 @@ class TestScheduledTaskUsesSession:
         assert kwargs.get("idle_timeout_override") > 0
 
     @pytest.mark.asyncio
-    async def test_discards_a_persisted_provider_session_before_spawning(self):
-        """A fresh one-shot container must not resume an unavailable rollout."""
-        self.ctx.session_id = "codex:gpt-5.6:stale-thread"
+    async def test_resumes_a_persisted_provider_session_when_spawning_worker(self):
+        """A disposable worker receives the thread's durable provider identity."""
+        self.ctx.session_id = "durable-provider-session"
         build_input = MagicMock(return_value=_make_container_input())
 
         with (
@@ -170,7 +170,7 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        assert build_input.call_args.args[1].session_id is None
+        assert build_input.call_args.args[1].session_id == "durable-provider-session"
 
     @pytest.mark.asyncio
     async def test_sets_output_handler_on_session(self):
@@ -222,10 +222,7 @@ class TestScheduledTaskUsesSession:
             result = await self._call()
 
         assert result == "error"
-        # destroy_session: once for timeout (in _await_query), once in finally
-        assert mock_destroy.await_count >= 2, (
-            "destroy_session should be called for timeout cleanup and in finally"
-        )
+        mock_destroy.assert_awaited_once_with("test-group")
 
     @pytest.mark.asyncio
     async def test_session_died_returns_error(self):
@@ -244,8 +241,8 @@ class TestScheduledTaskUsesSession:
         assert result == "error"
 
     @pytest.mark.asyncio
-    async def test_finally_cleans_up_session_and_deps(self):
-        """Should always clean up session and deps.sessions in finally block."""
+    async def test_completion_preserves_durable_session_reference(self):
+        """Worker completion must not discard the thread's provider identity."""
         self.deps.sessions["test-group"] = "some-session-id"
 
         with (
@@ -257,10 +254,8 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        # deps.sessions should have been popped
-        assert "test-group" not in self.deps.sessions
-        # destroy_session called in finally
-        mock_destroy.assert_awaited()
+        assert self.deps.sessions["test-group"] == "some-session-id"
+        mock_destroy.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_registers_process_on_queue(self):
@@ -316,9 +311,7 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        # The public entry point tears down a prior interactive session before
-        # starting scheduled work. Cancellation must not add one-shot cleanup.
-        mock_destroy.assert_awaited_once_with("test-group")
+        mock_destroy.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cancelled_error_preserves_deps_sessions(self):
@@ -339,9 +332,8 @@ class TestScheduledTaskUsesSession:
         assert "test-group" in self.deps.sessions
 
     @pytest.mark.asyncio
-    async def test_normal_completion_clears_db_session(self):
-        """On normal completion, clear_session should be called to prevent
-        stale session_ids from accumulating in the DB."""
+    async def test_normal_completion_preserves_db_session(self):
+        """Normal completion leaves the provider session resumable."""
         with (
             patch(_P_BUILD, return_value=_make_container_input()),
             patch(_P_SPAWN, new_callable=AsyncMock, return_value=(self.fake_proc, "c-123", [], ())),
@@ -351,4 +343,4 @@ class TestScheduledTaskUsesSession:
         ):
             await self._call()
 
-        mock_clear.assert_awaited_once_with("test-group")
+        mock_clear.assert_not_awaited()

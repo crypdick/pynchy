@@ -67,6 +67,7 @@ from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
     store_conversation_event_pointer,
 )
+from pynchy.state.conversation_lookup import get_conversation_for_subject_key
 from pynchy.state.conversation_recovery import prepare_conversation_delivery_recovery
 from pynchy.state.conversation_routing import (
     admit_conversation_delivery,
@@ -103,6 +104,7 @@ from pynchy.state.groups import (
     delete_workspace_profile,
     get_all_workspace_profiles,
     get_workspace_profile,
+    rebind_workspace_profile,
     set_workspace_profile,
 )
 from pynchy.state.host_jobs import (
@@ -158,15 +160,19 @@ from pynchy.state.security_context import (
     load_recent_security_context,
 )
 from pynchy.state.sessions import (
+    SessionSecurityTaint,
     clear_session,
     get_all_sessions,
     get_router_state,
     get_session,
+    get_session_security_taint,
+    mark_session_security_taint,
     save_router_state_batch,
     set_router_state,
     set_session,
 )
 from pynchy.state.tasks import (
+    cancel_task_and_checkpoint,
     create_task,
     create_task_if_absent,
     delete_task,
@@ -187,6 +193,7 @@ from pynchy.state.work_item_bindings import (
     bind_work_item_execution_to_task,
     bind_work_item_execution_to_turn,
 )
+from pynchy.state.work_item_cancellation import cancel_work_item_execution
 from pynchy.state.work_item_models import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
@@ -245,6 +252,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_conversation_control_by_thread",
     "get_conversation_delivery",
     "get_conversation_for_subject",
+    "get_conversation_for_subject_key",
     "list_idle_conversation_ids",
     "list_pending_conversation_ids",
     "list_route_conversation_ids",
@@ -306,6 +314,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "store_message",
     "store_message_direct",
     # tasks
+    "cancel_task_and_checkpoint",
     "create_task",
     "create_task_if_absent",
     "delete_task",
@@ -354,6 +363,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "begin_work_item_transition",
     "bind_work_item_execution_to_turn",
     "bind_work_item_execution_to_task",
+    "cancel_work_item_execution",
     "create_work_item_claim",
     "get_active_work_item_execution",
     "get_latest_unresolved_work_item_transition",
@@ -365,10 +375,13 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "mark_work_item_delivery_delivered_for_turn",
     "resolve_work_item_transition",
     # sessions
+    "SessionSecurityTaint",
     "clear_session",
     "get_all_sessions",
     "get_router_state",
     "get_session",
+    "get_session_security_taint",
+    "mark_session_security_taint",
     "save_router_state_batch",
     "set_router_state",
     "set_session",
@@ -376,5 +389,6 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "delete_workspace_profile",
     "get_all_workspace_profiles",
     "get_workspace_profile",
+    "rebind_workspace_profile",
     "set_workspace_profile",
 ]

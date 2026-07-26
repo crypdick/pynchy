@@ -9,7 +9,7 @@ from aiosqlite import (  # noqa: TC002, RUF100 - beartype resolves state boundar
 
 from pynchy.state.connection import _get_db, atomic_write
 from pynchy.state.webhook_models import WebhookAdmission, WebhookReceipt
-from pynchy.types import ScheduledTask
+from pynchy.types import ScheduledTask, SessionPolicy
 
 
 def _row_to_receipt(row: Row) -> WebhookReceipt:
@@ -40,7 +40,7 @@ def _row_to_task(row: Row | None) -> ScheduledTask | None:
         prompt=row["prompt"],
         schedule_type=row["schedule_type"],
         schedule_value=row["schedule_value"],
-        context_mode=row["context_mode"] or "isolated",
+        session_policy=SessionPolicy(row["session_policy"] or SessionPolicy.RESET_BEFORE_RUN),
         next_run=row["next_run"],
         last_run=row["last_run"],
         last_result=row["last_result"],
@@ -50,6 +50,10 @@ def _row_to_task(row: Row | None) -> ScheduledTask | None:
         input_source=row["input_source"] or "scheduled_task",
         config_job_name=row["config_job_name"] or None,
         derived_thread_name=row["derived_thread_name"] or None,
+        bound_chat_jid=row["bound_chat_jid"] or None,
+        bound_group_folder=row["bound_group_folder"] or None,
+        conversation_id=row["conversation_id"] or None,
+        last_reset_occurrence=row["last_reset_occurrence"] or None,
     )
 
 
@@ -112,9 +116,10 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
         """
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
-             schedule_value, context_mode, next_run, status, created_at,
-             repo_access, input_source, config_job_name, derived_thread_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             schedule_value, session_policy, next_run, status, created_at,
+             repo_access, input_source, config_job_name, derived_thread_name,
+             bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -123,7 +128,7 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
             task.prompt,
             task.schedule_type,
             task.schedule_value,
-            task.context_mode,
+            task.session_policy,
             task.next_run,
             task.status,
             task.created_at,
@@ -131,6 +136,10 @@ async def _insert_task(database: Connection, task: ScheduledTask) -> None:
             task.input_source,
             task.config_job_name,
             task.derived_thread_name,
+            task.bound_chat_jid,
+            task.bound_group_folder,
+            task.conversation_id,
+            task.last_reset_occurrence,
         ),
     )
 

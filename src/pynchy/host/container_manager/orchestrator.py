@@ -1,8 +1,4 @@
-"""Container spawning and agent core resolution.
-
-Provides ``_spawn_container()`` (shared by cold-start and scheduled-task
-paths in ``agent_runner``) and ``resolve_agent_core()`` (plugin lookup).
-"""
+"""Container spawning and agent core resolution."""
 
 from __future__ import annotations
 
@@ -68,11 +64,6 @@ def stable_container_name(group_folder: str) -> str:
     before spawning a fresh one for the same group.
     """
     return runtime_container_name(_sanitize_folder(group_folder))
-
-
-def oneshot_container_name(group_folder: str) -> str:
-    """Timestamped container name for one-shot runs (scheduled tasks)."""
-    return runtime_container_name(f"{_sanitize_folder(group_folder)}-{int(time.time() * 1000)}")
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +152,8 @@ async def _spawn_container(
         group.folder,
         invocation_ts,
         security,
-        public_source_input=input_data.input_source.startswith(("webhook:", "external:")),
-        secret_source_input=input_data.input_source == "external:matrix",
+        public_source_input=input_data.corruption_tainted,
+        secret_source_input=input_data.secret_tainted,
     )
     input_data.invocation_ts = invocation_ts
 

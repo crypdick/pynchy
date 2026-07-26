@@ -11,7 +11,7 @@ from conftest import NullIpcDeps, init_test_database, make_settings
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
 from pynchy.state import create_host_job, create_task, log_task_run, record_task_completion
-from pynchy.types import HostJob, ScheduledTask, TaskRunLog
+from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 
 
 def _orchestration_states(
@@ -48,7 +48,7 @@ async def _seed_scheduled_work() -> None:
             prompt="private own prompt",
             schedule_type="cron",
             schedule_value="0 * * * *",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             last_result="Blocked: missing provider credential",
         ),
         ScheduledTask(
@@ -58,7 +58,7 @@ async def _seed_scheduled_work() -> None:
             prompt="private foreign prompt",
             schedule_type="cron",
             schedule_value="30 * * * *",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             status="paused",
         ),
     ):

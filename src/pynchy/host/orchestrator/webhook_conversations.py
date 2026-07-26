@@ -242,6 +242,7 @@ class WebhookConversationDispatcher:
                 register_workspace=self.deps.register_workspace,
                 unregister_workspace=self.deps.unregister_workspace,
                 bind_session=self.deps.bind_session,
+                rebind_workspace=getattr(self.deps, "rebind_workspace", None),
             ),
             ConversationControlRequest(
                 conversation_id=conversation.id,
@@ -308,6 +309,7 @@ class WebhookConversationDispatcher:
                     register_workspace=self.deps.register_workspace,
                     unregister_workspace=self.deps.unregister_workspace,
                     bind_session=self.deps.bind_session,
+                    rebind_workspace=getattr(self.deps, "rebind_workspace", None),
                 ),
                 ConversationControlRequest(
                     conversation_id=conversation.id,

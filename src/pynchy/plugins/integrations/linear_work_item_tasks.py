@@ -11,9 +11,13 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from pynchy.host.container_manager.security.fencing import fence_untrusted_content
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.logger import logger
+from pynchy.plugins.integrations.linear_accounts import linear_account_for_workspace
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves task annotations.
     LinearWorkspaceBoard,
     WorkspaceLike,
+)
+from pynchy.plugins.integrations.linear_conversation_identity import (
+    resolve_linear_issue_conversation,
 )
 from pynchy.plugins.integrations.linear_legacy_work_items import (
     LegacyAdoptionRequest,
@@ -39,6 +43,7 @@ from pynchy.state import (
 )
 from pynchy.types import (
     ScheduledTask,
+    SessionPolicy,
     WorkItemExecution,
     WorkItemExecutionStatus,
 )
@@ -135,7 +140,19 @@ def _text(payload: dict[str, Any], key: str) -> str:
     return value
 
 
-def _task_for_issue(
+async def linear_issue_conversation_id(
+    issue_id: str,
+    workspace: str,
+) -> str | None:
+    """Return or create the issue's sole routed runtime identity."""
+    account = linear_account_for_workspace(workspace)
+    if account is None:
+        return None
+    conversation = await resolve_linear_issue_conversation(issue_id, workspace, account.name)
+    return str(conversation.id)
+
+
+async def _task_for_issue(
     issue: DecisionIssue,
     workspace: WorkspaceLike,
     now: datetime,
@@ -167,13 +184,14 @@ def _task_for_issue(
         prompt=f"{contract}\n\n{context}",
         schedule_type="once",
         schedule_value=occurred_at,
-        context_mode="isolated",
+        session_policy=SessionPolicy.CONTINUE,
         next_run=occurred_at,
         created_at=occurred_at,
         input_source=(
             f"{'external' if admission.public_source else 'trusted'}:linear:{input_kind}"
         ),
         derived_thread_name=f"[{issue.identifier}] {issue.title}"[:100],
+        conversation_id=await linear_issue_conversation_id(issue.id, workspace.folder),
     )
 
 
@@ -209,6 +227,21 @@ async def ensure_task_active(
     existing = await get_task_by_id(task.id)
     if existing is None:
         return task, await create_task_if_absent(task)
+    ownership_updates: dict[str, object] = {}
+    if existing.session_policy is not SessionPolicy.CONTINUE:
+        ownership_updates["session_policy"] = SessionPolicy.CONTINUE
+    if task.conversation_id is not None and existing.conversation_id != task.conversation_id:
+        ownership_updates["conversation_id"] = task.conversation_id
+    if existing.derived_thread_name != task.derived_thread_name:
+        ownership_updates["derived_thread_name"] = task.derived_thread_name
+    if ownership_updates:
+        await update_task(task.id, ownership_updates)
+        existing = replace(
+            existing,
+            session_policy=SessionPolicy.CONTINUE,
+            conversation_id=task.conversation_id or existing.conversation_id,
+            derived_thread_name=task.derived_thread_name,
+        )
     if existing.status == "active" or existing.status in {"paused", "cancelled"}:
         return existing, False
     if _last_run_is_recent(existing, observed_at):
@@ -310,7 +343,7 @@ async def _admit_in_progress_issue(
             execution_status=execution.status.value,
         )
         return None
-    task = _task_for_issue(
+    task = await _task_for_issue(
         issue,
         workspace,
         context.observed_at,
@@ -338,7 +371,7 @@ async def _admit_follow_ups_issue(
             execution_id=latest.id,
         )
         return None
-    task = _task_for_issue(
+    task = await _task_for_issue(
         issue,
         workspace,
         context.observed_at,
@@ -356,7 +389,7 @@ async def _admit_human_approved_issue(
 ) -> ScheduledTask | None:
     if await get_active_work_item_execution(issue.id) is not None:
         return None
-    task = _task_for_issue(
+    task = await _task_for_issue(
         issue,
         workspace,
         context.observed_at,

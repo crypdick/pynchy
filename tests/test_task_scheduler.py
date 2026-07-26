@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -44,6 +44,7 @@ from pynchy.types import (
     InFlightTurn,
     InFlightWorkKind,
     ScheduledTask,
+    SessionPolicy,
     TaskRunLog,
     WorkItemExecutionStatus,
     WorkspaceProfile,
@@ -150,7 +151,7 @@ class TestScheduledTaskSnapshotDict:
             prompt="Do something",
             schedule_type="cron",
             schedule_value="0 9 * * *",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             next_run="2026-02-15T09:00:00+00:00",
             status="active",
         )
@@ -175,7 +176,7 @@ class TestScheduledTaskSnapshotDict:
             prompt="p",
             schedule_type="once",
             schedule_value="2026-01-01T00:00:00",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             next_run=None,
             status="completed",
         )
@@ -192,7 +193,7 @@ class TestScheduledTaskSnapshotDict:
             prompt="p",
             schedule_type="interval",
             schedule_value="60000",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
         )
         d = task.to_snapshot_dict()
         assert "groupFolder" in d
@@ -209,7 +210,7 @@ class TestScheduledTaskSnapshotDict:
             prompt="p",
             schedule_type="cron",
             schedule_value="* * * * *",
-            context_mode="group",
+            session_policy=SessionPolicy.CONTINUE,
             repo_access="owner/pynchy",
             last_run="2026-01-01",
             last_result="ok",
@@ -235,6 +236,7 @@ class MockSchedulerDeps:
         self.system_notices: list = []
         self.agent_runs: list = []
         self.streamed_outputs: list = []
+        self.context_resets: list[tuple[str, str, str]] = []
         self.thread_creations: list[tuple[str, str]] = []
         self.thread_participants: list[tuple[str, ...]] = []
         self.existing_threads: dict[str, str] = {}
@@ -265,6 +267,14 @@ class MockSchedulerDeps:
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         self.system_notices.append((chat_jid, text))
+
+    async def reset_scheduled_context(
+        self,
+        task: ScheduledTask,
+        group: WorkspaceProfile,
+        occurrence_id: str,
+    ) -> None:
+        self.context_resets.append((task.id, group.jid, occurrence_id))
 
     async def create_thread(
         self,
@@ -372,7 +382,9 @@ def sample_task():
         prompt="Test task",
         schedule_type="cron",
         schedule_value="0 9 * * *",
-        context_mode="isolated",
+        session_policy=SessionPolicy.CONTINUE,
+        bound_chat_jid="test@g.us",
+        bound_group_folder="test-group",
         next_run=datetime.now(UTC).isoformat(),
         status="active",
     )
@@ -653,7 +665,7 @@ class TestRunScheduledAgent:
         # Should have logged an error
         assert len(logged_runs) == 1
         assert logged_runs[0].status == "error"
-        assert "Group not found" in logged_runs[0].error
+        assert "runtime is not registered" in logged_runs[0].error
 
     @pytest.mark.asyncio
     async def test_calls_run_agent_with_correct_flags(
@@ -684,6 +696,85 @@ class TestRunScheduledAgent:
         assert len(run["messages"]) == 1
         assert run["messages"][0]["content"] == "Test task"
         assert run["messages"][0]["sender"] == "scheduled_task"
+
+    @pytest.mark.asyncio
+    async def test_reset_policy_resets_once_per_occurrence_including_first_run(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """Temporal activity retries reuse the reset session created for their occurrence."""
+        task = replace(
+            sample_task,
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
+        )
+        mock_deps.groups[sample_group.jid] = sample_group
+        mock_deps._run_agent_result = "error"
+        await create_task(task)
+
+        with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+            assert (
+                await run_scheduled_agent(
+                    task,
+                    mock_deps,
+                    occurrence_id="occurrence-1",
+                )
+                is False
+            )
+            persisted = await get_task_by_id(task.id)
+            assert persisted is not None
+            mock_deps._run_agent_result = "success"
+            assert (
+                await run_scheduled_agent(
+                    persisted,
+                    mock_deps,
+                    occurrence_id="occurrence-1",
+                )
+                is True
+            )
+            persisted = await get_task_by_id(task.id)
+            assert persisted is not None
+            assert (
+                await run_scheduled_agent(
+                    persisted,
+                    mock_deps,
+                    occurrence_id="occurrence-2",
+                )
+                is True
+            )
+
+        assert mock_deps.context_resets == [
+            (task.id, sample_group.jid, "occurrence-1"),
+            (task.id, sample_group.jid, "occurrence-2"),
+        ]
+        persisted = await get_task_by_id(task.id)
+        assert persisted is not None
+        assert persisted.last_reset_occurrence == "occurrence-2"
+
+    @pytest.mark.asyncio
+    async def test_continue_policy_never_resets_between_occurrences(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        mock_deps.groups[sample_group.jid] = sample_group
+        await create_task(sample_task)
+
+        with _patch_settings(groups_dir=tmp_path, poll_interval=0.01):
+            assert (
+                await run_scheduled_agent(
+                    sample_task,
+                    mock_deps,
+                    occurrence_id="occurrence-1",
+                )
+                is True
+            )
+            assert (
+                await run_scheduled_agent(
+                    sample_task,
+                    mock_deps,
+                    occurrence_id="occurrence-2",
+                )
+                is True
+            )
+
+        assert mock_deps.context_resets == []
 
     @pytest.mark.asyncio
     async def test_restart_resumes_interrupted_scheduled_job(
@@ -881,10 +972,10 @@ class TestRunScheduledAgent:
         assert "\u23f1 Scheduled task starting." in event.content
 
     @pytest.mark.asyncio
-    async def test_uses_numbered_thread_when_human_turn_reserves_base_channel(
+    async def test_uses_bound_runtime_when_an_old_human_checkpoint_exists(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """A live human turn keeps the configured channel out of scheduled work."""
+        """Checkpoint history never causes a scheduled occurrence to fork runtime ownership."""
         mock_deps.groups["test-jid"] = sample_group
         await begin_in_flight_turn(
             InFlightTurn(
@@ -910,25 +1001,20 @@ class TestRunScheduledAgent:
         ):
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_creations == [("test@g.us", "test-group-1")]
-        assert mock_deps.thread_participants == [("123456",)]
+        assert mock_deps.thread_creations == []
         scheduled_run = mock_deps.agent_runs[0]
-        assert scheduled_run["chat_jid"] == "discord:channel:scheduled-1"
-        assert scheduled_run["group"].folder == "test-group__thread_discord-channel-scheduled-1"
-        assert mock_deps.messages[0][0] == "discord:channel:scheduled-1"
+        assert scheduled_run["chat_jid"] == "test@g.us"
+        assert scheduled_run["group"].folder == "test-group"
+        assert mock_deps.messages[0][0] == "test@g.us"
 
     @pytest.mark.asyncio
-    async def test_uses_numbered_thread_when_human_session_is_live(
+    async def test_ignores_worker_liveness_when_runtime_is_already_bound(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """A warm human session remains available while scheduled work runs elsewhere."""
+        """Worker liveness does not change durable destination ownership."""
         mock_deps.groups["test-jid"] = sample_group
 
         with (
-            patch(
-                "pynchy.host.orchestrator.scheduled_targeting.get_session",
-                return_value=Mock(is_alive=True),
-            ),
             patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
             patch(
                 "pynchy.host.orchestrator.task_scheduler.record_task_completion",
@@ -939,14 +1025,14 @@ class TestRunScheduledAgent:
         ):
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_creations == [("test@g.us", "test-group-1")]
-        assert mock_deps.agent_runs[0]["chat_jid"] == "discord:channel:scheduled-1"
+        assert mock_deps.thread_creations == []
+        assert mock_deps.agent_runs[0]["chat_jid"] == "test@g.us"
 
     @pytest.mark.asyncio
-    async def test_reuses_idle_existing_numbered_thread(
+    async def test_does_not_consider_legacy_numbered_threads(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Existing matching child threads are reusable scheduled-task slots."""
+        """A persisted binding, not a readable legacy name, owns the runtime."""
         mock_deps.groups["test-jid"] = sample_group
         existing_jid = "discord:channel:existing-1"
         mock_deps.existing_threads["test-group-1"] = existing_jid
@@ -974,16 +1060,16 @@ class TestRunScheduledAgent:
         ):
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_lookups == [("test@g.us", "test-group-1")]
+        assert mock_deps.thread_lookups == []
         assert mock_deps.thread_creations == []
-        assert mock_deps.reused_thread_participants == [(existing_jid, ("123456",))]
-        assert mock_deps.agent_runs[0]["chat_jid"] == existing_jid
+        assert mock_deps.reused_thread_participants == []
+        assert mock_deps.agent_runs[0]["chat_jid"] == "test@g.us"
 
     @pytest.mark.asyncio
-    async def test_skips_reserved_existing_numbered_thread(
+    async def test_other_thread_checkpoints_do_not_retarget_the_bound_runtime(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """An active numbered child thread makes the allocator continue to the next slot."""
+        """Unrelated checkpoints cannot replace a task's persisted runtime owner."""
         mock_deps.groups["test-jid"] = sample_group
         existing_jid = "discord:channel:existing-1"
         mock_deps.existing_threads["test-group-1"] = existing_jid
@@ -1023,18 +1109,15 @@ class TestRunScheduledAgent:
         ):
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_lookups == [
-            ("test@g.us", "test-group-1"),
-            ("test@g.us", "test-group-2"),
-        ]
-        assert mock_deps.thread_creations == [("test@g.us", "test-group-2")]
-        assert mock_deps.agent_runs[0]["chat_jid"] == "discord:channel:scheduled-1"
+        assert mock_deps.thread_lookups == []
+        assert mock_deps.thread_creations == []
+        assert mock_deps.agent_runs[0]["chat_jid"] == "test@g.us"
 
     @pytest.mark.asyncio
-    async def test_uses_numbered_thread_when_another_scheduled_task_reserves_base_channel(
+    async def test_thread_queue_serializes_two_scheduled_tasks_in_one_runtime(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Overlapping scheduled runs keep their agent sessions and output separate."""
+        """One thread queue prevents two workers while both tasks reuse its runtime."""
         mock_deps.groups["test-jid"] = sample_group
         first_started = asyncio.Event()
         release_first = asyncio.Event()
@@ -1053,7 +1136,9 @@ class TestRunScheduledAgent:
             prompt="Second task",
             schedule_type=sample_task.schedule_type,
             schedule_value=sample_task.schedule_value,
-            context_mode=sample_task.context_mode,
+            session_policy=sample_task.session_policy,
+            bound_chat_jid=sample_task.bound_chat_jid,
+            bound_group_folder=sample_task.bound_group_folder,
             status=sample_task.status,
         )
 
@@ -1071,23 +1156,96 @@ class TestRunScheduledAgent:
             patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            first_run = asyncio.create_task(run_scheduled_agent(sample_task, mock_deps))
+            first_run = asyncio.create_task(
+                mock_deps.queue.run_serialized_task(
+                    sample_task.bound_chat_jid,
+                    sample_task.id,
+                    lambda: run_scheduled_agent(sample_task, mock_deps),
+                )
+            )
             await first_started.wait()
-            await run_scheduled_agent(second_task, mock_deps)
+            second_run = asyncio.create_task(
+                mock_deps.queue.run_serialized_task(
+                    second_task.bound_chat_jid,
+                    second_task.id,
+                    lambda: run_scheduled_agent(second_task, mock_deps),
+                )
+            )
+            await asyncio.sleep(0)
+            assert len(mock_deps.agent_runs) == 1
             release_first.set()
-            await first_run
+            await asyncio.gather(first_run, second_run)
 
-        assert mock_deps.thread_creations == [("test@g.us", "test-group-1")]
+        assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
             "test@g.us",
-            "discord:channel:scheduled-1",
+            "test@g.us",
         ]
 
     @pytest.mark.asyncio
-    async def test_defers_when_durable_owner_reserves_target_without_child_threads(
+    async def test_interactive_turn_interrupts_schedule_at_tool_boundary_then_runs(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """A failed sibling task keeps sole ownership of a non-nestable target."""
+        """Human input runs next while the scheduled checkpoint remains resumable."""
+        mock_deps.groups[sample_group.jid] = sample_group
+        interactive_ran = asyncio.Event()
+
+        async def process_messages(_chat_jid: str) -> bool:
+            interactive_ran.set()
+            await asyncio.sleep(0)
+            return True
+
+        mock_deps.queue.set_process_messages_fn(process_messages)
+
+        async def scheduled_run(_group, chat_jid, _messages, on_output, **_kwargs):
+            mock_deps.queue.defer_interrupt_until_tool_result(chat_jid)
+            await on_output(
+                ContainerOutput(
+                    type="tool_result",
+                    status="success",
+                    result="checkpointed tool completed",
+                )
+            )
+            return "success"
+
+        mock_deps._run_agent_side_effect = scheduled_run
+
+        with (
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.get_task_run_logs",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
+            patch(
+                "pynchy.host.orchestrator.task_scheduler.record_task_completion",
+                new_callable=AsyncMock,
+            ),
+            patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
+            _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
+        ):
+            completed = await mock_deps.queue.run_serialized_task(
+                sample_task.bound_chat_jid,
+                sample_task.id,
+                lambda: run_scheduled_agent(
+                    sample_task,
+                    mock_deps,
+                    occurrence_id="occurrence-1",
+                ),
+            )
+            await interactive_ran.wait()
+
+        assert completed is False
+        checkpoint = await get_in_flight_turn_for_task(sample_task.id)
+        assert checkpoint is not None
+        assert checkpoint.output_sent is True
+        assert len(mock_deps.agent_runs) == 1
+
+    @pytest.mark.asyncio
+    async def test_unrelated_failed_checkpoint_does_not_create_an_ephemeral_runtime(
+        self, mock_deps, sample_task, sample_group, tmp_path
+    ):
+        """A stale sibling checkpoint cannot make this task fork to another runtime."""
         mock_deps.groups["test-jid"] = sample_group
         mock_deps.thread_creation_supported = False
         await begin_in_flight_turn(
@@ -1125,25 +1283,21 @@ class TestRunScheduledAgent:
             patch("pynchy.host.orchestrator.task_scheduler.update_task", new_callable=AsyncMock),
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
-            with pytest.raises(
-                RuntimeError,
-                match="target is reserved and cannot host child threads",
-            ):
-                await run_scheduled_agent(sample_task, mock_deps)
+            await run_scheduled_agent(sample_task, mock_deps)
 
         assert mock_deps.thread_lookups == []
         assert mock_deps.thread_creations == []
-        assert mock_deps.agent_runs == []
+        assert mock_deps.agent_runs[0]["chat_jid"] == "test@g.us"
         assert await get_in_flight_turn_for_task("prior-task") is not None
         assert await get_in_flight_turn_for_task(sample_task.id) is None
-        log_task_run.assert_not_awaited()
-        record_task_completion.assert_not_awaited()
+        log_task_run.assert_awaited_once()
+        record_task_completion.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_config_job_ensures_its_derived_thread_on_each_run(
+    async def test_config_job_reuses_its_persisted_binding_on_each_run(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """Every config job run uses its one derived sibling thread."""
+        """Thread creation is a binding concern, not a per-occurrence lifecycle."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.config_job_name = "fam_daily_checkin"
 
@@ -1159,22 +1313,15 @@ class TestRunScheduledAgent:
             await _run_due_task_via_scheduler(mock_deps, sample_task)
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_lookups == [
-            ("test@g.us", "test-group | fam_daily_checkin"),
-            ("test@g.us", "test-group | fam_daily_checkin"),
-        ]
-        assert mock_deps.thread_creations == [("test@g.us", "test-group | fam_daily_checkin")]
+        assert mock_deps.thread_lookups == []
+        assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
-            "discord:channel:scheduled-1",
-            "discord:channel:scheduled-1",
+            "test@g.us",
+            "test@g.us",
         ]
-        expected_folder = dynamic_thread_folder(
-            sample_task.group_folder,
-            "discord:channel:scheduled-1",
-        )
         assert [run["group"].folder for run in mock_deps.agent_runs] == [
-            expected_folder,
-            expected_folder,
+            "test-group",
+            "test-group",
         ]
 
     @pytest.mark.asyncio
@@ -1224,6 +1371,19 @@ class TestRunScheduledAgent:
                 trigger="@Pynchy",
                 is_admin=True,
             ),
+            "discord:channel:fam-runtime": WorkspaceProfile(
+                jid="discord:channel:fam-runtime",
+                name="Relationships/fam | fam-check",
+                folder="fam-runtime",
+                trigger="@Pynchy",
+            ),
+            "discord:channel:pynchy-runtime": WorkspaceProfile(
+                jid="discord:channel:pynchy-runtime",
+                name="Admin/pynchy-dev | pynchy-check",
+                folder="pynchy-runtime",
+                trigger="@Pynchy",
+                is_admin=True,
+            ),
         }
         tasks = [
             ScheduledTask(
@@ -1233,9 +1393,11 @@ class TestRunScheduledAgent:
                 prompt="Check fam.",
                 schedule_type="cron",
                 schedule_value="0 8 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 config_job_name="fam-check",
                 derived_thread_name="fam | fam-check",
+                bound_chat_jid="discord:channel:fam-runtime",
+                bound_group_folder="fam-runtime",
             ),
             ScheduledTask(
                 id="pynchy-task",
@@ -1244,9 +1406,11 @@ class TestRunScheduledAgent:
                 prompt="Check Pynchy.",
                 schedule_type="cron",
                 schedule_value="0 9 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 config_job_name="pynchy-check",
                 derived_thread_name="pynchy-dev | pynchy-check",
+                bound_chat_jid="discord:channel:pynchy-runtime",
+                bound_group_folder="pynchy-runtime",
             ),
         ]
 
@@ -1274,21 +1438,14 @@ class TestRunScheduledAgent:
             for task in tasks:
                 assert await run_scheduled_agent(task, mock_deps) is True
 
-        assert mock_deps.thread_lookups == [
-            ("discord:channel:relationships", "fam | fam-check"),
-            ("discord:channel:admin", "pynchy-dev | pynchy-check"),
-        ]
-        assert mock_deps.agent_runs[0]["group"].folder.startswith("fam__thread_")
+        assert mock_deps.thread_lookups == []
+        assert mock_deps.agent_runs[0]["group"].folder == "fam-runtime"
         assert mock_deps.agent_runs[0]["group"].is_admin is False
-        assert mock_deps.agent_runs[1]["group"].folder.startswith("pynchy-dev__thread_")
+        assert mock_deps.agent_runs[1]["group"].folder == "pynchy-runtime"
         assert mock_deps.agent_runs[1]["group"].is_admin is True
-        assert mock_deps.groups["discord:channel:scheduled-1"].folder.startswith("fam__thread_")
-        assert mock_deps.groups["discord:channel:scheduled-2"].folder.startswith(
-            "pynchy-dev__thread_"
-        )
 
     @pytest.mark.asyncio
-    async def test_deterministic_scoped_job_registers_owner_thread_without_agent(
+    async def test_deterministic_scoped_job_publishes_to_bound_thread_without_agent(
         self, mock_deps, tmp_path
     ):
         settings = make_settings(
@@ -1318,7 +1475,13 @@ class TestRunScheduledAgent:
                 name="Ops",
                 folder="ops",
                 trigger="@Pynchy",
-            )
+            ),
+            "discord:channel:watchdog-runtime": WorkspaceProfile(
+                jid="discord:channel:watchdog-runtime",
+                name="Ops/cron | watchdog",
+                folder="cron-runtime",
+                trigger="@Pynchy",
+            ),
         }
         task = ScheduledTask(
             id="watchdog-task",
@@ -1327,9 +1490,11 @@ class TestRunScheduledAgent:
             prompt="",
             schedule_type="cron",
             schedule_value="0 23 * * *",
-            context_mode="isolated",
+            session_policy=SessionPolicy.RESET_BEFORE_RUN,
             config_job_name="watchdog",
             derived_thread_name="cron | watchdog",
+            bound_chat_jid="discord:channel:watchdog-runtime",
+            bound_group_folder="cron-runtime",
         )
 
         with (
@@ -1361,12 +1526,11 @@ class TestRunScheduledAgent:
             assert await run_scheduled_agent(task, mock_deps) is True
 
         assert mock_deps.agent_runs == []
-        assert mock_deps.thread_creations == [("discord:channel:ops", "cron | watchdog")]
-        assert mock_deps.host_messages == [("discord:channel:scheduled-1", "watchdog ok")]
-        assert mock_deps.groups["discord:channel:scheduled-1"].folder.startswith("cron__thread_")
+        assert mock_deps.thread_creations == []
+        assert mock_deps.host_messages == [("discord:channel:watchdog-runtime", "watchdog ok")]
 
     @pytest.mark.asyncio
-    async def test_pre_run_false_gate_skips_before_thread_creation(
+    async def test_pre_run_false_gate_skips_agent_in_existing_binding(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
         sample_task.config_job_name = "gated-job"
@@ -1419,13 +1583,12 @@ class TestRunScheduledAgent:
         assert mock_deps.agent_runs == []
 
     @pytest.mark.asyncio
-    async def test_config_job_recreates_a_missing_derived_thread(
+    async def test_config_job_worker_restart_does_not_replace_its_binding(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """A deleted destination gets recreated instead of leaving a stale task target."""
+        """Worker disposal is independent from durable thread ownership."""
         mock_deps.groups["test-jid"] = sample_group
         sample_task.config_job_name = "fam_daily_checkin"
-        name = "test-group | fam_daily_checkin"
 
         with (
             patch("pynchy.host.orchestrator.task_scheduler.log_task_run", new_callable=AsyncMock),
@@ -1437,20 +1600,16 @@ class TestRunScheduledAgent:
             _patch_settings(groups_dir=tmp_path, poll_interval=0.01),
         ):
             await _run_due_task_via_scheduler(mock_deps, sample_task)
-            del mock_deps.existing_threads[name]
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_creations == [
-            ("test@g.us", name),
-            ("test@g.us", name),
-        ]
+        assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
-            "discord:channel:scheduled-1",
-            "discord:channel:scheduled-2",
+            "test@g.us",
+            "test@g.us",
         ]
 
     @pytest.mark.asyncio
-    async def test_config_job_rename_selects_a_new_human_readable_thread(
+    async def test_config_job_rename_does_not_replace_runtime_during_execution(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
         mock_deps.groups["test-jid"] = sample_group
@@ -1469,9 +1628,10 @@ class TestRunScheduledAgent:
             sample_task.config_job_name = "family_daily_checkin"
             await _run_due_task_via_scheduler(mock_deps, sample_task)
 
-        assert mock_deps.thread_creations == [
-            ("test@g.us", "test-group | fam_daily_checkin"),
-            ("test@g.us", "test-group | family_daily_checkin"),
+        assert mock_deps.thread_creations == []
+        assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
+            "test@g.us",
+            "test@g.us",
         ]
 
     @pytest.mark.asyncio
@@ -1480,6 +1640,12 @@ class TestRunScheduledAgent:
     ):
         """Distinct job names do not serialize through their shared root."""
         mock_deps.groups["test-jid"] = sample_group
+        mock_deps.groups["second-jid"] = WorkspaceProfile(
+            jid="second@g.us",
+            name="Test Group/second",
+            folder="test-group-second",
+            trigger="@bot",
+        )
         sample_task.config_job_name = "fam_daily_checkin"
         second_task = ScheduledTask(
             id="task-2",
@@ -1488,14 +1654,16 @@ class TestRunScheduledAgent:
             prompt="Tend the garden.",
             schedule_type=sample_task.schedule_type,
             schedule_value=sample_task.schedule_value,
-            context_mode=sample_task.context_mode,
+            session_policy=sample_task.session_policy,
             config_job_name="fam_gardener",
+            bound_chat_jid="second@g.us",
+            bound_group_folder="test-group-second",
         )
         first_started = asyncio.Event()
         release_first = asyncio.Event()
 
         async def mock_run(_group, chat_jid, _messages, _on_output, **_kwargs):
-            if chat_jid == "discord:channel:scheduled-1":
+            if chat_jid == "test@g.us":
                 first_started.set()
                 await release_first.wait()
             return "success"
@@ -1522,13 +1690,10 @@ class TestRunScheduledAgent:
             release_first.set()
             await first_run
 
-        assert mock_deps.thread_creations == [
-            ("test@g.us", "test-group | fam_daily_checkin"),
-            ("test@g.us", "test-group | fam_gardener"),
-        ]
+        assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
-            "discord:channel:scheduled-1",
-            "discord:channel:scheduled-2",
+            "test@g.us",
+            "second@g.us",
         ]
 
     @pytest.mark.asyncio
@@ -1574,10 +1739,10 @@ class TestRunScheduledAgent:
             release_first.set()
             await asyncio.gather(first_run, second_run)
 
-        assert mock_deps.thread_creations == [("test@g.us", "test-group | fam_daily_checkin")]
+        assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
-            "discord:channel:scheduled-1",
-            "discord:channel:scheduled-1",
+            "test@g.us",
+            "test@g.us",
         ]
 
     @pytest.mark.asyncio
@@ -1609,12 +1774,12 @@ class TestRunScheduledAgent:
             mock_deps._run_agent_result = "success"
             assert await run_scheduled_agent(reloaded_task, mock_deps) is True
 
-        assert mock_deps.thread_creations == [("test@g.us", "test-group | fam_daily_checkin")]
+        assert mock_deps.thread_creations == []
         assert len(mock_deps.thread_lookups) == lookups_before_retry
         assert len(mock_deps.thread_creations) == creations_before_retry
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
-            "discord:channel:scheduled-1",
-            "discord:channel:scheduled-1",
+            "test@g.us",
+            "test@g.us",
         ]
 
     @pytest.mark.asyncio
@@ -1657,10 +1822,10 @@ class TestRunScheduledAgent:
         assert mock_deps.agent_runs[0]["group"].folder == child_folder
 
     @pytest.mark.asyncio
-    async def test_retry_reuses_original_numbered_thread_after_agent_error(
+    async def test_retry_reuses_bound_runtime_after_agent_error(
         self, mock_deps, sample_task, sample_group, tmp_path
     ):
-        """A retry keeps the first child target rather than creating another one."""
+        """A retry resumes the checkpoint in the task's durable runtime."""
         mock_deps.groups["test-jid"] = sample_group
         await begin_in_flight_turn(
             InFlightTurn(
@@ -1692,10 +1857,10 @@ class TestRunScheduledAgent:
             mock_deps._run_agent_result = "success"
             assert await run_scheduled_agent(sample_task, mock_deps) is True
 
-        assert mock_deps.thread_creations == [("test@g.us", "test-group-1")]
+        assert mock_deps.thread_creations == []
         assert [run["chat_jid"] for run in mock_deps.agent_runs] == [
-            "discord:channel:scheduled-1",
-            "discord:channel:scheduled-1",
+            "test@g.us",
+            "test@g.us",
         ]
         assert await get_in_flight_turn_for_task(sample_task.id) is None
 

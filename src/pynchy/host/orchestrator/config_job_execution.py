@@ -7,16 +7,8 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pynchy.config import get_settings
-from pynchy.config.workspace_names import dynamic_thread_folder
 from pynchy.host.orchestrator.job_gates import parse_wake_agent_gate
-from pynchy.host.orchestrator.threads import (  # noqa: TC001, RUF100 - beartype resolves execution dependency annotations.
-    EnsuredThread,
-)
-from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
-from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves execution annotations.
-    ScheduledTask,
-    WorkspaceProfile,
-)
+from pynchy.types import ScheduledTask  # noqa: TC001, RUF100
 from pynchy.utils import ShellResult, run_shell_command
 
 _MAX_PRE_RUN_STREAM_CHARS = 12_000
@@ -25,19 +17,6 @@ _MAX_PRE_RUN_STREAM_CHARS = 12_000
 @runtime_checkable
 class ConfigJobExecutionDeps(Protocol):
     """Runtime capabilities required by workspace-owned shell jobs."""
-
-    @property
-    def workspaces(self) -> dict[str, WorkspaceProfile]: ...
-
-    async def register_workspace(self, profile: WorkspaceProfile) -> None: ...
-
-    async def ensure_thread(
-        self,
-        parent_jid: str,
-        name: str,
-        *,
-        participant_ids: tuple[str, ...] = (),
-    ) -> EnsuredThread: ...
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
 
@@ -50,15 +29,6 @@ class DeterministicJobRun:
     error: str | None
 
 
-def derived_thread_name(task: ScheduledTask) -> str:
-    """Return the configured human-readable child thread for owned work."""
-    if task.derived_thread_name is not None:
-        return task.derived_thread_name
-    if task.config_job_name is not None:
-        return f"{task.group_folder} | {task.config_job_name}"
-    raise RuntimeError("Derived-thread task requires a thread name")
-
-
 def resolve_job_cwd(cwd: str | None) -> str:
     """Resolve an optional job cwd against the Pynchy project root."""
     project_root = get_settings().project_root
@@ -68,17 +38,6 @@ def resolve_job_cwd(cwd: str | None) -> str:
     if path.is_absolute():
         return str(path)
     return str((project_root / path).resolve())
-
-
-async def register_scheduled_target(
-    deps: ConfigJobExecutionDeps,
-    profile: WorkspaceProfile,
-) -> None:
-    """Persist an owned thread so later inbound replies retain its policy."""
-    existing = deps.workspaces.get(profile.jid)
-    if existing is not None:
-        profile = replace(profile, added_at=existing.added_at)
-    await deps.register_workspace(profile)
 
 
 def _bounded_pre_run_stream(value: str) -> str:
@@ -167,23 +126,9 @@ async def run_deterministic_config_job(
     display_name = job.display_name or task.config_job_name
     output = _deterministic_job_output(display_name, result)
     if output:
-        placement = resolve_workspace_placement(deps.workspaces.values(), task.group_folder)
-        if placement is None:
-            raise RuntimeError(f"Workspace placement not found: {task.group_folder}")
-        thread_name = task.derived_thread_name or f"{task.group_folder} | {display_name}"
-        ensured = await deps.ensure_thread(placement.control_parent.jid, thread_name)
-        if ensured.jid is None:
-            raise RuntimeError("Workspace job output thread returned no chat JID")
-        await register_scheduled_target(
-            deps,
-            replace(
-                placement.owner,
-                jid=ensured.jid,
-                name=f"{placement.owner.name}/{thread_name}",
-                folder=dynamic_thread_folder(placement.owner.folder, ensured.jid),
-            ),
-        )
-        await deps.broadcast_host_message(ensured.jid, output)
+        if task.bound_chat_jid is None:
+            raise RuntimeError("Workspace job has no durable destination binding")
+        await deps.broadcast_host_message(task.bound_chat_jid, output)
     return DeterministicJobRun(
         result=output or "Completed",
         error=_shell_result_error(result, display_name),

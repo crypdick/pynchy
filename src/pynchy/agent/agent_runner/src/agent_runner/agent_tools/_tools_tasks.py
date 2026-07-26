@@ -34,15 +34,11 @@ def _schedule_task_definition() -> Tool:
             "directly on the host. Use for system maintenance tasks. "
             "NOTE: Future improvement will add deputy agent review "
             "for security validation.\n\n"
-            "CONTEXT MODE (agent tasks only) - Choose based on task type:\n"
-            '\u2022 "group": Task runs in the group\'s conversation '
-            "context, with access to chat history. Use for tasks "
-            "that need context about ongoing discussions, user "
-            "preferences, or recent interactions.\n"
-            '\u2022 "isolated": Task runs in a fresh session with no '
-            "conversation history. Use for independent tasks that "
-            "don't need prior context. When using isolated mode, "
-            "include all necessary context in the prompt itself.\n\n"
+            "SESSION POLICY (agent tasks only):\n"
+            '\u2022 "group": Continue the task thread\'s durable session.\n'
+            '\u2022 "isolated": Reset the task thread immediately before '
+            "each scheduled occurrence. The thread and its new session remain "
+            "durable after the run.\n\n"
             "If unsure which mode to use, you can ask the user. "
             "Examples:\n"
             '- "Remind me about our discussion" \u2192 group '
@@ -127,6 +123,15 @@ def _schedule_task_definition() -> Tool:
                         "(Admin group only) Folder name of the group to "
                         "schedule the task for (e.g. 'code-improver'). "
                         "Defaults to the current group."
+                    ),
+                },
+                "context_mode": {
+                    "type": "string",
+                    "enum": ["group", "isolated"],
+                    "default": "isolated",
+                    "description": (
+                        "Compatibility name for session policy: group=continue, "
+                        "isolated=reset before each occurrence."
                     ),
                 },
                 "cwd": {
@@ -242,6 +247,7 @@ def _agent_task_payload(
         "schedule_type": schedule_type,
         "schedule_value": schedule_value,
         "targetGroup": _agent_target_group(arguments),
+        "context_mode": arguments.get("context_mode", "isolated"),
         "createdBy": _ipc.get_agent_tool_runtime().group_folder,
     }
 

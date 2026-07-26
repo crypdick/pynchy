@@ -90,9 +90,10 @@ granted by the current state.
 ### Plan and authorize work
 
 Move an item to `Ready for Planning` when you want a concrete implementation
-plan without authorizing execution. Temporal admits one durable isolated
-planning task. The agent calls `linear_submit_plan` to persist the plan in the
-issue description and move the item to `Awaiting Plan Approval`.
+plan without authorizing execution. Temporal admits a planning turn in the
+issue's durable routed conversation. The agent calls `linear_submit_plan` to
+persist the plan in the issue description and move the item to `Awaiting Plan
+Approval`.
 
 While the item is `Awaiting Plan Approval`, comments can ask the agent to
 revisit assumptions or refine the plan. The agent can call
@@ -116,7 +117,9 @@ agent can't set `Ready for Planning`, `Human Approved`, or `Rejected`.
 
 Before admitting work from `Human Approved`, the host acquires a durable,
 idempotent lease and moves the issue to `In Progress`. Only one active Pynchy
-execution can own an issue.
+execution can own an issue. Planning, execution, retries, follow-ups, recovery,
+comments, and progress questions all use the same issue thread runtime and
+worktree. Workflow transitions don't reset its provider session.
 
 The agent receives the objective, authority, and success condition, then
 chooses how to investigate, plan, execute, validate, publish, and report. It can
@@ -135,6 +138,13 @@ genuinely finished.
 the agent to make those ordinary state changes; the host checks the turn's
 provenance, not magic wording. A later move from `Blocked`, `Done`, or
 `Rejected` to `Human Approved` can start a new execution attempt.
+
+Resetting context during active execution is an explicit cancellation. Pynchy
+cancels the task and Temporal attempt, retires the checkpoint, preserves
+worktree changes, records the execution as `CANCELLED`, moves the issue to
+`Blocked`, and posts an explanation. The reset clears the provider session and
+posts `🗑️`. Automatic recovery remains disabled until a human moves the issue
+from `Blocked` to `Human Approved`.
 
 `In Progress` remains lease-managed, so neither the human nor agent sets it
 through the generic tool. A direct Linear UI move is handled only through the
@@ -188,15 +198,16 @@ ignored. Comments, issue changes, and messages in the corresponding Discord
 thread share one ordered conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
-Approved` update acquires the execution lease before the host admits a durable
-isolated task. A user-authored state transition directly to `In Progress`
-acquires the same lease without another provider move. An unleased `In Progress`
-update without that actor and changed-field evidence remains controller-owned
-but does not authorize work. These issue updates don't also start ordinary
-conversation turns, because that would race a second agent against the durable
-task. An `Awaiting Plan Approval` update waits for human review. A `Done`
-delivery completes the linked active, blocked, or review-ready execution. Other
-authenticated events provide context but don't bypass authorization.
+Approved` update acquires the execution lease before the host admits work into
+the issue conversation. A user-authored state transition directly to `In
+Progress` acquires the same lease without another provider move. An unleased
+`In Progress` update without that actor and changed-field evidence remains
+controller-owned but does not authorize work. These issue updates don't also
+start ordinary conversation turns, because that would race a second agent
+against the durable task. An `Awaiting Plan Approval` update waits for human
+review. A `Done` delivery completes the linked active, blocked, or review-ready
+execution. Other authenticated events provide context but don't bypass
+authorization.
 
 The route verifies Linear's HMAC-SHA256 signature, requires a timestamp within
 60 seconds, checks the configured organization ID, and deduplicates delivery
@@ -225,9 +236,8 @@ execution leases existed.
 Because the schedule lives in Temporal, a deploy or transient worker outage
 doesn't erase the recovery intent. Once the worker is healthy, the next
 one-minute reconciliation recreates missing work; an interrupted agent turn
-resumes from its durable checkpoint. Planning and execution tasks track their
-own checkpoints and never replace the routed issue conversation's interactive
-agent session.
+resumes from its durable checkpoint and provider session. The routed issue
+conversation is the sole owner of planning, execution, and interactive work.
 
 ## Schedule proactive proposals
 

@@ -21,26 +21,52 @@ owner explicitly with `workspace`.
 Pynchy derives one human-readable thread for each config-backed job. It names
 the thread `<workspace> | <display_name>`, falling back to the config job name.
 Every run finds or creates that thread, including reopening an archived one;
-it never stores a Discord thread JID as policy. A semantic workspace can be
+the persisted binding records the current JID while the logical workspace
+continues to own policy. A semantic workspace can be
 physically placed below a category while retaining its own profile. For
 example, a `fam` job may create `fam | afternoon check-in` under
 `#relationships`, but the thread runs and remains registered with only the
 `fam` profile. Different jobs under the same workspace use different threads
 and can run concurrently.
 
-Temporal buffers one overlapping occurrence for a config-backed job. The next run waits for the current one, then runs in the same task thread; Pynchy never creates a numbered spillover thread for that job. This requires a channel with child-thread support. Pynchy records an error instead of moving the run to another target when the root channel cannot create threads.
+Temporal buffers one overlapping occurrence for a config-backed job. The next
+run waits for the current one, then runs in the same task thread; Pynchy never
+creates a numbered spillover thread for that job. This requires a channel with
+child-thread support. Pynchy records an error instead of moving the run to
+another target when the root channel cannot create threads.
 
-Tasks created through `schedule_task` continue to target their selected chat directly. When that chat is busy and can host child conversations, Pynchy uses a numbered child thread. When the selected chat cannot host children, Pynchy durably defers the run until the reservation clears instead of sharing or rerouting the conversation. Canceling a task also clears its unfinished checkpoint so it cannot retain that reservation. Each agent task uses an isolated runtime folder.
+Tasks created through `schedule_task` receive a persistent dedicated child
+thread below the selected workspace. They never execute in the parent
+conversation. Linear planning and execution tasks are different: they bind to
+the issue's routed conversation, so every phase uses the issue thread's existing
+runtime. Pynchy refuses to run a task whose destination cannot be bound.
 
-A scheduled agent's provider session belongs only to its in-flight checkpoint.
-Even if its output thread is also the control for a routed webhook conversation,
-the scheduled run cannot replace that conversation's interactive session.
+Every scheduled task uses one of two session policies:
 
-An agent completes a run by returning its final result. The host then closes the
-one-shot runtime. Repo-backed agents can publish with
-`sync_worktree_to_main`, which opens or updates a pull request for committed
-changes. They resolve any error it returns and attach the PR to the current
-Linear issue when one exists. Scheduled prompts don't need sentinel commits.
+- `continue` resumes the thread's current provider session.
+- `reset_before_run` clears the thread before each occurrence, posts `🗑️`, and
+  starts a new durable provider session.
+
+Configured agent jobs set `reset_before_run = true` by default. The reset is
+visible even on the first occurrence. Temporal retries reuse the session created
+for that occurrence and don't post another reset. Set the field to `false` when
+successive occurrences should build on the same context.
+
+The `schedule_task` tool retains its compatibility vocabulary:
+`context_mode = "group"` selects `continue`, while `"isolated"` selects
+`reset_before_run`.
+
+A scheduled turn and ordinary messages share the thread's queue. A normal
+message interrupts scheduled work after the current tool result, runs next in
+the same session, and leaves the scheduled checkpoint available for Temporal to
+resume. At most one worker owns the thread.
+
+An agent completes a run by returning its final result. The worker process can
+then stop, but the durable session remains resumable. Repo-backed agents can
+publish with `sync_worktree_to_main`, which opens or updates a pull request for
+committed changes. They resolve any error it returns and attach the PR to the
+current Linear issue when one exists. Scheduled prompts don't need sentinel
+commits.
 
 During a scheduled run, the agent tries to resolve snags, bugs, and tool
 failures itself. When an unresolved problem ought to be fixed and Linear tools
@@ -53,7 +79,9 @@ see [Schedule proactive proposals](../integrations/linear.md#schedule-proactive-
 
 ### Daily Triage Memo
 
-A daily triage memo is a config-backed periodic agent that posts a short status memo to an explicit Pynchy channel. Keep it read-only by prompt and use an isolated context plus a cheaper workspace model override:
+A daily triage memo is a config-backed periodic agent that posts a short status
+memo to its owned thread. Keep it read-only by prompt, reset its context before
+each occurrence, and use a cheaper workspace model override:
 
 ```toml
 # data/personalization/pynchy.toml
@@ -73,6 +101,7 @@ schema_version = 1
 enabled = true
 schedule = "0 8 * * *"
 workspace = "admin"
+reset_before_run = true
 prompt = """
 Produce the daily Pynchy triage memo.
 
@@ -89,7 +118,9 @@ Send a concise memo to this Pynchy channel every run:
 """
 ```
 
-Replace the `chat` value with the real Pynchy channel/topic ref for the deployment. The example model name must exist in the active LiteLLM config; for Codex workspaces backed by LiteLLM's ChatGPT subscription provider, keep the `chatgpt/...` prefix.
+The example model name must exist in the active LiteLLM config. For Codex
+workspaces backed by LiteLLM's ChatGPT subscription provider, keep the
+`chatgpt/...` prefix.
 
 One-time agent jobs use `at` instead of `schedule`:
 
@@ -107,7 +138,7 @@ Open a browser, log into YouTube, and cancel the YouTube Premium subscription.
 ```
 
 Use `interval_minutes` for config-backed interval jobs. An agent job can also
-run a host-side gate before creating its thread:
+run a host-side gate before starting its agent:
 
 ```toml
 # data/personalization/automations/marketplace-poller.toml
@@ -124,9 +155,9 @@ pre_run_timeout_seconds = 300
 ```
 
 If the final non-empty line of successful gate output is JSON containing
-`"wakeAgent": false`, Pynchy records a skipped run without creating a thread or
-starting an agent. Otherwise, stdout and stderr become bounded pre-run context
-for the agent.
+`"wakeAgent": false`, Pynchy records a skipped run without starting an agent.
+The job's durable thread binding still exists. Otherwise, stdout and stderr
+become bounded pre-run context for the agent.
 
 ## Deterministic Workspace Tasks
 
@@ -150,7 +181,7 @@ timeout_seconds = 300
 The command runs on the host. Non-empty output goes to the derived thread under
 the workspace's physical Discord root, and Pynchy registers that thread with
 the logical owner's profile for future replies. Successful output ending in
-`{"wakeAgent": false}` skips delivery and does not create a thread.
+`{"wakeAgent": false}` skips delivery but retains the job's thread binding.
 
 ## Plugin-Sourced Jobs
 
@@ -223,7 +254,7 @@ The `/status` endpoint includes a `temporal` section:
 | `worker_running` | Whether this Pynchy process has an active Temporal worker |
 | `last_workflow_id` | Most recent scheduled-work workflow started or handled by this process |
 | `last_task_id` | Scheduled task or host job ID for the most recent workflow event |
-| `last_result` | `started`, `already_started`, `completed`, `deferred`, `skipped`, or `error` |
+| `last_result` | `started`, `already_started`, `completed`, `skipped`, or `error` |
 | `last_error` | Last scheduler dispatch or activity error, if any |
 
 ### Single-host macOS service

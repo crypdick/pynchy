@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -21,11 +20,17 @@ from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype re
 from pynchy.host.orchestrator.config_job_execution import (
     ConfigJobExecutionDeps,  # noqa: TC001, RUF100 - beartype resolves scheduler annotations.
     prepare_config_job,
-    register_scheduled_target,
     run_deterministic_config_job,
 )
+from pynchy.host.orchestrator.scheduled_binding import resolve_scheduled_group
+from pynchy.host.orchestrator.scheduled_circuit_breaker import (
+    error_signature,
+    scheduled_task_circuit_decision,
+)
 from pynchy.host.orchestrator.scheduled_completion import classify_scheduled_agent_outcome
+from pynchy.host.orchestrator.scheduled_session_policy import apply_scheduled_session_policy
 from pynchy.host.orchestrator.scheduled_turn import (
+    SCHEDULED_TURN_INTERRUPTED,
     ScheduledTurnDeps,
     TaskAgentRequest,
     run_task_agent,
@@ -34,7 +39,6 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     TemporalActivityInfo,
     parse_temporal_activity_info,
 )
-from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
 from pynchy.logger import logger
 from pynchy.state import (
     claim_in_flight_turn,
@@ -73,6 +77,13 @@ class SchedulerDependencies(Protocol):
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None: ...
 
+    async def reset_scheduled_context(
+        self,
+        task: ScheduledTask,
+        group: WorkspaceProfile,
+        occurrence_id: str,
+    ) -> None: ...
+
     async def run_agent(  # noqa: PLR0913, RUF100 - scheduler protocol preserves the full agent execution contract.
         self,
         group: WorkspaceProfile,
@@ -100,8 +111,6 @@ class SchedulerDependencies(Protocol):
 _scheduler_lock = asyncio.Lock()
 _config_job_run_locks: dict[str, asyncio.Lock] = {}
 TemporalSchedulerRuntime: Any | None = None
-_STAGNATION_THRESHOLD = 3
-_NO_PROGRESS_THRESHOLD = 5
 
 
 @dataclass
@@ -110,43 +119,6 @@ class _SchedulerState:
 
 
 _state = _SchedulerState()
-
-
-def _recent_failure_run(logs: list[TaskRunLog]) -> list[TaskRunLog]:
-    failure_run: list[TaskRunLog] = []
-    for log in logs:
-        if log.status != "error":
-            break
-        failure_run.append(log)
-    return failure_run
-
-
-def _stagnation_circuit_decision(failure_run: list[TaskRunLog]) -> tuple[str, str] | None:
-    if len(failure_run) < _STAGNATION_THRESHOLD:
-        return None
-
-    last_signature = failure_run[0].error_signature or error_signature(failure_run[0].error or "")
-    same = 0
-    for log in failure_run:
-        signature = log.error_signature or error_signature(log.error or "")
-        if signature != last_signature:
-            break
-        same += 1
-    if same < _STAGNATION_THRESHOLD:
-        return None
-    return (
-        "stagnation",
-        f'Same error repeated {same} times in a row: "{last_signature}".',
-    )
-
-
-def _no_progress_circuit_decision(failure_run: list[TaskRunLog]) -> tuple[str, str] | None:
-    if len(failure_run) < _NO_PROGRESS_THRESHOLD:
-        return None
-    return (
-        "no-progress",
-        f"{len(failure_run)} consecutive scheduled-task failures with no success.",
-    )
 
 
 @runtime_checkable
@@ -164,10 +136,6 @@ def _build_temporal_runtime(deps: SchedulerDependencies, scheduler_config: objec
 
         runtime_cls = _TemporalSchedulerRuntime
     return runtime_cls(deps, cast("SchedulerConfig", scheduler_config))
-
-
-def _workspace_map(deps: SchedulerDependencies) -> dict[str, WorkspaceProfile]:
-    return deps.workspaces
 
 
 async def start_scheduler_loop(deps: SchedulerDependencies) -> None:
@@ -201,29 +169,11 @@ async def _run_scheduler_loop(
         await asyncio.sleep(get_settings().scheduler.poll_interval)
 
 
-def error_signature(error: str) -> str:
-    """Normalize volatile details so repeated failures can be grouped."""
-    first_line = next((line.strip() for line in error.splitlines() if line.strip()), "")
-    return re.sub(r"\s+", " ", re.sub(r"\b\d+\b", "#", first_line)).strip()
-
-
 def _temporal_run_metadata() -> TemporalActivityInfo | None:
     try:
         return parse_temporal_activity_info(activity.info())
     except RuntimeError:
         return None
-
-
-def _scheduled_group(
-    deps: SchedulerDependencies,
-    group_folder: str,
-) -> WorkspaceProfile | None:
-    groups = _workspace_map(deps)
-    exact = next((group for group in groups.values() if group.folder == group_folder), None)
-    if exact is not None:
-        return exact
-    placement = resolve_workspace_placement(groups.values(), group_folder)
-    return placement.owner if placement is not None else None
 
 
 async def _log_task_error(
@@ -282,9 +232,7 @@ async def _broadcast_task_start(deps: SchedulerDependencies, task: ScheduledTask
 
 
 async def _scheduled_task_circuit_breaker(task_id: str) -> tuple[str, str] | None:
-    logs = await get_task_run_logs(task_id, limit=_NO_PROGRESS_THRESHOLD)
-    failure_run = _recent_failure_run(logs)
-    return _stagnation_circuit_decision(failure_run) or _no_progress_circuit_decision(failure_run)
+    return scheduled_task_circuit_decision(await get_task_run_logs(task_id, limit=5))
 
 
 async def _finish_scheduled_agent_run(
@@ -336,7 +284,11 @@ async def resume_interrupted_scheduled_turn(
     turn: InFlightTurn,
 ) -> bool:
     """Resume a claimed scheduled agent turn and finish its scheduler bookkeeping."""
-    group = _scheduled_group(deps, task.group_folder)
+    group = (
+        resolve_scheduled_group(deps.workspaces, task.bound_group_folder)
+        if task.bound_group_folder is not None
+        else None
+    )
     if group is None:
         await release_in_flight_turn_claim(turn.turn_id)
         return False
@@ -366,24 +318,58 @@ async def resume_interrupted_scheduled_turn(
     return completed
 
 
-async def run_scheduled_agent(task: ScheduledTask, deps: SchedulerDependencies) -> bool:
+async def run_scheduled_agent(
+    task: ScheduledTask,
+    deps: SchedulerDependencies,
+    *,
+    occurrence_id: str | None = None,
+) -> bool:
     """Execute a single scheduled agent task via the unified run_agent path."""
     if task.config_job_name is None:
-        return await _run_scheduled_agent(task, deps)
+        return await _run_scheduled_agent(task, deps, occurrence_id=occurrence_id)
 
     # Temporal BUFFER_ONE serializes normal schedule overlap durably. This
     # process-local lock also serializes duplicate/manual activity delivery so
     # every execution stays in the task's one derived thread.
     lock = _config_job_run_locks.setdefault(task.id, asyncio.Lock())
     async with lock:
-        return await _run_scheduled_agent(task, deps)
+        return await _run_scheduled_agent(task, deps, occurrence_id=occurrence_id)
 
 
 async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler terminal outcomes.
-    task: ScheduledTask, deps: SchedulerDependencies
+    task: ScheduledTask,
+    deps: SchedulerDependencies,
+    *,
+    occurrence_id: str | None,
 ) -> bool:
     """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
+    runtime_folder = task.bound_group_folder
+    runtime_jid = task.bound_chat_jid
+    if runtime_folder is None or runtime_jid is None:
+        await _log_task_error(
+            task.id,
+            start_time=start_time,
+            error="Scheduled task has no durable conversation binding",
+        )
+        return False
+    group = resolve_scheduled_group(deps.workspaces, runtime_folder)
+    if group is None or group.jid != runtime_jid:
+        await _log_task_error(
+            task.id,
+            start_time=start_time,
+            error=f"Scheduled task runtime is not registered: {runtime_folder}",
+        )
+        return False
+    resolved_occurrence = occurrence_id or f"direct:{task.id}:{start_time.isoformat()}"
+    task = await apply_scheduled_session_policy(
+        task,
+        group,
+        resolved_occurrence,
+        deps.reset_scheduled_context,
+        update_task,
+    )
+
     interrupted_turn = await get_in_flight_turn_for_task(task.id)
     if interrupted_turn is not None:
         if not await claim_in_flight_turn(interrupted_turn.turn_id):
@@ -395,20 +381,10 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
             return True
         return await resume_interrupted_scheduled_turn(task, deps, interrupted_turn)
     s = get_settings()
-    group_dir = s.groups_dir / task.group_folder
+    group_dir = s.groups_dir / runtime_folder
     group_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Running scheduled task", task_id=task.id, group=task.group_folder)
-
-    group = _scheduled_group(deps, task.group_folder)
-    if not group:
-        logger.error(
-            "Group not found for task",
-            task_id=task.id,
-            group_folder=task.group_folder,
-        )
-        await _log_missing_group(task, start_time)
-        return False
+    logger.info("Running scheduled task", task_id=task.id, group=runtime_folder)
 
     circuit_decision = await _scheduled_task_circuit_breaker(task.id)
     if circuit_decision is not None:
@@ -441,28 +417,9 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
         )
 
     execution_task = prepared_task
-    if execution_task.derived_thread_name is not None or execution_task.config_job_name is not None:
-        placement = resolve_workspace_placement(
-            _workspace_map(deps).values(),
-            execution_task.group_folder,
-        )
-        if placement is None:
-            await _log_task_error(
-                task.id,
-                start_time=start_time,
-                error=f"Workspace placement not found: {task.group_folder}",
-            )
-            return False
-        execution_task = replace(
-            execution_task,
-            chat_jid=placement.control_parent.jid,
-        )
 
     async def on_started(target_task: ScheduledTask) -> None:
         await _broadcast_task_start(deps, target_task)
-
-    async def on_target_created(profile: WorkspaceProfile) -> None:
-        await register_scheduled_target(cast("ConfigJobExecutionDeps", deps), profile)
 
     turn_id, result, error = await run_task_agent(
         TaskAgentRequest(
@@ -472,9 +429,15 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
             idle_enabled=True,
             idle_timeout=s.idle_timeout,
             on_started=on_started,
-            on_target_created=on_target_created,
         )
     )
+    if error == SCHEDULED_TURN_INTERRUPTED:
+        logger.info(
+            "Scheduled task yielded to an interactive turn",
+            task_id=task.id,
+            turn_id=turn_id,
+        )
+        return False
     return await _finish_scheduled_agent_run(
         task,
         start_time=start_time,

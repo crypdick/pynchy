@@ -6,6 +6,12 @@ from dataclasses import dataclass, field
 from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, runtime_checkable
 
+from pynchy.deployment_types import (  # noqa: TC001, RUF100 - public runtime re-export
+    DeployChangeKind,
+    DeployRevision,
+)
+from pynchy.session_policy import SessionPolicy  # noqa: TC001, RUF100 - public runtime re-export
+
 if TYPE_CHECKING:
     from pynchy.host.orchestrator.messaging.formatters.base import Formatter
 
@@ -26,42 +32,6 @@ GroupFolder = NewType("GroupFolder", str)  # workspace identity (folder under gr
 SessionId = NewType("SessionId", str)  # agent session handle
 ChatJid = NewType("ChatJid", str)  # canonical chat identifier
 ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
-
-
-@dataclass(frozen=True)
-class DeployRevision:
-    """Effective host revision whose equality makes deploys idempotent."""
-
-    commit_sha: str
-    config_hash: str
-
-
-class DeployChangeKind(StrEnum):
-    """User-facing reason that an effective host revision changed."""
-
-    CODE = "code change"
-    CONFIG = "config change"
-    CODE_AND_CONFIG = "code and config changes"
-    RESTART = "restart request"
-
-    @classmethod
-    def between(
-        cls,
-        applied: DeployRevision | None,
-        target: DeployRevision,
-    ) -> DeployChangeKind:
-        """Describe the semantic difference between two deploy revisions."""
-        if applied is None:
-            return cls.CODE_AND_CONFIG
-        code_changed = applied.commit_sha != target.commit_sha
-        config_changed = applied.config_hash != target.config_hash
-        if code_changed and config_changed:
-            return cls.CODE_AND_CONFIG
-        if code_changed:
-            return cls.CODE
-        if config_changed:
-            return cls.CONFIG
-        return cls.RESTART
 
 
 @dataclass(frozen=True)
@@ -371,7 +341,7 @@ class ScheduledTask:
     prompt: str
     schedule_type: Literal["cron", "interval", "once"]
     schedule_value: str
-    context_mode: Literal["group", "isolated"]
+    session_policy: SessionPolicy
     next_run: str | None = None
     last_run: str | None = None
     last_result: str | None = None
@@ -381,6 +351,10 @@ class ScheduledTask:
     input_source: str = "scheduled_task"
     config_job_name: str | None = None
     derived_thread_name: str | None = None
+    bound_chat_jid: str | None = None
+    bound_group_folder: str | None = None
+    conversation_id: str | None = None
+    last_reset_occurrence: str | None = None
 
     def to_snapshot_dict(self) -> dict[str, str | None]:
         """Serialize to the dict format expected by write_tasks_snapshot.
@@ -498,6 +472,8 @@ class ContainerInput:
     session_id: str | None = None
     is_scheduled_task: bool = False
     input_source: str = "user"
+    corruption_tainted: bool = False
+    secret_tainted: bool = False
     system_notices: list[str] | None = None
     repo_access: str | None = None  # Primary cwd repo slug; None = no worktree
     repo_accesses: list[str] = field(default_factory=list)  # All mounted repo slugs

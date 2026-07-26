@@ -28,6 +28,7 @@ from pynchy.state import (
     get_new_messages,
     get_router_state,
     get_session,
+    get_session_security_taint,
     get_task_by_id,
     get_task_run_logs,
     get_tasks_for_group,
@@ -35,6 +36,8 @@ from pynchy.state import (
     init_test_database,
     log_task_run,
     mark_delivered,
+    mark_session_security_taint,
+    rebind_workspace_profile,
     record_outbound,
     record_task_completion,
     resume_task,
@@ -57,6 +60,7 @@ from pynchy.types import (
     NewMessage,
     ScheduledTask,
     ServiceTrustConfig,
+    SessionPolicy,
     TaskRunLog,
     WorkspaceProfile,
     WorkspaceSecurity,
@@ -138,7 +142,7 @@ def _full_task() -> ScheduledTask:
         prompt="Do a thing",
         schedule_type="interval",
         schedule_value="3600000",
-        context_mode="group",
+        session_policy=SessionPolicy.CONTINUE,
         next_run="2024-06-01T00:00:00Z",
         status="active",
         created_at="2024-01-01T00:00:00Z",
@@ -154,7 +158,7 @@ def _assert_full_task(task: ScheduledTask) -> None:
         task.prompt,
         task.schedule_type,
         task.schedule_value,
-        task.context_mode,
+        task.session_policy,
         task.next_run,
         task.status,
         task.repo_access,
@@ -165,7 +169,7 @@ def _assert_full_task(task: ScheduledTask) -> None:
         "Do a thing",
         "interval",
         "3600000",
-        "group",
+        SessionPolicy.CONTINUE,
         None,
         "active",
         "owner/pynchy",
@@ -437,7 +441,7 @@ class TestTaskCRUD:
                 prompt="do something",
                 schedule_type="once",
                 schedule_value="2024-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2024-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -458,7 +462,7 @@ class TestTaskCRUD:
                 prompt="test",
                 schedule_type="once",
                 schedule_value="2024-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=None,
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -479,7 +483,7 @@ class TestTaskCRUD:
                 prompt="delete me",
                 schedule_type="once",
                 schedule_value="2024-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run=None,
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -636,6 +640,30 @@ class TestSessions:
     async def test_clear_session_noop_when_missing(self):
         """Clearing a nonexistent session should not raise."""
         await clear_session("nonexistent")
+
+    async def test_security_taint_is_sticky_until_session_reset(self):
+        await set_session("my-group", "session-abc")
+
+        first = await mark_session_security_taint(
+            "my-group",
+            corruption_tainted=True,
+        )
+        continued = await mark_session_security_taint(
+            "my-group",
+            secret_tainted=True,
+        )
+        trusted_input = await mark_session_security_taint("my-group")
+
+        assert first.corruption_tainted is True
+        assert first.secret_tainted is False
+        assert continued.corruption_tainted is True
+        assert continued.secret_tainted is True
+        assert trusted_input == continued
+
+        await clear_session("my-group")
+
+        assert await get_session("my-group") is None
+        assert await get_session_security_taint("my-group") == type(first)()
 
     async def test_get_all_sessions(self):
         await set_session("group-a", "session-1")
@@ -802,7 +830,7 @@ class TestTaskAdvanced:
         prompt="test prompt",
         schedule_type="cron",
         schedule_value="0 * * * *",
-        context_mode="isolated",
+        session_policy=SessionPolicy.RESET_BEFORE_RUN,
         status="active",
         created_at="2024-01-01T00:00:00.000Z",
     )
@@ -1084,6 +1112,44 @@ class TestWorkspaceProfiles:
         result = await get_workspace_profile("nonexistent@g.us")
         assert result is None
 
+    async def test_duplicate_jid_or_folder_ownership_fails_closed(self):
+        original = WorkspaceProfile(
+            jid="discord:channel:one",
+            name="Original",
+            folder="one",
+            trigger="@Pynchy",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        await set_workspace_profile(original)
+
+        with pytest.raises(ValueError, match="already owned by workspace"):
+            await set_workspace_profile(replace(original, folder="two"))
+        with pytest.raises(ValueError, match="use explicit rebind"):
+            await set_workspace_profile(replace(original, jid="discord:channel:two"))
+
+        assert await get_all_workspace_profiles() == {original.jid: original}
+
+    async def test_explicit_workspace_rebind_atomically_replaces_jid(self):
+        original = WorkspaceProfile(
+            jid="discord:channel:old",
+            name="Original",
+            folder="one",
+            trigger="@Pynchy",
+            added_at="2024-01-01T00:00:00Z",
+        )
+        replacement = replace(
+            original,
+            jid="discord:channel:new",
+            name="Replacement",
+        )
+        await set_workspace_profile(original)
+
+        old_jid = await rebind_workspace_profile(replacement)
+
+        assert old_jid == original.jid
+        assert await get_workspace_profile(original.jid) is None
+        assert await get_all_workspace_profiles() == {replacement.jid: replacement}
+
     async def test_get_all_workspace_profiles(self):
         for i in range(2):
             profile = WorkspaceProfile(
@@ -1267,7 +1333,7 @@ class TestUpdateById:
                 prompt="original",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -1290,7 +1356,7 @@ class TestUpdateById:
                 prompt="original",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -1314,7 +1380,7 @@ class TestUpdateById:
                 prompt="original",
                 schedule_type="once",
                 schedule_value="2025-06-01T00:00:00.000Z",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-06-01T00:00:00.000Z",
                 status="active",
                 created_at="2024-01-01T00:00:00.000Z",
@@ -1519,6 +1585,44 @@ class TestEnsureColumns:
         assert "config_job_name" in cols
         assert "persistent_thread_name" not in cols
         assert "persistent_thread_jid" not in cols
+        await db.close()
+
+    async def test_migrates_context_modes_once_then_drops_legacy_column(self):
+        db = await aiosqlite.connect(":memory:")
+        await db.executescript("""
+            CREATE TABLE scheduled_tasks (
+                id TEXT PRIMARY KEY,
+                group_folder TEXT NOT NULL,
+                chat_jid TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                schedule_type TEXT NOT NULL,
+                schedule_value TEXT NOT NULL,
+                next_run TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                context_mode TEXT NOT NULL
+            );
+            INSERT INTO scheduled_tasks VALUES (
+                'continued', 'group', 'group@g.us', 'continue', 'cron', '* * * * *',
+                NULL, 'active', '2026-07-25T00:00:00Z', 'group'
+            );
+            INSERT INTO scheduled_tasks VALUES (
+                'reset', 'group', 'group@g.us', 'reset', 'cron', '* * * * *',
+                NULL, 'active', '2026-07-25T00:00:00Z', 'isolated'
+            );
+        """)
+
+        await create_schema(db)
+
+        cursor = await db.execute("PRAGMA table_info(scheduled_tasks)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        assert "context_mode" not in cols
+        cursor = await db.execute("SELECT id, session_policy FROM scheduled_tasks ORDER BY id")
+        assert await cursor.fetchall() == [
+            ("continued", "continue"),
+            ("reset", "reset_before_run"),
+        ]
+        await create_schema(db)
         await db.close()
 
     async def test_renames_conversation_event_phoenix_ref(self):

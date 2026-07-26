@@ -55,7 +55,5 @@ async def run_interactive_message_turn(chat_jid: str) -> str:
 
 
 async def _process_interactive_message_turn(deps: object, chat_jid: str) -> ProcessGroupResult:
-    return await messaging_pipeline.process_group_messages(
-        cast("messaging_pipeline.MessageHandlerDeps", deps),
-        chat_jid,
-    )
+    typed = cast("messaging_pipeline.MessageHandlerDeps", deps)
+    return await typed.queue.run_message_turn(chat_jid)

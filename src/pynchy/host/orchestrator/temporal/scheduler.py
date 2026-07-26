@@ -21,6 +21,7 @@ from temporalio import activity
 from temporalio.client import Client
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.service import RPCError, RPCStatusCode
 from temporalio.worker import Worker, WorkflowRunner
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
@@ -33,7 +34,7 @@ from pynchy.host.learning.packet_codec import packet_to_payload
 from pynchy.host.learning.packet_models import (
     LearningPacket,  # noqa: TC001, RUF100 - beartype resolves Temporal scheduler annotations at runtime.
 )
-from pynchy.host.orchestrator.scheduled_targeting import ScheduledTargetBusyError
+from pynchy.host.orchestrator.scheduled_binding import ensure_scheduled_task_binding
 from pynchy.host.orchestrator.task_scheduler import (
     SchedulerDependencies,
     run_scheduled_agent,
@@ -75,6 +76,7 @@ from pynchy.host.orchestrator.temporal.runtime_state import (
     _update_temporal_scheduler_status,
     _utc_timestamp,
     bind_scheduler_deps,
+    parse_temporal_activity_info,
 )
 from pynchy.host.orchestrator.temporal.runtime_state import (
     get_temporal_scheduler_status as _get_temporal_scheduler_status,
@@ -93,7 +95,6 @@ from pynchy.host.orchestrator.temporal.schedules import (
     safe_workflow_fragment,
 )
 from pynchy.host.orchestrator.temporal.workflows import (
-    SCHEDULED_TARGET_DEFERRED,
     CanaryRunWorkflow,
     ChannelReconciliationWorkflow,
     ConfigHostCronWorkflow,
@@ -137,6 +138,7 @@ __all__ = [
     "TemporalSchedulerRuntime",
     "agent_task_schedule_id",
     "agent_task_workflow_id",
+    "cancel_scheduled_agent_workflow",
     "deploy_workflow_id",
     "get_temporal_scheduler_status",
     "interactive_message_workflow_id",
@@ -200,6 +202,20 @@ async def start_scheduled_agent_task_workflow(task: ScheduledTask) -> None:
     await runtime.start_scheduled_agent_task(task)
 
 
+async def cancel_scheduled_agent_workflow(workflow_id: str) -> bool:
+    """Cancel one active scheduled attempt by its durable Temporal identity."""
+    runtime = await _require_active_runtime()
+    if runtime.client is None:
+        raise TemporalRuntimeUnavailableError(_TEMPORAL_SCHEDULER_NOT_STARTED_ERROR)
+    try:
+        await runtime.client.get_workflow_handle(workflow_id).cancel()
+    except RPCError as exc:
+        if exc.status is RPCStatusCode.NOT_FOUND:
+            return False
+        raise
+    return True
+
+
 async def start_interactive_message_workflow(chat_jid: str) -> None:
     """Start a Temporal workflow to process pending messages for one chat."""
     runtime = await _require_active_runtime()
@@ -254,19 +270,7 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         return "skipped"
 
     try:
-        async with activity_heartbeats(task_id):
-            completed = await run_scheduled_agent(
-                task,
-                cast("SchedulerDependencies", _require_scheduler_deps()),
-            )
-    except ScheduledTargetBusyError:
-        logger.info(
-            "Scheduled task target reserved without child-thread support; deferring",
-            task_id=task.id,
-            group=task.group_folder,
-        )
-        _record_activity_result(task_id, "deferred")
-        return SCHEDULED_TARGET_DEFERRED
+        completed = await _run_bound_scheduled_agent_task(task)
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; record activity failure.
         _record_activity_result(task_id, "error", str(exc))
         raise
@@ -276,6 +280,29 @@ async def run_scheduled_agent_task(task_id: str) -> str:
         raise RuntimeError(err)
     _record_activity_result(task_id, "completed")
     return "completed"
+
+
+async def _run_bound_scheduled_agent_task(task: ScheduledTask) -> bool:
+    """Bind and serialize one Temporal occurrence in its thread-owned queue."""
+    deps = cast("SchedulerDependencies", _require_scheduler_deps())
+    task = await ensure_scheduled_task_binding(task, cast("Any", deps))
+    if task.bound_chat_jid is None:
+        raise RuntimeError("Scheduled task binding disappeared before queue admission")
+    temporal = parse_temporal_activity_info(activity.info())
+
+    async def run_bound_task() -> bool:
+        return await run_scheduled_agent(
+            task,
+            deps,
+            occurrence_id=temporal.workflow_run_id or temporal.workflow_id,
+        )
+
+    async with activity_heartbeats(task.id):
+        return await deps.queue.run_serialized_task(
+            task.bound_chat_jid,
+            task.id,
+            run_bound_task,
+        )
 
 
 @activity.defn(name="clear_terminal_scheduled_turn")

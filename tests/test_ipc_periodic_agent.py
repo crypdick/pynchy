@@ -17,7 +17,7 @@ from pynchy.config.models import CommandCenterConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
 from pynchy.state import get_all_tasks
-from pynchy.types import WorkspaceProfile
+from pynchy.types import SessionPolicy, WorkspaceProfile
 
 
 class MockDeps(NullIpcDeps):
@@ -268,7 +268,7 @@ class TestCreatePeriodicAgent:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
 
     async def test_invalid_context_mode_still_creates_isolated_task(
         self, deps, tmp_path, monkeypatch
@@ -292,7 +292,7 @@ class TestCreatePeriodicAgent:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
 
     async def test_no_channel_support(self, deps, tmp_path, monkeypatch):
         """Without create_group support, should create config but no task."""

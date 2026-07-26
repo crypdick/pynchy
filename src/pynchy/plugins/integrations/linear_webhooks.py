@@ -33,7 +33,13 @@ from pynchy.plugins.integrations.linear_boot import (
     workspace_for_linear_project,
 )
 from pynchy.plugins.integrations.linear_client import LinearError
-from pynchy.plugins.integrations.linear_statuses import LINEAR_TODO_STATUSES
+from pynchy.plugins.integrations.linear_conversation_identity import (
+    resolve_linear_issue_conversation,
+)
+from pynchy.plugins.integrations.linear_statuses import (
+    LINEAR_TODO_STATUSES,
+    TERMINAL_STATE_TYPES,
+)
 from pynchy.plugins.integrations.linear_webhook_config import (
     LinearPluginOptions,
     LinearWebhookRouteConfig,
@@ -223,6 +229,12 @@ def _issue_state_name(payload: _LinearWebhookPayload) -> str:
 
 
 def _issue_control_closed(payload: _LinearWebhookPayload) -> bool | None:
+    state = payload.data.get("state")
+    if not isinstance(state, dict):
+        return None
+    state_type = state.get("type")
+    if isinstance(state_type, str):
+        return state_type in TERMINAL_STATE_TYPES
     state_name = _issue_state_name(payload)
     return state_name == _DONE_STATE_NAME if state_name else None
 
@@ -348,10 +360,16 @@ async def prepare_linear_webhook_event(
         raise WebhookProcessingError(str(exc)) from exc
     if event.conversation is None:
         return event
+    conversation = await resolve_linear_issue_conversation(
+        event.subject_id,
+        workspace,
+        config.tool,
+    )
     return replace(
         event,
         conversation=replace(
             event.conversation,
+            subject=conversation.subject,
             workspace=workspace,
             public_source=public_source,
         ),

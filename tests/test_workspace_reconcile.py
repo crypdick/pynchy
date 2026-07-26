@@ -25,7 +25,7 @@ from pynchy.host.orchestrator.workspace_config import (
     reconcile_workspaces,
 )
 from pynchy.state import create_task, get_active_task_for_group, get_all_tasks
-from pynchy.types import Channel, ScheduledTask, WorkspaceProfile
+from pynchy.types import Channel, ScheduledTask, SessionPolicy, WorkspaceProfile
 
 
 @dataclass
@@ -177,7 +177,7 @@ class TestReconcileWorkspaces:
                 prompt="Monitor systems",
                 schedule_type="cron",
                 schedule_value="*/15 * * * *",  # OLD schedule
-                context_mode="group",
+                session_policy=SessionPolicy.CONTINUE,
                 next_run="2025-01-01T00:15:00",
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
@@ -220,7 +220,7 @@ class TestReconcileWorkspaces:
                 prompt="Old monitoring prompt",  # OLD prompt
                 schedule_type="cron",
                 schedule_value="0 9 * * *",
-                context_mode="group",
+                session_policy=SessionPolicy.CONTINUE,
                 next_run="2025-01-01T09:00:00",
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
@@ -263,7 +263,7 @@ class TestReconcileWorkspaces:
                 prompt="Monitor systems",
                 schedule_type="cron",
                 schedule_value="0 9 * * *",
-                context_mode="group",
+                session_policy=SessionPolicy.CONTINUE,
                 next_run="2025-01-01T09:00:00",
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
@@ -658,8 +658,8 @@ class TestReconcileWorkspaces:
         assert len(tasks) == 1
         assert tasks[0].repo_access is None
 
-    async def test_context_mode_preserved_in_task(self, db, groups_dir):
-        """context_mode from config.toml should be set on the created task."""
+    async def test_legacy_context_hint_maps_to_reset_policy(self, db, groups_dir):
+        """Legacy workspace hints cannot reintroduce an ephemeral session."""
         _write_workspace_yaml(
             groups_dir,
             "isolated-agent",
@@ -685,7 +685,7 @@ class TestReconcileWorkspaces:
 
         tasks = await get_all_tasks()
         assert len(tasks) == 1
-        assert tasks[0].context_mode == "isolated"
+        assert tasks[0].session_policy is SessionPolicy.RESET_BEFORE_RUN
 
     async def test_updates_workspace_name_from_config(self, db, groups_dir):
         """Changed name in config.toml should update existing workspace profile."""
@@ -769,7 +769,7 @@ class TestReconcileWorkspaces:
                 prompt="Do old things",
                 schedule_type="cron",
                 schedule_value="0 4 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-01-01T04:00:00",
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
@@ -805,7 +805,7 @@ class TestReconcileWorkspaces:
                 prompt="Old prompt",
                 schedule_type="cron",
                 schedule_value="0 9 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-01-01T09:00:00",
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
@@ -839,7 +839,7 @@ class TestReconcileWorkspaces:
                 prompt="Gone",
                 schedule_type="cron",
                 schedule_value="0 4 * * *",
-                context_mode="isolated",
+                session_policy=SessionPolicy.RESET_BEFORE_RUN,
                 next_run="2025-01-01T04:00:00",
                 status="paused",  # already paused
                 created_at=datetime.now(UTC).isoformat(),

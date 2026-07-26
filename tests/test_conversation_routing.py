@@ -49,7 +49,9 @@ from pynchy.state import (
     get_conversation_control_binding,
     get_conversation_delivery,
     get_session,
+    get_session_security_taint,
     get_webhook_receipt,
+    mark_session_security_taint,
     prepare_conversation_delivery_recovery,
     resolve_conversation,
     set_chat_cleared_at,
@@ -401,7 +403,7 @@ async def test_startup_recovery_repairs_legacy_reset_orphan() -> None:
     assert retained_pending.status is ConversationDeliveryStatus.PENDING
 
 
-async def test_startup_recovery_forgets_session_copied_from_scheduled_thread() -> None:
+async def test_startup_recovery_consolidates_legacy_scheduled_session() -> None:
     thread_jid = ChatJid("discord:channel:thread-scheduled")
     conversation = await resolve_conversation(
         _subject("issue-scheduled-session"),
@@ -413,6 +415,10 @@ async def test_startup_recovery_forgets_session_copied_from_scheduled_thread() -
     routed_folder = routed_conversation_folder("triage", conversation.id)
     await set_conversation_session(conversation.id, copied_session)
     await set_session(GroupFolder(scheduled_folder), copied_session)
+    await mark_session_security_taint(
+        GroupFolder(scheduled_folder),
+        corruption_tainted=True,
+    )
     await set_session(GroupFolder(routed_folder), copied_session)
 
     legitimate = await resolve_conversation(
@@ -430,13 +436,17 @@ async def test_startup_recovery_forgets_session_copied_from_scheduled_thread() -
 
     recovered = await prepare_conversation_delivery_recovery()
 
-    repaired = await get_conversation(conversation.id)
+    migrated = await get_conversation(conversation.id)
     preserved = await get_conversation(legitimate.id)
     assert recovered == 1
-    assert repaired is not None
-    assert repaired.session_id is None
+    assert migrated is not None
+    assert migrated.session_id == copied_session
     assert await get_session(GroupFolder(scheduled_folder)) is None
-    assert await get_session(GroupFolder(routed_folder)) is None
+    assert await get_session(GroupFolder(routed_folder)) == copied_session
+    legacy_taint = await get_session_security_taint(GroupFolder(scheduled_folder))
+    routed_taint = await get_session_security_taint(GroupFolder(routed_folder))
+    assert legacy_taint.corruption_tainted is False
+    assert routed_taint.corruption_tainted is True
     assert preserved is not None
     assert preserved.session_id == legitimate_session
     assert await get_session(GroupFolder(legitimate_folder)) == legitimate_session

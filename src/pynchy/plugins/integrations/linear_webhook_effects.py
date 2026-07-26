@@ -26,8 +26,13 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     workspace_issue,
 )
 from pynchy.plugins.webhooks import WebhookEvent, WebhookProcessingError
-from pynchy.state import WorkItemClaimConflictError, get_active_work_item_execution
-from pynchy.types import WorkItemExecutionStatus
+from pynchy.state import (
+    WorkItemClaimConflictError,
+    get_active_work_item_execution,
+    get_work_item_execution_for_issue,
+    resolve_conversation,
+)
+from pynchy.types import GroupFolder, WorkItemExecutionStatus
 
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
@@ -48,8 +53,9 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
             return event
         if await _controller_owns_event(event, workspace):
             # The periodic controller owns planning and authorized execution.
-            # Admitting the same issue update as an ordinary conversation turn
-            # would race a second agent against that durable task.
+            # Persist its routed identity without admitting a second agent turn.
+            # The controller task binds to this same conversation runtime.
+            await resolve_conversation(conversation.subject, GroupFolder(workspace))
             return replace(
                 event,
                 instructions=None,
@@ -87,6 +93,15 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
             if existing.workspace != workspace:
                 raise WorkItemClaimConflictError(existing)
             return current_state_id in {approved_state_id, in_progress_state_id}
+        latest = await get_work_item_execution_for_issue(event.subject_id, workspace=workspace)
+        if (
+            latest is not None
+            and latest.status is WorkItemExecutionStatus.CANCELLED
+            and current_state_id == state_id(board.states["blocked"])
+        ):
+            # A context reset deliberately leaves this issue dormant. Only a
+            # later Human Approved transition may acquire a fresh execution.
+            return True
         if current_state_id == in_progress_state_id:
             actor = event.actor
             if not _is_human_state_transition(event) or actor is None:
