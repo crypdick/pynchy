@@ -25,9 +25,9 @@ from pynchy.capabilities import (
     IdempotencyContract,
     IdempotencyMode,
 )
-from pynchy.config.mcp import McpServerConfig
 from pynchy.plugins.contracts import McpServerSpec
 from pynchy.plugins.integrations.google_setup._handler import handle_setup_google
+from pynchy.plugins.mcp_server import McpServerConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 

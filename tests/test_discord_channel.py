@@ -11,7 +11,8 @@ import asyncio
 import struct
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -26,9 +27,6 @@ from pynchy.types import Channel, OutboundEvent, OutboundEventType, WorkspacePro
 DISCORD_BOT_ENV = "X"
 DISCORD_BOT_VALUE = "token"
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 def _channel(
     speech_synthesizer: object | None = None,
@@ -40,6 +38,7 @@ def _channel(
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
         speech_synthesizer=speech_synthesizer,
     )
 
@@ -59,6 +58,7 @@ def _configured_voice_channel(speech_synthesizer: object | None = None) -> Disco
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _message: None,
         on_chat_metadata=lambda _jid, _timestamp, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
         workspaces=lambda: {"discord:voice:2": cast("WorkspaceProfile", object())},
         speech_synthesizer=speech_synthesizer,
     )
@@ -721,6 +721,7 @@ async def test_resolve_chat_jid_maps_configured_guild_channel_ref():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
 
     assert await ch.resolve_chat_jid("123.channels.456") == "discord:channel:456"
@@ -739,6 +740,7 @@ async def test_resolve_chat_jid_maps_allowed_direct_ref():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
 
     assert await ch.resolve_chat_jid("direct.42") == "discord:direct:42"
@@ -757,6 +759,7 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
     user = _FakeDiscordUser(42, "asmith", display_name="Alice")
     ch.client = _FakeDiscordClient([], users=[user])
@@ -779,6 +782,7 @@ async def test_resolve_chat_jid_maps_allowed_direct_name_ref_from_chat_metadata(
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
 
     assert await ch.resolve_chat_jid("direct.alice") == "discord:direct:42"
@@ -797,6 +801,7 @@ async def test_resolve_chat_jid_returns_none_for_unconfigured_channel_ref():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
 
     assert await ch.resolve_chat_jid("123.channels.456") is None
@@ -820,6 +825,7 @@ async def test_resolve_chat_jid_maps_configured_name_ref_to_existing_channel():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
     ch.client = _FakeDiscordClient(
         [_FakeDiscordGuild(123, "Synapse", [_FakeDiscordTextChannel(456, "code-improver")])]
@@ -846,6 +852,7 @@ async def test_resolve_chat_jid_maps_configured_general_voice_channel_by_name():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
     ch.client = _FakeDiscordClient(
         [
@@ -879,6 +886,7 @@ async def test_create_group_creates_named_discord_channel():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
     guild = _FakeDiscordGuild(123, "Synapse", [])
     ch.client = _FakeDiscordClient([guild])
@@ -899,6 +907,7 @@ async def test_create_group_creates_workspace_channel_from_display_name():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
     )
     guild = _FakeDiscordGuild(123, "Synapse", [])
     ch.client = _FakeDiscordClient([guild])
@@ -993,6 +1002,7 @@ async def test_send_approval_event_posts_controls_and_routes_decision():
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda _jid, _msg: None,
         on_chat_metadata=lambda _jid, _ts, _name: None,
+        audio_cache_dir=Path("data/media/discord"),
         on_approval_decision=decision_callback,
     )
     ch.client = object()

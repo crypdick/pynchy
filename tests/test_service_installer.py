@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 import pytest
-from conftest import make_settings
 
 from pynchy.host.orchestrator.service_installer import (
     install_service,
@@ -24,11 +23,6 @@ from pynchy.host.orchestrator.service_installer import (
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-def _test_settings(*, project_root: Path):
-    return make_settings(project_root=project_root)
-
 
 # ---------------------------------------------------------------------------
 # is_launchd_managed
@@ -74,35 +68,35 @@ class TestIsLaunchdLoaded:
 class TestInstallService:
     """Test platform-based dispatch."""
 
-    def test_dispatches_to_launchd_on_darwin(self):
+    def test_dispatches_to_launchd_on_darwin(self, tmp_path: Path):
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "darwin"
             with patch(
                 "pynchy.host.orchestrator.service_installer._install_launchd_service"
             ) as mock_launchd:
-                install_service()
-                mock_launchd.assert_called_once()
+                install_service(tmp_path)
+                mock_launchd.assert_called_once_with(tmp_path)
 
-    def test_ephemeral_runtime_skips_installation(self, monkeypatch):
+    def test_ephemeral_runtime_skips_installation(self, monkeypatch, tmp_path: Path):
         monkeypatch.setenv("PYNCHY_DISABLE_SERVICE_INSTALL", "1")
         with (
             patch("pynchy.host.orchestrator.service_installer._install_launchd_service") as launchd,
             patch("pynchy.host.orchestrator.service_installer._install_systemd_service") as systemd,
         ):
-            install_service()
+            install_service(tmp_path)
         launchd.assert_not_called()
         systemd.assert_not_called()
 
-    def test_dispatches_to_systemd_on_linux(self):
+    def test_dispatches_to_systemd_on_linux(self, tmp_path: Path):
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "linux"
             with patch(
                 "pynchy.host.orchestrator.service_installer._install_systemd_service"
             ) as mock_systemd:
-                install_service()
-                mock_systemd.assert_called_once()
+                install_service(tmp_path)
+                mock_systemd.assert_called_once_with(tmp_path)
 
-    def test_does_nothing_on_unsupported_platform(self):
+    def test_does_nothing_on_unsupported_platform(self, tmp_path: Path):
         with patch("pynchy.host.orchestrator.service_installer.sys") as mock_sys:
             mock_sys.platform = "win32"
             with (
@@ -113,7 +107,7 @@ class TestInstallService:
                     "pynchy.host.orchestrator.service_installer._install_systemd_service"
                 ) as mock_systemd,
             ):
-                install_service()
+                install_service(tmp_path)
                 mock_launchd.assert_not_called()
                 mock_systemd.assert_not_called()
 
@@ -137,13 +131,8 @@ class TestInstallLaunchdService:
 
     def test_skips_when_plist_source_does_not_exist(self, tmp_path: Path):
         """Should log warning and return when source plist is missing."""
-        with patch(
-            "pynchy.host.orchestrator.service_installer.get_settings",
-            return_value=_test_settings(project_root=tmp_path),
-        ):
-            # Source file does not exist
-            install_service()
-            # No error, just skipped
+        # Source file does not exist.
+        install_service(tmp_path)
 
     def test_copies_plist_when_dest_does_not_exist(self, tmp_path: Path):
         """Should copy plist and log when destination doesn't exist."""
@@ -156,10 +145,6 @@ class TestInstallLaunchdService:
         dest_dir = tmp_path / "Library" / "LaunchAgents"
 
         with (
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch(
                 "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=False
@@ -169,7 +154,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            install_service()
+            install_service(tmp_path)
 
         dest_file = dest_dir / "com.pynchy.plist"
         assert dest_file.exists()
@@ -192,17 +177,13 @@ class TestInstallLaunchdService:
         (dest_dir / "com.pynchy.plist").write_text(plist_content)
 
         with (
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch(
                 "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=True
             ),
             patch("subprocess.run") as mock_run,
         ):
-            install_service()
+            install_service(tmp_path)
 
         # No subprocess calls because nothing changed
         mock_run.assert_not_called()
@@ -218,10 +199,6 @@ class TestInstallLaunchdService:
         (dest_dir / "com.pynchy.plist").write_text("<plist>old</plist>")
 
         with (
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch(
                 "pynchy.host.orchestrator.service_installer.is_launchd_loaded", return_value=True
@@ -231,7 +208,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            install_service()
+            install_service(tmp_path)
 
         # Should have booted out the old definition, then bootstrapped the new one.
         calls = mock_run.call_args_list
@@ -257,10 +234,6 @@ class TestInstallLaunchdService:
         )
 
         with (
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("shutil.which", return_value="/opt/homebrew/bin/uv"),
             patch(
@@ -271,7 +244,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run"),
         ):
-            install_service()
+            install_service(tmp_path)
 
         content = (tmp_path / "Library" / "LaunchAgents" / "com.pynchy.plist").read_text()
         assert "$HOME" not in content
@@ -286,10 +259,6 @@ class TestInstallLaunchdService:
         (src_dir / "com.pynchy.plist").write_text("<plist>test</plist>")
 
         with (
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch(
                 "pynchy.host.orchestrator.service_installer.is_launchd_loaded",
@@ -300,7 +269,7 @@ class TestInstallLaunchdService:
             ),
             patch("subprocess.run") as mock_run,
         ):
-            install_service()
+            install_service(tmp_path)
 
         bootstrap_calls = [
             c for c in mock_run.call_args_list if c.args[0][:2] == ["/bin/launchctl", "bootstrap"]
@@ -321,10 +290,6 @@ class TestInstallLaunchdService:
         loaded_states = iter([False, False, True])
 
         with (
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("pynchy.host.orchestrator.service_installer.os.getuid", return_value=501),
             patch(
@@ -337,7 +302,7 @@ class TestInstallLaunchdService:
             patch("subprocess.run") as mock_run,
         ):
             mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
-            install_service()
+            install_service(tmp_path)
 
         cmds = [c.args[0] for c in mock_run.call_args_list]
         bootstrap_cmds = [c for c in cmds if c[:2] == ["/bin/launchctl", "bootstrap"]]
@@ -363,24 +328,20 @@ class TestInstallSystemdService:
         with patch("pynchy.host.orchestrator.service_installer.sys.platform", "linux"):
             yield
 
-    def test_skips_when_uv_not_found(self):
+    def test_skips_when_uv_not_found(self, tmp_path: Path):
         """Should warn and return when uv is not in PATH."""
         with patch("shutil.which", return_value=None):
             # Should not raise
-            install_service()
+            install_service(tmp_path)
 
     def test_creates_service_file(self, tmp_path: Path):
         """Should create systemd unit file with correct content."""
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run"),
         ):
-            install_service()
+            install_service(tmp_path)
 
         unit_file = tmp_path / ".config" / "systemd" / "user" / "pynchy.service"
         assert unit_file.exists()
@@ -396,14 +357,10 @@ class TestInstallSystemdService:
         """Should reload daemon, enable service, and enable lingering."""
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
-            install_service()
+            install_service(tmp_path)
 
         # Should have run daemon-reload, enable, and enable-linger
         cmd_strs = [" ".join(c.args[0]) for c in mock_run.call_args_list]
@@ -415,19 +372,15 @@ class TestInstallSystemdService:
         """Should return early when unit file content matches."""
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
             # First install creates the file
-            install_service()
+            install_service(tmp_path)
 
             # Second install should detect no change and skip
             mock_run.reset_mock()
-            install_service()
+            install_service(tmp_path)
             assert mock_run.call_count == 0
 
     def test_overwrites_outdated_unit_file(self, tmp_path: Path):
@@ -438,14 +391,10 @@ class TestInstallSystemdService:
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/uv"),
-            patch(
-                "pynchy.host.orchestrator.service_installer.get_settings",
-                return_value=_test_settings(project_root=tmp_path),
-            ),
             patch("pynchy.host.orchestrator.service_installer.Path.home", return_value=tmp_path),
             patch("subprocess.run") as mock_run,
         ):
-            install_service()
+            install_service(tmp_path)
 
         content = (unit_dir / "pynchy.service").read_text()
         assert "Description=Pynchy personal assistant" in content

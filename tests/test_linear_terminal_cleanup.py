@@ -293,6 +293,37 @@ async def test_host_task_retirement_recovers_detached_execution_task() -> None:
     }
 
 
+async def test_host_task_retirement_recovers_detached_awaiting_review_task() -> None:
+    conversation_id = await _conversation_id()
+    task = replace(_task("primary", conversation_id), conversation_id=None)
+    await create_task(task)
+    await _active_execution(task, temporal_workflow_id="linear-execution-workflow")
+    transition = await get_work_item_transition_by_request("claim-1")
+    assert transition is not None
+    await resolve_work_item_transition(
+        transition=transition,
+        execution_status=WorkItemExecutionStatus.AWAITING_REVIEW,
+        transition_status=WorkItemTransitionStatus.SUCCEEDED,
+    )
+    cancel_workflow = AsyncMock(return_value=True)
+    deps = make_http_deps(PynchyApp())
+    assert isinstance(deps, ConversationWebhookDeps)
+
+    with patch(
+        "pynchy.host.orchestrator.terminal_task_retirement.cancel_scheduled_agent_workflow",
+        cancel_workflow,
+    ):
+        await deps.retire_conversation_tasks(conversation_id)
+
+    persisted_task = await get_task_by_id(task.id)
+    assert persisted_task is not None
+    assert persisted_task.status == "cancelled"
+    assert {call.args[0] for call in cancel_workflow.await_args_list} == {
+        agent_task_workflow_id(task),
+        "linear-execution-workflow",
+    }
+
+
 async def test_host_task_retirement_failure_keeps_work_retryable() -> None:
     conversation_id = await _conversation_id()
     task = _task("primary", conversation_id)

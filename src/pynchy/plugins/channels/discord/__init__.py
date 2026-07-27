@@ -1,6 +1,5 @@
 """Built-in Discord channel plugin."""
 
-from pynchy.config import get_settings as get_settings
 from pynchy.logger import logger as logger
 
 from ._channel import DiscordChannel as DiscordChannel
@@ -63,7 +62,6 @@ __all__ = [
     "channel_jid",
     "chunk_discord_text",
     "dm_jid",
-    "get_settings",
     "group_jid",
     "is_discord_jid",
     "logger",

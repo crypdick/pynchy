@@ -36,10 +36,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pynchy.config import get_settings
-from pynchy.config.mcp import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
+from pynchy.config.models import McpTool
+from pynchy.plugins.mcp_server import (  # noqa: TC001, RUF100 - beartype resolves the collector return annotation at runtime.
     McpServerConfig,
 )
-from pynchy.config.models import McpTool
 
 if TYPE_CHECKING:
     import pluggy

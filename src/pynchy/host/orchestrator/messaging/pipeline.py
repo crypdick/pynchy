@@ -266,13 +266,15 @@ async def _finalize_cursor_and_retry(
         return TurnOutcome.COMPLETED
 
     await learning_capture.start_completed_turn_learning_review(
-        request.s,
         request.chat_jid,
         request.group,
         request.missed_messages,
         final_cursor,
         request.learning_summary,
         get_messages_since,
+        enabled=request.s.learning.enabled,
+        review_after_turn=request.s.learning.review_after_turn,
+        packet_max_chars=request.s.learning.packet_max_chars,
     )
 
     return TurnOutcome.COMPLETED
@@ -395,7 +397,7 @@ async def process_group_messages(
         deps,
         chat_jid,
         group,
-        s,
+        s.data_dir,
         TurnPreparationCallbacks(
             process_pending=lambda jid: process_group_messages(deps, jid),
             get_pending_messages=get_messages_since,

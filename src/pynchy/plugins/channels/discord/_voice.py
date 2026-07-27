@@ -17,7 +17,7 @@ from uuid import uuid4
 import discord
 from discord import opus
 
-from pynchy.config.discord_refs import DiscordChatTarget
+from pynchy.discord import DiscordChatTarget
 from pynchy.host.audio import transcribe_audio_file
 from pynchy.logger import logger
 from pynchy.types import NewMessage

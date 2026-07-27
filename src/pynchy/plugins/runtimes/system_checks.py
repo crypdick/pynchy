@@ -11,7 +11,6 @@ from pathlib import (
 )
 from typing import TYPE_CHECKING, cast
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.cleanup import (
     OrphanReapingRuntime,
     cleanup_runtime_build_state,
@@ -60,11 +59,9 @@ def _generate_plugin_requirements(container_dir: Path, project_root: Path) -> No
         raise RuntimeError(_PLUGIN_REQUIREMENTS_GENERATION_FAILED_ERROR)
 
 
-def _ensure_agent_image_available(runtime: object) -> None:
+def _ensure_agent_image_available(runtime: object, *, project_root: Path, image: str) -> None:
     """Build the configured agent image when it is absent from the runtime."""
     runtime_cli = cast("RuntimeProvider", runtime).cli
-    s = get_settings()
-    image = s.container.image
     result = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
         [runtime_cli, "image", "inspect", image],
         capture_output=True,
@@ -74,13 +71,13 @@ def _ensure_agent_image_available(runtime: object) -> None:
     if result.returncode != 0:
         if not cleanup_runtime_build_state(runtime):
             raise RuntimeError(_CONTAINER_BUILD_STATE_CLEANUP_FAILED_ERROR.format(image=image))
-        container_dir = s.project_root / "src" / "pynchy" / "agent"
+        container_dir = project_root / "src" / "pynchy" / "agent"
         dockerfile = container_dir / "Dockerfile"
         if not dockerfile.exists():
             raise RuntimeError(
                 _MISSING_IMAGE_AND_DOCKERFILE_ERROR.format(image=image, dockerfile=dockerfile)
             )
-        _generate_plugin_requirements(container_dir, s.project_root)
+        _generate_plugin_requirements(container_dir, project_root)
         logger.info("Container image not found, building...", image=image)
         try:
             build = subprocess.run(  # noqa: S603, RUF100 - runtime CLI is selected by trusted runtime detection and argv is fixed.
@@ -94,7 +91,7 @@ def _ensure_agent_image_available(runtime: object) -> None:
             raise RuntimeError(_CONTAINER_BUILD_FAILED_ERROR.format(image=image))
 
 
-def ensure_agent_image_available() -> None:
+def ensure_agent_image_available(*, project_root: Path, image: str) -> None:
     """Verify that the configured agent image is ready to launch.
 
     This runs immediately before agent spawning so the deterministic runtime
@@ -103,7 +100,7 @@ def ensure_agent_image_available() -> None:
     runtime = get_runtime()
     runtime.ensure_running()
     with _AGENT_IMAGE_LOCK:
-        _ensure_agent_image_available(runtime)
+        _ensure_agent_image_available(runtime, project_root=project_root, image=image)
 
 
 def _orphan_reaping_runtime(runtime: object) -> OrphanReapingRuntime | None:
@@ -115,7 +112,12 @@ def _orphan_reaping_runtime(runtime: object) -> OrphanReapingRuntime | None:
     return None
 
 
-def ensure_container_system_running(orphan_reap_age_ms: OrphanReapAgeMs) -> None:
+def ensure_container_system_running(
+    orphan_reap_age_ms: OrphanReapAgeMs,
+    *,
+    project_root: Path,
+    image: str,
+) -> None:
     """Verify the container runtime and clean up stale agent resources."""
     runtime = get_runtime()
     runtime.ensure_running()
@@ -123,7 +125,7 @@ def ensure_container_system_running(orphan_reap_age_ms: OrphanReapAgeMs) -> None
 
     if os.environ.get(_RUNTIME_HARNESS_ENV) != "1":
         with _AGENT_IMAGE_LOCK:
-            _ensure_agent_image_available(runtime)
+            _ensure_agent_image_available(runtime, project_root=project_root, image=image)
 
     if orphan_reaper := _orphan_reaping_runtime(runtime):
         reap_orphaned_agent_containers(

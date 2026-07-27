@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from conftest import make_settings
 
-from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.host.container_manager.docker import HealthCheckRequest
@@ -26,6 +25,7 @@ from pynchy.host.container_manager.mcp.resolution import (
     merged_mcp_servers,
     resolve_all_instances,
 )
+from pynchy.plugins.mcp_server import McpServerConfig
 
 ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test fixture for pass-through MCP args that intentionally contain bind-all data.
 

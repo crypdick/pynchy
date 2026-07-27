@@ -18,7 +18,7 @@ from pynchy.config import get_settings
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
 )
-from pynchy.config.workspace_names import static_workspace_name
+from pynchy.conversation.workspaces import parent_workspace_name
 from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
     LiteLLMGateway,
@@ -119,7 +119,7 @@ def _workspace_proton_pass_env_vars(s: Settings, group_folder: str) -> dict[str,
     ``pass-cli`` child receives the real values and this process copies only the
     explicitly named variables into Pynchy's already-scoped container env file.
     """
-    workspace = s.workspaces.get(static_workspace_name(group_folder))
+    workspace = s.workspaces.get(parent_workspace_name(group_folder) or group_folder)
     template_name = workspace.proton_pass_env_file if workspace else None
     if template_name is None:
         return {}

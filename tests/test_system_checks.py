@@ -8,10 +8,10 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from conftest import make_settings
 
 from pynchy.plugins.runtimes.system_checks import (
     ensure_agent_image_available,
@@ -20,6 +20,8 @@ from pynchy.plugins.runtimes.system_checks import (
 from pynchy.types import OrphanReapAgeMs
 
 _DEFAULT_ORPHAN_REAP_AGE = OrphanReapAgeMs(604800000)
+_PROJECT_ROOT = Path("project")
+_AGENT_IMAGE = "pynchy-agent:latest"
 
 # ---------------------------------------------------------------------------
 # ensure_container_system_running
@@ -65,10 +67,6 @@ class TestEnsureContainerSystemRunning:
         runtime.prune_images.return_value = True
         return runtime
 
-    @staticmethod
-    def _settings(tmp_path):
-        return make_settings(project_root=tmp_path)
-
     def test_image_exists_no_orphans(self, mock_runtime):
         """Happy path: image exists, no orphaned containers."""
         image_inspect = MagicMock(returncode=0)
@@ -87,7 +85,9 @@ class TestEnsureContainerSystemRunning:
                 side_effect=inspect_image,
             ) as run,
         ):
-            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
+            ensure_container_system_running(
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
+            )
 
         mock_runtime.ensure_running.assert_called_once()
         mock_runtime.cleanup_builder.assert_called_once()
@@ -112,12 +112,8 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 side_effect=[inspect_fail, requirements_ok, build_ok],
             ) as run,
-            patch(
-                "pynchy.plugins.runtimes.system_checks.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
         ):
-            ensure_agent_image_available()
+            ensure_agent_image_available(project_root=tmp_path, image=_AGENT_IMAGE)
 
         mock_runtime.ensure_running.assert_called_once()
         assert mock_runtime.cleanup_builder.call_count == 2
@@ -139,7 +135,9 @@ class TestEnsureContainerSystemRunning:
             patch("pynchy.plugins.runtimes.system_checks.get_runtime", return_value=mock_runtime),
             patch("pynchy.plugins.runtimes.system_checks.subprocess.run") as run,
         ):
-            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
+            ensure_container_system_running(
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
+            )
 
         mock_runtime.ensure_running.assert_called_once()
         mock_runtime.prune_images.assert_called_once_with(all_images=False)
@@ -158,13 +156,11 @@ class TestEnsureContainerSystemRunning:
             patch(
                 "pynchy.plugins.runtimes.system_checks.subprocess.run", return_value=inspect_fail
             ),
-            patch(
-                "pynchy.plugins.runtimes.system_checks.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
             pytest.raises(RuntimeError, match="not found"),
         ):
-            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
+            ensure_container_system_running(
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=tmp_path, image=_AGENT_IMAGE
+            )
 
     def test_build_failure_raises(self, mock_runtime, tmp_path):
         """Image build fails — should raise RuntimeError."""
@@ -182,13 +178,11 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 side_effect=[inspect_fail, requirements_ok, build_fail],
             ),
-            patch(
-                "pynchy.plugins.runtimes.system_checks.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
             pytest.raises(RuntimeError, match="Failed to build"),
         ):
-            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
+            ensure_container_system_running(
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=tmp_path, image=_AGENT_IMAGE
+            )
 
         mock_runtime.cleanup_builder.assert_called()
         mock_runtime.prune_images.assert_called_with(all_images=False)
@@ -204,13 +198,9 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 return_value=inspect_fail,
             ) as run,
-            patch(
-                "pynchy.plugins.runtimes.system_checks.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
             pytest.raises(RuntimeError, match="clean stale container build state"),
         ):
-            ensure_agent_image_available()
+            ensure_agent_image_available(project_root=tmp_path, image=_AGENT_IMAGE)
 
         run.assert_called_once()
 
@@ -229,13 +219,9 @@ class TestEnsureContainerSystemRunning:
                 "pynchy.plugins.runtimes.system_checks.subprocess.run",
                 side_effect=[inspect_fail, requirements_fail],
             ) as run,
-            patch(
-                "pynchy.plugins.runtimes.system_checks.get_settings",
-                return_value=self._settings(tmp_path),
-            ),
             pytest.raises(RuntimeError, match="generate container plugin requirements"),
         ):
-            ensure_agent_image_available()
+            ensure_agent_image_available(project_root=tmp_path, image=_AGENT_IMAGE)
 
         assert run.call_count == 2
         mock_runtime.cleanup_builder.assert_called_once()
@@ -260,7 +246,9 @@ class TestEnsureContainerSystemRunning:
                 return_value=set(),
             ),
         ):
-            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)
+            ensure_container_system_running(
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
+            )
 
         mock_runtime.remove_container.assert_any_call("pynchy-group-a", force=True)
         mock_runtime.remove_container.assert_any_call("pynchy-group-b", force=True)
@@ -282,7 +270,9 @@ class TestEnsureContainerSystemRunning:
                 return_value=set(),
             ),
         ):
-            ensure_container_system_running(OrphanReapAgeMs(0))
+            ensure_container_system_running(
+                OrphanReapAgeMs(0), project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
+            )
 
         mock_runtime.remove_container.assert_called_once_with("pynchy-group-a", force=True)
 
@@ -304,4 +294,6 @@ class TestEnsureContainerSystemRunning:
                 return_value=set(),
             ),
         ):
-            ensure_container_system_running(_DEFAULT_ORPHAN_REAP_AGE)  # Should not raise
+            ensure_container_system_running(  # Should not raise
+                _DEFAULT_ORPHAN_REAP_AGE, project_root=_PROJECT_ROOT, image=_AGENT_IMAGE
+            )

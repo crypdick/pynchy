@@ -1156,7 +1156,7 @@ class TestTemporalSchedulerRuntime:
             },
         )
         monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_host_jobs, "resolve_cron_job_cwd", lambda cwd: "/repo")
+        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd: "/repo")
         monkeypatch.setattr(
             temporal_host_jobs,
             "run_shell_command",
@@ -1182,7 +1182,7 @@ class TestTemporalSchedulerRuntime:
             },
         )
         monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_host_jobs, "resolve_cron_job_cwd", lambda cwd: "/repo")
+        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd: "/repo")
         monkeypatch.setattr(
             temporal_host_jobs,
             "run_shell_command",

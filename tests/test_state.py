@@ -2117,6 +2117,7 @@ class TestEnsureColumns:
         cursor = await db.execute("PRAGMA table_info(scheduled_tasks)")
         cols = {row[1] for row in await cursor.fetchall()}
         assert "config_job_name" in cols
+        assert "config_job_command" in cols
         assert "persistent_thread_name" not in cols
         assert "persistent_thread_jid" not in cols
         await db.close()

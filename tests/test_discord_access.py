@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pynchy.config.models import DiscordConnectionConfig
@@ -134,6 +135,7 @@ async def _delivered_messages(
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda _jid, _timestamp, _chat_name: None,
+        audio_cache_dir=Path("data/media/discord"),
         workspaces=lambda: workspaces or {},
     )
     channel.bot_user_id = BOT_ID

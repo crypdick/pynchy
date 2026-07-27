@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pluggy
 import pytest
-from conftest import make_settings
 
-from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.contracts import AgentCoreSpec
 
@@ -78,13 +77,8 @@ class TestPluginManager:
 
     def test_disabled_plugin_not_loaded(self):
         """Plugin with enabled=False in config is not loaded."""
-        settings = make_settings(plugins={"tailscale": PluginConfig(enabled=False)})
-
-        with (
-            patch("pynchy.plugins.registry.get_settings", return_value=settings),
-            patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
-        ):
-            pm = get_plugin_manager()
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            pm = get_plugin_manager({"tailscale": False})
 
         names = [pm.get_name(p) for p in pm.get_plugins()]
         assert "builtin-tailscale" not in names
@@ -195,17 +189,22 @@ class TestHookCalling:
         assert "core2" in names
         assert "claude" in names
 
-    def test_skill_hook_returns_browser_control(self):
-        """Skill hook includes the built-in browser-control skill from PlaywrightBrowserPlugin."""
+    def test_tool_plugins_contribute_their_skills(self):
+        """Tool-associated skills enter through their owning plugins."""
         pm = get_plugin_manager()
 
         skill_paths = pm.hook.pynchy_skill_paths()
 
         assert isinstance(skill_paths, list)
-        # PlaywrightBrowserPlugin contributes browser-control
-        assert len(skill_paths) >= 1
         flat = [p for sublist in skill_paths for p in sublist]
-        assert any("browser-control" in p for p in flat)
+        skill_names = {Path(path).name for path in flat}
+        expected_skill_names = {
+            "browser-control",
+            "computer-use",
+            "slack-token-extractor",
+            "x-integration",
+        }
+        assert expected_skill_names <= skill_names
 
     def test_plugin_blocking(self):
         """Plugins can be blocked from calling."""

@@ -21,7 +21,6 @@ from pathlib import (
 )
 from typing import TYPE_CHECKING, Any
 
-from pynchy.config import get_settings
 from pynchy.host.audio import is_supported_audio_filename
 from pynchy.host.inbound_audio import (
     InboundAudioAttachment,
@@ -201,10 +200,6 @@ def build_message_metadata(
     return metadata
 
 
-def _discord_audio_cache_dir() -> Path:
-    return get_settings().data_dir / "media" / "discord"
-
-
 async def _read_attachment_bytes(attachment: DiscordAttachment) -> bytes | None:
     reader = attachment.read
     if not callable(reader):
@@ -224,6 +219,8 @@ async def _transcribe_audio_attachments(
     message: DiscordInboundMessage,
     metadata: dict[str, Any],
     content: str,
+    *,
+    cache_dir: Path,
 ) -> str:
     attachments = list(message.attachments)
     metadata_attachments = metadata.get("attachments", [])
@@ -258,7 +255,7 @@ async def _transcribe_audio_attachments(
             attachments=tuple(inbound_attachments),
             content=content,
             fallback_content=_attachment_fallback_content(message),
-            cache_dir=_discord_audio_cache_dir(),
+            cache_dir=cache_dir,
             message_id=message.id,
         )
     )
@@ -277,8 +274,9 @@ async def _transcribe_audio_attachments(
 class DiscordEvents:
     """Registers inbound handlers on the channel's client and fires callbacks."""
 
-    def __init__(self, channel: DiscordChannel) -> None:
+    def __init__(self, channel: DiscordChannel, audio_cache_dir: Path) -> None:
         self._channel = channel
+        self._audio_cache_dir = audio_cache_dir
         self._seen: dict[str, float] = {}
         self._seen_max = 500
 
@@ -337,6 +335,7 @@ class DiscordEvents:
             message,
             metadata,
             normalized_message_content(message),
+            cache_dir=self._audio_cache_dir,
         )
         msg = NewMessage(
             id=f"discord-{message.id}",

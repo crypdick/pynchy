@@ -8,7 +8,6 @@ from collections.abc import Awaitable, Callable  # noqa: TC003 - beartype resolv
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 - beartype resolves annotations.
 
-from pynchy.config.settings import Settings  # noqa: TC001 - beartype resolves annotations.
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves this result annotation.
     TurnOutcome,
@@ -36,7 +35,7 @@ async def handle_reset_handoff(
     chat_jid: str,
     group: WorkspaceProfile,
     reset_file: Path,
-    settings: Settings,
+    data_dir: Path,
 ) -> bool | None:
     """Consume and checkpoint an agent-authored context-reset handoff."""
     if not await asyncio.to_thread(reset_file.exists):
@@ -115,7 +114,7 @@ async def handle_reset_handoff(
     await clear_in_flight_turn(turn_id)
 
     if reset_data.get("needsDirtyRepoCheck"):
-        dirty_check_file = settings.data_dir / "ipc" / group.folder / "needs_dirty_check.json"
+        dirty_check_file = data_dir / "ipc" / group.folder / "needs_dirty_check.json"
         dirty_check_file.write_text(json.dumps({"timestamp": datetime.now(UTC).isoformat()}))
     return True
 

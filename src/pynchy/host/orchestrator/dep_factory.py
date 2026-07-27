@@ -1,14 +1,13 @@
-"""Dependency adapter factories — compose subsystem dependencies from app state.
-
-Extracted from app.py to keep the orchestrator focused on wiring.
-These factory functions are called once during app startup to build
-the composite dependency objects that subsystems require.
-"""
+"""Dependency adapter factories compose subsystem dependencies from app state."""
 
 from __future__ import annotations
 
+# allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
+from collections.abc import (
+    Sequence,  # noqa: TC003, RUF100 - beartype resolves channel collections at runtime.
+)
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
@@ -43,13 +42,8 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     HttpServerDeps,
 )
-from pynchy.host.orchestrator.ipc_dependency_adapters import (
-    PendingQuestionStore,
-    ScheduledWorkStore,
-    command_center_channel,
-    scheduled_work_status,
-    valid_jid,
-)
+from pynchy.host.orchestrator.messaging import pending_questions
+from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     StatusDeps,
@@ -62,6 +56,7 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_deploy_workflow,
     start_scheduled_agent_task_workflow,
 )
+from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.host.orchestrator.terminal_task_retirement import (
     retire_conversation_tasks,
     retire_terminal_conversation,
@@ -74,14 +69,26 @@ from pynchy.state import (
     clear_session,
     complete_conversation_delivery,
     conversation_control_state_matches,
+    create_host_job,
     create_task,
+    delete_host_job,
+    delete_task,
+    get_all_host_jobs,
+    get_all_tasks,
     get_conversation,
     get_conversation_control_binding,
+    get_host_job_by_id,
+    get_task_by_id,
+    get_task_run_logs,
     get_terminal_conversation_retirement,
+    resume_task,
+    update_host_job,
+    update_task,
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
     GroupFolder,
+    HostJob,
     NewMessage,
     RuntimeId,
     ScheduledTask,
@@ -105,6 +112,74 @@ def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
     create_background_task(
         app.start_interactive_turn(chat_jid),
         name=f"interactive-turn-{chat_jid[:20]}",
+    )
+
+
+@runtime_checkable
+class _GroupCreationChannel(Protocol):
+    name: str
+
+    async def create_group(self, name: str) -> str | None: ...
+
+
+def _command_center_channel(
+    channels: Sequence[object], command_center: str
+) -> _GroupCreationChannel | None:
+    return next(
+        (
+            cast("_GroupCreationChannel", channel)
+            for channel in channels
+            if getattr(channel, "name", None) == command_center and hasattr(channel, "create_group")
+        ),
+        None,
+    )
+
+
+def _valid_jid(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+class _PendingQuestionStore:
+    """Adapter for the application-owned pending-question persistence."""
+
+    create = staticmethod(pending_questions.create_pending_question)
+    update_message_id = staticmethod(pending_questions.update_message_id)
+    resolve = staticmethod(pending_questions.resolve_pending_question)
+
+
+class _ScheduledWorkStore:
+    """Adapter for the application-owned scheduled-work persistence."""
+
+    create_task = staticmethod(create_task)
+    create_host_job = staticmethod(create_host_job)
+    get_task_by_id = staticmethod(get_task_by_id)
+    get_host_job_by_id = staticmethod(get_host_job_by_id)
+    update_task = staticmethod(update_task)
+    update_host_job = staticmethod(update_host_job)
+    resume_task = staticmethod(resume_task)
+    delete_task = staticmethod(delete_task)
+    delete_host_job = staticmethod(delete_host_job)
+
+
+async def _scheduled_work_status(
+    source_group: str,
+    *,
+    is_admin: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    async def visible_tasks() -> list[ScheduledTask]:
+        tasks = await get_all_tasks()
+        return tasks if is_admin else [task for task in tasks if task.group_folder == source_group]
+
+    async def visible_host_jobs() -> list[HostJob]:
+        return await get_all_host_jobs() if is_admin else []
+
+    scheduler = get_settings().scheduler
+    return await collect_scheduled_work(
+        visible_tasks,
+        visible_host_jobs,
+        lambda task_id: get_task_run_logs(task_id, limit=5),
+        get_temporal_orchestration_states,
+        (scheduler.temporal_address, scheduler.temporal_namespace),
     )
 
 
@@ -181,6 +256,7 @@ async def _request_ipc_deploy(
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
+    settings = get_settings()
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
@@ -189,6 +265,8 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
         get_conversation = staticmethod(get_conversation)
         get_conversation_control_binding = staticmethod(get_conversation_control_binding)
         get_terminal_conversation_retirement = staticmethod(get_terminal_conversation_retirement)
+        data_dir = settings.data_dir
+        project_root = settings.project_root
 
         async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
             await app.on_inbound(
@@ -268,6 +346,7 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
+    snapshot_data_dir = get_settings().data_dir
     broadcaster, host_broadcaster = _get_broadcasters(app)
     registration_manager = GroupRegistrationManager(
         app.workspaces, app.register_workspace, app.send_clear_confirmation
@@ -283,12 +362,28 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         register_workspace = registration_manager.register_workspace
         sync_group_metadata = metadata_manager.sync_group_metadata
         get_available_groups = metadata_manager.get_available_groups
-        write_groups_snapshot = staticmethod(_write_groups_snapshot)
+
+        def write_groups_snapshot(
+            self,
+            group_folder: str,
+            available_groups: list[Any],
+            registered_jids: set[str],
+            *,
+            is_admin: bool,
+        ) -> None:
+            _write_groups_snapshot(
+                snapshot_data_dir,
+                group_folder,
+                available_groups,
+                registered_jids,
+                is_admin=is_admin,
+            )
+
         has_active_session = session_manager.has_active_session
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
-        pending_question_store = staticmethod(PendingQuestionStore)
-        scheduled_work_store = staticmethod(ScheduledWorkStore)
+        pending_question_store = staticmethod(_PendingQuestionStore)
+        scheduled_work_store = staticmethod(_ScheduledWorkStore)
         messaging_source_health = staticmethod(SourceHealthProjection)
         default_agent_name = staticmethod(lambda: get_settings().agent.name)
 
@@ -359,7 +454,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             if not claude_md_path.exists():
                 claude_md_path.write_text(request.claude_md)
 
-            channel = command_center_channel(metadata_manager.channels(), command_center)
+            channel = _command_center_channel(metadata_manager.channels(), command_center)
             if channel is None:
                 logger.warning(
                     "Command center does not support create_group; "
@@ -367,7 +462,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
                 )
                 return
 
-            jid = valid_jid(await channel.create_group(request.chat or request.name))
+            jid = _valid_jid(await channel.create_group(request.chat or request.name))
             if jid is None:
                 logger.warning(
                     "Command center returned invalid jid for periodic agent",
@@ -413,7 +508,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
             source_group: str,
             is_admin: bool,
         ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-            return await scheduled_work_status(
+            return await _scheduled_work_status(
                 source_group,
                 is_admin=is_admin,
             )
@@ -433,8 +528,22 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
     session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
+    settings = get_settings()
+    configured_repo_slugs = tuple(
+        dict.fromkeys(
+            [
+                *settings.repos.overrides,
+                *(slug for profile in settings.profiles.values() for slug in profile.repo),
+            ]
+        )
+    )
 
     class _StatusDeps:
+        repo_slugs = configured_repo_slugs
+        temporal_address = settings.scheduler.temporal_address
+        temporal_namespace = settings.scheduler.temporal_namespace
+        temporal_task_queue = settings.scheduler.temporal_task_queue
+
         def is_shutting_down(self) -> bool:
             return app.is_shutting_down()
 
@@ -449,7 +558,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             meta = raw.pop("_meta", {})
             return {
                 "active_containers": meta.get("active_count", 0),
-                "max_concurrent": get_settings().container.max_concurrent,
+                "max_concurrent": settings.container.max_concurrent,
                 "groups_waiting": meta.get("waiting_count", 0),
                 "per_group": raw,
             }

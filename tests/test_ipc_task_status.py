@@ -17,7 +17,7 @@ from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 
 
 def _orchestration_states(
-    tasks: list[ScheduledTask], jobs: list[HostJob]
+    tasks: list[ScheduledTask], jobs: list[HostJob], _address: str, _namespace: str
 ) -> dict[tuple[str, str], dict[str, Any]]:
     states: dict[tuple[str, str], dict[str, Any]] = {}
     for task in tasks:
@@ -115,7 +115,7 @@ async def test_non_admin_sees_only_own_task_health_without_private_definitions(
     await init_test_database()
     monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
-        "pynchy.host.orchestrator.ipc_dependency_adapters.get_temporal_orchestration_states",
+        "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
     )
     await _seed_scheduled_work()
@@ -137,7 +137,7 @@ async def test_admin_sees_all_task_and_host_job_status(monkeypatch, tmp_path) ->
     await init_test_database()
     monkeypatch.setattr("pynchy.config.settings._state.settings", make_settings(data_dir=tmp_path))
     monkeypatch.setattr(
-        "pynchy.host.orchestrator.ipc_dependency_adapters.get_temporal_orchestration_states",
+        "pynchy.host.orchestrator.dep_factory.get_temporal_orchestration_states",
         AsyncMock(side_effect=_orchestration_states),
     )
     await _seed_scheduled_work()

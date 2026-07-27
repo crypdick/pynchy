@@ -40,6 +40,7 @@ def _channel(name: str, *, update_capable: bool = True) -> MagicMock:
 
 def _deps(*channels: MagicMock) -> MagicMock:
     deps = MagicMock(spec=OutputDeps)
+    deps.agent_name = "Pynchy"
     deps.channels = list(channels)
     deps.workspaces = {}
     deps.broadcast_to_channels = AsyncMock()

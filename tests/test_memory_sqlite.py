@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
 from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
@@ -12,14 +10,10 @@ from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 @pytest.fixture
 async def backend(tmp_path):
     """Create an isolated backend using a temp directory."""
-    with patch(
-        "pynchy.plugins.memory.sqlite_memory.backend._db_path",
-        return_value=tmp_path / "memories.db",
-    ):
-        b = SqliteMemoryBackend()
-        await b.init()
-        yield b
-        await b.close()
+    b = SqliteMemoryBackend(tmp_path / "memories.db")
+    await b.init()
+    yield b
+    await b.close()
 
 
 @pytest.mark.action("memory.save")
@@ -183,17 +177,13 @@ class TestListKeys:
 class TestLifecycle:
     async def test_init_creates_db(self, tmp_path):
         db_path = tmp_path / "test.db"
-        with patch(
-            "pynchy.plugins.memory.sqlite_memory.backend._db_path",
-            return_value=db_path,
-        ):
-            b = SqliteMemoryBackend()
-            await b.init()
-            assert db_path.exists()
-            await b.close()
+        b = SqliteMemoryBackend(db_path)
+        await b.init()
+        assert db_path.exists()
+        await b.close()
 
-    async def test_operations_fail_without_init(self):
-        b = SqliteMemoryBackend()
+    async def test_operations_fail_without_init(self, tmp_path):
+        b = SqliteMemoryBackend(tmp_path / "memories.db")
         with pytest.raises(RuntimeError, match="not initialized"):
             await b.save("g", "k", "c")
 

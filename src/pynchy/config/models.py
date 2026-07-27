@@ -17,6 +17,12 @@ from pynchy.config.workspace_layout import (
     WorkspaceScopeConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
     WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
 )
+from pynchy.discord import (
+    DiscordAccessSettings,
+    DiscordChannelSettings,
+    DiscordConnectionSettings,
+    DiscordGuildSettings,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - Pydantic resolves Matrix annotations at runtime.
     MatrixActivation,
     MatrixOutbound,
@@ -295,13 +301,7 @@ class WhatsAppConnectionConfig(_StrictModel):
 
 
 class DiscordChannelConfig(_StrictModel):
-    """Per-channel config for a Discord guild channel.
-
-    Threads inherit their parent channel's config, so this also governs any
-    thread opened under the channel.  ``require_mention`` is ``None`` by
-    default so an unset channel inherits the guild's value; only an explicit
-    bool overrides it.
-    """
+    """Per-channel configuration for a Discord guild channel."""
 
     name: str | None = None
     kind: Literal["text", "voice"] = "text"
@@ -309,29 +309,24 @@ class DiscordChannelConfig(_StrictModel):
     require_mention: bool | None = None
     users: list[str] = []
     roles: list[str] = []
-    allow: list[str] = []  # per-channel tool allowlist
-    deny: list[str] = []  # per-channel tool denylist (deny wins)
+    allow: list[str] = []
+    deny: list[str] = []
     security: ChannelOverrideConfig | None = None
 
 
 class DiscordGuildConfig(_StrictModel):
-    """Per-guild config for a Discord connection (a ``chat.<guild>`` section)."""
+    """Per-guild configuration for a Discord connection."""
 
     name: str | None = None
     require_mention: bool = True
-    users: list[str] = []  # guild-wide sender allowlist (names or ids)
-    roles: list[str] = []  # guild-wide role-id allowlist
+    users: list[str] = []
+    roles: list[str] = []
     channels: dict[str, DiscordChannelConfig] = {}
     security: ChannelOverrideConfig | None = None
 
 
 class DiscordConnectionConfig(_StrictModel):
-    """Discord connection config (bot token read from an env var).
-
-    ``chat`` is keyed by guild id/slug, mirroring Slack's ``chat`` map, but
-    each guild nests a ``channels`` map because one guild channel can host many
-    threads.
-    """
+    """Discord connection configuration (the bot token is an environment variable)."""
 
     type: Literal["discord"] = "discord"
     bot_token_env: str
@@ -339,7 +334,7 @@ class DiscordConnectionConfig(_StrictModel):
     processing_ack_emoji: str | None = "🦞"
     default_thread_participants: list[str] = []
     dm_policy: Literal["open", "allowlist", "disabled"] = "allowlist"
-    allow_from: list[str] = []  # DM allowlist (names or ids); "*" = open
+    allow_from: list[str] = []
     group_policy: Literal["open", "disabled", "allowlist"] = "allowlist"
     security: ChannelOverrideConfig | None = None
     chat: dict[str, DiscordGuildConfig] = {}
@@ -360,6 +355,52 @@ class DiscordConnectionConfig(_StrictModel):
                 f"configure one voice channel, not: {joined}"
             )
         return self
+
+    def to_runtime_settings(self) -> DiscordConnectionSettings:
+        """Resolve validated TOML data into the Discord channel's domain values."""
+        return DiscordConnectionSettings(
+            bot_token_env=self.bot_token_env,
+            application_id=self.application_id,
+            processing_ack_emoji=self.processing_ack_emoji,
+            default_thread_participants=list(self.default_thread_participants),
+            dm_policy=self.dm_policy,
+            allow_from=list(self.allow_from),
+            group_policy=self.group_policy,
+            security=_discord_access_settings(self.security),
+            chat={
+                guild_name: DiscordGuildSettings(
+                    name=guild.name,
+                    require_mention=guild.require_mention,
+                    users=list(guild.users),
+                    roles=list(guild.roles),
+                    security=_discord_access_settings(guild.security),
+                    channels={
+                        channel_name: DiscordChannelSettings(
+                            name=channel.name,
+                            kind=channel.kind,
+                            enabled=channel.enabled,
+                            require_mention=channel.require_mention,
+                            users=list(channel.users),
+                            roles=list(channel.roles),
+                            allow=list(channel.allow),
+                            deny=list(channel.deny),
+                            security=_discord_access_settings(channel.security),
+                        )
+                        for channel_name, channel in guild.channels.items()
+                    },
+                )
+                for guild_name, guild in self.chat.items()
+            },
+        )
+
+
+def _discord_access_settings(
+    config: ChannelOverrideConfig | None,
+) -> DiscordAccessSettings | None:
+    if config is None:
+        return None
+    allowed_users = config.allowed_users
+    return DiscordAccessSettings(list(allowed_users) if allowed_users is not None else None)
 
 
 class CommandCenterConfig(_StrictModel):

@@ -76,13 +76,19 @@ def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> Non
     (tmp_path / "groups" / "codex-group").mkdir(parents=True)
 
     with (
-        patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
         patch("pynchy.host.learning.skill_activation.get_settings", return_value=settings),
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
         patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.session_prep.get_settings", return_value=settings),
     ):
-        mounts = build_volume_mounts(_group(), is_admin=False)
+        mounts = build_volume_mounts(
+            _group(),
+            is_admin=False,
+            groups_dir=settings.groups_dir,
+            data_dir=settings.data_dir,
+            project_root=settings.project_root,
+            mount_allowlist_path=settings.mount_allowlist_path,
+            blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+        )
 
     codex_mount = next(m for m in mounts if m.container_path == "/home/agent/.codex")
     codex_home = tmp_path / "data" / "sessions" / "codex-group" / ".codex"
@@ -106,14 +112,20 @@ def test_build_volume_mounts_does_not_seed_host_codex_auth(tmp_path: Path) -> No
     (tmp_path / "groups" / "codex-group").mkdir(parents=True)
 
     with (
-        patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
         patch("pynchy.host.learning.skill_activation.get_settings", return_value=settings),
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
         patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.session_prep.get_settings", return_value=settings),
         patch("pynchy.host.container_manager.mounts.Path.home", return_value=host_home),
     ):
-        build_volume_mounts(_group(), is_admin=False)
+        build_volume_mounts(
+            _group(),
+            is_admin=False,
+            groups_dir=settings.groups_dir,
+            data_dir=settings.data_dir,
+            project_root=settings.project_root,
+            mount_allowlist_path=settings.mount_allowlist_path,
+            blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+        )
 
     group_auth = tmp_path / "data" / "sessions" / "codex-group" / ".codex" / "auth.json"
     assert not group_auth.exists()

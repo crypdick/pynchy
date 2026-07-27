@@ -9,7 +9,6 @@ from typing import Any, cast
 from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
-from pynchy.config import get_settings
 from pynchy.host.orchestrator.temporal.schedules import (
     agent_task_schedule_id,
     agent_task_workflow_id,
@@ -134,7 +133,10 @@ async def _describe_temporal_workflow(client: object, workflow_id: str) -> dict[
 
 
 async def get_temporal_orchestration_states(
-    tasks: list[ScheduledTask], jobs: list[HostJob]
+    tasks: list[ScheduledTask],
+    jobs: list[HostJob],
+    temporal_address: str,
+    temporal_namespace: str,
 ) -> dict[tuple[str, str], dict[str, Any]]:
     """Use Temporal descriptions as the sole source of future execution state."""
     states: dict[tuple[str, str], dict[str, Any]] = {
@@ -172,11 +174,10 @@ async def get_temporal_orchestration_states(
     if not descriptions:
         return states
 
-    scheduler = get_settings().scheduler
     try:
         client = await Client.connect(
-            scheduler.temporal_address,
-            namespace=scheduler.temporal_namespace,
+            temporal_address,
+            namespace=temporal_namespace,
             lazy=True,
         )
     except Exception as exc:  # noqa: BLE001, RUF100 - status reports the Temporal connection failure.

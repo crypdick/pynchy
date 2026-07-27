@@ -391,7 +391,7 @@ async def _initialize_databases(root: Path) -> None:
         )
         await database.commit()
     reset_settings()
-    memory = SqliteMemoryBackend()
+    memory = SqliteMemoryBackend(data_dir / "memories.db")
     try:
         await memory.init()
     finally:

@@ -47,7 +47,7 @@ voice = [
 
 [project.scripts]
 pynchy = "pynchy.__main__:main"
-pynchy-whatsapp-auth = "pynchy.plugins.channels.whatsapp.auth:main"
+pynchy-whatsapp-auth = "pynchy.__main__:whatsapp_auth"
 
 [dependency-groups]
 dev = [

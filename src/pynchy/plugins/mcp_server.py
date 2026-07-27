@@ -1,7 +1,8 @@
-"""MCP server configuration models.
+"""Validated MCP server templates supplied by plugins or user tool settings.
 
 Defines the Pydantic models for MCP server definitions, groups, and presets.
-Imported by :mod:`pynchy.config` to keep that file lean.
+The template is part of the plugin extension contract; configuration sources
+only parse values into it.
 
 Example TOML::
 

@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, NewType
 
 from aiohttp import web
 
-from pynchy.config.server import ServerConfig
 from pynchy.host.container_manager.security.audit import record_security_event
 from pynchy.logger import logger
 
@@ -139,13 +138,15 @@ def is_loopback_bind_host(host: str) -> bool:
 
 
 def _read_control_plane_token(
-    server: ServerConfig,
+    *,
+    auth_token_env: str,
+    auth_token_file: Path | None,
     project_root: Path,
 ) -> ControlPlaneToken | None:
-    if env_token := os.environ.get(server.auth_token_env):
+    if env_token := os.environ.get(auth_token_env):
         return ControlPlaneToken(env_token)
 
-    token_path = _resolved_path(project_root, server.auth_token_file)
+    token_path = _resolved_path(project_root, auth_token_file)
     if token_path is None or not token_path.exists():
         return None
     token_stat = token_path.stat()
@@ -161,21 +162,33 @@ def _read_control_plane_token(
     return ControlPlaneToken(token) if token else None
 
 
-def resolve_control_plane_runtime(
-    server: ServerConfig,
+def resolve_control_plane_runtime(  # noqa: PLR0913, RUF100 - composition passes each validated listener setting directly.
     *,
+    bind_host: str,
+    port: int,
+    unix_socket: Path | None,
+    allow_public_bind: bool,
+    allow_remote_deploy: bool,
+    auth_token_env: str,
+    auth_token_file: Path | None,
+    rate_limit_requests: int,
+    rate_limit_window_seconds: int,
     project_root: Path,
 ) -> ControlPlaneRuntime:
     """Parse settings into a safe runtime posture or refuse startup."""
-    public_bind = not is_loopback_bind_host(server.host)
-    if public_bind and not server.allow_public_bind:
+    public_bind = not is_loopback_bind_host(bind_host)
+    if public_bind and not allow_public_bind:
         raise ControlPlaneConfigurationError(
-            f"Refusing non-loopback control-plane bind {server.host!r}; "
+            f"Refusing non-loopback control-plane bind {bind_host!r}; "
             "set server.allow_public_bind=true only with bearer authentication"
         )
 
-    remote_auth_required = server.allow_public_bind or server.allow_remote_deploy
-    token = _read_control_plane_token(server, project_root)
+    remote_auth_required = allow_public_bind or allow_remote_deploy
+    token = _read_control_plane_token(
+        auth_token_env=auth_token_env,
+        auth_token_file=auth_token_file,
+        project_root=project_root,
+    )
     if remote_auth_required and token is None:
         raise ControlPlaneConfigurationError(
             "Remote control-plane access requires a bearer token; run "
@@ -186,35 +199,35 @@ def resolve_control_plane_runtime(
             f"Control-plane bearer tokens must contain at least {MINIMUM_TOKEN_LENGTH} bytes"
         )
 
-    unix_socket = None
+    resolved_unix_socket = None
     unix_socket_bind = None
     if os.name != "nt":
-        unix_socket, unix_socket_bind = _unix_socket_paths(project_root, server.unix_socket)
+        resolved_unix_socket, unix_socket_bind = _unix_socket_paths(project_root, unix_socket)
 
     return ControlPlaneRuntime(
-        bind_host=server.host,
-        port=server.port,
-        unix_socket=unix_socket,
+        bind_host=bind_host,
+        port=port,
+        unix_socket=resolved_unix_socket,
         public_bind=public_bind,
         remote_auth_required=remote_auth_required,
-        allow_remote_deploy=server.allow_remote_deploy,
+        allow_remote_deploy=allow_remote_deploy,
         auth_token=token,
         rate_limiter=RequestRateLimiter(
-            request_limit=server.rate_limit_requests,
-            window_seconds=server.rate_limit_window_seconds,
+            request_limit=rate_limit_requests,
+            window_seconds=rate_limit_window_seconds,
         ),
         unix_socket_bind=unix_socket_bind,
     )
 
 
 def bootstrap_control_plane_token(
-    server: ServerConfig,
     *,
+    auth_token_file: Path | None,
     project_root: Path,
     rotate: bool,
 ) -> Path:
     """Create or atomically rotate the permission-restricted bearer token file."""
-    token_path = _resolved_path(project_root, server.auth_token_file)
+    token_path = _resolved_path(project_root, auth_token_file)
     if token_path is None:
         raise ControlPlaneConfigurationError(
             "server.auth_token_file must be configured before bootstrapping a token"
@@ -238,8 +251,11 @@ def load_control_plane_client_token(
     token_file: Path | None,
 ) -> ControlPlaneToken | None:
     """Load a client token without accepting a group/world-readable secret file."""
-    server = ServerConfig(auth_token_env=token_env, auth_token_file=token_file)
-    return _read_control_plane_token(server, Path.cwd())
+    return _read_control_plane_token(
+        auth_token_env=token_env,
+        auth_token_file=token_file,
+        project_root=Path.cwd(),
+    )
 
 
 def _request_uses_unix_socket(request: web.Request) -> bool:

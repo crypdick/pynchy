@@ -85,13 +85,8 @@ def _patch_test_settings(tmp_path: Path):
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.host.container_manager.credentials",
-            "pynchy.host.container_manager.mounts",
-            "pynchy.host.container_manager.session_prep",
-            "pynchy.host.container_manager.orchestrator",
-            "pynchy.host.container_manager.session",
-            "pynchy.host.container_manager.snapshots",
+            "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.messaging.router",
             "pynchy.host.orchestrator.app",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))

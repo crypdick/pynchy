@@ -218,6 +218,7 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
         result = await run_host_input(
             request.input_data,
             cwd=request.cwd,
+            project_root=get_settings().project_root,
             on_output=request.on_output,
             timeout_seconds=request.timeout_seconds,
             env=request.env,

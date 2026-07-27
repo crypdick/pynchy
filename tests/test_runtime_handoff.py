@@ -14,7 +14,7 @@ from pynchy.host.orchestrator import host_runner
 from pynchy.host.orchestrator.agent_runner import PreContainerResult, run_agent
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.types import ContainerInput, WorkspaceProfile
+from pynchy.types import AgentExecutionRuntime, ContainerInput, WorkspaceProfile
 
 _TEST_GROUP = WorkspaceProfile(
     jid="test@g.us",
@@ -33,6 +33,7 @@ class _RunnerDeps:
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.queue = MagicMock(spec=GroupQueue)
         self.plugin_manager = None
+        self.agent_execution_runtime = _agent_runtime(make_settings())
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
@@ -48,6 +49,23 @@ class _RunnerDeps:
 
     async def broadcast_host_message(self, _chat_jid: str, _text: str) -> None:
         return None
+
+
+def _agent_runtime(settings: object) -> AgentExecutionRuntime:
+    return AgentExecutionRuntime(
+        project_root=settings.project_root,
+        groups_dir=settings.groups_dir,
+        data_dir=settings.data_dir,
+        mount_allowlist_path=settings.mount_allowlist_path,
+        blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+        agent_image=settings.container.image,
+        agent_memory_mb=settings.container.memory_mb,
+        container_timeout=settings.container_timeout,
+        default_core=settings.agent.default_core,
+        idle_timeout=settings.idle_timeout,
+        model=settings.agent.model,
+        model_reasoning_effort=settings.agent.model_reasoning_effort,
+    )
 
 
 def _runner_context() -> PreContainerResult:
@@ -137,10 +155,8 @@ async def test_cold_handoff_destroys_session_when_terminal_boundary_rejects_proc
     )
     session = MagicMock()
     proc = MagicMock(spec=asyncio.subprocess.Process)
-    settings = make_settings()
 
     with (
-        patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
         patch(
             "pynchy.host.orchestrator.agent_runner.pre_container_setup",
             new=AsyncMock(return_value=context),
@@ -192,10 +208,8 @@ async def test_warm_handoff_suppresses_ipc_when_terminal_boundary_rejects_proces
     session.proc.returncode = None
     session.container_name = "warm"
     session.send_ipc_message = AsyncMock()
-    settings = make_settings()
 
     with (
-        patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
         patch(
             "pynchy.host.orchestrator.agent_runner.pre_container_setup",
             new=AsyncMock(return_value=context),
@@ -249,6 +263,7 @@ async def test_host_runner_stops_process_when_handoff_registration_is_rejected(t
         result = await host_runner.run_host_input(
             input_data,
             cwd=tmp_path,
+            project_root=tmp_path,
             on_output=AsyncMock(),
             timeout_seconds=30,
             on_process_started=lambda _proc: False,

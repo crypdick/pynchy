@@ -8,12 +8,19 @@ from __future__ import annotations
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves the plugin-manager annotation at runtime.
 
-from pynchy.config import get_settings
+from pynchy.channels import (  # noqa: TC001, RUF100 - beartype resolves these runtime annotations.
+    SlackConnectionSettings,
+    WhatsAppConnectionSettings,
+)
+from pynchy.discord import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+    DiscordConnectionSettings,
+)
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
@@ -41,11 +48,14 @@ class ChannelPluginContext:
     on_ask_user_answer_callback: Callable[[str, dict[str, Any]], None] | None = None
     on_approval_decision_callback: Callable[[str, str, str, str], None] | None = None
     speech_synthesizer: SpeechSynthesizer | None = None
+    discord_connections: dict[str, DiscordConnectionSettings] = field(default_factory=dict)
+    discord_audio_cache_dir: Path | None = None
+    slack_connections: dict[str, SlackConnectionSettings] = field(default_factory=dict)
+    whatsapp_connections: dict[str, WhatsAppConnectionSettings] = field(default_factory=dict)
 
 
-def default_channel_name() -> str | None:
-    """Return the explicitly configured command-center channel."""
-    configured = get_settings().command_center.connection
+def default_channel_name(configured: str | None) -> str | None:
+    """Normalize the explicitly configured command-center channel."""
     if configured:
         return configured.strip()
     return None
@@ -75,9 +85,9 @@ def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> li
     return []
 
 
-def resolve_default_channel(channels: list[Channel]) -> Channel | None:
+def resolve_default_channel(channels: list[Channel], configured_name: str | None) -> Channel | None:
     """Resolve default channel by name from the loaded set."""
-    wanted = default_channel_name()
+    wanted = default_channel_name(configured_name)
     if wanted is None or not channels:
         return None
 

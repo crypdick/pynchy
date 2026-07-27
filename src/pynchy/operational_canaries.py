@@ -440,8 +440,19 @@ def register_operational_canary_scenarios(register: CanaryRegistration) -> None:
     """Register checks for integrations that already have operational actions."""
     # Keep credential setup and social posting out of this group: it proves that
     # already-configured services keep working. See docs/architecture/action-coverage.md.
+    canary = get_settings().canary
     register("calendar.round.trip", CalendarRoundTripCanary())
-    register("calendar.google.round.trip", GoogleCalendarRoundTripCanary())
-    register("drive.google.round.trip", GoogleDriveRoundTripCanary())
+    register(
+        "calendar.google.round.trip",
+        GoogleCalendarRoundTripCanary(canary.google_calendar_server, canary.google_calendar_id),
+    )
+    register(
+        "drive.google.round.trip",
+        GoogleDriveRoundTripCanary(
+            canary.google_drive_server,
+            canary.google_drive_probe_query,
+            canary.google_drive_file_id,
+        ),
+    )
     register("linear.workspace.round.trip", LinearWorkspaceRoundTripCanary())
     register("proton.mail.round.trip", ProtonMailRoundTripCanary())

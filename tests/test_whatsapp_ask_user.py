@@ -216,6 +216,7 @@ async def connected_channel(tmp_path: Path) -> _ConnectedChannel:
     channel = _NoopMetadataSyncWhatsAppChannel(
         connection_name="connection.whatsapp.test",
         auth_db_path=str(tmp_path / "neonize.db"),
+        assistant_name="pynchy",
         on_message=on_message,
         on_chat_metadata=on_metadata,
         workspaces=lambda: {CHAT_JID: WORKSPACE},
@@ -468,10 +469,8 @@ class TestInboundMessageAdapter:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(whatsapp_channel, "Jid2String", lambda jid: jid.value)
-        agent_name = whatsapp_channel.get_settings().agent.name
-
         await connected_channel.channel.ingest_inbound_message(
-            _inbound_event(f"{agent_name}: working on it", is_from_me=True)
+            _inbound_event("pynchy: working on it", is_from_me=True)
         )
 
         connected_channel.on_answer.assert_not_called()

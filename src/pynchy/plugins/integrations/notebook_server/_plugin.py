@@ -22,7 +22,7 @@ class NotebookServerPlugin:
     def pynchy_mcp_server_spec(self) -> tuple[McpServerSpec, ...]:
         # Keep host-only imports inside the hook. The notebook image copies this
         # package without Pynchy so it can run the MCP server independently.
-        from pynchy.config.mcp import McpServerConfig  # noqa: PLC0415, RUF100
+        from pynchy.plugins.mcp_server import McpServerConfig  # noqa: PLC0415, RUF100
 
         return (
             McpServerSpec(

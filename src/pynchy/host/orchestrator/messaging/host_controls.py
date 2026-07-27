@@ -104,13 +104,13 @@ async def _intercept_checkpoint_command(
     message: types.NewMessage,
     content: str,
 ) -> bool:
-    if commands.is_pause(content):
+    if commands.is_pause(deps.command_matcher, content):
         logger.info("intercept_trace", step="pause_start", group=group.name)
         await _handle_pause(deps, chat_jid, group, message)
         logger.info("Agent turn paused", group=group.name)
         return True
 
-    if not commands.is_context_reset(content):
+    if not commands.is_context_reset(deps.command_matcher, content):
         return False
     logger.info("intercept_trace", step="context_reset_start", group=group.name)
     had_active_run = deps.queue.has_active_run(types.RuntimeId(group.folder))
@@ -149,7 +149,7 @@ async def intercept_special_command(
     if await _intercept_checkpoint_command(deps, chat_jid, group, message, content):
         return True
 
-    if commands.is_end_session(content):
+    if commands.is_end_session(deps.command_matcher, content):
         logger.info("intercept_trace", step="end_session_start", group=group.name)
         await deps.handle_end_session(
             chat_jid,
@@ -160,17 +160,17 @@ async def intercept_special_command(
         logger.info("End session", group=group.name)
         return True
 
-    if commands.is_redeploy(content):
+    if commands.is_redeploy(deps.command_matcher, content):
         await advance_cursor(deps, chat_jid, message.timestamp)
         await deps.trigger_manual_redeploy(chat_jid, source_message=message)
         return True
 
-    if approval := commands.is_approval_command(content):
+    if approval := commands.is_approval_command(deps.command_matcher, content):
         action, short_id = approval
         await approval_handler.handle_approval_command(
             deps, chat_jid, action, short_id, message.sender
         )
-    elif commands.is_pending_query(content):
+    elif commands.is_pending_query(deps.command_matcher, content):
         await approval_handler.handle_pending_query(deps, chat_jid)
     elif content.startswith("!") and content[1:]:
         await execute_direct_command(deps, chat_jid, group, message, content[1:])
@@ -191,7 +191,10 @@ async def intercept_immediate_checkpoint_controls(
     """Execute pause/reset controls before forwarding any active-turn input."""
     if not any(
         message.message_type != "host"
-        and (commands.is_pause(message.content) or commands.is_context_reset(message.content))
+        and (
+            commands.is_pause(deps.command_matcher, message.content)
+            or commands.is_context_reset(deps.command_matcher, message.content)
+        )
         for message in pending
     ):
         return None
@@ -206,7 +209,8 @@ async def intercept_immediate_checkpoint_controls(
             if message.message_type == "host":
                 continue
             if not (
-                commands.is_pause(message.content) or commands.is_context_reset(message.content)
+                commands.is_pause(deps.command_matcher, message.content)
+                or commands.is_context_reset(deps.command_matcher, message.content)
             ):
                 continue
             if await intercept_special_command(deps, chat_jid, group, message):
@@ -228,19 +232,19 @@ def mark_dispatched(deps: MessageHandlerDeps, chat_jid: str, new_timestamp: str)
     deps.mark_dispatched(chat_jid, new_timestamp)
 
 
-def host_control_kind(message: types.NewMessage) -> tuple[bool, bool]:
+def host_control_kind(deps: MessageHandlerDeps, message: types.NewMessage) -> tuple[bool, bool]:
     """Return whether a message is an inline or lifecycle host control."""
     content = message.content.strip()
     inline = bool(
-        commands.is_approval_command(content)
-        or commands.is_pending_query(content)
+        commands.is_approval_command(deps.command_matcher, content)
+        or commands.is_pending_query(deps.command_matcher, content)
         or (content.startswith("!") and content[1:])
     )
     deferred = bool(
-        commands.is_pause(content)
-        or commands.is_context_reset(content)
-        or commands.is_end_session(content)
-        or commands.is_redeploy(content)
+        commands.is_pause(deps.command_matcher, content)
+        or commands.is_context_reset(deps.command_matcher, content)
+        or commands.is_end_session(deps.command_matcher, content)
+        or commands.is_redeploy(deps.command_matcher, content)
     )
     return inline, deferred
 
@@ -252,7 +256,7 @@ async def reclassify_host_control(
     message: types.NewMessage,
 ) -> bool:
     """Execute or defer one human control and durably hide it from the agent."""
-    inline_control, deferred_control = host_control_kind(message)
+    inline_control, deferred_control = host_control_kind(deps, message)
     if (
         not (inline_control or deferred_control)
         or (message.metadata or {}).get("authenticated_external_route") is True
@@ -294,8 +298,10 @@ async def reclassify_batch_host_controls(
     """Consume every inline control while preserving other input order."""
     handled = 0
     for message in messages:
-        inline_control, deferred_control = host_control_kind(message)
-        if commands.is_pause(message.content) or commands.is_context_reset(message.content):
+        inline_control, deferred_control = host_control_kind(deps, message)
+        if commands.is_pause(deps.command_matcher, message.content) or commands.is_context_reset(
+            deps.command_matcher, message.content
+        ):
             continue
         if not inline_control and not (deferred_control and defer_lifecycle):
             continue

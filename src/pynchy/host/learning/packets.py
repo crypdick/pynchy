@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from pynchy.config import get_settings
 from pynchy.host.learning.packet_codec import packet_to_payload as _packet_to_payload
 from pynchy.host.learning.packet_models import LearningPacket
 from pynchy.host.learning.paths import (
@@ -77,26 +76,26 @@ def observe_container_output(summary: LearningRunSummary, output: ContainerOutpu
         _append_error_snippet(summary, error_content)
 
 
-def build_learning_packet(
+def build_learning_packet(  # noqa: PLR0913, RUF100 - packet construction receives values resolved at composition.
     *,
     chat_jid: str,
     group: WorkspaceProfile,
     missed_messages: list[NewMessage],
     final_cursor: str,
     summary: LearningRunSummary,
+    enabled: bool,
+    packet_max_chars: int,
 ) -> LearningPacket | None:
-    settings = get_settings()
     profile = _resolve_learning_profile(
-        enabled=settings.learning.enabled,
+        enabled=enabled,
         group_folder=group.folder,
     )
     if profile is None:
         return None
-    max_chars = settings.learning.packet_max_chars
     prepared = _prepare_packet_content(
         missed_messages=missed_messages,
         summary=summary,
-        max_chars=max_chars,
+        max_chars=packet_max_chars,
     )
     if prepared is None:
         return None
@@ -125,18 +124,20 @@ def build_learning_packet(
             ),
         },
     )
-    if not _fits_packet_budget(packet, max_chars, group.name):
+    if not _fits_packet_budget(packet, packet_max_chars, group.name):
         return None
     return packet
 
 
-async def start_learning_review_workflow(
+async def start_learning_review_workflow(  # noqa: PLR0913, RUF100 - workflow launch receives the packet's resolved limits.
     *,
     chat_jid: str,
     group: WorkspaceProfile,
     missed_messages: list[NewMessage],
     final_cursor: str,
     summary: LearningRunSummary,
+    enabled: bool,
+    packet_max_chars: int,
 ) -> str | None:
     try:
         packet = build_learning_packet(
@@ -145,6 +146,8 @@ async def start_learning_review_workflow(
             missed_messages=missed_messages,
             final_cursor=final_cursor,
             summary=summary,
+            enabled=enabled,
+            packet_max_chars=packet_max_chars,
         )
         if packet is None:
             return None

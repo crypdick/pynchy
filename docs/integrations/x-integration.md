@@ -89,7 +89,7 @@ If tools return "X login expired", the browser session is gone. Run `setup_x_ses
 
 ### Selector errors
 
-X updates their UI sometimes, breaking the `data-testid` selectors the script relies on. Check the selector table in [`src/pynchy/agent/skills/x-integration/SKILL.md`](https://github.com/crypdick/pynchy/blob/main/src/pynchy/agent/skills/x-integration/SKILL.md) and compare against X's current DOM.
+X updates their UI sometimes, breaking the `data-testid` selectors the script relies on. Check the selector table in [`x_integration/skills/x-integration/SKILL.md`](https://github.com/crypdick/pynchy/blob/main/src/pynchy/plugins/integrations/x_integration/skills/x-integration/SKILL.md) and compare against X's current DOM.
 
 ### Browser lock files
 

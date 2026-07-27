@@ -5,15 +5,17 @@ Tests critical business logic in config.py: context reset, end session, and rede
 
 from __future__ import annotations
 
+from functools import partial
 from unittest.mock import patch
 
-from conftest import make_settings
+from conftest import make_command_matcher, make_settings
 
-from pynchy.host.orchestrator.messaging.commands import (
-    is_context_reset,
-    is_end_session,
-    is_redeploy,
-)
+from pynchy.host.orchestrator.messaging import commands
+
+_MATCHER = make_command_matcher(make_settings())
+is_context_reset = partial(commands.is_context_reset, _MATCHER)
+is_end_session = partial(commands.is_end_session, _MATCHER)
+is_redeploy = partial(commands.is_redeploy, _MATCHER)
 
 
 class TestIsContextReset:

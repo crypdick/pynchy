@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 
 from pynchy.config import get_settings
-from pynchy.config.workspace_names import parent_workspace_name
+from pynchy.conversation.workspaces import parent_workspace_name
 from pynchy.plugins.integrations.linear_accounts import linear_account
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves workspace evidence.

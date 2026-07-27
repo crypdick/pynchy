@@ -418,11 +418,11 @@ async def test_each_semantic_action_maps_to_closed_peekaboo_argv(
             new=AsyncMock(side_effect=fake_exec),
         ),
         patch(
-            "pynchy.plugins.integrations.computer_use.get_settings",
+            "pynchy.plugins.integrations.computer_use._plugin.get_settings",
             return_value=make_settings(data_dir=tmp_path),
         ),
         patch(
-            "pynchy.plugins.integrations.computer_use._timestamp",
+            "pynchy.plugins.integrations.computer_use._plugin._timestamp",
             return_value="20260718T120000Z",
         ),
     ):

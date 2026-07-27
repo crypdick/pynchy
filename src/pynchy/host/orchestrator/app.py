@@ -1,6 +1,7 @@
 """Main orchestrator — owns runtime state and wires subsystems together.
 
 Lifecycle (startup phases, shutdown) lives in :mod:`lifecycle`.
+# allow: file-length - composition root exposes lifecycle and channel adapter methods.
 """
 
 from __future__ import annotations
@@ -36,13 +37,12 @@ from pynchy.host.orchestrator.messaging import (
     channel_handler,
     reaction_handler,
 )
-from pynchy.host.orchestrator.messaging import (
-    pipeline as message_handler,
-)
+from pynchy.host.orchestrator.messaging import pipeline as message_handler
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
 )
 from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    CommandMatcher,
     DirectCommandOutput,
 )
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
@@ -84,6 +84,7 @@ from pynchy.state import (
     update_task,
 )
 from pynchy.types import (
+    AgentExecutionRuntime,
     Channel,
     ContainerOutput,
     GroupFolder,
@@ -110,12 +111,30 @@ class PynchyApp(ThreadRouting):
         self._dispatched_through: dict[str, str] = {}
         self.message_loop_running: bool = False
         settings = get_settings()
+        self.agent_name = settings.agent.name
+        self.command_matcher = CommandMatcher.from_values(
+            settings.trigger_pattern, settings.commands.model_dump()
+        )
         self.queue: GroupQueue = GroupQueue(
             QueuePolicy(
                 max_concurrent=settings.container.max_concurrent,
                 max_retries=settings.queue.max_retries,
                 retry_base_seconds=settings.queue.base_retry_seconds,
             )
+        )
+        self.agent_execution_runtime = AgentExecutionRuntime(
+            project_root=settings.project_root,
+            groups_dir=settings.groups_dir,
+            data_dir=settings.data_dir,
+            mount_allowlist_path=settings.mount_allowlist_path,
+            blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+            agent_image=settings.container.image,
+            agent_memory_mb=settings.container.memory_mb,
+            container_timeout=settings.container_timeout,
+            default_core=settings.agent.default_core,
+            idle_timeout=settings.idle_timeout,
+            model=settings.agent.model,
+            model_reasoning_effort=settings.agent.model_reasoning_effort,
         )
         self.queue.set_process_messages_fn(
             lambda jid: message_handler.process_group_messages(self, jid)

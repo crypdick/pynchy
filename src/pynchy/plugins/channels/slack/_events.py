@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 from re import Pattern
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import NewMessage
 
@@ -205,7 +204,7 @@ class SlackEvents:
         ch = self._channel
         if not ch.bot_user_id:
             return text
-        trigger = f"@{get_settings().agent.name}"
+        trigger = f"@{ch.assistant_name}"
         return re.sub(rf"<@{re.escape(ch.bot_user_id)}>", trigger, text).strip()
 
     def _normalize_bot_mention(self, text: str) -> str:
