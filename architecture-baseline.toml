@@ -18,14 +18,6 @@ reason = "pynchy.canaries still has a runtime-import dependency on state_adapter
 
 [[violations]]
 importer = "pynchy.google_mcp_canaries"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.google_mcp_canaries still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.google_mcp_canaries"
 target_component = "container_adapter"
 kind = "runtime-import"
 count = 2
