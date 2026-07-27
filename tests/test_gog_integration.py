@@ -143,6 +143,29 @@ class TestGogPlugin:
         assert "install gogcli" in result.reason.lower()
 
 
+def test_gog_subprocess_does_not_inherit_unrelated_host_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UNRELATED_HOST_SECRET", "must-not-leak")
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+    client = gog.GogClient(
+        config=gog.GogConfig(account="you@example.com"),
+        home=tmp_path,
+        oauth_client_path=None,
+    )
+
+    with patch(
+        "pynchy.plugins.integrations.gog._client.subprocess.run",
+        return_value=completed,
+    ) as run:
+        client.gmail_search(query="from:friend@example.com", limit=1)
+
+    environment = run.call_args.kwargs["env"]
+    assert environment["GOG_HOME"] == str(tmp_path)
+    assert "UNRELATED_HOST_SECRET" not in environment
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_name", "arguments", "called_method"),

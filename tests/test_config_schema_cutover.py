@@ -148,19 +148,18 @@ def test_named_linear_account_parses_credential_selectors() -> None:
     assert account.team_key_env == "LINEAR_SYNAPSE_TEAM_KEY"
 
 
-def test_linear_account_migrates_legacy_credential_selectors() -> None:
-    settings = _settings_from_toml(
-        """
-        [tools.linear]
-        type = "linear"
-        api_key_env = "LINEAR_LEGACY_API_KEY"  # pragma: allowlist secret
-        team_key_env = "LINEAR_LEGACY_TEAM_KEY"
-        """
-    )
-
-    account = settings.tools["linear"]
-    assert account.required_env == ["LINEAR_LEGACY_API_KEY"]  # pragma: allowlist secret
-    assert account.optional_env == ["LINEAR_LEGACY_TEAM_KEY"]
+def test_linear_account_rejects_legacy_credential_selector() -> None:
+    with pytest.raises(ValidationError, match="api_key_env"):
+        _settings_from_dict(
+            {
+                "tools": {
+                    "linear": {
+                        "type": "linear",
+                        "api_key_env": "LINEAR_API_KEY",  # pragma: allowlist secret
+                    }
+                }
+            }
+        )
 
 
 @pytest.mark.parametrize("field", ["required_env", "optional_env"])
