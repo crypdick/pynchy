@@ -1,6 +1,5 @@
 """Built-in Slack channel plugin."""
 
-from pynchy.config import get_settings as get_settings
 from pynchy.logger import logger as logger
 
 from ._blocks import SlackBlocksFormatter as SlackBlocksFormatter
@@ -32,7 +31,6 @@ __all__ = [
     "channel_id_from_jid",
     "extract_checkbox_values",
     "extract_text_input_value",
-    "get_settings",
     "jid",
     "logger",
     "normalize_chat_name",

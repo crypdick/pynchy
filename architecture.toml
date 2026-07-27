@@ -34,6 +34,7 @@ violation_guidance = "Foundation code must not become an outward dependency; mov
 name = "domain"
 module_patterns = [
   "pynchy.action_intents",
+  "pynchy.channels",
   "pynchy.conversation.**",
   "pynchy.deployment_types",
   "pynchy.discord",
@@ -113,6 +114,7 @@ exclude_patterns = [
   "pynchy._runtime_typing",
   "pynchy.action_intents",
   "pynchy.actions",
+  "pynchy.channels",
   "pynchy.canaries",
   "pynchy.capabilities",
   "pynchy.config",

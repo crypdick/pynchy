@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import os
-import sys
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any
 
 import pluggy
 
-from pynchy.config.models import (  # noqa: TC001, RUF100 - beartype resolves plugin config annotations at runtime.
-    SlackConnectionConfig,
-)
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
+from pynchy.channels import (
+    SlackConnectionSettings,  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
 )
 from pynchy.logger import logger
 from pynchy.plugins.channel_runtime import (  # noqa: TC001, RUF100 - beartype resolves hook annotations at runtime.
@@ -35,15 +31,6 @@ __all__ = [
     "SlackChannelPlugin",
     "TtlCache",
 ]
-
-
-@runtime_checkable
-class _SlackPublicModule(Protocol):
-    def get_settings(self) -> Settings: ...
-
-
-def _public_module() -> _SlackPublicModule:
-    return cast("_SlackPublicModule", sys.modules[__package__])
 
 
 def _channel_context(
@@ -73,8 +60,7 @@ def _channel_context(
 def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack connection config.
     *,
     name: str,
-    cfg: SlackConnectionConfig,
-    settings: Settings,
+    settings: SlackConnectionSettings,
     on_message: Callable[[str, NewMessage], None],
     on_metadata: Callable[[str, str, str | None], None],
     on_reaction: Callable[[str, str, str, str], None] | None,
@@ -83,18 +69,18 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack conn
 ) -> SlackChannel | None:
     """Build one SlackChannel or log why that connection was skipped."""
     connection_name = name
-    bot_env = (cfg.bot_token_env or "").strip()
-    app_env = (cfg.app_token_env or "").strip()
+    bot_env = settings.bot_token_env.strip()
+    app_env = settings.app_token_env.strip()
     if not bot_env or not app_env:
         logger.warning(
             "Slack connection skipped — empty token env var name",
             connection=connection_name,
-            bot_token_env=cfg.bot_token_env,
-            app_token_env=cfg.app_token_env,
+            bot_token_env=settings.bot_token_env,
+            app_token_env=settings.app_token_env,
         )
         return None
 
-    chat_names = list(cfg.chat.keys())
+    chat_names = list(settings.chat_names)
     if not chat_names:
         logger.warning(
             "Slack connection has no configured chats; skipping",
@@ -118,8 +104,8 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack conn
         bot_token=bot_token,
         app_token=app_token,
         chat_names=chat_names,
-        assistant_name=settings.agent.name,
-        allow_create=settings.command_center.connection == connection_name,
+        assistant_name=settings.assistant_name,
+        allow_create=settings.allow_create,
         on_message=on_message,
         on_chat_metadata=on_metadata,
         on_reaction=on_reaction,
@@ -135,9 +121,9 @@ class SlackChannelPlugin:
     def pynchy_create_channel(
         self, context: ChannelPluginContext | None
     ) -> list[SlackChannel] | None:
-        settings = _public_module().get_settings()
-        configs = {name: cfg for name, cfg in settings.connections.items() if cfg.type == "slack"}
-        if not configs:
+        if context is None:
+            return None
+        if not context.slack_connections:
             logger.debug("Slack channel skipped — no connections configured")
             return None
 
@@ -147,10 +133,9 @@ class SlackChannelPlugin:
         on_message, on_metadata, on_reaction, on_ask_user_answer, on_approval_decision = callbacks
         channels: list[SlackChannel] = []
 
-        for name, cfg in configs.items():
+        for name, settings in context.slack_connections.items():
             channel = _build_channel(
                 name=name,
-                cfg=cfg,
                 settings=settings,
                 on_message=on_message,
                 on_metadata=on_metadata,

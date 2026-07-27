@@ -1745,44 +1745,12 @@ imports = ["pynchy.host.audio"]
 reason = "pynchy.plugins.channels.discord._voice still has a runtime-import dependency on host_adapter; Use a use-case-owned host capability port and wire the concrete adapter at composition."
 
 [[violations]]
-importer = "pynchy.plugins.channels.slack"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.slack still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.plugins.channels.slack._blocks"
 target_component = "application"
 kind = "runtime-import"
 count = 2
 imports = ["pynchy.host.orchestrator.messaging.formatter", "pynchy.host.orchestrator.messaging.formatters.base"]
 reason = "pynchy.plugins.channels.slack._blocks still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
-
-[[violations]]
-importer = "pynchy.plugins.channels.slack._plugin"
-target_component = "config"
-kind = "runtime-import"
-count = 2
-imports = ["pynchy.config.models", "pynchy.config.settings"]
-reason = "pynchy.plugins.channels.slack._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.whatsapp"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.plugins.channels.whatsapp still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.plugins.channels.whatsapp._plugin"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.settings"]
-reason = "pynchy.plugins.channels.whatsapp._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.channels.whatsapp.channel"

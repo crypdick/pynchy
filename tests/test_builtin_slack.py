@@ -9,9 +9,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.config.models import CommandCenterConfig, SlackConnectionConfig
+from pynchy.channels import SlackConnectionSettings
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.plugins.channels.slack import (
     SlackChannel,
@@ -27,12 +26,15 @@ SLACK_BOT_ENV = "BOT"
 SLACK_APP_ENV = "APP"
 
 
-def _plugin_context() -> ChannelPluginContext:
+def _plugin_context(
+    slack_connections: dict[str, SlackConnectionSettings] | None = None,
+) -> ChannelPluginContext:
     return ChannelPluginContext(
         on_message_callback=MagicMock(),
         on_chat_metadata_callback=MagicMock(),
         workspaces=MagicMock(return_value={}),
         send_message=MagicMock(),
+        slack_connections=slack_connections or {},
     )
 
 
@@ -410,10 +412,7 @@ class TestSlackChannelPlugin:
         plugin = SlackChannelPlugin()
         context = _plugin_context()
 
-        with patch("pynchy.plugins.channels.slack.get_settings") as mock_settings:
-            mock_settings.return_value = make_settings(connections={})
-
-            result = plugin.pynchy_create_channel(context=context)
+        result = plugin.pynchy_create_channel(context=context)
 
         assert result is None
 
@@ -421,22 +420,18 @@ class TestSlackChannelPlugin:
         plugin = SlackChannelPlugin()
         context = _plugin_context()
 
-        with (
-            patch("pynchy.plugins.channels.slack.get_settings") as mock_settings,
-            patch.dict(os.environ, {"BOT": "xoxb-test", "APP": "xapp-test"}, clear=False),
-        ):
-            cfg = make_settings(
-                command_center=CommandCenterConfig(connection="main"),
-                connections={
-                    "main": SlackConnectionConfig(
-                        bot_token_env=SLACK_BOT_ENV,
-                        app_token_env=SLACK_APP_ENV,
-                        chat={"general": {}},
-                    )
-                },
-            )
-            mock_settings.return_value = cfg
-
+        context = _plugin_context(
+            {
+                "main": SlackConnectionSettings(
+                    bot_token_env=SLACK_BOT_ENV,
+                    app_token_env=SLACK_APP_ENV,
+                    chat_names=("general",),
+                    assistant_name="pynchy",
+                    allow_create=True,
+                )
+            }
+        )
+        with patch.dict(os.environ, {"BOT": "xoxb-test", "APP": "xapp-test"}, clear=False):
             result = plugin.pynchy_create_channel(context=context)
 
         assert result is not None

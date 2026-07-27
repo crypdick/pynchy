@@ -179,18 +179,14 @@ class TestSlackPluginFunctionality:
         if "builtin-slack" not in names:
             pytest.skip("Slack plugin not available (optional dependency)")
 
-        mock_settings = MagicMock()
-        mock_settings.connections = {}
-
-        with patch("pynchy.plugins.channels.slack.get_settings", return_value=mock_settings):
-            channels = pm.hook.pynchy_create_channel(
-                context=ChannelPluginContext(
-                    on_message_callback=MagicMock(),
-                    on_chat_metadata_callback=MagicMock(),
-                    workspaces=MagicMock(return_value={}),
-                    send_message=MagicMock(),
-                )
+        channels = pm.hook.pynchy_create_channel(
+            context=ChannelPluginContext(
+                on_message_callback=MagicMock(),
+                on_chat_metadata_callback=MagicMock(),
+                workspaces=MagicMock(return_value={}),
+                send_message=MagicMock(),
             )
+        )
 
         # Slack should return None when no connections configured
         slack_channels = [
