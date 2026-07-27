@@ -266,13 +266,14 @@ async def _finalize_cursor_and_retry(
         return TurnOutcome.COMPLETED
 
     await learning_capture.start_completed_turn_learning_review(
-        request.s,
         request.chat_jid,
         request.group,
         request.missed_messages,
         final_cursor,
         request.learning_summary,
         get_messages_since,
+        enabled=request.s.learning.enabled,
+        review_after_turn=request.s.learning.review_after_turn,
     )
 
     return TurnOutcome.COMPLETED
