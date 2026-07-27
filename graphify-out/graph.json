@@ -3920,7 +3920,7 @@
       "label": ".start()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L121",
+      "source_location": "L122",
       "_origin": "ast"
     },
     {
@@ -3928,7 +3928,7 @@
       "label": "._build_args()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L146",
+      "source_location": "L147",
       "_origin": "ast"
     },
     {
@@ -3936,7 +3936,7 @@
       "label": "._build_stdin()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L180",
+      "source_location": "L181",
       "_origin": "ast"
     },
     {
@@ -3944,7 +3944,7 @@
       "label": ".query()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L186",
+      "source_location": "L187",
       "_origin": "ast"
     },
     {
@@ -3952,7 +3952,7 @@
       "label": "._spawn_process()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L204",
+      "source_location": "L208",
       "_origin": "ast"
     },
     {
@@ -3968,7 +3968,7 @@
       "label": "._write_prompt()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L217",
+      "source_location": "L221",
       "_origin": "ast"
     },
     {
@@ -3976,7 +3976,7 @@
       "label": "._stream_events()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L225",
+      "source_location": "L229",
       "_origin": "ast"
     },
     {
@@ -3984,7 +3984,7 @@
       "label": "._events_from_line()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L234",
+      "source_location": "L238",
       "_origin": "ast"
     },
     {
@@ -3992,7 +3992,7 @@
       "label": "._finish_process()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L242",
+      "source_location": "L246",
       "_origin": "ast"
     },
     {
@@ -4000,7 +4000,7 @@
       "label": "._synthesize_result()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L249",
+      "source_location": "L253",
       "_origin": "ast"
     },
     {
@@ -4008,7 +4008,7 @@
       "label": ".map_stream_event()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L271",
+      "source_location": "L289",
       "_origin": "ast"
     },
     {
@@ -4016,7 +4016,7 @@
       "label": "._map_turn_event()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L294",
+      "source_location": "L312",
       "_origin": "ast"
     },
     {
@@ -4024,7 +4024,7 @@
       "label": "._map_thread_started()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L315",
+      "source_location": "L334",
       "_origin": "ast"
     },
     {
@@ -4032,7 +4032,7 @@
       "label": "._record_turn_metadata()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L329",
+      "source_location": "L348",
       "_origin": "ast"
     },
     {
@@ -4040,7 +4040,7 @@
       "label": "._map_error_result()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L334",
+      "source_location": "L353",
       "_origin": "ast"
     },
     {
@@ -4048,7 +4048,7 @@
       "label": "._map_item_event()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L350",
+      "source_location": "L369",
       "_origin": "ast"
     },
     {
@@ -4056,7 +4056,7 @@
       "label": "._map_agent_message_item()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L370",
+      "source_location": "L389",
       "_origin": "ast"
     },
     {
@@ -4064,7 +4064,7 @@
       "label": "._map_reasoning_item()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L377",
+      "source_location": "L396",
       "_origin": "ast"
     },
     {
@@ -4072,7 +4072,7 @@
       "label": "._map_command_item()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L383",
+      "source_location": "L402",
       "_origin": "ast"
     },
     {
@@ -4080,7 +4080,7 @@
       "label": "._map_file_change_item()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L403",
+      "source_location": "L422",
       "_origin": "ast"
     },
     {
@@ -4088,7 +4088,7 @@
       "label": "._map_tool_call_item()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L423",
+      "source_location": "L442",
       "_origin": "ast"
     },
     {
@@ -4096,7 +4096,7 @@
       "label": "._tool_input()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L453",
+      "source_location": "L472",
       "_origin": "ast"
     },
     {
@@ -4104,7 +4104,7 @@
       "label": ".stop()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L465",
+      "source_location": "L484",
       "_origin": "ast"
     },
     {
@@ -4112,7 +4112,7 @@
       "label": ".session_id()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L481",
+      "source_location": "L500",
       "_origin": "ast"
     },
     {
@@ -4172,59 +4172,59 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_122",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_123",
       "label": "Resolve the CLI binary, write config, and prepare the environment.",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L122",
+      "source_location": "L123",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_147",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_148",
       "label": "Assemble ``codex exec`` argv for one turn.",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L147",
+      "source_location": "L148",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_181",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_182",
       "label": "Build the raw stdin prompt for ``codex exec -``.",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L181",
+      "source_location": "L182",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_187",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_188",
       "label": "Spawn one Codex turn and stream mapped events.",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L187",
+      "source_location": "L188",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_272",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_290",
       "label": "Map one Codex stream event to Pynchy's agent-event contract.          This is th",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L272",
+      "source_location": "L290",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_466",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_485",
       "label": "Interrupt any still-running Codex process.",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L466",
+      "source_location": "L485",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_482",
+      "id": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_501",
       "label": "Return the current Codex thread/session ID.",
       "file_type": "rationale",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L482",
+      "source_location": "L501",
       "_origin": "ast"
     },
     {
@@ -8860,11 +8860,19 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_marks_clean_exit_without_terminal_turn_as_error",
+      "label": "test_query_marks_clean_exit_without_terminal_turn_as_error()",
+      "file_type": "code",
+      "source_file": "pynchy/agent/agent_runner/tests/test_codex_cli_error_events.py",
+      "source_location": "L132",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_discards_retry_notice_after_successful_turn",
       "label": "test_query_discards_retry_notice_after_successful_turn()",
       "file_type": "code",
       "source_file": "pynchy/agent/agent_runner/tests/test_codex_cli_error_events.py",
-      "source_location": "L132",
+      "source_location": "L149",
       "_origin": "ast"
     },
     {
@@ -38240,7 +38248,7 @@
       "label": "_turn_id_for_batch()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L87",
+      "source_location": "L88",
       "_origin": "ast"
     },
     {
@@ -38248,7 +38256,7 @@
       "label": "_input_source_for_batch()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L96",
+      "source_location": "L97",
       "_origin": "ast"
     },
     {
@@ -38256,7 +38264,7 @@
       "label": "_conversation_claim_for_batch()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L119",
+      "source_location": "L120",
       "_origin": "ast"
     },
     {
@@ -38272,7 +38280,7 @@
       "label": "_announce_processing_start()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L133",
+      "source_location": "L134",
       "_origin": "ast"
     },
     {
@@ -38280,7 +38288,7 @@
       "label": "_register_idle_zzz_callback()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L163",
+      "source_location": "L164",
       "_origin": "ast"
     },
     {
@@ -38288,7 +38296,7 @@
       "label": "_finalize_cursor_and_retry()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L190",
+      "source_location": "L191",
       "_origin": "ast"
     },
     {
@@ -38296,7 +38304,7 @@
       "label": "_continue_after_host_turn()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L269",
+      "source_location": "L281",
       "_origin": "ast"
     },
     {
@@ -38304,7 +38312,7 @@
       "label": "_start_processing()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L308",
+      "source_location": "L320",
       "_origin": "ast"
     },
     {
@@ -38312,7 +38320,7 @@
       "label": "_begin_interactive_message_turn()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L320",
+      "source_location": "L332",
       "_origin": "ast"
     },
     {
@@ -38328,7 +38336,7 @@
       "label": "_ProcessingOutcome",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L344",
+      "source_location": "L356",
       "_origin": "ast"
     },
     {
@@ -38336,7 +38344,7 @@
       "label": "_announce_processing_complete()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L350",
+      "source_location": "L362",
       "_origin": "ast"
     },
     {
@@ -38344,7 +38352,7 @@
       "label": "process_group_messages()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L373",
+      "source_location": "L385",
       "_origin": "ast"
     },
     {
@@ -38352,7 +38360,7 @@
       "label": "run_queued_message_turn()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L458",
+      "source_location": "L471",
       "_origin": "ast"
     },
     {
@@ -38364,67 +38372,67 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_97",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_98",
       "label": "Carry authenticated external provenance into sticky security taint.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L97",
+      "source_location": "L98",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_139",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_140",
       "label": "Mark dispatched, log, and signal 'agent is working' to the user.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L139",
+      "source_location": "L140",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_170",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_171",
       "label": "Register a zzz reaction to fire when the container actually hibernates     (idle",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L170",
+      "source_location": "L171",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_193",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_194",
       "label": "Advance the cursor (or signal retry) based on how the agent run went.      Retur",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L193",
+      "source_location": "L194",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_272",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_284",
       "label": "Commit a completed host boundary before Temporal starts its next activity.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L272",
+      "source_location": "L284",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_314",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_326",
       "label": "Announce the turn and return its monotonic start time.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L314",
+      "source_location": "L326",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_377",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_389",
       "label": "Process all pending messages for a group. Called by GroupQueue.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L377",
+      "source_location": "L389",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_462",
+      "id": "pynchy_host_orchestrator_messaging_pipeline_rationale_475",
       "label": "Enter the shared runtime queue before processing interactive messages.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L462",
+      "source_location": "L475",
       "_origin": "ast"
     },
     {
@@ -39728,7 +39736,7 @@
       "label": "_requested_control_after_agent_exit()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L194",
+      "source_location": "L195",
       "_origin": "ast"
     },
     {
@@ -39736,7 +39744,7 @@
       "label": "run_interactive_agent()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "_origin": "ast"
     },
     {
@@ -39796,11 +39804,11 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_messaging_turn_control_rationale_218",
+      "id": "pynchy_host_orchestrator_messaging_turn_control_rationale_219",
       "label": "Invoke one checkpointed interactive turn and settle control requests.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L218",
+      "source_location": "L219",
       "_origin": "ast"
     },
     {
@@ -89046,7 +89054,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L121",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89056,7 +89064,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L146",
+      "source_location": "L147",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89066,7 +89074,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L180",
+      "source_location": "L181",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89076,7 +89084,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L186",
+      "source_location": "L187",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89087,7 +89095,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L186",
+      "source_location": "L187",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89097,7 +89105,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L204",
+      "source_location": "L208",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89108,7 +89116,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L204",
+      "source_location": "L208",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89118,7 +89126,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L217",
+      "source_location": "L221",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89129,7 +89137,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L217",
+      "source_location": "L221",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89139,7 +89147,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L225",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89150,7 +89158,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L225",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89161,7 +89169,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L225",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89171,7 +89179,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L234",
+      "source_location": "L238",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89182,7 +89190,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L234",
+      "source_location": "L238",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89192,7 +89200,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L242",
+      "source_location": "L246",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89203,7 +89211,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L242",
+      "source_location": "L246",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89213,7 +89221,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L249",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89224,7 +89232,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L249",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89234,7 +89242,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L271",
+      "source_location": "L289",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89245,7 +89253,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L271",
+      "source_location": "L289",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89255,7 +89263,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L294",
+      "source_location": "L312",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89266,7 +89274,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L294",
+      "source_location": "L312",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89276,7 +89284,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L315",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89287,7 +89295,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L315",
+      "source_location": "L334",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89297,7 +89305,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L329",
+      "source_location": "L348",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89307,7 +89315,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L334",
+      "source_location": "L353",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89318,7 +89326,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L334",
+      "source_location": "L353",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89328,7 +89336,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L350",
+      "source_location": "L369",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89339,7 +89347,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L350",
+      "source_location": "L369",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89349,7 +89357,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L370",
+      "source_location": "L389",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89360,7 +89368,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L370",
+      "source_location": "L389",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89370,7 +89378,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L377",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89381,7 +89389,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L377",
+      "source_location": "L396",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89391,7 +89399,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L383",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89402,7 +89410,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L383",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89412,7 +89420,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L403",
+      "source_location": "L422",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89423,7 +89431,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L403",
+      "source_location": "L422",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89433,7 +89441,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L423",
+      "source_location": "L442",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89444,7 +89452,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L423",
+      "source_location": "L442",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89454,7 +89462,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L453",
+      "source_location": "L472",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89464,7 +89472,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L465",
+      "source_location": "L484",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89474,7 +89482,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L481",
+      "source_location": "L500",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89518,7 +89526,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L123",
+      "source_location": "L124",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89529,24 +89537,13 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L124",
+      "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_start",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_configured_model",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L131",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_start",
-      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_configured_model_reasoning_effort",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -89557,12 +89554,23 @@
     },
     {
       "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_start",
+      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_configured_model_reasoning_effort",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
+      "source_location": "L133",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_start",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_log",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L140",
+      "source_location": "L141",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89573,7 +89581,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L150",
+      "source_location": "L151",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89584,7 +89592,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L165",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89595,7 +89603,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L173",
+      "source_location": "L174",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89606,7 +89614,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L190",
+      "source_location": "L194",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89617,7 +89625,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L191",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89628,7 +89636,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L192",
+      "source_location": "L196",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89639,7 +89647,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L195",
+      "source_location": "L199",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89650,7 +89658,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L200",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89661,7 +89669,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L202",
+      "source_location": "L206",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89672,7 +89680,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L206",
+      "source_location": "L210",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89683,7 +89691,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L218",
+      "source_location": "L222",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89694,7 +89702,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L221",
+      "source_location": "L225",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89705,7 +89713,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L226",
+      "source_location": "L230",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89716,7 +89724,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L231",
+      "source_location": "L235",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89727,7 +89735,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L238",
+      "source_location": "L242",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89738,7 +89746,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L240",
+      "source_location": "L244",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89749,7 +89757,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L243",
+      "source_location": "L247",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89760,7 +89768,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L252",
+      "source_location": "L256",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_synthesize_result",
+      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_log",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
+      "source_location": "L259",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89771,7 +89790,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L258",
+      "source_location": "L260",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89782,7 +89801,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L281",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89793,7 +89812,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L284",
+      "source_location": "L302",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89804,7 +89823,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L292",
+      "source_location": "L310",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89815,7 +89834,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L296",
+      "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89826,7 +89845,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L313",
+      "source_location": "L332",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89837,7 +89856,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L318",
+      "source_location": "L337",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89848,7 +89867,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L318",
+      "source_location": "L337",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89859,7 +89878,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L323",
+      "source_location": "L342",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89870,7 +89889,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L338",
+      "source_location": "L357",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89881,7 +89900,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L354",
+      "source_location": "L373",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89892,7 +89911,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L357",
+      "source_location": "L376",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89903,7 +89922,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L360",
+      "source_location": "L379",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89914,7 +89933,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L363",
+      "source_location": "L382",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89925,7 +89944,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L366",
+      "source_location": "L385",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89936,7 +89955,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L375",
+      "source_location": "L394",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89947,7 +89966,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L381",
+      "source_location": "L400",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89958,7 +89977,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L387",
+      "source_location": "L406",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89969,7 +89988,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L404",
+      "source_location": "L423",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89980,7 +89999,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L434",
+      "source_location": "L453",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -89991,7 +90010,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L437",
+      "source_location": "L456",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -90002,7 +90021,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L476",
+      "source_location": "L495",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -90077,72 +90096,72 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_122",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_123",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_start",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L122",
+      "source_location": "L123",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_147",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_148",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_build_args",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L147",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_181",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_182",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_build_stdin",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L181",
+      "source_location": "L182",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_187",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_188",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_query",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L187",
+      "source_location": "L188",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_272",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_290",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_stream_event",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L272",
+      "source_location": "L290",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_466",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_485",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_stop",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L466",
+      "source_location": "L485",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_482",
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_rationale_501",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_session_id",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L482",
+      "source_location": "L501",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -103210,11 +103229,21 @@
     },
     {
       "source": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events",
-      "target": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_discards_retry_notice_after_successful_turn",
+      "target": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_marks_clean_exit_without_terminal_turn_as_error",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/tests/test_codex_cli_error_events.py",
       "source_location": "L132",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events",
+      "target": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_discards_retry_notice_after_successful_turn",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/agent/agent_runner/tests/test_codex_cli_error_events.py",
+      "source_location": "L149",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -103318,13 +103347,24 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_discards_retry_notice_after_successful_turn",
+      "source": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_marks_clean_exit_without_terminal_turn_as_error",
       "target": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_run_query",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/agent/agent_runner/tests/test_codex_cli_error_events.py",
       "source_location": "L133",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_test_query_discards_retry_notice_after_successful_turn",
+      "target": "pynchy_agent_agent_runner_tests_test_codex_cli_error_events_run_query",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/agent/agent_runner/tests/test_codex_cli_error_events.py",
+      "source_location": "L150",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185233,7 +185273,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L87",
+      "source_location": "L88",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185244,7 +185284,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L87",
+      "source_location": "L88",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185254,7 +185294,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L96",
+      "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185265,7 +185305,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L96",
+      "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185275,7 +185315,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L119",
+      "source_location": "L120",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185286,7 +185326,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L119",
+      "source_location": "L120",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185297,7 +185337,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L119",
+      "source_location": "L120",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185307,7 +185347,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L133",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185318,7 +185358,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L133",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185329,7 +185369,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L133",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185340,7 +185380,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L133",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185350,7 +185390,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L163",
+      "source_location": "L164",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185361,7 +185401,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L163",
+      "source_location": "L164",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185372,7 +185412,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L163",
+      "source_location": "L164",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185382,7 +185422,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L190",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185393,7 +185433,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L190",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185404,7 +185444,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L190",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185414,7 +185454,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L269",
+      "source_location": "L281",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185425,7 +185465,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L269",
+      "source_location": "L281",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185436,7 +185476,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L269",
+      "source_location": "L281",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185446,7 +185486,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L308",
+      "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185457,7 +185497,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L308",
+      "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185468,7 +185508,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L308",
+      "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185479,7 +185519,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L308",
+      "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185489,7 +185529,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L320",
+      "source_location": "L332",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185500,7 +185540,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L320",
+      "source_location": "L332",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185511,7 +185551,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L320",
+      "source_location": "L332",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185522,7 +185562,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L320",
+      "source_location": "L332",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185533,7 +185573,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L320",
+      "source_location": "L332",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185543,7 +185583,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L344",
+      "source_location": "L356",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185553,7 +185593,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L350",
+      "source_location": "L362",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185564,7 +185604,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L350",
+      "source_location": "L362",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185575,7 +185615,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L350",
+      "source_location": "L362",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185586,7 +185626,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L350",
+      "source_location": "L362",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185596,7 +185636,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L373",
+      "source_location": "L385",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185607,7 +185647,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L373",
+      "source_location": "L385",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185618,7 +185658,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L373",
+      "source_location": "L385",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185628,7 +185668,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L458",
+      "source_location": "L471",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185639,7 +185679,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L458",
+      "source_location": "L471",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185650,7 +185690,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L458",
+      "source_location": "L471",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185661,7 +185701,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L130",
+      "source_location": "L131",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185672,7 +185712,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L302",
+      "source_location": "L314",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185683,7 +185723,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L316",
+      "source_location": "L328",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185694,7 +185734,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L327",
+      "source_location": "L339",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185705,7 +185745,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L337",
+      "source_location": "L349",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185716,7 +185756,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L338",
+      "source_location": "L350",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185727,7 +185767,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L358",
+      "source_location": "L370",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185738,7 +185778,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L399",
+      "source_location": "L411",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185749,7 +185789,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L408",
+      "source_location": "L420",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185760,7 +185800,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L425",
+      "source_location": "L437",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185771,7 +185811,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L429",
+      "source_location": "L441",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185782,7 +185822,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L437",
+      "source_location": "L449",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185793,7 +185833,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L450",
+      "source_location": "L463",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185804,7 +185844,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L452",
+      "source_location": "L465",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -185819,82 +185859,82 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_97",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_98",
       "target": "pynchy_host_orchestrator_messaging_pipeline_input_source_for_batch",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L97",
+      "source_location": "L98",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_139",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_140",
       "target": "pynchy_host_orchestrator_messaging_pipeline_announce_processing_start",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L139",
+      "source_location": "L140",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_170",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_171",
       "target": "pynchy_host_orchestrator_messaging_pipeline_register_idle_zzz_callback",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L170",
+      "source_location": "L171",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_193",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_194",
       "target": "pynchy_host_orchestrator_messaging_pipeline_finalize_cursor_and_retry",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L193",
+      "source_location": "L194",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_272",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_284",
       "target": "pynchy_host_orchestrator_messaging_pipeline_continue_after_host_turn",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L272",
+      "source_location": "L284",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_314",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_326",
       "target": "pynchy_host_orchestrator_messaging_pipeline_start_processing",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L314",
+      "source_location": "L326",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_377",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_389",
       "target": "pynchy_host_orchestrator_messaging_pipeline_process_group_messages",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L377",
+      "source_location": "L389",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_462",
+      "source": "pynchy_host_orchestrator_messaging_pipeline_rationale_475",
       "target": "pynchy_host_orchestrator_messaging_pipeline_run_queued_message_turn",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L462",
+      "source_location": "L475",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -189992,7 +190032,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L194",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190003,7 +190043,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L194",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190014,7 +190054,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L194",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190024,7 +190064,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190035,7 +190075,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190046,7 +190086,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190057,7 +190097,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190068,7 +190108,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190079,7 +190119,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L211",
+      "source_location": "L212",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190123,7 +190163,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L254",
+      "source_location": "L264",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190134,7 +190174,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L281",
+      "source_location": "L291",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -190199,12 +190239,12 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_messaging_turn_control_rationale_218",
+      "source": "pynchy_host_orchestrator_messaging_turn_control_rationale_219",
       "target": "pynchy_host_orchestrator_messaging_turn_control_run_interactive_agent",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344303,7 +344343,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L93",
+      "source_location": "L94",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344314,7 +344354,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L143",
+      "source_location": "L144",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344325,7 +344365,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L160",
+      "source_location": "L161",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344336,7 +344376,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L173",
+      "source_location": "L174",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344347,7 +344387,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L200",
+      "source_location": "L201",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_messaging_pipeline_finalize_cursor_and_retry",
+      "target": "pynchy_state_in_flight_turns_release_in_flight_turn_claim",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344358,7 +344409,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L210",
+      "source_location": "L215",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344369,7 +344420,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L218",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344380,7 +344431,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L231",
+      "source_location": "L236",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344391,7 +344442,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L240",
+      "source_location": "L252",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344402,7 +344453,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L277",
+      "source_location": "L289",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344413,7 +344464,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L282",
+      "source_location": "L294",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344424,7 +344475,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L293",
+      "source_location": "L305",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344435,7 +344486,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L328",
+      "source_location": "L340",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344446,7 +344497,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L329",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344457,7 +344508,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L357",
+      "source_location": "L369",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344468,7 +344519,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L382",
+      "source_location": "L394",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344479,7 +344530,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L387",
+      "source_location": "L399",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344490,7 +344541,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L410",
+      "source_location": "L422",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344501,7 +344552,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L415",
+      "source_location": "L427",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344512,7 +344563,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L454",
+      "source_location": "L467",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -345018,7 +345069,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L201",
+      "source_location": "L202",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -345029,7 +345080,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L207",
+      "source_location": "L208",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -345040,7 +345091,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L235",
+      "source_location": "L245",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -345051,7 +345102,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/messaging/turn_control.py",
-      "source_location": "L271",
+      "source_location": "L281",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379719,7 +379770,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L125",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379731,7 +379782,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L126",
+      "source_location": "L127",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379743,7 +379794,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L130",
+      "source_location": "L131",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379755,48 +379806,12 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L371",
+      "source_location": "L390",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_reasoning_item",
-      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_text",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L378",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
-      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_command",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L384",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
-      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_id",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L396",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_text",
       "relation": "calls",
       "context": "call",
@@ -379809,13 +379824,49 @@
     },
     {
       "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
+      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_command",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
+      "source_location": "L403",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
+      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_id",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
+      "source_location": "L415",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
+      "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_text",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
+      "source_location": "L416",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_codexcliagentcore_map_command_item",
       "target": "pynchy_agent_agent_runner_src_agent_runner_cores_codex_event_parsing_item_is_error",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L398",
+      "source_location": "L417",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379827,7 +379878,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L406",
+      "source_location": "L425",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379839,7 +379890,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L413",
+      "source_location": "L432",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379851,7 +379902,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L414",
+      "source_location": "L433",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379863,7 +379914,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L415",
+      "source_location": "L434",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379875,7 +379926,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L446",
+      "source_location": "L465",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379887,7 +379938,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L447",
+      "source_location": "L466",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -379899,7 +379950,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/agent/agent_runner/src/agent_runner/cores/codex.py",
-      "source_location": "L448",
+      "source_location": "L467",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -383703,7 +383754,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L263",
+      "source_location": "L275",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -383715,7 +383766,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L378",
+      "source_location": "L390",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -383727,7 +383778,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L389",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -390867,7 +390918,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L177",
+      "source_location": "L178",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -390879,7 +390930,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L256",
+      "source_location": "L268",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -390891,7 +390942,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/messaging/pipeline.py",
-      "source_location": "L466",
+      "source_location": "L479",
       "weight": 1.0,
       "_origin": "ast"
     },

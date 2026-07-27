@@ -77,6 +77,7 @@ class _FinalizeCursorRetryRequest:
     missed_messages: list[types.NewMessage]
     agent_result: str
     had_error: bool
+    missing_terminal_result: bool
     output_sent_to_user: bool
     learning_summary: learning_capture.LearningRunSummary
     s: Settings
@@ -206,7 +207,11 @@ async def _finalize_cursor_and_retry(
         )
         final_cursor = max(request.missed_messages[-1].timestamp, dispatched)
 
-        if clean_failure:
+        if request.missing_terminal_result:
+            # Keep the routed claim and dispatch marker with the durable
+            # checkpoint so recovery resumes this exact occurrence.
+            await release_in_flight_turn_claim(request.turn_id)
+        elif clean_failure:
             await clear_in_flight_turn(request.turn_id)
             # The durable inbound message carries this exact claim token. Retain
             # it so the next in-process attempt can finalize the same FIFO head;
@@ -229,6 +234,13 @@ async def _finalize_cursor_and_retry(
             final_cursor = max(final_cursor, late_dispatched)
             if final_cursor > request.deps.last_agent_timestamp.get(request.chat_jid, ""):
                 await advance_cursor(request.deps, request.chat_jid, final_cursor)
+
+    if request.missing_terminal_result:
+        logger.warning(
+            "Agent turn incomplete, cursor unchanged for retry",
+            group=request.group.name,
+        )
+        return TurnOutcome.RETRY
 
     if clean_failure:
         await request.deps.broadcast_host_message(
@@ -441,6 +453,7 @@ async def process_group_messages(
             missed_messages=missed_messages,
             agent_result=agent_run.agent_result,
             had_error=agent_run.had_error,
+            missing_terminal_result=agent_run.missing_terminal_result,
             output_sent_to_user=agent_run.output_sent_to_user,
             learning_summary=agent_run.learning_summary,
             s=s,

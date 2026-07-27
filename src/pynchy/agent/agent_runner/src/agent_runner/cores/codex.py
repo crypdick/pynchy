@@ -115,6 +115,7 @@ class CodexCLIAgentCore:
         self._proc: asyncio.subprocess.Process | None = None
         self._last_agent_message: str | None = None
         self._last_turn_metadata: dict[str, object] = {}
+        self._turn_completed = False
         self._terminal_error_emitted = False
         self._pending_error: dict[str, object] | None = None
 
@@ -185,6 +186,9 @@ class CodexCLIAgentCore:
 
     async def query(self, prompt: str) -> AsyncIterator[AgentEvent]:
         """Spawn one Codex turn and stream mapped events."""
+        self._last_agent_message = None
+        self._last_turn_metadata = {}
+        self._turn_completed = False
         self._terminal_error_emitted = False
         self._pending_error = None
         _log(f"spawn codex (session: {self._session_id or 'new'})")
@@ -251,6 +255,20 @@ class CodexCLIAgentCore:
             self._terminal_error_emitted = True
             return self._map_error_result(self._pending_error, "error")
 
+        if not self._turn_completed or not self._last_agent_message:
+            _log(f"codex exited rc={return_code} without a terminal agent response")
+            return AgentEvent(
+                type="result",
+                data={
+                    "result": None,
+                    "result_metadata": {
+                        "subtype": "missing_terminal_turn",
+                        "is_error": True,
+                        "session_id": self._session_id,
+                    },
+                },
+            )
+
         is_error = return_code != 0
         result = self._last_agent_message
         if is_error and not result:
@@ -293,6 +311,7 @@ class CodexCLIAgentCore:
 
     def _map_turn_event(self, event_type: str, obj: dict[str, object]) -> list[AgentEvent]:
         if event_type in {"turn.completed", "turn.completed_with_errors"}:
+            self._turn_completed = True
             self._record_turn_metadata(obj)
             self._pending_error = None
             return []
