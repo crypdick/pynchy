@@ -10,6 +10,9 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
     Iterable,
 )
 from dataclasses import replace
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves this constructor annotation at runtime.
+)
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -89,6 +92,8 @@ class DiscordChannel:
         bot_token: str,
         on_message: Callable[[str, NewMessage], None],
         on_chat_metadata: Callable[[str, str, str | None], None],
+        *,
+        audio_cache_dir: Path,
         on_reaction: Callable[[str, str, str, str], None] | None = None,
         on_ask_user_answer: Callable[[str, dict[str, object]], None] | None = None,
         on_approval_decision: Callable[[str, str, str, str], None] | None = None,
@@ -116,7 +121,7 @@ class DiscordChannel:
 
         self.access = DiscordAccess(config)
         self.voice = DiscordVoiceManager(self, speech_synthesizer)
-        self.events = DiscordEvents(self)
+        self.events = DiscordEvents(self, audio_cache_dir)
         self.lifecycle = DiscordLifecycle(self)
 
     @property

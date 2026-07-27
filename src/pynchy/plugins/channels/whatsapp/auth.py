@@ -20,8 +20,6 @@ from neonize.aioze import events as neonize_events
 from neonize.aioze.client import NewAClient
 from neonize.events import ConnectedEv, ConnectFailureEv, LoggedOutEv, PairStatusEv
 
-from pynchy.config import get_settings
-
 
 @dataclass
 class _AuthState:
@@ -47,12 +45,6 @@ def _configure_neonize_event_loop() -> None:
     loop = asyncio.get_running_loop()
     neonize_events.event_global_loop = loop
     neonize_client.event_global_loop = loop
-
-
-def _auth_db_path() -> str:
-    data_dir = get_settings().data_dir
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return str(data_dir / "neonize.db")
 
 
 def _print_already_authenticated() -> None:
@@ -122,7 +114,7 @@ async def _wait_for_auth_completion(client: NewAClient, state: _AuthState) -> in
     return state.exit_code
 
 
-async def authenticate() -> None:
+async def authenticate(auth_db: str) -> None:
     """Authenticate WhatsApp by scanning a QR code.
 
     This is an interactive CLI entry point (``pynchy-whatsapp-auth``): it renders
@@ -131,7 +123,6 @@ async def authenticate() -> None:
     must reach stdout regardless of log configuration.
     """
     _configure_neonize_event_loop()
-    auth_db = _auth_db_path()
     client = NewAClient(auth_db)
 
     if await client.is_logged_in:
@@ -144,9 +135,9 @@ async def authenticate() -> None:
     sys.exit(await _wait_for_auth_completion(client, state))
 
 
-def main() -> None:
+def main(auth_db: str) -> None:
     try:
-        asyncio.run(authenticate())
+        asyncio.run(authenticate(auth_db))
     except KeyboardInterrupt:
         _stdout_line()
         _stdout_line("Authentication cancelled.")
@@ -154,4 +145,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit("Run `uv run pynchy-whatsapp-auth` instead.")

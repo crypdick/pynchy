@@ -17,6 +17,7 @@ def _make_channel(*, on_ask_user_answer: object | None = None) -> SlackChannel:
         bot_token=_fixture_token("xoxb"),
         app_token=_fixture_token("xapp"),
         chat_names=["general"],
+        assistant_name="pynchy",
         allow_create=False,
         on_message=MagicMock(),
         on_chat_metadata=MagicMock(),

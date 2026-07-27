@@ -125,6 +125,7 @@ def _make_channel(
         bot_token=SLACK_BOT_VALUE,
         app_token=SLACK_APP_VALUE,
         chat_names=["general"],
+        assistant_name="pynchy",
         allow_create=False,
         on_message=on_message or MagicMock(),
         on_chat_metadata=on_chat_metadata or MagicMock(),

@@ -13,7 +13,6 @@ from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves the plugin-manager annotation at runtime.
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     SpeechSynthesizer,
@@ -43,9 +42,8 @@ class ChannelPluginContext:
     speech_synthesizer: SpeechSynthesizer | None = None
 
 
-def default_channel_name() -> str | None:
-    """Return the explicitly configured command-center channel."""
-    configured = get_settings().command_center.connection
+def default_channel_name(configured: str | None) -> str | None:
+    """Normalize the explicitly configured command-center channel."""
     if configured:
         return configured.strip()
     return None
@@ -75,9 +73,9 @@ def load_channels(pm: pluggy.PluginManager, context: ChannelPluginContext) -> li
     return []
 
 
-def resolve_default_channel(channels: list[Channel]) -> Channel | None:
+def resolve_default_channel(channels: list[Channel], configured_name: str | None) -> Channel | None:
     """Resolve default channel by name from the loaded set."""
-    wanted = default_channel_name()
+    wanted = default_channel_name(configured_name)
     if wanted is None or not channels:
         return None
 

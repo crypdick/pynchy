@@ -7,6 +7,9 @@ import sys
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves this plugin factory annotation at runtime.
+)
 from typing import cast
 
 import pluggy
@@ -79,6 +82,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
     on_approval_decision: Callable[[str, str, str, str], None] | None,
     workspaces: Callable[[], dict[str, WorkspaceProfile]] | None,
     speech_synthesizer: SpeechSynthesizer | None,
+    audio_cache_dir: Path,
 ) -> DiscordChannel | None:
     """Build one DiscordChannel or log why that connection was skipped."""
     connection_name = name
@@ -110,6 +114,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory keeps channel wiri
         on_approval_decision=on_approval_decision,
         workspaces=workspaces,
         speech_synthesizer=speech_synthesizer,
+        audio_cache_dir=audio_cache_dir,
     )
 
 
@@ -153,6 +158,7 @@ class DiscordChannelPlugin:
                 on_approval_decision=on_approval_decision,
                 workspaces=workspaces,
                 speech_synthesizer=speech_synthesizer,
+                audio_cache_dir=settings.data_dir / "media" / "discord",
             )
             if channel is not None:
                 channels.append(channel)

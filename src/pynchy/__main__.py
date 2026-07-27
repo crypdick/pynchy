@@ -77,6 +77,20 @@ def _run() -> None:
     asyncio.run(app.run())
 
 
+def whatsapp_auth() -> None:
+    """Run the WhatsApp QR login with the configured credential database."""
+    from pynchy.config import (  # noqa: PLC0415, RUF100 - CLI composition resolves the auth database path.
+        get_settings,
+    )
+    from pynchy.plugins.channels.whatsapp.auth import (  # noqa: PLC0415, RUF100 - QR support is only needed for this command.
+        main as authenticate,
+    )
+
+    data_dir = get_settings().data_dir
+    data_dir.mkdir(parents=True, exist_ok=True)
+    authenticate(str(data_dir / "neonize.db"))
+
+
 def _control_client_target(
     host: str | None,
     socket_path: Path | None,

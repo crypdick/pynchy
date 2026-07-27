@@ -118,6 +118,7 @@ def _build_channel(  # noqa: PLR0913, RUF100 - plugin factory mirrors Slack conn
         bot_token=bot_token,
         app_token=app_token,
         chat_names=chat_names,
+        assistant_name=settings.agent.name,
         allow_create=settings.command_center.connection == connection_name,
         on_message=on_message,
         on_chat_metadata=on_metadata,

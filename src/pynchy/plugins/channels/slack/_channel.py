@@ -78,6 +78,7 @@ class SlackChannel:
         bot_token: str,
         app_token: str,
         chat_names: list[str],
+        assistant_name: str,
         *,
         allow_create: bool,
         on_message: Callable[[str, NewMessage], None],
@@ -93,6 +94,7 @@ class SlackChannel:
         self._bot_token = bot_token
         self._app_token = app_token
         self._chat_names = {normalize_chat_name(name) for name in chat_names}
+        self.assistant_name = assistant_name
         self._allow_create = allow_create
         self._chat_name_to_id: dict[str, str] = {}
         self._allowed_channel_ids: set[str] = set()

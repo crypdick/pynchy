@@ -159,6 +159,7 @@ def test_discord_plugin_uses_flat_connection_name_and_type() -> None:
         on_approval_decision=context.on_approval_decision_callback,
         workspaces=context.workspaces,
         speech_synthesizer=speech_synthesizer,
+        audio_cache_dir=settings.data_dir / "media" / "discord",
     )
     assert channel_class.call_args.kwargs["bot_token"] == discord_token
 
