@@ -14,6 +14,10 @@ from typing import Any, cast
 import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
 
 from pynchy.config import get_settings
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves scheduled-binding annotations.
+    Conversation,
+    ConversationId,
+)
 from pynchy.event_bus import Event, EventBus
 from pynchy.host.orchestrator import (
     agent_runner,
@@ -68,6 +72,7 @@ from pynchy.state import (
     get_all_chats,
     get_all_sessions,
     get_all_workspace_profiles,
+    get_conversation,
     get_router_state,
     get_work_item_execution_for_task,
     save_router_state_batch,
@@ -75,6 +80,7 @@ from pynchy.state import (
     set_workspace_profile,
     store_message,
     store_message_direct,
+    update_task,
 )
 from pynchy.types import (
     Channel,
@@ -372,6 +378,18 @@ class PynchyApp(ThreadRouting):
             status=execution.status.value,
             has_explicit_outcome=execution.status.is_explicit_lifecycle_outcome,
         )
+
+    async def get_scheduled_conversation(
+        self, conversation_id: ConversationId
+    ) -> Conversation | None:
+        """Load the durable conversation needed to bind a scheduled task."""
+        return await get_conversation(conversation_id)
+
+    async def persist_scheduled_task_updates(
+        self, task_id: str, updates: dict[str, object]
+    ) -> None:
+        """Persist the binding use case's changed scheduled-task fields."""
+        await update_task(task_id, updates)
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_system_notice(chat_jid, text)
