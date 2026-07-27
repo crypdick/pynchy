@@ -308,6 +308,9 @@ class NullIpcDeps:
 
     async def create_periodic_agent(self, request) -> None: ...
 
+    async def get_scheduled_work_status(self, *, source_group, is_admin) -> tuple[list, list]:
+        return [], []
+
 
 class NullChannel:
     """No-op stand-in for every method on ``Channel``.

@@ -45,6 +45,7 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     HttpServerDeps,
 )
+from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     StatusDeps,
 )
@@ -56,13 +57,15 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_deploy_workflow,
     start_scheduled_agent_task_workflow,
 )
+from pynchy.host.orchestrator.temporal.status import get_temporal_orchestration_states
 from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
-from pynchy.state import create_task
+from pynchy.state import create_task, get_all_host_jobs, get_all_tasks, get_task_run_logs
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
+    HostJob,
     NewMessage,
     ScheduledTask,
     SessionId,
@@ -110,6 +113,26 @@ def _command_center_channel(
 
 def _valid_jid(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+async def _scheduled_work_status(
+    source_group: str,
+    *,
+    is_admin: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    async def visible_tasks() -> list[ScheduledTask]:
+        tasks = await get_all_tasks()
+        return tasks if is_admin else [task for task in tasks if task.group_folder == source_group]
+
+    async def visible_host_jobs() -> list[HostJob]:
+        return await get_all_host_jobs() if is_admin else []
+
+    return await collect_scheduled_work(
+        visible_tasks,
+        visible_host_jobs,
+        lambda task_id: get_task_run_logs(task_id, limit=5),
+        get_temporal_orchestration_states,
+    )
 
 
 def make_scheduler_deps(app: PynchyApp) -> SchedulerDependencies:
@@ -385,6 +408,17 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
                 schedule=request.schedule,
                 task_id=task_id,
                 jid=jid,
+            )
+
+        async def get_scheduled_work_status(
+            self,
+            *,
+            source_group: str,
+            is_admin: bool,
+        ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            return await _scheduled_work_status(
+                source_group,
+                is_admin=is_admin,
             )
 
         async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:

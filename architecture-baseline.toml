@@ -217,30 +217,6 @@ imports = ["pynchy.state"]
 reason = "pynchy.host.container_manager.ipc.handlers_source_health still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_task_status"
-target_component = "application"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.orchestrator.scheduled_work_status"]
-reason = "pynchy.host.container_manager.ipc.handlers_task_status still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_task_status"
-target_component = "state_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.state"]
-reason = "pynchy.host.container_manager.ipc.handlers_task_status still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_task_status"
-target_component = "temporal_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.orchestrator.temporal.status"]
-reason = "pynchy.host.container_manager.ipc.handlers_task_status still has a runtime-import dependency on temporal_adapter; Use an application scheduling port; keep Temporal workflow and activity implementations behind it."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_tasks"
 target_component = "state_adapter"
 kind = "runtime-import"
