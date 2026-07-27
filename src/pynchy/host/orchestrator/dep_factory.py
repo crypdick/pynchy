@@ -48,6 +48,7 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_deploy_workflow,
     start_scheduled_agent_task_workflow,
 )
+from pynchy.logger import logger
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
@@ -115,6 +116,34 @@ async def _start_temporal_deploy(
             previous_sha=previous_sha,
             rebuild=rebuild,
             reason="dependency_adapter",
+        )
+    )
+
+
+async def _request_ipc_deploy(
+    *,
+    workspaces: dict[str, WorkspaceProfile],
+    chat_jid: str | None,
+    commit_sha: str,
+    rebuild: bool,
+    resume_prompt: str,
+) -> None:
+    """Start an agent-requested deploy through the configured notification target."""
+    target_jid = chat_jid or resolve_admin_notification_jid(
+        workspaces, get_settings().notifications.admin_workspace
+    )
+    if not target_jid:
+        logger.error("Deploy request missing chatJid and no notification target resolved")
+        return
+    await start_deploy_workflow(
+        DeployRequest(
+            chat_jid=target_jid,
+            commit_sha=commit_sha,
+            config_hash=get_deploy_config_hash(),
+            previous_sha=commit_sha,
+            resume_prompt=resume_prompt,
+            rebuild=rebuild,
+            reason="ipc",
         )
     )
 
@@ -230,6 +259,22 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
 
         def connection_statuses(self) -> dict[str, bool]:
             return app.connection_runtime_owner.status()
+
+        async def request_deploy(
+            self,
+            *,
+            chat_jid: str | None,
+            commit_sha: str,
+            rebuild: bool,
+            resume_prompt: str,
+        ) -> None:
+            await _request_ipc_deploy(
+                workspaces=app.workspaces,
+                chat_jid=chat_jid,
+                commit_sha=commit_sha,
+                rebuild=rebuild,
+                resume_prompt=resume_prompt,
+            )
 
         async def trigger_deploy(self, previous_sha: str, *, rebuild: bool = True) -> None:
             await _start_temporal_deploy(
