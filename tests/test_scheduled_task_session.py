@@ -173,7 +173,8 @@ class TestScheduledTaskUsesSession:
 
         mock_cs.assert_awaited_once()
         _, kwargs = mock_cs.call_args
-        assert kwargs.get("idle_timeout_override") > 0
+        assert kwargs["idle_timeout"] > 0
+        assert kwargs["data_dir"] == self.deps.agent_execution_runtime.data_dir
 
     @pytest.mark.asyncio
     async def test_resumes_a_persisted_provider_session_when_spawning_worker(self):
