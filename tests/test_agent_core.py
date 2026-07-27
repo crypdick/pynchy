@@ -16,7 +16,8 @@ if container_path.exists():
     sys.path.insert(0, str(container_path))
 
 try:
-    from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
+    from agent_runner.core import AgentCore, AgentCoreConfig
+    from agent_runner.events import ResultEvent, ResultMetadata, TextEvent, ToolUseEvent
     from agent_runner.hooks import AGNOSTIC_TO_CLAUDE, CLAUDE_HOOK_MAP, HookEvent
     from agent_runner.registry import create_agent_core
 
@@ -66,27 +67,26 @@ class TestAgentCoreProtocol:
         assert config.extra == {}
 
     def test_agent_event_creation(self):
-        """Test creating AgentEvent with different types."""
+        """Test creating the typed agent-event variants."""
         # Text event
-        text_event = AgentEvent(type="text", data={"text": "Hello"})
+        text_event = TextEvent(text="Hello")
         assert text_event.type == "text"
-        assert text_event.data["text"] == "Hello"
+        assert text_event.text == "Hello"
 
         # Tool use event
-        tool_event = AgentEvent(
-            type="tool_use",
-            data={"tool_name": "Read", "tool_input": {"file_path": "/test.txt"}},
-        )
+        tool_event = ToolUseEvent(tool_name="Read", tool_input={"file_path": "/test.txt"})
         assert tool_event.type == "tool_use"
-        assert tool_event.data["tool_name"] == "Read"
+        assert tool_event.tool_name == "Read"
 
         # Result event
-        result_event = AgentEvent(
-            type="result",
-            data={"result": "Task completed", "result_metadata": {"duration_ms": 1000}},
+        result_event = ResultEvent(
+            result="Task completed",
+            result_metadata=ResultMetadata(
+                subtype="result", is_error=False, extra={"duration_ms": 1000}
+            ),
         )
         assert result_event.type == "result"
-        assert result_event.data["result"] == "Task completed"
+        assert result_event.result == "Task completed"
 
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")

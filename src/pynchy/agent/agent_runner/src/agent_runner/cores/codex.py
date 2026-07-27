@@ -17,7 +17,15 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.events import (
+    ResultEvent,
+    ResultMetadata,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 
 from ._codex_config import (
     DEFAULT_CODEX_SANDBOX_MODE,
@@ -36,6 +44,9 @@ from ._codex_event_parsing import (
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from agent_runner.core import AgentCoreConfig
+    from agent_runner.events import AgentEvent
 
 _STREAM_LINE_LIMIT = 32 * 1024 * 1024
 _CODEX_SESSION_PREFIX = "codex:"
@@ -197,7 +208,7 @@ class CodexCLIAgentCore:
 
         saw_result = False
         async for event in self._stream_events(proc):
-            if event.type == "result":
+            if isinstance(event, ResultEvent):
                 saw_result = True
             yield event
 
@@ -257,33 +268,27 @@ class CodexCLIAgentCore:
 
         if not self._turn_completed or not self._last_agent_message:
             _log(f"codex exited rc={return_code} without a terminal agent response")
-            return AgentEvent(
-                type="result",
-                data={
-                    "result": None,
-                    "result_metadata": {
-                        "subtype": "missing_terminal_turn",
-                        "is_error": True,
-                        "session_id": self._session_id,
-                    },
-                },
+            return ResultEvent(
+                result=None,
+                result_metadata=ResultMetadata(
+                    subtype="missing_terminal_turn",
+                    is_error=True,
+                    session_id=self._session_id,
+                ),
             )
 
         is_error = return_code != 0
         result = self._last_agent_message
         if is_error and not result:
             result = f"codex CLI exited (code {return_code}). {stderr_text[:500]}"
-        return AgentEvent(
-            type="result",
-            data={
-                "result": result,
-                "result_metadata": {
-                    "subtype": "error" if is_error else "success",
-                    "is_error": is_error,
-                    "session_id": self._session_id,
-                    **self._last_turn_metadata,
-                },
-            },
+        return ResultEvent(
+            result=result,
+            result_metadata=ResultMetadata(
+                subtype="error" if is_error else "success",
+                is_error=is_error,
+                session_id=self._session_id,
+                extra=self._last_turn_metadata,
+            ),
         )
 
     def map_stream_event(self, obj: dict[str, object]) -> list[AgentEvent]:
@@ -338,12 +343,7 @@ class CodexCLIAgentCore:
         system_data = dict(obj)
         if self._session_id:
             system_data["session_id"] = self._session_id
-        return [
-            AgentEvent(
-                type="system",
-                data={"system_subtype": "thread.started", "system_data": system_data},
-            )
-        ]
+        return [SystemEvent(system_subtype="thread.started", system_data=system_data)]
 
     def _record_turn_metadata(self, obj: dict[str, object]) -> None:
         self._last_turn_metadata = {
@@ -354,16 +354,11 @@ class CodexCLIAgentCore:
         err = obj.get("error") if isinstance(obj.get("error"), dict) else {}
         message = err.get("message") or obj.get("message") or "Codex turn failed"
         subtype = err.get("code") or obj.get("code") or fallback_subtype
-        return AgentEvent(
-            type="result",
-            data={
-                "result": str(message),
-                "result_metadata": {
-                    "subtype": str(subtype),
-                    "is_error": True,
-                    "session_id": self._session_id,
-                },
-            },
+        return ResultEvent(
+            result=str(message),
+            result_metadata=ResultMetadata(
+                subtype=str(subtype), is_error=True, session_id=self._session_id
+            ),
         )
 
     def _map_item_event(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
@@ -391,48 +386,34 @@ class CodexCLIAgentCore:
         if not text:
             return []
         self._last_agent_message = text
-        return [AgentEvent(type="text", data={"text": text})]
+        return [TextEvent(text=text)]
 
     def _map_reasoning_item(self, item: dict[str, object]) -> list[AgentEvent]:
         text = item_text(item)
         if not text:
             return []
-        return [AgentEvent(type="thinking", data={"thinking": text})]
+        return [ThinkingEvent(thinking=text)]
 
     def _map_command_item(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
         command = item_command(item)
         if event_type == "item.started":
-            return [
-                AgentEvent(
-                    type="tool_use",
-                    data={"tool_name": "Bash", "tool_input": {"command": command}},
-                )
-            ]
+            return [ToolUseEvent(tool_name="Bash", tool_input={"command": command})]
         return [
-            AgentEvent(
-                type="tool_result",
-                data={
-                    "tool_result_id": item_id(item),
-                    "tool_result_content": item_text(item),
-                    "tool_result_is_error": item_is_error(item),
-                },
+            ToolResultEvent(
+                tool_result_id=item_id(item),
+                tool_result_content=item_text(item),
+                tool_result_is_error=item_is_error(item),
             )
         ]
 
     def _map_file_change_item(self, event_type: str, item: dict[str, object]) -> list[AgentEvent]:
-        tool_use = AgentEvent(
-            type="tool_use",
-            data={"tool_name": "apply_patch", "tool_input": file_change_input(item)},
-        )
+        tool_use = ToolUseEvent(tool_name="apply_patch", tool_input=file_change_input(item))
         if event_type == "item.started":
             return [tool_use]
-        tool_result = AgentEvent(
-            type="tool_result",
-            data={
-                "tool_result_id": item_id(item),
-                "tool_result_content": file_change_result(item),
-                "tool_result_is_error": item_is_error(item),
-            },
+        tool_result = ToolResultEvent(
+            tool_result_id=item_id(item),
+            tool_result_content=file_change_result(item),
+            tool_result_is_error=item_is_error(item),
         )
         # `codex exec --json` emits successful file changes only as a completed
         # item, so synthesize the missing start before its result. A future
@@ -452,20 +433,12 @@ class CodexCLIAgentCore:
         )
         tool_input = self._tool_input(item)
         if event_type == "item.started":
-            return [
-                AgentEvent(
-                    type="tool_use",
-                    data={"tool_name": str(name), "tool_input": tool_input},
-                )
-            ]
+            return [ToolUseEvent(tool_name=str(name), tool_input=tool_input)]
         return [
-            AgentEvent(
-                type="tool_result",
-                data={
-                    "tool_result_id": item_id(item),
-                    "tool_result_content": item_text(item),
-                    "tool_result_is_error": item_is_error(item),
-                },
+            ToolResultEvent(
+                tool_result_id=item_id(item),
+                tool_result_content=item_text(item),
+                tool_result_is_error=item_is_error(item),
             )
         ]
 

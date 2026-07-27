@@ -19,8 +19,16 @@ if container_path.exists():
     sys.path.insert(0, str(container_path))
 
 try:
-    from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
+    from agent_runner.core import AgentCore, AgentCoreConfig
     from agent_runner.cores.openai import build_mcp_server, extract_tool_call
+    from agent_runner.events import (
+        ResultEvent,
+        ResultMetadata,
+        TextEvent,
+        ThinkingEvent,
+        ToolResultEvent,
+        ToolUseEvent,
+    )
     from agent_runner.registry import create_agent_core
 
     AGENT_RUNNER_AVAILABLE = True
@@ -167,55 +175,44 @@ class TestEventMapping:
     """Test that OpenAI stream events map to correct AgentEvent types."""
 
     def test_tool_call_event(self):
-        """tool_call_item maps to AgentEvent(type='tool_use')."""
+        """tool_call_item maps to the typed tool-use event."""
         # Simulate what the core does when processing a tool_call_item
-        event = AgentEvent(
-            type="tool_use",
-            data={"tool_name": "shell", "tool_input": {"command": "ls"}},
-        )
+        event = ToolUseEvent(tool_name="shell", tool_input={"command": "ls"})
         assert event.type == "tool_use"
-        assert event.data["tool_name"] == "shell"
+        assert event.tool_name == "shell"
 
     def test_tool_output_event(self):
-        """tool_call_output_item maps to AgentEvent(type='tool_result')."""
-        event = AgentEvent(
-            type="tool_result",
-            data={
-                "tool_result_id": "call_123",
-                "tool_result_content": "file1.txt\nfile2.txt",
-                "tool_result_is_error": False,
-            },
+        """tool_call_output_item maps to the typed tool-result event."""
+        event = ToolResultEvent(
+            tool_result_id="call_123",
+            tool_result_content="file1.txt\nfile2.txt",
+            tool_result_is_error=False,
         )
         assert event.type == "tool_result"
-        assert event.data["tool_result_content"] == "file1.txt\nfile2.txt"
-        assert event.data["tool_result_is_error"] is False
+        assert event.tool_result_content == "file1.txt\nfile2.txt"
+        assert event.tool_result_is_error is False
 
     def test_text_event(self):
-        """message_output_item maps to AgentEvent(type='text')."""
-        event = AgentEvent(type="text", data={"text": "Here are the files"})
+        """message_output_item maps to the typed text event."""
+        event = TextEvent(text="Here are the files")
         assert event.type == "text"
 
     def test_thinking_event(self):
-        """reasoning_item maps to AgentEvent(type='thinking')."""
-        event = AgentEvent(type="thinking", data={"thinking": "I need to list files"})
+        """reasoning_item maps to the typed thinking event."""
+        event = ThinkingEvent(thinking="I need to list files")
         assert event.type == "thinking"
 
     def test_result_event(self):
-        """Final output maps to AgentEvent(type='result') with metadata."""
-        event = AgentEvent(
-            type="result",
-            data={
-                "result": "Done! I listed the files.",
-                "result_metadata": {
-                    "subtype": "result",
-                    "session_id": "resp_xyz789",
-                    "is_error": False,
-                },
-            },
+        """Final output maps to the typed result event with metadata."""
+        event = ResultEvent(
+            result="Done! I listed the files.",
+            result_metadata=ResultMetadata(
+                subtype="result", session_id="resp_xyz789", is_error=False
+            ),
         )
         assert event.type == "result"
-        assert event.data["result"] == "Done! I listed the files."
-        assert event.data["result_metadata"]["session_id"] == "resp_xyz789"
+        assert event.result == "Done! I listed the files."
+        assert event.result_metadata.session_id == "resp_xyz789"
 
 
 @pytest.mark.skipif(not AGENT_RUNNER_AVAILABLE, reason="agent_runner module not available")

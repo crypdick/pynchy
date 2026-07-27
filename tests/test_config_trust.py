@@ -5,6 +5,8 @@ from pydantic import TypeAdapter, ValidationError
 
 from pynchy.config.models import (
     BuiltinTool,
+    LinearTool,
+    MatrixConnectionConfig,
     McpTool,
     ToolConfig,
 )
@@ -48,6 +50,16 @@ def test_tool_trust_forbidden():
         }
     )
     assert cfg.public_source == "forbidden"
+
+
+def test_builtin_integration_schemas_parse_at_the_config_boundary() -> None:
+    linear = TypeAdapter(ToolConfig).validate_python({"type": "linear"})
+    matrix = validate_settings_mapping(
+        {"connections": {"matrix": {"type": "matrix", "expected_user_id": "@owner:test"}}}
+    ).connections["matrix"]
+
+    assert isinstance(linear, LinearTool)
+    assert isinstance(matrix, MatrixConnectionConfig)
 
 
 def test_tool_trust_invalid_value():

@@ -51,10 +51,8 @@ from pynchy.plugins.integrations.matrix_route_registry import (
     get_active_matrix_route,
 )
 from pynchy.plugins.integrations.matrix_route_resolution import resolve_matrix_routes
-from pynchy.plugins.integrations.matrix_routing_config import (
-    MatrixConnectionConfig,
-)
 from pynchy.state import get_conversation_control_binding
+from pynchy.types import is_matrix_connection
 
 hookimpl = pluggy.HookimplMarker("pynchy")
 _MAX_LIST_LIMIT = 250
@@ -324,7 +322,7 @@ class MatrixGatewayPlugin:
                 poll_interval_seconds=connection.poll_interval_seconds,
             )
             for connection_name, connection in settings.connections.items()
-            if isinstance(connection, MatrixConnectionConfig)
+            if is_matrix_connection(connection)
             and any(route.connection_name == connection_name for route in routes)
         )
 

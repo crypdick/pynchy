@@ -37,7 +37,7 @@ Example TOML::
     transport = "streamable_http"
     auth_value_env = "SOME_API_KEY"
 
-    # Host script MCP (subprocess managed by pynchy):
+    # Host script MCP (HTTP subprocess managed by Pynchy):
     [tools.my_custom_tool]
     type = "mcp"
 
@@ -46,6 +46,17 @@ Example TOML::
     command = "uv"
     args = ["run", "scripts/my-tool.py"]
     port = 8080
+    transport = "streamable_http"
+
+    # Host stdio MCP (wrapped in a loopback Streamable HTTP bridge):
+    [tools.my_stdio_tool]
+    type = "mcp"
+
+    [tools.my_stdio_tool.mcp]
+    runtime = "stdio"
+    command = "npx"
+    args = ["-y", "some-stdio-mcp"]
+    port = 8081
     transport = "streamable_http"
 """
 
@@ -59,6 +70,9 @@ _DOCKER_IMAGE_REQUIRED = "Docker MCP servers require 'image'"
 _DOCKER_PORT_REQUIRED = "Docker MCP servers require 'port'"
 _SCRIPT_COMMAND_REQUIRED = "Script MCP servers require 'command'"
 _SCRIPT_PORT_REQUIRED = "Script MCP servers require 'port'"
+_STDIO_COMMAND_REQUIRED = "Stdio MCP servers require 'command'"
+_STDIO_PORT_REQUIRED = "Stdio MCP servers require 'port'"
+_STDIO_TRANSPORT_REQUIRED = "Stdio MCP servers require HTTP transport"
 _URL_REQUIRED = "URL MCP servers require 'url'"
 
 
@@ -67,7 +81,7 @@ class McpServerConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    type: Literal["docker", "url", "script"]
+    type: Literal["docker", "url", "script", "stdio"]
 
     # Docker fields
     image: str | None = None
@@ -78,10 +92,10 @@ class McpServerConfig(BaseModel):
     # Additional ports to publish beyond the primary MCP port (e.g., JupyterLab on 8888).
     extra_ports: list[int] = []
 
-    # Script fields
-    command: str | None = None  # executable to run (e.g., "uv") — required for type="script"
+    # Host-process fields
+    command: str | None = None  # executable to run (e.g., "uv") — required for script/stdio
 
-    # Shared by docker and script server configs.
+    # Shared by Docker and host-process server configs.
     args: list[str] = []
     port: int | None = None
     idle_timeout: int = 600  # seconds; 0 = never stop
@@ -143,4 +157,11 @@ class McpServerConfig(BaseModel):
                 raise ValueError(_SCRIPT_COMMAND_REQUIRED)
             if self.port is None:
                 raise ValueError(_SCRIPT_PORT_REQUIRED)
+        elif self.type == "stdio":
+            if not self.command:
+                raise ValueError(_STDIO_COMMAND_REQUIRED)
+            if self.port is None:
+                raise ValueError(_STDIO_PORT_REQUIRED)
+            if self.transport not in ("http", "streamable_http"):
+                raise ValueError(_STDIO_TRANSPORT_REQUIRED)
         return self

@@ -14,7 +14,8 @@ import os
 import sys
 from urllib.parse import urlparse, urlunparse
 
-from agent_runner.core import AgentCore, AgentCoreConfig, AgentEvent
+from agent_runner.core import AgentCore, AgentCoreConfig
+from agent_runner.events import AgentEvent, SystemEvent, validate_agent_stream
 from agent_runner.main import _direct_mcp_server_entry, build_agent_prompt, event_to_output
 from agent_runner.models import ContainerInput, ContainerOutput
 from agent_runner.registry import create_agent_core
@@ -107,8 +108,8 @@ def _write_error(
 
 
 def _event_session_id(event: AgentEvent, fallback: str | None) -> str | None:
-    if event.type == "system":
-        session_id = (event.data.get("system_data") or {}).get("session_id")
+    if isinstance(event, SystemEvent):
+        session_id = event.system_data.get("session_id")
         if isinstance(session_id, str) and session_id:
             return session_id
     return fallback
@@ -122,7 +123,7 @@ async def _run_query(
     query_id: str | None,
 ) -> str | None:
     current_session_id = session_id
-    async for event in core.query(prompt):
+    async for event in validate_agent_stream(core.query(prompt)):
         current_session_id = _event_session_id(event, current_session_id)
         if core.session_id:
             current_session_id = core.session_id

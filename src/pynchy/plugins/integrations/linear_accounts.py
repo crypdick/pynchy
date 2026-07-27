@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 
 from pynchy.config import Settings, get_settings
-from pynchy.plugins.integrations.linear_config import LinearTool
+from pynchy.types import LinearAccountConfig, is_linear_account_config
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,7 @@ class LinearAccount:
     """A Linear credential and its data-flow declarations."""
 
     name: str
-    config: LinearTool
+    config: LinearAccountConfig
 
     @property
     def api_key(self) -> str | None:
@@ -33,7 +33,7 @@ def configured_linear_accounts(settings: Settings | None = None) -> tuple[Linear
     return tuple(
         LinearAccount(name, tool)
         for name, tool in sorted(current.tools.items())
-        if isinstance(tool, LinearTool)
+        if is_linear_account_config(tool)
     )
 
 
@@ -41,7 +41,7 @@ def linear_account(name: str, settings: Settings | None = None) -> LinearAccount
     """Resolve an exact configured Linear account name."""
     current = settings or get_settings()
     tool = current.tools.get(name)
-    if not isinstance(tool, LinearTool):
+    if not is_linear_account_config(tool):
         raise TypeError(f"Linear account tool is not configured: {name}")
     return LinearAccount(name, tool)
 
@@ -58,7 +58,7 @@ def linear_account_for_workspace(
     accounts = tuple(
         LinearAccount(name, tool)
         for name in resolved.tools
-        if isinstance((tool := current.tools.get(name)), LinearTool)
+        if is_linear_account_config(tool := current.tools.get(name))
     )
     if len(accounts) > 1:
         names = ", ".join(account.name for account in accounts)

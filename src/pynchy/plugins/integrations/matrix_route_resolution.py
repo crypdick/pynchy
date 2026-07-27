@@ -12,11 +12,12 @@ from pynchy.capability_policy import (
 from pynchy.config.settings import (  # noqa: TC001, RUF100 - beartype resolves route settings.
     Settings,
 )
-from pynchy.plugins.integrations.matrix_routing_config import (
+from pynchy.types import (
     MatrixActivation,
-    MatrixConnectionConfig,
-    MatrixEndpointConfig,
+    MatrixConnection,
+    MatrixEndpoint,
     MatrixOutbound,
+    is_matrix_connection,
 )
 
 
@@ -30,9 +31,9 @@ class MatrixEndpointRef:
 class ResolvedMatrixRoute:
     name: str
     connection_name: str
-    connection: MatrixConnectionConfig
+    connection: MatrixConnection
     endpoint_name: str
-    endpoint: MatrixEndpointConfig
+    endpoint: MatrixEndpoint
     control_title: str
     workspace: str
     activation: MatrixActivation
@@ -60,7 +61,7 @@ def resolve_matrix_routes(settings: Settings) -> tuple[ResolvedMatrixRoute, ...]
         if source is None:
             continue
         raw_connection = settings.connections[source.connection]
-        if not isinstance(raw_connection, MatrixConnectionConfig):
+        if not is_matrix_connection(raw_connection):
             raise TypeError(f"Matrix route {route_name!r} resolved a non-Matrix connection")
         connection = raw_connection
         endpoint = connection.chat[source.endpoint]

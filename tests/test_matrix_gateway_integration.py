@@ -13,6 +13,10 @@ import pytest
 from conftest import make_settings
 
 from pynchy.capabilities import ApprovalTrigger, HostActionAccess
+from pynchy.config.models import (
+    MatrixConnectionConfig,
+    MatrixEndpointConfig,
+)
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.conversation.models import ConversationId
 from pynchy.plugins import get_plugin_manager
@@ -33,10 +37,6 @@ from pynchy.plugins.integrations.matrix_route_registry import (
 from pynchy.plugins.integrations.matrix_route_resolution import (
     ResolvedMatrixRoute,
     resolve_matrix_routes,
-)
-from pynchy.plugins.integrations.matrix_routing_config import (
-    MatrixConnectionConfig,
-    MatrixEndpointConfig,
 )
 from pynchy.types import ChatJid
 

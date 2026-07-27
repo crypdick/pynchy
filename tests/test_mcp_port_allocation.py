@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - test fixtures construct completed Docker command results.
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ from pynchy.host.container_manager.gateway_litellm import LiteLLMGateway
 from pynchy.host.container_manager.mcp.lifecycle import (
     build_env_args,
     ensure_docker_running,
+    ensure_stdio_running,
     expand_arg_placeholders,
 )
 from pynchy.host.container_manager.mcp.manager import McpManager
@@ -83,6 +85,18 @@ class TestMcpServerConfig:
 
         assert "-e" in args
         assert "STATIC=value" in args
+
+    def test_stdio_server_requires_http_transport(self):
+        config = McpServerConfig(
+            type="stdio",
+            command="npx",
+            port=8000,
+            transport="streamable_http",
+        )
+
+        assert config.type == "stdio"
+        with pytest.raises(ValueError, match="Stdio MCP servers require HTTP transport"):
+            McpServerConfig(type="stdio", command="npx", port=8000)
 
 
 class TestDockerLifecycleHelpers:
@@ -257,6 +271,67 @@ class TestDockerLifecycleHelpers:
             "pynchy-mcp-browser",
         )
         stop_container_mock.assert_awaited_once_with("pynchy-mcp-browser", stop_timeout_seconds=1)
+
+
+class TestStdioLifecycle:
+    @pytest.mark.asyncio
+    async def test_ensure_stdio_runs_loopback_bridge_with_filtered_environment(self, monkeypatch):
+        instance = McpInstance(
+            server_name="android",
+            server_config=McpServerConfig(
+                type="stdio",
+                command="npx",
+                args=["-y", "scrcpy-mcp", "--port", "{port}"],
+                port=8932,
+                transport="streamable_http",
+                env={"ADB_PATH": "/opt/homebrew/bin/adb"},
+            ),
+            kwargs={},
+            instance_id="android",
+            container_name="unused",
+            port=8932,
+        )
+        start_process = MagicMock(return_value=None)
+        wait_healthy_mock = AsyncMock()
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.setenv("SERVICE_TOKEN", "not-forwarded")
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle._start_script_process",
+            start_process,
+        )
+        monkeypatch.setattr(
+            "pynchy.host.container_manager.mcp.lifecycle.wait_healthy",
+            wait_healthy_mock,
+        )
+
+        await ensure_stdio_running(instance)
+
+        command, environment = start_process.call_args.args
+        assert command == [
+            sys.executable,
+            "-m",
+            "pynchy.host.container_manager.mcp.stdio_bridge",
+            "--port",
+            "8932",
+            "--",
+            "npx",
+            "-y",
+            "scrcpy-mcp",
+            "--port",
+            "8932",
+        ]
+        assert environment["ADB_PATH"] == "/opt/homebrew/bin/adb"
+        assert environment["PATH"] == "/usr/bin"
+        assert "SERVICE_TOKEN" not in environment
+        assert wait_healthy_mock.await_args.args == (
+            HealthCheckRequest(
+                container_name="android",
+                url="http://localhost:8932",
+                any_non_5xx=True,
+                process=None,
+                health_timeout_seconds=5.0,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------

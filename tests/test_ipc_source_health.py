@@ -10,11 +10,10 @@ from typing import TYPE_CHECKING
 import pytest
 from conftest import NullChannel, NullIpcDeps, make_settings
 
-from pynchy.config.models import WhatsAppConnectionConfig
+from pynchy.config.models import MatrixConnectionConfig, WhatsAppConnectionConfig
 from pynchy.config.source_health import MessagingSourceHealthConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import request_requires_idempotency_ledger
-from pynchy.plugins.integrations.matrix_routing_config import MatrixConnectionConfig
 from pynchy.state import init_test_database, store_message_direct
 from pynchy.types import WorkspaceProfile
 

@@ -1,20 +1,9 @@
-"""Configuration sub-models — each maps to a layered ``pynchy.toml`` section.
-
-allow: file-length - task adds a core model; splitting schema is out of scope.
-
-Extracted from :mod:`pynchy.config` to keep the root Settings class
-focused on composition and validation.  Follows the same pattern as
-:mod:`pynchy.config.mcp`.
-
-ARCHITECTURE NOTE: Plugin-specific config models belong in the plugin's own
-source file, not here. This file should only contain models for pynchy core
-settings (agent, container, gateway, connections, etc.). Built-in plugins
-(CalDAV, Slack) keep their models here as an exception; they ideally belong
-in their respective plugin files.
-"""
+"""Configuration sub-models for layered ``pynchy.toml`` settings."""
 
 from __future__ import annotations
 
+# allow: file-length - Pydantic's discriminated settings schemas share validators and aliases here.
+# Adapter code uses semantic contracts from ``pynchy.types``, not these Pydantic models.
 import posixpath
 import re
 from pathlib import Path
@@ -28,8 +17,10 @@ from pynchy.config.workspace_layout import (
     WorkspaceScopeConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
     WorkspaceThreadConfig,  # noqa: TC001, RUF100 - Pydantic resolves workspace annotations at runtime.
 )
-from pynchy.plugins.integrations.linear_config import LinearTool
-from pynchy.plugins.integrations.matrix_routing_config import MatrixConnectionConfig
+from pynchy.types import (  # noqa: TC001, RUF100 - Pydantic resolves Matrix annotations at runtime.
+    MatrixActivation,
+    MatrixOutbound,
+)
 
 # Reference strings whose well-formedness is proven by a validator. Carrying
 # the proof in a distinct type (per CONVENTIONS.md "Parse, don't validate") means
@@ -65,6 +56,9 @@ DOCKER_MCP_PORT_MESSAGE = "Docker MCP tools require 'port'"
 URL_MCP_URL_MESSAGE = "URL MCP tools require 'url'"
 SCRIPT_MCP_COMMAND_MESSAGE = "Script MCP tools require 'command'"
 SCRIPT_MCP_PORT_MESSAGE = "Script MCP tools require 'port'"
+STDIO_MCP_COMMAND_MESSAGE = "Stdio MCP tools require 'command'"
+STDIO_MCP_PORT_MESSAGE = "Stdio MCP tools require 'port'"
+STDIO_MCP_TRANSPORT_MESSAGE = "Stdio MCP tools require HTTP transport"
 
 
 def _validated_connection_ref(v: str) -> ConnectionRefStr:
@@ -502,10 +496,28 @@ class CalDAVTool(_ToolTrustConfig, CalDAVConfig):
     type: Literal["caldav"]
 
 
+class LinearTool(_ToolTrustConfig):
+    """One Linear credential plus its security-policy declarations."""
+
+    type: Literal["linear"]
+    workspace: str | None = None
+    api_key_env: str = "LINEAR_API_KEY"
+    team_key_env: str = "LINEAR_TEAM_KEY"
+    project_per_workspace: bool | None = None
+    project_name_template: str | None = None
+
+    @field_validator("api_key_env", "team_key_env")
+    @classmethod
+    def validate_linear_env_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Linear credential environment names cannot be empty")
+        return value
+
+
 class McpToolConfig(_StrictModel):
     """MCP provider/runtime config nested under ``[tools.<name>.mcp]``."""
 
-    runtime: Literal["docker", "url", "script"] = "docker"
+    runtime: Literal["docker", "url", "script", "stdio"] = "docker"
     image: str | None = None
     dockerfile: str | None = None
     extra_ports: list[int] = []
@@ -538,12 +550,76 @@ class McpToolConfig(_StrictModel):
                 raise ValueError(SCRIPT_MCP_COMMAND_MESSAGE)
             if self.port is None:
                 raise ValueError(SCRIPT_MCP_PORT_MESSAGE)
+        elif self.runtime == "stdio":
+            if not self.command:
+                raise ValueError(STDIO_MCP_COMMAND_MESSAGE)
+            if self.port is None:
+                raise ValueError(STDIO_MCP_PORT_MESSAGE)
+            if self.transport not in ("http", "streamable_http"):
+                raise ValueError(STDIO_MCP_TRANSPORT_MESSAGE)
         return self
 
 
 class McpTool(_ToolTrustConfig):
     type: Literal["mcp"]
     mcp: McpToolConfig
+
+
+_MATRIX_ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+_MATRIX_ROOM_ID = re.compile(r"!\S+:\S+")
+_MATRIX_USER_ID = re.compile(r"@\S+:\S+")
+
+
+class MatrixRouteDefaults(_StrictModel):
+    """Connection-level defaults inherited by exact routes."""
+
+    model_config = {"frozen": True}
+    activation: MatrixActivation = "on_demand"
+    outbound: MatrixOutbound = "approval_required"
+
+
+class MatrixEndpointConfig(_StrictModel):
+    """One immutable Matrix room endpoint with optional bridge assertions."""
+
+    model_config = {"frozen": True}
+    room_id: str = Field(min_length=1)
+    title: str | None = Field(default=None, min_length=1)
+    expected_bridge: str | None = Field(default=None, min_length=1)
+    require_active_portal: bool = False
+    enabled: bool = True
+
+    @field_validator("room_id")
+    @classmethod
+    def validate_room_id(cls, value: str) -> str:
+        if not _MATRIX_ROOM_ID.fullmatch(value):
+            raise ValueError("Matrix endpoint room_id must be an immutable Matrix room ID")
+        return value
+
+
+class MatrixConnectionConfig(_StrictModel):
+    """One authenticated Matrix owner identity and its named endpoints."""
+
+    model_config = {"frozen": True}
+    type: Literal["matrix"] = "matrix"
+    gateway_command_env: str = "PYNCHY_MATRIX_GATEWAY"
+    expected_user_id: str = Field(min_length=1)
+    poll_interval_seconds: float = Field(default=5.0, gt=0, le=300)
+    route_defaults: MatrixRouteDefaults = Field(default_factory=MatrixRouteDefaults)
+    chat: dict[str, MatrixEndpointConfig] = Field(default_factory=dict)
+
+    @field_validator("gateway_command_env")
+    @classmethod
+    def validate_gateway_command_env(cls, value: str) -> str:
+        if not _MATRIX_ENV_NAME.fullmatch(value):
+            raise ValueError("gateway_command_env must name an environment variable")
+        return value
+
+    @field_validator("expected_user_id")
+    @classmethod
+    def validate_expected_user_id(cls, value: str) -> str:
+        if not _MATRIX_USER_ID.fullmatch(value):
+            raise ValueError("expected_user_id must be a full Matrix user ID")
+        return value
 
 
 ToolConfig = Annotated[
