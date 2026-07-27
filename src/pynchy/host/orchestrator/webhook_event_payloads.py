@@ -45,6 +45,7 @@ def webhook_event_payload(event: WebhookEvent) -> dict[str, object]:
                 "subject_key": conversation.subject.key,
                 "control_title": conversation.control_title,
                 "control_closed": conversation.control_closed,
+                "control_state_revision": conversation.control_state_revision,
                 "workspace": conversation.workspace,
                 "controller_workspace": conversation.controller_workspace,
                 "public_source": conversation.public_source,
@@ -97,9 +98,12 @@ def _conversation(payload: Mapping[str, object]) -> WebhookConversation | None:
     if raw is None:
         return None
     closed = raw.get("control_closed")
+    control_state_revision = raw.get("control_state_revision")
     public_source = raw.get("public_source")
     if closed is not None and not isinstance(closed, bool):
         raise TypeError("Deferred webhook control_closed is not boolean")
+    if control_state_revision is not None and not isinstance(control_state_revision, str):
+        raise TypeError("Deferred webhook control_state_revision is not a string")
     if public_source is not None and not isinstance(public_source, bool):
         raise TypeError("Deferred webhook public_source is not boolean")
     return WebhookConversation(
@@ -109,6 +113,7 @@ def _conversation(payload: Mapping[str, object]) -> WebhookConversation | None:
         ),
         control_title=_required_text(raw, "control_title"),
         control_closed=closed,
+        control_state_revision=control_state_revision,
         workspace=_optional_text(raw, "workspace"),
         controller_workspace=_optional_text(raw, "controller_workspace"),
         public_source=public_source,

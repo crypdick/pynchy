@@ -55,6 +55,8 @@ def _row_to_conversation(row: Row) -> Conversation:
         session_id=SessionId(row["session_id"]) if row["session_id"] is not None else None,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        control_closed=bool(row["control_closed"]),
+        control_state_revision=row["control_state_revision"],
     )
 
 
@@ -134,12 +136,15 @@ async def _resolve_conversation(
         session_id=None,
         created_at=now,
         updated_at=now,
+        control_closed=False,
+        control_state_revision=None,
     )
     await database.execute(
         """
         INSERT INTO routed_conversations (
-            id, workspace, subject_namespace, subject_key, session_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            id, workspace, subject_namespace, subject_key, session_id, control_closed,
+            control_state_revision, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             conversation.id,
@@ -147,6 +152,8 @@ async def _resolve_conversation(
             conversation.subject.namespace,
             conversation.subject.key,
             conversation.session_id,
+            conversation.control_closed,
+            conversation.control_state_revision,
             conversation.created_at,
             conversation.updated_at,
         ),
@@ -201,15 +208,28 @@ async def set_conversation_session(
 ) -> Conversation:
     """Attach agent context to conversation identity, independent of its control thread."""
     async with atomic_write() as database:
-        cursor = await database.execute(
-            """
-            UPDATE routed_conversations SET session_id = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (session_id, _timestamp(), conversation_id),
-        )
+        if session_id is None:
+            cursor = await database.execute(
+                """
+                UPDATE routed_conversations SET session_id = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (session_id, _timestamp(), conversation_id),
+            )
+        else:
+            cursor = await database.execute(
+                """
+                UPDATE routed_conversations SET session_id = ?, updated_at = ?
+                WHERE id = ? AND control_closed = 0
+                """,
+                (session_id, _timestamp(), conversation_id),
+            )
         if cursor.rowcount != 1:
-            raise ValueError(f"Unknown conversation: {conversation_id}")
+            conversation = await _conversation_by_id(database, conversation_id)
+            if conversation is None:
+                raise ValueError(f"Unknown conversation: {conversation_id}")
+            # A terminal lifecycle may win a race with output session tracking.
+            return conversation
         conversation = await _conversation_by_id(database, conversation_id)
         if conversation is None:
             raise RuntimeError("Conversation disappeared while updating its session")

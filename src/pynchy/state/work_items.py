@@ -16,14 +16,9 @@ from pynchy.state.work_item_models import (
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
 )
-from pynchy.state.work_item_rows import row_to_execution, row_to_transition
+from pynchy.state.work_item_rows import row_to_execution
 from pynchy.state.work_item_transition_records import insert_work_item_transition
-from pynchy.types import (
-    WorkItemExecution,
-    WorkItemExecutionStatus,
-    WorkItemTransition,
-    WorkItemTransitionStatus,
-)
+from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
 
 
 def _timestamp() -> str:
@@ -46,6 +41,25 @@ async def get_active_work_item_execution(issue_id: str) -> WorkItemExecution | N
         SELECT * FROM work_item_executions
         WHERE linear_issue_id = ?
           AND status IN ('claiming', 'in_progress', 'unknown')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (issue_id,),
+    )
+    row = await cursor.fetchone()
+    return row_to_execution(row) if row else None
+
+
+async def get_unfinished_work_item_execution(issue_id: str) -> WorkItemExecution | None:
+    """Return the newest execution a terminal provider state must still retire."""
+    db = _get_db()
+    cursor = await db.execute(
+        """
+        SELECT * FROM work_item_executions
+        WHERE linear_issue_id = ?
+          AND status IN (
+              'claiming', 'in_progress', 'awaiting_review', 'follow_ups', 'blocked', 'unknown'
+          )
         ORDER BY created_at DESC
         LIMIT 1
         """,
@@ -227,159 +241,6 @@ async def _persist_work_item_claim(
     return execution
 
 
-async def begin_work_item_transition(request: WorkItemTransitionRequest) -> WorkItemTransition:
-    """Record a pending remote transition before Pynchy calls Linear."""
-    now = _timestamp()
-    async with atomic_write() as db:
-        await insert_work_item_transition(
-            db,
-            request=request,
-            created_at=now,
-        )
-        delivery_turn_id = request.requester_delivery_turn_id
-        evidence_refs = (
-            request.evidence_refs
-            if request.evidence_refs is not None
-            else request.execution.evidence_refs
-        )
-        await db.execute(
-            """
-            UPDATE work_item_executions
-            SET summary = COALESCE(?, summary),
-                blocker = COALESCE(?, blocker),
-                handoff_to = COALESCE(?, handoff_to),
-                evidence_refs = ?,
-                requester_delivery_status = CASE WHEN ? IS NULL
-                    THEN requester_delivery_status ELSE 'pending' END,
-                requester_delivery_turn_id = COALESCE(?, requester_delivery_turn_id),
-                requester_delivery_error = CASE WHEN ? IS NULL
-                    THEN requester_delivery_error ELSE NULL END,
-                requester_delivered_at = CASE WHEN ? IS NULL
-                    THEN requester_delivered_at ELSE NULL END,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                request.summary,
-                request.blocker,
-                request.handoff_to,
-                json.dumps(evidence_refs),
-                delivery_turn_id,
-                delivery_turn_id,
-                delivery_turn_id,
-                delivery_turn_id,
-                now,
-                request.execution.id,
-            ),
-        )
-    transition = await get_work_item_transition_by_request(request.request_id)
-    if transition is None:
-        raise RuntimeError("work item transition was not persisted")
-    return transition
-
-
-async def resolve_work_item_transition(
-    *,
-    transition: WorkItemTransition,
-    execution_status: WorkItemExecutionStatus,
-    transition_status: WorkItemTransitionStatus,
-    issue: dict[str, Any] | None = None,
-    error: str | None = None,
-) -> WorkItemExecution:
-    """Persist a provider receipt or uncertainty and the resulting local lifecycle state."""
-    now = _timestamp()
-    clears_blocked_outcome = (
-        transition_status is WorkItemTransitionStatus.SUCCEEDED
-        and execution_status
-        not in {
-            WorkItemExecutionStatus.BLOCKED,
-            WorkItemExecutionStatus.HANDED_OFF,
-        }
-    )
-    completed_at = (
-        now
-        if execution_status
-        in {
-            WorkItemExecutionStatus.COMPLETED,
-            WorkItemExecutionStatus.CANCELLED,
-            WorkItemExecutionStatus.BLOCKED,
-            WorkItemExecutionStatus.HANDED_OFF,
-            WorkItemExecutionStatus.FAILED,
-        }
-        else None
-    )
-    receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
-    async with atomic_write() as db:
-        await db.execute(
-            """
-            UPDATE work_item_transitions
-            SET status = ?, receipt = ?, error = ?, resolved_at = ?
-            WHERE id = ?
-            """,
-            (transition_status.value, receipt, error, now, transition.id),
-        )
-        if issue is None:
-            await db.execute(
-                """
-                UPDATE work_item_executions
-                SET status = ?,
-                    blocker = CASE WHEN ? THEN NULL ELSE blocker END,
-                    handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
-                    updated_at = ?, completed_at = ?
-                WHERE id = ?
-                """,
-                (
-                    execution_status.value,
-                    clears_blocked_outcome,
-                    clears_blocked_outcome,
-                    now,
-                    completed_at,
-                    transition.execution_id,
-                ),
-            )
-        else:
-            state = _issue_state(issue)
-            await db.execute(
-                """
-                UPDATE work_item_executions
-                SET linear_issue_identifier = ?, linear_issue_url = ?,
-                    observed_state_id = ?, observed_state_name = ?, observed_updated_at = ?,
-                    status = ?,
-                    blocker = CASE WHEN ? THEN NULL ELSE blocker END,
-                    handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
-                    updated_at = ?, completed_at = ?
-                WHERE id = ?
-                """,
-                (
-                    _issue_str(issue, "identifier"),
-                    _issue_str(issue, "url"),
-                    _issue_str(state, "id"),
-                    _issue_str(state, "name"),
-                    _optional_str(issue, "updatedAt"),
-                    execution_status.value,
-                    clears_blocked_outcome,
-                    clears_blocked_outcome,
-                    now,
-                    completed_at,
-                    transition.execution_id,
-                ),
-            )
-    execution = await get_work_item_execution(transition.execution_id)
-    if execution is None:
-        raise RuntimeError("work item execution disappeared during transition resolution")
-    return execution
-
-
-async def get_work_item_transition_by_request(request_id: str) -> WorkItemTransition | None:
-    """Return the persisted transition for a specific idempotency request."""
-    db = _get_db()
-    cursor = await db.execute(
-        "SELECT * FROM work_item_transitions WHERE request_id = ?", (request_id,)
-    )
-    row = await cursor.fetchone()
-    return row_to_transition(row) if row else None
-
-
 async def mark_work_item_delivery_delivered_for_turn(turn_id: str) -> None:
     """Mark the linked requester delivery separately after a visible final result."""
     db = _get_db()
@@ -396,24 +257,6 @@ async def mark_work_item_delivery_delivered_for_turn(turn_id: str) -> None:
         (now, now, turn_id),
     )
     await db.commit()
-
-
-async def get_latest_unresolved_work_item_transition(
-    execution_id: str,
-) -> WorkItemTransition | None:
-    """Return the latest transition whose provider outcome needs reconciliation."""
-    db = _get_db()
-    cursor = await db.execute(
-        """
-        SELECT * FROM work_item_transitions
-        WHERE execution_id = ? AND status IN ('pending', 'unknown')
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (execution_id,),
-    )
-    row = await cursor.fetchone()
-    return row_to_transition(row) if row else None
 
 
 def _issue_str(payload: dict[str, Any], key: str) -> str:

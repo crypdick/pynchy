@@ -242,19 +242,21 @@ would race a second agent against the durable task. An `Awaiting Plan Approval`
 update waits for human review.
 
 An `Issue` callback with Linear workflow type `completed` or `canceled` becomes
-a lifecycle-only FIFO delivery. Pynchy uses the type, not a mutable display name,
-to recognize terminal state. The delivery waits behind older issue work, closes
-an existing control thread when it reaches the FIFO head, and never starts an
-LLM turn. A terminal callback that arrives first creates no Discord thread.
+a terminal lifecycle delivery. Pynchy uses the type, not a mutable display name,
+to recognize terminal state. At ingress, it records terminal conversation intent,
+clears the routed session, retires prior routed work, and archives an existing
+Discord thread. It never starts an LLM turn. A terminal callback that arrives
+first records the same intent but creates no Discord thread.
 
-At that FIFO head, Pynchy completes the linked active, blocked, or review-ready
-execution only when the callback's exact state ID matches the managed board's
-`Done` state. `Duplicate`, `Canceled`, and other terminal statuses close the
-control without completing the work item. If lifecycle processing fails or the
-host restarts before completion, Pynchy retries that same FIFO head before later
-callbacks run. Pynchy captures both state IDs during ingress and doesn't fetch
-the issue again at the FIFO head, so later issue deletion or project movement
-doesn't block lifecycle processing.
+While Linear remains terminal, comments, stale callbacks, and delayed scheduled
+work cannot recreate or unarchive that thread. An explicit later nonterminal
+Linear state reopens normal conversation handling. Pynchy completes the linked
+reviewed execution only when the callback's exact state ID matches the managed
+board's `Done` state. `Duplicate`, `Canceled`, and other terminal statuses cancel
+the local scheduled task and active execution without writing a new provider
+state; they do not complete the work item. Archive or lifecycle processing
+failure stays retryable. Pynchy captures both state IDs during ingress, so later
+issue deletion or project movement cannot change the terminal decision.
 
 Before a host-owned comment creation or nonterminal state move starts, Pynchy
 records a durable outbound-effect intent. If its callback arrives before the API

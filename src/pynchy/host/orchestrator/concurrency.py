@@ -179,6 +179,7 @@ class GroupQueue:
         return await await_queued_task(
             self._enqueue_task,
             self._cancel_queued_task,
+            self.stop_active_process,
             target,
             task_id,
             fn,
@@ -212,8 +213,8 @@ class GroupQueue:
         invocation_ts: float = 0.0,
         *,
         is_host_process: bool = False,
-    ) -> None:
-        self._processes.register_process(
+    ) -> bool:
+        return self._processes.register_process(
             runtime_id,
             proc,
             container_name,
@@ -308,6 +309,13 @@ class GroupQueue:
         state = self._registry.get(runtime_id)
         if state is not None:
             self._cancel_pending_tasks(state)
+
+    def clear_pending_messages(self, runtime_id: RuntimeId) -> None:
+        """Drop message work invalidated outside the queue."""
+        state = self._registry.get(runtime_id)
+        if state is not None:
+            state.pending_messages = False
+            state.cancel_message_waiters()
 
     @staticmethod
     def _cancel_pending_tasks(state: GroupState) -> None:

@@ -11,10 +11,18 @@ from pynchy.types import (
 from pynchy.types import (
     WorkItemExecutionStatus as RuntimeWorkItemExecutionStatus,
 )
+from pynchy.types import (
+    WorkItemTransition as RuntimeWorkItemTransition,
+)
+from pynchy.types import (
+    WorkItemTransitionStatus as RuntimeWorkItemTransitionStatus,
+)
 
 # Dataclass constructors are runtime type-checked, so beartype must resolve these names here.
 WorkItemExecution = RuntimeWorkItemExecution
 WorkItemExecutionStatus = RuntimeWorkItemExecutionStatus
+WorkItemTransition = RuntimeWorkItemTransition
+WorkItemTransitionStatus = RuntimeWorkItemTransitionStatus
 
 
 class WorkItemClaimConflictError(RuntimeError):
@@ -53,3 +61,14 @@ class WorkItemTransitionRequest:
     blocker: str | None = None
     handoff_to: str | None = None
     requester_delivery_turn_id: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkItemTransitionResolution:
+    """Provider receipt and intended local terminal outcome for one transition."""
+
+    transition: WorkItemTransition
+    execution_status: WorkItemExecutionStatus
+    transition_status: WorkItemTransitionStatus
+    issue: dict[str, Any] | None = None
+    error: str | None = None

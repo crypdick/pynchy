@@ -56,6 +56,9 @@ class _HostRunnerProcess(Protocol):
     def kill(self) -> None: ...
 
 
+OnProcessStarted = Callable[[_HostRunnerProcess], bool]
+
+
 def _host_runner_command(project_root: Path) -> list[str]:
     project = project_root / _HOST_RUNNER_PROJECT
     return ["uv", "run", "--project", str(project), "python", "-m", "agent_runner.host_direct"]
@@ -137,7 +140,7 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
     on_output: OnOutput,
     timeout_seconds: int | float,
     env: dict[str, str] | None = None,
-    on_process_started: Callable[[_HostRunnerProcess], None] | None = None,
+    on_process_started: OnProcessStarted | None = None,
     is_interrupted: IsInterrupted | None = None,
 ) -> str:
     """Run one agent turn directly on the host via a child process."""
@@ -152,7 +155,14 @@ async def run_host_input(  # noqa: PLR0913, RUF100 - direct-run contract keeps e
         start_new_session=True,
     )
     if on_process_started is not None:
-        on_process_started(proc)
+        try:
+            accepted = on_process_started(proc)
+        except BaseException:
+            await stop_host_process(proc)
+            raise
+        if not accepted:
+            await stop_host_process(proc)
+            return "interrupted"
     await _write_payload(proc, _host_runner_payload(input_data, cwd))
     stderr_task = asyncio.create_task(_read_stderr(proc), name="host-runner-stderr")
     progress_event = asyncio.Event()
