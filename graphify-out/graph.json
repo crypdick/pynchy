@@ -17264,7 +17264,7 @@
       "label": "GatewayProto",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L83",
+      "source_location": "L86",
       "_origin": "ast"
     },
     {
@@ -17280,7 +17280,7 @@
       "label": ".base_url()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L88",
+      "source_location": "L91",
       "_origin": "ast"
     },
     {
@@ -17288,7 +17288,7 @@
       "label": ".redaction_posture()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L90",
+      "source_location": "L93",
       "_origin": "ast"
     },
     {
@@ -17296,7 +17296,7 @@
       "label": ".has_provider()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L91",
+      "source_location": "L94",
       "_origin": "ast"
     },
     {
@@ -17304,7 +17304,7 @@
       "label": ".start()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L92",
+      "source_location": "L95",
       "_origin": "ast"
     },
     {
@@ -17312,7 +17312,7 @@
       "label": ".stop()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L93",
+      "source_location": "L96",
       "_origin": "ast"
     },
     {
@@ -17320,7 +17320,7 @@
       "label": "_GatewayState",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L102",
+      "source_location": "L105",
       "_origin": "ast"
     },
     {
@@ -17328,7 +17328,7 @@
       "label": "get_gateway()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L109",
+      "source_location": "L112",
       "_origin": "ast"
     },
     {
@@ -17336,7 +17336,7 @@
       "label": "_set_gateway()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L114",
+      "source_location": "L117",
       "_origin": "ast"
     },
     {
@@ -17344,7 +17344,7 @@
       "label": "resolve_container_host()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L118",
+      "source_location": "L121",
       "_origin": "ast"
     },
     {
@@ -17352,7 +17352,7 @@
       "label": "_required_litellm_models()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L139",
+      "source_location": "L142",
       "_origin": "ast"
     },
     {
@@ -17360,7 +17360,7 @@
       "label": "collect_plugin_mcp_servers()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L150",
+      "source_location": "L153",
       "_origin": "ast"
     },
     {
@@ -17376,7 +17376,7 @@
       "label": "start_gateway()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "_origin": "ast"
     },
     {
@@ -17384,7 +17384,7 @@
       "label": "stop_gateway()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L253",
+      "source_location": "L268",
       "_origin": "ast"
     },
     {
@@ -17396,51 +17396,51 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_rationale_110",
+      "id": "pynchy_host_container_manager_gateway_rationale_113",
       "label": "Return the active gateway, or ``None`` if not started.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L110",
+      "source_location": "L113",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_rationale_119",
+      "id": "pynchy_host_container_manager_gateway_rationale_122",
       "label": "Return the gateway host that agent containers can actually reach.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L119",
+      "source_location": "L122",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_rationale_144",
+      "id": "pynchy_host_container_manager_gateway_rationale_147",
       "label": "Return LiteLLM model aliases that the active core can request directly.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L144",
+      "source_location": "L147",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_rationale_153",
+      "id": "pynchy_host_container_manager_gateway_rationale_156",
       "label": "Collect MCP server specs from plugins.      Returns ``(server_configs, trust_def",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L153",
+      "source_location": "L156",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_rationale_191",
+      "id": "pynchy_host_container_manager_gateway_rationale_194",
       "label": "Start the appropriate gateway based on config. Returns the instance.      *plugi",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L191",
+      "source_location": "L194",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_rationale_254",
+      "id": "pynchy_host_container_manager_gateway_rationale_269",
       "label": "Stop the gateway if running.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L254",
+      "source_location": "L269",
       "_origin": "ast"
     },
     {
@@ -17492,11 +17492,19 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "label": "BuiltinGatewayCredentials",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L112",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_host_container_manager_gateway_builtin_builtingateway",
       "label": "BuiltinGateway",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L111",
+      "source_location": "L119",
       "_origin": "ast"
     },
     {
@@ -17504,7 +17512,7 @@
       "label": ".__init__()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L118",
+      "source_location": "L126",
       "_origin": "ast"
     },
     {
@@ -17512,7 +17520,7 @@
       "label": ".base_url()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L129",
+      "source_location": "L145",
       "_origin": "ast"
     },
     {
@@ -17520,7 +17528,7 @@
       "label": ".redaction_posture()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L133",
+      "source_location": "L149",
       "_origin": "ast"
     },
     {
@@ -17528,7 +17536,7 @@
       "label": ".has_provider()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L137",
+      "source_location": "L153",
       "_origin": "ast"
     },
     {
@@ -17536,15 +17544,15 @@
       "label": ".prepare_upstream_body()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L140",
+      "source_location": "L156",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_builtin_builtingateway_discover_credentials",
-      "label": "._discover_credentials()",
+      "id": "pynchy_host_container_manager_gateway_builtin_builtingateway_configure_credentials",
+      "label": "._configure_credentials()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L148",
+      "source_location": "L164",
       "_origin": "ast"
     },
     {
@@ -17552,7 +17560,7 @@
       "label": "._validate_auth()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L176",
+      "source_location": "L191",
       "_origin": "ast"
     },
     {
@@ -17560,7 +17568,7 @@
       "label": "._proxy_handler()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L183",
+      "source_location": "L198",
       "_origin": "ast"
     },
     {
@@ -17568,7 +17576,7 @@
       "label": ".start()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L233",
+      "source_location": "L248",
       "_origin": "ast"
     },
     {
@@ -17576,7 +17584,7 @@
       "label": ".stop()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L261",
+      "source_location": "L276",
       "_origin": "ast"
     },
     {
@@ -17604,27 +17612,35 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_builtin_rationale_112",
+      "id": "pynchy_host_container_manager_gateway_builtin_rationale_113",
+      "label": "Resolved provider keys required by the builtin gateway.",
+      "file_type": "rationale",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L113",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_gateway_builtin_rationale_120",
       "label": "Simple aiohttp reverse proxy for single-key setups.      Used when ``litellm_con",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L112",
+      "source_location": "L120",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_builtin_rationale_134",
+      "id": "pynchy_host_container_manager_gateway_builtin_rationale_150",
       "label": "Report the request-body redaction enforced by this owned proxy.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L134",
+      "source_location": "L150",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_gateway_builtin_rationale_141",
+      "id": "pynchy_host_container_manager_gateway_builtin_rationale_157",
       "label": "Irreversibly redact one provider request before it leaves Pynchy.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L141",
+      "source_location": "L157",
       "_origin": "ast"
     },
     {
@@ -122089,7 +122105,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122100,7 +122116,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L52",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122111,7 +122127,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L53",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122122,7 +122138,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122132,7 +122148,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L83",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122142,7 +122158,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L83",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122152,7 +122168,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L88",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122162,7 +122178,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L90",
+      "source_location": "L93",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122173,7 +122189,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L90",
+      "source_location": "L93",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122183,7 +122199,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L91",
+      "source_location": "L94",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122193,7 +122209,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L92",
+      "source_location": "L95",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122203,7 +122219,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L93",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122213,7 +122229,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L102",
+      "source_location": "L105",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122223,7 +122239,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L109",
+      "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122234,7 +122250,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L109",
+      "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122245,7 +122261,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L109",
+      "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122255,7 +122271,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L114",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122266,7 +122282,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L114",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122277,7 +122293,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L114",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122287,7 +122303,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L118",
+      "source_location": "L121",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122297,7 +122313,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L139",
+      "source_location": "L142",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122307,7 +122323,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L150",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122318,7 +122334,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L150",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122329,7 +122345,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L150",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122340,7 +122356,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L150",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122350,7 +122366,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122361,7 +122377,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122372,7 +122388,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122383,7 +122399,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L188",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122393,7 +122409,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L253",
+      "source_location": "L268",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122404,7 +122420,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L197",
+      "source_location": "L200",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122415,7 +122431,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L203",
+      "source_location": "L206",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122426,7 +122442,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L211",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122437,7 +122453,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L218",
+      "source_location": "L221",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122448,7 +122464,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L224",
+      "source_location": "L239",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122459,7 +122475,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L225",
+      "source_location": "L240",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122470,7 +122486,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L229",
+      "source_location": "L244",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122481,7 +122497,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L267",
+      "source_location": "L282",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122492,7 +122508,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L269",
+      "source_location": "L284",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122503,7 +122519,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L270",
+      "source_location": "L285",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122518,62 +122534,62 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_rationale_110",
+      "source": "pynchy_host_container_manager_gateway_rationale_113",
       "target": "pynchy_host_container_manager_gateway_get_gateway",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L110",
+      "source_location": "L113",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_rationale_119",
+      "source": "pynchy_host_container_manager_gateway_rationale_122",
       "target": "pynchy_host_container_manager_gateway_resolve_container_host",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L119",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_rationale_144",
+      "source": "pynchy_host_container_manager_gateway_rationale_147",
       "target": "pynchy_host_container_manager_gateway_required_litellm_models",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L144",
+      "source_location": "L147",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_rationale_153",
+      "source": "pynchy_host_container_manager_gateway_rationale_156",
       "target": "pynchy_host_container_manager_gateway_collect_plugin_mcp_servers",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L153",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_rationale_191",
+      "source": "pynchy_host_container_manager_gateway_rationale_194",
       "target": "pynchy_host_container_manager_gateway_start_gateway",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L191",
+      "source_location": "L194",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_rationale_254",
+      "source": "pynchy_host_container_manager_gateway_rationale_269",
       "target": "pynchy_host_container_manager_gateway_stop_gateway",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L254",
+      "source_location": "L269",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122601,7 +122617,7 @@
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin",
-      "target": "typing",
+      "target": "dataclasses",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -122612,19 +122628,19 @@
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin",
-      "target": "aiohttp",
-      "relation": "imports",
+      "target": "typing",
+      "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L18",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin",
       "target": "aiohttp",
-      "relation": "imports_from",
+      "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
@@ -122634,12 +122650,12 @@
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin",
-      "target": "pynchy_config",
+      "target": "aiohttp",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L21",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122719,11 +122735,21 @@
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L112",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_builtin",
       "target": "pynchy_host_container_manager_gateway_builtin_builtingateway",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L111",
+      "source_location": "L119",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122733,7 +122759,18 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L118",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_builtin_builtingateway_init",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122743,7 +122780,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L129",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122753,7 +122790,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L133",
+      "source_location": "L149",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122764,7 +122801,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L133",
+      "source_location": "L149",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122774,7 +122811,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L137",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122784,17 +122821,17 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L140",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin_builtingateway",
-      "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_discover_credentials",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_configure_credentials",
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L148",
+      "source_location": "L164",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122804,7 +122841,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L176",
+      "source_location": "L191",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122814,7 +122851,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L183",
+      "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122825,7 +122862,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L183",
+      "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122835,7 +122872,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L233",
+      "source_location": "L248",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122845,7 +122882,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L261",
+      "source_location": "L276",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122861,13 +122898,24 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_host_container_manager_gateway_builtin_builtingateway_init",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_host_container_manager_gateway_builtin_builtingateway_proxy_handler",
       "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_validate_auth",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L187",
+      "source_location": "L202",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122878,7 +122926,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L190",
+      "source_location": "L205",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122889,7 +122937,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L206",
+      "source_location": "L221",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122900,7 +122948,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L213",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122911,18 +122959,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L218",
+      "source_location": "L233",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin_builtingateway_start",
-      "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_discover_credentials",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_configure_credentials",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L234",
+      "source_location": "L249",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122933,7 +122981,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L242",
+      "source_location": "L257",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -122968,32 +123016,42 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_builtin_rationale_112",
+      "source": "pynchy_host_container_manager_gateway_builtin_rationale_113",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_builtin_rationale_120",
       "target": "pynchy_host_container_manager_gateway_builtin_builtingateway",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L112",
+      "source_location": "L120",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_builtin_rationale_134",
+      "source": "pynchy_host_container_manager_gateway_builtin_rationale_150",
       "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_redaction_posture",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L134",
+      "source_location": "L150",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_gateway_builtin_rationale_141",
+      "source": "pynchy_host_container_manager_gateway_builtin_rationale_157",
       "target": "pynchy_host_container_manager_gateway_builtin_builtingateway_prepare_upstream_body",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L141",
+      "source_location": "L157",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301869,12 +301927,23 @@
     },
     {
       "source": "pynchy_host_container_manager_gateway",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/gateway.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway",
       "target": "pynchy_host_container_manager_gateway_litellm_litellmgateway",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301885,7 +301954,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L53",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301896,7 +301965,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301907,7 +301976,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L123",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301918,7 +301987,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L236",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301929,7 +301998,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L236",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301940,7 +302009,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L257",
+      "source_location": "L272",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334434,7 +334503,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L128",
+      "source_location": "L131",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_start_gateway",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/gateway.py",
+      "source_location": "L225",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334445,7 +334525,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L241",
+      "source_location": "L256",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334456,7 +334536,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L247",
+      "source_location": "L262",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334467,7 +334547,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L262",
+      "source_location": "L277",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334478,7 +334558,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L265",
+      "source_location": "L280",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -354053,11 +354133,31 @@
     },
     {
       "source": "pynchy_host_container_manager_gateway_gatewayproto",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/gateway.py",
+      "source_location": "L48",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_gatewaystate",
+      "target": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/gateway.py",
+      "source_location": "L48",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_gatewayproto",
       "target": "pynchy_host_container_manager_gateway_litellm_litellmgateway",
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354067,7 +354167,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354077,7 +354177,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L53",
+      "source_location": "L56",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354087,7 +354187,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L53",
+      "source_location": "L56",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354097,7 +354197,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354107,7 +354207,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354117,7 +354217,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L236",
+      "source_location": "L251",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -354127,13 +354227,33 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway.py",
-      "source_location": "L236",
+      "source_location": "L251",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "target": "pynchy_host_container_manager_security_llm_redaction_gatewayredactionposture",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L22",
       "weight": 0.8,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_container_manager_gateway_builtin_builtingateway",
       "target": "pynchy_host_container_manager_security_llm_redaction_gatewayredactionposture",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/gateway_builtin.py",
+      "source_location": "L22",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_gateway_builtin_builtingatewaycredentials",
+      "target": "pynchy_host_container_manager_security_llm_redaction_redactionrequesterror",
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
@@ -377929,7 +378049,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L135",
+      "source_location": "L151",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -377941,7 +378061,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/gateway_builtin.py",
-      "source_location": "L142",
+      "source_location": "L158",
       "weight": 1.0,
       "_origin": "ast"
     },

@@ -13,12 +13,12 @@ import secrets
 from collections.abc import (
     Mapping,  # noqa: TC003, RUF100 - beartype resolves gateway header signatures at runtime.
 )
+from dataclasses import dataclass
 from typing import cast
 
 import aiohttp
 from aiohttp import web
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.security.llm_redaction import (
     GatewayRedactionPosture,
     RedactionRequestError,
@@ -108,19 +108,35 @@ async def _relay_upstream_response(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class BuiltinGatewayCredentials:
+    """Resolved provider keys required by the builtin gateway."""
+
+    anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
+
+
 class BuiltinGateway:
     """Simple aiohttp reverse proxy for single-key setups.
 
-    Used when ``litellm_config`` is not set.  Reads keys from
-    environment-backed secret settings.
+    Used when ``litellm_config`` is not set. Receives resolved credentials
+    from gateway composition.
     """
 
-    def __init__(self, *, port: int, host: str, container_host: str) -> None:
+    def __init__(
+        self,
+        *,
+        port: int,
+        host: str,
+        container_host: str,
+        credentials: BuiltinGatewayCredentials | None = None,
+    ) -> None:
         self.port = port
         self.host = host
         self.container_host = container_host
         self.key: str = f"gw-{secrets.token_urlsafe(32)}"
 
+        self._configured_credentials = credentials or BuiltinGatewayCredentials()
         self._credentials: dict[str, dict[str, str]] = {}
         self._runner: web.AppRunner | None = None
         self._session: aiohttp.ClientSession | None = None
@@ -145,20 +161,19 @@ class BuiltinGateway:
     # Credential discovery
     # ------------------------------------------------------------------
 
-    def _discover_credentials(self) -> None:
-        s = get_settings()
+    def _configure_credentials(self) -> None:
         providers: dict[str, dict[str, str]] = {}
 
-        if s.secrets.anthropic_api_key:
+        if self._configured_credentials.anthropic_api_key:
             providers["anthropic"] = {
                 "type": "api_key",
-                "value": s.secrets.anthropic_api_key.get_secret_value(),
+                "value": self._configured_credentials.anthropic_api_key,
             }
 
-        if s.secrets.openai_api_key:
+        if self._configured_credentials.openai_api_key:
             providers["openai"] = {
                 "type": "api_key",
-                "value": s.secrets.openai_api_key.get_secret_value(),
+                "value": self._configured_credentials.openai_api_key,
             }
 
         self._credentials = providers
@@ -231,7 +246,7 @@ class BuiltinGateway:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        self._discover_credentials()
+        self._configure_credentials()
 
         if not self._credentials:
             logger.warning(

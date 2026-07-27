@@ -19,7 +19,10 @@ from pynchy.host.container_manager.gateway import (
     start_gateway,
     stop_gateway,
 )
-from pynchy.host.container_manager.gateway_builtin import build_upstream_headers
+from pynchy.host.container_manager.gateway_builtin import (
+    BuiltinGatewayCredentials,
+    build_upstream_headers,
+)
 from pynchy.host.container_manager.gateway_litellm import (
     collect_litellm_yaml_environment,
     resolve_litellm_environment,
@@ -517,6 +520,25 @@ class TestBuiltinGateway:
         )
         assert gw.has_provider("anthropic") is False
         assert gw.has_provider("openai") is False
+
+    @pytest.mark.asyncio
+    async def test_uses_injected_credentials_after_start(self):
+        gw = BuiltinGateway(
+            port=0,
+            host=ALL_INTERFACE_BIND_HOST,
+            container_host="host.docker.internal",
+            credentials=BuiltinGatewayCredentials(
+                anthropic_api_key="anthropic-credential",  # pragma: allowlist secret
+                openai_api_key="openai-credential",  # pragma: allowlist secret
+            ),
+        )
+
+        await gw.start()
+        try:
+            assert gw.has_provider("anthropic") is True
+            assert gw.has_provider("openai") is True
+        finally:
+            await gw.stop()
 
     def test_redacts_complete_request_at_owned_gateway_boundary(self):
         gw = BuiltinGateway(

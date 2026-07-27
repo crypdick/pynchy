@@ -45,7 +45,10 @@ if TYPE_CHECKING:
     import pluggy
 
     from pynchy.host.container_manager.security.llm_redaction import GatewayRedactionPosture
-from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
+from pynchy.host.container_manager.gateway_builtin import (
+    BuiltinGateway,
+    BuiltinGatewayCredentials,
+)
 from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
 )
@@ -219,6 +222,18 @@ async def start_gateway(
             port=s.gateway.port,
             host=s.gateway.host,
             container_host=container_host,
+            credentials=BuiltinGatewayCredentials(
+                anthropic_api_key=(
+                    s.secrets.anthropic_api_key.get_secret_value()
+                    if s.secrets.anthropic_api_key
+                    else None
+                ),
+                openai_api_key=(
+                    s.secrets.openai_api_key.get_secret_value()
+                    if s.secrets.openai_api_key
+                    else None
+                ),
+            ),
         )
 
     _set_gateway(gateway)
