@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import subprocess  # noqa: S404, RUF100 - test helpers mock subprocess behavior and exceptions
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
-from conftest import make_settings
 
 from pynchy.host.git_ops.utils import (
     get_head_commit_message,
@@ -29,8 +28,6 @@ from pynchy.host.orchestrator.http_server import (
 from pynchy.types import DeployClaim, DeployClaimStatus, ScheduledTask, WorkspaceProfile
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from aiohttp import web
 
 
@@ -41,11 +38,17 @@ def _cp(
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-@contextlib.contextmanager
-def _patch_settings(*, data_dir: Path, **overrides: Any):
-    s = make_settings(data_dir=data_dir, **overrides)
-    with patch("pynchy.host.orchestrator.http_server.get_settings", return_value=s):
-        yield
+def _runtime() -> ControlPlaneRuntime:
+    return ControlPlaneRuntime(
+        bind_host="127.0.0.1",
+        port=8484,
+        unix_socket=None,
+        public_bind=False,
+        remote_auth_required=False,
+        allow_remote_deploy=False,
+        auth_token=None,
+        rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +261,6 @@ async def test_failed_deploy_records_operator_boot_warning(
         return _cp()
 
     with (
-        _patch_settings(data_dir=tmp_path),
         patch("pynchy.host.orchestrator.http_server.get_head_sha", return_value="same-sha"),
         patch("pynchy.host.orchestrator.http_server.push_local_commits", return_value=True),
         patch("pynchy.host.orchestrator.http_server.run_git", side_effect=failed_rebase),
@@ -283,7 +285,10 @@ async def test_failed_deploy_records_operator_boot_warning(
             auth_token=None,
             rate_limiter=RequestRateLimiter(request_limit=20, window_seconds=60),
         )
-        app = create_http_app(MockHttpDeps(), runtime=runtime)
+        deps = MockHttpDeps()
+        deps.data_dir = tmp_path
+        deps.project_root = tmp_path
+        app = create_http_app(deps, runtime=runtime)
         client = TestClient(TestServer(app))
         await client.start_server()
         try:
@@ -311,6 +316,8 @@ class MockHttpDeps:
         self.broadcasts: list[tuple[str, str]] = []
         self.runtime_messages: list[tuple[str, str]] = []
         self._admin_jid = "admin-1@g.us"
+        self.data_dir = Path.cwd() / "data"
+        self.project_root = Path.cwd()
 
     async def broadcast_host_message(self, jid: str, text: str) -> None:
         self.broadcasts.append((jid, text))
@@ -337,7 +344,7 @@ class TestHealthEndpoint(AioHTTPTestCase):
 
     async def get_application(self) -> web.Application:
         self.deps = MockHttpDeps()
-        return create_http_app(self.deps)
+        return create_http_app(self.deps, runtime=_runtime())
 
     async def test_health_returns_status_ok(self):
         """Health endpoint returns only its non-sensitive readiness contract."""
@@ -363,7 +370,6 @@ class TestHealthEndpoint(AioHTTPTestCase):
 async def test_http_preparation_does_not_publish_before_activation(tmp_path) -> None:
     start_sites = AsyncMock()
     with (
-        _patch_settings(data_dir=tmp_path),
         patch(
             "pynchy.host.orchestrator.http_server.collect_webhook_routes",
             return_value=(),
@@ -373,7 +379,7 @@ async def test_http_preparation_does_not_publish_before_activation(tmp_path) -> 
             start_sites,
         ),
     ):
-        prepared = await prepare_http_server(MockHttpDeps())
+        prepared = await prepare_http_server(MockHttpDeps(), runtime=_runtime())
         start_sites.assert_not_awaited()
         assert prepared.readiness.accepting_requests is False
         runner = await activate_http_server(prepared)
@@ -388,7 +394,9 @@ async def test_http_preparation_does_not_publish_before_activation(tmp_path) -> 
 @pytest.mark.asyncio
 async def test_control_plane_gate_rejects_requests_until_publication() -> None:
     readiness = ControlPlaneReadiness()
-    client = TestClient(TestServer(create_http_app(MockHttpDeps(), readiness=readiness)))
+    client = TestClient(
+        TestServer(create_http_app(MockHttpDeps(), runtime=_runtime(), readiness=readiness))
+    )
     await client.start_server()
     try:
         starting = await client.get("/health")
@@ -406,7 +414,7 @@ async def test_runtime_harness_ingress_is_absent_from_normal_processes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("PYNCHY_RUNTIME_HARNESS", raising=False)
-    client = TestClient(TestServer(create_http_app(MockHttpDeps())))
+    client = TestClient(TestServer(create_http_app(MockHttpDeps(), runtime=_runtime())))
     await client.start_server()
     try:
         response = await client.post(
@@ -423,7 +431,7 @@ async def test_runtime_harness_ingress_calls_real_ingestion_dependency(
 ) -> None:
     monkeypatch.setenv("PYNCHY_RUNTIME_HARNESS", "1")
     deps = MockHttpDeps()
-    client = TestClient(TestServer(create_http_app(deps)))
+    client = TestClient(TestServer(create_http_app(deps, runtime=_runtime())))
     await client.start_server()
     try:
         response = await client.post(

@@ -30,8 +30,23 @@ TEST_TOKEN = "control-plane-test-token-value-000000"  # noqa: S105, RUF100 - syn
 PUBLIC_BIND_TEST_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test data for explicit public-bind policy.
 
 
+def _runtime(server: ServerConfig, *, project_root: Path) -> ControlPlaneRuntime:
+    return resolve_control_plane_runtime(
+        bind_host=server.host,
+        port=server.port,
+        unix_socket=server.unix_socket,
+        allow_public_bind=server.allow_public_bind,
+        allow_remote_deploy=server.allow_remote_deploy,
+        auth_token_env=server.auth_token_env,
+        auth_token_file=server.auth_token_file,
+        rate_limit_requests=server.rate_limit_requests,
+        rate_limit_window_seconds=server.rate_limit_window_seconds,
+        project_root=project_root,
+    )
+
+
 def test_default_runtime_binds_loopback_and_enables_unix_socket(tmp_path: Path) -> None:
-    runtime = resolve_control_plane_runtime(ServerConfig(), project_root=tmp_path)
+    runtime = _runtime(ServerConfig(), project_root=tmp_path)
 
     assert runtime.bind_host == "127.0.0.1"
     assert runtime.public_bind is False
@@ -44,7 +59,7 @@ def test_non_loopback_bind_requires_explicit_public_opt_in(tmp_path: Path) -> No
     server = ServerConfig(host=PUBLIC_BIND_TEST_HOST)
 
     with pytest.raises(ControlPlaneConfigurationError, match="allow_public_bind"):
-        resolve_control_plane_runtime(server, project_root=tmp_path)
+        _runtime(server, project_root=tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -63,7 +78,7 @@ def test_each_remote_posture_requires_authentication(
     )
 
     with pytest.raises(ControlPlaneConfigurationError, match="requires a bearer token"):
-        resolve_control_plane_runtime(server, project_root=tmp_path)
+        _runtime(server, project_root=tmp_path)
 
 
 def test_public_runtime_accepts_strong_environment_token(
@@ -73,7 +88,7 @@ def test_public_runtime_accepts_strong_environment_token(
     monkeypatch.setenv("PYNCHY_CONTROL_TOKEN", TEST_TOKEN)
     server = ServerConfig(host=PUBLIC_BIND_TEST_HOST, allow_public_bind=True)
 
-    runtime = resolve_control_plane_runtime(server, project_root=tmp_path)
+    runtime = _runtime(server, project_root=tmp_path)
 
     assert runtime.public_bind is True
     assert runtime.remote_auth_required is True
@@ -86,10 +101,7 @@ def test_remote_posture_rejects_short_bearer_token(
     monkeypatch.setenv("PYNCHY_CONTROL_TOKEN", "too-short")
 
     with pytest.raises(ControlPlaneConfigurationError, match="at least 32 bytes"):
-        resolve_control_plane_runtime(
-            ServerConfig(allow_remote_deploy=True),
-            project_root=tmp_path,
-        )
+        _runtime(ServerConfig(allow_remote_deploy=True), project_root=tmp_path)
 
 
 def test_token_file_must_be_permission_restricted(tmp_path: Path) -> None:
@@ -102,21 +114,33 @@ def test_token_file_must_be_permission_restricted(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ControlPlaneConfigurationError, match="mode 0600"):
-        resolve_control_plane_runtime(server, project_root=tmp_path)
+        _runtime(server, project_root=tmp_path)
 
 
 def test_bootstrap_creates_and_rotates_mode_0600_token(tmp_path: Path) -> None:
     server = ServerConfig(auth_token_file=Path("secrets/control.token"))
 
-    token_path = bootstrap_control_plane_token(server, project_root=tmp_path, rotate=False)
+    token_path = bootstrap_control_plane_token(
+        auth_token_file=server.auth_token_file,
+        project_root=tmp_path,
+        rotate=False,
+    )
     first_token = token_path.read_text()
 
     assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
     assert len(first_token.strip()) >= 32
     with pytest.raises(FileExistsError, match="already exists"):
-        bootstrap_control_plane_token(server, project_root=tmp_path, rotate=False)
+        bootstrap_control_plane_token(
+            auth_token_file=server.auth_token_file,
+            project_root=tmp_path,
+            rotate=False,
+        )
 
-    bootstrap_control_plane_token(server, project_root=tmp_path, rotate=True)
+    bootstrap_control_plane_token(
+        auth_token_file=server.auth_token_file,
+        project_root=tmp_path,
+        rotate=True,
+    )
     assert token_path.read_text() != first_token
     assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
 
@@ -365,7 +389,7 @@ async def test_deep_project_root_binds_unix_socket_through_short_relative_path(
     project_root = tmp_path.joinpath(*(["deep-project-directory"] * 6))
     project_root.mkdir(parents=True)
     monkeypatch.chdir(project_root)
-    runtime = resolve_control_plane_runtime(ServerConfig(), project_root=project_root)
+    runtime = _runtime(ServerConfig(), project_root=project_root)
     runtime = replace(runtime, port=0)
 
     assert runtime.unix_socket is not None

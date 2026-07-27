@@ -194,7 +194,7 @@ def _bootstrap_control_plane_token(*, rotate: bool) -> int:
     settings = get_settings()
     try:
         path = bootstrap_control_plane_token(
-            settings.server,
+            auth_token_file=settings.server.auth_token_file,
             project_root=settings.project_root,
             rotate=rotate,
         )

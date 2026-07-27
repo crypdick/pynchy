@@ -41,6 +41,7 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
     PynchyApp,
 )
 from pynchy.host.orchestrator.deploy import current_deploy_revision
+from pynchy.host.orchestrator.http_control import resolve_control_plane_runtime
 from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
@@ -359,8 +360,23 @@ async def _prepare_and_bind_control_plane(
     plugin_manager = _require_plugin_manager(app, "_prepare_and_bind_control_plane")
     tunnel_plugins.check_tunnels(plugin_manager)
     status.record_start_time()
+    settings = get_settings()
+    server = settings.server
+    runtime = resolve_control_plane_runtime(
+        bind_host=server.host,
+        port=server.port,
+        unix_socket=server.unix_socket,
+        allow_public_bind=server.allow_public_bind,
+        allow_remote_deploy=server.allow_remote_deploy,
+        auth_token_env=server.auth_token_env,
+        auth_token_file=server.auth_token_file,
+        rate_limit_requests=server.rate_limit_requests,
+        rate_limit_window_seconds=server.rate_limit_window_seconds,
+        project_root=settings.project_root,
+    )
     prepared_http = await http_server.prepare_http_server(
         dep_factory.make_http_deps(app),
+        runtime=runtime,
         status_deps=dep_factory.make_status_deps(app),
     )
     app.set_http_runner(prepared_http.runner)

@@ -8,12 +8,14 @@ import os
 import subprocess  # noqa: S404, RUF100 - deploy validation uses fixed no-shell uv argv.
 import time
 from dataclasses import dataclass
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves HTTP dependency annotations at runtime.
+)
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from aiohttp import web
 
 from pynchy.canaries import canary_run_to_dict, get_canary_report
-from pynchy.config import get_settings
 from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import (
@@ -33,7 +35,6 @@ from pynchy.host.orchestrator.http_control import (
     ControlPlaneRuntime,
     build_control_plane_middleware,
     register_unix_socket_cleanup,
-    resolve_control_plane_runtime,
     start_control_plane_sites,
 )
 from pynchy.host.orchestrator.http_readiness import (
@@ -88,9 +89,9 @@ class PreparedHttpServer:
     readiness: ControlPlaneReadiness
 
 
-def _write_boot_warning(message: str) -> None:
+def _write_boot_warning(data_dir: Path, message: str) -> None:
     """Append a warning to boot_warnings.json, picked up by _send_boot_notification on restart."""
-    path = get_settings().data_dir / "boot_warnings.json"
+    path = data_dir / "boot_warnings.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         warnings = json.loads(path.read_text()) if path.exists() else []
@@ -108,6 +109,9 @@ class HttpDeps(Protocol):
     async def broadcast_host_message(self, jid: str, text: str) -> None: ...
 
     def admin_chat_jid(self) -> str: ...
+
+    data_dir: Path
+    project_root: Path
 
 
 @runtime_checkable
@@ -151,8 +155,9 @@ async def _handle_deploy(request: web.Request) -> web.Response:
             "git rebase failed, restarting with current code", stderr=pull.stderr.strip()
         )
         _write_boot_warning(
+            deps.data_dir,
             "Deploy rolled back to previous commit because incoming commits failed to rebase. "
-            "Please reconcile the incoming changes into your local clone, push, then redeploy."
+            "Please reconcile the incoming changes into your local clone, push, then redeploy.",
         )
 
     # Restore stashed files regardless of rebase outcome
@@ -164,11 +169,10 @@ async def _handle_deploy(request: web.Request) -> web.Response:
 
     # 4. Validate import (only when the pull changed HEAD)
     if has_new_code:
-        s = get_settings()
         validate = await asyncio.to_thread(
             subprocess.run,
             ["uv", "run", "python", "-c", "import pynchy"],
-            cwd=str(s.project_root),
+            cwd=str(deps.project_root),
             capture_output=True,
             text=True,
         )
@@ -371,15 +375,13 @@ async def _handle_runtime_harness_message(request: web.Request) -> web.Response:
 
 
 async def prepare_http_server(
-    deps: HttpServerDeps, *, status_deps: StatusDeps | None = None
+    deps: HttpServerDeps,
+    *,
+    runtime: ControlPlaneRuntime,
+    status_deps: StatusDeps | None = None,
 ) -> PreparedHttpServer:
     """Prepare routes and cleanup hooks without opening a listener."""
-    settings = get_settings()
     webhook_routes = collect_webhook_routes(cast("Any", deps.get_plugin_manager()))
-    runtime = resolve_control_plane_runtime(
-        settings.server,
-        project_root=settings.project_root,
-    )
     app = create_http_app(
         deps,
         status_deps=status_deps,
@@ -430,10 +432,13 @@ def publish_http_server(prepared: PreparedHttpServer) -> None:
 
 
 async def start_http_server(
-    deps: HttpServerDeps, *, status_deps: StatusDeps | None = None
+    deps: HttpServerDeps,
+    *,
+    runtime: ControlPlaneRuntime,
+    status_deps: StatusDeps | None = None,
 ) -> web.AppRunner:
     """Create, start, and return the HTTP server runner."""
-    prepared = await prepare_http_server(deps, status_deps=status_deps)
+    prepared = await prepare_http_server(deps, runtime=runtime, status_deps=status_deps)
     try:
         await activate_http_server(prepared)
         await recover_http_routes(prepared)
@@ -448,25 +453,18 @@ def create_http_app(
     deps: HttpDeps,
     *,
     status_deps: StatusDeps | None = None,
-    runtime: ControlPlaneRuntime | None = None,
+    runtime: ControlPlaneRuntime,
     webhook_routes: tuple[WebhookRoute, ...] = (),
     readiness: ControlPlaneReadiness | None = None,
 ) -> AiohttpApplication:
     """Build the aiohttp app with all HTTP routes registered."""
-    resolved_runtime = runtime
-    if resolved_runtime is None:
-        settings = get_settings()
-        resolved_runtime = resolve_control_plane_runtime(
-            settings.server,
-            project_root=settings.project_root,
-        )
     webhook_ingress = build_webhook_ingress(cast("WebhookIngressDeps", deps), webhook_routes)
     resolved_readiness = readiness or ControlPlaneReadiness(accepting_requests=True)
     app = web.Application(
         middlewares=[
             readiness_middleware,
             build_control_plane_middleware(
-                resolved_runtime,
+                runtime,
                 provider_authenticated_paths=webhook_ingress.public_paths,
             ),
         ]

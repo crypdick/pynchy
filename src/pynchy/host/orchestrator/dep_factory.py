@@ -241,9 +241,12 @@ async def _request_ipc_deploy(
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
+    settings = get_settings()
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
+        data_dir = settings.data_dir
+        project_root = settings.project_root
 
         async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
             await app.on_inbound(

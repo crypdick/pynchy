@@ -754,14 +754,6 @@ reason = "pynchy.host.orchestrator.host_runner still has a runtime-import depend
 
 [[violations]]
 importer = "pynchy.host.orchestrator.http_control"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config.server"]
-reason = "pynchy.host.orchestrator.http_control still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_control"
 target_component = "container_adapter"
 kind = "runtime-import"
 count = 1
@@ -775,14 +767,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.canaries"]
 reason = "pynchy.host.orchestrator.http_server still has a runtime-import dependency on canary_adapter; Inject the canary's required capabilities instead of importing concrete operational adapters."
-
-[[violations]]
-importer = "pynchy.host.orchestrator.http_server"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.orchestrator.http_server still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.host.orchestrator.http_server"
