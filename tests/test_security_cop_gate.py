@@ -60,6 +60,41 @@ async def test_cop_allows_clean_operation(mock_deps):
 
 
 @pytest.mark.asyncio
+async def test_missing_inspection_evidence_forces_human_without_model_guess(
+    mock_deps,
+) -> None:
+    with (
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.inspect_outbound",
+            new_callable=AsyncMock,
+        ) as inspect,
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.record_security_event",
+            new_callable=AsyncMock,
+        ) as audit,
+        patch(
+            "pynchy.host.container_manager.security.cop_gate.create_pending_approval",
+            return_value="a1",
+        ) as create_pending,
+    ):
+        allowed = await cop_gate(
+            "sync_worktree_to_main",
+            "publish committed worktree",
+            {"type": "sync_worktree_to_main", "request_id": "guard-patch"},
+            "admin-1",
+            mock_deps,
+            request_id="guard-patch",
+            required_human_reason="Committed patch exceeds the inspection limit",
+        )
+
+    assert allowed is False
+    inspect.assert_not_awaited()
+    create_pending.assert_called_once()
+    assert audit.await_args.kwargs["decision"] == "cop_degraded"
+    assert audit.await_args.kwargs["reason"] == ("Committed patch exceeds the inspection limit")
+
+
+@pytest.mark.asyncio
 async def test_inactive_cop_skips_outbound_inspection(mock_deps):
     """A profile can omit Cop without weakening explicit human contracts."""
     gate = SecurityGate(WorkspaceSecurity(cop_active=False))

@@ -110,6 +110,15 @@ authenticated callback route is configured: when the signed webhook identifies
 a user actor and a state change, Pynchy acquires the lease in place instead of
 moving the issue backward first.
 
+Before Pynchy leases a `Human Approved` item that contains a marked plan, a
+hidden agent with provider tools disabled checks that plan against the current
+repositories. The reviewer is instructed to inspect without modifying them. The
+reviewer uses implementation judgment: ordinary drift can proceed, while a
+materially stale plan returns a complete replacement plan to `Awaiting Plan
+Approval` with an explanatory comment. A reviewer error also adds a comment and
+returns the issue to `Awaiting Plan Approval`. Neither outcome acquires a lease.
+Items approved without a marked plan skip this review.
+
 `linear_create_todo` creates an unapproved `Agent Proposed` item. An autonomous
 agent can't set `Ready for Planning`, `Human Approved`, or `Rejected`.
 
@@ -214,14 +223,14 @@ nonterminal issue updates and removals, and messages in the corresponding
 Discord thread share one ordered conversation.
 
 A `Ready for Planning` update belongs to the planning controller. A `Human
-Approved` update acquires the execution lease before the host admits work into
-the issue conversation. A user-authored state transition directly to `In
-Progress` acquires the same lease without another provider move. An unleased
-`In Progress` update without that actor and changed-field evidence remains
-controller-owned but does not authorize work. These issue updates don't also
-start ordinary conversation turns, because that would race a second agent
-against the durable task. An `Awaiting Plan Approval` update waits for human
-review.
+Approved` update also remains controller-owned; the periodic controller checks
+any marked plan before it acquires the execution lease. A user-authored state
+transition directly to `In Progress` acquires the same lease without another
+provider move. An unleased `In Progress` update without that actor and
+changed-field evidence remains controller-owned but does not authorize work.
+These issue updates don't also start ordinary conversation turns, because that
+would race a second agent against the durable task. An `Awaiting Plan Approval`
+update waits for human review.
 
 An `Issue` callback with Linear workflow type `completed` or `canceled` becomes
 a lifecycle-only FIFO delivery. Pynchy uses the type, not a mutable display name,
@@ -272,9 +281,10 @@ trusted.
 
 One Temporal schedule reconciles every managed board once per minute, including
 webhook-routed boards. It creates or recovers planning tasks for `Ready for
-Planning`, leases `Human Approved` work, repairs an `In Progress` execution
-whose durable task is missing, and admits `Follow-ups` without a second approval
-lease. `Awaiting Plan Approval` remains idle until a human decides.
+Planning`, reviews marked plans before leasing `Human Approved` work, repairs an
+`In Progress` execution whose durable task is missing, and admits `Follow-ups`
+without a second approval lease. `Awaiting Plan Approval` remains idle until a
+human decides.
 
 Only an explicit work-item lifecycle outcome, such as `Awaiting Review`,
 `Blocked`, `Follow-ups`, `Done`, or cancellation, counts as a successful Linear

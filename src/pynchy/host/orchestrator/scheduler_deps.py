@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     OnOutput,
 )
+from pynchy.linear_plan_types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    LinearPlanReviewRequest,
+    LinearPlanReviewResult,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves annotations.
     ContainerOutput,
     OutboundEvent,
@@ -55,6 +59,11 @@ class SchedulerDependencies(Protocol):
     ) -> None: ...
 
     async def save_state(self) -> None: ...
+
+    async def review_linear_plan(
+        self,
+        request: LinearPlanReviewRequest,
+    ) -> LinearPlanReviewResult: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - mirrors the orchestrator contract.
         self,
