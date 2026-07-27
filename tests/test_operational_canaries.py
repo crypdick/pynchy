@@ -204,15 +204,9 @@ async def test_google_calendar_canary_uses_real_mcp_tool_contract_and_removes_ev
         assert server_name == "gcal.canary"
         yield client
 
-    monkeypatch.setattr(
-        "pynchy.google_mcp_canaries.get_settings",
-        lambda: make_settings(
-            canary=CanaryConfig(
-                google_calendar_server="gcal.canary", google_calendar_id="pynchy-canary"
-            )
-        ),
+    scenario = GoogleCalendarRoundTripCanary(
+        "gcal.canary", "pynchy-canary", client_context=client_context
     )
-    scenario = GoogleCalendarRoundTripCanary(client_context=client_context)
 
     exercise = await scenario.exercise(_context("calendar.google.round.trip"))
     verified = await scenario.verify(_context("calendar.google.round.trip"), exercise)
@@ -237,17 +231,12 @@ async def test_google_drive_canary_searches_and_reads_a_configured_fixture(monke
         assert server_name == "gdrive.canary"
         yield client
 
-    monkeypatch.setattr(
-        "pynchy.google_mcp_canaries.get_settings",
-        lambda: make_settings(
-            canary=CanaryConfig(
-                google_drive_server="gdrive.canary",
-                google_drive_probe_query="pynchy-canary-fixture",
-                google_drive_file_id="fixture-file-id",
-            )
-        ),
+    scenario = GoogleDriveRoundTripCanary(
+        "gdrive.canary",
+        "pynchy-canary-fixture",
+        "fixture-file-id",
+        client_context=client_context,
     )
-    scenario = GoogleDriveRoundTripCanary(client_context=client_context)
 
     exercise = await scenario.exercise(_context("drive.google.round.trip"))
     verified = await scenario.verify(_context("drive.google.round.trip"), exercise)
