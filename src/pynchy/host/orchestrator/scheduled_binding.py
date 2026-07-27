@@ -10,7 +10,11 @@ from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resol
     Conversation,
     ConversationId,
 )
-from pynchy.conversation.workspaces import dynamic_thread_folder, routed_conversation_folder
+from pynchy.conversation.workspaces import (
+    dynamic_thread_folder,
+    parent_workspace_name,
+    routed_conversation_folder,
+)
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
@@ -78,6 +82,26 @@ def _task_thread_name(task: ScheduledTask) -> str:
 
 def _is_linear_task(task: ScheduledTask) -> bool:
     return task.input_source.startswith(_LINEAR_INPUT_SOURCE_PREFIXES)
+
+
+def _existing_named_task_binding(
+    task: ScheduledTask,
+    deps: ScheduledBindingDeps,
+) -> WorkspaceProfile | None:
+    """Return a task's already-registered child runtime for its current owner."""
+    if task.bound_chat_jid is None or task.bound_group_folder is None:
+        return None
+    profile = deps.workspaces.get(task.bound_chat_jid)
+    if profile is None or profile.folder != task.bound_group_folder:
+        return None
+    placement = resolve_workspace_placement(deps.workspaces.values(), task.group_folder)
+    if placement is None:
+        raise ScheduledTaskOwnershipError(
+            f"Scheduled task owner workspace is unavailable: {task.group_folder}"
+        )
+    if parent_workspace_name(profile.folder) != placement.owner.folder:
+        return None
+    return profile
 
 
 def resolve_scheduled_group(
@@ -188,6 +212,18 @@ async def _bind_routed_conversation(
     return ensured.profile, ensured.control.binding.title
 
 
+async def _bind_task_runtime(
+    task: ScheduledTask,
+    deps: ScheduledBindingDeps,
+) -> tuple[WorkspaceProfile, str]:
+    if task.conversation_id is not None:
+        return await _bind_routed_conversation(task, deps)
+    existing = _existing_named_task_binding(task, deps)
+    if existing is not None:
+        return existing, _task_thread_name(task)
+    return await _bind_named_thread(task, deps)
+
+
 async def ensure_scheduled_task_binding(
     task: ScheduledTask,
     deps: ScheduledBindingDeps,
@@ -203,11 +239,7 @@ async def ensure_scheduled_task_binding(
     if ownership_updates:
         await deps.persist_scheduled_task_updates(task.id, ownership_updates)
 
-    profile, title = (
-        await _bind_routed_conversation(task, deps)
-        if task.conversation_id is not None
-        else await _bind_named_thread(task, deps)
-    )
+    profile, title = await _bind_task_runtime(task, deps)
     updates: dict[str, object] = {}
     if task.bound_chat_jid != profile.jid:
         updates["bound_chat_jid"] = profile.jid
