@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from functools import partial
 
-import pytest
-from conftest import make_settings
+from conftest import make_command_matcher, make_settings
 
-from pynchy.host.orchestrator.messaging.commands import is_approval_command, is_pending_query
+from pynchy.host.orchestrator.messaging import commands
 
-
-@pytest.fixture(autouse=True)
-def _mock_settings():
-    """Provide default settings so _strip_trigger works."""
-    with patch(
-        "pynchy.host.orchestrator.messaging.commands.get_settings", return_value=make_settings()
-    ):
-        yield
+_MATCHER = make_command_matcher(make_settings())
+is_approval_command = partial(commands.is_approval_command, _MATCHER)
+is_pending_query = partial(commands.is_pending_query, _MATCHER)
 
 
 class TestIsApprovalCommand:
