@@ -81,6 +81,7 @@ async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learn
     *,
     enabled: bool,
     review_after_turn: bool,
+    packet_max_chars: int,
 ) -> str | None:
     if not is_after_turn_learning_enabled(
         enabled=enabled,
@@ -111,6 +112,8 @@ async def start_completed_turn_learning_review(  # noqa: PLR0913, RUF100 - learn
             missed_messages=learning_messages,
             final_cursor=final_cursor,
             summary=summary,
+            enabled=enabled,
+            packet_max_chars=packet_max_chars,
         )
     except Exception as exc:  # noqa: BLE001, RUF100 - allow: exception-handling; learning must not fail user turns.
         logger.exception(
