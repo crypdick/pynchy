@@ -11,9 +11,11 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves deploy 
     Callable,
 )
 from dataclasses import dataclass
+from pathlib import (
+    Path,  # noqa: TC003, RUF100 - beartype resolves deploy path annotations at runtime.
+)
 
 from pynchy import state as pynchy_state
-from pynchy.config import get_settings
 from pynchy.host.git_ops.sync_poll import get_deploy_config_hash
 from pynchy.host.git_ops.utils import get_head_sha, run_git
 from pynchy.logger import logger
@@ -75,13 +77,13 @@ def rollback_deploy_checkout(previous_sha: str) -> RollbackResult:
     return RollbackResult(success=True, actual_sha=actual_sha)
 
 
-def build_container_image(*, timeout: int = 600) -> BuildResult:
+def build_container_image(project_root: Path, *, timeout: int = 600) -> BuildResult:
     """Run src/pynchy/agent/build.sh to rebuild the container image.
 
     Returns a BuildResult so callers can decide how to handle success/failure.
     This is the single code path for all container image rebuilds.
     """
-    build_script = get_settings().project_root / "src" / "pynchy" / "agent" / "build.sh"
+    build_script = project_root / "src" / "pynchy" / "agent" / "build.sh"
     if not build_script.exists():
         logger.warning("Container rebuild requested but build.sh not found")
         return BuildResult(success=True, skipped=True)
@@ -89,7 +91,7 @@ def build_container_image(*, timeout: int = 600) -> BuildResult:
     logger.info("Rebuilding container image...")
     result = subprocess.run(  # noqa: S603, RUF100 - executable is the repo-local build.sh path and no shell is used.
         [str(build_script)],
-        cwd=str(get_settings().project_root / "src" / "pynchy" / "agent"),
+        cwd=str(project_root / "src" / "pynchy" / "agent"),
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -111,6 +113,7 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
     config_hash: str,
     previous_sha: str,
     change_kind: DeployChangeKind,
+    data_dir: Path,
     resume_prompt: str = "Deploy complete. Verifying service health.",
     sigterm_delay: float = 0,
 ) -> None:
@@ -148,7 +151,7 @@ async def finalize_deploy(  # noqa: PLR0913, RUF100 - deploy boundary must carry
             for turn in in_flight_turns
         ],
     }
-    continuation_path = get_settings().data_dir / "deploy_continuation.json"
+    continuation_path = data_dir / "deploy_continuation.json"
     write_json_atomic(continuation_path, continuation, indent=2)
 
     # 2. Notify all UIs
