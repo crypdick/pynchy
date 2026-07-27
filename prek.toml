@@ -100,7 +100,7 @@ types = ["python"]
 
 [[repos.hooks]]
 id = "check-file-length"
-name = "Enforce 400-logical-line file budget"
+name = "Enforce 450-logical-line file budget"
 entry = "uv run python scripts/prek_hooks/check_file_length.py"
 language = "system"
 types = ["python"]
