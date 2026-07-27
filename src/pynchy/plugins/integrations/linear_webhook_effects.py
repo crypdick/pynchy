@@ -96,12 +96,18 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
     ):
         return
     workspace = str(delivery.workspace)
+    controller_workspace = (
+        context.get("linear_controller_workspace", workspace) if context is not None else workspace
+    )
     if callback_state != managed_done_state:
+        return
+    if not isinstance(controller_workspace, str) or not controller_workspace:
         return
     await complete_reviewed_work_item(
         workspace,
         delivery.subject_id,
         str(delivery.identity.delivery_id),
+        controller_workspace=controller_workspace,
     )
 
 

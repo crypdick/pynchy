@@ -73,7 +73,7 @@ from pynchy.host.orchestrator.webhook_event_payloads import (
 )
 from pynchy.plugins.integrations.linear import LinearMcpPlugin
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
-from pynchy.plugins.integrations.linear_client import LinearError
+from pynchy.plugins.integrations.linear_client import LinearClient, LinearError
 from pynchy.plugins.integrations.linear_webhook_effects import (
     process_linear_webhook_event,
     process_linear_webhook_lifecycle,
@@ -95,11 +95,13 @@ from pynchy.plugins.webhooks import (
 from pynchy.state import (
     WorkItemClaimRequest,
     create_work_item_claim,
+    get_active_work_item_execution,
     get_all_tasks,
     get_conversation,
     get_conversation_control_binding,
     get_conversation_for_subject_key,
     get_webhook_receipt,
+    get_work_item_execution_for_issue,
     get_work_item_transition_by_request,
     init_test_database,
     resolve_conversation,
@@ -436,6 +438,7 @@ async def test_terminal_lifecycle_preparation_resolves_its_workspace(
     assert prepared.lifecycle.context == {
         "linear_state_id": "state-done",
         "linear_managed_done_state_id": "state-done",
+        "linear_controller_workspace": "project",
     }
     assert prepared.conversation is not None
     assert prepared.conversation.workspace == "project"
@@ -474,6 +477,7 @@ async def _seed_moved_active_issue(
     deps.channel.threads[deps.workspace.jid, "[PYN-1] Linear issue"] = (
         "discord:channel:original-thread"
     )
+    deps.channel.closed["discord:channel:original-thread"] = False
     issue = {
         "id": "issue-1",
         "identifier": "PYN-1",
@@ -652,6 +656,103 @@ async def test_moved_active_issue_update_uses_destination_board_and_original_run
     assert preserved.session_id == SessionId("original-session")
 
 
+async def test_moved_active_issue_done_reconciles_against_destination_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LINEAR_WEBHOOK_SECRET", _SIGNING_KEY)
+    deps = _WebhookDeps()
+    await deps.persist_parent()
+    original, destination = await _seed_moved_active_issue(deps)
+    destination_board = _workspace_board()
+    prepare_workspace_issue = AsyncMock(return_value=({"id": "issue-1"}, destination_board))
+    complete_workspace_issue = AsyncMock(
+        return_value=(
+            {
+                "id": "issue-1",
+                "identifier": "PYN-1",
+                "url": "https://linear.app/acme/issue/PYN-1",
+                "updatedAt": datetime.now(UTC).isoformat(),
+                "state": {"id": "state-done", "name": "Done"},
+            },
+            destination_board,
+        )
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.linear_client",
+        lambda **_kwargs: _linear_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_webhooks.workspace_issue",
+        prepare_workspace_issue,
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_completion.linear_client",
+        lambda **_kwargs: _reconcile_client_context(),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.linear_work_item_provider.workspace_issue",
+        complete_workspace_issue,
+    )
+    config = _config().model_copy(update={"workspace": destination.folder})
+    route = replace(
+        _route(),
+        workspace=None,
+        candidate_workspaces=(deps.workspace.folder, destination.folder),
+        prepare_event=partial(
+            prepare_linear_webhook_event,
+            config=config,
+            public_source=False,
+        ),
+        process_lifecycle=process_linear_webhook_lifecycle,
+    )
+    app = create_http_app(deps, runtime=_public_runtime(), webhook_routes=(route,))
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        status, body = await _post_linear_event(
+            client,
+            _payload(
+                now=datetime.now(UTC),
+                event_type="Issue",
+                action="update",
+                data={
+                    "id": "issue-1",
+                    "identifier": "PYN-1",
+                    "title": "Moved active work",
+                    "state": {"id": "state-done", "name": "Done", "type": "completed"},
+                },
+            ),
+        )
+    finally:
+        await client.close()
+
+    assert status == 200
+    assert body == {"status": "accepted", "duplicate": False}
+    complete_workspace_issue.assert_awaited_once_with(ANY, destination.folder, "issue-1")
+    assert await get_active_work_item_execution("issue-1") is None
+    completed = await get_work_item_execution_for_issue(
+        "issue-1",
+        workspace=deps.workspace.folder,
+    )
+    assert completed is not None
+    assert completed.status is WorkItemExecutionStatus.COMPLETED
+    binding = await get_conversation_control_binding(original.id)
+    assert binding is not None
+    assert binding.thread_jid == "discord:channel:original-thread"
+    assert binding.closed is True
+    assert deps.channel.closed["discord:channel:original-thread"] is True
+    assert not deps.ingested
+    assert not deps.channel.created
+    assert (
+        await get_conversation_for_subject_key(
+            ConversationSubjectKey("issue-1"),
+            workspace=GroupFolder(destination.folder),
+            namespace_suffix=":issue",
+        )
+        is None
+    )
+
+
 async def test_managed_done_lifecycle_completes_reviewed_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -677,7 +778,12 @@ async def test_managed_done_lifecycle_completes_reviewed_execution(
         )
     )
 
-    complete.assert_awaited_once_with("project", "issue-1", _DELIVERY_ID)
+    complete.assert_awaited_once_with(
+        "project",
+        "issue-1",
+        _DELIVERY_ID,
+        controller_workspace="project",
+    )
 
 
 @pytest.mark.parametrize("terminal_state_id", ["state-duplicate", "state-custom-canceled"])
@@ -1270,6 +1376,16 @@ async def test_route_preparation_can_ignore_an_off_board_issue_before_thread_cre
 @asynccontextmanager
 async def _linear_client_context() -> AsyncIterator[object]:
     yield object()
+
+
+class _ReconcileClient(LinearClient):
+    def __init__(self) -> None:
+        pass
+
+
+@asynccontextmanager
+async def _reconcile_client_context() -> AsyncIterator[LinearClient]:
+    yield _ReconcileClient()
 
 
 async def test_route_preparation_verifies_board_membership_before_dispatch() -> None:

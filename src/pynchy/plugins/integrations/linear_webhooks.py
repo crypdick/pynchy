@@ -101,6 +101,7 @@ async def prepare_linear_webhook_event(
     if lifecycle is not None:
         context = dict(lifecycle.context or {})
         context["linear_managed_done_state_id"] = state_id(board.states["done"])
+        context["linear_controller_workspace"] = workspace
         lifecycle = replace(lifecycle, context=context)
     return replace(
         event,
