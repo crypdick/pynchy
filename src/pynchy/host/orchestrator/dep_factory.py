@@ -47,6 +47,7 @@ from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - bear
 )
 from pynchy.host.orchestrator.messaging import pending_questions
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
+from pynchy.host.orchestrator.source_health_deps import SourceHealthProjection
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     StatusDeps,
 )
@@ -332,6 +333,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         channels = metadata_manager.channels
         pending_question_store = staticmethod(_PendingQuestionStore)
         scheduled_work_store = staticmethod(_ScheduledWorkStore)
+        messaging_source_health = staticmethod(SourceHealthProjection)
 
         async def clear_session(self, group_folder: str) -> None:
             group = next(
