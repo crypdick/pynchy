@@ -62200,7 +62200,7 @@
       "label": "_canonical_task_id()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L32",
+      "source_location": "L36",
       "_origin": "ast"
     },
     {
@@ -62208,7 +62208,7 @@
       "label": "_recoverable_task_id()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L37",
+      "source_location": "L41",
       "_origin": "ast"
     },
     {
@@ -62216,7 +62216,7 @@
       "label": "admit_planning_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L59",
+      "source_location": "L63",
       "_origin": "ast"
     },
     {
@@ -62236,11 +62236,11 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_planning_tasks_rationale_66",
+      "id": "pynchy_plugins_integrations_linear_planning_tasks_rationale_70",
       "label": "Create or recover one planning-only task for a managed ready item.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L66",
+      "source_location": "L70",
       "_origin": "ast"
     },
     {
@@ -255290,7 +255290,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L32",
+      "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255301,7 +255301,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L32",
+      "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255311,7 +255311,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L37",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255322,7 +255322,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L37",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255333,7 +255333,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L37",
+      "source_location": "L41",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255343,7 +255343,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L59",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255354,7 +255354,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L59",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255365,7 +255365,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L59",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255376,7 +255376,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L59",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255387,7 +255387,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L59",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255398,7 +255398,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L55",
+      "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255409,7 +255409,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L81",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255420,7 +255420,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L82",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -255435,12 +255435,12 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_planning_tasks_rationale_66",
+      "source": "pynchy_plugins_integrations_linear_planning_tasks_rationale_70",
       "target": "pynchy_plugins_integrations_linear_planning_tasks_admit_planning_issue",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L66",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349775,7 +349775,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L49",
+      "source_location": "L53",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349786,7 +349786,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L80",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349797,7 +349797,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L93",
+      "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -349808,7 +349808,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_planning_tasks.py",
-      "source_location": "L95",
+      "source_location": "L99",
       "weight": 1.0,
       "_origin": "ast"
     },

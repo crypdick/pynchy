@@ -537,7 +537,10 @@ async def test_reconcile_recovers_ready_planning_without_execution_authority() -
     assert task.input_source == "external:linear:ready_for_planning"
     assert "linear_submit_plan" in task.prompt
     assert "Awaiting Plan Approval" in task.prompt
-    assert "does not authorize execution" in task.prompt
+    assert "supplies the user's scope and stated facts" in task.prompt
+    assert "without asking the user to reconfirm" in task.prompt
+    assert "not a consent request" in task.prompt
+    assert "Do not pad the plan with generic confirmation or permission steps" in task.prompt
     assert "Do not execute" in task.prompt
     assert duplicate == []
     assert await get_active_work_item_execution("issue-plan") is None
