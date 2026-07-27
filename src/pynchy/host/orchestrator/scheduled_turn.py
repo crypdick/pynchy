@@ -9,14 +9,14 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves these r
 )
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from pynchy.host.orchestrator.execution_outcomes import TurnOutcome
+from typing import Any
 
 from pynchy.conversation.events import new_turn_id
 from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves scheduler dependency annotations at runtime.
     OnOutput,
+)
+from pynchy.host.orchestrator.execution_outcomes import (  # noqa: TC001, RUF100 - beartype resolves terminal outcome annotations at runtime.
+    TurnOutcome,
 )
 from pynchy.host.orchestrator.messaging.in_flight import (
     MessageTurnStart,
