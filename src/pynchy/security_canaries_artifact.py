@@ -81,6 +81,8 @@ class _SecurityCanaryDeps:
     async def trigger_deploy(self, _previous_sha: str, *, rebuild: bool = True) -> None:
         del rebuild
 
+    async def create_periodic_agent(self, _request: object) -> None: ...
+
 
 class FileSecretTaintCanary:
     """Prove credential-file access establishes sticky secret taint."""

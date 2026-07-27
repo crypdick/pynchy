@@ -7,15 +7,18 @@ a complex multi-step operation where partial failures need careful handling.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from conftest import NullIpcDeps, init_test_database, make_settings
+from conftest import NullChannel, NullIpcDeps, init_test_database, make_settings
 
 from pynchy.config.models import CommandCenterConfig
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.container_manager.ipc.protocol import CreatePeriodicAgentRequest
+from pynchy.host.orchestrator.app import PynchyApp
+from pynchy.host.orchestrator.dep_factory import make_ipc_deps
 from pynchy.state import get_all_tasks
 from pynchy.types import SessionPolicy, WorkspaceProfile
 
@@ -25,13 +28,29 @@ class MockDeps(NullIpcDeps):
 
     def __init__(self, groups: dict[str, WorkspaceProfile] | None = None):
         self._groups = groups or {}
+        self.app = PynchyApp()
+        self.app.workspaces = self._groups
+
+        async def register_workspace(profile: WorkspaceProfile) -> None:
+            await asyncio.sleep(0)
+            self._groups[profile.jid] = profile
+
+        self.app.register_workspace = register_workspace
         self.broadcast_messages: list[tuple[str, str]] = []
         self.host_messages: list[tuple[str, str]] = []
         self.system_notices: list[tuple[str, str]] = []
         self.cleared_sessions: list[str] = []
         self.cleared_chats: list[str] = []
         self.enqueued_checks: list[str] = []
-        self._channels: list[Any] = []
+        self.app.channels = []
+
+    @property
+    def _channels(self) -> list[Any]:
+        return self.app.channels
+
+    @_channels.setter
+    def _channels(self, value: list[Any]) -> None:
+        self.app.channels = value
 
     async def broadcast_to_channels(self, jid: str, event: object) -> None:
         content = event.content if hasattr(event, "content") else str(event)
@@ -60,6 +79,16 @@ class MockDeps(NullIpcDeps):
 
     def channels(self) -> list:
         return self._channels
+
+    async def create_periodic_agent(self, request: CreatePeriodicAgentRequest) -> None:
+        await make_ipc_deps(self.app).create_periodic_agent(request)
+
+
+class _GroupChannel(NullChannel):
+    name = "main"
+
+    def __init__(self, created_jid: str):
+        self.create_group = AsyncMock(return_value=created_jid)
 
 
 @pytest.fixture
@@ -117,11 +146,8 @@ class TestCreatePeriodicAgent:
         )
 
     @staticmethod
-    def _channel(created_jid: str) -> AsyncMock:
-        mock_channel = AsyncMock()
-        mock_channel.create_group = AsyncMock(return_value=created_jid)
-        mock_channel.name = "main"
-        return mock_channel
+    def _channel(created_jid: str) -> _GroupChannel:
+        return _GroupChannel(created_jid)
 
     async def _dispatch_create_periodic_agent(
         self,
@@ -131,7 +157,7 @@ class TestCreatePeriodicAgent:
     ):
         with (
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                "pynchy.host.orchestrator.dep_factory.get_settings",
                 return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
@@ -154,11 +180,14 @@ class TestCreatePeriodicAgent:
         with (
             pytest.MonkeyPatch.context() as mp,
             patch(
-                "pynchy.host.container_manager.ipc.handlers_groups.get_settings",
+                "pynchy.host.orchestrator.dep_factory.get_settings",
                 return_value=self._settings(tmp_path),
             ),
             patch("pynchy.host.orchestrator.workspace_config.add_workspace_to_toml") as add_ws,
             patch("pynchy.host.orchestrator.workspace_config.add_job_to_toml") as add_job,
+            patch(
+                "pynchy.host.orchestrator.adapters.GroupRegistrationManager.register_workspace"
+            ) as register_workspace,
         ):
             mp.setenv("TZ", "UTC")
             await dispatch(
@@ -176,6 +205,9 @@ class TestCreatePeriodicAgent:
             add_ws.assert_called_once()
             add_job.assert_called_once()
             assert add_job.call_args.args[1].workspace == "daily-briefing"
+            profile = register_workspace.call_args.args[0]
+            assert profile.jid == "agent@g.us"
+            assert profile.folder == "daily-briefing"
 
         # 1. Folder created
         agent_dir = tmp_path / "daily-briefing"
@@ -189,12 +221,7 @@ class TestCreatePeriodicAgent:
         # 4. Chat group created via channel
         mock_channel.create_group.assert_called_once()
 
-        # 5. Group registered
-        assert "agent@g.us" in deps.workspaces()
-        group = deps.workspaces()["agent@g.us"]
-        assert group.folder == "daily-briefing"
-
-        # 6. Scheduled task created
+        # 5. Scheduled task created
         task = await self._single_task()
         assert task.group_folder == "daily-briefing"
         assert task.schedule_value == "0 9 * * *"

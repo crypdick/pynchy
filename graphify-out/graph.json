@@ -18648,7 +18648,7 @@
       "label": "IpcDeps",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L15",
+      "source_location": "L18",
       "_origin": "ast"
     },
     {
@@ -18664,7 +18664,7 @@
       "label": ".broadcast_to_channels()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L18",
+      "source_location": "L21",
       "_origin": "ast"
     },
     {
@@ -18672,7 +18672,7 @@
       "label": ".broadcast_host_message()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L20",
+      "source_location": "L23",
       "_origin": "ast"
     },
     {
@@ -18680,7 +18680,7 @@
       "label": ".broadcast_system_notice()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L22",
+      "source_location": "L25",
       "_origin": "ast"
     },
     {
@@ -18688,7 +18688,7 @@
       "label": ".workspaces()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L24",
+      "source_location": "L27",
       "_origin": "ast"
     },
     {
@@ -18696,7 +18696,7 @@
       "label": ".register_workspace()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L26",
+      "source_location": "L29",
       "_origin": "ast"
     },
     {
@@ -18704,7 +18704,7 @@
       "label": ".sync_group_metadata()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L28",
+      "source_location": "L31",
       "_origin": "ast"
     },
     {
@@ -18712,7 +18712,7 @@
       "label": ".get_available_groups()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L30",
+      "source_location": "L33",
       "_origin": "ast"
     },
     {
@@ -18728,7 +18728,7 @@
       "label": ".write_groups_snapshot()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L32",
+      "source_location": "L35",
       "_origin": "ast"
     },
     {
@@ -18736,7 +18736,7 @@
       "label": ".has_active_session()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L41",
+      "source_location": "L44",
       "_origin": "ast"
     },
     {
@@ -18744,7 +18744,7 @@
       "label": ".clear_session()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L43",
+      "source_location": "L46",
       "_origin": "ast"
     },
     {
@@ -18752,7 +18752,7 @@
       "label": ".get_active_sessions()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L45",
+      "source_location": "L48",
       "_origin": "ast"
     },
     {
@@ -18760,7 +18760,7 @@
       "label": ".clear_chat_history()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L47",
+      "source_location": "L50",
       "_origin": "ast"
     },
     {
@@ -18768,7 +18768,7 @@
       "label": ".enqueue_message_check()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "_origin": "ast"
     },
     {
@@ -18776,7 +18776,7 @@
       "label": ".channels()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L51",
+      "source_location": "L54",
       "_origin": "ast"
     },
     {
@@ -18784,7 +18784,7 @@
       "label": ".request_deploy()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L53",
+      "source_location": "L56",
       "_origin": "ast"
     },
     {
@@ -18792,7 +18792,15 @@
       "label": ".trigger_deploy()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L62",
+      "source_location": "L65",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_ipc_deps_ipcdeps_create_periodic_agent",
+      "label": ".create_periodic_agent()",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/ipc/deps.py",
+      "source_location": "L67",
       "_origin": "ast"
     },
     {
@@ -18800,7 +18808,7 @@
       "label": "resolve_chat_jid()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L65",
+      "source_location": "L70",
       "_origin": "ast"
     },
     {
@@ -18808,7 +18816,7 @@
       "label": "resolve_workspace_by_folder()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L73",
+      "source_location": "L78",
       "_origin": "ast"
     },
     {
@@ -18820,27 +18828,27 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_deps_rationale_16",
+      "id": "pynchy_host_container_manager_ipc_deps_rationale_19",
       "label": "Dependencies for IPC processing.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L16",
+      "source_location": "L19",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_deps_rationale_66",
+      "id": "pynchy_host_container_manager_ipc_deps_rationale_71",
       "label": "Look up the chat JID for a group folder from the workspace registry.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L66",
+      "source_location": "L71",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_deps_rationale_74",
+      "id": "pynchy_host_container_manager_ipc_deps_rationale_79",
       "label": "Look up a WorkspaceProfile by its folder name.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L74",
+      "source_location": "L79",
       "_origin": "ast"
     },
     {
@@ -19412,43 +19420,11 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "label": "_CreateGroupChannel",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L38",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_py_protocol",
-      "label": "Protocol",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel_create_group",
-      "label": ".create_group()",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L41",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "label": "_PeriodicAgentSetup",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L45",
-      "_origin": "ast"
-    },
-    {
       "id": "pynchy_host_container_manager_ipc_handlers_groups_handle_register_group",
       "label": "_handle_register_group()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L53",
+      "source_location": "L23",
       "_origin": "ast"
     },
     {
@@ -19464,7 +19440,7 @@
       "label": "_handle_create_periodic_agent()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L103",
+      "source_location": "L73",
       "_origin": "ast"
     },
     {
@@ -19472,7 +19448,7 @@
       "label": "_periodic_agent_request()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L120",
+      "source_location": "L90",
       "_origin": "ast"
     },
     {
@@ -19480,39 +19456,7 @@
       "label": "_periodic_agent_cop_allowed()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L141",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "label": "_create_periodic_agent()",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L170",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "label": "_periodic_agent_setup()",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L245",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_command_center_channel",
-      "label": "_command_center_channel()",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L265",
-      "_origin": "ast"
-    },
-    {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_valid_jid",
-      "label": "_valid_jid()",
-      "file_type": "code",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L278",
+      "source_location": "L111",
       "_origin": "ast"
     },
     {
@@ -19524,11 +19468,11 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_ipc_handlers_groups_rationale_109",
+      "id": "pynchy_host_container_manager_ipc_handlers_groups_rationale_79",
       "label": "Create a periodic agent: folder, personalized workspace, instructions, and task.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L109",
+      "source_location": "L79",
       "_origin": "ast"
     },
     {
@@ -34128,7 +34072,7 @@
       "label": "_get_broadcasters()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L65",
+      "source_location": "L75",
       "_origin": "ast"
     },
     {
@@ -34136,7 +34080,47 @@
       "label": "_schedule_interactive_turn()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L74",
+      "source_location": "L84",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "label": "_GroupCreationChannel",
+      "file_type": "code",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L92",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_orchestrator_dep_factory_py_protocol",
+      "label": "Protocol",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_orchestrator_dep_factory_groupcreationchannel_create_group",
+      "label": ".create_group()",
+      "file_type": "code",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L95",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_orchestrator_dep_factory_command_center_channel",
+      "label": "_command_center_channel()",
+      "file_type": "code",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L98",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_orchestrator_dep_factory_valid_jid",
+      "label": "_valid_jid()",
+      "file_type": "code",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L111",
       "_origin": "ast"
     },
     {
@@ -34144,7 +34128,7 @@
       "label": "make_scheduler_deps()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L81",
+      "source_location": "L115",
       "_origin": "ast"
     },
     {
@@ -34152,7 +34136,7 @@
       "label": "_start_temporal_deploy()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L92",
+      "source_location": "L126",
       "_origin": "ast"
     },
     {
@@ -34160,7 +34144,7 @@
       "label": "_request_ipc_deploy()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L123",
+      "source_location": "L157",
       "_origin": "ast"
     },
     {
@@ -34168,7 +34152,7 @@
       "label": "make_http_deps()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L151",
+      "source_location": "L185",
       "_origin": "ast"
     },
     {
@@ -34176,7 +34160,7 @@
       "label": "make_ipc_deps()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L219",
+      "source_location": "L253",
       "_origin": "ast"
     },
     {
@@ -34184,7 +34168,7 @@
       "label": "make_status_deps()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L290",
+      "source_location": "L401",
       "_origin": "ast"
     },
     {
@@ -34192,7 +34176,7 @@
       "label": "make_git_sync_deps()",
       "file_type": "code",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L340",
+      "source_location": "L451",
       "_origin": "ast"
     },
     {
@@ -34204,67 +34188,67 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_66",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_76",
       "label": "Return the app's shared broadcaster pair.      All subsystems reuse the same Mes",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L66",
+      "source_location": "L76",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_82",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_116",
       "label": "Return the app as the shared dependency object for Temporal activities.      Tem",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L82",
+      "source_location": "L116",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_99",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_133",
       "label": "Start a Temporal deploy workflow; in-flight turns are checkpointed in SQLite.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L99",
+      "source_location": "L133",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_131",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_165",
       "label": "Start an agent-requested deploy through the configured notification target.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L131",
+      "source_location": "L165",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_152",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_186",
       "label": "Create the dependency object for the HTTP server.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L152",
+      "source_location": "L186",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_220",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_254",
       "label": "Create the dependency object for the IPC watcher.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L220",
+      "source_location": "L254",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_291",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_402",
       "label": "Create the dependency object for the status collector.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L291",
+      "source_location": "L402",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_orchestrator_dep_factory_rationale_341",
+      "id": "pynchy_host_orchestrator_dep_factory_rationale_452",
       "label": "Create the dependency object for the git sync loop.",
       "file_type": "rationale",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L341",
+      "source_location": "L452",
       "_origin": "ast"
     },
     {
@@ -72028,11 +72012,19 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_security_canaries_artifact_securitycanarydeps_create_periodic_agent",
+      "label": ".create_periodic_agent()",
+      "file_type": "code",
+      "source_file": "pynchy/security_canaries_artifact.py",
+      "source_location": "L84",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_security_canaries_artifact_filesecrettaintcanary",
       "label": "FileSecretTaintCanary",
       "file_type": "code",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L85",
+      "source_location": "L87",
       "_origin": "ast"
     },
     {
@@ -72040,7 +72032,7 @@
       "label": ".exercise()",
       "file_type": "code",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L88",
+      "source_location": "L90",
       "_origin": "ast"
     },
     {
@@ -72048,7 +72040,7 @@
       "label": ".verify()",
       "file_type": "code",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L128",
+      "source_location": "L130",
       "_origin": "ast"
     },
     {
@@ -72056,7 +72048,7 @@
       "label": ".cleanup()",
       "file_type": "code",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L141",
+      "source_location": "L143",
       "_origin": "ast"
     },
     {
@@ -72068,11 +72060,11 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_security_canaries_artifact_rationale_86",
+      "id": "pynchy_security_canaries_artifact_rationale_88",
       "label": "Prove credential-file access establishes sticky secret taint.",
       "file_type": "rationale",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L86",
+      "source_location": "L88",
       "_origin": "ast"
     },
     {
@@ -126806,7 +126798,7 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_deps",
-      "target": "pynchy_types",
+      "target": "pynchy_host_container_manager_ipc_protocol",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -126817,11 +126809,22 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_deps",
+      "target": "pynchy_types",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/deps.py",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_deps",
       "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L15",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126831,7 +126834,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L15",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126841,7 +126844,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L18",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126852,7 +126855,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L18",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126862,7 +126865,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L20",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126872,7 +126875,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L22",
+      "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126882,7 +126885,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L24",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126893,7 +126896,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L24",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126903,7 +126906,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L26",
+      "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126914,7 +126917,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L26",
+      "source_location": "L29",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126924,7 +126927,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L28",
+      "source_location": "L31",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126934,7 +126937,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L30",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126945,7 +126948,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L30",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126955,7 +126958,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L32",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126966,7 +126969,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L32",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126976,7 +126979,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L41",
+      "source_location": "L44",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126986,7 +126989,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L43",
+      "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -126996,7 +126999,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L45",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127006,7 +127009,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L47",
+      "source_location": "L50",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127016,7 +127019,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L49",
+      "source_location": "L52",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127026,7 +127029,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L51",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127037,7 +127040,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L51",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127047,7 +127050,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L53",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127057,7 +127060,28 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L62",
+      "source_location": "L65",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_deps_ipcdeps",
+      "target": "pynchy_host_container_manager_ipc_deps_ipcdeps_create_periodic_agent",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/deps.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_deps_ipcdeps_create_periodic_agent",
+      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/deps.py",
+      "source_location": "L67",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127067,7 +127091,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L65",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127078,7 +127102,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L65",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127088,7 +127112,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L73",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127099,7 +127123,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L73",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127110,7 +127134,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L73",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127121,7 +127145,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L67",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127132,7 +127156,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L76",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -127147,32 +127171,32 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_deps_rationale_16",
+      "source": "pynchy_host_container_manager_ipc_deps_rationale_19",
       "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L16",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_deps_rationale_66",
+      "source": "pynchy_host_container_manager_ipc_deps_rationale_71",
       "target": "pynchy_host_container_manager_ipc_deps_resolve_chat_jid",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L66",
+      "source_location": "L71",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_deps_rationale_74",
+      "source": "pynchy_host_container_manager_ipc_deps_rationale_79",
       "target": "pynchy_host_container_manager_ipc_deps_resolve_workspace_by_folder",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L74",
+      "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -128950,56 +128974,12 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "uuid",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L5",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "collections_abc",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L6",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "dataclasses",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L9",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
       "target": "datetime",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L10",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pathlib",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L11",
+      "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129010,7 +128990,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L12",
+      "source_location": "L6",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129021,51 +129001,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L14",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L16",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config_jobs",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L17",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config_models",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L18",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config_settings",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L19",
+      "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129076,7 +129012,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L22",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129087,7 +129023,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129098,7 +129034,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L29",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129109,18 +129045,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L30",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_orchestrator",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L31",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129131,18 +129056,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L32",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_state",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L33",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129153,47 +129067,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L38",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_py_protocol",
-      "relation": "inherits",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L38",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel_create_group",
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L41",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L45",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129203,7 +129077,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L53",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129214,7 +129088,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L53",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129225,7 +129099,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L53",
+      "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129235,7 +129109,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L103",
+      "source_location": "L73",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129246,7 +129120,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L103",
+      "source_location": "L73",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129257,7 +129131,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L103",
+      "source_location": "L73",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129267,7 +129141,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L120",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129278,7 +129152,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L120",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129289,7 +129163,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L120",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129299,7 +129173,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L141",
+      "source_location": "L111",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129310,7 +129184,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L141",
+      "source_location": "L111",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129321,7 +129195,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L141",
+      "source_location": "L111",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129332,102 +129206,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L141",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L170",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
-      "relation": "references",
-      "context": "parameter_type",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L170",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
-      "relation": "references",
-      "context": "parameter_type",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L170",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L245",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
-      "relation": "references",
-      "context": "parameter_type",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L245",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "relation": "references",
-      "context": "return_type",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L245",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_command_center_channel",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L265",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_command_center_channel",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "relation": "references",
-      "context": "return_type",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L265",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_valid_jid",
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L278",
+      "source_location": "L111",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129438,7 +129217,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L110",
+      "source_location": "L80",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129449,73 +129228,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L114",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_handle_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L117",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L171",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_command_center_channel",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L194",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_valid_jid",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L202",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel_create_group",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L202",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "target": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L256",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -129530,12 +129243,12 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_rationale_109",
+      "source": "pynchy_host_container_manager_ipc_handlers_groups_rationale_79",
       "target": "pynchy_host_container_manager_ipc_handlers_groups_handle_create_periodic_agent",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L109",
+      "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172256,7 +171969,7 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "datetime",
+      "target": "collections_abc",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -172267,12 +171980,23 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "datetime",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
       "target": "typing",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L11",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172283,7 +172007,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L12",
+      "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172294,7 +172018,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L14",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172305,35 +172029,24 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L15",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_container_manager",
+      "target": "pynchy_config_jobs",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L16",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_container_manager_ipc",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L17",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_git_ops_sync",
+      "target": "pynchy_config_models",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -172344,29 +172057,29 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_git_ops_sync_poll",
+      "target": "pynchy_host_container_manager",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L23",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_git_ops_utils",
+      "target": "pynchy_host_container_manager_ipc",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L24",
+      "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_orchestrator",
+      "target": "pynchy_host_container_manager_ipc_protocol",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -172377,18 +172090,51 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_orchestrator_adapters",
+      "target": "pynchy_host_git_ops_sync",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L28",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_orchestrator_app",
+      "target": "pynchy_host_git_ops_sync_poll",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_git_ops_utils",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator_adapters",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -172399,12 +172145,23 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator_app",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
       "target": "pynchy_host_orchestrator_http_server",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L37",
+      "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172415,7 +172172,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L40",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172426,7 +172183,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L43",
+      "source_location": "L51",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172437,7 +172194,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L46",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172448,7 +172205,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L47",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172459,7 +172216,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L51",
+      "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172470,7 +172227,18 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L52",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_state",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172481,7 +172249,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L55",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172492,7 +172260,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L62",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172502,7 +172270,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L65",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172513,7 +172281,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L65",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172524,7 +172292,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L65",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172535,7 +172303,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L65",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172545,7 +172313,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L74",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172556,7 +172324,68 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L74",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L92",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_dep_factory_py_protocol",
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L92",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_dep_factory_groupcreationchannel_create_group",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator_dep_factory_command_center_channel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L98",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_command_center_channel",
+      "target": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L98",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator_dep_factory_valid_jid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L111",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172566,7 +172395,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L81",
+      "source_location": "L115",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172577,7 +172406,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L81",
+      "source_location": "L115",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172588,7 +172417,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L81",
+      "source_location": "L115",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172598,7 +172427,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L92",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172609,7 +172438,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L92",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172620,7 +172449,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L92",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172630,7 +172459,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L123",
+      "source_location": "L157",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172641,7 +172470,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L123",
+      "source_location": "L157",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172651,7 +172480,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L151",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172662,7 +172491,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L151",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172673,7 +172502,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L151",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172683,7 +172512,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L219",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172694,7 +172523,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L219",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172705,7 +172534,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L219",
+      "source_location": "L253",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172715,7 +172544,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L290",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172726,7 +172555,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L290",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172737,7 +172566,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L290",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172747,7 +172576,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L340",
+      "source_location": "L451",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172758,7 +172587,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L340",
+      "source_location": "L451",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172769,7 +172598,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L340",
+      "source_location": "L451",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172780,7 +172609,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L153",
+      "source_location": "L187",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172791,7 +172620,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L221",
+      "source_location": "L255",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172802,7 +172631,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L287",
+      "source_location": "L398",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172813,7 +172642,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L342",
+      "source_location": "L453",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172824,7 +172653,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L363",
+      "source_location": "L474",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -172839,82 +172668,82 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_66",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_76",
       "target": "pynchy_host_orchestrator_dep_factory_get_broadcasters",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L66",
+      "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_82",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_116",
       "target": "pynchy_host_orchestrator_dep_factory_make_scheduler_deps",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L82",
+      "source_location": "L116",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_99",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_133",
       "target": "pynchy_host_orchestrator_dep_factory_start_temporal_deploy",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L99",
+      "source_location": "L133",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_131",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_165",
       "target": "pynchy_host_orchestrator_dep_factory_request_ipc_deploy",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L131",
+      "source_location": "L165",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_152",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_186",
       "target": "pynchy_host_orchestrator_dep_factory_make_http_deps",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L152",
+      "source_location": "L186",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_220",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_254",
       "target": "pynchy_host_orchestrator_dep_factory_make_ipc_deps",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L220",
+      "source_location": "L254",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_291",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_402",
       "target": "pynchy_host_orchestrator_dep_factory_make_status_deps",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L291",
+      "source_location": "L402",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_orchestrator_dep_factory_rationale_341",
+      "source": "pynchy_host_orchestrator_dep_factory_rationale_452",
       "target": "pynchy_host_orchestrator_dep_factory_make_git_sync_deps",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L341",
+      "source_location": "L452",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284534,12 +284363,22 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_security_canaries_artifact_securitycanarydeps",
+      "target": "pynchy_security_canaries_artifact_securitycanarydeps_create_periodic_agent",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/security_canaries_artifact.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_security_canaries_artifact",
       "target": "pynchy_security_canaries_artifact_filesecrettaintcanary",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L85",
+      "source_location": "L87",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284549,7 +284388,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L88",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284560,7 +284399,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L88",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284571,7 +284410,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L88",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284581,7 +284420,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L128",
+      "source_location": "L130",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284592,7 +284431,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L128",
+      "source_location": "L130",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284603,7 +284442,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L128",
+      "source_location": "L130",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284613,7 +284452,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L141",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284624,7 +284463,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L141",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284635,7 +284474,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L141",
+      "source_location": "L143",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284646,7 +284485,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L96",
+      "source_location": "L98",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284657,7 +284496,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L115",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284668,7 +284507,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L120",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284679,7 +284518,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L124",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284690,7 +284529,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L133",
+      "source_location": "L135",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -284705,12 +284544,12 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_security_canaries_artifact_rationale_86",
+      "source": "pynchy_security_canaries_artifact_rationale_88",
       "target": "pynchy_security_canaries_artifact_filesecrettaintcanary",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L86",
+      "source_location": "L88",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -307599,12 +307438,23 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_deps",
-      "target": "pynchy_types_channel",
+      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
       "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_deps",
+      "target": "pynchy_types_channel",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/ipc/deps.py",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -307615,7 +307465,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L7",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -307626,7 +307476,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L7",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -308138,45 +307988,12 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config_jobs_jobconfig",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L17",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config_models_workspaceconfig",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L18",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_config_settings_settings",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L19",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
       "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L22",
+      "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -308187,7 +308004,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -308198,7 +308015,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -308209,29 +308026,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L29",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_state_tasks_create_task",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L33",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_types_scheduledtask",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -308242,7 +308037,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314078,29 +313873,18 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_container_manager_snapshots_write_groups_snapshot",
+      "target": "pynchy_config_jobs_jobconfig",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L16",
+      "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L17",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_orchestrator_dep_factory",
-      "target": "pynchy_host_git_ops_sync_gitsyncdeps",
+      "target": "pynchy_config_models_workspaceconfig",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -314111,12 +313895,56 @@
     },
     {
       "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_container_manager_snapshots_write_groups_snapshot",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L25",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_git_ops_sync_gitsyncdeps",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
       "target": "pynchy_host_git_ops_sync_poll_get_deploy_config_hash",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L23",
+      "source_location": "L31",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314127,7 +313955,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L24",
+      "source_location": "L32",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314138,7 +313966,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314149,7 +313977,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314160,7 +313988,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314171,7 +313999,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314182,7 +314010,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314193,7 +314021,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L26",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314204,7 +314032,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L34",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314215,7 +314043,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L37",
+      "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314226,7 +314054,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L40",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314237,7 +314065,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L46",
+      "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314248,7 +314076,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L47",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314259,7 +314087,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L47",
+      "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314270,7 +314098,18 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L52",
+      "source_location": "L60",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_state_tasks_create_task",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314281,7 +314120,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L55",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314292,7 +314131,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L55",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314303,7 +314142,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L55",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314314,7 +314153,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L55",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -314325,7 +314164,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L62",
+      "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -337975,18 +337814,7 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L30",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups",
-      "target": "pynchy_host_orchestrator_workspace_config",
-      "relation": "imports_from",
-      "context": "submodule_import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L31",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -338239,7 +338067,18 @@
       "context": "submodule_import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L25",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory",
+      "target": "pynchy_host_orchestrator_workspace_config",
+      "relation": "imports_from",
+      "context": "submodule_import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L33",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -340802,40 +340641,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L92",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_types_workspaceprofile",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L211",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_state_tasks_create_task",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L222",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_types_scheduledtask",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L223",
+      "source_location": "L62",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344311,7 +344117,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L75",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344322,7 +344128,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L100",
+      "source_location": "L134",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344333,7 +344139,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L111",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344344,7 +344150,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L112",
+      "source_location": "L146",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344355,7 +344161,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L114",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344366,7 +344172,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L115",
+      "source_location": "L149",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344377,7 +344183,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L132",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344388,7 +344194,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L138",
+      "source_location": "L172",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344399,7 +344205,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L139",
+      "source_location": "L173",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344410,7 +344216,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L142",
+      "source_location": "L176",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344421,7 +344227,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L161",
+      "source_location": "L195",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344432,7 +344238,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L174",
+      "source_location": "L208",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344443,7 +344249,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L190",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344454,7 +344260,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L191",
+      "source_location": "L225",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344465,7 +344271,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L222",
+      "source_location": "L256",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344476,7 +344282,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L225",
+      "source_location": "L259",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344487,7 +344293,40 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L226",
+      "source_location": "L260",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_make_ipc_deps",
+      "target": "pynchy_types_workspaceprofile",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L360",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_make_ipc_deps",
+      "target": "pynchy_state_tasks_create_task",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L369",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_make_ipc_deps",
+      "target": "pynchy_types_scheduledtask",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L370",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344498,7 +344337,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L292",
+      "source_location": "L403",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344509,7 +344348,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L293",
+      "source_location": "L404",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -344520,7 +344359,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L343",
+      "source_location": "L454",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -360713,11 +360552,21 @@
     },
     {
       "source": "pynchy_host_container_manager_ipc_deps_ipcdeps",
-      "target": "pynchy_types_channel",
+      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
       "source_location": "L7",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_ipc_deps_ipcdeps",
+      "target": "pynchy_types_channel",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/container_manager/ipc/deps.py",
+      "source_location": "L10",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -360727,7 +360576,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L7",
+      "source_location": "L10",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -360737,7 +360586,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/deps.py",
-      "source_location": "L7",
+      "source_location": "L10",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -360878,146 +360727,6 @@
       "confidence": "INFERRED",
       "source_file": "pynchy/host/container_manager/ipc/handlers_artifact_security.py",
       "source_location": "L24",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_config_jobs_jobconfig",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L17",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_config_jobs_jobconfig",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L17",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_config_settings_settings",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L19",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_config_settings_settings",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L19",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L22",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_host_container_manager_ipc_deps_ipcdeps",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L22",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_host_container_manager_ipc_protocol_registergrouprequest",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_host_container_manager_ipc_protocol_registergrouprequest",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L25",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_types_scheduledtask",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_types_scheduledtask",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_creategroupchannel",
-      "target": "pynchy_types_workspaceprofile",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
-      "weight": 0.8,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodicagentsetup",
-      "target": "pynchy_types_workspaceprofile",
-      "relation": "uses",
-      "confidence": "INFERRED",
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L34",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -363828,6 +363537,156 @@
       "confidence": "INFERRED",
       "source_file": "pynchy/host/orchestrator/conversation_control.py",
       "source_location": "L29",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_config_jobs_jobconfig",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L19",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_container_manager_ipc_protocol_createperiodicagentrequest",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L25",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_git_ops_sync_gitsyncdeps",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L28",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_adapters_groupmetadatamanager",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L34",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_adapters_groupregistrationmanager",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L34",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_adapters_hostmessagebroadcaster",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L34",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_adapters_messagebroadcaster",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L34",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_adapters_sessionmanager",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L34",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_app_pynchyapp",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L42",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_http_server_httpserverdeps",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L45",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_host_orchestrator_status_statusdeps",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L48",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_types_channel",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L64",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_types_newmessage",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L64",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_types_scheduledtask",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L64",
+      "weight": 0.8,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_orchestrator_dep_factory_groupcreationchannel",
+      "target": "pynchy_types_workspaceprofile",
+      "relation": "uses",
+      "confidence": "INFERRED",
+      "source_file": "pynchy/host/orchestrator/dep_factory.py",
+      "source_location": "L64",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -385328,30 +385187,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "target": "pynchy_config_settings_get_settings",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L246",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_periodic_agent_setup",
-      "target": "chatrefstr",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "INFERRED",
-      "confidence_score": 0.8,
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L261",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_container_manager_ipc_handlers_lifecycle_handle_sync_worktree_to_main",
       "target": "pynchy_host_git_ops_sync_host_create_pr_from_worktree",
       "relation": "indirect_call",
@@ -386451,7 +386286,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/orchestrator/dep_factory.py",
-      "source_location": "L216",
+      "source_location": "L250",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -391923,7 +391758,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L91",
+      "source_location": "L93",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -391935,7 +391770,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L94",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -391947,7 +391782,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L105",
+      "source_location": "L107",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -391959,7 +391794,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/security_canaries_artifact.py",
-      "source_location": "L126",
+      "source_location": "L128",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -392499,7 +392334,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L66",
+      "source_location": "L36",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -392511,7 +392346,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L74",
+      "source_location": "L44",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -392523,7 +392358,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L81",
+      "source_location": "L51",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -392535,7 +392370,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L130",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -392547,7 +392382,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L147",
+      "source_location": "L117",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -392559,31 +392394,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L158",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_orchestrator_workspace_config_add_workspace_to_toml",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L175",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_ipc_handlers_groups_create_periodic_agent",
-      "target": "pynchy_host_orchestrator_workspace_config_add_job_to_toml",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "pynchy/host/container_manager/ipc/handlers_groups.py",
-      "source_location": "L179",
+      "source_location": "L128",
       "weight": 1.0,
       "_origin": "ast"
     },
