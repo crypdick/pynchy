@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import pluggy
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 
 # ---------------------------------------------------------------------------
@@ -96,10 +95,11 @@ def is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) 
 # ---------------------------------------------------------------------------
 
 
-def sync_skills(
+def sync_skills(  # noqa: PLR0913, RUF100 - requires explicit plugin, workspace, and learned-skill inputs.
     session_dir: Path,
-    plugin_manager: pluggy.PluginManager | None = None,
     *,
+    project_root: Path,
+    plugin_manager: pluggy.PluginManager | None = None,
     workspace_skills: list[str] | None = None,
     denied_skill_names: list[str] | None = None,
     learned_skill_paths: list[Path] | None = None,
@@ -112,18 +112,17 @@ def sync_skills(
         workspace_skills: Skill tier/name filter from workspace config; None = core only
         learned_skill_paths: Optional learned skill directories from the Obsidian vault
     """
-    s = get_settings()
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
 
     # Tool-associated skills cross this boundary through their owning plugin,
     # keeping built-in and third-party plugins equally pluggable.
     for skills_src in (
-        s.project_root / "data" / "defaults" / "skills",
-        s.project_root / "data" / "personalization" / "skills",
+        project_root / "data" / "defaults" / "skills",
+        project_root / "data" / "personalization" / "skills",
     ):
         _sync_configured_skills(skills_src, skills_dst, workspace_skills)
-    _sync_plugin_skills(skills_dst, plugin_manager, workspace_skills)
+    _sync_plugin_skills(skills_dst, plugin_manager, workspace_skills, project_root)
 
     desired_learned_skill_names = _selected_learned_skill_names(
         learned_skill_paths,
@@ -204,27 +203,30 @@ def _sync_plugin_skills(
     skills_dst: Path,
     plugin_manager: pluggy.PluginManager | None,
     workspace_skills: list[str] | None,
+    project_root: Path,
 ) -> None:
     if plugin_manager is None:
         return
 
     for skill_paths in plugin_manager.hook.pynchy_skill_paths():
-        _sync_plugin_skill_paths(skills_dst, skill_paths, workspace_skills)
+        _sync_plugin_skill_paths(skills_dst, skill_paths, workspace_skills, project_root)
 
 
 def _sync_plugin_skill_paths(
     skills_dst: Path,
     skill_paths: list[Any],
     workspace_skills: list[str] | None,
+    project_root: Path,
 ) -> None:
     for skill_path_str in skill_paths:
-        _sync_plugin_skill_path(skills_dst, skill_path_str, workspace_skills)
+        _sync_plugin_skill_path(skills_dst, skill_path_str, workspace_skills, project_root)
 
 
 def _sync_plugin_skill_path(
     skills_dst: Path,
     skill_path_str: object,
     workspace_skills: list[str] | None,
+    project_root: Path,
 ) -> None:
     if not isinstance(skill_path_str, str | Path):
         logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
@@ -248,17 +250,17 @@ def _sync_plugin_skill_path(
         return
 
     try:
-        _copy_plugin_skill_path(skill_path, skills_dst)
+        _copy_plugin_skill_path(skill_path, skills_dst, project_root)
     except (OSError, TypeError):
         logger.exception("Failed to sync plugin skill", path=repr(skill_path_str))
 
 
-def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path) -> None:
+def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path, project_root: Path) -> None:
     dst_dir = skills_dst / skill_path.name
     if (
         _is_learned_skill_copy(dst_dir)
         or _is_plugin_skill_copy_from(dst_dir, skill_path)
-        or _is_unmarked_plugin_skill_copy(dst_dir, skill_path)
+        or _is_unmarked_plugin_skill_copy(dst_dir, skill_path, project_root)
     ):
         shutil.rmtree(dst_dir)
     if dst_dir.exists():
@@ -292,11 +294,10 @@ def _is_learned_skill_copy(dst_dir: Path) -> bool:
     return stat.S_ISREG(marker_stat.st_mode)
 
 
-def _default_skill_dirs(name: str) -> tuple[Path, ...]:
-    root = get_settings().project_root
+def _default_skill_dirs(project_root: Path, name: str) -> tuple[Path, ...]:
     return (
-        root / "data" / "defaults" / "skills" / name,
-        root / "data" / "personalization" / "skills" / name,
+        project_root / "data" / "defaults" / "skills" / name,
+        project_root / "data" / "personalization" / "skills" / name,
     )
 
 
@@ -322,7 +323,7 @@ def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
         return False
 
 
-def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path) -> bool:
+def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path, project_root: Path) -> bool:
     if not dst_dir.exists() or not dst_dir.is_dir():
         return False
     marker = dst_dir / _PLUGIN_SKILL_MARKER
@@ -332,7 +333,7 @@ def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path) -> bool:
     if any(path.name.startswith(".pynchy-") for path in dst_dir.iterdir()):
         return False
 
-    return not any(path.exists() for path in _default_skill_dirs(skill_path.name))
+    return not any(path.exists() for path in _default_skill_dirs(project_root, skill_path.name))
 
 
 def _selected_learned_skill_names(
@@ -463,7 +464,7 @@ def _validated_direct_learned_files(skill_dir: Path, resolved_skill_dir: Path) -
     return files
 
 
-def write_settings_json(session_dir: Path) -> None:
+def write_settings_json(session_dir: Path, *, project_root: Path) -> None:
     """Write Claude Code settings.json, merging hook config from scripts/.
 
     Always regenerates to pick up hook config changes (e.g. guard_git).
@@ -480,9 +481,7 @@ def write_settings_json(session_dir: Path) -> None:
     }
 
     # Merge hook config from agent/scripts/settings.json
-    hook_settings_file = (
-        get_settings().project_root / "src" / "pynchy" / "agent" / "scripts" / "settings.json"
-    )
+    hook_settings_file = project_root / "src" / "pynchy" / "agent" / "scripts" / "settings.json"
     if hook_settings_file.exists():
         try:
             hook_settings = json.loads(hook_settings_file.read_text())

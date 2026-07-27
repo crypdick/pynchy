@@ -79,7 +79,6 @@ def test_build_volume_mounts_creates_per_group_codex_home(tmp_path: Path) -> Non
         patch("pynchy.host.learning.skill_activation.get_settings", return_value=settings),
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
         patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.session_prep.get_settings", return_value=settings),
     ):
         mounts = build_volume_mounts(
             _group(),
@@ -116,7 +115,6 @@ def test_build_volume_mounts_does_not_seed_host_codex_auth(tmp_path: Path) -> No
         patch("pynchy.host.learning.skill_activation.get_settings", return_value=settings),
         patch("pynchy.host.orchestrator.workspace_config.get_settings", return_value=settings),
         patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch("pynchy.host.container_manager.session_prep.get_settings", return_value=settings),
         patch("pynchy.host.container_manager.mounts.Path.home", return_value=host_home),
     ):
         build_volume_mounts(

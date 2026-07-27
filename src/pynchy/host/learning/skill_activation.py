@@ -62,10 +62,11 @@ def prepare_agent_homes(
     session_root = settings.data_dir / "sessions" / group_folder
     claude_home = session_root / ".claude"
     claude_home.mkdir(parents=True, exist_ok=True)
-    write_settings_json(claude_home)
+    write_settings_json(claude_home, project_root=settings.project_root)
     sync_skills(
         claude_home,
-        plugin_manager,
+        project_root=settings.project_root,
+        plugin_manager=plugin_manager,
         workspace_skills=workspace_skills,
         denied_skill_names=denied_skill_names,
         learned_skill_paths=learned_skill_paths,
@@ -75,7 +76,8 @@ def prepare_agent_homes(
     codex_home.mkdir(parents=True, exist_ok=True)
     sync_skills(
         codex_home,
-        plugin_manager,
+        project_root=settings.project_root,
+        plugin_manager=plugin_manager,
         workspace_skills=workspace_skills,
         denied_skill_names=denied_skill_names,
         learned_skill_paths=learned_skill_paths,

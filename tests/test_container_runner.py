@@ -181,7 +181,6 @@ class _AgentRunnerDeps:
 
 _SETTINGS_MODULES = [
     _CR_CREDS,
-    "pynchy.host.container_manager.session_prep",
     "pynchy.host.learning.paths",
     "pynchy.host.learning.skills",
     "pynchy.host.learning.skill_activation",
@@ -2937,7 +2936,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
         skills_dst = session_dir / "skills" / "my-skill"
         assert skills_dst.exists()
@@ -2950,7 +2949,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir)
+            sync_skills(session_dir, project_root=tmp_path)
 
         # skills/ directory should still be created (empty)
         assert (session_dir / "skills").exists()
@@ -2975,7 +2974,9 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -3002,9 +3003,13 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
             skill_md.write_text("# External Skill\nsecond")
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
@@ -3032,7 +3037,9 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
 
@@ -3061,7 +3068,9 @@ class TestSyncSkills:
 
         caplog.set_level(logging.ERROR)
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -3095,7 +3104,9 @@ class TestSyncSkills:
             _patch_settings(tmp_path),
             pytest.raises(ValueError, match="collision"),
         ):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
@@ -3114,7 +3125,7 @@ class TestSyncSkills:
 
         with _patch_settings(tmp_path):
             # Should not crash
-            sync_skills(session_dir, plugin_manager=FakePM())
+            sync_skills(session_dir, project_root=tmp_path, plugin_manager=FakePM())
 
     def test_ignores_files_in_default_skills_dir(self, tmp_path: Path):
         """Files (not directories) in default skills are ignored."""
@@ -3126,7 +3137,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir)
+            sync_skills(session_dir, project_root=tmp_path)
 
         # Only the skills/ directory should exist, no README.md copied
         assert not (session_dir / "skills" / "README.md").exists()
@@ -3140,7 +3151,7 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
         assert not (session_dir / "skills" / "legacy").exists()
 
@@ -3157,6 +3168,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3177,6 +3189,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["*"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3195,6 +3208,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["*"],
                 denied_skill_names=["obsidian-filer"],
                 learned_skill_paths=[learned_skill],
@@ -3217,6 +3231,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=None,
                 learned_skill_paths=[learned_skill],
             )
@@ -3244,6 +3259,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["community"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3271,6 +3287,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3292,6 +3309,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["remember-routing"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3319,6 +3337,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["*"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3342,12 +3361,14 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
             notes.write_text("second version")
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3370,12 +3391,14 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
             shutil.rmtree(learned_skill)
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[],
             )
@@ -3399,11 +3422,13 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=workspace_skills,
                 learned_skill_paths=[learned_skill],
             )
@@ -3436,11 +3461,13 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[],
             )
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3474,6 +3501,7 @@ class TestSyncSkills:
         ):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
                 learned_skill_paths=[learned_skill],
             )
@@ -3513,6 +3541,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 plugin_manager=FakePM(),
                 workspace_skills=["*"],
                 learned_skill_paths=[learned_skill],
@@ -3548,6 +3577,7 @@ class TestSyncSkills:
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 plugin_manager=FakePM(),
                 workspace_skills=["remember-routing"],
                 learned_skill_paths=[learned_skill],
@@ -3685,7 +3715,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=None)
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=None)
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser"}
@@ -3701,7 +3731,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["core"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["core"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser"}
@@ -3717,7 +3747,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["core", "dev"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["core", "dev"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
@@ -3733,7 +3763,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["core", "extra"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["core", "extra"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "extra"}
@@ -3748,7 +3778,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
@@ -3775,7 +3805,12 @@ class TestSyncSkillsFiltering:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core"])
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["core"],
+            )
 
         # Plugin skill is community tier, should be excluded
         assert not (session_dir / "skills" / "ext-tool").exists()
@@ -3802,7 +3837,12 @@ class TestSyncSkillsFiltering:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core", "ext-tool"])
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["core", "ext-tool"],
+            )
 
         assert (session_dir / "skills" / "ext-tool").exists()
 
@@ -3820,7 +3860,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings_file = session_dir / "settings.json"
         assert settings_file.exists()
@@ -3852,7 +3892,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "hooks" in settings
@@ -3868,7 +3908,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         # Should still have env but no hooks
@@ -3882,7 +3922,7 @@ class TestWriteSettingsJson:
         (session_dir / "settings.json").write_text('{"stale": true}')
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "stale" not in settings
