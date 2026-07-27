@@ -108,6 +108,11 @@ with the same name fails session preparation rather than shadowing either
 source. Each skill directory must contain a `SKILL.md` whose frontmatter has
 matching `name`, non-empty `description`, and non-empty `tier` fields.
 
+Treat skill directories under `data/sessions/` as generated runtime registries.
+Pynchy refreshes those copies from the sources above and from the configured
+Obsidian learned-skill registry. Put durable skill changes in a source registry,
+not in a session's `.claude/skills/` or `.codex/skills/` directory.
+
 ## Prompts
 
 Prompt names select Markdown files by basename. Pynchy reads a personalized

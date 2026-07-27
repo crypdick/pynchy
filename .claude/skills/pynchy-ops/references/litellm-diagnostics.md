@@ -20,46 +20,13 @@ curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/v1/models
 
 With wildcard routing, this lists all models the provider supports.
 
-## Spend logs (primary diagnostic tool)
+## Request evidence
 
-```bash
-# Recent requests (success + failure)
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/spend/logs?limit=100"
-
-# Failures only
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/spend/logs?request_status=failure&limit=50"
-```
-
-Each entry contains: `request_id`, `model`, `status`, `startTime`, `endTime`, `spend`, `total_tokens`, and `metadata.error_information` (with `error_class`, `error_code`, `error_message`).
-
-### Failure analysis pattern
-
-```bash
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/spend/logs?limit=500" | python3 -c "
-import sys, json
-from collections import Counter
-data = json.load(sys.stdin)
-failures = [r for r in data if r.get('status') == 'failure']
-print(f'Total: {len(data)}, Failures: {len(failures)}, Rate: {len(failures)/len(data)*100:.1f}%')
-print('\nFailure models:')
-for m, c in Counter(r.get('model','?') for r in failures).most_common():
-    print(f'  {m}: {c}')
-print('\nError classes:')
-for f in failures[:5]:
-    err = f.get('metadata',{}).get('error_information',{})
-    print(f'  {err.get(\"error_class\")}: {str(err.get(\"error_message\",\"\"))[:120]}')
-"
-```
-
-## Global spend
-
-```bash
-# By date range
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/global/spend/logs?start_date=2026-02-01&end_date=2026-02-28"
-
-# By provider
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/global/spend/provider"
-```
+Do not call LiteLLM's `/spend/logs` or `/global/spend/logs` routes. A bounded
+request to the spend-log route exhausted the proxy container on the live
+deployment. Query Pynchy's `/status` endpoint, inspect bounded container logs,
+and use the Pynchy SQLite message and trace queries in the main Pynchy Ops skill
+instead. Use the LiteLLM dashboard only for narrow, interactive spend review.
 
 ## Virtual keys
 
@@ -71,8 +38,8 @@ curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/key/info?key=<key
 ## Container logs
 
 ```bash
-docker logs pynchy-litellm --since 1h 2>&1 | grep -i "error\|fail\|exception"
-docker logs pynchy-litellm --since 30m 2>&1 | tail -100
+docker logs pynchy-litellm --since 15m --tail 300 2>&1 | grep -i "error\|fail\|exception"
+docker logs pynchy-litellm --since 15m --tail 100
 ```
 
 ## Common failure patterns
@@ -147,20 +114,8 @@ When a model group has multiple deployments, increase `num_retries` to the desir
 # Check deployment health
 curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/health | python3 -m json.tool
 
-# Count successes vs failures in recent requests
-curl -s -H "Authorization: Bearer $KEY" "http://localhost:4000/spend/logs?limit=200" | python3 -c "
-import sys, json
-from collections import Counter
-data = json.load(sys.stdin)
-by_status = Counter(r.get('status','?') for r in data)
-print('Request outcomes:', dict(by_status))
-by_model_id = Counter(
-    r.get('metadata',{}).get('model_id','?')
-    for r in data if r.get('status') == 'failure'
-)
-if by_model_id:
-    print('Failures by deployment:', dict(by_model_id))
-"
+# Check recent bounded proxy errors
+docker logs pynchy-litellm --since 15m --tail 300 2>&1 | grep -i "cooldown\|429\|rate.limit\|no healthy"
 
 # Check which deployments LiteLLM loaded
 curl -s -H "Authorization: Bearer $KEY" http://localhost:4000/v1/model/info | python3 -c "
