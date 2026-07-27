@@ -186,6 +186,7 @@ class InteractiveAgentRun:
 
     agent_result: str
     had_error: bool
+    missing_terminal_result: bool
     output_sent_to_user: bool
     learning_summary: learning_capture.LearningRunSummary
     control_outcome: TurnOutcome | None
@@ -218,13 +219,22 @@ async def run_interactive_agent(
     """Invoke one checkpointed interactive turn and settle control requests."""
     chat_jid = turn.chat_jid
     had_error = False
+    missing_terminal_result = False
+    terminal_result_observed = False
     output_sent_to_user = False
     learning_summary = learning_capture.LearningRunSummary()
 
     async def on_output(result: types.ContainerOutput) -> None:
-        nonlocal had_error, output_sent_to_user
+        nonlocal had_error, missing_terminal_result, terminal_result_observed
+        nonlocal output_sent_to_user
 
         learning_capture.observe_learning_output(learning_summary, result)
+        missing_terminal_result = missing_terminal_result or (
+            (result.result_metadata or {}).get("subtype") == "missing_terminal_turn"
+        )
+        terminal_result_observed = terminal_result_observed or (
+            result.type == "result" and result.status == "success" and bool(result.result)
+        )
         sent = await deps.handle_streamed_output(
             chat_jid,
             group,
@@ -281,6 +291,8 @@ async def run_interactive_agent(
     return InteractiveAgentRun(
         agent_result=agent_result,
         had_error=had_error,
+        missing_terminal_result=missing_terminal_result
+        or (agent_result == "success" and not terminal_result_observed),
         output_sent_to_user=output_sent_to_user,
         learning_summary=learning_summary,
         control_outcome=control_outcome,

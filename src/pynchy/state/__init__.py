@@ -198,6 +198,7 @@ from pynchy.state.tasks import (
     rebind_task_root,
     record_task_completion,
     resume_task,
+    resume_task_if_no_in_flight_turn,
     update_task,
 )
 from pynchy.state.webhook_effects import (
@@ -357,6 +358,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "record_task_completion",
     "rebind_task_root",
     "resume_task",
+    "resume_task_if_no_in_flight_turn",
     "update_task",
     # webhooks
     "WebhookAdmission",

@@ -24,7 +24,9 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 )
 from pynchy.state import (
     WorkItemTransitionRequest,
+    begin_in_flight_turn,
     begin_work_item_transition,
+    clear_in_flight_turn,
     create_task,
     get_active_work_item_execution,
     get_all_tasks,
@@ -35,8 +37,11 @@ from pynchy.state import (
     log_task_run,
     record_task_completion,
     resolve_work_item_transition,
+    update_task,
 )
 from pynchy.types import (
+    InFlightTurn,
+    InFlightWorkKind,
     ScheduledTask,
     SessionPolicy,
     TaskRunLog,
@@ -936,6 +941,84 @@ async def test_reconcile_reactivates_quiet_completed_task_after_grace_period() -
     assert active is not None
     assert active.status == "active"
     assert active.schedule_value == (observed_at + timedelta(minutes=6)).isoformat()
+
+
+async def test_reconcile_resumes_paused_execution_only_after_terminal_turn() -> None:
+    client = _DecisionClient()
+    workspace = _Workspace("beta", "Beta", "linear:beta")
+    board = _board("project-beta")
+    observed_at = datetime.now(UTC)
+    task = (
+        await reconcile_linear_decision_inbox(
+            client,
+            [workspace],
+            {"beta": board},
+            now=observed_at,
+        )
+    )[0]
+    await record_task_completion(task.id, last_result="Repeated terminal failure", completed=False)
+    await update_task(task.id, {"status": "paused"})
+
+    assert (
+        await reconcile_linear_decision_inbox(
+            client,
+            [workspace],
+            {"beta": board},
+            now=observed_at + timedelta(minutes=1),
+        )
+        == []
+    )
+    paused = await get_task_by_id(task.id)
+    assert paused is not None
+    assert paused.status == "paused"
+    assert paused.occurrence_generation == 0
+
+    await begin_in_flight_turn(
+        InFlightTurn(
+            turn_id="current-scheduled-turn",
+            chat_jid=task.chat_jid,
+            group_folder=task.group_folder,
+            work_kind=InFlightWorkKind.SCHEDULED,
+            input_messages=[],
+            input_start_cursor="",
+            input_end_cursor="",
+            started_at=observed_at.isoformat(),
+            task_id=task.id,
+        )
+    )
+
+    assert (
+        await reconcile_linear_decision_inbox(
+            client,
+            [workspace],
+            {"beta": board},
+            now=observed_at + timedelta(minutes=6),
+        )
+        == []
+    )
+    paused = await get_task_by_id(task.id)
+    assert paused is not None
+    assert paused.status == "paused"
+    assert paused.occurrence_generation == 0
+
+    await clear_in_flight_turn("current-scheduled-turn")
+    resumed = await reconcile_linear_decision_inbox(
+        client,
+        [workspace],
+        {"beta": board},
+        now=observed_at + timedelta(minutes=6),
+    )
+
+    assert [item.id for item in resumed] == [task.id]
+    active = await get_task_by_id(task.id)
+    assert active is not None
+    assert active.status == "active"
+    assert active.occurrence_generation == 1
+    assert active.superseded_occurrence_generation == 0
+    execution = await get_active_work_item_execution("issue-execute")
+    assert execution is not None
+    assert execution.temporal_workflow_id is not None
+    assert execution.temporal_workflow_id.endswith("-resume-1")
 
 
 async def test_reconcile_bounds_incomplete_outcome_recovery() -> None:
