@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - test fixtures construct completed Docker command results.
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from conftest import make_settings
 
-from pynchy.config.mcp import McpServerConfig
 from pynchy.config.models import ProfileConfig, WorkspaceConfig
 from pynchy.config.settings import validate_settings_mapping
 from pynchy.host.container_manager.docker import HealthCheckRequest
@@ -26,6 +25,7 @@ from pynchy.host.container_manager.mcp.resolution import (
     merged_mcp_servers,
     resolve_all_instances,
 )
+from pynchy.plugins.mcp_server import McpServerConfig
 
 ALL_INTERFACE_BIND_HOST = "0.0.0.0"  # noqa: S104, RUF100 - test fixture for pass-through MCP args that intentionally contain bind-all data.
 
@@ -139,6 +139,7 @@ class TestDockerLifecycleHelpers:
         volumes: list[str] | None = None,
         args: list[str] | None = None,
         kwargs: dict[str, str] | None = None,
+        project_root: Path = Path("/project"),
     ) -> McpInstance:
         cfg = McpServerConfig(
             type="docker",
@@ -154,6 +155,7 @@ class TestDockerLifecycleHelpers:
             kwargs=kwargs or {},
             instance_id="browser",
             container_name="pynchy-mcp-browser",
+            project_root=project_root,
             port=port,
         )
 
@@ -169,9 +171,8 @@ class TestDockerLifecycleHelpers:
             volumes=["groups/{workspace}:/workspace", "mcp-cache:/cache"],
             args=["--workspace-dir", "{workspace}", "--port", "{port}"],
             kwargs={"workspace": "research"},
+            project_root=tmp_path,
         )
-        settings = make_settings(project_root=tmp_path)
-        monkeypatch.setattr("pynchy.config.get_settings", lambda: settings)
 
         run_docker_mock, wait_healthy_mock = self._stub_docker_lifecycle(monkeypatch)
 
@@ -289,6 +290,7 @@ class TestStdioLifecycle:
             kwargs={},
             instance_id="android",
             container_name="unused",
+            project_root=Path("/project"),
             port=8932,
         )
         start_process = MagicMock(return_value=None)

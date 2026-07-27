@@ -31,7 +31,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | `src/pynchy/host/container_manager/mcp/` | MCP lifecycle — LiteLLM sync, Docker on-demand, team provisioning |
 | `src/pynchy/host/container_manager/security/` | Security policy middleware and audit logging |
 | `src/pynchy/config/` | Pydantic BaseSettings config (TOML + env overrides), MCP config, prompts |
-| `src/pynchy/config/mcp.py` | MCP server config models (`McpServerConfig`) |
+| `src/pynchy/plugins/mcp_server.py` | Validated MCP server templates (`McpServerConfig`) |
 | `src/pynchy/host/orchestrator/concurrency.py` | Per-group queue with global concurrency limit |
 | `src/pynchy/host/orchestrator/task_scheduler.py` | Runs scheduled tasks |
 | `src/pynchy/config/prompts.py` | Scoped system prompt resolution |
@@ -40,7 +40,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | `src/pynchy/agent/` | Container-side code — skills, agent runner, build scripts |
 | `data/defaults/prompts/` | Public system prompt markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
-| `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
+| `src/pynchy/plugins/**/skills/` | Tool-associated skills with YAML frontmatter (tier, name, description) |
 | [Linear task tracking](docs/integrations/linear.md) | Canonical repository work items, authorization, and results |
 
 ## Detailed Guides

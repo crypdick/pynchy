@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,6 +25,9 @@ from pynchy.state import (
 )
 from pynchy.types import DeployRevision, WorkspaceProfile
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 @dataclass
 class _RuntimeDeps:
@@ -31,6 +35,9 @@ class _RuntimeDeps:
 
     workspaces: dict[str, WorkspaceProfile]
     broadcast_host_message: object
+
+    def sync_personalization(self, _project_root: Path) -> str:
+        return "skipped"
 
 
 @dataclass
@@ -161,7 +168,7 @@ async def test_applied_revision_overrides_stale_sync_snapshot_after_http_deploy(
     monkeypatch.setattr(git_sync, "get_deploy_config_hash", lambda: deployed.config_hash)
     monkeypatch.setattr(git_sync, "_find_pynchy_repo_ctx", lambda *_args: None)
     monkeypatch.setattr(git_sync, "check_origin_drift", AsyncMock(return_value=False))
-    runtime_deps = object()
+    runtime_deps = _RuntimeDeps(workspaces={}, broadcast_host_message=AsyncMock())
     monkeypatch.setattr(git_sync, "_require_scheduler_deps", lambda: runtime_deps)
     recorded: list[tuple[str, str]] = []
     monkeypatch.setattr(

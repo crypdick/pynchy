@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -110,6 +111,7 @@ def _make_channel(*, on_ask_user_answer: object | None = None) -> DiscordChannel
         bot_token=DISCORD_BOT_VALUE,
         on_message=lambda jid, msg: None,
         on_chat_metadata=lambda jid, ts, name: None,
+        audio_cache_dir=Path("data/media/discord"),
         on_ask_user_answer=on_ask_user_answer,
     )
 

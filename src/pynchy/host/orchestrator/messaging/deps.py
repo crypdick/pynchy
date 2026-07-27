@@ -17,6 +17,48 @@ type Group = types.WorkspaceProfile
 
 
 @dataclass(frozen=True)
+class CommandWords:
+    """One resolved command vocabulary, normalized for matching."""
+
+    verbs: frozenset[str]
+    nouns: frozenset[str]
+    aliases: frozenset[str]
+
+
+@dataclass(frozen=True)
+class CommandMatcher:
+    """The command values the application supplies to message processing."""
+
+    trigger_pattern: object
+    reset: CommandWords
+    end_session: CommandWords
+    redeploy: CommandWords
+    pause: CommandWords
+
+    @classmethod
+    def from_values(
+        cls,
+        trigger_pattern: object,
+        values: dict[str, dict[str, list[str]]],
+    ) -> CommandMatcher:
+        def words(name: str) -> CommandWords:
+            value = values[name]
+            return CommandWords(
+                frozenset(value.get("verbs", [])),
+                frozenset(value.get("nouns", [])),
+                frozenset(value.get("aliases", [])),
+            )
+
+        return cls(
+            trigger_pattern=trigger_pattern,
+            reset=words("reset"),
+            end_session=words("end_session"),
+            redeploy=words("redeploy"),
+            pause=words("pause"),
+        )
+
+
+@dataclass(frozen=True)
 class DirectCommandOutput:
     """One persisted result from a trusted direct host command."""
 
@@ -52,6 +94,9 @@ class MessageHandlerDeps(DirectCommandDeps, Protocol):
 
     @property
     def channels(self) -> list[types.Channel]: ...
+
+    @property
+    def command_matcher(self) -> CommandMatcher: ...
 
     @property
     def workspaces(self) -> dict[str, Group]: ...

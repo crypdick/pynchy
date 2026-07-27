@@ -7,10 +7,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from conftest import make_settings
 from temporalio.client import WorkflowExecutionStatus
 
-from pynchy.config.scheduler_models import SchedulerConfig
 from pynchy.host.orchestrator.temporal import status as temporal_status
 from pynchy.types import HostJob, ScheduledTask, SessionPolicy
 
@@ -76,15 +74,6 @@ class _TemporalClient:
         return _WorkflowHandle(self._workflow_description)
 
 
-def _settings():
-    return make_settings(
-        scheduler=SchedulerConfig(
-            temporal_address="temporal.example:7233",
-            temporal_namespace="pynchy-test",
-        )
-    )
-
-
 def _recurring_task() -> ScheduledTask:
     return ScheduledTask(
         id="task-1",
@@ -108,10 +97,11 @@ async def test_recurring_state_uses_temporal_action_time(monkeypatch):
             schedule=_Schedule(state=_ScheduleState()),
         )
     )
-    monkeypatch.setattr(temporal_status, "get_settings", _settings)
     monkeypatch.setattr(temporal_status.Client, "connect", AsyncMock(return_value=client))
 
-    states = await temporal_status.get_temporal_orchestration_states([_recurring_task()], [])
+    states = await temporal_status.get_temporal_orchestration_states(
+        [_recurring_task()], [], "localhost:7233", "default"
+    )
 
     state = states["task", "task-1"]
     assert state["source"] == "temporal"
@@ -121,14 +111,15 @@ async def test_recurring_state_uses_temporal_action_time(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unavailable_temporal_has_no_sqlite_next_run_fallback(monkeypatch):
-    monkeypatch.setattr(temporal_status, "get_settings", _settings)
     monkeypatch.setattr(
         temporal_status.Client,
         "connect",
         AsyncMock(side_effect=RuntimeError("connection refused")),
     )
 
-    states = await temporal_status.get_temporal_orchestration_states([_recurring_task()], [])
+    states = await temporal_status.get_temporal_orchestration_states(
+        [_recurring_task()], [], "localhost:7233", "default"
+    )
 
     state = states["task", "task-1"]
     assert state["state"] == "unavailable"
@@ -154,10 +145,11 @@ async def test_once_job_uses_delayed_temporal_workflow_execution_time(monkeypatc
         created_by="admin",
         status="active",
     )
-    monkeypatch.setattr(temporal_status, "get_settings", _settings)
     monkeypatch.setattr(temporal_status.Client, "connect", AsyncMock(return_value=client))
 
-    states = await temporal_status.get_temporal_orchestration_states([], [job])
+    states = await temporal_status.get_temporal_orchestration_states(
+        [], [job], "localhost:7233", "default"
+    )
 
     state = states["host_job", "host-job-1"]
     assert state["state"] == "delayed"

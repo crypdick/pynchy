@@ -13,7 +13,7 @@ from pynchy.types import (  # noqa: TC001, RUF100 - type aliases evaluate at mod
 )
 
 TemporalStateReader = Callable[
-    [list[ScheduledTask], list[HostJob]],
+    [list[ScheduledTask], list[HostJob], str, str],
     Awaitable[dict[tuple[str, str], dict[str, Any]]],
 ]
 TaskReader = Callable[[], Awaitable[list[ScheduledTask]]]
@@ -26,10 +26,11 @@ async def collect_scheduled_work(
     get_host_jobs: HostJobReader,
     get_task_logs: TaskLogReader,
     get_temporal_states: TemporalStateReader,
+    temporal_connection: tuple[str, str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return schedule definitions enriched with Temporal-owned execution state."""
     tasks, jobs = await asyncio.gather(get_tasks(), get_host_jobs())
-    orchestration = await get_temporal_states(tasks, jobs)
+    orchestration = await get_temporal_states(tasks, jobs, *temporal_connection)
     task_logs = await asyncio.gather(
         *(get_task_logs(task.id) for task in tasks),
     )

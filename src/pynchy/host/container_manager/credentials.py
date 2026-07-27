@@ -18,7 +18,7 @@ from pynchy.config import get_settings
 from pynchy.config.settings import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
 )
-from pynchy.config.workspace_names import static_workspace_name
+from pynchy.conversation.workspaces import parent_workspace_name
 from pynchy.host.container_manager.gateway import (  # noqa: TC001, RUF100 - beartype resolves credential helpers at runtime.
     BuiltinGateway,
     LiteLLMGateway,
@@ -119,7 +119,7 @@ def _workspace_proton_pass_env_vars(s: Settings, group_folder: str) -> dict[str,
     ``pass-cli`` child receives the real values and this process copies only the
     explicitly named variables into Pynchy's already-scoped container env file.
     """
-    workspace = s.workspaces.get(static_workspace_name(group_folder))
+    workspace = s.workspaces.get(parent_workspace_name(group_folder) or group_folder)
     template_name = workspace.proton_pass_env_file if workspace else None
     if template_name is None:
         return {}
@@ -307,17 +307,15 @@ def _chrome_profiles_env_var(s: Settings, *, is_admin: bool, group_folder: str) 
 
 
 def _agent_context_env_vars(*, is_admin: bool, group_folder: str) -> dict[str, str]:
-    env_vars = {
-        "PYNCHY_GROUP_FOLDER": group_folder,
-        "PYNCHY_IS_ADMIN": "1" if is_admin else "0",
-    }
-    from pynchy.host.learning.paths import (  # noqa: PLC0415, RUF100 - learning is optional and only supplies mounted agent paths.
-        resolve_learning_paths,
+    from pynchy.host.paths import (  # noqa: PLC0415, RUF100
+        PERSONALIZATION_SKILLS_CONTAINER_PATH,
     )
 
-    if learning_paths := resolve_learning_paths(group_folder):
-        env_vars["PYNCHY_SKILLS_ROOT"] = f"{learning_paths.vault_mount_path}/systems/pynchy/skills"
-    return env_vars
+    return {
+        "PYNCHY_GROUP_FOLDER": group_folder,
+        "PYNCHY_IS_ADMIN": "1" if is_admin else "0",
+        "PYNCHY_SKILLS_ROOT": PERSONALIZATION_SKILLS_CONTAINER_PATH,
+    }
 
 
 def build_agent_env_vars(

@@ -209,18 +209,15 @@ def _hash_config_files() -> str:
         personalization / "pynchy.toml",
         personalization / "litellm.yaml",
     )
+    # Agent-authored skills hot-refresh into session homes; including them here
+    # would interrupt every conversation whenever an agent improves a skill.
     for path in fixed_paths:
         h.update(path.relative_to(s.project_root).as_posix().encode())
         if path.exists():
             h.update(path.read_bytes())
         else:
             h.update(b"__missing__")
-    for directory in (
-        defaults / "automations",
-        defaults / "skills",
-        personalization / "automations",
-        personalization / "skills",
-    ):
+    for directory in (defaults / "automations", personalization / "automations"):
         if not directory.is_dir():
             h.update(f"__missing__:{directory.relative_to(s.project_root).as_posix()}".encode())
             continue

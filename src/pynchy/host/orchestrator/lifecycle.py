@@ -21,6 +21,7 @@ from typing import Any
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves plugin-manager annotations at runtime.
 
+from pynchy.channels import SlackConnectionSettings, WhatsAppConnectionSettings
 from pynchy.config import get_settings
 from pynchy.host.container_manager import gateway as gateway_manager
 from pynchy.host.container_manager import ipc as ipc_manager
@@ -40,6 +41,7 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
     PynchyApp,
 )
 from pynchy.host.orchestrator.deploy import current_deploy_revision
+from pynchy.host.orchestrator.http_control import resolve_control_plane_runtime
 from pynchy.host.orchestrator.messaging import approval_handler
 from pynchy.host.orchestrator.messaging import router as output_handler
 from pynchy.host.orchestrator.messaging.inbound import start_message_loop
@@ -57,6 +59,8 @@ from pynchy.plugins.channel_runtime import (
 from pynchy.plugins.connections import ConnectionRuntimeContext, load_connection_runtimes
 from pynchy.plugins.host_actions import initialize_host_action_catalog
 from pynchy.plugins.integrations import linear_boot
+from pynchy.plugins.integrations.github_webhook_models import GitHubPluginOptions
+from pynchy.plugins.integrations.github_webhooks import github_webhook_routes
 from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 - beartype resolves lifecycle annotations at runtime.
     LinearWorkspaceBoard,
 )
@@ -168,20 +172,25 @@ async def shutdown_app(app: PynchyApp, sig_name: str, *, exit_process: bool = Fa
 
 async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
-    service_installer.install_service()
+    settings = get_settings()
+    service_installer.install_service(settings.project_root)
 
-    app.plugin_manager = get_plugin_manager()
+    app.plugin_manager = get_plugin_manager(
+        {name: plugin.enabled for name, plugin in settings.plugins.items()}
+    )
     initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)
     job_sources.configure_plugin_jobs(app.plugin_manager)
     system_checks.ensure_container_system_running(
-        OrphanReapAgeMs(get_settings().container.orphan_reap_age_ms)
+        OrphanReapAgeMs(settings.container.orphan_reap_age_ms),
+        project_root=app.agent_execution_runtime.project_root,
+        image=app.agent_execution_runtime.agent_image,
     )
 
     await gateway_manager.start_gateway(plugin_manager=app.plugin_manager)
 
-    await init_database(StateRuntimeConfig(database_path=get_settings().data_dir / "messages.db"))
+    await init_database(StateRuntimeConfig(database_path=settings.data_dir / "messages.db"))
     await prepare_conversation_runtime_ownership_recovery()
     # A crash can leave an external write without a receipt. Recovery fails closed
     # rather than replaying that side effect.
@@ -192,7 +201,9 @@ async def _initialize_core(app: PynchyApp) -> None:
 
     app.attach_observers(observer_plugins.attach_observers(app.event_bus))
 
-    await app.set_memory_provider(memory_plugins.get_memory_provider())
+    await app.set_memory_provider(
+        memory_plugins.get_memory_provider(settings.data_dir / "memories.db")
+    )
     await app.load_state()
 
 
@@ -232,6 +243,21 @@ async def _setup_channels(app: PynchyApp) -> None:
             name="on-approval-decision",
         )
 
+    settings = get_settings()
+    whatsapp_connections: dict[str, WhatsAppConnectionSettings] = {}
+    for name, config in settings.connections.items():
+        if config.type != "whatsapp":
+            continue
+        if config.auth_db_path:
+            auth_db_path = Path(config.auth_db_path)
+            if not auth_db_path.is_absolute():
+                auth_db_path = settings.project_root / auth_db_path
+        else:
+            auth_db_path = settings.data_dir / "neonize.db"
+        whatsapp_connections[name] = WhatsAppConnectionSettings(
+            auth_db_path=auth_db_path.resolve(),
+            assistant_name=settings.agent.name,
+        )
     context = ChannelPluginContext(
         on_message_callback=dispatch_inbound,
         on_chat_metadata_callback=dispatch_chat_metadata,
@@ -241,6 +267,24 @@ async def _setup_channels(app: PynchyApp) -> None:
         on_ask_user_answer_callback=dispatch_ask_user_answer,
         on_approval_decision_callback=dispatch_approval_decision,
         speech_synthesizer=app.get_speech_synthesizer(),
+        discord_connections={
+            name: config.to_runtime_settings()
+            for name, config in settings.connections.items()
+            if config.type == "discord"
+        },
+        discord_audio_cache_dir=settings.data_dir / "media" / "discord",
+        slack_connections={
+            name: SlackConnectionSettings(
+                bot_token_env=config.bot_token_env,
+                app_token_env=config.app_token_env,
+                chat_names=tuple(config.chat),
+                assistant_name=settings.agent.name,
+                allow_create=settings.command_center.connection == name,
+            )
+            for name, config in settings.connections.items()
+            if config.type == "slack"
+        },
+        whatsapp_connections=whatsapp_connections,
     )
     plugin_manager = _require_plugin_manager(app, "_setup_channels")
     app.channels = load_channels(plugin_manager, context)
@@ -323,9 +367,29 @@ async def _prepare_and_bind_control_plane(
     plugin_manager = _require_plugin_manager(app, "_prepare_and_bind_control_plane")
     tunnel_plugins.check_tunnels(plugin_manager)
     status.record_start_time()
+    settings = get_settings()
+    server = settings.server
+    github_plugin = settings.plugins.get("github")
+    github_options = GitHubPluginOptions.model_validate(
+        github_plugin.options if github_plugin is not None and github_plugin.enabled else {}
+    )
+    runtime = resolve_control_plane_runtime(
+        bind_host=server.host,
+        port=server.port,
+        unix_socket=server.unix_socket,
+        allow_public_bind=server.allow_public_bind,
+        allow_remote_deploy=server.allow_remote_deploy,
+        auth_token_env=server.auth_token_env,
+        auth_token_file=server.auth_token_file,
+        rate_limit_requests=server.rate_limit_requests,
+        rate_limit_window_seconds=server.rate_limit_window_seconds,
+        project_root=settings.project_root,
+    )
     prepared_http = await http_server.prepare_http_server(
         dep_factory.make_http_deps(app),
+        runtime=runtime,
         status_deps=dep_factory.make_status_deps(app),
+        github_webhook_routes=github_webhook_routes(github_options.webhook_routes),
     )
     app.set_http_runner(prepared_http.runner)
     await http_server.activate_http_server(prepared_http)
@@ -477,7 +541,9 @@ async def run_app(app: PynchyApp) -> None:
         raise
 
     if not app.workspaces:
-        default_channel = resolve_default_channel(app.channels)
+        default_channel = resolve_default_channel(
+            app.channels, get_settings().command_center.connection
+        )
         await startup_handler.setup_admin_group(app, default_channel)
 
     interrupted_recovery = await _prepare_state_and_subsystems(app, continuation_path)

@@ -27,7 +27,9 @@ class SourceHealthProjection:
 
     @staticmethod
     async def project_personal_source(provider: str) -> dict[str, object]:
+        source_health = get_settings().messaging_source_health
         return await project_personal_source(
             cast("PersonalProvider", provider),
-            get_settings().messaging_source_health,
+            data_dir=source_health.data_dir,
+            stale_after_hours=source_health.stale_after_hours,
         )

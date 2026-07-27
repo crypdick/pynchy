@@ -16,14 +16,12 @@ from functools import partial
 
 from pydantic import ValidationError
 
-from pynchy.config import get_settings
 from pynchy.plugins.integrations.github_webhook_linear import (
     prepare_github_webhook_event,
 )
 from pynchy.plugins.integrations.github_webhook_models import (
     GITHUB_MAX_WEBHOOK_BODY_BYTES,
     GitHubEnvelope,
-    GitHubPluginOptions,
     GitHubWebhookRouteConfig,
 )
 from pynchy.plugins.webhooks import (
@@ -420,10 +418,10 @@ def parse_github_webhook(
     )
 
 
-def github_webhook_routes() -> tuple[WebhookRoute, ...]:
-    """Parse plugin options and return explicitly mapped GitHub routes."""
-    plugin = get_settings().plugins.get("github")
-    options = GitHubPluginOptions.model_validate(plugin.options if plugin is not None else {})
+def github_webhook_routes(
+    configs: tuple[GitHubWebhookRouteConfig, ...],
+) -> tuple[WebhookRoute, ...]:
+    """Build explicitly mapped GitHub routes from resolved route configuration."""
     return tuple(
         WebhookRoute(
             provider="github",
@@ -437,5 +435,5 @@ def github_webhook_routes() -> tuple[WebhookRoute, ...]:
             prepare_event=partial(prepare_github_webhook_event, config=config),
             routes_conversations=True,
         )
-        for config in options.webhook_routes
+        for config in configs
     )

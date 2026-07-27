@@ -11,8 +11,9 @@ pynchy/
 └── .env                   # deployment secrets only
 ```
 
-Pynchy reads the directory. It does not clone, pull, commit, or otherwise
-manage the repository.
+Pynchy does not clone the repository or pull remote-only changes. It validates,
+commits, and pushes valid local changes from the host sync loop. Before a push,
+the host fetches and rebases local commits onto the remote branch.
 
 ## Create the repository
 
@@ -101,12 +102,25 @@ Pynchy copies skills from these sources in order:
 
 1. Public defaults in `data/defaults/skills/`
 2. Personalized skills in `data/personalization/skills/`
-3. Code-coupled built-in and plugin skills
+3. Skills contributed by enabled plugins
 
-A personalized skill can replace a same-named public default. It cannot shadow
-a code-coupled skill. Each skill directory must contain a `SKILL.md` whose
-frontmatter has matching `name`, non-empty `description`, and non-empty `tier`
-fields.
+A personalized skill can replace a same-named public default or plugin skill,
+so an agent can preserve an improvement without editing an installed package.
+Plugin-to-plugin name collisions still fail session preparation. Each skill
+directory must contain a `SKILL.md` whose frontmatter has
+matching `name` and non-empty `description` fields. An optional `tier` must be
+non-empty; skills without one use the `community` tier.
+
+Treat skill directories under `data/sessions/` as generated runtime registries.
+Pynchy gives every agent read-write access to the canonical personalized skill
+registry through `$PYNCHY_SKILLS_ROOT`. Agents may create or improve skills
+there. Pynchy refreshes selected skills into each generated session registry
+before the next turn, without restarting the service. Valid personalization
+changes are committed and pushed automatically.
+
+Do not author durable changes in a session's `.claude/skills/` or
+`.codex/skills/` directory. Those copies are generated and replaced from the
+sources above. Obsidian is a memory store, not a skill source.
 
 ## Prompts
 

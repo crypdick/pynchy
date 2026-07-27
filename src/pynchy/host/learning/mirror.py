@@ -6,7 +6,6 @@ import shutil
 import sys
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 
-from pynchy.config.settings import get_settings
 from pynchy.host.learning.paths import (  # noqa: TC001, RUF100 - beartype resolves this runtime annotation.
     LearningPaths,
 )
@@ -31,11 +30,8 @@ def prepare_vault_mount_root(paths: LearningPaths) -> Path:
     if not should_use_vault_mount_mirror():
         return paths.vault_root
 
-    mirror_root = _mirror_root(paths)
+    mirror_root = paths.vault_mirror_root
     _copy_vault_subtree_to_mirror(mirror_root, paths.profile_root, paths.vault_root)
-    # Learned skills live in one registry so profiles can share them. The
-    # Apple mirror must include it or reviewers cannot publish their output.
-    _copy_vault_subtree_to_mirror(mirror_root, paths.global_skills_root, paths.vault_root)
     logger.warning(
         "Using mirrored Obsidian vault mount for Apple Container",
         vault_root=str(paths.vault_root),
@@ -56,7 +52,7 @@ def prepare_full_vault_host_root(paths: LearningPaths) -> Path | None:
     if not should_use_vault_mount_mirror():
         return paths.vault_root
 
-    mirror_root = get_settings().data_dir / "learning" / "host-vault-mirrors" / paths.profile_slug
+    mirror_root = paths.host_vault_mirror_root
     if not mirror_root.is_dir():
         logger.warning(
             "Prepared full Obsidian vault mirror is unavailable for admin host execution",
@@ -77,9 +73,8 @@ def sync_vault_mount_mirror(paths: LearningPaths) -> None:
     if not should_use_vault_mount_mirror():
         return
 
-    mirror_root = _mirror_root(paths)
+    mirror_root = paths.vault_mirror_root
     _copy_mirror_subtree_to_vault(mirror_root, paths.profile_root, paths.vault_root)
-    _copy_mirror_subtree_to_vault(mirror_root, paths.global_skills_root, paths.vault_root)
 
 
 def _copy_vault_subtree_to_mirror(mirror_root: Path, source_root: Path, vault_root: Path) -> None:
@@ -95,7 +90,3 @@ def _copy_mirror_subtree_to_vault(mirror_root: Path, target_root: Path, vault_ro
         return
     target_root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(mirror_subtree, target_root, dirs_exist_ok=True, symlinks=True)
-
-
-def _mirror_root(paths: LearningPaths) -> Path:
-    return get_settings().data_dir / "learning" / "vault-mirrors" / paths.profile_slug

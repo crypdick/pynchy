@@ -14,13 +14,12 @@ from pydantic import BaseModel, ConfigDict
 from pynchy.config.jobs import (
     JobConfig,  # noqa: TC001, RUF100 - Pydantic resolves the field annotation at runtime.
 )
+from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
 
 DEFAULTS_RELATIVE_DIR = Path("data/defaults")
-PERSONALIZATION_RELATIVE_DIR = Path("data/personalization")
 SETTINGS_FILENAME = "pynchy.toml"
 LITELLM_FILENAME = "litellm.yaml"
 AUTOMATIONS_DIRNAME = "automations"
-SKILLS_DIRNAME = "skills"
 PROMPTS_DIRNAME = "prompts"
 _INLINE_SECRET_KEYS = frozenset(
     {
@@ -88,6 +87,11 @@ class PersonalizationPaths:
     def personalized_prompts(self) -> Path:
         """Return the deployment-owned prompt directory."""
         return self.personalization / PROMPTS_DIRNAME
+
+    @property
+    def personalized_skills(self) -> Path:
+        """Return the deployment-owned skill directory."""
+        return self.personalization / SKILLS_DIRNAME
 
 
 def load_layered_settings_mapping(
@@ -333,16 +337,8 @@ def _is_inline_secret_key(key: str) -> bool:
 def _validate_skills(project_root: Path, personalization_root: Path) -> None:
     defaults_root = project_root / DEFAULTS_RELATIVE_DIR / SKILLS_DIRNAME
     personalized_root = personalization_root / SKILLS_DIRNAME
-    core_root = project_root / "src" / "pynchy" / "agent" / "skills"
-    defaults = _skill_names(defaults_root)
-    personalized = _skill_names(personalized_root)
-    core = _skill_names(core_root)
-    core_collisions = sorted((defaults | personalized) & core)
-    if core_collisions:
-        raise PersonalizationError(
-            "Configured skills cannot shadow code-coupled core skills: "
-            + ", ".join(core_collisions)
-        )
+    _skill_names(defaults_root)
+    _skill_names(personalized_root)
 
 
 def _skill_names(root: Path) -> set[str]:
@@ -350,6 +346,8 @@ def _skill_names(root: Path) -> set[str]:
         return set()
     names: set[str] = set()
     for skill_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+        if skill_dir.is_symlink() or any(path.is_symlink() for path in skill_dir.rglob("*")):
+            raise PersonalizationError(f"Skill trees cannot contain symlinks: {skill_dir}")
         skill_file = skill_dir / "SKILL.md"
         if not skill_file.is_file():
             raise PersonalizationError(f"Skill is missing SKILL.md: {skill_dir}")
@@ -377,7 +375,7 @@ def _skill_names(root: Path) -> set[str]:
             )
         if not isinstance(description, str) or not description.strip():
             raise PersonalizationError(f"Skill description must be non-empty: {skill_file}")
-        if not isinstance(tier, str) or not tier.strip():
-            raise PersonalizationError(f"Skill tier must be non-empty: {skill_file}")
+        if tier is not None and (not isinstance(tier, str) or not tier.strip()):
+            raise PersonalizationError(f"Skill tier must be non-empty when present: {skill_file}")
         names.add(name)
     return names

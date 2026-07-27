@@ -13,9 +13,15 @@ from conftest import make_settings
 from pynchy.host.container_manager.security import mount_security
 from pynchy.host.container_manager.security.mount_security import (
     generate_allowlist_template,
-    load_mount_allowlist,
-    validate_additional_mounts,
-    validate_mount,
+)
+from pynchy.host.container_manager.security.mount_security import (
+    load_mount_allowlist as _load_mount_allowlist,
+)
+from pynchy.host.container_manager.security.mount_security import (
+    validate_additional_mounts as _validate_additional_mounts,
+)
+from pynchy.host.container_manager.security.mount_security import (
+    validate_mount as _validate_mount,
 )
 from pynchy.types import AdditionalMount
 
@@ -25,6 +31,37 @@ if TYPE_CHECKING:
 
 def _test_settings(allowlist_path: Path):
     return make_settings(mount_allowlist_path=allowlist_path)
+
+
+def _mount_policy_inputs() -> tuple[Path, tuple[str, ...]]:
+    settings = mount_security.get_settings()
+    return settings.mount_allowlist_path, tuple(settings.security.blocked_patterns)
+
+
+def load_mount_allowlist():
+    allowlist_path, blocked_patterns = _mount_policy_inputs()
+    return _load_mount_allowlist(allowlist_path, blocked_patterns)
+
+
+def validate_mount(mount: AdditionalMount, *, is_admin: bool):
+    allowlist_path, blocked_patterns = _mount_policy_inputs()
+    return _validate_mount(
+        mount,
+        is_admin=is_admin,
+        allowlist_path=allowlist_path,
+        default_blocked_patterns=blocked_patterns,
+    )
+
+
+def validate_additional_mounts(mounts: list[AdditionalMount], group_name: str, *, is_admin: bool):
+    allowlist_path, blocked_patterns = _mount_policy_inputs()
+    return _validate_additional_mounts(
+        mounts,
+        group_name,
+        is_admin=is_admin,
+        allowlist_path=allowlist_path,
+        default_blocked_patterns=blocked_patterns,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +102,7 @@ allow_read_write = true
             patch(
                 "pynchy.host.container_manager.security.mount_security.get_settings",
                 return_value=_test_settings(allowlist),
+                create=True,
             ),
         ):
             result = validate_mount(
@@ -93,6 +131,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(secret), container_path="x"), is_admin=True
@@ -121,6 +160,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(child), container_path="a"), is_admin=True
@@ -149,6 +189,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             ok = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="data"), is_admin=True
@@ -179,6 +220,7 @@ description = "Dev"
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             data = load_mount_allowlist()
         assert data is not None
@@ -191,6 +233,7 @@ description = "Dev"
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             assert load_mount_allowlist() is None
 
@@ -200,6 +243,7 @@ description = "Dev"
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             assert load_mount_allowlist() is None
 
@@ -218,6 +262,7 @@ path = 123
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             assert load_mount_allowlist() is None
 
@@ -234,6 +279,7 @@ allowed_roots = ["not-a-table"]
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             assert load_mount_allowlist() is None
 
@@ -252,6 +298,7 @@ path = "~/projects"
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             assert load_mount_allowlist() is None
 
@@ -276,6 +323,7 @@ allowed_roots = []
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             assert load_mount_allowlist() is None
 
@@ -301,6 +349,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(target), container_path="repo"), is_admin=True
@@ -327,6 +376,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(outside), container_path="outside"),
@@ -352,6 +402,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             result = validate_mount(
                 AdditionalMount(host_path=str(data), container_path="data", readonly=False),
@@ -386,6 +437,7 @@ allow_read_write = true
         with patch(
             "pynchy.host.container_manager.security.mount_security.get_settings",
             return_value=_test_settings(allowlist),
+            create=True,
         ):
             result = validate_additional_mounts(mounts, "TestGroup", is_admin=True)
         assert len(result) == 1

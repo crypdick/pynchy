@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING, Any, cast
 from ._ids import channel_jid, voice_jid
 
 if TYPE_CHECKING:
-    from pynchy.config.discord_refs import DiscordChatTarget
-    from pynchy.config.models import DiscordConnectionConfig
+    from pynchy.discord import DiscordChatTarget, DiscordConnectionSettings
 
     from ._channel import DiscordChannel
 else:
     DiscordChannel = object
     DiscordChatTarget = object
-    DiscordConnectionConfig = object
+    DiscordConnectionSettings = object
 
 
 async def resolve_configured_channel_jid(
@@ -38,7 +37,7 @@ async def resolve_configured_channel_jid(
     return factory(target.target_id)
 
 
-def configured_channel_kind(config: DiscordConnectionConfig, target: DiscordChatTarget) -> str:
+def configured_channel_kind(config: DiscordConnectionSettings, target: DiscordChatTarget) -> str:
     """Return the configured transport kind for a guild channel target."""
     guild_cfg = config.chat.get(target.guild_id or "")
     channel_cfg = guild_cfg.channels.get(target.target_id) if guild_cfg else None

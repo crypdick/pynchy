@@ -17,10 +17,6 @@ import subprocess  # noqa: S404, RUF100 - MCP lifecycle starts configured no-she
 import sys
 from pathlib import Path
 
-import pynchy.config as pynchy_config
-from pynchy.config.mcp import (
-    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
-)
 from pynchy.host.container_manager.docker import (
     HealthCheckRequest,
     ensure_image,
@@ -36,6 +32,9 @@ from pynchy.host.container_manager.mcp.resolution import (
 )
 from pynchy.host.container_manager.runtime_names import runtime_network_name
 from pynchy.logger import logger
+from pynchy.plugins.mcp_server import (
+    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP lifecycle signatures at runtime.
+)
 
 # ---------------------------------------------------------------------------
 # Docker lifecycle
@@ -54,7 +53,7 @@ async def ensure_docker_running(instance: McpInstance) -> None:
         image=instance.server_config.image,
     )
 
-    await _ensure_mcp_image(instance.server_config)
+    await _ensure_mcp_image(instance.server_config, instance.project_root)
     await ensure_network(runtime_network_name("litellm-net"))
 
     # Remove stale container
@@ -278,13 +277,13 @@ def _expanded_volume_spec(vol: str, placeholders: dict[str, str]) -> str:
     return vol
 
 
-def _resolved_volume_arg(vol: str) -> list[str]:
+def _resolved_volume_arg(vol: str, project_root: Path) -> list[str]:
     host_path, sep, container_path = vol.partition(":")
     if sep and "/" not in host_path and not host_path.startswith("."):
         # Docker named volume — pass through without resolution
         return ["-v", vol]
     if sep and not Path(host_path).is_absolute():
-        host_path = str(pynchy_config.get_settings().project_root / host_path)
+        host_path = str(project_root / host_path)
         _ensure_mount_parent(host_path)
         return ["-v", f"{host_path}:{container_path}"]
     if sep:
@@ -298,7 +297,8 @@ def _docker_volume_args(
 ) -> list[str]:
     args: list[str] = []
     for vol in instance.server_config.volumes:
-        args.extend(_resolved_volume_arg(_expanded_volume_spec(vol, placeholders)))
+        volume = _expanded_volume_spec(vol, placeholders)
+        args.extend(_resolved_volume_arg(volume, instance.project_root))
     return args
 
 
@@ -439,7 +439,7 @@ def build_env_args(
     return args
 
 
-async def _ensure_mcp_image(config: McpServerConfig) -> None:
+async def _ensure_mcp_image(config: McpServerConfig, project_root_path: Path) -> None:
     """Ensure the MCP Docker image exists — build from local Dockerfile or pull.
 
     When ``config.dockerfile`` is set and the image isn't already local,
@@ -453,7 +453,6 @@ async def _ensure_mcp_image(config: McpServerConfig) -> None:
         if result.returncode == 0:
             return
         # Build from local Dockerfile
-        project_root_path = pynchy_config.get_settings().project_root
         project_root = str(project_root_path)
         dockerfile_path = str(project_root_path / config.dockerfile)
         logger.info(

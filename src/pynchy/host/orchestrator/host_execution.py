@@ -28,6 +28,7 @@ from pynchy.host.orchestrator.codex_rollouts import (
 from pynchy.host.orchestrator.host_runner import run_host_input
 from pynchy.host.orchestrator.mcp_notifications import notify_mcp_startup_failures
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget  # noqa: TC001, RUF100
+from pynchy.host.paths import PERSONALIZATION_RELATIVE_DIR, SKILLS_DIRNAME
 from pynchy.types import ContainerInput, ContainerOutput, RuntimeId  # noqa: TC001, RUF100
 
 if TYPE_CHECKING:
@@ -150,6 +151,15 @@ def host_agent_env_vars(
     env["PYNCHY_IPC_DIR"] = str(s.data_dir / "ipc" / group_folder)
     if codex_home is not None:
         env["CODEX_HOME"] = str(codex_home)
+    personalization_skills = s.project_root / PERSONALIZATION_RELATIVE_DIR / SKILLS_DIRNAME
+    personalization_skills.mkdir(parents=True, exist_ok=True)
+    env["PYNCHY_SKILLS_ROOT"] = str(personalization_skills)
+    # Host-direct agents must be able to edit this intentionally shared source
+    # without the parent repository's target-branch guard treating it as code.
+    ceilings = [str(personalization_skills)]
+    if existing_ceiling := env.get("GIT_CEILING_DIRECTORIES"):
+        ceilings.append(existing_ceiling)
+    env["GIT_CEILING_DIRECTORIES"] = os.pathsep.join(ceilings)
     for key in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL"):
         if key in env:
             env[key] = _host_reachable_gateway_url(env[key])
@@ -159,7 +169,6 @@ def host_agent_env_vars(
         and (host_vault_root := prepare_full_vault_host_root(learning_paths))
     ):
         env["OBSIDIAN_VAULT_PATH"] = str(host_vault_root)
-        env["PYNCHY_SKILLS_ROOT"] = str(host_vault_root / "systems" / "pynchy" / "skills")
     return env
 
 
@@ -217,6 +226,7 @@ async def run_host_agent_turn(request: HostAgentTurnRequest) -> str:
         result = await run_host_input(
             request.input_data,
             cwd=request.cwd,
+            project_root=get_settings().project_root,
             on_output=request.on_output,
             timeout_seconds=request.timeout_seconds,
             env=request.env,

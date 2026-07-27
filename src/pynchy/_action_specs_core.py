@@ -76,7 +76,7 @@ CORE_ACTION_SPECS: tuple[ActionSpec, ...] = (
     agent_action(
         "skill.catalog.search",
         "agent-tools",
-        "Search the available vault-backed Pynchy skills.",
+        "Search the available personalized Pynchy skills.",
         "search_skills",
     ),
     agent_action(

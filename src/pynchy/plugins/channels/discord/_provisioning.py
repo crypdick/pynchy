@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from pynchy.config.discord_refs import (
+from pynchy.discord import (
     DiscordChatTarget,
     parse_discord_chat_target,
     resolve_discord_chat_target,

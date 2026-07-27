@@ -31,6 +31,18 @@ def _row_to_task(row: Row) -> ScheduledTask:
         repo_access=row["repo_access"] or None,
         input_source=row["input_source"] or "scheduled_task",
         config_job_name=row["config_job_name"] or None,
+        config_job_is_deterministic=(
+            None
+            if row["config_job_is_deterministic"] is None
+            else bool(row["config_job_is_deterministic"])
+        ),
+        config_job_command=row["config_job_command"] or None,
+        config_job_cwd=row["config_job_cwd"] or None,
+        config_job_timeout_seconds=row["config_job_timeout_seconds"],
+        config_job_display_name=row["config_job_display_name"] or None,
+        config_job_pre_run_command=row["config_job_pre_run_command"] or None,
+        config_job_pre_run_cwd=row["config_job_pre_run_cwd"] or None,
+        config_job_pre_run_timeout_seconds=row["config_job_pre_run_timeout_seconds"],
         derived_thread_name=row["derived_thread_name"] or None,
         bound_chat_jid=row["bound_chat_jid"] or None,
         bound_group_folder=row["bound_group_folder"] or None,
@@ -68,11 +80,15 @@ async def create_task(task: ScheduledTask) -> None:
         INSERT INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
-             repo_access, input_source, config_job_name, derived_thread_name,
+             repo_access, input_source, config_job_name, config_job_is_deterministic,
+             config_job_command, config_job_cwd, config_job_timeout_seconds,
+             config_job_display_name, config_job_pre_run_command, config_job_pre_run_cwd,
+             config_job_pre_run_timeout_seconds, derived_thread_name,
              bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
              occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
              superseded_occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -88,6 +104,14 @@ async def create_task(task: ScheduledTask) -> None:
             task.repo_access or None,
             task.input_source,
             task.config_job_name,
+            task.config_job_is_deterministic,
+            task.config_job_command,
+            task.config_job_cwd,
+            task.config_job_timeout_seconds,
+            task.config_job_display_name,
+            task.config_job_pre_run_command,
+            task.config_job_pre_run_cwd,
+            task.config_job_pre_run_timeout_seconds,
             task.derived_thread_name,
             task.bound_chat_jid,
             task.bound_group_folder,
@@ -110,11 +134,15 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
         INSERT OR IGNORE INTO scheduled_tasks
             (id, group_folder, chat_jid, prompt, schedule_type,
              schedule_value, session_policy, next_run, status, created_at,
-             repo_access, input_source, config_job_name, derived_thread_name,
+             repo_access, input_source, config_job_name, config_job_is_deterministic,
+             config_job_command, config_job_cwd, config_job_timeout_seconds,
+             config_job_display_name, config_job_pre_run_command, config_job_pre_run_cwd,
+             config_job_pre_run_timeout_seconds, derived_thread_name,
              bound_chat_jid, bound_group_folder, conversation_id, last_reset_occurrence,
              occurrence_generation, occurrence_due_at, superseded_occurrence_generation,
              superseded_occurrence_due_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -130,6 +158,14 @@ async def create_task_if_absent(task: ScheduledTask) -> bool:
             task.repo_access,
             task.input_source,
             task.config_job_name,
+            task.config_job_is_deterministic,
+            task.config_job_command,
+            task.config_job_cwd,
+            task.config_job_timeout_seconds,
+            task.config_job_display_name,
+            task.config_job_pre_run_command,
+            task.config_job_pre_run_cwd,
+            task.config_job_pre_run_timeout_seconds,
             task.derived_thread_name,
             task.bound_chat_jid,
             task.bound_group_folder,
@@ -184,6 +220,14 @@ _TASK_UPDATE_FIELDS = {
     "repo_access",
     "input_source",
     "config_job_name",
+    "config_job_is_deterministic",
+    "config_job_command",
+    "config_job_cwd",
+    "config_job_timeout_seconds",
+    "config_job_display_name",
+    "config_job_pre_run_command",
+    "config_job_pre_run_cwd",
+    "config_job_pre_run_timeout_seconds",
     "derived_thread_name",
     "bound_chat_jid",
     "bound_group_folder",

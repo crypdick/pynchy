@@ -45,9 +45,10 @@ def _paths(tmp_path: Path) -> LearningPaths:
         profile_slug="deep-work",
         vault_root=vault_root,
         vault_mount_path="/workspace/vault",
-        global_skills_root=vault_root / "systems/pynchy/skills",
         profile_root=profile_root,
         memory_root=profile_root / "memory",
+        vault_mirror_root=tmp_path / "data" / "learning" / "vault-mirrors" / "deep-work",
+        host_vault_mirror_root=tmp_path / "data" / "learning" / "host-vault-mirrors" / "deep-work",
         mounted_profile_root="/workspace/vault/systems/pynchy/profiles/deep-work",
         mounted_memory_root="/workspace/vault/systems/pynchy/profiles/deep-work/memory",
     )
@@ -64,7 +65,7 @@ def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> No
             "Use the profile fallback memory path only when no repo, machine, subject, "
             "or other existing folder clearly fits."
         ),
-        "Write learned skills only under the global skill registry.",
+        "Create and update learned skills in the personalization skill registry.",
         "Do not invent semantic frontmatter requirements for memory notes.",
         (
             "Keep notes small and factual; update existing notes when that is cleaner "
@@ -72,7 +73,8 @@ def test_review_prompt_explains_memory_and_skill_placement(tmp_path: Path) -> No
         ),
         "If nothing durable was learned, make no filesystem changes.",
         "Profile fallback memory path: /workspace/vault/systems/pynchy/profiles/deep-work/memory",
-        "Global skill registry: /workspace/vault/systems/pynchy/skills",
+        "Personalization skill registry: /workspace/personalization/skills",
+        "Never author skills in a session `.claude/skills` or `.codex/skills` directory.",
         "folder-governed",
         "Pynchy's existing `SKILL.md` skill format",
     ):

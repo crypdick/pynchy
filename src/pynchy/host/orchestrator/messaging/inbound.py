@@ -193,7 +193,7 @@ async def _intercept_host_control_batch(
     if immediate_result is not None:
         return immediate_result
     if not any(
-        message.message_type != "host" and any(host_control_kind(message))
+        message.message_type != "host" and any(host_control_kind(deps, message))
         for message in all_pending
     ):
         return None
@@ -206,7 +206,7 @@ async def _intercept_host_control_batch(
             _routing_cursor(deps, group_jid),
         )
         if not any(
-            message.message_type != "host" and any(host_control_kind(message))
+            message.message_type != "host" and any(host_control_kind(deps, message))
             for message in all_pending
         ):
             return True if not all_pending else None
@@ -417,7 +417,7 @@ async def _handle_message_during_task(request: _TaskDuringScheduleRequest) -> No
             else None
         )
         if not linear_enabled:
-            todos.add_todo(request.group.folder, item)
+            todos.add_todo(get_settings().data_dir, request.group.folder, item)
         elif issue is None:
             await request.deps.broadcast_to_channels(
                 request.group_jid,

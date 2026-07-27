@@ -26,7 +26,6 @@ from pynchy.capabilities import (  # noqa: TC001, RUF100 - beartype resolves the
     HostActionRegistration,
 )
 from pynchy.config import get_settings
-from pynchy.config.mcp import McpServerConfig
 from pynchy.logger import logger
 from pynchy.plugins.computer_use import (  # noqa: TC001, RUF100 - beartype resolves the hook parameter annotation at runtime.
     ComputerUseBackend,
@@ -46,6 +45,7 @@ from pynchy.plugins.integrations.linear_statuses import AGENT_PROPOSED_STATUS
 from pynchy.plugins.integrations.linear_tools import tool_specs
 from pynchy.plugins.integrations.linear_webhooks import linear_webhook_routes
 from pynchy.plugins.integrations.linear_work_item_actions import host_action_registration
+from pynchy.plugins.mcp_server import McpServerConfig
 from pynchy.plugins.webhooks import (
     WebhookRoute,  # noqa: TC001, RUF100 - beartype resolves the hook return annotation at runtime.
 )

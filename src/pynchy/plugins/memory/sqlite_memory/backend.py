@@ -14,7 +14,6 @@ from typing import Any
 
 import aiosqlite
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 
 _SCHEMA = """\
@@ -51,16 +50,13 @@ END;
 """
 
 
-def _db_path() -> Path:
-    return get_settings().data_dir / "memories.db"
-
-
 class SqliteMemoryBackend:
     """SQLite FTS5 memory backend with BM25 ranked search."""
 
     name = "sqlite"
 
-    def __init__(self) -> None:
+    def __init__(self, database_path: Path) -> None:
+        self._database_path = database_path
         self._db: aiosqlite.Connection | None = None
 
     async def _conn(self) -> aiosqlite.Connection:
@@ -70,7 +66,7 @@ class SqliteMemoryBackend:
         return self._db
 
     async def init(self) -> None:
-        path = _db_path()
+        path = self._database_path
         path.parent.mkdir(parents=True, exist_ok=True)
 
         self._db = await aiosqlite.connect(str(path))

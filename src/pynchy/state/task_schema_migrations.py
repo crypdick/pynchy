@@ -9,7 +9,7 @@ from aiosqlite import OperationalError
 if TYPE_CHECKING:
     import aiosqlite
 
-from pynchy.config.workspace_names import dynamic_thread_folder
+from pynchy.conversation.workspaces import dynamic_thread_folder
 from pynchy.logger import logger
 
 TASK_SCHEMA = """\
@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     repo_access TEXT,
     input_source TEXT NOT NULL DEFAULT 'scheduled_task',
     config_job_name TEXT,
+    config_job_is_deterministic INTEGER,
+    config_job_command TEXT,
+    config_job_cwd TEXT,
+    config_job_timeout_seconds INTEGER,
+    config_job_display_name TEXT,
+    config_job_pre_run_command TEXT,
+    config_job_pre_run_cwd TEXT,
+    config_job_pre_run_timeout_seconds INTEGER,
     derived_thread_name TEXT,
     bound_chat_jid TEXT,
     bound_group_folder TEXT,

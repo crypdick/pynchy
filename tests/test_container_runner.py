@@ -9,6 +9,7 @@ import logging
 import shutil
 import signal
 import subprocess  # noqa: S404, RUF100 - test fixtures mock subprocess behavior and exceptions
+from contextvars import ContextVar
 from pathlib import Path, PurePosixPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -40,7 +41,12 @@ from pynchy.host.container_manager.credentials import (
 from pynchy.host.container_manager.gateway_builtin import BuiltinGateway
 from pynchy.host.container_manager.ipc.write import clean_ipc_input_dir
 from pynchy.host.container_manager.mcp.startup import McpWorkspaceStartup
-from pynchy.host.container_manager.mounts import build_container_args, build_volume_mounts
+from pynchy.host.container_manager.mounts import (
+    build_container_args,
+)
+from pynchy.host.container_manager.mounts import (
+    build_volume_mounts as _build_volume_mounts,
+)
 from pynchy.host.container_manager.orchestrator import (
     resolve_agent_core,
     write_initial_input,
@@ -50,7 +56,7 @@ from pynchy.host.container_manager.session import RuntimeMonitorPolicy, SessionD
 from pynchy.host.container_manager.session_prep import (
     is_skill_selected,
     parse_skill_tier,
-    refresh_learned_skills,
+    refresh_personalized_skills,
     sync_skills,
     write_settings_json,
 )
@@ -60,7 +66,7 @@ from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.learning.skill_activation import (
     PreparedAgentHomes,
     prepare_agent_homes,
-    refresh_learned_agent_skills,
+    refresh_personalized_agent_skills,
 )
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.agent_runner import (
@@ -75,6 +81,7 @@ from pynchy.host.orchestrator.runtime_target import RuntimeTarget
 from pynchy.plugins.contracts import AgentCoreSpec
 from pynchy.state import SessionSecurityTaint
 from pynchy.types import (
+    AgentExecutionRuntime,
     ChatJid,
     ContainerInput,
     ContainerOutput,
@@ -154,6 +161,7 @@ class _AgentRunnerDeps:
         self.workspaces: dict[str, WorkspaceProfile] = {}
         self.queue = MagicMock(spec=GroupQueue)
         self.plugin_manager = None
+        self.agent_execution_runtime = _agent_runtime(make_settings())
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
         return []
@@ -173,17 +181,46 @@ class _AgentRunnerDeps:
 
 _SETTINGS_MODULES = [
     _CR_CREDS,
-    "pynchy.host.container_manager.mounts",
-    "pynchy.host.container_manager.session_prep",
-    _CR_ORCH,
-    "pynchy.host.container_manager.snapshots",
     "pynchy.host.learning.paths",
-    "pynchy.host.learning.mirror",
     "pynchy.host.learning.skills",
     "pynchy.host.learning.skill_activation",
     "pynchy.host.orchestrator.workspace_config",
     "pynchy.host.orchestrator.host_execution",
 ]
+
+_test_settings: ContextVar[Any | None] = ContextVar("test_settings", default=None)
+
+
+def build_volume_mounts(group, **kwargs):
+    settings = _test_settings.get()
+    if settings is None:
+        raise RuntimeError("build_volume_mounts requires _patch_settings")
+    return _build_volume_mounts(
+        group,
+        groups_dir=settings.groups_dir,
+        data_dir=settings.data_dir,
+        project_root=settings.project_root,
+        mount_allowlist_path=settings.mount_allowlist_path,
+        blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+        **kwargs,
+    )
+
+
+def _agent_runtime(settings: object) -> AgentExecutionRuntime:
+    return AgentExecutionRuntime(
+        project_root=settings.project_root,
+        groups_dir=settings.groups_dir,
+        data_dir=settings.data_dir,
+        mount_allowlist_path=settings.mount_allowlist_path,
+        blocked_mount_patterns=tuple(settings.security.blocked_patterns),
+        agent_image=settings.container.image,
+        agent_memory_mb=settings.container.memory_mb,
+        container_timeout=settings.container_timeout,
+        default_core=settings.agent.default_core,
+        idle_timeout=settings.idle_timeout,
+        model=settings.agent.model,
+        model_reasoning_effort=settings.agent.model_reasoning_effort,
+    )
 
 
 def _settings_overrides(
@@ -262,10 +299,14 @@ def _patch_settings(
     if max_output_size is not None:
         s.container.max_output_size = max_output_size
     _apply_secret_overrides(s, secret_overrides)
-    with contextlib.ExitStack() as stack:
-        for mod in _SETTINGS_MODULES:
-            stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
-        yield s
+    token = _test_settings.set(s)
+    try:
+        with contextlib.ExitStack() as stack:
+            for mod in _SETTINGS_MODULES:
+                stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
+            yield s
+    finally:
+        _test_settings.reset(token)
 
 
 class FakeProcess(asyncio.subprocess.Process):
@@ -788,14 +829,18 @@ class TestOutputParsing:
 class TestContainerArgs:
     def test_readonly_uses_mount_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=True)]
-        args = build_container_args(mounts, "test-container")
+        args = build_container_args(
+            mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
+        )
         assert "--mount" in args
         assert any("readonly" in a for a in args)
         assert "-v" not in args[args.index("--mount") :]  # no -v after --mount for this mount
 
     def test_readwrite_uses_v_flag(self):
         mounts = [VolumeMount("/host/path", "/container/path", readonly=False)]
-        args = build_container_args(mounts, "test-container")
+        args = build_container_args(
+            mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
+        )
         assert "-v" in args
         assert "/host/path:/container/path" in args
 
@@ -808,7 +853,9 @@ class TestContainerArgs:
         runtime.name = "apple"
 
         with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
-            args = build_container_args(mounts, "test-container")
+            args = build_container_args(
+                mounts, "test-container", memory_mb=2048, image="pynchy-agent:latest"
+            )
 
         assert "-v" in args
         assert f"{host_file}:{ca_container_path}:ro" in args
@@ -819,7 +866,9 @@ class TestContainerArgs:
         runtime.name = "apple"
 
         with patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime):
-            args = build_container_args([], "test-container")
+            args = build_container_args(
+                [], "test-container", memory_mb=2048, image="pynchy-agent:latest"
+            )
 
         memory_index = args.index("--memory")
         assert args[memory_index + 1] == "2048m"
@@ -831,9 +880,13 @@ class TestContainerArgs:
 
         with (
             patch("pynchy.plugins.runtimes.detection.get_runtime", return_value=runtime),
-            patch("pynchy.host.container_manager.mounts.get_settings", return_value=settings),
         ):
-            args = build_container_args([], "test-container")
+            args = build_container_args(
+                [],
+                "test-container",
+                memory_mb=settings.container.memory_mb,
+                image=settings.container.image,
+            )
 
         memory_index = args.index("--memory")
         assert args[memory_index + 1] == "1536m"
@@ -843,7 +896,7 @@ class TestContainerArgs:
             ContainerConfig(memory_mb=2049)
 
     def test_includes_name_and_image(self):
-        args = build_container_args([], "my-container")
+        args = build_container_args([], "my-container", memory_mb=2048, image="pynchy-agent:latest")
         assert args[:3] == ["run", "--name", "my-container"]
         assert "--label" in args
         assert "com.pynchy.role=agent" in args
@@ -875,6 +928,16 @@ class TestMountBuilding:
             mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
 
         assert all(m.container_path != "/workspace/vault" for m in mounts)
+
+    def test_all_agents_mount_personalization_skills_readwrite(self, tmp_path: Path):
+        with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        skill_mount = next(
+            mount for mount in mounts if mount.container_path == "/workspace/personalization/skills"
+        )
+        assert skill_mount.host_path == str(tmp_path / "data/personalization/skills")
+        assert skill_mount.readonly is False
 
     def test_learning_enabled_mounts_vault_readwrite(self, monkeypatch, tmp_path: Path):
         vault = tmp_path / "vault"
@@ -927,65 +990,13 @@ class TestMountBuilding:
         profile_root = vault.resolve() / "systems/pynchy/profiles/deep-work"
         assert (profile_root / "memory").is_dir()
 
-    def test_learning_mount_scans_skills_when_workspace_skills_is_none(
+    def test_personalized_skill_syncs_when_profile_allows_it(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
         vault.mkdir()
-        learning = LearningConfig(
-            enabled=True,
-            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
-        )
-
-        with (
-            _patch_settings(tmp_path, learning=learning),
-            patch(
-                "pynchy.host.learning.skill_activation.iter_learned_skill_dirs",
-                return_value=[],
-            ) as scan_learned_skills,
-        ):
-            (tmp_path / "groups" / "test-group").mkdir(parents=True)
-
-            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
-
-        assert any(m.container_path == "/workspace/vault" for m in mounts)
-        scan_learned_skills.assert_called_once_with("test-group")
-
-    def test_learning_mount_scans_skills_when_workspace_skills_is_empty(
-        self,
-        tmp_path: Path,
-    ):
-        vault = tmp_path / "vault"
-        vault.mkdir()
-        learning = LearningConfig(
-            enabled=True,
-            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
-        )
-        profiles, workspace = _profile_workspace("Deep Work!!", skills=[])
-        workspaces = {"test-group": workspace}
-
-        with (
-            _patch_settings(tmp_path, learning=learning, workspaces=workspaces) as settings,
-            patch(
-                "pynchy.host.learning.skill_activation.iter_learned_skill_dirs",
-                return_value=[],
-            ) as scan_learned_skills,
-        ):
-            settings.profiles.update(profiles)
-            (tmp_path / "groups" / "test-group").mkdir(parents=True)
-
-            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
-
-        assert any(m.container_path == "/workspace/vault" for m in mounts)
-        scan_learned_skills.assert_called_once_with("test-group")
-
-    def test_learning_mount_syncs_global_skill_when_profile_allows_it(
-        self,
-        tmp_path: Path,
-    ):
-        vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1014,12 +1025,13 @@ class TestMountBuilding:
         )
         assert codex_skill_dst.exists()
 
-    def test_learning_mount_does_not_sync_global_skill_without_profile_permission(
+    def test_personalized_skill_does_not_sync_without_profile_permission(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        vault.mkdir()
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1048,7 +1060,7 @@ class TestMountBuilding:
         )
         assert not codex_skill_dst.exists()
 
-    def test_refresh_learned_agent_skills_syncs_skill_written_after_session_start(
+    def test_refresh_personalized_agent_skills_syncs_skill_written_after_session_start(
         self,
         tmp_path: Path,
     ):
@@ -1070,13 +1082,13 @@ class TestMountBuilding:
             settings.profiles.update(profiles)
 
             prepare_agent_homes("test-group")
-            learned_skill = vault / "systems/pynchy/skills/remember-routing"
+            learned_skill = tmp_path / "data/personalization/skills/remember-routing"
             learned_skill.mkdir(parents=True)
             (learned_skill / "SKILL.md").write_text(
                 "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
             )
 
-            refresh_learned_agent_skills("test-group")
+            refresh_personalized_agent_skills("test-group")
 
         for agent_home in (".claude", ".codex"):
             skill_dst = (
@@ -1087,12 +1099,13 @@ class TestMountBuilding:
             )
             assert skill_dst.exists()
 
-    def test_host_execution_syncs_learned_skill_into_its_isolated_codex_home(
+    def test_host_execution_syncs_personalized_skill_into_its_isolated_codex_home(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        vault.mkdir()
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1122,12 +1135,13 @@ class TestMountBuilding:
         assert env["CODEX_HOME"] == str(codex_home)
         assert (codex_home / "skills/remember-routing/SKILL.md").exists()
 
-    def test_learning_mount_syncs_global_obsidian_skill_when_named(
+    def test_personalized_skill_syncs_when_named(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        vault.mkdir()
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1756,7 +1770,7 @@ class TestTasksSnapshot:
                 {"groupFolder": "admin-1", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
-            write_tasks_snapshot("admin-1", tasks, is_admin=True)
+            write_tasks_snapshot(tmp_path / "data", "admin-1", tasks, is_admin=True)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "admin-1" / "current_tasks.json").read_text()
             )
@@ -1768,7 +1782,7 @@ class TestTasksSnapshot:
                 {"groupFolder": "admin-1", "id": "t1"},
                 {"groupFolder": "other", "id": "t2"},
             ]
-            write_tasks_snapshot("other", tasks, is_admin=False)
+            write_tasks_snapshot(tmp_path / "data", "other", tasks, is_admin=False)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "other" / "current_tasks.json").read_text()
             )
@@ -1779,7 +1793,9 @@ class TestTasksSnapshot:
         with _patch_settings(tmp_path):
             tasks = [{"groupFolder": "admin-1", "id": "t1"}]
             host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
-            write_tasks_snapshot("admin-1", tasks, is_admin=True, host_jobs=host_jobs)
+            write_tasks_snapshot(
+                tmp_path / "data", "admin-1", tasks, is_admin=True, host_jobs=host_jobs
+            )
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "admin-1" / "current_tasks.json").read_text()
             )
@@ -1792,7 +1808,9 @@ class TestTasksSnapshot:
         with _patch_settings(tmp_path):
             tasks = [{"groupFolder": "other", "id": "t1"}]
             host_jobs = [{"type": "host", "id": "h1", "name": "daily-backup"}]
-            write_tasks_snapshot("other", tasks, is_admin=False, host_jobs=host_jobs)
+            write_tasks_snapshot(
+                tmp_path / "data", "other", tasks, is_admin=False, host_jobs=host_jobs
+            )
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "other" / "current_tasks.json").read_text()
             )
@@ -1804,7 +1822,9 @@ class TestGroupsSnapshot:
     def test_admin_sees_all_groups(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}, {"jid": "b@g.us"}]
-            write_groups_snapshot("admin-1", groups, {"a@g.us", "b@g.us"}, is_admin=True)
+            write_groups_snapshot(
+                tmp_path / "data", "admin-1", groups, {"a@g.us", "b@g.us"}, is_admin=True
+            )
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "admin-1" / "available_groups.json").read_text()
             )
@@ -1813,7 +1833,7 @@ class TestGroupsSnapshot:
     def test_nonadmin_sees_no_groups(self, tmp_path: Path):
         with _patch_settings(tmp_path):
             groups = [{"jid": "a@g.us"}]
-            write_groups_snapshot("other", groups, {"a@g.us"}, is_admin=False)
+            write_groups_snapshot(tmp_path / "data", "other", groups, {"a@g.us"}, is_admin=False)
             result = json.loads(
                 (tmp_path / "data" / "ipc" / "other" / "available_groups.json").read_text()
             )
@@ -1834,7 +1854,7 @@ class TestResolveAgentCore:
 
     def test_returns_defaults_when_no_plugin_manager(self):
         """Covers the `if plugin_manager:` guard for the None case."""
-        module, cls = resolve_agent_core(None)
+        module, cls = resolve_agent_core(None, "openai")
         assert module == "agent_runner.cores.openai"
         assert cls == "OpenAIAgentCore"
 
@@ -1851,7 +1871,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "openai")
         assert module == "agent_runner.cores.openai"
         assert cls == "OpenAIAgentCore"
 
@@ -1873,8 +1893,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        with _patch_settings(core="claude"):
-            module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "claude")
 
         assert module == "cores.claude_v2"
         assert cls == "ClaudeV2Core"
@@ -1895,8 +1914,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        with _patch_settings(core="claude"):
-            module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "claude")
 
         assert module == "cores.openai"
         assert cls == "OpenAICore"
@@ -1917,8 +1935,7 @@ class TestResolveAgentCore:
             def __init__(self):
                 pass
 
-        with _patch_settings(core="custom"):
-            module, cls = resolve_agent_core(FakePM())
+        module, cls = resolve_agent_core(FakePM(), "custom")
 
         assert module == "cores.custom"
         assert cls == "CustomCore"
@@ -1964,8 +1981,9 @@ class TestContainerInputAgentCoreConfig:
             )
         )
 
-        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+        result = build_container_input(
+            [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+        )
 
         assert result.agent_core_config is not None
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex"
@@ -1975,8 +1993,9 @@ class TestContainerInputAgentCoreConfig:
     def test_default_agent_model_flows_to_core_config(self):
         settings = make_settings()
 
-        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+        result = build_container_input(
+            [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+        )
 
         assert result.agent_core_config is not None
         assert "model" not in result.agent_core_config
@@ -1984,8 +2003,9 @@ class TestContainerInputAgentCoreConfig:
     def test_turn_id_flows_to_container_input_and_core_metadata(self):
         settings = make_settings()
 
-        with patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings):
-            result = build_container_input([], self._ctx(turn_id="turn_1"), "chat", TEST_GROUP)
+        result = build_container_input(
+            [], self._ctx(turn_id="turn_1"), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+        )
 
         assert result.turn_id == "turn_1"
         assert result.agent_core_config is not None
@@ -2006,14 +2026,13 @@ class TestContainerInputAgentCoreConfig:
             workspaces={TEST_GROUP.folder: workspace},
         )
 
-        with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.get_settings",
-                return_value=settings,
-            ),
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            return_value=settings,
         ):
-            result = build_container_input([], self._ctx(), "chat", TEST_GROUP)
+            result = build_container_input(
+                [], self._ctx(), "chat", TEST_GROUP, runtime=_agent_runtime(settings)
+            )
 
         assert result.agent_core_config is not None
         assert result.agent_core_config["model"] == "chatgpt/gpt-5.3-codex-spark"
@@ -2034,18 +2053,16 @@ class TestContainerInputAgentCoreConfig:
             workspaces={TEST_GROUP.folder: workspace},
         )
 
-        with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator.workspace_config.get_settings",
-                return_value=settings,
-            ),
+        with patch(
+            "pynchy.host.orchestrator.workspace_config.get_settings",
+            return_value=settings,
         ):
             result = build_container_input(
                 [],
                 self._ctx(),
                 "chat",
                 TEST_GROUP,
+                runtime=_agent_runtime(settings),
                 is_scheduled_task=True,
             )
 
@@ -2094,11 +2111,7 @@ class TestContainerInputAgentCoreConfig:
                 profiles=profiles,
                 workspaces=workspaces,
             ) as settings,
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
-            patch(
-                "pynchy.host.orchestrator._agent_runner_preflight.get_settings",
-                return_value=settings,
-            ),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator._agent_runner_preflight.write_container_snapshots",
                 new_callable=AsyncMock,
@@ -2195,7 +2208,7 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings(agent=AgentConfig(model="gpt-5.5"))
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.agent_runner.pre_container_setup",
                 new_callable=AsyncMock,
@@ -2250,7 +2263,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2332,7 +2345,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2412,7 +2425,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2484,7 +2497,7 @@ class TestContainerInputAgentCoreConfig:
         ]
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2568,7 +2581,7 @@ class TestContainerInputAgentCoreConfig:
         )
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2622,8 +2635,8 @@ class TestContainerInputAgentCoreConfig:
         )
 
     @pytest.mark.asyncio
-    async def test_warm_turn_refreshes_learned_skills_before_ipc(self):
-        """Reviewer output is synchronized before a persistent container's next turn."""
+    async def test_warm_turn_refreshes_personalized_skills_before_ipc(self):
+        """Canonical skill updates synchronize before a persistent container's next turn."""
         deps = _AgentRunnerDeps()
         ctx = self._ctx()
         session = session_mod.ContainerSession(TEST_GROUP.folder, "pynchy-test-group")
@@ -2633,7 +2646,7 @@ class TestContainerInputAgentCoreConfig:
         settings = make_settings()
 
         with (
-            patch("pynchy.host.orchestrator.agent_runner.get_settings", return_value=settings),
+            patch.object(deps, "agent_execution_runtime", _agent_runtime(settings)),
             patch(
                 "pynchy.host.orchestrator.workspace_config.get_settings",
                 return_value=settings,
@@ -2649,7 +2662,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=None,
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner.refresh_learned_agent_skills"
+                "pynchy.host.orchestrator.agent_runner.refresh_personalized_agent_skills"
             ) as refresh_skills,
             patch.object(
                 session,
@@ -2871,34 +2884,33 @@ class TestAgentRunnerPreContainerHelpers:
 
 
 class TestSyncSkills:
-    """Test skill syncing from built-in skills and plugin skills into session dir."""
+    """Test skill syncing from configured defaults and plugins into session dirs."""
 
-    def test_copies_builtin_skills(self, tmp_path: Path):
-        """Built-in skills are copied to the session .claude/skills/ dir."""
-        # Create a built-in skill
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "my-skill"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "skill.md").write_text("# My Skill\nDo stuff.")
-        (builtin_skill / "config.json").write_text('{"name": "my-skill"}')
+    def test_copies_default_skills(self, tmp_path: Path):
+        """Default skills are copied to the session .claude/skills/ dir."""
+        default_skill = tmp_path / "data" / "defaults" / "skills" / "my-skill"
+        default_skill.mkdir(parents=True)
+        (default_skill / "skill.md").write_text("# My Skill\nDo stuff.")
+        (default_skill / "config.json").write_text('{"name": "my-skill"}')
 
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
         skills_dst = session_dir / "skills" / "my-skill"
         assert skills_dst.exists()
         assert (skills_dst / "skill.md").read_text() == "# My Skill\nDo stuff."
         assert (skills_dst / "config.json").exists()
 
-    def test_no_skills_dir_is_safe(self, tmp_path: Path):
-        """Missing agent/skills/ dir should not crash."""
+    def test_no_default_skills_dir_is_safe(self, tmp_path: Path):
+        """Missing default skills directory should not crash."""
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir)
+            sync_skills(session_dir, project_root=tmp_path)
 
         # skills/ directory should still be created (empty)
         assert (session_dir / "skills").exists()
@@ -2923,7 +2935,9 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
@@ -2950,9 +2964,13 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
             skill_md.write_text("# External Skill\nsecond")
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
@@ -2980,7 +2998,9 @@ class TestSyncSkills:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         assert (ext_dst / "SKILL.md").read_text() == "# External Skill\nsecond"
 
@@ -3009,18 +3029,19 @@ class TestSyncSkills:
 
         caplog.set_level(logging.ERROR)
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
         ext_dst = session_dir / "skills" / "ext-skill"
         assert ext_dst.exists()
         assert "Failed to sync plugin skill" in caplog.text
 
     def test_plugin_skill_name_collision_raises(self, tmp_path: Path):
-        """Plugin skill that shadows a built-in skill raises ValueError."""
-        # Create built-in skill
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "my-skill"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "skill.md").write_text("built-in")
+        """Plugin skill that shadows a default skill raises ValueError."""
+        default_skill = tmp_path / "data" / "defaults" / "skills" / "my-skill"
+        default_skill.mkdir(parents=True)
+        (default_skill / "skill.md").write_text("default")
 
         # Create plugin skill with same name
         plugin_skill = tmp_path / "plugins" / "my-skill"
@@ -3044,22 +3065,18 @@ class TestSyncSkills:
             _patch_settings(tmp_path),
             pytest.raises(ValueError, match="collision"),
         ):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
+            )
 
-    def test_plugin_skill_path_matching_builtin_source_is_safe(self, tmp_path: Path):
-        """Plugin hooks may expose a built-in skill source already copied."""
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "computer-use"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "SKILL.md").write_text(
-            "---\nname: computer-use\ntier: core\n---\n# Computer Use\n"
-        )
-
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
+    def test_personalized_skill_overrides_plugin_skill(self, tmp_path: Path):
+        plugin_skill = tmp_path / "plugins/my-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text("plugin")
 
         class FakeHook:
             def pynchy_skill_paths(self):
-                return [[str(builtin_skill)]]
+                return [[str(plugin_skill)]]
 
         class FakePM(pluggy.PluginManager):
             hook = FakeHook()
@@ -3067,13 +3084,27 @@ class TestSyncSkills:
             def __init__(self):
                 pass
 
+        session_dir = tmp_path / "session/.claude"
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["*"],
+            )
+            personalized = tmp_path / "data/personalization/skills/my-skill"
+            personalized.mkdir(parents=True)
+            (personalized / "SKILL.md").write_text(
+                "---\nname: my-skill\ntier: learned\n---\npersonalized"
+            )
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["*"],
+            )
 
-        copied_skill = session_dir / "skills" / "computer-use" / "SKILL.md"
-        assert copied_skill.read_text() == (
-            "---\nname: computer-use\ntier: core\n---\n# Computer Use\n"
-        )
+        assert "personalized" in (session_dir / "skills/my-skill/SKILL.md").read_text()
 
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
@@ -3092,11 +3123,11 @@ class TestSyncSkills:
 
         with _patch_settings(tmp_path):
             # Should not crash
-            sync_skills(session_dir, plugin_manager=FakePM())
+            sync_skills(session_dir, project_root=tmp_path, plugin_manager=FakePM())
 
-    def test_ignores_files_in_skills_dir(self, tmp_path: Path):
-        """Files (not directories) in agent/skills/ are ignored."""
-        skills_dir = tmp_path / "src" / "pynchy" / "agent" / "skills"
+    def test_ignores_files_in_default_skills_dir(self, tmp_path: Path):
+        """Files (not directories) in default skills are ignored."""
+        skills_dir = tmp_path / "data" / "defaults" / "skills"
         skills_dir.mkdir(parents=True)
         (skills_dir / "README.md").write_text("not a skill dir")
 
@@ -3104,432 +3135,142 @@ class TestSyncSkills:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir)
+            sync_skills(session_dir, project_root=tmp_path)
 
         # Only the skills/ directory should exist, no README.md copied
         assert not (session_dir / "skills" / "README.md").exists()
 
-    def test_learned_skills_are_synced_when_learned_tier_selected(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
+    def test_does_not_load_legacy_agent_skill_path(self, tmp_path: Path):
+        legacy_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "legacy"
+        legacy_skill.mkdir(parents=True)
+        (legacy_skill / "SKILL.md").write_text("# Legacy")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
+
+        assert not (session_dir / "skills" / "legacy").exists()
+
+    def test_personalized_skill_syncs_full_tree(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/remember-routing"
+        references = skill / "references"
+        references.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
         )
-        (learned_skill / "notes.md").write_text("Use the right queue.")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
+        (references / "runbook.md").write_text("Use the right queue.")
+        session_dir = tmp_path / "session/.claude"
 
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
+                project_root=tmp_path,
                 workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
             )
 
-        skill_dst = session_dir / "skills" / "remember-routing"
-        assert (skill_dst / "SKILL.md").exists()
-        assert (skill_dst / "notes.md").read_text() == "Use the right queue."
+        copied = session_dir / "skills/remember-routing"
+        assert (copied / "references/runbook.md").read_text() == "Use the right queue."
+        assert (copied / ".pynchy-personalized-skill").is_file()
 
-    def test_learned_skills_are_synced_when_all_skills_selected(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "obsidian-filer"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
+    def test_denied_personalized_skill_is_not_injected(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/obsidian-filer"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
             "---\nname: obsidian-filer\ntier: learned\n---\n# Obsidian Filer\n"
         )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
+        session_dir = tmp_path / "session/.codex"
 
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
-                workspace_skills=["*"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert (session_dir / "skills" / "obsidian-filer" / "SKILL.md").exists()
-
-    def test_denied_learned_skill_is_not_injected(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "obsidian-filer"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: obsidian-filer\ntier: learned\n---\n# Obsidian Filer\n"
-        )
-        session_dir = tmp_path / "session" / ".codex"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
+                project_root=tmp_path,
                 workspace_skills=["*"],
                 denied_skill_names=["obsidian-filer"],
-                learned_skill_paths=[learned_skill],
             )
 
-        assert not (session_dir / "skills" / "obsidian-filer").exists()
+        assert not (session_dir / "skills/obsidian-filer").exists()
 
-    def test_learned_skills_are_not_synced_when_workspace_skills_is_none(
-        self,
-        tmp_path: Path,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+    def test_personalized_skill_overrides_public_default(self, tmp_path: Path):
+        default = tmp_path / "data/defaults/skills/shared-name"
+        personalized = tmp_path / "data/personalization/skills/shared-name"
+        default.mkdir(parents=True)
+        personalized.mkdir(parents=True)
+        (default / "SKILL.md").write_text("default")
+        (personalized / "SKILL.md").write_text(
+            "---\nname: shared-name\ntier: learned\n---\npersonalized"
         )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
+        session_dir = tmp_path / "session/.claude"
 
         with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=None,
-                learned_skill_paths=[learned_skill],
-            )
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
-        assert not (session_dir / "skills" / "remember-routing").exists()
+        copied = session_dir / "skills/shared-name/SKILL.md"
+        assert "personalized" in copied.read_text()
 
-    @pytest.mark.parametrize(
-        "frontmatter",
-        [
-            "---\nname: remember-routing\n---\n# Remember Routing\n",
-            "---\nname: remember-routing\ntier: community\n---\n# Remember Routing\n",
-        ],
-    )
-    def test_learned_skill_source_tier_does_not_select_from_matching_nonlearned_tier(
-        self,
-        tmp_path: Path,
-        frontmatter: str,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(frontmatter)
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["community"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-
-    @pytest.mark.parametrize(
-        "frontmatter",
-        [
-            "---\nname: remember-routing\n---\n# Remember Routing\n",
-            "---\nname: remember-routing\ntier: community\n---\n# Remember Routing\n",
-        ],
-    )
-    def test_learned_skill_source_tier_is_normalized_for_learned_selection(
-        self,
-        tmp_path: Path,
-        frontmatter: str,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(frontmatter)
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
-
-    def test_learned_skill_name_selects_learned_namespace(
-        self,
-        tmp_path: Path,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: ops\n---\n# Remember Routing\n"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["remember-routing"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
-
-    def test_learned_skill_collision_is_skipped_and_logged(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "shared-name"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "SKILL.md").write_text("built-in")
-
-        learned_skill = tmp_path / "vault-skills" / "shared-name"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: shared-name\ntier: learned\n---\nlearned"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        caplog.set_level(logging.WARNING)
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["*"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
-        assert copied_skill.read_text() == "built-in"
-        assert "Skipping learned skill" in caplog.text
-        assert "collision" in caplog.text
-
-    def test_learned_skill_resync_updates_prior_learned_copy(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        notes = learned_skill / "notes.md"
-        notes.write_text("first version")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-            notes.write_text("second version")
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        skill_dst = session_dir / "skills" / "remember-routing"
-        assert (skill_dst / "notes.md").read_text() == "second version"
-
-    def test_learned_skill_removed_from_vault_prunes_prior_managed_copy(
-        self,
-        tmp_path: Path,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-            shutil.rmtree(learned_skill)
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-
-    @pytest.mark.parametrize("workspace_skills", [None, ["core"]])
-    def test_deselected_learned_skills_prune_prior_managed_copy(
-        self,
-        tmp_path: Path,
-        workspace_skills: list[str] | None,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-            sync_skills(
-                session_dir,
-                workspace_skills=workspace_skills,
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-
-    def test_symlinked_marker_destination_is_not_pruned_or_overwritten(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        session_dir = tmp_path / "session" / ".claude"
-        skills_dst = session_dir / "skills"
-        skills_dst.mkdir(parents=True)
-        target = tmp_path / "external-managed-skill"
-        target.mkdir()
-        (target / ".pynchy-learned-skill").write_text("managed by pynchy\n")
-        (target / "payload.md").write_text("external content")
-        symlink_dst = skills_dst / "remember-routing"
-        symlink_dst.symlink_to(target, target_is_directory=True)
-
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        (learned_skill / "payload.md").write_text("vault content")
-
-        caplog.set_level(logging.WARNING)
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[],
-            )
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert symlink_dst.is_symlink()
-        assert symlink_dst.resolve() == target.resolve()
-        assert (target / "payload.md").read_text() == "external content"
-        assert "collision" in caplog.text
-
-    def test_learned_skill_copy_failure_is_skipped_and_logged(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        (learned_skill / "notes.md").write_text("Use the right queue.")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        caplog.set_level(logging.WARNING)
-        with (
-            _patch_settings(tmp_path),
-            patch(
-                "pynchy.host.container_manager.session_prep.shutil.copy2",
-                side_effect=OSError("copy denied"),
-            ),
-        ):
-            sync_skills(
-                session_dir,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-        assert "Skipping learned skill" in caplog.text
-        assert "copy denied" in caplog.text
-
-    def test_learned_skill_collision_with_plugin_is_skipped_and_logged(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        plugin_skill = tmp_path / "plugins" / "shared-name"
-        plugin_skill.mkdir(parents=True)
-        (plugin_skill / "SKILL.md").write_text("plugin")
-
-        learned_skill = tmp_path / "vault-skills" / "shared-name"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: shared-name\ntier: learned\n---\nlearned"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        class FakeHook:
-            def pynchy_skill_paths(self):
-                return [[str(plugin_skill)]]
-
-        class FakePM(pluggy.PluginManager):
-            hook = FakeHook()
-
-            def __init__(self):
-                pass
-
-        caplog.set_level(logging.WARNING)
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                plugin_manager=FakePM(),
-                workspace_skills=["*"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
-        assert copied_skill.read_text() == "plugin"
-        assert "Skipping learned skill" in caplog.text
-        assert "collision" in caplog.text
-
-    def test_learned_skill_replaces_plugin_copy_from_the_same_vault_source(
-        self,
-        tmp_path: Path,
-    ):
-        """Warm refreshes must update a global skill also exported by a plugin."""
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        skill_md = learned_skill / "SKILL.md"
+    def test_personalized_skill_refresh_updates_and_prunes(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/remember-routing"
+        skill.mkdir(parents=True)
+        skill_md = skill / "SKILL.md"
         skill_md.write_text("---\nname: remember-routing\ntier: learned\n---\n# First Version\n")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        class FakeHook:
-            def pynchy_skill_paths(self):
-                return [[str(learned_skill)]]
-
-        class FakePM(pluggy.PluginManager):
-            hook = FakeHook()
-
-            def __init__(self):
-                pass
+        session_dir = tmp_path / "session/.claude"
 
         with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                plugin_manager=FakePM(),
-                workspace_skills=["remember-routing"],
-                learned_skill_paths=[learned_skill],
-            )
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["learned"])
             skill_md.write_text(
                 "---\nname: remember-routing\ntier: learned\n---\n# Updated Version\n"
             )
-            refresh_learned_skills(
+            refresh_personalized_skills(
                 session_dir,
-                workspace_skills=["remember-routing"],
+                project_root=tmp_path,
+                workspace_skills=["learned"],
                 denied_skill_names=None,
-                learned_skill_paths=[learned_skill],
+            )
+            assert (
+                "# Updated Version"
+                in (session_dir / "skills/remember-routing/SKILL.md").read_text()
             )
 
-        skill_dst = session_dir / "skills/remember-routing"
-        assert (skill_dst / ".pynchy-learned-skill").is_file()
-        assert "# Updated Version" in (skill_dst / "SKILL.md").read_text()
+            shutil.rmtree(skill)
+            refresh_personalized_skills(
+                session_dir,
+                project_root=tmp_path,
+                workspace_skills=["learned"],
+                denied_skill_names=None,
+            )
+
+        assert not (session_dir / "skills/remember-routing").exists()
+
+    def test_personalized_skill_with_symlink_is_not_injected(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/linked"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: linked\ntier: learned\n---\n")
+        (skill / "outside").symlink_to(tmp_path / "outside")
+        session_dir = tmp_path / "session/.claude"
+
+        with _patch_settings(tmp_path):
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["learned"])
+
+        assert not (session_dir / "skills/linked").exists()
+
+    def test_personalized_skill_does_not_replace_session_symlink(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/linked"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: linked\ntier: learned\n---\n")
+        session_skill = tmp_path / "session/.claude/skills/linked"
+        session_skill.parent.mkdir(parents=True)
+        session_skill.symlink_to(tmp_path / "outside")
+
+        with (
+            _patch_settings(tmp_path),
+            pytest.raises(ValueError, match="collision"),
+        ):
+            sync_skills(
+                tmp_path / "session/.claude",
+                project_root=tmp_path,
+                workspace_skills=["learned"],
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -3641,7 +3382,7 @@ class TestSyncSkillsFiltering:
 
     def test_none_copies_core_only(self, tmp_path: Path):
         """workspace_skills=None copies only core-tier skills (safe default)."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3650,14 +3391,14 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=None)
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=None)
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser"}
 
     def test_core_only_filters_correctly(self, tmp_path: Path):
         """workspace_skills=["core"] copies only core-tier skills."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3666,14 +3407,14 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["core"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["core"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser"}
 
     def test_core_plus_dev(self, tmp_path: Path):
         """workspace_skills=["core", "dev"] copies core + dev skills."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3682,14 +3423,14 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["core", "dev"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["core", "dev"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
 
     def test_core_plus_specific_name(self, tmp_path: Path):
         """workspace_skills=["core", "extra"] includes core tier + named skill."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3698,14 +3439,14 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["core", "extra"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["core", "extra"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "extra"}
 
     def test_star_copies_everything(self, tmp_path: Path):
         """workspace_skills=["*"] includes all skills."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
 
@@ -3713,7 +3454,7 @@ class TestSyncSkillsFiltering:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, workspace_skills=["*"])
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
         copied = {d.name for d in (session_dir / "skills").iterdir() if d.is_dir()}
         assert copied == {"browser", "improver"}
@@ -3740,7 +3481,12 @@ class TestSyncSkillsFiltering:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core"])
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["core"],
+            )
 
         # Plugin skill is community tier, should be excluded
         assert not (session_dir / "skills" / "ext-tool").exists()
@@ -3767,7 +3513,12 @@ class TestSyncSkillsFiltering:
                 pass
 
         with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["core", "ext-tool"])
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["core", "ext-tool"],
+            )
 
         assert (session_dir / "skills" / "ext-tool").exists()
 
@@ -3785,7 +3536,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings_file = session_dir / "settings.json"
         assert settings_file.exists()
@@ -3817,7 +3568,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "hooks" in settings
@@ -3833,7 +3584,7 @@ class TestWriteSettingsJson:
         session_dir.mkdir(parents=True)
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         # Should still have env but no hooks
@@ -3847,7 +3598,7 @@ class TestWriteSettingsJson:
         (session_dir / "settings.json").write_text('{"stale": true}')
 
         with _patch_settings(tmp_path):
-            write_settings_json(session_dir)
+            write_settings_json(session_dir, project_root=tmp_path)
 
         settings = json.loads((session_dir / "settings.json").read_text())
         assert "stale" not in settings
@@ -4205,6 +3956,8 @@ class TestGetSessionOutputHandler:
             "handler-test",
             "pynchy-handler-test",
             FakeProcess(),
+            data_dir=Path("unused-data"),
+            idle_timeout=0.0,
         )
         handler = AsyncMock()
         session.set_output_handler(handler)
@@ -4226,6 +3979,8 @@ class TestGetSessionOutputHandler:
             "no-handler-test",
             "pynchy-no-handler-test",
             FakeProcess(),
+            data_dir=Path("unused-data"),
+            idle_timeout=0.0,
         )
 
         try:

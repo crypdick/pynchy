@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
 
 import pluggy
 from conftest import NullChannel
@@ -51,26 +50,16 @@ def test_load_channels_returns_empty_when_none_discovered() -> None:
 
 
 def test_resolve_default_channel_returns_none_without_configuration() -> None:
-    assert channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")]) is None
+    assert channel_runtime.resolve_default_channel([_FakeChannel("whatsapp")], None) is None
 
 
 def test_resolve_default_channel_uses_explicit_configured_channel() -> None:
-    settings = type(
-        "Settings",
-        (),
-        {
-            "command_center": type(
-                "CommandCenter", (), {"connection": "connection.whatsapp.primary"}
-            )()
-        },
-    )()
-    with patch("pynchy.plugins.channel_runtime.get_settings", return_value=settings):
-        selected = channel_runtime.resolve_default_channel(
-            [_FakeChannel("connection.whatsapp.primary")]
-        )
+    selected = channel_runtime.resolve_default_channel(
+        [_FakeChannel("connection.whatsapp.primary")], "connection.whatsapp.primary"
+    )
     assert selected is not None
     assert selected.name == "connection.whatsapp.primary"
 
 
 def test_resolve_default_channel_returns_none_for_empty_channels() -> None:
-    assert channel_runtime.resolve_default_channel([]) is None
+    assert channel_runtime.resolve_default_channel([], None) is None

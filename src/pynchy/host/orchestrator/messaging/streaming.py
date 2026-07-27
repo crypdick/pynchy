@@ -39,6 +39,9 @@ class OutputDeps(Protocol):
     """Dependencies for output handling."""
 
     @property
+    def agent_name(self) -> str: ...
+
+    @property
     def channels(self) -> list[Channel]: ...
 
     @property

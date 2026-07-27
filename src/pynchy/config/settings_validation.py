@@ -8,7 +8,6 @@ from collections.abc import (  # noqa: TC003, RUF100 - beartype resolves annotat
 from typing import TYPE_CHECKING, Protocol
 
 from pynchy.actions import ACTION_SPECS
-from pynchy.config.discord_refs import discord_chat_ref_error
 from pynchy.config.jobs import (  # noqa: TC001, RUF100 - beartype resolves annotations at runtime.
     JobConfig,
 )
@@ -25,6 +24,7 @@ from pynchy.config.scheduler_models import (  # noqa: TC001, RUF100 - beartype r
     CanaryConfig,
 )
 from pynchy.config.workspace_layout import semantic_workspace_configs
+from pynchy.discord import discord_chat_ref_error
 from pynchy.security_canary_ids import SECURITY_CANARY_IDS
 
 if TYPE_CHECKING:
@@ -113,7 +113,7 @@ def validate_workspace_chat_references(settings: Settings) -> None:
             raise TypeError(
                 f"workspaces.{workspace_name}.chat requires a Discord connection: {parsed.name}"
             )
-        error = discord_chat_ref_error(connection, parsed.chat)
+        error = discord_chat_ref_error(connection.to_runtime_settings(), parsed.chat)
         if error is not None:
             raise ValueError(f"workspaces.{workspace_name}.chat {error}")
 

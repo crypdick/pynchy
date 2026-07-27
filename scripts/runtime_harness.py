@@ -73,6 +73,7 @@ _PROCESS_SUPERVISOR_SCRIPT = '"$@" &\nchild=$!\nwait "$child"\n'
 _PROCESS_PID_KEYS = ("pynchy_pid", "temporal_pid")
 _FAILED_SETUP_ARCHIVE_LIMIT = 5
 _FEATURE_SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,79}")
+_RUNTIME_DATABASE_NAMES = ("messages.db", "memories.db", "temporal.db")
 _RUNTIME_CONTAINER_SUFFIXES = (
     "pynchy",
     "litellm",
@@ -391,12 +392,22 @@ async def _initialize_databases(root: Path) -> None:
         )
         await database.commit()
     reset_settings()
-    memory = SqliteMemoryBackend()
+    memory = SqliteMemoryBackend(data_dir / "memories.db")
     try:
         await memory.init()
     finally:
         await memory.close()
         reset_settings()
+
+
+def _reset_runtime_databases(root: Path) -> None:
+    """Remove only SQLite state owned by a fresh deterministic runtime."""
+    data_dir = root / "data"
+    for name in _RUNTIME_DATABASE_NAMES:
+        database = data_dir / name
+        paths = (database, database.with_name(f"{name}-shm"), database.with_name(f"{name}-wal"))
+        for path in paths:
+            path.unlink(missing_ok=True)
 
 
 def _write_state(spec: RuntimeSpec, state: dict[str, object]) -> None:
@@ -981,9 +992,11 @@ def _archive_failed_new_feature_setup(spec: RuntimeSpec) -> Path | None:
     return destination
 
 
-def setup(spec: RuntimeSpec) -> dict[str, object]:
+def setup(spec: RuntimeSpec, *, reset_data: bool = True) -> dict[str, object]:
     if _read_state(spec.root) is not None:
         raise RuntimeError("Runtime already exists; run the stop command first")
+    if reset_data:
+        _reset_runtime_databases(spec.root)
     state = _write_runtime_config(spec)
     _write_state(spec, state)
     try:
@@ -1008,7 +1021,7 @@ def restart(root: Path, args: argparse.Namespace) -> None:
         return
     spec = _spec_from_state(root, previous)
     stop(root)
-    setup(spec)
+    setup(spec, reset_data=False)
 
 
 def run(spec: RuntimeSpec, command: list[str]) -> int:

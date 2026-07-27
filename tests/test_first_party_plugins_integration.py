@@ -10,9 +10,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from conftest import make_settings
 
-from pynchy.config import PluginConfig
 from pynchy.event_bus import AgentTraceEvent, EventBus
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.channel_runtime import ChannelPluginContext
@@ -60,13 +58,8 @@ class TestInRepoPluginDiscovery:
 
     def test_disabled_plugin_skipped(self):
         """Plugin disabled via config.toml is not loaded."""
-        settings = make_settings(plugins={"claude": PluginConfig(enabled=False)})
-
-        with (
-            patch("pynchy.plugins.registry.get_settings", return_value=settings),
-            patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
-        ):
-            pm = get_plugin_manager()
+        with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+            pm = get_plugin_manager({"claude": False})
 
         names = [pm.get_name(p) for p in pm.get_plugins()]
         assert "builtin-claude" not in names
@@ -186,18 +179,14 @@ class TestSlackPluginFunctionality:
         if "builtin-slack" not in names:
             pytest.skip("Slack plugin not available (optional dependency)")
 
-        mock_settings = MagicMock()
-        mock_settings.connections = {}
-
-        with patch("pynchy.plugins.channels.slack.get_settings", return_value=mock_settings):
-            channels = pm.hook.pynchy_create_channel(
-                context=ChannelPluginContext(
-                    on_message_callback=MagicMock(),
-                    on_chat_metadata_callback=MagicMock(),
-                    workspaces=MagicMock(return_value={}),
-                    send_message=MagicMock(),
-                )
+        channels = pm.hook.pynchy_create_channel(
+            context=ChannelPluginContext(
+                on_message_callback=MagicMock(),
+                on_chat_metadata_callback=MagicMock(),
+                workspaces=MagicMock(return_value={}),
+                send_message=MagicMock(),
             )
+        )
 
         # Slack should return None when no connections configured
         slack_channels = [

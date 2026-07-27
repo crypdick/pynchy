@@ -28,9 +28,6 @@ import pynchy.host.orchestrator.workspace_config as workspace_config
 from pynchy.config import (
     Settings,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )
-from pynchy.config.mcp import (
-    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
-)
 from pynchy.host.container_manager.docker import (
     is_container_running,
     stop_container,
@@ -59,6 +56,9 @@ from pynchy.host.container_manager.mcp.resolution import (
 )
 from pynchy.host.container_manager.mcp.startup import McpStartupFailure, McpWorkspaceStartup
 from pynchy.logger import logger
+from pynchy.plugins.mcp_server import (
+    McpServerConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
+)
 from pynchy.types import (
     ServiceTrustConfig,  # noqa: TC001, RUF100 - beartype resolves MCP manager signatures at runtime.
 )

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pluggy
 
-from pynchy.config.mcp import McpServerConfig
 from pynchy.host.container_manager.gateway import collect_plugin_mcp_servers
 from pynchy.host.container_manager.mcp.resolution import McpInstance, build_trust_map
 from pynchy.plugins.contracts import McpServerSpec
+from pynchy.plugins.mcp_server import McpServerConfig
 from pynchy.types import ServiceTrustConfig
 
 
@@ -28,6 +29,7 @@ def _make_instance(server_name: str) -> McpInstance:
         kwargs={},
         instance_id=server_name,
         container_name=server_name,
+        project_root=Path("/project"),
     )
 
 

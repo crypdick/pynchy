@@ -6,6 +6,7 @@ Built-in backends live under ``plugins/memory/``.
 
 from __future__ import annotations
 
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Protocol, TypeGuard, runtime_checkable
 
 import pynchy.plugins as pynchy_plugins
@@ -67,9 +68,14 @@ def _is_valid_provider(candidate: object) -> TypeGuard[MemoryProvider]:
     )
 
 
-def get_memory_provider() -> MemoryProvider | None:
+def get_memory_provider(database_path: Path) -> MemoryProvider | None:
     """Discover memory plugin and return provider (first valid one wins)."""
-    providers = pynchy_plugins.collect_hook_results("pynchy_memory", _is_valid_provider, "memory")
+    providers = pynchy_plugins.collect_hook_results(
+        "pynchy_memory",
+        _is_valid_provider,
+        "memory",
+        database_path=database_path,
+    )
     if providers:
         logger.info("Memory provider discovered", name=providers[0].name)
         return providers[0]

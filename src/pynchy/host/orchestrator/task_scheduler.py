@@ -315,6 +315,13 @@ async def _run_scheduled_agent(  # noqa: PLR0911, RUF100 - explicit scheduler te
 ) -> TurnOutcome:
     """Run one task after applying config-job serialization."""
     start_time = datetime.now(UTC)
+    if task.config_job_name is not None and task.config_job_is_deterministic is None:
+        await _log_task_error(
+            task.id,
+            start_time=start_time,
+            error="Config job execution is awaiting reconciliation",
+        )
+        return TurnOutcome.RETRY
     interrupted_turn = await get_in_flight_turn_for_task(task.id)
     if interrupted_turn is not None and interrupted_turn.control_state in {
         CheckpointControlState.PAUSE_REQUESTED,

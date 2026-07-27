@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -12,9 +12,9 @@ from pynchy.plugins.memory.sqlite_memory.backend import SqliteMemoryBackend
 
 
 class TestMemoryProvider:
-    def test_backend_satisfies_protocol(self):
+    def test_backend_satisfies_protocol(self, tmp_path):
         """SqliteMemoryBackend passes structural typing checks."""
-        backend = SqliteMemoryBackend()
+        backend = SqliteMemoryBackend(tmp_path / "memories.db")
         assert isinstance(backend, MemoryProvider)
 
     def test_invalid_provider_rejected(self):
@@ -22,10 +22,10 @@ class TestMemoryProvider:
         assert not isinstance(object(), MemoryProvider)
         assert not isinstance({"name": "fake"}, MemoryProvider)
 
-    def test_plugin_provides_memory_hook(self):
+    def test_plugin_provides_memory_hook(self, tmp_path):
         """SqliteMemoryPlugin returns a backend via pynchy_memory."""
         plugin = SqliteMemoryPlugin()
-        backend = plugin.pynchy_memory()
+        backend = plugin.pynchy_memory(tmp_path / "memories.db")
         assert backend is not None
         assert backend.name == "sqlite"
 
@@ -46,17 +46,15 @@ class TestMcpHandlers:
 
     @pytest.fixture(autouse=True)
     def _mock_backend(self, tmp_path):
-        """Replace the module-level backend singleton with a mock.
+        """Provide a mock backend through the plugin's public constructor.
 
         Handlers are driven through the plugin's public service-handler hook
         (``pynchy_service_handler`` exposes them keyed by tool name).
         """
         mock = AsyncMock(spec=SqliteMemoryBackend)
         mock.name = "sqlite"
-        with patch("pynchy.plugins.memory.sqlite_memory._plugin._get_backend", return_value=mock):
-            self.mock_backend = mock
-            self.registration = SqliteMemoryPlugin().pynchy_service_handler()
-            yield
+        self.mock_backend = mock
+        self.registration = SqliteMemoryPlugin(mock).pynchy_service_handler()
 
     def _handler(self, tool_name: str):
         action = self.registration.action_for(tool_name)
@@ -139,9 +137,9 @@ class TestMcpHandlers:
 
 
 class TestDiscovery:
-    def test_get_memory_provider_returns_backend(self):
+    def test_get_memory_provider_returns_backend(self, tmp_path):
         """get_memory_provider finds the sqlite-memory plugin."""
-        provider = get_memory_provider()
+        provider = get_memory_provider(tmp_path / "memories.db")
         # May be None if plugin loading context differs in tests,
         # but when it loads it should be valid.
         if provider is not None:

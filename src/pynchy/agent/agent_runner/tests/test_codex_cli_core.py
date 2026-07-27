@@ -171,6 +171,13 @@ def test_start_writes_codex_config_with_hooks_and_mcp(tmp_path, monkeypatch):
     for key, expected_value in expected_top_level.items():
         assert config[key] == expected_value
 
+    assert config["skills"]["config"] == [
+        {
+            "path": str(tmp_path / "skills" / ".system" / skill_name / "SKILL.md"),
+            "enabled": False,
+        }
+        for skill_name in ("plugin-creator", "skill-creator", "skill-installer")
+    ]
     assert config["model_providers"]["pynchy_litellm"] == {
         "name": "Pynchy LiteLLM Gateway",
         "base_url": "http://gateway:4000/v1",

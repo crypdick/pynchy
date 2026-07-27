@@ -23,6 +23,7 @@ module_patterns = [
   "pynchy",
   "pynchy.agent",
   "pynchy.host",
+  "pynchy.host.paths",
   "pynchy._runtime_typing",
   "pynchy.logger",
   "pynchy.utils",
@@ -34,8 +35,10 @@ violation_guidance = "Foundation code must not become an outward dependency; mov
 name = "domain"
 module_patterns = [
   "pynchy.action_intents",
+  "pynchy.channels",
   "pynchy.conversation.**",
   "pynchy.deployment_types",
+  "pynchy.discord",
   "pynchy.linear_plan_types",
   "pynchy.security_canary_ids",
   "pynchy.session_policy",
@@ -66,6 +69,7 @@ module_patterns = [
   "pynchy.plugins.host_actions",
   "pynchy.plugins.memory",
   "pynchy.plugins.memory._api",
+  "pynchy.plugins.mcp_server",
   "pynchy.plugins.observers",
   "pynchy.plugins.observers._api",
   "pynchy.plugins.registry",
@@ -112,11 +116,13 @@ exclude_patterns = [
   "pynchy._runtime_typing",
   "pynchy.action_intents",
   "pynchy.actions",
+  "pynchy.channels",
   "pynchy.canaries",
   "pynchy.capabilities",
   "pynchy.config",
   "pynchy.conversation",
   "pynchy.deployment_types",
+  "pynchy.discord",
   "pynchy.google_mcp_canaries",
   "pynchy.event_bus",
   "pynchy.logger",
@@ -174,6 +180,7 @@ violation_guidance = "Use a use-case-owned learning capability port and wire the
 name = "host_adapter"
 module_patterns = ["pynchy.host.*"]
 exclude_patterns = [
+  "pynchy.host.paths",
   "pynchy.host.container_manager",
   "pynchy.host.git_ops",
   "pynchy.host.learning",

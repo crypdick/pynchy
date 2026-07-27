@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
@@ -19,8 +20,6 @@ from pynchy.plugins.channels.discord import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pynchy.types import NewMessage
 
 BOT_ID = "999"
@@ -117,6 +116,7 @@ def _attachment(
 
 async def _deliver(
     msg: DiscordInboundMessage,
+    audio_cache_dir: Path = Path("data/media/discord"),
     **cfg_kwargs: Any,
 ) -> tuple[str, NewMessage, list[tuple[str, str, str | None]]]:
     delivered: list[tuple[str, NewMessage]] = []
@@ -127,6 +127,7 @@ async def _deliver(
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
+        audio_cache_dir=audio_cache_dir,
     )
     channel.bot_user_id = BOT_ID
 
@@ -211,6 +212,7 @@ async def test_thread_created_system_message_is_not_delivered_to_parent_channel_
         "token",
         lambda jid, new_message: delivered.append((jid, new_message)),
         lambda jid, timestamp, chat_name: metadata.append((jid, timestamp, chat_name)),
+        audio_cache_dir=Path("data/media/discord"),
     )
     channel.bot_user_id = BOT_ID
 
@@ -317,17 +319,10 @@ async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
             error=None,
         )
 
-    with (
-        patch(
-            "pynchy.plugins.channels.discord._events._discord_audio_cache_dir",
-            return_value=tmp_path,
-            create=True,
-        ),
-        patch(
-            "pynchy.host.inbound_audio.transcribe_audio_file",
-            new=AsyncMock(side_effect=transcribe),
-            create=True,
-        ),
+    with patch(
+        "pynchy.host.inbound_audio.transcribe_audio_file",
+        new=AsyncMock(side_effect=transcribe),
+        create=True,
     ):
         _jid, msg, _metadata = await _deliver(
             _message(
@@ -344,6 +339,7 @@ async def test_audio_attachment_is_cached_and_transcribed(tmp_path: Path):
                 ),
                 mentions=(BOT_ID,),
             ),
+            audio_cache_dir=tmp_path,
             group_policy="open",
         )
 

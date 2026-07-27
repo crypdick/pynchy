@@ -16,6 +16,7 @@ _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _PYNCHY_LITELLM_PROVIDER = "pynchy_litellm"
 _UNSUPPORTED_TOML_VALUE_ERROR = "Unsupported TOML value: {value!r}"
 _CODEX_GATEWAY_REQUIREMENTS_ERROR = "Codex core requires {requirements} from the Pynchy LLM gateway"
+_DISABLED_SYSTEM_SKILLS = ("plugin-creator", "skill-creator", "skill-installer")
 # Pynchy's container and mount policy are the isolation boundary. Codex's
 # inner bubblewrap layer rejects tracked symlinked instruction dirs such as
 # .agents -> .claude inside a writable project mount.
@@ -185,6 +186,18 @@ def write_codex_config(
             "network_access = true",
         ]
     )
+    # Per-session CODEX_HOME skill trees are generated registries, not durable
+    # authoring locations. These bundled skills default to writing there.
+    for skill_name in _DISABLED_SYSTEM_SKILLS:
+        skill_path = codex_home / "skills" / ".system" / skill_name / "SKILL.md"
+        lines.extend(
+            [
+                "",
+                "[[skills.config]]",
+                f"path = {_toml_value(str(skill_path))}",
+                "enabled = false",
+            ]
+        )
     if hooks_enabled:
         lines.extend(
             [

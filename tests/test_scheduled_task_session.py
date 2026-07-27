@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,7 +19,7 @@ from pynchy.host.container_manager.session import ContainerSession, SessionDiedE
 from pynchy.host.orchestrator import agent_runner
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.runtime_target import RuntimeTarget
-from pynchy.types import ContainerInput, RuntimeId, WorkspaceProfile
+from pynchy.types import AgentExecutionRuntime, ContainerInput, RuntimeId, WorkspaceProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,6 +47,20 @@ class _FakeDeps:
             QueuePolicy(max_concurrent=10, max_retries=5, retry_base_seconds=5.0)
         )
         self.plugin_manager = None
+        self.agent_execution_runtime = AgentExecutionRuntime(
+            project_root=Path("test-project"),
+            groups_dir=Path("test-project/groups"),
+            data_dir=Path("test-project/data"),
+            mount_allowlist_path=Path("test-project/mount-allowlist.toml"),
+            blocked_mount_patterns=(),
+            agent_image="pynchy-agent:latest",
+            agent_memory_mb=2048,
+            container_timeout=300.0,
+            default_core="openai",
+            idle_timeout=60.0,
+            model="",
+            model_reasoning_effort=None,
+        )
         self._broadcast_calls: list = []
 
     async def get_available_groups(self) -> list[dict[str, Any]]:
@@ -161,7 +176,8 @@ class TestScheduledTaskUsesSession:
 
         mock_cs.assert_awaited_once()
         _, kwargs = mock_cs.call_args
-        assert kwargs.get("idle_timeout_override") > 0
+        assert kwargs["idle_timeout"] > 0
+        assert kwargs["data_dir"] == self.deps.agent_execution_runtime.data_dir
 
     @pytest.mark.asyncio
     async def test_resumes_a_persisted_provider_session_when_spawning_worker(self):

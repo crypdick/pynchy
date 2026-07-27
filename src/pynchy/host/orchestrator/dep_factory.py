@@ -1,12 +1,8 @@
-"""Dependency adapter factories — compose subsystem dependencies from app state.
-
-Extracted from app.py to keep the orchestrator focused on wiring.
-These factory functions are called once during app startup to build
-the composite dependency objects that subsystems require.
-"""
+"""Dependency adapter factories compose subsystem dependencies from app state."""
 
 from __future__ import annotations
 
+# allow: file-length - local IPC composition binds the startup-owned snapshot data directory.
 from collections.abc import (
     Sequence,  # noqa: TC003, RUF100 - beartype resolves channel collections at runtime.
 )
@@ -164,11 +160,13 @@ async def _scheduled_work_status(
     async def visible_host_jobs() -> list[HostJob]:
         return await get_all_host_jobs() if is_admin else []
 
+    scheduler = get_settings().scheduler
     return await collect_scheduled_work(
         visible_tasks,
         visible_host_jobs,
         lambda task_id: get_task_run_logs(task_id, limit=5),
         get_temporal_orchestration_states,
+        (scheduler.temporal_address, scheduler.temporal_namespace),
     )
 
 
@@ -245,9 +243,12 @@ async def _request_ipc_deploy(
 def make_http_deps(app: PynchyApp) -> HttpServerDeps:
     """Create the dependency object for the HTTP server."""
     _broadcaster, host_broadcaster = _get_broadcasters(app)
+    settings = get_settings()
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
+        data_dir = settings.data_dir
+        project_root = settings.project_root
 
         async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
             await app.on_inbound(
@@ -312,6 +313,7 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
 def make_ipc_deps(app: PynchyApp) -> IpcDeps:
     """Create the dependency object for the IPC watcher."""
+    snapshot_data_dir = get_settings().data_dir
     broadcaster, host_broadcaster = _get_broadcasters(app)
     registration_manager = GroupRegistrationManager(
         app.workspaces, app.register_workspace, app.send_clear_confirmation
@@ -327,7 +329,23 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         register_workspace = registration_manager.register_workspace
         sync_group_metadata = metadata_manager.sync_group_metadata
         get_available_groups = metadata_manager.get_available_groups
-        write_groups_snapshot = staticmethod(_write_groups_snapshot)
+
+        def write_groups_snapshot(
+            self,
+            group_folder: str,
+            available_groups: list[Any],
+            registered_jids: set[str],
+            *,
+            is_admin: bool,
+        ) -> None:
+            _write_groups_snapshot(
+                snapshot_data_dir,
+                group_folder,
+                available_groups,
+                registered_jids,
+                is_admin=is_admin,
+            )
+
         has_active_session = session_manager.has_active_session
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
@@ -477,8 +495,22 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
     """Create the dependency object for the status collector."""
     session_manager = SessionManager(app.sessions, app.session_cleared)
     metadata_manager = GroupMetadataManager(app.channels, app.get_available_groups)
+    settings = get_settings()
+    configured_repo_slugs = tuple(
+        dict.fromkeys(
+            [
+                *settings.repos.overrides,
+                *(slug for profile in settings.profiles.values() for slug in profile.repo),
+            ]
+        )
+    )
 
     class _StatusDeps:
+        repo_slugs = configured_repo_slugs
+        temporal_address = settings.scheduler.temporal_address
+        temporal_namespace = settings.scheduler.temporal_namespace
+        temporal_task_queue = settings.scheduler.temporal_task_queue
+
         def is_shutting_down(self) -> bool:
             return app.is_shutting_down()
 
@@ -493,7 +525,7 @@ def make_status_deps(app: PynchyApp) -> StatusDeps:
             meta = raw.pop("_meta", {})
             return {
                 "active_containers": meta.get("active_count", 0),
-                "max_concurrent": get_settings().container.max_concurrent,
+                "max_concurrent": settings.container.max_concurrent,
                 "groups_waiting": meta.get("waiting_count", 0),
                 "per_group": raw,
             }

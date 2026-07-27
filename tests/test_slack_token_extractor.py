@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from pynchy.plugins.integrations import slack_token_extractor
 from pynchy.plugins.integrations.slack_token_extractor import SlackTokenExtractorPlugin
 
 TIMED_OUT_MESSAGE = "timed out"
+_SLACK_EXTRACTOR_MODULE = "pynchy.plugins.integrations.slack_token_extractor._plugin"
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -69,11 +69,12 @@ async def test_refresh_slack_tokens_persists_tokens_from_the_authenticated_sessi
     """Exercise extraction through the service boundary without a real Slack account."""
     dotenv_path = tmp_path / ".env"
 
-    monkeypatch.setattr(slack_token_extractor, "_find_dotenv", lambda: dotenv_path)
-    monkeypatch.setattr(slack_token_extractor, "profile_dir", lambda _name: tmp_path / "profile")
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}._find_dotenv", lambda: dotenv_path)
     monkeypatch.setattr(
-        slack_token_extractor,
-        "_extract_tokens",
+        f"{_SLACK_EXTRACTOR_MODULE}.profile_dir", lambda _name: tmp_path / "profile"
+    )
+    monkeypatch.setattr(
+        f"{_SLACK_EXTRACTOR_MODULE}._extract_tokens",
         AsyncMock(return_value={"xoxc": "xoxc-test", "xoxd": "xoxd-test"}),
     )
 
@@ -102,15 +103,16 @@ async def test_setup_slack_session_timeout_returns_novnc_url(
     context = _FakeContext()
     stop_procs = Mock()
 
-    monkeypatch.setattr(slack_token_extractor, "has_display", lambda: False)
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}.has_display", lambda: False)
     monkeypatch.setattr(
-        slack_token_extractor,
-        "start_virtual_display",
+        f"{_SLACK_EXTRACTOR_MODULE}.start_virtual_display",
         lambda: ([], "http://novnc.local/session"),
     )
-    monkeypatch.setattr(slack_token_extractor, "stop_procs", stop_procs)
-    monkeypatch.setattr(slack_token_extractor, "profile_dir", lambda _name: tmp_path / "profile")
-    monkeypatch.setattr(slack_token_extractor, "chrome_path", lambda: "/usr/bin/google-chrome")
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}.stop_procs", stop_procs)
+    monkeypatch.setattr(
+        f"{_SLACK_EXTRACTOR_MODULE}.profile_dir", lambda _name: tmp_path / "profile"
+    )
+    monkeypatch.setattr(f"{_SLACK_EXTRACTOR_MODULE}.chrome_path", lambda: "/usr/bin/google-chrome")
 
     def fake_async_playwright() -> _FakePlaywright:
         return _FakePlaywright(context)

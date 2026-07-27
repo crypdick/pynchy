@@ -395,3 +395,10 @@ class SlackTokenExtractorPlugin:
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:
         return SLACK_TOKEN_HOST_ACTIONS
+
+    @hookimpl
+    def pynchy_skill_paths(self) -> list[str]:
+        skill_dir = Path(__file__).resolve().parent / "skills" / "slack-token-extractor"
+        if skill_dir.is_dir():
+            return [str(skill_dir)]
+        return []

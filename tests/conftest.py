@@ -45,6 +45,7 @@ from pynchy.host.container_manager.security.cop import (
     CopInspectionContext,
     CopVerdict,
 )
+from pynchy.host.orchestrator.messaging.deps import CommandMatcher
 from pynchy.plugins.host_actions import HostActionCatalog
 from pynchy.state import (
     close_test_database,
@@ -84,6 +85,7 @@ __all__ = [
     "NullChannel",
     "NullIpcDeps",
     "init_test_database",
+    "make_command_matcher",
     "make_host_action_catalog",
 ]
 
@@ -217,6 +219,11 @@ def make_settings(**overrides):
         s.__dict__[key] = value
 
     return s
+
+
+def make_command_matcher(settings: Settings) -> CommandMatcher:
+    """Build the runtime command value that production composes from settings."""
+    return CommandMatcher.from_values(settings.trigger_pattern, settings.commands.model_dump())
 
 
 def make_host_action_catalog(

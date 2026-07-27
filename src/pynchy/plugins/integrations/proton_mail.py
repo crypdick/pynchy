@@ -14,7 +14,6 @@ import pluggy
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
-from pynchy.config.mcp import McpServerConfig
 from pynchy.logger import logger
 from pynchy.plugins.contracts import McpServerSpec
 from pynchy.plugins.integrations.proton_bridge import (
@@ -23,6 +22,7 @@ from pynchy.plugins.integrations.proton_bridge import (
     ProtonMailError,
     create_proton_mail_client,
 )
+from pynchy.plugins.mcp_server import McpServerConfig
 from pynchy.types import ServiceTrustConfig
 
 hookimpl = pluggy.HookimplMarker("pynchy")

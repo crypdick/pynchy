@@ -10,7 +10,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.types import AdditionalMount, AllowedRoot, MountAllowlist
 
@@ -133,7 +132,10 @@ def _parsed_allowlist(
     )
 
 
-def load_mount_allowlist() -> MountAllowlist | None:
+def load_mount_allowlist(
+    allowlist_path: Path,
+    default_blocked_patterns: tuple[str, ...],
+) -> MountAllowlist | None:
     """Load the mount allowlist from the external config location.
 
     Returns None if the file doesn't exist or is invalid.
@@ -145,9 +147,6 @@ def load_mount_allowlist() -> MountAllowlist | None:
     if _state.allowlist_load_error is not None:
         return None
 
-    s = get_settings()
-    allowlist_path = s.mount_allowlist_path
-
     if not allowlist_path.exists():
         _state.allowlist_load_error = f"Mount allowlist not found at {allowlist_path}"
         logger.warning(
@@ -158,12 +157,12 @@ def load_mount_allowlist() -> MountAllowlist | None:
         return None
 
     try:
-        content = allowlist_path.read_text()
+        content = allowlist_path.read_text(encoding="utf-8")
         # NOTE: Update docs/architecture/security.md § 2 (Mount Security) if
         # the allowlist format or protection semantics change here.
         allowlist = _parsed_allowlist(
             tomllib.loads(content),
-            default_blocked_patterns=s.security.blocked_patterns,
+            default_blocked_patterns=list(default_blocked_patterns),
         )
     except (OSError, tomllib.TOMLDecodeError, TypeError, ValueError) as exc:
         _state.allowlist_load_error = str(exc)
@@ -294,15 +293,16 @@ def validate_mount(
     mount: AdditionalMount,
     *,
     is_admin: bool,
+    allowlist_path: Path,
+    default_blocked_patterns: tuple[str, ...],
 ) -> MountValidationResult:
     """Validate a single additional mount against the allowlist."""
-    s = get_settings()
-    allowlist = load_mount_allowlist()
+    allowlist = load_mount_allowlist(allowlist_path, default_blocked_patterns)
 
     if allowlist is None:
         return MountValidationResult(
             allowed=False,
-            reason=f"No mount allowlist configured at {s.mount_allowlist_path}",
+            reason=f"No mount allowlist configured at {allowlist_path}",
         )
 
     container_path = _resolved_container_path(mount)
@@ -356,6 +356,8 @@ def validate_additional_mounts(
     group_name: str,
     *,
     is_admin: bool,
+    allowlist_path: Path,
+    default_blocked_patterns: tuple[str, ...],
 ) -> list[dict[str, str | bool]]:
     """Validate all additional mounts for a group.
 
@@ -364,7 +366,12 @@ def validate_additional_mounts(
     validated: list[dict[str, str | bool]] = []
 
     for mount in mounts:
-        result = validate_mount(mount, is_admin=is_admin)
+        result = validate_mount(
+            mount,
+            is_admin=is_admin,
+            allowlist_path=allowlist_path,
+            default_blocked_patterns=default_blocked_patterns,
+        )
 
         if result.allowed:
             if result.real_host_path is None:

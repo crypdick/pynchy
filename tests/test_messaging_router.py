@@ -47,6 +47,7 @@ def _mock_store_message_direct(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 def _make_deps() -> MagicMock:
     deps = MagicMock(spec=OutputDeps)
+    deps.agent_name = "Pynchy"
     deps.workspaces = {}
     deps.broadcast_to_channels = AsyncMock()
     deps.emit = MagicMock()

@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 from pynchy.canaries import CanaryExercise, CanaryRunContext
-from pynchy.config import get_settings
 from pynchy.host.container_manager.mcp.canary_client import (
     McpCanaryClient,
     McpCanaryToolError,
@@ -53,17 +52,22 @@ type McpClientContextFactory = Callable[[str], AbstractAsyncContextManager[_McpC
 class GoogleCalendarRoundTripCanary:
     """Exercise Google Calendar through its managed MCP server, not direct OAuth."""
 
-    def __init__(self, *, client_context: McpClientContextFactory | None = None) -> None:
+    def __init__(
+        self,
+        server_name: str,
+        calendar_id: str,
+        *,
+        client_context: McpClientContextFactory | None = None,
+    ) -> None:
+        self._server_name = server_name
+        self._calendar_id = calendar_id
         self._client_context = client_context or _managed_mcp_client
 
     async def exercise(self, context: CanaryRunContext) -> CanaryExercise:
-        settings = get_settings().canary
-        server_name = settings.google_calendar_server
-        calendar_id = settings.google_calendar_id
         event_id = _google_event_id(context.run_id)
         start = datetime.now(UTC) + _CANARY_EVENT_LEAD_TIME
         end = start + _CANARY_EVENT_DURATION
-        async with self._client_context(server_name) as client:
+        async with self._client_context(self._server_name) as client:
             await _require_mcp_tools(
                 client,
                 {"list-calendars", "list-events", "create-event", "get-event", "delete-event"},
@@ -72,7 +76,7 @@ class GoogleCalendarRoundTripCanary:
             await client.call_tool(
                 "list-events",
                 {
-                    "calendarId": calendar_id,
+                    "calendarId": self._calendar_id,
                     "timeMin": (start - timedelta(minutes=1)).isoformat(),
                     "timeMax": (end + timedelta(minutes=1)).isoformat(),
                 },
@@ -80,7 +84,7 @@ class GoogleCalendarRoundTripCanary:
             await client.call_tool(
                 "create-event",
                 {
-                    "calendarId": calendar_id,
+                    "calendarId": self._calendar_id,
                     "eventId": event_id,
                     "summary": f"Pynchy canary {context.run_id}",
                     "description": "Automated Pynchy canary; removed after verification.",
@@ -93,7 +97,7 @@ class GoogleCalendarRoundTripCanary:
                 },
             )
         return CanaryExercise(
-            artifact=_GoogleCalendarArtifact(server_name, calendar_id, event_id),
+            artifact=_GoogleCalendarArtifact(self._server_name, self._calendar_id, event_id),
             evidence_refs=(
                 "google-calendar:calendars:listed",
                 _ref("google-calendar:event:created", event_id),
@@ -135,25 +139,32 @@ class GoogleCalendarRoundTripCanary:
 class GoogleDriveRoundTripCanary:
     """Exercise configured Drive search and read capabilities through managed MCP."""
 
-    def __init__(self, *, client_context: McpClientContextFactory | None = None) -> None:
+    def __init__(
+        self,
+        server_name: str,
+        probe_query: str,
+        file_id: str,
+        *,
+        client_context: McpClientContextFactory | None = None,
+    ) -> None:
+        self._server_name = server_name
+        self._probe_query = probe_query
+        self._file_id = file_id
         self._client_context = client_context or _managed_mcp_client
 
     async def exercise(self, _context: CanaryRunContext) -> CanaryExercise:
-        settings = get_settings().canary
-        server_name = settings.google_drive_server
-        file_id = settings.google_drive_file_id
-        async with self._client_context(server_name) as client:
+        async with self._client_context(self._server_name) as client:
             await _require_mcp_tools(client, {"gdrive_search", "gdrive_read_file"})
             await client.call_tool(
                 "gdrive_search",
-                {"query": settings.google_drive_probe_query, "pageSize": 1},
+                {"query": self._probe_query, "pageSize": 1},
             )
-            await client.call_tool("gdrive_read_file", {"fileId": file_id})
+            await client.call_tool("gdrive_read_file", {"fileId": self._file_id})
         return CanaryExercise(
-            artifact=_GoogleDriveArtifact(server_name, file_id),
+            artifact=_GoogleDriveArtifact(self._server_name, self._file_id),
             evidence_refs=(
                 "google-drive:search:completed",
-                _ref("google-drive:file:read", file_id),
+                _ref("google-drive:file:read", self._file_id),
             ),
         )
 

@@ -1,4 +1,4 @@
-"""Discover and request access to vault-backed Pynchy skills."""
+"""Discover and request access to personalized Pynchy skills."""
 
 from __future__ import annotations
 
@@ -156,7 +156,7 @@ def _access_granted(skill_name: str, *, persistent: bool) -> list[TextContent]:
 
 @tool(
     "search_skills",
-    "Search the vault-backed Pynchy skill catalog. Use this before guessing at a workflow.",
+    "Search the personalized Pynchy skill catalog. Use this before guessing at a workflow.",
     {
         "type": "object",
         "properties": {

@@ -29,6 +29,7 @@ from pynchy.host.orchestrator.startup_handler import check_deploy_continuation
 from pynchy.plugins.channel_runtime import ChannelPluginContext
 from pynchy.state import get_chat_history, set_router_state, store_message
 from pynchy.types import (
+    AgentExecutionRuntime,
     DeployRevision,
     InFlightTurn,
     InFlightWorkKind,
@@ -118,13 +119,8 @@ def _patch_test_settings(tmp_path: Path):
     with contextlib.ExitStack() as stack:
         for mod in (
             "pynchy.host.container_manager.credentials",
-            "pynchy.host.container_manager.mounts",
-            "pynchy.host.container_manager.session_prep",
-            "pynchy.host.container_manager.orchestrator",
-            "pynchy.host.container_manager.session",
-            "pynchy.host.container_manager.snapshots",
+            "pynchy.host.learning.skill_activation",
             "pynchy.host.orchestrator.messaging.pipeline",
-            "pynchy.host.orchestrator.messaging.router",
         ):
             stack.enter_context(patch(f"{mod}.get_settings", return_value=s))
         # Patch docker_rm_force which spawns a real subprocess to remove
@@ -353,6 +349,20 @@ async def app(tmp_path: Path):
     """Create a PynchyApp with a fresh in-memory DB and patched dirs."""
     await state.init_test_database()
     a = PynchyApp()
+    a.agent_execution_runtime = AgentExecutionRuntime(
+        project_root=tmp_path,
+        groups_dir=tmp_path / "groups",
+        data_dir=tmp_path / "data",
+        mount_allowlist_path=a.agent_execution_runtime.mount_allowlist_path,
+        blocked_mount_patterns=a.agent_execution_runtime.blocked_mount_patterns,
+        agent_image=a.agent_execution_runtime.agent_image,
+        agent_memory_mb=a.agent_execution_runtime.agent_memory_mb,
+        container_timeout=a.agent_execution_runtime.container_timeout,
+        default_core=a.agent_execution_runtime.default_core,
+        idle_timeout=a.agent_execution_runtime.idle_timeout,
+        model=a.agent_execution_runtime.model,
+        model_reasoning_effort=a.agent_execution_runtime.model_reasoning_effort,
+    )
     a.workspaces = {
         "group@g.us": WorkspaceProfile(
             jid="group@g.us",
@@ -489,7 +499,10 @@ class TestProcessGroupMessages:
         await driver
         assert result is TurnOutcome.COMPLETED
         assert app.sessions.get("test-group") == "sess-1"
-        image_check.assert_called_once_with()
+        image_check.assert_called_once_with(
+            project_root=tmp_path,
+            image=app.agent_execution_runtime.agent_image,
+        )
         # Output should have been sent via the channel
         assert len(channel.sent_messages) == 1
         assert "The answer is 4" in channel.sent_messages[0][1]

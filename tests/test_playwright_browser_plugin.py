@@ -71,15 +71,7 @@ class TestSkillPaths:
 
 class TestSkillContent:
     def test_skill_md_has_frontmatter(self):
-        skill_md = (
-            Path(__file__).resolve().parent.parent
-            / "src"
-            / "pynchy"
-            / "agent"
-            / "skills"
-            / "browser-control"
-            / "SKILL.md"
-        )
+        skill_md = Path(PlaywrightBrowserPlugin().pynchy_skill_paths()[0]) / "SKILL.md"
         assert skill_md.exists(), f"Expected skill at {skill_md}"
         content = skill_md.read_text()
         assert content.startswith("---")

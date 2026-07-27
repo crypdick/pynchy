@@ -20,25 +20,14 @@ import importlib
 import warnings
 from collections.abc import (
     Callable,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
+    Mapping,  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 )
-from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
+from typing import TypeGuard
 
 import pluggy
 
-from pynchy.config import get_settings
 from pynchy.logger import logger
 from pynchy.plugins.hookspecs import PynchySpec
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from pynchy.config.models import PluginConfig
-
-
-@runtime_checkable
-class _PluginSettings(Protocol):
-    plugins: Mapping[str, PluginConfig]
-
 
 __all__ = [
     "collect_hook_results",
@@ -113,11 +102,6 @@ _BUILTIN_PLUGIN_SPECS: list[tuple[str, str, str]] = [
         "linear",
     ),
     (
-        "pynchy.plugins.integrations.github",
-        "GitHubWebhookPlugin",
-        "github",
-    ),
-    (
         "pynchy.plugins.integrations.proton_mail",
         "ProtonMailMcpPlugin",
         "proton-mail",
@@ -165,12 +149,12 @@ def _clear_import_event_loop(loop: asyncio.AbstractEventLoop | None) -> None:
         asyncio.set_event_loop(None)
 
 
-def _register_builtin_plugins(pm: pluggy.PluginManager, settings: _PluginSettings) -> None:
+def _register_builtin_plugins(
+    pm: pluggy.PluginManager, enabled_plugins: Mapping[str, bool]
+) -> None:
     """Register built-in plugins from the static registry."""
-    plugin_map = settings.plugins
     for module_path, class_name, config_key in _BUILTIN_PLUGIN_SPECS:
-        plugin_cfg = plugin_map.get(config_key)
-        if plugin_cfg is not None and not plugin_cfg.enabled:
+        if enabled_plugins.get(config_key) is False:
             logger.info("Plugin disabled via config", plugin=config_key)
             continue
         try:
@@ -208,7 +192,7 @@ def _log_plugin_summary(pm: pluggy.PluginManager, discovered: int) -> None:
     logger.info("Plugin manager ready", plugins=plugin_names)
 
 
-def get_plugin_manager() -> pluggy.PluginManager:
+def get_plugin_manager(enabled_plugins: Mapping[str, bool] | None = None) -> pluggy.PluginManager:
     """Create and configure the plugin manager.
 
     Discovers plugins from the static registry and entry points.
@@ -220,13 +204,12 @@ def get_plugin_manager() -> pluggy.PluginManager:
     pm = pluggy.PluginManager("pynchy")
     pm.add_hookspecs(PynchySpec)
 
-    settings = get_settings()
     # Some plugins call `asyncio.get_event_loop()` at import time. Install a
     # temporary default loop so imports in sync/xdist contexts don't auto-create
     # orphan loops we never close ourselves.
     tmp_loop = _set_import_event_loop()
     try:
-        _register_builtin_plugins(pm, cast("_PluginSettings", settings))
+        _register_builtin_plugins(pm, enabled_plugins or {})
         discovered = pm.load_setuptools_entrypoints("pynchy")
     finally:
         _clear_import_event_loop(tmp_loop)
@@ -243,6 +226,7 @@ def collect_hook_results[T](
     label: str,
     *,
     pm: pluggy.PluginManager | None = None,
+    **hook_kwargs: object,
 ) -> list[T]:
     """Call a pluggy hook and return validated results.
 
@@ -262,7 +246,7 @@ def collect_hook_results[T](
 
     hook_caller = getattr(pm.hook, hook_attr)  # AttributeError = bug in calling code
     try:
-        provided = hook_caller()
+        provided = hook_caller(**hook_kwargs)
     except Exception:  # noqa: BLE001, RUF100 - plugin hook isolation; one bad plugin shouldn't crash the caller.
         # Individual plugin hook implementations can raise arbitrary errors.
         # One bad plugin shouldn't crash the caller — log and return empty.

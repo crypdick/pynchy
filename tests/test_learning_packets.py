@@ -55,11 +55,24 @@ def _settings(
 
 @contextmanager
 def _patch_learning_settings(settings) -> Iterator[None]:
-    with (
-        patch("pynchy.host.learning.paths.get_settings", return_value=settings),
-        patch("pynchy.host.learning.packets.get_settings", return_value=settings),
-    ):
+    with patch("pynchy.host.learning.paths.get_settings", return_value=settings):
         yield
+
+
+def _build_packet(settings, **kwargs):
+    return build_learning_packet(
+        **kwargs,
+        enabled=settings.learning.enabled,
+        packet_max_chars=settings.learning.packet_max_chars,
+    )
+
+
+async def _start_learning_review(settings, **kwargs):
+    return await start_learning_review_workflow(
+        **kwargs,
+        enabled=settings.learning.enabled,
+        packet_max_chars=settings.learning.packet_max_chars,
+    )
 
 
 def _group() -> WorkspaceProfile:
@@ -263,7 +276,8 @@ def test_build_packet_bounds_user_messages_and_skips_non_user_visible_messages(
     ]
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=messages,
@@ -296,7 +310,8 @@ def test_build_packet_bounds_full_reviewer_payload_with_pathological_fields(
     _observe_pathological_tool_errors(summary)
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid=f"slack:{'c' * 500}",
             group=_group(),
             missed_messages=messages,
@@ -339,7 +354,8 @@ def test_build_packet_bounds_bursty_turn_as_one_packet(tmp_path: Path) -> None:
         )
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=messages,
@@ -359,7 +375,8 @@ def test_build_packet_skips_when_no_useful_message_content_can_be_captured(
     settings = _settings(tmp_path=tmp_path, packet_max_chars=1)
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("", sender_name="")],
@@ -379,7 +396,8 @@ def test_build_packet_caps_final_answer_and_error_snippets(tmp_path: Path) -> No
     )
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
@@ -413,7 +431,8 @@ def test_tool_inputs_are_not_serialized_into_learning_packets(tmp_path: Path) ->
     )
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
@@ -493,7 +512,8 @@ def test_packet_provenance_and_profile_come_from_group_configuration(tmp_path: P
     ]
 
     with _patch_learning_settings(settings):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=messages,
@@ -526,14 +546,16 @@ async def test_learning_disabled_returns_no_packet_and_does_not_start_workflow(
             new_callable=AsyncMock,
         ) as temporal_start,
     ):
-        packet = build_learning_packet(
+        packet = _build_packet(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
             final_cursor="cursor-1",
             summary=LearningRunSummary(final_answer="Done"),
         )
-        job_id = await start_learning_review_workflow(
+        job_id = await _start_learning_review(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],
@@ -559,7 +581,8 @@ async def test_start_learning_review_workflow_starts_temporal_with_enabled_packe
             new_callable=AsyncMock,
         ) as temporal_start,
     ):
-        job_id = await start_learning_review_workflow(
+        job_id = await _start_learning_review(
+            settings,
             chat_jid="slack:C123",
             group=_group(),
             missed_messages=[_message("remember this")],

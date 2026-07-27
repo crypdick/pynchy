@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 
 from pynchy.config.personalization import PersonalizationPaths
-from pynchy.config.prompts import read_prompts
+from pynchy.host.orchestrator.prompt_loading import read_prompts as _read_prompts
+
+
+def read_prompts(names: list[str], paths: PersonalizationPaths) -> str | None:
+    return _read_prompts(
+        names,
+        personalized_prompts=paths.personalized_prompts,
+        default_prompts=paths.default_prompts,
+    )
 
 
 class TestReadPrompts:
@@ -92,6 +100,7 @@ def test_base_prompt_uses_intent_sensitive_agent_judgment() -> None:
     assert result is not None
     normalized = " ".join(result.split())
     assert "Proactively clear ordinary snags" in normalized
+    assert "push without seeking renewed authorization" in normalized
     assert "Interpret authority in context" in normalized
     assert "exfiltrating private data or secrets" in normalized
     assert "Proceed with proportionate, recoverable fixes" in normalized

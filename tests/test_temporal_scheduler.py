@@ -6,6 +6,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -82,6 +83,12 @@ def _ready_startup() -> StartupReadiness:
 
 
 @dataclass
+class _RuntimePaths:
+    project_root: Path = Path("/project")
+    data_dir: Path = Path("/data")
+
+
+@dataclass
 class NullSchedulerDeps:
     """Structural fake for SchedulerDependencies."""
 
@@ -93,6 +100,7 @@ class NullSchedulerDeps:
     groups: dict[str, WorkspaceProfile] = field(default_factory=dict)
     last_agent_timestamp: dict[str, str] = field(default_factory=dict)
     startup_readiness: StartupReadiness = field(default_factory=_ready_startup)
+    agent_execution_runtime: _RuntimePaths = field(default_factory=_RuntimePaths)
 
     @property
     def workspaces(self):
@@ -338,6 +346,7 @@ class TestTemporalSchedulerRuntime:
             "config_hash": "config-hash",
             "previous_sha": "old-sha",
             "change_kind": DeployChangeKind.CODE,
+            "data_dir": deps.agent_execution_runtime.data_dir,
             "resume_prompt": "Deploy complete. Verifying service health.",
             "sigterm_delay": 0.25,
         }
@@ -1156,7 +1165,7 @@ class TestTemporalSchedulerRuntime:
             },
         )
         monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_host_jobs, "resolve_cron_job_cwd", lambda cwd: "/repo")
+        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd: "/repo")
         monkeypatch.setattr(
             temporal_host_jobs,
             "run_shell_command",
@@ -1182,7 +1191,7 @@ class TestTemporalSchedulerRuntime:
             },
         )
         monkeypatch.setattr(temporal_host_jobs, "get_settings", lambda: settings)
-        monkeypatch.setattr(temporal_host_jobs, "resolve_cron_job_cwd", lambda cwd: "/repo")
+        monkeypatch.setattr(temporal_host_jobs, "_resolve_job_cwd", lambda cwd: "/repo")
         monkeypatch.setattr(
             temporal_host_jobs,
             "run_shell_command",
@@ -1917,7 +1926,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_deploy,
             "build_container_image",
-            lambda: BuildResult(success=True),
+            lambda _project_root: BuildResult(success=True),
         )
         monkeypatch.setattr(temporal_deploy, "finalize_deploy", finalize_deploy)
         monkeypatch.setattr(
@@ -1958,7 +1967,7 @@ class TestTemporalSchedulerRuntime:
         monkeypatch.setattr(
             temporal_deploy,
             "build_container_image",
-            lambda: BuildResult(success=False, stderr="image build exploded"),
+            lambda _project_root: BuildResult(success=False, stderr="image build exploded"),
         )
         rollback_calls: list[str] = []
 

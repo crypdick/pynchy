@@ -262,9 +262,7 @@ class ComputerUsePlugin:
 
     @hookimpl
     def pynchy_skill_paths(self) -> list[str]:
-        skill_dir = (
-            Path(__file__).resolve().parent.parent.parent / "agent" / "skills" / "computer-use"
-        )
+        skill_dir = Path(__file__).resolve().parent / "skills" / "computer-use"
         if skill_dir.is_dir():
             return [str(skill_dir)]
         return []

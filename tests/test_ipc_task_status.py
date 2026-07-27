@@ -17,7 +17,7 @@ from pynchy.types import HostJob, ScheduledTask, SessionPolicy, TaskRunLog
 
 
 def _orchestration_states(
-    tasks: list[ScheduledTask], jobs: list[HostJob]
+    tasks: list[ScheduledTask], jobs: list[HostJob], _address: str, _namespace: str
 ) -> dict[tuple[str, str], dict[str, Any]]:
     states: dict[tuple[str, str], dict[str, Any]] = {}
     for task in tasks:

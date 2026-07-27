@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves runtime value annotations.
 from typing import TYPE_CHECKING, Any, Literal, NewType, Protocol, TypeGuard, runtime_checkable
 
 from pynchy.deployment_types import (  # noqa: TC001, RUF100 - public runtime re-export
@@ -34,6 +35,24 @@ SessionId = NewType("SessionId", str)  # agent session handle
 ChatJid = NewType("ChatJid", str)  # canonical chat identifier
 ChannelName = NewType("ChannelName", str)  # channel instance name (e.g. "slack")
 OrphanReapAgeMs = NewType("OrphanReapAgeMs", int)  # unowned container retention
+
+
+@dataclass(frozen=True, slots=True)
+class AgentExecutionRuntime:
+    """Concrete values resolved once for agent execution."""
+
+    project_root: Path
+    groups_dir: Path
+    data_dir: Path
+    mount_allowlist_path: Path
+    blocked_mount_patterns: tuple[str, ...]
+    agent_image: str
+    agent_memory_mb: int
+    container_timeout: float
+    default_core: str
+    idle_timeout: float
+    model: str | None
+    model_reasoning_effort: str | None
 
 
 @dataclass(frozen=True)
@@ -107,10 +126,7 @@ class ContainerConfig:
         mounts = raw.get("additional_mounts", [])
         if not isinstance(mounts, list):
             raise TypeError(_CONTAINER_MOUNTS_ERROR.format(type_name=type(mounts).__name__))
-        return cls(
-            additional_mounts=[AdditionalMount(**m) for m in mounts],
-            timeout=timeout,
-        )
+        return cls(additional_mounts=[AdditionalMount(**m) for m in mounts], timeout=timeout)
 
 
 # Tri-state: False (safe), True (risky/gated), "forbidden" (blocked)
@@ -424,6 +440,14 @@ class ScheduledTask:
     repo_access: str | None = None  # GitHub slug (owner/repo); None = no worktree
     input_source: str = "scheduled_task"
     config_job_name: str | None = None
+    config_job_is_deterministic: bool | None = False
+    config_job_command: str | None = None
+    config_job_cwd: str | None = None
+    config_job_timeout_seconds: int | None = None
+    config_job_display_name: str | None = None
+    config_job_pre_run_command: str | None = None
+    config_job_pre_run_cwd: str | None = None
+    config_job_pre_run_timeout_seconds: int | None = None
     derived_thread_name: str | None = None
     bound_chat_jid: str | None = None
     bound_group_folder: str | None = None

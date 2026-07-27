@@ -174,6 +174,7 @@ async def test_run_host_input_streams_jsonl_outputs_without_file_ipc(
     status = await run_host_input(
         input_data,
         cwd=tmp_path,
+        project_root=tmp_path,
         on_output=on_output,
         timeout_seconds=5,
         env={
@@ -232,6 +233,7 @@ async def test_run_host_input_reports_a_planned_boundary_interrupt_without_an_er
     status = await run_host_input(
         input_data,
         cwd=tmp_path,
+        project_root=tmp_path,
         on_output=outputs.append,
         timeout_seconds=5,
         is_interrupted=lambda: True,
@@ -282,6 +284,7 @@ async def test_host_progress_refreshes_timeout_before_slow_delivery(
     status = await run_host_input(
         input_data,
         cwd=tmp_path,
+        project_root=tmp_path,
         on_output=slow_delivery,
         timeout_seconds=0.03,
     )
@@ -325,6 +328,7 @@ async def test_host_silence_timeout_stops_process_group_and_stderr(
             query_id="query-silent",
         ),
         cwd=tmp_path,
+        project_root=tmp_path,
         on_output=on_output,
         timeout_seconds=0.02,
     )
@@ -372,6 +376,7 @@ async def test_host_silent_inflight_tool_does_not_self_refresh(
             query_id="query-wedged",
         ),
         cwd=tmp_path,
+        project_root=tmp_path,
         on_output=on_output,
         timeout_seconds=0.02,
     )
@@ -412,6 +417,7 @@ async def test_host_cancellation_stops_process_group_and_stderr(
                 query_id="query-cancelled",
             ),
             cwd=tmp_path,
+            project_root=tmp_path,
             on_output=AsyncMock(),
             timeout_seconds=1,
         )
