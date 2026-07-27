@@ -9,19 +9,18 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves method annotations.
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
 
-if TYPE_CHECKING:
-    from pynchy.host.container_manager import OnOutput
-
 from pynchy.config import get_settings
 from pynchy.event_bus import Event, EventBus
-from pynchy.host.container_manager import (  # noqa: TC001, RUF100 - beartype resolves app annotations at runtime.
-    OnOutput,
+from pynchy.host.orchestrator import (
+    agent_runner,
+    linear_plan_review,
+    session_handler,
+    update_offer,
 )
-from pynchy.host.orchestrator import agent_runner, session_handler, update_offer
 from pynchy.host.orchestrator.adapters import HostMessageBroadcaster, MessageBroadcaster
 from pynchy.host.orchestrator.concurrency import GroupQueue, QueuePolicy
 from pynchy.host.orchestrator.connection_runtime_owner import ConnectionRuntimeOwner
@@ -304,33 +303,8 @@ class PynchyApp(ThreadRouting):
     ) -> None:
         await output_handler.broadcast_agent_input(self, chat_jid, messages, source=source)
 
-    async def run_agent(  # noqa: PLR0913, RUF100 - protocol-facing orchestration entry point keeps the full dependency contract explicit.
-        self,
-        group: WorkspaceProfile,
-        chat_jid: str,
-        messages: list[dict[str, Any]],
-        on_output: OnOutput | None = None,
-        extra_system_notices: list[str] | None = None,
-        *,
-        is_scheduled_task: bool = False,
-        repo_access_override: str | None = None,
-        input_source: str = "user",
-        turn_id: str | None = None,
-        resume_session_id: str | None = None,
-    ) -> str:
-        return await agent_runner.run_agent(
-            self,
-            group,
-            chat_jid,
-            messages,
-            on_output,
-            extra_system_notices,
-            is_scheduled_task=is_scheduled_task,
-            repo_access_override=repo_access_override,
-            input_source=input_source,
-            turn_id=turn_id,
-            resume_session_id=resume_session_id,
-        )
+    run_agent = agent_runner.run_agent
+    review_linear_plan = linear_plan_review.review_linear_plan
 
     def emit(self, event: Event) -> None:
         self.event_bus.emit(event)

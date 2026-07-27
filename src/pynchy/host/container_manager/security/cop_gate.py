@@ -91,6 +91,7 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
     deps: IpcDeps,
     *,
     request_id: str | None = None,
+    required_human_reason: str | None = None,
 ) -> bool:
     """Gate a host-mutating operation through the Cop.
 
@@ -105,6 +106,8 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
         deps: IPC dependency protocol for workspace lookup and broadcasting
         request_id: If set, a pending approval is created on flag (request-reply).
             If None, the operation is fire-and-forget and gets a broadcast warning only.
+        required_human_reason: Skip model inspection and require approval because
+            the caller could not supply trustworthy inspection evidence.
     """
     # Resolve chat_jid for audit and notifications
     chat_jid = resolve_chat_jid(source_group, deps) or "unknown"
@@ -120,7 +123,15 @@ async def cop_gate(  # noqa: PLR0913, RUF100 - gate boundary keeps the operation
         return True
 
     inspection_context = await load_cop_inspection_context(chat_jid)
-    verdict = await inspect_outbound(operation, payload_summary, inspection_context)
+    verdict = (
+        CopVerdict(
+            flagged=False,
+            reason=required_human_reason,
+            degraded=True,
+        )
+        if required_human_reason is not None
+        else await inspect_outbound(operation, payload_summary, inspection_context)
+    )
     context_degraded = inspection_context.availability is CopContextAvailability.UNAVAILABLE
     degraded = verdict.degraded or context_degraded
 

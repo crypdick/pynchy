@@ -5,15 +5,22 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from conftest import make_settings
 
 from pynchy.config import PluginConfig
+from pynchy.conversation.models import (
+    ConversationSubject,
+    ConversationSubjectKey,
+    ConversationSubjectNamespace,
+)
 from pynchy.host.orchestrator.http_control import (
     ControlPlaneRuntime,
     ControlPlaneToken,
@@ -27,6 +34,7 @@ from pynchy.plugins.integrations.github_webhooks import (
     GitHubWebhookRouteConfig,
     github_webhook_routes,
     parse_github_webhook,
+    prepare_github_webhook_event,
 )
 from pynchy.plugins.webhooks import WebhookAuthenticationError, WebhookPayloadError, WebhookRoute
 from pynchy.state import get_all_tasks, get_webhook_receipt, init_test_database
@@ -35,6 +43,16 @@ from pynchy.types import ScheduledTask, WorkspaceProfile
 _SIGNING_KEY = "github-webhook-test-signing-key-long-enough"
 _DELIVERY_ID = "ee7b4ec5-daa1-48fa-8c8f-c4de20e9d65f"
 _REPOSITORY = "example/project"
+
+
+@dataclass(frozen=True)
+class _LinearAccount:
+    name: str
+
+
+@dataclass(frozen=True)
+class _Conversation:
+    subject: ConversationSubject
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +70,10 @@ def _payload(
         "action": action,
         "number": 42,
         "repository": {"full_name": repository},
-        "pull_request": {"html_url": f"https://github.com/{repository}/pull/42"},
+        "pull_request": {
+            "number": 42,
+            "html_url": f"https://github.com/{repository}/pull/42",
+        },
         "changes": changes or {"body": {"from": "previous description"}},
     }
 
@@ -125,7 +146,7 @@ def test_merged_pull_request_starts_an_agent_follow_up_turn() -> None:
     }
 
 
-def test_ci_failure_maps_to_its_pull_request_notification() -> None:
+def test_ci_failure_maps_to_actionable_local_follow_up() -> None:
     now = datetime.now(UTC)
     payload = _payload(action="completed", changes={})
     payload["check_run"] = {
@@ -137,8 +158,41 @@ def test_ci_failure_maps_to_its_pull_request_notification() -> None:
 
     event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
 
+    assert event.host_message is None
+    assert "local CI" in (event.instructions or "")
+    assert "Do not rerun GitHub CI" in (event.instructions or "")
+    assert event.external_context is not None
+    assert event.external_context["pull_request_url"] == (
+        "https://github.com/example/project/pull/42"
+    )
+
+
+def test_changes_requested_review_maps_to_actionable_follow_up() -> None:
+    now = datetime.now(UTC)
+    payload = _payload(action="submitted", changes={})
+    del payload["number"]
+    payload["review"] = {"state": "changes_requested"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.host_message is None
+    assert "unresolved review details" in (event.instructions or "")
+    assert event.external_context is not None
+    assert event.external_context["event"] == "pull_request_review"
+
+
+def test_approved_review_remains_a_literal_notification() -> None:
+    now = datetime.now(UTC)
+    payload = _payload(action="submitted", changes={})
+    payload["review"] = {"state": "approved"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+
+    assert event.instructions is None
     assert event.host_message == (
-        "GitHub CI failure — example/project #42: test (failure).\n"
+        "GitHub PR update — example/project#42: review submitted (approved).\n"
         "https://github.com/example/project/pull/42"
     )
 
@@ -198,6 +252,92 @@ def test_plugin_routes_bind_each_repository_to_its_workspace() -> None:
     assert [(route.path, route.workspace) for route in routes] == [
         ("/webhooks/github/project", "project")
     ]
+    assert routes[0].prepare_event is not None
+    assert routes[0].routes_conversations is True
+
+
+@asynccontextmanager
+async def _linear_client_context(client: object):
+    yield client
+
+
+async def test_actionable_review_routes_to_linked_linear_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload(action="submitted", changes={})
+    payload["review"] = {"state": "commented"}
+    raw_body, headers = _signed_request(payload, "pull_request_review")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    linear_client = AsyncMock()
+    linear_client.find_issues_by_attachment_url.return_value = [{"issue": {"id": "issue-1"}}]
+    subject = ConversationSubject(
+        namespace=ConversationSubjectNamespace("linear:linear:issue"),
+        key=ConversationSubjectKey("issue-1"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_client",
+        lambda **_kwargs: _linear_client_context(linear_client),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.workspace_issue",
+        AsyncMock(
+            return_value=(
+                {"id": "issue-1", "identifier": "SYN-1", "title": "Ship the fix"},
+                object(),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.resolve_linear_issue_conversation",
+        AsyncMock(return_value=_Conversation(subject=subject)),
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is not None
+    assert prepared.conversation.subject == subject
+    assert prepared.conversation.workspace == "project"
+    assert prepared.conversation.control_title == "[SYN-1] Ship the fix"
+    assert prepared.conversation.public_source is True
+    assert prepared.external_context is not None
+    assert "fallback_host_message" not in prepared.external_context
+    linear_client.find_issues_by_attachment_url.assert_awaited_once_with(
+        "https://github.com/example/project/pull/42"
+    )
+
+
+async def test_unlinked_actionable_review_falls_back_to_workspace_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    payload = _payload(action="created", changes={})
+    del payload["number"]
+    raw_body, headers = _signed_request(payload, "pull_request_review_comment")
+    event = parse_github_webhook(raw_body, headers, _SIGNING_KEY, now, config=_config())
+    linear_client = AsyncMock()
+    linear_client.find_issues_by_attachment_url.return_value = []
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_account_for_workspace",
+        lambda _workspace: _LinearAccount(name="linear"),
+    )
+    monkeypatch.setattr(
+        "pynchy.plugins.integrations.github_webhook_linear.linear_client",
+        lambda **_kwargs: _linear_client_context(linear_client),
+    )
+
+    prepared = await prepare_github_webhook_event(event, config=_config())
+
+    assert prepared.conversation is None
+    assert prepared.instructions is None
+    assert prepared.host_message == (
+        "GitHub PR update — example/project#42: new inline review comment.\n"
+        "https://github.com/example/project/pull/42"
+    )
 
 
 class _WebhookDeps:

@@ -15,6 +15,9 @@ from pynchy.plugins.integrations.linear_boards import (  # noqa: TC001, RUF100 -
     LinearWorkspaceBoard,
     WorkspaceLike,
 )
+from pynchy.plugins.integrations.linear_plan_admission import (  # noqa: TC001, RUF100 - beartype resolves this annotation at runtime.
+    LinearPlanReviewer,
+)
 from pynchy.plugins.integrations.linear_planning_tasks import admit_planning_issue
 from pynchy.plugins.integrations.linear_statuses import (
     FOLLOW_UPS_STATUS,
@@ -60,7 +63,7 @@ async def _list_state_issues(
               workflowState(id: $state_id) {
                 issues(first: $first, after: $after, orderBy: updatedAt) {
                   nodes {
-                    id identifier title url updatedAt
+                    id identifier title description url updatedAt
                     state { id }
                     project { id name }
                   }
@@ -121,19 +124,20 @@ def _project_workspaces(
     return result
 
 
-async def reconcile_linear_decision_inbox(
+async def reconcile_linear_decision_inbox(  # noqa: PLR0913, RUF100 - explicit controller dependencies.
     client: LinearDecisionClient,
     workspaces: Iterable[WorkspaceLike],
     boards: Mapping[str, LinearWorkspaceBoard],
     *,
     now: datetime | None = None,
     public_source: bool = True,
+    review_plan: LinearPlanReviewer | None = None,
 ) -> list[ScheduledTask]:
     """Admit one issue-conversation task for every actionable decision."""
     project_workspaces = _project_workspaces(workspaces, boards)
     created: list[ScheduledTask] = []
     observed_at = now or datetime.now(UTC)
-    admission = DecisionAdmission(client, observed_at, public_source)
+    admission = DecisionAdmission(client, observed_at, public_source, review_plan)
     sample_board = next(iter(boards.values()), None)
     if sample_board is None:
         return created
@@ -166,6 +170,8 @@ async def reconcile_linear_decision_inbox(
 async def reconcile_all_linear_work_items(
     workspaces: Mapping[str, WorkspaceLike],
     boards: Mapping[str, LinearWorkspaceBoard],
+    *,
+    review_plan: LinearPlanReviewer,
 ) -> list[ScheduledTask]:
     """Run one managed-board controller pass across configured Linear accounts."""
     admitted: list[ScheduledTask] = []
@@ -182,6 +188,7 @@ async def reconcile_all_linear_work_items(
                         workspaces.values(),
                         account_boards,
                         public_source=account.config.public_source is not False,
+                        review_plan=review_plan,
                     )
                 )
         except Exception:  # noqa: BLE001, RUF100 - one optional account must not stop other accounts.

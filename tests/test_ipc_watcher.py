@@ -387,6 +387,10 @@ class TestSyncWorktreeIpc:
                 "pynchy.host.container_manager.ipc.handlers_lifecycle.host_create_pr_from_worktree",
                 return_value={"success": True, "message": "Opened pull request"},
             ),
+            patch(
+                "pynchy.host.container_manager.ipc.handlers_lifecycle._publication_patch_context",
+                return_value=("Committed patch", None),
+            ),
         ):
             await dispatch(
                 {

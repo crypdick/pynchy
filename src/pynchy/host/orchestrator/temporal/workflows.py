@@ -193,7 +193,7 @@ class LinearWorkItemReconciliationWorkflow:
             "str",
             await workflow.execute_activity(
                 "run_linear_work_item_reconciliation",
-                start_to_close_timeout=timedelta(minutes=10),
+                start_to_close_timeout=timedelta(hours=12),
                 retry_policy=RetryPolicy(maximum_attempts=1),
             ),
         )

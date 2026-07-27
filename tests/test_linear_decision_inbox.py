@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
+from pynchy.linear_plan_types import (
+    LinearPlanReviewDecision,
+    LinearPlanReviewResult,
+)
 from pynchy.plugins.integrations.linear_boards import LinearWorkspaceBoard
 from pynchy.plugins.integrations.linear_client import LinearClient
 from pynchy.plugins.integrations.linear_decision_inbox import (
@@ -89,11 +94,13 @@ def _issue(
     title: str,
     status: str,
     project_id: str,
+    description: str = "",
 ) -> dict[str, Any]:
     return {
         "id": issue_id,
         "identifier": identifier,
         "title": title,
+        "description": description,
         "url": f"https://linear.app/example/issue/{identifier}",
         "updatedAt": "2026-07-19T08:00:00+00:00",
         "state": _state(status),
@@ -105,8 +112,10 @@ class _DecisionClient(LinearClient):
     team_key = "SYN"
 
     def __init__(self) -> None:
+        self.comments: list[tuple[str, str]] = []
         self.issues_by_state = {
             "state-ready": [],
+            "state-awaiting-plan": [],
             "state-approved": [
                 _issue(
                     "issue-execute",
@@ -149,6 +158,22 @@ class _DecisionClient(LinearClient):
                     }
                 }
             }
+        if "CreateComment" in query:
+            issue_id = str(variables["issue_id"])
+            body = str(variables["body"])
+            self.comments.append((issue_id, body))
+            return {
+                "commentCreate": {
+                    "success": True,
+                    "comment": {
+                        "id": f"comment-{len(self.comments)}",
+                        "body": body,
+                        "createdAt": "2026-07-19T08:01:00+00:00",
+                        "updatedAt": "2026-07-19T08:01:00+00:00",
+                        "issue": {"id": issue_id},
+                    },
+                }
+            }
         issue = await self.get_issue(str(variables["issue_id"]))
         if issue is None:
             raise AssertionError("test update targeted an unknown issue")
@@ -158,12 +183,15 @@ class _DecisionClient(LinearClient):
         issue["state"] = next(
             state
             for state in (
+                _state("awaiting_plan_approval"),
                 _state("human_approved"),
                 _state("in_progress"),
                 _state("follow_ups"),
             )
             if state["id"] == new_state_id
         )
+        if "description" in variables:
+            issue["description"] = str(variables["description"])
         self.issues_by_state[new_state_id].append(issue)
         return {"issueUpdate": {"success": True, "issue": issue}}
 
@@ -219,10 +247,24 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
         "beta": _board("project-beta"),
     }
     now = datetime(2026, 7, 19, 8, 5, tzinfo=UTC)
+    review_plan = AsyncMock()
 
-    created = await reconcile_linear_decision_inbox(client, workspaces, boards, now=now)
-    duplicate = await reconcile_linear_decision_inbox(client, workspaces, boards, now=now)
+    created = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=now,
+        review_plan=review_plan,
+    )
+    duplicate = await reconcile_linear_decision_inbox(
+        client,
+        workspaces,
+        boards,
+        now=now,
+        review_plan=review_plan,
+    )
 
+    review_plan.assert_not_awaited()
     assert duplicate == []
     assert len(created) == 1
     task = created[0]
@@ -243,6 +285,128 @@ async def test_reconcile_leases_authorized_work_before_admitting_one_task() -> N
     assert "Success:" in task.prompt
     assert "linear_claim_work_item" not in task.prompt
     assert len(await get_all_tasks()) == 1
+
+
+async def test_planned_work_is_reviewed_before_execution_lease() -> None:
+    client = _DecisionClient()
+    client.issues_by_state["state-approved"][0]["description"] = (
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "Implement the approved change.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+    reviewer = AsyncMock(
+        return_value=LinearPlanReviewResult(
+            LinearPlanReviewDecision.PROCEED,
+            "The plan still matches the current implementation.",
+        )
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        review_plan=reviewer,
+    )
+
+    assert len(created) == 1
+    request = reviewer.await_args.args[0]
+    assert request.issue_id == "issue-execute"
+    assert request.workspace == "beta"
+    assert await get_active_work_item_execution("issue-execute") is not None
+
+
+async def test_stale_plan_is_replaced_without_acquiring_a_lease() -> None:
+    client = _DecisionClient()
+    issue = client.issues_by_state["state-approved"][0]
+    issue["description"] = (
+        "Keep this context.\n\n"
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "Use the removed module.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+    reviewer = AsyncMock(
+        return_value=LinearPlanReviewResult(
+            LinearPlanReviewDecision.REPLAN,
+            "The named module no longer exists.",
+            "Use the current shared admission path.",
+        )
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        review_plan=reviewer,
+    )
+
+    assert created == []
+    assert await get_active_work_item_execution("issue-execute") is None
+    assert issue["state"]["id"] == "state-awaiting-plan"
+    assert "Use the current shared admission path." in issue["description"]
+    assert client.comments == [
+        (
+            "issue-execute",
+            (
+                "Plan freshness review found that the approved plan is materially stale, "
+                "so execution was not leased.\n\nReason: The named module no longer exists."
+                "\n\nThe replacement plan is awaiting review."
+            ),
+        )
+    ]
+
+
+async def test_plan_review_error_returns_issue_to_awaiting_approval() -> None:
+    client = _DecisionClient()
+    issue = client.issues_by_state["state-approved"][0]
+    issue["description"] = (
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "Implement the approved change.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+    reviewer = AsyncMock(
+        return_value=LinearPlanReviewResult(
+            LinearPlanReviewDecision.ERROR,
+            "RuntimeError: plan reviewer failed",
+        )
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+        review_plan=reviewer,
+    )
+
+    assert created == []
+    assert await get_active_work_item_execution("issue-execute") is None
+    assert issue["state"]["id"] == "state-awaiting-plan"
+    assert client.comments[0][0] == "issue-execute"
+    assert "RuntimeError: plan reviewer failed" in client.comments[0][1]
+
+
+async def test_missing_plan_reviewer_returns_issue_to_awaiting_approval() -> None:
+    client = _DecisionClient()
+    issue = client.issues_by_state["state-approved"][0]
+    issue["description"] = (
+        "<!-- pynchy.plan:start -->\n"
+        "## Pynchy implementation plan\n\n"
+        "Implement the approved change.\n"
+        "<!-- pynchy.plan:end -->"
+    )
+
+    created = await reconcile_linear_decision_inbox(
+        client,
+        [_Workspace("beta", "Beta", "linear:beta")],
+        {"beta": _board("project-beta")},
+    )
+
+    assert created == []
+    assert await get_active_work_item_execution("issue-execute") is None
+    assert issue["state"]["id"] == "state-awaiting-plan"
+    assert "Plan reviewer is unavailable" in client.comments[0][1]
 
 
 async def test_reconcile_recovers_ready_planning_without_execution_authority() -> None:

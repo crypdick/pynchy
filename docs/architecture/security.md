@@ -317,7 +317,7 @@ Some IPC operations change what code runs on the host machine. These are **host-
 
 | Operation | What it mutates | Cop inspects |
 |---|---|---|
-| `sync_worktree_to_main` | Pushes a worktree branch and opens or updates a PR | The publication summary |
+| `sync_worktree_to_main` | Pushes a worktree branch and opens or updates a PR | The committed `base...HEAD` patch |
 | `register_group` | Creates new workspace | Group config |
 | `create_periodic_agent` | Creates persistent agent | Agent name, profile, schedule, prompt |
 | `schedule_task` | Schedules future execution | Task prompt and target |
@@ -347,6 +347,14 @@ human approves it later.
 publication modes are rejected before approval receipts or Cop authority are
 evaluated, so this agent action cannot merge into the host branch or trigger a
 deployment.
+
+With Cop active, the host supplies each configured repository's committed
+worktree patch with external diff drivers and text conversion disabled. A
+missing or failed diff, binary content, or more than 64 KiB of combined patch
+text requires human approval instead of asking Cop to judge incomplete
+evidence. This inspection limit doesn't reject a change based on its size; it
+changes who must approve publication. A valid single-use approval receipt can
+replay the exact request without another inspection.
 
 The Cop receives a bounded SQLite view of the current user intent, the four
 most recent user or assistant messages (500 characters each), the eight most

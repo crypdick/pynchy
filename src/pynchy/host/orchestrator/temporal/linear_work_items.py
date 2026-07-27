@@ -30,7 +30,11 @@ async def run_linear_work_item_reconciliation() -> str:
         _record_tracked_activity_result(_ACTIVITY_ID, "disabled")
         return "disabled"
     try:
-        admitted = await reconcile_all_linear_work_items(deps.workspaces, boards)
+        admitted = await reconcile_all_linear_work_items(
+            deps.workspaces,
+            boards,
+            review_plan=deps.review_linear_plan,
+        )
     except Exception as exc:  # noqa: BLE001, RUF100 - record the Temporal activity failure.
         _record_tracked_activity_result(_ACTIVITY_ID, "error", type(exc).__name__)
         raise
