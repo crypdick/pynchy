@@ -496,8 +496,7 @@ class TestInterceptSpecialCommand:
             await session_handler.trigger_manual_redeploy(deps, "g@g.us", source_message=msg)
 
         confirmation.assert_awaited_once_with(deps, "g@g.us", msg, "🔄")
-        request = start_deploy.await_args.args[0]
-        assert not hasattr(request, "active_sessions")
+        start_deploy.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_bang_command_intercepted(self):

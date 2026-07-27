@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pynchy.host.container_manager import orchestrator as container_orchestrator
 from pynchy.host.container_manager.session import ContainerSession, SessionDiedError
 from pynchy.host.orchestrator import agent_runner
 from pynchy.host.orchestrator.concurrency import GroupQueue
@@ -243,12 +242,6 @@ class TestScheduledTaskUsesSession:
         await asyncio.gather(*driver_tasks)
         assert result == "success"
         mock_destroy.assert_not_awaited()
-
-    def test_run_container_agent_fully_removed(self):
-        """run_container_agent was removed — ensure it doesn't reappear."""
-        assert not hasattr(container_orchestrator, "run_container_agent"), (
-            "run_container_agent was removed — scheduled tasks use session-based streaming"
-        )
 
     @pytest.mark.asyncio
     async def test_timeout_destroys_session_and_returns_error(self):

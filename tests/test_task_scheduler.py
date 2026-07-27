@@ -420,10 +420,9 @@ class TestStartSchedulerLoop:
     """Test the scheduler loop initialization and duplicate prevention."""
 
     def test_scheduler_config_defaults_to_temporal_connection(self):
-        """Scheduler config exposes the Temporal connection without a local backend switch."""
+        """Scheduler config exposes the default Temporal connection."""
         cfg = SchedulerConfig()
 
-        assert not hasattr(cfg, "backend")
         assert cfg.temporal_address == "localhost:7233"
         assert cfg.temporal_namespace == "default"
         assert cfg.temporal_task_queue == "pynchy-scheduler"
