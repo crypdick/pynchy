@@ -174,6 +174,7 @@ def test_public_surface_and_role_direction_are_independent(tmp_path: Path) -> No
     ]
     assert [item.code for item in diagnostics] == ["architecture-visibility"]
     assert "declared public modules: acme.adapters.api" in diagnostics[0].message
+    assert "expose names through acme.adapters.api" in diagnostics[0].message
 
 
 def test_exact_baseline_allows_only_recorded_rule_and_import_occurrences(

@@ -4,8 +4,9 @@
 
 Pynchy stays a modular monolith. This page explains when an internal dependency
 needs a contract and how the repository prevents accidental coupling. It does
-not require a port for every direct import or a zero-entry architecture
-baseline.
+not require a port for every direct import. A zero-entry architecture baseline
+is the long-term goal. A package-local `api.py` counts as a real boundary even
+when it consists only of curated re-exports.
 
 ## When to introduce a boundary
 
@@ -26,8 +27,7 @@ Introduce a contract when it does at least one concrete job:
 - preserves security, identity, or lifecycle authority at its owner; or
 - supports multiple implementations that already exist.
 
-Do not add a single-use `Protocol`, forwarding method, callback, or dependency
-factory only to remove an architecture-baseline entry. Prefer, in order:
+When a direction violation requires dependency inversion, prefer, in order:
 
 1. reuse an existing contract;
 2. move behavior to the module that owns it;
@@ -63,8 +63,10 @@ runtime behavior behind these invariants.
 
 ## Dependency enforcement
 
-`architecture.toml` defines roles, owned package roots, and exact public
-modules. Every cross-package import must pass two independent checks:
+`architecture.toml` defines current roles, owned package roots, and exact public
+modules. It still lists legacy public modules for packages that have not
+completed their façade migration. Every cross-package import must pass two
+independent checks:
 
 1. **Visibility:** The imported module appears in the target package's
    `public_modules` allowlist.
@@ -76,11 +78,24 @@ the same role do not receive automatic permission to depend on each other.
 Named composition-root modules may import private implementations to construct
 and wire them.
 
-Prefer one package-local `api.py` when a package needs a façade. The façade
-provides encapsulation, not dependency inversion: use an application-owned port
-when lifecycle, transaction, trust, or implementation ownership requires the
-dependency to point inward. The built-in SQLite package exposes
-`pynchy.state.api` as its public surface.
+The required end state for every multi-module package with cross-package
+consumers is one package-local `api.py` as its sole declared public module. The
+façade may consist entirely of curated re-exports; its job is to define the
+enforced public surface, not to add behavior. A single-module owned unit may
+expose its root module directly.
+
+A package façade migration finishes only when the pass:
+
+1. adds or curates `<package>.api`;
+2. moves every cross-package consumer to that module;
+3. changes the package's `public_modules` to only `<package>.api`; and
+4. resolves every direction violation for those imports and removes their
+   visibility and direction baseline entries.
+
+The façade provides encapsulation, not dependency inversion. Use an
+application-owned port when lifecycle, transaction, trust, or implementation
+ownership requires the dependency to point inward. The built-in SQLite package
+exposes `pynchy.state.api` as its public surface.
 
 `package_families` removes repeated declarations for deliberately extensible
 namespaces. A family pattern ends in one-level `.*`; for example,
@@ -93,9 +108,11 @@ visibility and direction. The blocking `check-architecture-boundaries` prek and
 CI steps reject a new exception, a larger exception, or a stale baseline entry.
 Do not regenerate the baseline as a fix.
 
-Treat the baseline as an exception inventory, not an automatically authorized
-refactoring queue. Zero entries is not a completion criterion. When a touched
-dependency needs review, choose the smallest accurate outcome:
+Treat the baseline as an exception inventory and refactoring queue.
+Package-by-package burn-down is encouraged because each pass can review one
+owner, its public surface, and its allowed directions coherently. Remove all
+stale entries created by the pass. For each dependency, choose the smallest
+accurate outcome:
 
 1. remove or move a dependency that crosses real ownership;
 2. reuse or introduce a contract for a real boundary;
@@ -104,8 +121,11 @@ dependency needs review, choose the smallest accurate outcome:
    entry.
 
 Review policy changes as architecture decisions. Do not weaken the policy for
-one expedient import, but do not add indirection merely to keep the graph
-theoretically pure. Metrics and generated analysis do not decide architecture.
+one expedient import. A curated `api.py` is the required package boundary, even
+when it only re-exports names. Resolve direction separately by moving ownership,
+using an application-owned port, or correcting the role graph when the
+dependency is intentional. Metrics and generated analysis do not decide
+architecture.
 
 ## Current priority
 
@@ -115,7 +135,8 @@ identity, and conversation claims. Move those fields into an `InboundEnvelope`
 with semantic identity types at the provider boundary. Keep metadata for
 optional presentation details such as attachments and reply rendering.
 
-Narrow broad dependency protocols only when a concrete change benefits from a
-smaller capability. Do not run a package-by-package baseline burn-down
-campaign. Track each justified refactoring slice in Linear and remove completed
-work from this page.
+Burn down the baseline package by package. Start each pass by confirming the
+package's role, migrate its public surface to `api.py`, and repair every
+direction violation independently. Narrow broad dependency protocols only when
+the package benefits from the smaller capability. Record completed work in Git
+or Linear; keep this page current-state-only.

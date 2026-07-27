@@ -80,8 +80,9 @@ def _boundary_message(
             f"{violation.importer!r} ({importer_package.root}) imports private module "
             f"{violation.imported!r} from package {target_package.root!r} via "
             f"{violation.kind}; declared public modules: {public}. "
-            "To fix: import the package's declared facade, or expose this exact module "
-            "only when it is intentionally public."
+            f"To fix: import the package's declared facade. For a multi-module package, "
+            f"expose names through {target_package.root}.api instead of making an "
+            "implementation module public."
         )
     allowed = ", ".join(sorted(importer_role.allowed)) or "(none)"
     direction = target_role.violation_guidance or default_guidance

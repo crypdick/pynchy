@@ -110,7 +110,8 @@ violation_guidance = "Cross this separate runtime only through its serialized in
 # A package owns its root and descendants unless a more-specific package owns
 # them. Public modules use an exact allowlist; omission never makes a new module
 # public. The two source-root packages opt out of descendant ownership so new
-# top-level modules cannot inherit a role accidentally.
+# top-level modules cannot inherit a role accidentally. Existing public modules
+# record migration state; each multi-module package converges on one <root>.api.
 
 [[packages]]
 name = "agent_runner"
