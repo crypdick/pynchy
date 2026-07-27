@@ -75,8 +75,7 @@ dependency needs review, choose the smallest accurate outcome:
 
 Review policy changes as architecture decisions. Do not weaken the policy for
 one expedient import, but do not add indirection merely to keep the graph
-theoretically pure. Import counts, file counts, and Graphify communities do not
-decide architecture.
+theoretically pure. Metrics and generated analysis do not decide architecture.
 
 ## Current priority
 
@@ -90,14 +89,3 @@ Narrow broad dependency protocols only when a concrete change benefits from a
 smaller capability. Do not run a package-by-package baseline burn-down
 campaign. Track each justified refactoring slice in Linear and remove completed
 work from this page.
-
-## Graphify freshness
-
-Run Graphify from the repository root with `src/` as its scan target. The
-`scripts/graphify_graph.py` wrapper maintains the tracked raw
-`graphify-out/graph.json`: `sync-staged` rebuilds it from the Git index for a
-commit, and `check` independently verifies it in CI. Keep other generated
-Graphify output local unless a reviewed report belongs in documentation.
-
-Graphify helps navigate the source tree. Do not use its inferred edges, degree,
-or community data as architecture-policy input.
