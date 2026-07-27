@@ -197,6 +197,7 @@ from pynchy.state.tasks import (
     log_task_run,
     rebind_task_root,
     record_task_completion,
+    resume_once_task_after_unclaimed_scheduled_turn,
     resume_task,
     resume_task_if_no_in_flight_turn,
     update_task,
@@ -358,6 +359,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "record_task_completion",
     "rebind_task_root",
     "resume_task",
+    "resume_once_task_after_unclaimed_scheduled_turn",
     "resume_task_if_no_in_flight_turn",
     "update_task",
     # webhooks
