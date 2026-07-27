@@ -40,7 +40,7 @@ Where code lives. For how it works, see the [architecture overview](docs/archite
 | `src/pynchy/agent/` | Container-side code — skills, agent runner, build scripts |
 | `data/defaults/prompts/` | Public system prompt markdown files |
 | `groups/{name}/` | Per-group workspace files (isolated) |
-| `src/pynchy/agent/skills/` | Agent skills with YAML frontmatter (tier, name, description) |
+| `src/pynchy/plugins/**/skills/` | Tool-associated skills with YAML frontmatter (tier, name, description) |
 | [Linear task tracking](docs/integrations/linear.md) | Canonical repository work items, authorization, and results |
 
 ## Detailed Guides

@@ -26,8 +26,8 @@ installed; install the named extra with `uv sync --extra <name>`.
 | `docker-runtime` | Container runtime | Docker agent-container runtime | Docker CLI and daemon | [Container isolation](../architecture/container-isolation.md) |
 | `apple-runtime` | Container runtime | Apple Container agent-container runtime | macOS with Apple Container | [Container isolation](../architecture/container-isolation.md) |
 | `caldav` | Service handler | CalDAV calendar actions | `uv sync --extra caldav` and calendar configuration | [MCP service tools](../architecture/mcp-service-tools.md) |
-| `slack-token-extractor` | Service handler | Refreshes Slack browser tokens from persistent sessions | Slack browser session | [Slack MCP](../integrations/slack-mcp.md) |
-| `x-integration` | Service handler | Browser-driven X actions | X tool/profile configuration | [X integration](../integrations/x-integration.md) |
+| `slack-token-extractor` | Service handler + skill | Refreshes Slack browser tokens from persistent sessions | Slack browser session | [Slack MCP](../integrations/slack-mcp.md) |
+| `x-integration` | Service handler + skill | Browser-driven X actions | X tool/profile configuration | [X integration](../integrations/x-integration.md) |
 | `google` | MCP server specification | Google Drive and Calendar MCP server defaults | Google OAuth configuration | [Google integrations](../integrations/google/index.md) |
 | `google-setup` | Service handler | GCP and Google OAuth setup actions | Google Cloud access | [Google integrations](../integrations/google/index.md) |
 | `gog` | Service handler | Host-only Gmail, Contacts, Docs, and Sheets actions | Gog CLI and configured host OAuth account | [Google Workspace via Gog](../integrations/google/workspace-gog.md) |

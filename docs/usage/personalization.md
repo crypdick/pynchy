@@ -101,12 +101,12 @@ Pynchy copies skills from these sources in order:
 
 1. Public defaults in `data/defaults/skills/`
 2. Personalized skills in `data/personalization/skills/`
-3. Code-coupled built-in and plugin skills
+3. Skills contributed by enabled plugins
 
-A personalized skill can replace a same-named public default. It cannot shadow
-a code-coupled skill. Each skill directory must contain a `SKILL.md` whose
-frontmatter has matching `name`, non-empty `description`, and non-empty `tier`
-fields.
+A personalized skill can replace a same-named public default. A plugin skill
+with the same name fails session preparation rather than shadowing either
+source. Each skill directory must contain a `SKILL.md` whose frontmatter has
+matching `name`, non-empty `description`, and non-empty `tier` fields.
 
 ## Prompts
 

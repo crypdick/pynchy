@@ -2871,15 +2871,14 @@ class TestAgentRunnerPreContainerHelpers:
 
 
 class TestSyncSkills:
-    """Test skill syncing from built-in skills and plugin skills into session dir."""
+    """Test skill syncing from configured defaults and plugins into session dirs."""
 
-    def test_copies_builtin_skills(self, tmp_path: Path):
-        """Built-in skills are copied to the session .claude/skills/ dir."""
-        # Create a built-in skill
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "my-skill"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "skill.md").write_text("# My Skill\nDo stuff.")
-        (builtin_skill / "config.json").write_text('{"name": "my-skill"}')
+    def test_copies_default_skills(self, tmp_path: Path):
+        """Default skills are copied to the session .claude/skills/ dir."""
+        default_skill = tmp_path / "data" / "defaults" / "skills" / "my-skill"
+        default_skill.mkdir(parents=True)
+        (default_skill / "skill.md").write_text("# My Skill\nDo stuff.")
+        (default_skill / "config.json").write_text('{"name": "my-skill"}')
 
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
@@ -2892,8 +2891,8 @@ class TestSyncSkills:
         assert (skills_dst / "skill.md").read_text() == "# My Skill\nDo stuff."
         assert (skills_dst / "config.json").exists()
 
-    def test_no_skills_dir_is_safe(self, tmp_path: Path):
-        """Missing agent/skills/ dir should not crash."""
+    def test_no_default_skills_dir_is_safe(self, tmp_path: Path):
+        """Missing default skills directory should not crash."""
         session_dir = tmp_path / "session" / ".claude"
         session_dir.mkdir(parents=True)
 
@@ -3016,11 +3015,10 @@ class TestSyncSkills:
         assert "Failed to sync plugin skill" in caplog.text
 
     def test_plugin_skill_name_collision_raises(self, tmp_path: Path):
-        """Plugin skill that shadows a built-in skill raises ValueError."""
-        # Create built-in skill
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "my-skill"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "skill.md").write_text("built-in")
+        """Plugin skill that shadows a default skill raises ValueError."""
+        default_skill = tmp_path / "data" / "defaults" / "skills" / "my-skill"
+        default_skill.mkdir(parents=True)
+        (default_skill / "skill.md").write_text("default")
 
         # Create plugin skill with same name
         plugin_skill = tmp_path / "plugins" / "my-skill"
@@ -3046,35 +3044,6 @@ class TestSyncSkills:
         ):
             sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
 
-    def test_plugin_skill_path_matching_builtin_source_is_safe(self, tmp_path: Path):
-        """Plugin hooks may expose a built-in skill source already copied."""
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "computer-use"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "SKILL.md").write_text(
-            "---\nname: computer-use\ntier: core\n---\n# Computer Use\n"
-        )
-
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        class FakeHook:
-            def pynchy_skill_paths(self):
-                return [[str(builtin_skill)]]
-
-        class FakePM(pluggy.PluginManager):
-            hook = FakeHook()
-
-            def __init__(self):
-                pass
-
-        with _patch_settings(tmp_path):
-            sync_skills(session_dir, plugin_manager=FakePM(), workspace_skills=["*"])
-
-        copied_skill = session_dir / "skills" / "computer-use" / "SKILL.md"
-        assert copied_skill.read_text() == (
-            "---\nname: computer-use\ntier: core\n---\n# Computer Use\n"
-        )
-
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
         session_dir = tmp_path / "session" / ".claude"
@@ -3094,9 +3063,9 @@ class TestSyncSkills:
             # Should not crash
             sync_skills(session_dir, plugin_manager=FakePM())
 
-    def test_ignores_files_in_skills_dir(self, tmp_path: Path):
-        """Files (not directories) in agent/skills/ are ignored."""
-        skills_dir = tmp_path / "src" / "pynchy" / "agent" / "skills"
+    def test_ignores_files_in_default_skills_dir(self, tmp_path: Path):
+        """Files (not directories) in default skills are ignored."""
+        skills_dir = tmp_path / "data" / "defaults" / "skills"
         skills_dir.mkdir(parents=True)
         (skills_dir / "README.md").write_text("not a skill dir")
 
@@ -3108,6 +3077,19 @@ class TestSyncSkills:
 
         # Only the skills/ directory should exist, no README.md copied
         assert not (session_dir / "skills" / "README.md").exists()
+
+    def test_does_not_load_legacy_agent_skill_path(self, tmp_path: Path):
+        legacy_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "legacy"
+        legacy_skill.mkdir(parents=True)
+        (legacy_skill / "SKILL.md").write_text("# Legacy")
+
+        session_dir = tmp_path / "session" / ".claude"
+        session_dir.mkdir(parents=True)
+
+        with _patch_settings(tmp_path):
+            sync_skills(session_dir, workspace_skills=["*"])
+
+        assert not (session_dir / "skills" / "legacy").exists()
 
     def test_learned_skills_are_synced_when_learned_tier_selected(self, tmp_path: Path):
         learned_skill = tmp_path / "vault-skills" / "remember-routing"
@@ -3268,9 +3250,9 @@ class TestSyncSkills:
         tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ):
-        builtin_skill = tmp_path / "src" / "pynchy" / "agent" / "skills" / "shared-name"
-        builtin_skill.mkdir(parents=True)
-        (builtin_skill / "SKILL.md").write_text("built-in")
+        default_skill = tmp_path / "data" / "defaults" / "skills" / "shared-name"
+        default_skill.mkdir(parents=True)
+        (default_skill / "SKILL.md").write_text("default")
 
         learned_skill = tmp_path / "vault-skills" / "shared-name"
         learned_skill.mkdir(parents=True)
@@ -3289,7 +3271,7 @@ class TestSyncSkills:
             )
 
         copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
-        assert copied_skill.read_text() == "built-in"
+        assert copied_skill.read_text() == "default"
         assert "Skipping learned skill" in caplog.text
         assert "collision" in caplog.text
 
@@ -3641,7 +3623,7 @@ class TestSyncSkillsFiltering:
 
     def test_none_copies_core_only(self, tmp_path: Path):
         """workspace_skills=None copies only core-tier skills (safe default)."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3657,7 +3639,7 @@ class TestSyncSkillsFiltering:
 
     def test_core_only_filters_correctly(self, tmp_path: Path):
         """workspace_skills=["core"] copies only core-tier skills."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3673,7 +3655,7 @@ class TestSyncSkillsFiltering:
 
     def test_core_plus_dev(self, tmp_path: Path):
         """workspace_skills=["core", "dev"] copies core + dev skills."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3689,7 +3671,7 @@ class TestSyncSkillsFiltering:
 
     def test_core_plus_specific_name(self, tmp_path: Path):
         """workspace_skills=["core", "extra"] includes core tier + named skill."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
         self._create_skill(skills_src, "extra", "community")
@@ -3705,7 +3687,7 @@ class TestSyncSkillsFiltering:
 
     def test_star_copies_everything(self, tmp_path: Path):
         """workspace_skills=["*"] includes all skills."""
-        skills_src = tmp_path / "src" / "pynchy" / "agent" / "skills"
+        skills_src = tmp_path / "data" / "defaults" / "skills"
         self._create_skill(skills_src, "browser", "core")
         self._create_skill(skills_src, "improver", "dev")
 

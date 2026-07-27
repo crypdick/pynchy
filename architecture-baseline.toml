@@ -1929,12 +1929,12 @@ imports = ["pynchy.config", "pynchy.config.caldav", "pynchy.config.models"]
 reason = "pynchy.plugins.integrations.caldav still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.plugins.integrations.computer_use"
+importer = "pynchy.plugins.integrations.computer_use._plugin"
 target_component = "config"
 kind = "runtime-import"
 count = 1
 imports = ["pynchy.config"]
-reason = "pynchy.plugins.integrations.computer_use still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
+reason = "pynchy.plugins.integrations.computer_use._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.integrations.cua_driver"
@@ -2289,12 +2289,12 @@ imports = ["pynchy.config"]
 reason = "pynchy.plugins.integrations.peekaboo still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
-importer = "pynchy.plugins.integrations.playwright_browser"
+importer = "pynchy.plugins.integrations.playwright_browser._plugin"
 target_component = "config"
 kind = "runtime-import"
 count = 1
 imports = ["pynchy.config.mcp"]
-reason = "pynchy.plugins.integrations.playwright_browser still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
+reason = "pynchy.plugins.integrations.playwright_browser._plugin still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
 
 [[violations]]
 importer = "pynchy.plugins.integrations.proton_mail"

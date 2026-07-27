@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pluggy
 
 from pynchy.actions import ActionId
@@ -88,3 +90,10 @@ class XIntegrationPlugin:
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:
         return X_HOST_ACTIONS
+
+    @hookimpl
+    def pynchy_skill_paths(self) -> list[str]:
+        skill_dir = Path(__file__).resolve().parent / "skills" / "x-integration"
+        if skill_dir.is_dir():
+            return [str(skill_dir)]
+        return []
