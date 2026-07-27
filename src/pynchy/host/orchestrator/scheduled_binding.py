@@ -6,9 +6,11 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pynchy.config.workspace_names import dynamic_thread_folder
-from pynchy.conversation.models import ConversationId
-from pynchy.conversation.workspaces import routed_conversation_folder
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves binding port annotations.
+    Conversation,
+    ConversationId,
+)
+from pynchy.conversation.workspaces import dynamic_thread_folder, routed_conversation_folder
 from pynchy.host.orchestrator.conversation_control import (
     ConversationControlRequest,
     ConversationWorkspaceContext,
@@ -17,7 +19,6 @@ from pynchy.host.orchestrator.conversation_control import (
 from pynchy.host.orchestrator.threads import EnsuredThread  # noqa: TC001, RUF100
 from pynchy.host.orchestrator.workspace_config import ensure_runtime_workspace_policy_owner
 from pynchy.host.orchestrator.workspace_placement import resolve_workspace_placement
-from pynchy.state import get_conversation, update_task
 from pynchy.types import (
     Channel,
     ChatJid,
@@ -59,6 +60,14 @@ class ScheduledBindingDeps(Protocol):
     async def rebind_workspace(self, profile: WorkspaceProfile) -> None: ...
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None: ...
+
+    async def get_scheduled_conversation(
+        self, conversation_id: ConversationId
+    ) -> Conversation | None: ...
+
+    async def persist_scheduled_task_updates(
+        self, task_id: str, updates: dict[str, object]
+    ) -> None: ...
 
 
 def _task_thread_name(task: ScheduledTask) -> str:
@@ -135,7 +144,7 @@ async def _bind_routed_conversation(
 ) -> tuple[WorkspaceProfile, str]:
     if task.conversation_id is None:
         raise ScheduledTaskOwnershipError("Routed task lost its conversation identity")
-    conversation = await get_conversation(ConversationId(task.conversation_id))
+    conversation = await deps.get_scheduled_conversation(ConversationId(task.conversation_id))
     if conversation is None:
         raise ScheduledTaskOwnershipError(
             f"Scheduled task references a missing conversation: {task.conversation_id}"
@@ -192,7 +201,7 @@ async def ensure_scheduled_task_binding(
         if task.conversation_id is None:
             raise ScheduledTaskOwnershipError("Linear task has no durable issue conversation")
     if ownership_updates:
-        await update_task(task.id, ownership_updates)
+        await deps.persist_scheduled_task_updates(task.id, ownership_updates)
 
     profile, title = (
         await _bind_routed_conversation(task, deps)
@@ -207,7 +216,7 @@ async def ensure_scheduled_task_binding(
     if task.derived_thread_name != title:
         updates["derived_thread_name"] = title
     if updates:
-        await update_task(task.id, updates)
+        await deps.persist_scheduled_task_updates(task.id, updates)
         task = replace(
             task,
             bound_chat_jid=profile.jid,

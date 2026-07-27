@@ -13,6 +13,8 @@ from linear_webhook_test_support import DiscordThreadChannel
 from pynchy.config import WorkspaceConfig
 from pynchy.config.models import ProfileConfig
 from pynchy.conversation.models import (
+    Conversation,
+    ConversationId,
     ConversationSubject,
     ConversationSubjectKey,
     ConversationSubjectNamespace,
@@ -34,10 +36,12 @@ from pynchy.plugins.integrations.linear_webhook_effects import process_linear_we
 from pynchy.plugins.webhooks import WebhookConversation, WebhookEvent
 from pynchy.state import (
     create_task,
+    get_conversation,
     get_conversation_for_subject,
     get_task_by_id,
     init_test_database,
     set_workspace_profile,
+    update_task,
 )
 from pynchy.types import CapabilityRule, ScheduledTask, SessionId, SessionPolicy, WorkspaceProfile
 
@@ -79,6 +83,7 @@ class _BindingDeps:
     channels: list = field(default_factory=list)
     ensured_jid: str = "discord:channel:scheduled-task"
     ensured: list[tuple[str, str]] = field(default_factory=list)
+    scheduled_task_updates: list[tuple[str, dict[str, object]]] = field(default_factory=list)
 
     async def ensure_thread(
         self,
@@ -105,6 +110,17 @@ class _BindingDeps:
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         del group_folder, session_id
+
+    async def get_scheduled_conversation(
+        self, conversation_id: ConversationId
+    ) -> Conversation | None:
+        return await get_conversation(conversation_id)
+
+    async def persist_scheduled_task_updates(
+        self, task_id: str, updates: dict[str, object]
+    ) -> None:
+        self.scheduled_task_updates.append((task_id, updates))
+        await update_task(task_id, updates)
 
 
 async def test_unnamed_task_gets_persistent_child_thread_binding(tmp_path) -> None:
@@ -171,6 +187,10 @@ async def test_existing_linear_task_is_migrated_to_continue_before_execution() -
     persisted = await get_task_by_id(task.id)
     assert persisted is not None
     assert persisted.session_policy is SessionPolicy.CONTINUE
+    assert deps.scheduled_task_updates[0] == (
+        task.id,
+        {"session_policy": SessionPolicy.CONTINUE},
+    )
 
 
 async def test_scheduled_linear_binding_restores_webhook_conversation_repo_policy(
