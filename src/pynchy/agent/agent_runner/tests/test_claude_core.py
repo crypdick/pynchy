@@ -18,6 +18,14 @@ from agent_runner.cores.claude_messages import (
     ClaudeToolUseBlock,
     parse_claude_sdk_event,
 )
+from agent_runner.events import (
+    ResultEvent,
+    SystemEvent,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 
 
 def _core(session_id: str | None = None) -> ClaudeAgentCore:
@@ -39,8 +47,8 @@ def test_system_event_updates_session_id():
 
     (event,) = core.map_sdk_event(message)
 
-    assert event.type == "system"
-    assert event.data["system_subtype"] == "init"
+    assert isinstance(event, SystemEvent)
+    assert event.system_subtype == "init"
     assert core.session_id == "sid-123"
 
 
@@ -63,11 +71,15 @@ def test_assistant_events_map_all_supported_block_types():
     events = _core().map_sdk_event(message)
 
     assert [event.type for event in events] == ["thinking", "tool_use", "tool_result", "text"]
-    assert events[0].data["thinking"] == "hmm"
-    assert events[1].data["tool_name"] == "Bash"
-    assert events[2].data["tool_result_content"] == '["ok", 2]'
-    assert events[2].data["tool_result_is_error"] is True
-    assert events[3].data["text"] == "done"
+    assert isinstance(events[0], ThinkingEvent)
+    assert isinstance(events[1], ToolUseEvent)
+    assert isinstance(events[2], ToolResultEvent)
+    assert isinstance(events[3], TextEvent)
+    assert events[0].thinking == "hmm"
+    assert events[1].tool_name == "Bash"
+    assert events[2].tool_result_content == '["ok", 2]'
+    assert events[2].tool_result_is_error is True
+    assert events[3].text == "done"
 
 
 def test_result_event_updates_session_and_metadata():
@@ -86,8 +98,8 @@ def test_result_event_updates_session_and_metadata():
 
     (event,) = core.map_sdk_event(message)
 
-    assert event.type == "result"
-    assert event.data["result"] == "all done"
-    assert event.data["result_metadata"]["session_id"] == "sid-r"
-    assert event.data["result_metadata"]["usage"] == {"input_tokens": 10}
+    assert isinstance(event, ResultEvent)
+    assert event.result == "all done"
+    assert event.result_metadata.session_id == "sid-r"
+    assert event.result_metadata.extra["usage"] == {"input_tokens": 10}
     assert core.session_id == "sid-r"

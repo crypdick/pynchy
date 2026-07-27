@@ -29,7 +29,14 @@ from agents.mcp import (
 )
 
 from agent_runner import hooks
-from agent_runner.core import AgentCoreConfig, AgentEvent
+from agent_runner.events import (
+    ResultEvent,
+    ResultMetadata,
+    TextEvent,
+    ThinkingEvent,
+    ToolResultEvent,
+    ToolUseEvent,
+)
 
 from ._openai_tool_parsing import extract_tool_call, extract_tool_result
 from .openai_shell import make_shell_executor
@@ -37,6 +44,8 @@ from .openai_shell import make_shell_executor
 if TYPE_CHECKING:
     from collections.abc import AbstractAsyncContextManager, AsyncIterator, Callable
 
+    from agent_runner.core import AgentCoreConfig
+    from agent_runner.events import AgentEvent
     from agent_runner.hooks import BeforeToolUseHook
 
 
@@ -184,11 +193,11 @@ def _handle_raw_response_event(event: object) -> AgentEvent | None:
     event_data = cast("Any", event).data
     delta = getattr(event_data, "delta", None)
     if delta and isinstance(delta, str):
-        return AgentEvent(type="text", data={"text": delta})
+        return TextEvent(text=delta)
     if hasattr(event_data, "type") and "reasoning" in str(getattr(event_data, "type", "")):
         text = getattr(event_data, "text", None) or getattr(event_data, "summary", None)
         if text:
-            return AgentEvent(type="thinking", data={"thinking": text})
+            return ThinkingEvent(thinking=text)
     return None
 
 
@@ -196,28 +205,25 @@ def _handle_tool_call_item(item: object) -> AgentEvent:
     tool_name, tool_input = extract_tool_call(item)
     if not tool_input:
         _log(f"Tool call parsed without input: tool={tool_name}")
-    return AgentEvent(
-        type="tool_use",
-        data={"tool_name": tool_name, "tool_input": tool_input or {}},
+    return ToolUseEvent(
+        tool_name=tool_name,
+        tool_input=tool_input if isinstance(tool_input, dict) else {},
     )
 
 
 def _handle_tool_call_output_item(item: object) -> AgentEvent:
     tool_result_id, output = extract_tool_result(item)
-    return AgentEvent(
-        type="tool_result",
-        data={
-            "tool_result_id": tool_result_id,
-            "tool_result_content": output,
-            "tool_result_is_error": False,
-        },
+    return ToolResultEvent(
+        tool_result_id=tool_result_id,
+        tool_result_content=output,
+        tool_result_is_error=False,
     )
 
 
 def _handle_message_output_item(item: object) -> AgentEvent | None:
     text = ItemHelpers.text_message_output(cast("Any", item))
     if text:
-        return AgentEvent(type="text", data={"text": text})
+        return TextEvent(text=text)
     return None
 
 
@@ -227,7 +233,7 @@ def _handle_reasoning_item(item: object) -> AgentEvent | None:
     if summary_parts and isinstance(summary_parts, list):
         text = "\n".join(getattr(s, "text", str(s)) for s in summary_parts)
     if text:
-        return AgentEvent(type="thinking", data={"thinking": text})
+        return ThinkingEvent(thinking=text)
     return None
 
 
@@ -420,16 +426,11 @@ class OpenAIAgentCore:
         self._session_id = result.last_response_id
 
         # Yield final result event
-        yield AgentEvent(
-            type="result",
-            data={
-                "result": result.final_output,
-                "result_metadata": {
-                    "subtype": "result",
-                    "session_id": result.last_response_id,
-                    "is_error": False,
-                },
-            },
+        yield ResultEvent(
+            result=result.final_output,
+            result_metadata=ResultMetadata(
+                subtype="result", session_id=result.last_response_id, is_error=False
+            ),
         )
 
         _log(f"Query done. response_id={result.last_response_id}")

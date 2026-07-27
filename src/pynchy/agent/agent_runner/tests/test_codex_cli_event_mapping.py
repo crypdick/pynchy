@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent_runner.core import AgentCoreConfig
 from agent_runner.cores.codex import CodexCLIAgentCore
+from agent_runner.events import TextEvent, ToolResultEvent, ToolUseEvent
 
 
 def _core() -> CodexCLIAgentCore:
@@ -27,7 +28,8 @@ def test_stream_event_maps_agent_message_to_text() -> None:
     )
 
     assert [event.type for event in events] == ["text"]
-    assert events[0].data["text"] == "done"
+    assert isinstance(events[0], TextEvent)
+    assert events[0].text == "done"
 
 
 def test_stream_event_maps_command_item_to_tool_events() -> None:
@@ -52,12 +54,13 @@ def test_stream_event_maps_command_item_to_tool_events() -> None:
         }
     )
 
-    assert started[0].data == {"tool_name": "Bash", "tool_input": {"command": "ls -la"}}
-    assert completed[0].data == {
-        "tool_result_id": "cmd-1",
-        "tool_result_content": "ok",
-        "tool_result_is_error": False,
-    }
+    assert isinstance(started[0], ToolUseEvent)
+    assert isinstance(completed[0], ToolResultEvent)
+    assert started[0].tool_name == "Bash"
+    assert started[0].tool_input == {"command": "ls -la"}
+    assert completed[0].tool_result_id == "cmd-1"
+    assert completed[0].tool_result_content == "ok"
+    assert completed[0].tool_result_is_error is False
 
 
 def test_stream_event_maps_failed_command_status_to_error_result() -> None:
@@ -75,8 +78,9 @@ def test_stream_event_maps_failed_command_status_to_error_result() -> None:
         }
     )
 
-    assert completed.data["tool_result_content"] == "failed"
-    assert completed.data["tool_result_is_error"] is True
+    assert isinstance(completed, ToolResultEvent)
+    assert completed.tool_result_content == "failed"
+    assert completed.tool_result_is_error is True
 
 
 def test_stream_event_maps_mcp_tool_name_arguments_and_result() -> None:
@@ -112,12 +116,12 @@ def test_stream_event_maps_mcp_tool_name_arguments_and_result() -> None:
         }
     )
 
-    assert started[0].data == {
-        "tool_name": "list_events",
-        "tool_input": {"server": "calendar", "days": 2},
-    }
-    assert completed[0].data["tool_result_content"] == "two events"
-    assert completed[0].data["tool_result_is_error"] is False
+    assert isinstance(started[0], ToolUseEvent)
+    assert isinstance(completed[0], ToolResultEvent)
+    assert started[0].tool_name == "list_events"
+    assert started[0].tool_input == {"server": "calendar", "days": 2}
+    assert completed[0].tool_result_content == "two events"
+    assert completed[0].tool_result_is_error is False
 
 
 def test_stream_event_maps_mcp_error_message() -> None:
@@ -136,8 +140,9 @@ def test_stream_event_maps_mcp_error_message() -> None:
         }
     )
 
-    assert completed.data["tool_result_content"] == "provider unavailable"
-    assert completed.data["tool_result_is_error"] is True
+    assert isinstance(completed, ToolResultEvent)
+    assert completed.tool_result_content == "provider unavailable"
+    assert completed.tool_result_is_error is True
 
 
 def test_stream_event_maps_completed_file_change_to_tool_pair() -> None:
@@ -154,10 +159,10 @@ def test_stream_event_maps_completed_file_change_to_tool_pair() -> None:
     )
 
     assert [event.type for event in events] == ["tool_use", "tool_result"]
-    assert events[0].data == {
-        "tool_name": "apply_patch",
-        "tool_input": {"changes": [{"path": "src/app.py", "kind": "update"}]},
-    }
-    assert events[1].data["tool_result_id"] == "patch-1"
-    assert '"status": "completed"' in events[1].data["tool_result_content"]
-    assert events[1].data["tool_result_is_error"] is False
+    assert isinstance(events[0], ToolUseEvent)
+    assert isinstance(events[1], ToolResultEvent)
+    assert events[0].tool_name == "apply_patch"
+    assert events[0].tool_input == {"changes": [{"path": "src/app.py", "kind": "update"}]}
+    assert events[1].tool_result_id == "patch-1"
+    assert '"status": "completed"' in events[1].tool_result_content
+    assert events[1].tool_result_is_error is False
