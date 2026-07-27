@@ -22,6 +22,11 @@ from conftest import NullIpcDeps, make_settings
 
 from pynchy.host.container_manager.ipc import dispatch
 from pynchy.host.orchestrator.messaging.ask_user_handler import handle_ask_user_answer
+from pynchy.host.orchestrator.messaging.pending_questions import (
+    create_pending_question,
+    resolve_pending_question,
+    update_message_id,
+)
 from pynchy.state import init_test_database
 from pynchy.types import WorkspaceProfile
 
@@ -96,6 +101,9 @@ class FakeIpcDeps(NullIpcDeps):
         self._channels = channels
         self._active_sessions = active_sessions or {}
 
+    def pending_question_store(self) -> _PendingQuestionStore:
+        return _PendingQuestionStore()
+
     def workspaces(self) -> dict[str, WorkspaceProfile]:
         return self._groups
 
@@ -104,6 +112,14 @@ class FakeIpcDeps(NullIpcDeps):
 
     def get_active_sessions(self) -> dict[str, str]:
         return self._active_sessions
+
+
+class _PendingQuestionStore:
+    """Test adapter that preserves the real pending-question file behavior."""
+
+    create = staticmethod(create_pending_question)
+    update_message_id = staticmethod(update_message_id)
+    resolve = staticmethod(resolve_pending_question)
 
 
 class FakeAskUserDeps:

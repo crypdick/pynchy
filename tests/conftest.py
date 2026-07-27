@@ -295,6 +295,9 @@ class NullIpcDeps:
     def channels(self) -> list:
         return []
 
+    def pending_question_store(self):
+        return _NullPendingQuestionStore()
+
     async def request_deploy(
         self,
         *,
@@ -310,6 +313,17 @@ class NullIpcDeps:
 
     async def get_scheduled_work_status(self, *, source_group, is_admin) -> tuple[list, list]:
         return [], []
+
+
+class _NullPendingQuestionStore:
+    def create(self, **kwargs) -> None:
+        del kwargs
+
+    def update_message_id(self, request_id, source_group, message_id) -> None:
+        del request_id, source_group, message_id
+
+    def resolve(self, request_id, source_group) -> None:
+        del request_id, source_group
 
 
 class NullChannel:

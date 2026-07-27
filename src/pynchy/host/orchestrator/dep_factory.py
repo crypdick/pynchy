@@ -45,6 +45,7 @@ from pynchy.host.orchestrator.app import (  # noqa: TC001, RUF100 - beartype res
 from pynchy.host.orchestrator.http_server import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     HttpServerDeps,
 )
+from pynchy.host.orchestrator.messaging import pending_questions
 from pynchy.host.orchestrator.scheduled_work_status import collect_scheduled_work
 from pynchy.host.orchestrator.status import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     StatusDeps,
@@ -113,6 +114,14 @@ def _command_center_channel(
 
 def _valid_jid(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+class _PendingQuestionStore:
+    """Adapter for the application-owned pending-question persistence."""
+
+    create = staticmethod(pending_questions.create_pending_question)
+    update_message_id = staticmethod(pending_questions.update_message_id)
+    resolve = staticmethod(pending_questions.resolve_pending_question)
 
 
 async def _scheduled_work_status(
@@ -294,6 +303,7 @@ def make_ipc_deps(app: PynchyApp) -> IpcDeps:
         has_active_session = session_manager.has_active_session
         clear_chat_history = registration_manager.clear_chat_history
         channels = metadata_manager.channels
+        pending_question_store = staticmethod(_PendingQuestionStore)
 
         async def clear_session(self, group_folder: str) -> None:
             group = next(
