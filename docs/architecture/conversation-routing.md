@@ -59,19 +59,22 @@ the delivery `completed` in one transaction. After that commit, a process-local
 provider callback can claim and inject the next sibling. Callback failure never
 rolls back the completed turn; startup scans the durable FIFO again.
 
-A lifecycle-only delivery uses the same FIFO without constructing a `NewMessage`
-or agent turn. At its FIFO head, the dispatcher conditionally closes an existing
-control binding, invokes the route's lifecycle callback with the durable delivery
-identity and provider context, marks the delivery completed, then wakes its next
-sibling. A lifecycle-only delivery that arrives first creates neither a runtime
-workspace nor a Discord thread.
+A terminal lifecycle delivery never constructs a `NewMessage` or agent turn.
+At ingress, it records terminal intent on the durable conversation, clears its
+routed session, retires prior routed work and runtime ownership, and archives an
+existing Discord control. FIFO delivery preserves audit and retry ordering; it
+does not defer those terminal actions. A terminal-first delivery records the
+same intent but creates neither a runtime workspace nor a Discord thread.
+If a process stops after the durable terminal transition but before local cleanup,
+startup repeats that cleanup from the persisted terminal intent.
+Each lifecycle delivery also repeats the same idempotent cleanup before its
+provider callback completes.
 
-Lifecycle callbacks have at-least-once delivery. The dispatcher attempts the
-durable close before the callback. A callback error releases the claim; a process
-stop after a callback but before completion leaves an orphaned claim for startup
-recovery. In either case, the same FIFO head retries before later deliveries can
-run. Route callbacks must make provider side effects idempotent with the full
-external delivery identity and tolerate an already-closed control.
+Lifecycle callbacks have at-least-once delivery. An archive or callback failure
+keeps lifecycle processing retryable; a process stop after a callback leaves the
+remaining durable work for recovery. Route callbacks must make provider side
+effects idempotent with the full external delivery identity and tolerate an
+already-closed control.
 
 A context reset commits the control thread's clear boundary together with its
 conversation state. It removes the routed session and completes pending work,
@@ -116,17 +119,19 @@ thread JID to its opaque conversation ID. Workspace folder names are sanitized
 slugs for placement only; they are not reversible identities and must not be
 decoded to recover a conversation ID.
 
-The binding also stores provider-neutral closed intent. Channels map that intent
-to their native lifecycle operation; Discord uses thread archival. Reconciliation
-opens a thread while a routed turn needs it, then successful delivery completion
-reapplies the durable intent before waking the next FIFO sibling. Startup
-reconciles idle bindings, which repairs a crash after delivery completion but
-before the channel lifecycle edit.
+The conversation, not its binding, stores provider-neutral terminal intent.
+Channels map that intent to their native lifecycle operation; Discord uses thread
+archival. A binding mirrors current presentation state and remains the lookup
+from a thread JID to its conversation. Terminal reconciliation never calls
+`ensure_thread`: Discord lookup can unarchive an archived thread. Startup
+reapplies the conversation intent to existing bindings after an interrupted
+archive operation.
 
-A lifecycle-only delivery changes closed intent only when a binding already
-exists. It never registers a binding or changes the routed conversation's
-workspace placement, so a lifecycle callback that arrives before any ordinary
-delivery has no control thread to create or archive.
+Terminal intent persists without a binding. Later comments, stale callbacks,
+and delayed scheduled work cannot create or unarchive a control while that intent
+remains terminal. Only an explicit later nonterminal provider state clears the
+intent and permits normal control reconciliation, including runtime registration
+for an existing control thread.
 
 ## Integration Boundary
 
@@ -162,17 +167,17 @@ For an `Issue` callback, the adapter reads state ID, display name, and type from
 either `data.state` or `data.issue.state`. Only the typed Linear workflow values
 `completed` and `canceled` produce terminal lifecycle entries. A display name
 such as `Done` never supplies a fallback classification. A typed terminal entry
-waits in the issue FIFO, closes an existing control binding, and never creates an
+immediately records terminal conversation intent, clears the routed session,
+retires prior routed work, archives an existing control, and never creates an
 LLM turn or a terminal-first Discord thread.
 
 At ingress, the terminal entry retains both the callback's parsed state ID and
-the managed board's exact `Done` state ID. At its FIFO head, the Linear lifecycle
-callback compares those two immutable values and completes reviewed work only
-when they match. It does not fetch the issue or project again, so deleting the
-issue or moving it off the managed board while the callback waits cannot wedge
-the FIFO. `Duplicate`, `Canceled`, and other typed terminal states close the
-control but do not complete the work item unless their exact state ID matches
-the captured managed `Done` ID.
+the managed board's exact `Done` state ID. The Linear lifecycle callback completes
+reviewed work only when those immutable values match. `Duplicate`, `Canceled`,
+and other typed terminal states cancel the local scheduled task and active
+execution without writing a new provider state; they do not complete the work
+item. Deleting the issue or moving it off the managed board cannot change this
+persisted decision.
 
 Webhook admission commits the immutable receipt, effect candidates, parsed
 delivery envelope, and initial FIFO state in one SQLite transaction. A crash
@@ -245,10 +250,10 @@ to perform board membership checks. Explicit Linear lifecycle actions still
 enforce planning and execution workflow state.
 
 The adapter maps Linear workflow state types `completed` and `canceled` to
-closed control intent and other typed states to open intent. Events without a
-workflow state, such as minimal `Comment` payloads, preserve the binding's
-current intent. This keeps Linear authoritative without deriving lifecycle from
-mutable Discord state.
+terminal conversation intent and other typed states to explicit open intent.
+Events without a workflow state, such as minimal `Comment` payloads, preserve
+terminal intent and cannot revive an archived control. This keeps Linear
+authoritative without deriving lifecycle from mutable Discord state.
 
 ## Matrix Routes
 

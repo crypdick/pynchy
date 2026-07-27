@@ -5,11 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 
-from pynchy.conversation.dispatch import notify_conversation_delivery_completed
 from pynchy.conversation.models import (
     ConversationClaimId,
     ConversationDelivery,
-    ConversationDeliveryCompletion,
     ExternalDeliveryId,
     ExternalDeliveryIdentity,
     ExternalProvider,
@@ -27,7 +25,6 @@ from pynchy.plugins.webhooks import (  # noqa: TC001, RUF100 - beartype resolves
     WebhookEvent,
     WebhookRoute,
 )
-from pynchy.state import complete_conversation_delivery
 from pynchy.state.webhook_models import WebhookConversationRequest
 from pynchy.types import GroupFolder
 
@@ -51,6 +48,7 @@ def conversation_admission_request(
     payload: dict[str, object] = {
         "control_title": target.control_title,
         "control_closed": target.control_closed,
+        "control_state_revision": target.control_state_revision,
         "event_type": event.event_type,
         "event_action": event.action,
         "public_source": (
@@ -83,7 +81,7 @@ def conversation_admission_request(
 
 async def process_deferred_event(
     delivery: ConversationDelivery,
-    claim_id: ConversationClaimId,
+    _claim_id: ConversationClaimId,
     route: WebhookRoute,
 ) -> ConversationDelivery | None:
     """Run a held event's trusted processor when its FIFO claim becomes head."""
@@ -96,25 +94,19 @@ async def process_deferred_event(
     if route.process_event is None:
         raise RuntimeError("Deferred webhook route lost its trusted processor")
     processed = await route.process_event(webhook_event_from_payload(raw_event))
-    if processed.conversation is None:
-        if processed.ignored_reason is None:
-            raise TypeError("Deferred webhook processor produced an unroutable event")
-        completed = await complete_conversation_delivery(claim_id)
-        if completed is None:
-            raise RuntimeError("Deferred webhook delivery lost its FIFO claim")
-        await notify_conversation_delivery_completed(
-            ConversationDeliveryCompletion(
-                identity=completed.identity,
-                conversation_id=completed.conversation_id,
-            )
-        )
+    if processed.ignored_reason is not None:
+        # Completion triggers the dispatcher control projection; never turn an
+        # ignored controller-owned result into an ordinary agent message.
         return None
+    if processed.conversation is None:
+        raise TypeError("Deferred webhook processor produced an unroutable event")
     if processed.lifecycle is not None:
         raise TypeError("Deferred nonterminal webhook became a lifecycle delivery")
     updated_payload = {
         **payload,
         "control_title": processed.conversation.control_title,
         "control_closed": processed.conversation.control_closed,
+        "control_state_revision": processed.conversation.control_state_revision,
         "public_source": event_public_source(route, processed),
         "prompt": prompt_for_event(route, processed),
     }

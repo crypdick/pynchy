@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ConversationLifecycleFence,
+)
 from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_work_item_provider import (
     linear_client,
@@ -21,6 +24,8 @@ async def complete_reviewed_work_item(
     workspace: str,
     issue_id: str,
     delivery_id: str,
+    *,
+    lifecycle_fence: ConversationLifecycleFence | None = None,
 ) -> WorkItemExecution | None:
     """Complete a linked execution after Linear reports the issue in Done."""
     execution = await get_work_item_execution_for_issue(issue_id, workspace=workspace)
@@ -53,7 +58,15 @@ async def complete_reviewed_work_item(
     else:
         return None
     async with linear_client(workspace=workspace) as client:
-        resolved = await reconcile_work_item(client, workspace, issue_id, transition)
+        resolved = await reconcile_work_item(
+            client,
+            workspace,
+            issue_id,
+            transition,
+            lifecycle_fence=lifecycle_fence,
+        )
+    if resolved is None:
+        return None
     if resolved.status is not WorkItemExecutionStatus.COMPLETED:
         raise LinearError("Linear review completion could not be reconciled")
     return resolved

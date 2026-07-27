@@ -74,12 +74,20 @@ class GroupState:
         invocation_ts: float,
         *,
         is_host_process: bool,
-    ) -> None:
-        """Associate the active process with this group state."""
+    ) -> bool:
+        """Associate a process unless terminal control already stopped this turn."""
+        if self.boundary_interrupt_requested:
+            logger.info(
+                "Ignoring process registration after boundary interrupt",
+                runtime_id=self.target.id,
+                container_name=container_name,
+            )
+            return False
         self.process = proc
         self.container_name = container_name
         self.invocation_ts = invocation_ts
         self.is_host_process = is_host_process
+        return True
 
     def acquire_host_process(self, generation: int) -> HostProcessLease:
         """Attach a host process to a queued turn or reserve an idle runtime."""
@@ -112,13 +120,12 @@ class GroupState:
                 generation=lease.generation,
             )
             return False
-        self.register_process(
+        return self.register_process(
             proc,
             container_name,
             invocation_ts,
             is_host_process=True,
         )
-        return True
 
     def release_host_process(self, lease: HostProcessLease) -> bool:
         """Release this state only when it still belongs to *lease*."""

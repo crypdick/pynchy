@@ -10,11 +10,16 @@ from typing import Any
 
 import aiosqlite
 
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves annotations.
+    ConversationLifecycleFence,
+)
 from pynchy.state.connection import _get_db, atomic_write
+from pynchy.state.conversation_lifecycle_fences import lifecycle_fence_matches
 from pynchy.state.work_item_models import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
 )
 from pynchy.state.work_item_rows import row_to_execution, row_to_transition
 from pynchy.state.work_item_transition_records import insert_work_item_transition
@@ -287,6 +292,43 @@ async def resolve_work_item_transition(
     error: str | None = None,
 ) -> WorkItemExecution:
     """Persist a provider receipt or uncertainty and the resulting local lifecycle state."""
+    execution = await _resolve_work_item_transition(
+        WorkItemTransitionResolution(
+            transition=transition,
+            execution_status=execution_status,
+            transition_status=transition_status,
+            issue=issue,
+            error=error,
+        )
+    )
+    if execution is None:
+        raise RuntimeError("Unfenced work item transition unexpectedly lost its lifecycle fence")
+    return execution
+
+
+async def resolve_work_item_transition_if_lifecycle_current(
+    resolution: WorkItemTransitionResolution,
+    *,
+    lifecycle_fence: ConversationLifecycleFence,
+) -> WorkItemExecution | None:
+    """Settle a transition only while its terminal provider delivery is current."""
+    return await _resolve_work_item_transition(
+        resolution,
+        lifecycle_fence=lifecycle_fence,
+    )
+
+
+async def _resolve_work_item_transition(
+    resolution: WorkItemTransitionResolution,
+    *,
+    lifecycle_fence: ConversationLifecycleFence | None = None,
+) -> WorkItemExecution | None:
+    """Persist a provider receipt only when an optional terminal fence still wins."""
+    transition = resolution.transition
+    execution_status = resolution.execution_status
+    transition_status = resolution.transition_status
+    issue = resolution.issue
+    error = resolution.error
     now = _timestamp()
     clears_blocked_outcome = (
         transition_status is WorkItemTransitionStatus.SUCCEEDED
@@ -310,6 +352,8 @@ async def resolve_work_item_transition(
     )
     receipt = json.dumps(issue, sort_keys=True) if issue is not None else None
     async with atomic_write() as db:
+        if lifecycle_fence is not None and not await lifecycle_fence_matches(db, lifecycle_fence):
+            return None
         await db.execute(
             """
             UPDATE work_item_transitions
@@ -326,7 +370,7 @@ async def resolve_work_item_transition(
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
-                WHERE id = ?
+                WHERE id = ? AND status != ?
                 """,
                 (
                     execution_status.value,
@@ -335,6 +379,7 @@ async def resolve_work_item_transition(
                     now,
                     completed_at,
                     transition.execution_id,
+                    WorkItemExecutionStatus.CANCELLED.value,
                 ),
             )
         else:
@@ -348,7 +393,7 @@ async def resolve_work_item_transition(
                     blocker = CASE WHEN ? THEN NULL ELSE blocker END,
                     handoff_to = CASE WHEN ? THEN NULL ELSE handoff_to END,
                     updated_at = ?, completed_at = ?
-                WHERE id = ?
+                WHERE id = ? AND status != ?
                 """,
                 (
                     _issue_str(issue, "identifier"),
@@ -362,6 +407,7 @@ async def resolve_work_item_transition(
                     now,
                     completed_at,
                     transition.execution_id,
+                    WorkItemExecutionStatus.CANCELLED.value,
                 ),
             )
     execution = await get_work_item_execution(transition.execution_id)

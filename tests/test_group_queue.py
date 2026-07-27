@@ -218,6 +218,40 @@ class TestGroupQueue:
         release_blocker.set()
         await blocker_owner
 
+    async def test_cancelling_active_serialized_task_stops_process_first(
+        self,
+        queue: GroupQueue,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = _target("current-channel@g.us", "shared-runtime")
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+        events: list[str] = []
+
+        async def run() -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                events.append("runner-cancelled")
+                cancelled.set()
+                raise
+
+        async def stop_process(_runtime_id: RuntimeId) -> None:
+            events.append("process-stopped")
+            await asyncio.sleep(0)
+
+        monkeypatch.setattr(queue, "stop_active_process", stop_process)
+        owner = asyncio.create_task(queue.run_serialized_task(target, "active", run))
+        await started.wait()
+
+        owner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await owner
+        await cancelled.wait()
+
+        assert events == ["process-stopped", "runner-cancelled"]
+
     def test_host_process_is_visible_to_inbound_routing(self, queue: GroupQueue) -> None:
         """Temporal-run host processes must be active even outside queue dispatch."""
         lease = queue.acquire_host_process(_target("group1@g.us", "group-one"))

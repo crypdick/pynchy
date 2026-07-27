@@ -82,6 +82,8 @@ class Conversation:
     session_id: SessionId | None
     created_at: str
     updated_at: str
+    control_closed: bool = False
+    control_state_revision: str | None = None
 
 
 class ConversationDeliveryStatus(StrEnum):
@@ -125,6 +127,16 @@ class ConversationDeliveryCompletion:
     conversation_id: ConversationId
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationLifecycleFence:
+    """Current terminal control and delivery claim allowed to settle local work."""
+
+    conversation_id: ConversationId
+    identity: ExternalDeliveryIdentity
+    claim_id: ConversationClaimId
+    control_state_revision: str | None
+
+
 class ControlSurface(StrEnum):
     """Human-facing channel for operating a routed conversation."""
 
@@ -143,3 +155,14 @@ class ConversationControlBinding:
     title: str
     updated_at: str
     closed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalConversationRetirement:
+    """Durable resources released while retaining a terminal lifecycle delivery."""
+
+    runtime_folders: tuple[GroupFolder, ...]
+    control_thread_jid: ChatJid | None
+    control_state_revision: str | None = None
+    is_current: bool = True
+    runtime_workspace_jids: tuple[ChatJid, ...] = ()

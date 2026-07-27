@@ -59,11 +59,16 @@ from pynchy.state.chats import (
 from pynchy.state.connection import _get_db, close_test_database, init_database, init_test_database
 from pynchy.state.conversation_admission import admit_conversation_delivery
 from pynchy.state.conversation_controls import (
+    ConversationControlWorkspaceChangedError,
+    apply_conversation_control_state,
     close_conversation_control,
+    conversation_control_state_matches,
     get_conversation_control_binding,
     get_conversation_control_by_thread,
     list_idle_conversation_ids,
+    retire_conversation_for_terminal,
     set_conversation_control_binding,
+    set_conversation_control_closed,
 )
 from pynchy.state.conversation_events import (
     get_conversation_event_pointers_since,
@@ -87,6 +92,7 @@ from pynchy.state.conversation_routing import (
     resolve_conversation,
     set_conversation_session,
 )
+from pynchy.state.conversation_terminal_runtime import get_terminal_conversation_retirement
 from pynchy.state.deployments import (
     advance_deployment_baseline,
     claim_deployment,
@@ -193,6 +199,7 @@ from pynchy.state.tasks import (
     get_all_tasks,
     get_task_by_id,
     get_task_run_logs,
+    get_tasks_for_conversation,
     get_tasks_for_group,
     log_task_run,
     rebind_task_root,
@@ -220,11 +227,15 @@ from pynchy.state.work_item_bindings import (
     bind_work_item_execution_to_task,
     bind_work_item_execution_to_turn,
 )
-from pynchy.state.work_item_cancellation import cancel_work_item_execution
+from pynchy.state.work_item_cancellation import (
+    cancel_work_item_execution,
+    cancel_work_item_execution_if_lifecycle_current,
+)
 from pynchy.state.work_item_models import (
     WorkItemClaimConflictError,
     WorkItemClaimRequest,
     WorkItemTransitionRequest,
+    WorkItemTransitionResolution,
 )
 from pynchy.state.work_items import (
     begin_work_item_transition,
@@ -238,6 +249,7 @@ from pynchy.state.work_items import (
     list_work_item_executions,
     mark_work_item_delivery_delivered_for_turn,
     resolve_work_item_transition,
+    resolve_work_item_transition_if_lifecycle_current,
 )
 
 __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alphabetical
@@ -272,12 +284,16 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "store_conversation_event_pointer",
     # conversation_routing
     "admit_conversation_delivery",
+    "apply_conversation_control_state",
+    "ConversationControlWorkspaceChangedError",
     "claim_next_conversation_delivery",
     "complete_conversation_delivery",
     "close_conversation_control",
+    "conversation_control_state_matches",
     "get_conversation",
     "get_conversation_control_binding",
     "get_conversation_control_by_thread",
+    "get_terminal_conversation_retirement",
     "get_conversation_delivery",
     "get_conversation_for_subject",
     "get_conversation_for_subject_key",
@@ -288,8 +304,10 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "prepare_conversation_runtime_ownership_recovery",
     "rebind_conversation_workspace",
     "release_conversation_delivery_claim",
+    "retire_conversation_for_terminal",
     "resolve_conversation",
     "set_conversation_control_binding",
+    "set_conversation_control_closed",
     "set_conversation_session",
     # deployments
     "advance_deployment_baseline",
@@ -353,6 +371,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "get_all_tasks",
     "get_task_by_id",
     "get_task_run_logs",
+    "get_tasks_for_conversation",
     "get_tasks_for_group",
     "log_task_run",
     "record_task_completion",
@@ -405,11 +424,13 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     # work_items
     "WorkItemClaimConflictError",
     "WorkItemClaimRequest",
+    "WorkItemTransitionResolution",
     "WorkItemTransitionRequest",
     "begin_work_item_transition",
     "bind_work_item_execution_to_turn",
     "bind_work_item_execution_to_task",
     "cancel_work_item_execution",
+    "cancel_work_item_execution_if_lifecycle_current",
     "create_work_item_claim",
     "get_active_work_item_execution",
     "get_latest_unresolved_work_item_transition",
@@ -420,6 +441,7 @@ __all__ = [  # noqa: RUF022 — intentionally grouped by source module, not alph
     "list_work_item_executions",
     "mark_work_item_delivery_delivered_for_turn",
     "resolve_work_item_transition",
+    "resolve_work_item_transition_if_lifecycle_current",
     # sessions
     "SessionSecurityTaint",
     "clear_session",

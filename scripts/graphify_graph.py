@@ -57,7 +57,7 @@ def _canonical_file_id(source_file: PurePosixPath) -> str:
 
 
 def _legacy_file_id(scan_root: Path, source_file: PurePosixPath) -> str:
-    return _normalize_id(str(scan_root.joinpath(*source_file.parts)))
+    return _normalize_id(str(scan_root.resolve().joinpath(*source_file.parts)))
 
 
 def _object_list(data: dict[str, object], key: str) -> list[dict[str, object]]:
@@ -116,7 +116,7 @@ def _validate_portability(
     *,
     scan_root: Path,
 ) -> None:
-    checkout_prefix = _normalize_id(str(scan_root))
+    checkout_prefix = _normalize_id(str(scan_root.resolve()))
     for collection_name, records in (("nodes", nodes), ("edges", edges)):
         for index, record in enumerate(records):
             fields = ("id",) if collection_name == "nodes" else ("source", "target")

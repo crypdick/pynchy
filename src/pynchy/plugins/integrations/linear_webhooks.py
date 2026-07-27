@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import partial
+from typing import Any
 
 import aiohttp
 
@@ -23,6 +24,7 @@ from pynchy.plugins.integrations.linear_client import LinearError
 from pynchy.plugins.integrations.linear_conversation_identity import (
     resolve_linear_issue_conversation,
 )
+from pynchy.plugins.integrations.linear_statuses import TERMINAL_STATE_TYPES
 from pynchy.plugins.integrations.linear_webhook_config import (
     LinearPluginOptions,
     LinearWebhookRouteConfig,
@@ -40,6 +42,7 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
 )
 from pynchy.plugins.webhooks import (
     WebhookEvent,
+    WebhookLifecycle,
     WebhookProcessingError,
     WebhookRoute,
 )
@@ -51,11 +54,11 @@ from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves route vali
 async def _event_workspace(
     event: WebhookEvent,
     config: LinearWebhookRouteConfig,
-) -> tuple[str, LinearWorkspaceBoard]:
+) -> tuple[str, dict[str, Any], LinearWorkspaceBoard]:
     async with linear_client(account_name=config.tool) as client:
         if config.workspace is not None:
-            _issue, board = await workspace_issue(client, config.workspace, event.subject_id)
-            return config.workspace, board
+            current_issue, board = await workspace_issue(client, config.workspace, event.subject_id)
+            return config.workspace, current_issue, board
         issue = await client.get_issue(event.subject_id)
         project = issue.get("project") if issue is not None else None
         project_id = project.get("id") if isinstance(project, dict) else None
@@ -64,8 +67,28 @@ async def _event_workspace(
         )
         if workspace is None:
             raise LinearWorkspaceIssueError("Linear issue is not on a managed workspace board")
-        _issue, board = await workspace_issue(client, workspace, event.subject_id)
-        return workspace, board
+        resolved_issue, board = await workspace_issue(client, workspace, event.subject_id)
+        return workspace, resolved_issue, board
+
+
+def _typed_current_issue_state(issue: dict[str, Any]) -> tuple[str, bool, str] | None:
+    """Return current state ID, terminal intent, and provider revision when typed."""
+    state = issue.get("state")
+    if not isinstance(state, dict):
+        return None
+    current_state_id = state.get("id")
+    state_type = state.get("type")
+    if (
+        not isinstance(current_state_id, str)
+        or not current_state_id
+        or not isinstance(state_type, str)
+        or not state_type
+    ):
+        return None
+    revision = issue.get("updatedAt")
+    if not isinstance(revision, str) or not revision:
+        raise WebhookProcessingError("Linear issue current state lacks updatedAt")
+    return current_state_id, state_type in TERMINAL_STATE_TYPES, revision
 
 
 async def prepare_linear_webhook_event(
@@ -78,7 +101,7 @@ async def prepare_linear_webhook_event(
     if event.conversation is None:
         return event
     try:
-        workspace, board = await _event_workspace(event, config)
+        workspace, issue, board = await _event_workspace(event, config)
     except LinearWorkspaceIssueError:
         return replace(
             event,
@@ -97,6 +120,64 @@ async def prepare_linear_webhook_event(
         workspace,
         config.tool,
     )
+    current_state = _typed_current_issue_state(issue)
+    if current_state is not None and event.lifecycle is not None:
+        _current_state_id, current_terminal, current_revision = current_state
+        if not current_terminal:
+            # Keep the canonical conversation so the trusted effect can reopen
+            # its durable control without replaying this stale terminal callback.
+            return replace(
+                event,
+                instructions=None,
+                external_context=None,
+                ignored_reason="stale_terminal_issue_state",
+                conversation=replace(
+                    event.conversation,
+                    subject=conversation.subject,
+                    workspace=workspace,
+                    public_source=public_source,
+                    control_closed=False,
+                    control_state_revision=current_revision,
+                ),
+                lifecycle=None,
+                effect_evidence=None,
+            )
+
+    prepared_conversation = event.conversation
+    if current_state is not None:
+        current_state_id, current_terminal, current_revision = current_state
+        control_state_revision = current_revision
+        if current_terminal:
+            return replace(
+                event,
+                instructions=None,
+                external_context=None,
+                ignored_reason=None,
+                conversation=replace(
+                    prepared_conversation,
+                    subject=conversation.subject,
+                    workspace=workspace,
+                    public_source=public_source,
+                    control_closed=True,
+                    control_state_revision=control_state_revision,
+                ),
+                lifecycle=WebhookLifecycle(
+                    context={
+                        "linear_state_id": current_state_id,
+                        "linear_managed_done_state_id": state_id(board.states["done"]),
+                    }
+                ),
+                effect_evidence=None,
+            )
+        prepared_conversation = replace(
+            prepared_conversation,
+            control_closed=False,
+            control_state_revision=control_state_revision,
+        )
+    elif prepared_conversation.control_closed is False:
+        # No typed current state means no proof that an older callback may reopen a control.
+        prepared_conversation = replace(prepared_conversation, control_closed=None)
+
     lifecycle = event.lifecycle
     if lifecycle is not None:
         context = dict(lifecycle.context or {})
@@ -105,7 +186,7 @@ async def prepare_linear_webhook_event(
     return replace(
         event,
         conversation=replace(
-            event.conversation,
+            prepared_conversation,
             subject=conversation.subject,
             workspace=workspace,
             public_source=public_source,

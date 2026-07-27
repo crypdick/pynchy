@@ -13,10 +13,17 @@ from uuid import uuid4
 
 import pynchy.host.container_manager.gateway as gateway_manager
 from pynchy.config import get_settings
+from pynchy.conversation.models import (  # noqa: TC001, RUF100 - beartype resolves helper annotations at runtime.
+    Conversation,
+    ConversationId,
+    ExternalDeliveryIdentity,
+    TerminalConversationRetirement,
+)
 from pynchy.host.container_manager import write_groups_snapshot as _write_groups_snapshot
 from pynchy.host.container_manager.ipc import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     IpcDeps,
 )
+from pynchy.host.container_manager.session import destroy_session
 from pynchy.host.git_ops.sync import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     GitSyncDeps,
 )
@@ -48,14 +55,35 @@ from pynchy.host.orchestrator.temporal.scheduler import (
     start_deploy_workflow,
     start_scheduled_agent_task_workflow,
 )
+from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
+from pynchy.host.orchestrator.temporal.workflow_control import cancel_scheduled_agent_workflow
 from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves dependency factory annotations at runtime.
     SpeechSynthesizer,
 )
+from pynchy.state import (
+    cancel_task_and_checkpoint,
+    clear_session,
+    complete_conversation_delivery,
+    conversation_control_state_matches,
+    get_active_work_item_execution,
+    get_conversation,
+    get_conversation_control_binding,
+    get_task_by_id,
+    get_tasks_for_conversation,
+    get_terminal_conversation_retirement,
+    get_work_item_execution_for_task,
+)
+from pynchy.state import (
+    retire_conversation_for_terminal as _retire_terminal_conversation_state,
+)
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves dependency adapter annotations at runtime.
     Channel,
+    GroupFolder,
     NewMessage,
+    RuntimeId,
     ScheduledTask,
     SessionId,
+    WorkItemExecution,
     WorkspaceProfile,
 )
 from pynchy.utils import create_background_task
@@ -74,6 +102,75 @@ def _schedule_interactive_turn(app: PynchyApp, chat_jid: str) -> None:
     create_background_task(
         app.start_interactive_turn(chat_jid),
         name=f"interactive-turn-{chat_jid[:20]}",
+    )
+
+
+async def _active_linear_execution_for_conversation(
+    conversation: Conversation,
+) -> WorkItemExecution | None:
+    """Return a live managed execution only for its matching Linear issue."""
+    namespace = str(conversation.subject.namespace)
+    if not namespace.startswith("linear:") or not namespace.endswith(":issue"):
+        return None
+    execution = await get_active_work_item_execution(str(conversation.subject.key))
+    if execution is None or execution.workspace != str(conversation.workspace):
+        return None
+    return execution
+
+
+async def _task_owned_by_execution(
+    tasks: list[ScheduledTask],
+    execution: WorkItemExecution | None,
+) -> list[ScheduledTask]:
+    """Recover active task ownership recorded before conversation binding existed."""
+    if execution is None or execution.task_id is None:
+        return tasks
+    if any(task.id == execution.task_id for task in tasks):
+        return tasks
+    task = await get_task_by_id(execution.task_id)
+    if task is None or task.status not in {"active", "paused"}:
+        return tasks
+    return [*tasks, task]
+
+
+async def _retire_conversation_tasks(conversation_id: ConversationId) -> None:
+    """Cancel active workflows before retiring their durable task checkpoints."""
+    conversation = await get_conversation(conversation_id)
+    if conversation is None:
+        raise RuntimeError(f"Terminal task retirement lost conversation: {conversation_id}")
+    execution = await _active_linear_execution_for_conversation(conversation)
+    tasks = await _task_owned_by_execution(
+        await get_tasks_for_conversation(str(conversation_id)),
+        execution,
+    )
+    workflow_ids = {agent_task_workflow_id(task) for task in tasks if task.schedule_type == "once"}
+    for task in tasks:
+        task_execution = await get_work_item_execution_for_task(task.id)
+        if (
+            task_execution is not None
+            and task_execution.status.is_active
+            and task_execution.temporal_workflow_id is not None
+        ):
+            workflow_ids.add(task_execution.temporal_workflow_id)
+    if execution is not None and execution.temporal_workflow_id is not None:
+        workflow_ids.add(execution.temporal_workflow_id)
+    for workflow_id in sorted(workflow_ids):
+        await cancel_scheduled_agent_workflow(workflow_id)
+    for task in tasks:
+        await cancel_task_and_checkpoint(task.id)
+
+
+async def _retire_terminal_conversation(
+    conversation_id: ConversationId,
+    *,
+    preserve_delivery: ExternalDeliveryIdentity,
+    control_state_revision: str | None,
+) -> TerminalConversationRetirement:
+    """Adapt the atomic state retirement transaction for webhook runtime cleanup."""
+    return await _retire_terminal_conversation_state(
+        conversation_id,
+        preserve_delivery=preserve_delivery,
+        control_state_revision=control_state_revision,
     )
 
 
@@ -125,6 +222,11 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
     class HttpDeps:
         broadcast_host_message = host_broadcaster.broadcast_host_message
+        complete_conversation_delivery = staticmethod(complete_conversation_delivery)
+        conversation_control_state_matches = staticmethod(conversation_control_state_matches)
+        get_conversation = staticmethod(get_conversation)
+        get_conversation_control_binding = staticmethod(get_conversation_control_binding)
+        get_terminal_conversation_retirement = staticmethod(get_terminal_conversation_retirement)
 
         async def ingest_runtime_harness_message(self, jid: str, content: str) -> None:
             await app.on_inbound(
@@ -180,6 +282,21 @@ def make_http_deps(app: PynchyApp) -> HttpServerDeps:
 
         async def bind_session(self, folder: str, session_id: SessionId) -> None:
             await app.bind_routed_session(folder, session_id)
+
+        async def retire_conversation_runtime(self, folder: GroupFolder) -> None:
+            """Stop local-only routed work without invoking Linear reset behavior."""
+            runtime_id = RuntimeId(folder)
+            app.queue.clear_pending_tasks(runtime_id)
+            app.queue.clear_pending_messages(runtime_id)
+            await app.queue.stop_active_process_for_control(runtime_id)
+            app.queue.clear_pending_messages(runtime_id)
+            await destroy_session(folder)
+            app.sessions.pop(folder, None)
+            app.session_cleared.add(folder)
+            await clear_session(folder)
+
+        retire_conversation_tasks = staticmethod(_retire_conversation_tasks)
+        retire_conversation_for_terminal = staticmethod(_retire_terminal_conversation)
 
         async def ingest_message(self, jid: str, message: NewMessage) -> None:
             await app.on_inbound(jid, message)

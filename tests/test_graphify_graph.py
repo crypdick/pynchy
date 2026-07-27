@@ -91,6 +91,22 @@ def test_canonicalization_is_byte_stable_across_checkout_roots(tmp_path: Path) -
     assert json.loads(first.content)["edges"][0]["source"] == "package_integration_plugin"
 
 
+def test_canonicalization_repairs_resolved_legacy_endpoint(tmp_path: Path) -> None:
+    physical_root = tmp_path / "private" / "src"
+    physical_root.mkdir(parents=True)
+    alias_root = tmp_path / "var"
+    alias_root.symlink_to(physical_root.parent, target_is_directory=True)
+    scan_root = alias_root / "src"
+
+    result = graphify_graph.canonicalize_graph(
+        _graph_bytes(scan_root.resolve()),
+        scan_root=scan_root,
+    )
+
+    assert result.rewritten_endpoints == 1
+    assert json.loads(result.content)["edges"][0]["source"] == "package_integration_plugin"
+
+
 def test_canonicalization_rejects_unrecognized_checkout_derived_endpoint(
     tmp_path: Path,
 ) -> None:

@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import aiohttp
 
+from pynchy.conversation.dispatch import conversation_runtime_lock
 from pynchy.logger import logger
 from pynchy.plugins.integrations.linear_board_errors import LinearBoardError
 from pynchy.plugins.integrations.linear_client import LinearError
@@ -25,43 +26,59 @@ from pynchy.plugins.integrations.linear_work_item_provider import (
     workspace_issue,
 )
 from pynchy.plugins.webhooks import (
+    WebhookConversation,
     WebhookEvent,
     WebhookLifecycleDelivery,
     WebhookProcessingError,
 )
 from pynchy.state import (
     WorkItemClaimConflictError,
+    apply_conversation_control_state,
+    cancel_work_item_execution,
+    cancel_work_item_execution_if_lifecycle_current,
+    conversation_control_state_matches,
     get_active_work_item_execution,
     get_work_item_execution_for_issue,
     resolve_conversation,
 )
 from pynchy.types import GroupFolder, WorkItemExecutionStatus
 
+_TERMINAL_STATE_BLOCKER = (
+    "Linear reported a terminal state before this managed execution finished. "
+    "Pynchy cancelled the local attempt without changing the provider issue."
+)
+_CANCELLABLE_TERMINAL_EXECUTION_STATUSES = frozenset(
+    {
+        WorkItemExecutionStatus.CLAIMING,
+        WorkItemExecutionStatus.IN_PROGRESS,
+        WorkItemExecutionStatus.AWAITING_REVIEW,
+        WorkItemExecutionStatus.FOLLOW_UPS,
+        WorkItemExecutionStatus.BLOCKED,
+        WorkItemExecutionStatus.UNKNOWN,
+    }
+)
+
 
 async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     """Apply host-owned authorization and leasing before ordinary admission."""
     conversation = event.conversation
-    if event.event_type != "Issue" or event.action != "update" or conversation is None:
+    if conversation is None:
         return event
     if event.lifecycle is not None:
-        # Terminal callbacks are completed at their durable FIFO head.
+        # Terminal ingress retires routed work before ordinary webhook admission.
         return event
     workspace = conversation.workspace
     if workspace is None:
         raise WebhookProcessingError("Linear host effect has no resolved workspace")
     try:
-        if await _controller_owns_event(event, workspace):
-            # The periodic controller owns planning and authorized execution.
-            # Persist its routed identity without admitting a second agent turn.
-            # The controller task binds to this same conversation runtime.
-            await resolve_conversation(conversation.subject, GroupFolder(workspace))
-            return replace(
-                event,
-                instructions=None,
-                external_context=None,
-                ignored_reason="work_item_execution_owned_by_controller",
-                conversation=None,
-            )
+        if not await _reopen_verified_conversation_control(conversation, workspace):
+            return _stale_linear_control_state_event(event)
+        if (
+            event.event_type == "Issue"
+            and event.action == "update"
+            and event.ignored_reason is None
+        ):
+            return await _process_linear_issue_update(event, conversation, workspace)
     except (
         aiohttp.ClientError,
         LinearBoardError,
@@ -74,13 +91,68 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     return event
 
 
-async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -> None:
-    """Complete reviewed work only for the persisted managed-Done state.
+async def _process_linear_issue_update(
+    event: WebhookEvent,
+    conversation: WebhookConversation,
+    workspace: str,
+) -> WebhookEvent:
+    """Fence controller work after durable provider-state admission."""
+    resolved = await resolve_conversation(conversation.subject, GroupFolder(workspace))
+    async with conversation_runtime_lock(resolved.id):
+        if not await conversation_control_state_matches(
+            resolved.id,
+            closed=False,
+            control_state_revision=conversation.control_state_revision,
+        ):
+            return _stale_linear_control_state_event(event)
+        if not await _controller_owns_event(event, workspace):
+            return event
+    return replace(
+        event,
+        instructions=None,
+        external_context=None,
+        ignored_reason="work_item_execution_owned_by_controller",
+        # Admission must reconcile the current open control, but this ignored
+        # event still cannot enter the routed agent-turn FIFO.
+        conversation=conversation,
+    )
 
-    A terminal callback can wait behind an earlier human delivery, so the
-    callback's parsed state ID is the durable fact used for this decision.  Do
-    not infer completion from the issue's mutable state when the FIFO reaches
-    this delivery.
+
+def _stale_linear_control_state_event(event: WebhookEvent) -> WebhookEvent:
+    """Suppress an event superseded by a newer provider control state."""
+    return replace(
+        event,
+        instructions=None,
+        external_context=None,
+        ignored_reason="stale_linear_control_state",
+        conversation=None,
+        effect_evidence=None,
+    )
+
+
+async def _reopen_verified_conversation_control(
+    conversation: WebhookConversation,
+    workspace: str,
+) -> bool:
+    """Open durable control only when Linear supplied a typed nonterminal state."""
+    if conversation.control_closed is not False:
+        return True
+    if conversation.control_state_revision is None:
+        raise WebhookProcessingError("Linear nonterminal control state lacks updatedAt")
+    resolved = await resolve_conversation(conversation.subject, GroupFolder(workspace))
+    return await apply_conversation_control_state(
+        resolved.id,
+        closed=False,
+        control_state_revision=conversation.control_state_revision,
+    )
+
+
+async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -> None:
+    """Complete exact managed Done; locally retire every other terminal state.
+
+    Terminal ingress already stopped routed runtime work. Persisted callback
+    state decides whether this effect completes managed work or only cancels
+    local execution; it never mutates another terminal provider state.
     """
     context = delivery.context
     callback_state = context.get("linear_state_id") if context is not None else None
@@ -95,13 +167,31 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
     ):
         return
     workspace = str(delivery.workspace)
-    if callback_state != managed_done_state:
+    if callback_state == managed_done_state:
+        if delivery.lifecycle_fence is None:
+            await complete_reviewed_work_item(
+                workspace,
+                delivery.subject_id,
+                str(delivery.identity.delivery_id),
+            )
+        else:
+            await complete_reviewed_work_item(
+                workspace,
+                delivery.subject_id,
+                str(delivery.identity.delivery_id),
+                lifecycle_fence=delivery.lifecycle_fence,
+            )
         return
-    await complete_reviewed_work_item(
-        workspace,
-        delivery.subject_id,
-        str(delivery.identity.delivery_id),
-    )
+    execution = await get_work_item_execution_for_issue(delivery.subject_id, workspace=workspace)
+    if execution is not None and execution.status in _CANCELLABLE_TERMINAL_EXECUTION_STATUSES:
+        if delivery.lifecycle_fence is None:
+            await cancel_work_item_execution(execution.id, blocker=_TERMINAL_STATE_BLOCKER)
+        else:
+            await cancel_work_item_execution_if_lifecycle_current(
+                execution.id,
+                blocker=_TERMINAL_STATE_BLOCKER,
+                lifecycle_fence=delivery.lifecycle_fence,
+            )
 
 
 async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:

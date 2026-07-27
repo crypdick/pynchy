@@ -68,6 +68,7 @@ from pynchy.plugins.speech import (  # noqa: TC001, RUF100 - beartype resolves a
     SpeechSynthesizer,
 )
 from pynchy.state import (
+    cancel_task_and_checkpoint,
     delete_workspace_profile,
     get_all_chats,
     get_all_sessions,
@@ -159,6 +160,8 @@ class PynchyApp(ThreadRouting):
 
     async def bind_routed_session(self, group_folder: str, session_id: SessionId) -> None:
         """Attach a conversation-owned session to its current runtime placement."""
+        if group_folder in self.session_cleared:
+            return
         self.sessions[group_folder] = session_id
         await set_session(GroupFolder(group_folder), session_id)
 
@@ -390,6 +393,10 @@ class PynchyApp(ThreadRouting):
     ) -> None:
         """Persist the binding use case's changed scheduled-task fields."""
         await update_task(task_id, updates)
+
+    async def cancel_scheduled_task(self, task_id: str) -> None:
+        """Retire scheduled work rejected by its terminal conversation control."""
+        await cancel_task_and_checkpoint(task_id)
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_system_notice(chat_jid, text)

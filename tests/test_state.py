@@ -11,11 +11,16 @@ from freezegun import freeze_time
 
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.state import (
+    WorkItemClaimRequest,
+    WorkItemTransitionRequest,
     begin_in_flight_turn,
+    begin_work_item_transition,
+    cancel_work_item_execution,
     clear_in_flight_turn,
     clear_session,
     create_host_job,
     create_task,
+    create_work_item_claim,
     delete_task,
     get_active_task_for_group,
     get_all_chats,
@@ -35,7 +40,9 @@ from pynchy.state import (
     get_session_security_taint,
     get_task_by_id,
     get_task_run_logs,
+    get_tasks_for_conversation,
     get_tasks_for_group,
+    get_work_item_transition_by_request,
     get_workspace_profile,
     init_test_database,
     log_task_run,
@@ -44,6 +51,7 @@ from pynchy.state import (
     rebind_workspace_profile,
     record_outbound,
     record_task_completion,
+    resolve_work_item_transition,
     resume_task,
     resume_task_if_no_in_flight_turn,
     set_chat_cleared_at,
@@ -67,6 +75,8 @@ from pynchy.types import (
     ServiceTrustConfig,
     SessionPolicy,
     TaskRunLog,
+    WorkItemExecutionStatus,
+    WorkItemTransitionStatus,
     WorkspaceProfile,
     WorkspaceSecurity,
 )
@@ -851,6 +861,34 @@ class TestTaskAdvanced:
         assert len(tasks) == 2
         assert all(t.group_folder == "main" for t in tasks)
 
+    async def test_get_tasks_for_conversation_returns_only_live_owners(self):
+        await create_task(
+            replace(self._TASK_TEMPLATE, id="active", conversation_id="conversation-1")
+        )
+        await create_task(
+            replace(
+                self._TASK_TEMPLATE,
+                id="paused",
+                conversation_id="conversation-1",
+                status="paused",
+            )
+        )
+        await create_task(
+            replace(
+                self._TASK_TEMPLATE,
+                id="cancelled",
+                conversation_id="conversation-1",
+                status="cancelled",
+            )
+        )
+        await create_task(
+            replace(self._TASK_TEMPLATE, id="other", conversation_id="conversation-2")
+        )
+
+        tasks = await get_tasks_for_conversation("conversation-1")
+
+        assert {task.id for task in tasks} == {"active", "paused"}
+
     async def test_get_all_tasks(self):
         await create_task(replace(self._TASK_TEMPLATE, id="t1", next_run=None))
         await create_task(
@@ -1569,9 +1607,91 @@ class TestUpdateById:
         assert job.status == "paused"  # allowed field updated
 
 
+# --- work item transition cancellation fence ---
+
+
+async def test_late_work_item_transition_cannot_revive_cancelled_execution() -> None:
+    issue = {
+        "id": "issue-1",
+        "identifier": "SYN-1",
+        "url": "https://linear.app/example/issue/SYN-1",
+        "state": {"id": "state-approved", "name": "Human Approved"},
+    }
+    execution = await create_work_item_claim(
+        WorkItemClaimRequest(
+            workspace="project",
+            issue=issue,
+            turn_id=None,
+            task_id=None,
+            initiated_by="test",
+            request_id="claim-1",
+        )
+    )
+    claim = await get_work_item_transition_by_request("claim-1")
+    assert claim is not None
+    execution = await resolve_work_item_transition(
+        transition=claim,
+        execution_status=WorkItemExecutionStatus.IN_PROGRESS,
+        transition_status=WorkItemTransitionStatus.SUCCEEDED,
+    )
+    pending = await begin_work_item_transition(
+        WorkItemTransitionRequest(
+            execution=execution,
+            request_id="complete-1",
+            operation="complete",
+            target_status="done",
+            result_execution_status=WorkItemExecutionStatus.COMPLETED,
+        )
+    )
+    await cancel_work_item_execution(execution.id, blocker="terminal callback")
+
+    resolved = await resolve_work_item_transition(
+        transition=pending,
+        execution_status=WorkItemExecutionStatus.COMPLETED,
+        transition_status=WorkItemTransitionStatus.SUCCEEDED,
+        issue={**issue, "state": {"id": "state-done", "name": "Done"}},
+    )
+
+    assert resolved.status is WorkItemExecutionStatus.CANCELLED
+    assert resolved.blocker == "terminal callback"
+
+
 @pytest.mark.anyio
 class TestEnsureColumns:
     """Test that _ensure_columns adds missing columns to existing tables."""
+
+    async def test_promotes_legacy_closed_binding_to_conversation_intent(self):
+        """Existing archived controls remain terminal after the intent migration."""
+        db = await aiosqlite.connect(":memory:")
+        await create_schema(db)
+        await db.executescript(
+            """
+            INSERT INTO routed_conversations (
+                id, workspace, subject_namespace, subject_key, session_id,
+                control_closed, created_at, updated_at
+            ) VALUES (
+                'legacy-conversation', 'project', 'linear:org:issue', 'issue-1', NULL,
+                0, '2026-07-27T00:00:00Z', '2026-07-27T00:00:00Z'
+            );
+            INSERT INTO conversation_control_bindings (
+                conversation_id, surface, parent_workspace, parent_jid, thread_jid,
+                title, closed, updated_at
+            ) VALUES (
+                'legacy-conversation', 'discord', 'project', 'discord:channel:project',
+                'discord:channel:issue-1', '[SYN-89] Legacy issue', 1,
+                '2026-07-27T00:00:00Z'
+            );
+            """
+        )
+        await db.execute("ALTER TABLE routed_conversations DROP COLUMN control_closed")
+
+        await create_schema(db)
+
+        cursor = await db.execute(
+            "SELECT control_closed FROM routed_conversations WHERE id = 'legacy-conversation'"
+        )
+        assert await cursor.fetchone() == (1,)
+        await db.close()
 
     async def test_adds_requester_delivery_turn_without_losing_executions(self):
         """Existing execution owners survive the new delivery correlation column."""
