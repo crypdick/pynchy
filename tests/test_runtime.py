@@ -11,6 +11,7 @@ from conftest import make_settings
 
 import pynchy.plugins.runtimes.detection as runtime_mod
 from pynchy.config import ContainerConfig
+from pynchy.host.container_manager.cleanup import OrphanReapingRuntime
 from pynchy.plugins.runtimes.apple_runtime.runtime import AppleContainerRuntime
 from pynchy.plugins.runtimes.detection import detect_runtime
 from pynchy.plugins.runtimes.docker_runtime.runtime import DockerContainerRuntime
@@ -112,6 +113,9 @@ class TestDetectRuntime:
 
 
 class TestDockerRuntime:
+    def test_satisfies_orphan_reaping_contract(self):
+        assert isinstance(DockerContainerRuntime(), OrphanReapingRuntime)
+
     def test_parses_docker_ndjson_format(self):
         rt = DockerContainerRuntime()
         ndjson = "\n".join(
@@ -217,6 +221,9 @@ class TestDockerRuntime:
 
 
 class TestAppleRuntime:
+    def test_satisfies_orphan_reaping_contract(self):
+        assert isinstance(AppleContainerRuntime(), OrphanReapingRuntime)
+
     def test_ensure_running_bounds_status_probe(self):
         rt = AppleContainerRuntime()
         with patch("pynchy.plugins.runtimes.apple_runtime.runtime.subprocess.run") as mock_run:

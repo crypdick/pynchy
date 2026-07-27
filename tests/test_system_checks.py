@@ -35,13 +35,29 @@ class FakeContainer:
     is_agent_container: bool = True
 
 
+class RuntimeDouble:
+    cli = "docker"
+
+    def ensure_running(self) -> None: ...
+
+    def list_running_containers(self, prefix: str = "pynchy-") -> list[str]: ...
+
+    def list_containers(self, prefix: str = "pynchy-") -> list[FakeContainer]: ...
+
+    def remove_container(self, name: str, *, force: bool = True) -> bool: ...
+
+    def cleanup_builder(self) -> bool: ...
+
+    def prune_images(self, *, all_images: bool = False) -> bool: ...
+
+
 class TestEnsureContainerSystemRunning:
     """Test container runtime bootstrap and orphan cleanup."""
 
     @pytest.fixture
     def mock_runtime(self):
         """Create a mock runtime object."""
-        runtime = MagicMock()
+        runtime = MagicMock(spec=RuntimeDouble)
         runtime.cli = "docker"
         runtime.list_running_containers.return_value = []
         runtime.list_containers.return_value = []

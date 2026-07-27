@@ -57,14 +57,6 @@ imports = ["pynchy.state"]
 reason = "pynchy.host.container_manager.action_intents still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
-importer = "pynchy.host.container_manager.cleanup"
-target_component = "runtime_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.plugins.runtimes.detection"]
-reason = "pynchy.host.container_manager.cleanup still has a runtime-import dependency on runtime_adapter; Use the runtime provider contract and select the platform adapter at composition."
-
-[[violations]]
 importer = "pynchy.host.container_manager.credentials"
 target_component = "application"
 kind = "runtime-import"
