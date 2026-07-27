@@ -30,7 +30,7 @@ from pynchy.host.container_manager.orchestrator import (
 from pynchy.host.learning.skill_activation import refresh_learned_agent_skills
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
 from pynchy.host.orchestrator.agent_core_config import (
-    agent_core_config_from_settings,
+    agent_core_config,
 )
 from pynchy.host.orchestrator.agent_core_config import (
     session_model_mismatch as _session_model_mismatch,
@@ -129,14 +129,19 @@ def build_container_input(
         ctx,
         chat_jid,
         group,
-        agent_core_config=agent_core_config_from_settings(get_settings(), group.folder),
+        agent_core_config=_agent_core_config_from_settings(group.folder),
         is_scheduled_task=is_scheduled_task,
     )
 
 
 def _agent_core_config_from_settings(group_folder: str | None = None) -> dict[str, Any] | None:
     """Resolve agent config through this module's settings seam for callers and tests."""
-    return agent_core_config_from_settings(get_settings(), group_folder)
+    settings = get_settings()
+    return agent_core_config(
+        settings.agent.model,
+        settings.agent.model_reasoning_effort,
+        group_folder,
+    )
 
 
 # ---------------------------------------------------------------------------

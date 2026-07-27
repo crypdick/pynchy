@@ -5,19 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 import pynchy.host.orchestrator.workspace_config as workspace_config
-from pynchy.config.settings import (
-    Settings,  # noqa: TC001 - beartype resolves annotations at runtime.
-)
 
 _CODEX_SESSION_PREFIX = "codex:"
 
 
-def agent_core_config_from_settings(
-    settings: Settings,
+def agent_core_config(
+    model: str | None,
+    model_reasoning_effort: str | None,
     group_folder: str | None = None,
 ) -> dict[str, Any] | None:
     """Return the configured model and reasoning effort for an agent invocation."""
-    resolved_model = settings.agent.model
+    resolved_model = model
     if group_folder is not None:
         resolved = workspace_config.load_resolved_config(group_folder)
         if resolved is not None and resolved.model:
@@ -26,8 +24,8 @@ def agent_core_config_from_settings(
     result: dict[str, Any] = {}
     if resolved_model:
         result["model"] = resolved_model
-    if settings.agent.model_reasoning_effort:
-        result["model_reasoning_effort"] = settings.agent.model_reasoning_effort
+    if model_reasoning_effort:
+        result["model_reasoning_effort"] = model_reasoning_effort
     return result or None
 
 
