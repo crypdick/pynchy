@@ -458,8 +458,8 @@ because the AgentEvent defect has independent correctness impact.
 ### Current work log
 
 The blocking checker, policy, exact baseline, `prek` hook, required CI step,
-and code-owner protection are implemented. The policy currently records 332
-exact baseline entries containing 462 import occurrences. The aggregate report
+and code-owner protection are implemented. The policy currently records 331
+exact baseline entries containing 461 import occurrences. The aggregate report
 below is a review aid; `architecture-baseline.toml` remains the exact,
 machine-checked authority.
 
@@ -494,6 +494,12 @@ resolved retention from the lifecycle composition root through runtime startup,
 verified live-container reaping through the public system-check API, removed the
 `pynchy.host.container_manager.cleanup` to `config` baseline entry, and left the
 allowed dependency graph unchanged.
+
+The third completed ratchet slice introduced `OrphanReapingRuntime`, required
+runtime startup to pass the selected reaping capability into cleanup, verified
+the Docker and Apple adapters conform to that contract, removed the
+`pynchy.host.container_manager.cleanup` to `runtime_adapter` baseline entry, and
+left the allowed dependency graph unchanged.
 
 ### Phase 0: Encode the target and stop new debt
 

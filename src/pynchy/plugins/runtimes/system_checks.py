@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, cast
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.cleanup import (
+    OrphanReapingRuntime,
     cleanup_runtime_build_state,
     reap_orphaned_agent_containers,
 )
@@ -105,6 +106,15 @@ def ensure_agent_image_available() -> None:
         _ensure_agent_image_available(runtime)
 
 
+def _orphan_reaping_runtime(runtime: object) -> OrphanReapingRuntime | None:
+    """Parse an optional reaping capability from a selected runtime plugin."""
+    if all(
+        callable(getattr(runtime, name, None)) for name in ("list_containers", "remove_container")
+    ):
+        return cast("OrphanReapingRuntime", runtime)
+    return None
+
+
 def ensure_container_system_running(orphan_reap_age_ms: OrphanReapAgeMs) -> None:
     """Verify the container runtime and clean up stale agent resources."""
     runtime = get_runtime()
@@ -115,7 +125,8 @@ def ensure_container_system_running(orphan_reap_age_ms: OrphanReapAgeMs) -> None
         with _AGENT_IMAGE_LOCK:
             _ensure_agent_image_available(runtime)
 
-    reap_orphaned_agent_containers(
-        runtime=runtime,
-        orphan_age_ms=orphan_reap_age_ms,
-    )
+    if orphan_reaper := _orphan_reaping_runtime(runtime):
+        reap_orphaned_agent_containers(
+            runtime=orphan_reaper,
+            orphan_age_ms=orphan_reap_age_ms,
+        )

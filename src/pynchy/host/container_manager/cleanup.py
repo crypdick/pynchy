@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import subprocess  # noqa: S404, RUF100 - cleanup catches fixed-runtime subprocess failures.
+from collections.abc import (
+    Sequence,  # noqa: TC003, RUF100 - beartype resolves cleanup annotations at runtime.
+)
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol, cast
+from typing import Protocol, runtime_checkable
 
 from pynchy.host.container_manager.runtime_names import runtime_namespace
 from pynchy.host.container_manager.session import active_session_container_names
 from pynchy.logger import logger
-from pynchy.plugins.runtimes.detection import get_runtime
 from pynchy.types import OrphanReapAgeMs  # noqa: TC001, RUF100 - public cleanup contract
 
 _LIVE_STATES = {"running", "paused", "restarting"}
@@ -25,6 +27,15 @@ class RuntimeContainerRecord(Protocol):
 
     @property
     def is_agent_container(self) -> bool: ...
+
+
+@runtime_checkable
+class OrphanReapingRuntime(Protocol):
+    """Container operations required to reap unowned agent containers."""
+
+    def list_containers(self, prefix: str = "pynchy-") -> Sequence[RuntimeContainerRecord]: ...
+
+    def remove_container(self, name: str, *, force: bool = True) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -72,18 +83,12 @@ def _is_stale(
     return should_reap, reason
 
 
-def _list_runtime_containers(runtime: object) -> list[RuntimeContainerRecord]:
-    list_containers = getattr(runtime, "list_containers", None)
-    if not callable(list_containers):
-        return []
-    return cast("list[RuntimeContainerRecord]", list_containers(f"{runtime_namespace()}-"))
+def _list_runtime_containers(runtime: OrphanReapingRuntime) -> Sequence[RuntimeContainerRecord]:
+    return runtime.list_containers(f"{runtime_namespace()}-")
 
 
-def _remove_runtime_container(runtime: object, name: str) -> bool:
-    remove_container = getattr(runtime, "remove_container", None)
-    if not callable(remove_container):
-        return False
-    return bool(remove_container(name, force=True))
+def _remove_runtime_container(runtime: OrphanReapingRuntime, name: str) -> bool:
+    return runtime.remove_container(name, force=True)
 
 
 def cleanup_runtime_builder(runtime: object) -> bool:
@@ -127,18 +132,17 @@ def cleanup_runtime_build_state(runtime: object) -> bool:
 def reap_orphaned_agent_containers(
     *,
     orphan_age_ms: OrphanReapAgeMs,
-    runtime: object | None = None,
+    runtime: OrphanReapingRuntime,
     active_names: set[str] | None = None,
 ) -> list[ReapedContainer]:
     """Remove agent containers that are not owned by a live session."""
 
-    resolved_runtime = runtime if runtime is not None else get_runtime()
     protected = active_names if active_names is not None else active_session_container_names()
     retention = timedelta(milliseconds=max(0, orphan_age_ms))
     now = datetime.now(UTC)
 
     try:
-        containers = _list_runtime_containers(resolved_runtime)
+        containers = _list_runtime_containers(runtime)
     except (OSError, subprocess.SubprocessError) as exc:
         logger.warning("Failed to list orphaned agent containers", err=str(exc))
         return []
@@ -154,7 +158,7 @@ def reap_orphaned_agent_containers(
         if not should_reap:
             continue
         try:
-            removed = _remove_runtime_container(resolved_runtime, container.name)
+            removed = _remove_runtime_container(runtime, container.name)
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning(
                 "Failed to reap orphaned agent container",

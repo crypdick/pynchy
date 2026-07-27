@@ -16592,7 +16592,7 @@
       "label": "RuntimeContainerRecord",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L20",
+      "source_location": "L22",
       "_origin": "ast"
     },
     {
@@ -16608,7 +16608,31 @@
       "label": ".is_agent_container()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L27",
+      "source_location": "L29",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "label": "OrphanReapingRuntime",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_cleanup_orphanreapingruntime_list_containers",
+      "label": ".list_containers()",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L36",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_cleanup_orphanreapingruntime_remove_container",
+      "label": ".remove_container()",
+      "file_type": "code",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L38",
       "_origin": "ast"
     },
     {
@@ -16616,7 +16640,7 @@
       "label": "ReapedContainer",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L31",
+      "source_location": "L42",
       "_origin": "ast"
     },
     {
@@ -16624,7 +16648,7 @@
       "label": "_created_at_utc()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L37",
+      "source_location": "L48",
       "_origin": "ast"
     },
     {
@@ -16640,7 +16664,7 @@
       "label": "_is_stale()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L45",
+      "source_location": "L56",
       "_origin": "ast"
     },
     {
@@ -16656,7 +16680,7 @@
       "label": "_list_runtime_containers()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L75",
+      "source_location": "L86",
       "_origin": "ast"
     },
     {
@@ -16664,7 +16688,7 @@
       "label": "_remove_runtime_container()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L82",
+      "source_location": "L90",
       "_origin": "ast"
     },
     {
@@ -16672,7 +16696,7 @@
       "label": "cleanup_runtime_builder()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L89",
+      "source_location": "L94",
       "_origin": "ast"
     },
     {
@@ -16680,7 +16704,7 @@
       "label": "cleanup_runtime_images()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L105",
+      "source_location": "L110",
       "_origin": "ast"
     },
     {
@@ -16688,7 +16712,7 @@
       "label": "cleanup_runtime_build_state()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L120",
+      "source_location": "L125",
       "_origin": "ast"
     },
     {
@@ -16696,7 +16720,7 @@
       "label": "reap_orphaned_agent_containers()",
       "file_type": "code",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L127",
+      "source_location": "L132",
       "_origin": "ast"
     },
     {
@@ -16716,35 +16740,43 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_cleanup_rationale_90",
+      "id": "pynchy_host_container_manager_cleanup_rationale_34",
+      "label": "Container operations required to reap unowned agent containers.",
+      "file_type": "rationale",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L34",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_host_container_manager_cleanup_rationale_95",
       "label": "Let runtimes discard build-only state after Pynchy image builds.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L90",
+      "source_location": "L95",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_cleanup_rationale_106",
+      "id": "pynchy_host_container_manager_cleanup_rationale_111",
       "label": "Let runtimes discard dangling image layers without deleting tagged images.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L106",
+      "source_location": "L111",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_cleanup_rationale_121",
+      "id": "pynchy_host_container_manager_cleanup_rationale_126",
       "label": "Discard stale builders and dangling layers around controlled builds.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L121",
+      "source_location": "L126",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_host_container_manager_cleanup_rationale_133",
+      "id": "pynchy_host_container_manager_cleanup_rationale_138",
       "label": "Remove agent containers that are not owned by a live session.",
       "file_type": "rationale",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L133",
+      "source_location": "L138",
       "_origin": "ast"
     },
     {
@@ -69576,7 +69608,7 @@
       "label": "_generate_plugin_requirements()",
       "file_type": "code",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L41",
+      "source_location": "L42",
       "_origin": "ast"
     },
     {
@@ -69592,7 +69624,15 @@
       "label": "_ensure_agent_image_available()",
       "file_type": "code",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L62",
+      "source_location": "L63",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_plugins_runtimes_system_checks_orphan_reaping_runtime",
+      "label": "_orphan_reaping_runtime()",
+      "file_type": "code",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L109",
       "_origin": "ast"
     },
     {
@@ -69600,7 +69640,7 @@
       "label": "ensure_container_system_running()",
       "file_type": "code",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L108",
+      "source_location": "L118",
       "_origin": "ast"
     },
     {
@@ -69620,35 +69660,43 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_42",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_43",
       "label": "Write the plugin requirements file consumed by the agent Dockerfile.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L42",
+      "source_location": "L43",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_63",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_64",
       "label": "Build the configured agent image when it is absent from the runtime.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L63",
+      "source_location": "L64",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_97",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_98",
       "label": "Verify that the configured agent image is ready to launch.      This runs immedi",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L97",
+      "source_location": "L98",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_runtimes_system_checks_rationale_109",
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_110",
+      "label": "Parse an optional reaping capability from a selected runtime plugin.",
+      "file_type": "rationale",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L110",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_plugins_runtimes_system_checks_rationale_119",
       "label": "Verify the container runtime and clean up stale agent resources.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L109",
+      "source_location": "L119",
       "_origin": "ast"
     },
     {
@@ -120265,7 +120313,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "dataclasses",
+      "target": "collections_abc",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120276,29 +120324,18 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
+      "target": "dataclasses",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup",
       "target": "pynchy_host_container_manager_cleanup_py_datetime",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L7",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_cleanup",
-      "target": "typing",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L8",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_host_container_manager_runtime_names",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120309,7 +120346,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_host_container_manager_session",
+      "target": "typing",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120320,18 +120357,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_logger",
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L12",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_plugins_runtimes_detection",
+      "target": "pynchy_host_container_manager_runtime_names",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120342,7 +120368,7 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_types",
+      "target": "pynchy_host_container_manager_session",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -120353,11 +120379,33 @@
     },
     {
       "source": "pynchy_host_container_manager_cleanup",
+      "target": "pynchy_logger",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup",
+      "target": "pynchy_types",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup",
       "target": "pynchy_host_container_manager_cleanup_runtimecontainerrecord",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L20",
+      "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120367,7 +120415,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L20",
+      "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120377,7 +120425,58 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L27",
+      "source_location": "L29",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "target": "pynchy_host_container_manager_cleanup_py_protocol",
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime_list_containers",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_orphanreapingruntime_list_containers",
+      "target": "pynchy_host_container_manager_cleanup_runtimecontainerrecord",
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime_remove_container",
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L38",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120387,7 +120486,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L31",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120397,7 +120496,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L37",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120408,7 +120507,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L37",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120418,7 +120517,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L45",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120429,7 +120528,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L45",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120440,7 +120539,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L45",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120451,7 +120550,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L45",
+      "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120461,7 +120560,18 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L75",
+      "source_location": "L86",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_list_runtime_containers",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120472,7 +120582,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L75",
+      "source_location": "L86",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120482,7 +120592,18 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L82",
+      "source_location": "L90",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_remove_runtime_container",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L90",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120492,7 +120613,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L89",
+      "source_location": "L94",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120502,7 +120623,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L105",
+      "source_location": "L110",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120512,7 +120633,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L120",
+      "source_location": "L125",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120522,7 +120643,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L127",
+      "source_location": "L132",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120533,7 +120654,18 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L127",
+      "source_location": "L132",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_reap_orphaned_agent_containers",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L132",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120544,7 +120676,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L127",
+      "source_location": "L132",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120555,7 +120687,29 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L66",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_list_runtime_containers",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime_list_containers",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_remove_runtime_container",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime_remove_container",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120566,7 +120720,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L122",
+      "source_location": "L127",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120577,7 +120731,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L123",
+      "source_location": "L128",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120588,7 +120742,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L137",
+      "source_location": "L141",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120599,7 +120753,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L141",
+      "source_location": "L145",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120610,7 +120764,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L148",
+      "source_location": "L152",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120621,7 +120775,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L157",
+      "source_location": "L161",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120632,7 +120786,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L175",
+      "source_location": "L179",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -120647,42 +120801,52 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_cleanup_rationale_90",
+      "source": "pynchy_host_container_manager_cleanup_rationale_34",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/host/container_manager/cleanup.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_host_container_manager_cleanup_rationale_95",
       "target": "pynchy_host_container_manager_cleanup_cleanup_runtime_builder",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L90",
+      "source_location": "L95",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_cleanup_rationale_106",
+      "source": "pynchy_host_container_manager_cleanup_rationale_111",
       "target": "pynchy_host_container_manager_cleanup_cleanup_runtime_images",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L106",
+      "source_location": "L111",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_cleanup_rationale_121",
+      "source": "pynchy_host_container_manager_cleanup_rationale_126",
       "target": "pynchy_host_container_manager_cleanup_cleanup_runtime_build_state",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L121",
+      "source_location": "L126",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_cleanup_rationale_133",
+      "source": "pynchy_host_container_manager_cleanup_rationale_138",
       "target": "pynchy_host_container_manager_cleanup_reap_orphaned_agent_containers",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L133",
+      "source_location": "L138",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276710,7 +276874,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L19",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276721,7 +276885,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L20",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276732,7 +276896,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L21",
+      "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276742,7 +276906,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L41",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276753,7 +276917,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L41",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276763,7 +276927,28 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L62",
+      "source_location": "L63",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks",
+      "target": "pynchy_plugins_runtimes_system_checks_orphan_reaping_runtime",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks_orphan_reaping_runtime",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L109",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276773,7 +276958,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L108",
+      "source_location": "L118",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276784,7 +276969,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L108",
+      "source_location": "L118",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276795,7 +276980,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L82",
+      "source_location": "L83",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276806,7 +276991,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L116",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks_ensure_container_system_running",
+      "target": "pynchy_plugins_runtimes_system_checks_orphan_reaping_runtime",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L128",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -276821,42 +277017,52 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_42",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_43",
       "target": "pynchy_plugins_runtimes_system_checks_generate_plugin_requirements",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L42",
+      "source_location": "L43",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_63",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_64",
       "target": "pynchy_plugins_runtimes_system_checks_ensure_agent_image_available",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L63",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_97",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_98",
       "target": "pynchy_plugins_runtimes_system_checks_ensure_agent_image_available",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L97",
+      "source_location": "L98",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_runtimes_system_checks_rationale_109",
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_110",
+      "target": "pynchy_plugins_runtimes_system_checks_orphan_reaping_runtime",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks_rationale_119",
       "target": "pynchy_plugins_runtimes_system_checks_ensure_container_system_running",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L109",
+      "source_location": "L119",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301547,7 +301753,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L10",
+      "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301558,18 +301764,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L11",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_cleanup",
-      "target": "pynchy_plugins_runtimes_detection_get_runtime",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327667,6 +327862,17 @@
     },
     {
       "source": "pynchy_plugins_runtimes_system_checks",
+      "target": "pynchy_host_container_manager_cleanup_orphanreapingruntime",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/runtimes/system_checks.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_runtimes_system_checks",
       "target": "pynchy_host_container_manager_cleanup_cleanup_runtime_build_state",
       "relation": "imports",
       "context": "import",
@@ -327694,7 +327900,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L20",
+      "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -327705,7 +327911,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L26",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334151,18 +334357,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L79",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_cleanup_reap_orphaned_agent_containers",
-      "target": "pynchy_plugins_runtimes_detection_get_runtime",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L135",
+      "source_location": "L87",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334173,7 +334368,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L136",
+      "source_location": "L140",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347769,7 +347964,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L74",
+      "source_location": "L75",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347780,7 +347975,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L102",
+      "source_location": "L103",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347791,7 +347986,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L110",
+      "source_location": "L120",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347802,7 +347997,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L112",
+      "source_location": "L122",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -347813,7 +348008,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/runtimes/system_checks.py",
-      "source_location": "L118",
+      "source_location": "L129",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -377667,30 +377862,6 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_host_container_manager_cleanup_remove_runtime_container",
-      "target": "pynchy_host_container_manager_docker_remove_container",
-      "relation": "indirect_call",
-      "context": "getattr",
-      "confidence": "INFERRED",
-      "confidence_score": 0.8,
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L83",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
-      "source": "pynchy_host_container_manager_cleanup_remove_runtime_container",
-      "target": "pynchy_host_container_manager_docker_remove_container",
-      "relation": "calls",
-      "context": "call",
-      "confidence": "INFERRED",
-      "confidence_score": 0.8,
-      "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L86",
-      "weight": 1.0,
-      "_origin": "ast"
-    },
-    {
       "source": "pynchy_host_container_manager_cleanup_cleanup_runtime_builder",
       "target": "pynchy_plugins_runtimes_apple_runtime_runtime_applecontainerruntime_cleanup_builder",
       "relation": "indirect_call",
@@ -377698,7 +377869,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L91",
+      "source_location": "L96",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -377710,7 +377881,7 @@
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "pynchy/host/container_manager/cleanup.py",
-      "source_location": "L95",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
