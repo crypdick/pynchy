@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves method annotations.
 from typing import TYPE_CHECKING, Any, cast
 
 import pluggy  # noqa: TC002, RUF100 - beartype resolves app annotations at runtime.
@@ -37,6 +38,9 @@ from pynchy.host.orchestrator.messaging import (
 )
 from pynchy.host.orchestrator.messaging import (
     router as output_handler,
+)
+from pynchy.host.orchestrator.messaging.deps import (  # noqa: TC001, RUF100 - beartype resolves method annotations.
+    DirectCommandOutput,
 )
 from pynchy.host.orchestrator.runtime_task_owner import RuntimeTaskOwner
 from pynchy.host.orchestrator.startup_readiness import StartupReadiness
@@ -352,6 +356,31 @@ class PynchyApp(ThreadRouting):
 
     async def broadcast_host_message(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_host_message(chat_jid, text)
+
+    def direct_command_workdir(self, group: WorkspaceProfile) -> Path:
+        """Resolve a direct command workspace from host-owned configuration."""
+        return get_settings().groups_dir / group.folder
+
+    async def record_direct_command_output(self, output: DirectCommandOutput) -> None:
+        """Persist one direct command result through the state adapter."""
+        await store_message_direct(
+            message_id=f"command-output-{output.source_message.id}",
+            chat_jid=output.chat_jid,
+            sender="command_output",
+            sender_name="command",
+            content=output.content,
+            timestamp=output.timestamp,
+            is_from_me=True,
+            message_type="host",
+            metadata={
+                "source": "direct_command",
+                "command": output.command,
+                "exit_code": output.exit_code,
+                "source_message_id": output.source_message.id,
+                "workspace_name": output.group.name,
+                "workspace_folder": output.group.folder,
+            },
+        )
 
     async def broadcast_system_notice(self, chat_jid: str, text: str) -> None:
         await self._host_broadcaster.broadcast_system_notice(chat_jid, text)

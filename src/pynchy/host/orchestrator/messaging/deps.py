@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves protocol annotations.
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import pynchy.types as types
@@ -14,8 +16,38 @@ if TYPE_CHECKING:
 type Group = types.WorkspaceProfile
 
 
+@dataclass(frozen=True)
+class DirectCommandOutput:
+    """One persisted result from a trusted direct host command."""
+
+    chat_jid: str
+    group: Group
+    source_message: types.NewMessage
+    command: str
+    exit_code: int | None
+    content: str
+    timestamp: str
+
+
 @runtime_checkable
-class MessageHandlerDeps(Protocol):
+class DirectCommandDeps(Protocol):
+    """Narrow runtime capabilities required for direct host commands."""
+
+    def direct_command_workdir(self, group: Group) -> Path: ...
+
+    async def record_direct_command_output(self, output: DirectCommandOutput) -> None: ...
+
+    async def broadcast_to_channels(
+        self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
+    ) -> None: ...
+
+    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
+
+    def emit(self, event: Event) -> None: ...
+
+
+@runtime_checkable
+class MessageHandlerDeps(DirectCommandDeps, Protocol):
     """Dependencies shared by polling and the interactive processing pipeline."""
 
     @property
@@ -65,12 +97,6 @@ class MessageHandlerDeps(Protocol):
         source_message: types.NewMessage | None = None,
     ) -> None: ...
 
-    async def broadcast_to_channels(
-        self, chat_jid: str, event: types.OutboundEvent, *, suppress_errors: bool = True
-    ) -> None: ...
-
-    async def broadcast_host_message(self, chat_jid: str, text: str) -> None: ...
-
     async def send_reaction_to_channels(
         self, chat_jid: str, message_id: str, sender: str, emoji: str
     ) -> None: ...
@@ -88,8 +114,6 @@ class MessageHandlerDeps(Protocol):
     async def start_interactive_turn(self, chat_jid: str) -> None: ...
 
     async def start_interrupted_turn(self, turn_id: str, group_folder: str) -> None: ...
-
-    def emit(self, event: Event) -> None: ...
 
     async def run_agent(  # noqa: PLR0913, RUF100 - protocol preserves orchestration call shape.
         self,

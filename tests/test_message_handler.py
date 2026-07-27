@@ -600,33 +600,28 @@ class TestInterceptSpecialCommand:
 
 class TestExecuteDirectCommand:
     _P_SHELL = "pynchy.host.orchestrator.messaging.direct_command.run_shell_command"
-    _P_STORE = "pynchy.host.orchestrator.messaging.direct_command.store_message_direct"
 
     @pytest.mark.asyncio
     async def test_successful_command_broadcasts_output(self, tmp_path):
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!echo hi")
+        deps.direct_command_workdir.return_value = tmp_path / "groups" / group.folder
 
         with (
-            patch(_P_SETTINGS) as mock_settings,
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
-            patch(self._P_STORE, new_callable=AsyncMock) as mock_store,
         ):
-            mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(returncode=0, stdout="hi", stderr="")
             await execute_direct_command(deps, "g@g.us", group, msg, "echo hi")
 
-        saved = mock_store.await_args.kwargs
-        assert saved["chat_jid"] == "g@g.us"
-        assert saved["sender"] == "command_output"
-        assert saved["sender_name"] == "command"
-        assert saved["content"] == "✅ Command output (exit 0):\n```\nhi\n```"
-        assert saved["message_type"] == "host"
-        assert saved["metadata"]["source_message_id"] == msg.id
-        assert saved["metadata"]["source"] == "direct_command"
-        assert saved["metadata"]["command"] == "echo hi"
-        assert saved["metadata"]["exit_code"] == 0
+        saved = deps.record_direct_command_output.await_args.args[0]
+        assert saved.chat_jid == "g@g.us"
+        assert saved.group == group
+        assert saved.source_message == msg
+        assert saved.command == "echo hi"
+        assert saved.exit_code == 0
+        assert saved.content == "✅ Command output (exit 0):\n```\nhi\n```"
+        assert mock_shell.await_args.kwargs["cwd"] == str(tmp_path / "groups" / group.folder)
         deps.broadcast_to_channels.assert_awaited_once()
         event = deps.broadcast_to_channels.call_args[0][1]
         assert "✅" in event.content
@@ -637,19 +632,17 @@ class TestExecuteDirectCommand:
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!false")
+        deps.direct_command_workdir.return_value = tmp_path / "groups" / group.folder
 
         with (
-            patch(_P_SETTINGS) as mock_settings,
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
-            patch(self._P_STORE, new_callable=AsyncMock) as mock_store,
         ):
-            mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(returncode=1, stdout="", stderr="error msg")
             await execute_direct_command(deps, "g@g.us", group, msg, "false")
 
-        saved = mock_store.await_args.kwargs
-        assert saved["content"] == "❌ Command output (exit 1):\n```\nerror msg\n```"
-        assert saved["metadata"]["exit_code"] == 1
+        saved = deps.record_direct_command_output.await_args.args[0]
+        assert saved.exit_code == 1
+        assert saved.content == "❌ Command output (exit 1):\n```\nerror msg\n```"
         event = deps.broadcast_to_channels.call_args[0][1]
         assert "❌" in event.content
         assert "error msg" in event.content
@@ -659,12 +652,11 @@ class TestExecuteDirectCommand:
         group = _make_group()
         deps = _make_deps()
         msg = _make_message("!sleep 99")
+        deps.direct_command_workdir.return_value = tmp_path / "groups" / group.folder
 
         with (
-            patch(_P_SETTINGS) as mock_settings,
             patch(self._P_SHELL, new_callable=AsyncMock) as mock_shell,
         ):
-            mock_settings.return_value.groups_dir = tmp_path / "groups"
             mock_shell.return_value = ShellResult(
                 returncode=None, stdout="", stderr="", timed_out=True
             )
