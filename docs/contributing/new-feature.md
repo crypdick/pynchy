@@ -1,7 +1,7 @@
 # Develop in an isolated deterministic runtime
 
-Use `new-feature` to create feature branches with dedicated worktrees and local Pynchy
-services. Each managed feature and the CI runtime lane uses the same deterministic profile:
+Use `new-feature` to create feature branches with dedicated worktrees. Start a local Pynchy
+runtime only when interactive runtime diagnosis needs one. Each runtime and the CI lane uses the same deterministic profile:
 dedicated server, gateway, and Temporal ports; SQLite, Temporal, and PostgreSQL data; and a
 namespaced Docker resource namespace.
 
@@ -66,12 +66,13 @@ Do not use `run` in a worktree whose runtime is already running; stop that runti
 command owns setup and teardown. The command stops its owned processes and containers when it
 finishes. On failure, inspect `logs/pynchy-runtime/` and `data/`.
 
-To verify the runtime that `new-feature` already started, use `exec` instead. It keeps the sandbox
-running for diagnosis. `exec` rejects diagnostic state left by a failed `run`, because that command
+For interactive diagnosis, create the runtime first, then use `exec`. `exec` keeps the sandbox
+running for diagnosis. It rejects diagnostic state left by a failed `run`, because that command
 has already stopped its live resources; inspect its logs and data, then run `stop` before a fresh
 setup:
 
 ```bash
+uv run python scripts/runtime_harness.py setup
 uv run python scripts/runtime_harness.py exec -- \
   uv run pytest -o addopts='' -n 0 -m runtime
 ```
@@ -89,11 +90,18 @@ Run lifecycle commands from the control checkout:
 new-feature create "describe the feature"
 ```
 
-Setup creates `.worktrees/<slug>`, installs dependencies, initializes `messages.db` and
-`memories.db`, starts a dedicated Temporal server, and launches Pynchy with namespaced LiteLLM,
-PostgreSQL, and deterministic OpenAI sidecar containers. PostgreSQL uses a namespaced Docker
-volume so container ownership cannot prevent worktree removal. Generated configuration, logs,
-process state, and databases remain ignored inside the feature worktree.
+Setup creates `.worktrees/<slug>` and installs dependencies. It does not start a runtime. Start
+one only for interactive diagnosis:
+
+```bash
+uv run python scripts/runtime_harness.py setup
+```
+
+The harness initializes `messages.db` and `memories.db`, starts a dedicated Temporal server, and
+launches Pynchy with namespaced LiteLLM, PostgreSQL, and deterministic OpenAI sidecar containers.
+PostgreSQL uses a namespaced Docker volume so container ownership cannot prevent worktree removal.
+Generated configuration, logs, process state, and databases remain ignored inside the feature
+worktree.
 
 If runtime setup fails, the harness copies its logs to
 `.new-feature/diagnostics/runtime-setup-failures/<slug>/` in the control checkout before
