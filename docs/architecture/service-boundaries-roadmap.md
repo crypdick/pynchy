@@ -455,11 +455,14 @@ defines direction and acceptance criteria; it does not turn later phases into
 one giant authorized change. Phase 0 and Phase 1 may proceed in parallel
 because the AgentEvent defect has independent correctness impact.
 
+Keep this roadmap current-state-only. Put completed-slice narratives, commits,
+and test history in Git or Linear rather than this document.
+
 ### Current work log
 
 The blocking checker, policy, exact baseline, `prek` hook, required CI step,
-and code-owner protection are implemented. The policy currently records 330
-exact baseline entries containing 460 import occurrences. The aggregate report
+and code-owner protection are implemented. The policy currently records 329
+exact baseline entries containing 459 import occurrences. The aggregate report
 below is a review aid; `architecture-baseline.toml` remains the exact,
 machine-checked authority.
 
@@ -469,7 +472,7 @@ machine-checked authority.
 | `canary_adapter` | 21 | `config` 3, `container_adapter` 11, `git_adapter` 1, `integration_adapter` 5, `state_adapter` 1 |
 | `channel_adapter` | 31 | `application` 6, `config` 19, `container_adapter` 1, `host_adapter` 3, `state_adapter` 2 |
 | `config` | 2 | `integration_adapter` 2 |
-| `container_adapter` | 91 | `application` 13, `config` 42, `git_adapter` 8, `host_adapter` 1, `integration_adapter` 1, `learning_adapter` 5, `runtime_adapter` 7, `state_adapter` 11, `temporal_adapter` 3 |
+| `container_adapter` | 90 | `application` 13, `config` 41, `git_adapter` 8, `host_adapter` 1, `integration_adapter` 1, `learning_adapter` 5, `runtime_adapter` 7, `state_adapter` 11, `temporal_adapter` 3 |
 | `domain` | 2 | `application` 1, `config` 1 |
 | `extension_api` | 7 | `config` 6, `runtime_adapter` 1 |
 | `git_adapter` | 9 | `application` 1, `config` 7, `container_adapter` 1 |
@@ -482,30 +485,6 @@ machine-checked authority.
 | `runtime_adapter` | 5 | `config` 2, `container_adapter` 3 |
 | `state_adapter` | 2 | `config` 2 |
 | `temporal_adapter` | 47 | `application` 22, `canary_adapter` 1, `config` 7, `git_adapter` 5, `integration_adapter` 2, `learning_adapter` 5, `state_adapter` 5 |
-
-The first completed ratchet slice introduced `StateRuntimeConfig`, passed the
-resolved SQLite path from the lifecycle composition root, verified schema
-initialization through the public state API, removed the
-`pynchy.state.connection` to `config` baseline entry, and left the allowed
-dependency graph unchanged.
-
-The second completed ratchet slice introduced `OrphanReapAgeMs`, passed the
-resolved retention from the lifecycle composition root through runtime startup,
-verified live-container reaping through the public system-check API, removed the
-`pynchy.host.container_manager.cleanup` to `config` baseline entry, and left the
-allowed dependency graph unchanged.
-
-The third completed ratchet slice introduced `OrphanReapingRuntime`, required
-runtime startup to pass the selected reaping capability into cleanup, verified
-the Docker and Apple adapters conform to that contract, removed the
-`pynchy.host.container_manager.cleanup` to `runtime_adapter` baseline entry, and
-left the allowed dependency graph unchanged.
-
-The fourth completed ratchet slice introduced `BuiltinGatewayCredentials`,
-passed resolved provider keys into the builtin gateway, verified configured
-providers after gateway startup, removed the
-`pynchy.host.container_manager.gateway_builtin` to `config` baseline entry, and
-left the allowed dependency graph unchanged.
 
 ### Phase 0: Encode the target and stop new debt
 

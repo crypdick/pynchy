@@ -97,14 +97,6 @@ imports = ["pynchy.plugins.runtimes.detection"]
 reason = "pynchy.host.container_manager.gateway still has a runtime-import dependency on runtime_adapter; Use the runtime provider contract and select the platform adapter at composition."
 
 [[violations]]
-importer = "pynchy.host.container_manager.gateway_litellm"
-target_component = "config"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.config"]
-reason = "pynchy.host.container_manager.gateway_litellm still has a runtime-import dependency on config; Inject only the resolved configuration values the importer needs from a named composition root."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.approval_decision_context"
 target_component = "config"
 kind = "runtime-import"

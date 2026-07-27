@@ -51,6 +51,7 @@ from pynchy.host.container_manager.gateway_builtin import (
 )
 from pynchy.host.container_manager.gateway_litellm import (
     LiteLLMGateway,
+    LiteLLMGatewayCredentials,
 )
 from pynchy.logger import logger
 from pynchy.plugins.contracts import McpServerSpec
@@ -214,6 +215,12 @@ async def start_gateway(
             required_models=_required_litellm_models(
                 agent_core=s.agent.default_core,
                 models=s.configured_agent_models(),
+            ),
+            ui_credentials=LiteLLMGatewayCredentials(
+                ui_username=s.gateway.ui_username,
+                ui_password=(
+                    s.gateway.ui_password.get_secret_value() if s.gateway.ui_password else None
+                ),
             ),
         )
     else:

@@ -29,10 +29,10 @@ import asyncio
 import os
 import re
 import secrets
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from pynchy.config import get_settings
 from pynchy.host.container_manager.docker import (
     HealthCheckRequest,
     docker_available,
@@ -82,6 +82,14 @@ _GATEWAY_MANAGED_VARS = frozenset(
         "DATABASE_URL",
     }
 )
+
+
+@dataclass(frozen=True)
+class LiteLLMGatewayCredentials:
+    """Resolved optional credentials for LiteLLM's browser UI."""
+
+    ui_username: str | None = None
+    ui_password: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -173,11 +181,13 @@ class LiteLLMGateway:
         data_dir: Path,
         master_key: str,
         required_models: tuple[str, ...] = (),
+        ui_credentials: LiteLLMGatewayCredentials | None = None,
     ) -> None:
         self.port = port
         self.container_host = container_host
         self.key: str = master_key
         self._required_models = tuple(dict.fromkeys(required_models))
+        self._ui_credentials = ui_credentials or LiteLLMGatewayCredentials()
         self._config_preparer = LiteLLMConfigPreparer(required_models=self._required_models)
 
         self._config_path = Path(config_path).resolve()
@@ -429,12 +439,10 @@ class LiteLLMGateway:
         for var_name, value in collect_litellm_yaml_environment(filtered_config, env):
             env_vars.extend(["-e", f"{var_name}={value}"])
 
-        # Add UI credentials if configured
-        s = get_settings()
-        if s.gateway.ui_username:
-            env_vars.extend(["-e", f"UI_USERNAME={s.gateway.ui_username}"])
-        if s.gateway.ui_password:
-            env_vars.extend(["-e", f"UI_PASSWORD={s.gateway.ui_password.get_secret_value()}"])
+        if self._ui_credentials.ui_username:
+            env_vars.extend(["-e", f"UI_USERNAME={self._ui_credentials.ui_username}"])
+        if self._ui_credentials.ui_password:
+            env_vars.extend(["-e", f"UI_PASSWORD={self._ui_credentials.ui_password}"])
 
         await ensure_network(self._network_name)
         await self._start_postgres()
