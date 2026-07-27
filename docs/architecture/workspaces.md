@@ -112,7 +112,7 @@ afterward. No manual database edits are required.
 | `includes` | `list[str]` | Profiles to compose before this profile |
 | `prompts` | `list[str]` | Prompt names to include |
 | `skills` | `list[str]` | Skill names to include |
-| `denied_skills` | `list[str]` | Learned skill names blocked for this profile, even when a selected tier would otherwise include them |
+| `denied_skills` | `list[str]` | Personalized skill names blocked for this profile, even when a selected tier would otherwise include them |
 | `tools` | `list[str]` | Tool names from `[tools.*]` to select |
 | `repo` | `list[str]` or `str` | GitHub slug (`owner/repo`) from `[repos.*]`; mounts project worktrees |
 | `model` | `str` | Optional reusable default model; a workspace can override it |
@@ -121,9 +121,9 @@ afterward. No manual database edits are required.
 | `is_admin` | `bool` | Whether workspaces using this profile get admin privileges |
 | `contains_secrets` | `bool` | Whether workspace files may contain secrets |
 
-## Learned Skill Access
+## Personalized Skill Access
 
-Pynchy exposes the vault-backed skill catalog to sessions through
+Pynchy exposes the live personalization skill catalog to sessions through
 `search_skills(query)`. Skill discovery requests always read this live catalog;
 the agent does not infer current availability from prior conversation or its
 system prompt. An agent that finds a useful skill calls

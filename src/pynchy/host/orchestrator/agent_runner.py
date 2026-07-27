@@ -26,7 +26,7 @@ from pynchy.host.container_manager.orchestrator import (
     _spawn_container,
     stable_container_name,
 )
-from pynchy.host.learning.skill_activation import refresh_learned_agent_skills
+from pynchy.host.learning.skill_activation import refresh_personalized_agent_skills
 from pynchy.host.orchestrator import _agent_runner_preflight as _preflight
 from pynchy.host.orchestrator.agent_core_config import (
     agent_core_config,
@@ -234,7 +234,7 @@ async def _spawn_and_await(request: _SpawnAndAwaitRequest) -> str:
 
 async def _warm_query(request: _WarmQueryRequest) -> str:
     """Send messages to an existing session via IPC and wait for completion."""
-    refresh_learned_agent_skills(request.group.folder)
+    refresh_personalized_agent_skills(request.group.folder)
 
     # Ensure MCP servers are running (they may have stopped since last query)
     mcp_mgr = mcp_manager.get_mcp_manager()

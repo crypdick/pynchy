@@ -56,7 +56,7 @@ from pynchy.host.container_manager.session import RuntimeMonitorPolicy, SessionD
 from pynchy.host.container_manager.session_prep import (
     is_skill_selected,
     parse_skill_tier,
-    refresh_learned_skills,
+    refresh_personalized_skills,
     sync_skills,
     write_settings_json,
 )
@@ -66,7 +66,7 @@ from pynchy.host.learning.paths import LearningConfigError
 from pynchy.host.learning.skill_activation import (
     PreparedAgentHomes,
     prepare_agent_homes,
-    refresh_learned_agent_skills,
+    refresh_personalized_agent_skills,
 )
 from pynchy.host.orchestrator import host_execution
 from pynchy.host.orchestrator.agent_runner import (
@@ -929,6 +929,16 @@ class TestMountBuilding:
 
         assert all(m.container_path != "/workspace/vault" for m in mounts)
 
+    def test_all_agents_mount_personalization_skills_readwrite(self, tmp_path: Path):
+        with _patch_settings(tmp_path, learning=LearningConfig(enabled=False)):
+            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
+
+        skill_mount = next(
+            mount for mount in mounts if mount.container_path == "/workspace/personalization/skills"
+        )
+        assert skill_mount.host_path == str(tmp_path / "data/personalization/skills")
+        assert skill_mount.readonly is False
+
     def test_learning_enabled_mounts_vault_readwrite(self, monkeypatch, tmp_path: Path):
         vault = tmp_path / "vault"
         vault.mkdir()
@@ -980,65 +990,13 @@ class TestMountBuilding:
         profile_root = vault.resolve() / "systems/pynchy/profiles/deep-work"
         assert (profile_root / "memory").is_dir()
 
-    def test_learning_mount_scans_skills_when_workspace_skills_is_none(
+    def test_personalized_skill_syncs_when_profile_allows_it(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
         vault.mkdir()
-        learning = LearningConfig(
-            enabled=True,
-            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
-        )
-
-        with (
-            _patch_settings(tmp_path, learning=learning),
-            patch(
-                "pynchy.host.learning.skill_activation.iter_learned_skill_dirs",
-                return_value=[],
-            ) as scan_learned_skills,
-        ):
-            (tmp_path / "groups" / "test-group").mkdir(parents=True)
-
-            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
-
-        assert any(m.container_path == "/workspace/vault" for m in mounts)
-        scan_learned_skills.assert_called_once_with("test-group")
-
-    def test_learning_mount_scans_skills_when_workspace_skills_is_empty(
-        self,
-        tmp_path: Path,
-    ):
-        vault = tmp_path / "vault"
-        vault.mkdir()
-        learning = LearningConfig(
-            enabled=True,
-            obsidian=ObsidianLearningConfig(vault_root=str(vault)),
-        )
-        profiles, workspace = _profile_workspace("Deep Work!!", skills=[])
-        workspaces = {"test-group": workspace}
-
-        with (
-            _patch_settings(tmp_path, learning=learning, workspaces=workspaces) as settings,
-            patch(
-                "pynchy.host.learning.skill_activation.iter_learned_skill_dirs",
-                return_value=[],
-            ) as scan_learned_skills,
-        ):
-            settings.profiles.update(profiles)
-            (tmp_path / "groups" / "test-group").mkdir(parents=True)
-
-            mounts = build_volume_mounts(TEST_GROUP, is_admin=False)
-
-        assert any(m.container_path == "/workspace/vault" for m in mounts)
-        scan_learned_skills.assert_called_once_with("test-group")
-
-    def test_learning_mount_syncs_global_skill_when_profile_allows_it(
-        self,
-        tmp_path: Path,
-    ):
-        vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1067,12 +1025,13 @@ class TestMountBuilding:
         )
         assert codex_skill_dst.exists()
 
-    def test_learning_mount_does_not_sync_global_skill_without_profile_permission(
+    def test_personalized_skill_does_not_sync_without_profile_permission(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        vault.mkdir()
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1101,7 +1060,7 @@ class TestMountBuilding:
         )
         assert not codex_skill_dst.exists()
 
-    def test_refresh_learned_agent_skills_syncs_skill_written_after_session_start(
+    def test_refresh_personalized_agent_skills_syncs_skill_written_after_session_start(
         self,
         tmp_path: Path,
     ):
@@ -1123,13 +1082,13 @@ class TestMountBuilding:
             settings.profiles.update(profiles)
 
             prepare_agent_homes("test-group")
-            learned_skill = vault / "systems/pynchy/skills/remember-routing"
+            learned_skill = tmp_path / "data/personalization/skills/remember-routing"
             learned_skill.mkdir(parents=True)
             (learned_skill / "SKILL.md").write_text(
                 "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
             )
 
-            refresh_learned_agent_skills("test-group")
+            refresh_personalized_agent_skills("test-group")
 
         for agent_home in (".claude", ".codex"):
             skill_dst = (
@@ -1140,12 +1099,13 @@ class TestMountBuilding:
             )
             assert skill_dst.exists()
 
-    def test_host_execution_syncs_learned_skill_into_its_isolated_codex_home(
+    def test_host_execution_syncs_personalized_skill_into_its_isolated_codex_home(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        vault.mkdir()
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -1175,12 +1135,13 @@ class TestMountBuilding:
         assert env["CODEX_HOME"] == str(codex_home)
         assert (codex_home / "skills/remember-routing/SKILL.md").exists()
 
-    def test_learning_mount_syncs_global_obsidian_skill_when_named(
+    def test_personalized_skill_syncs_when_named(
         self,
         tmp_path: Path,
     ):
         vault = tmp_path / "vault"
-        learned_skill = vault / "systems/pynchy/skills/remember-routing"
+        vault.mkdir()
+        learned_skill = tmp_path / "data/personalization/skills/remember-routing"
         learned_skill.mkdir(parents=True)
         (learned_skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
@@ -2674,8 +2635,8 @@ class TestContainerInputAgentCoreConfig:
         )
 
     @pytest.mark.asyncio
-    async def test_warm_turn_refreshes_learned_skills_before_ipc(self):
-        """Reviewer output is synchronized before a persistent container's next turn."""
+    async def test_warm_turn_refreshes_personalized_skills_before_ipc(self):
+        """Canonical skill updates synchronize before a persistent container's next turn."""
         deps = _AgentRunnerDeps()
         ctx = self._ctx()
         session = session_mod.ContainerSession(TEST_GROUP.folder, "pynchy-test-group")
@@ -2701,7 +2662,7 @@ class TestContainerInputAgentCoreConfig:
                 return_value=None,
             ),
             patch(
-                "pynchy.host.orchestrator.agent_runner.refresh_learned_agent_skills"
+                "pynchy.host.orchestrator.agent_runner.refresh_personalized_agent_skills"
             ) as refresh_skills,
             patch.object(
                 session,
@@ -3108,6 +3069,43 @@ class TestSyncSkills:
                 session_dir, project_root=tmp_path, plugin_manager=FakePM(), workspace_skills=["*"]
             )
 
+    def test_personalized_skill_overrides_plugin_skill(self, tmp_path: Path):
+        plugin_skill = tmp_path / "plugins/my-skill"
+        plugin_skill.mkdir(parents=True)
+        (plugin_skill / "SKILL.md").write_text("plugin")
+
+        class FakeHook:
+            def pynchy_skill_paths(self):
+                return [[str(plugin_skill)]]
+
+        class FakePM(pluggy.PluginManager):
+            hook = FakeHook()
+
+            def __init__(self):
+                pass
+
+        session_dir = tmp_path / "session/.claude"
+        with _patch_settings(tmp_path):
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["*"],
+            )
+            personalized = tmp_path / "data/personalization/skills/my-skill"
+            personalized.mkdir(parents=True)
+            (personalized / "SKILL.md").write_text(
+                "---\nname: my-skill\ntier: learned\n---\npersonalized"
+            )
+            sync_skills(
+                session_dir,
+                project_root=tmp_path,
+                plugin_manager=FakePM(),
+                workspace_skills=["*"],
+            )
+
+        assert "personalized" in (session_dir / "skills/my-skill/SKILL.md").read_text()
+
     def test_skips_nonexistent_plugin_skill_path(self, tmp_path: Path):
         """Plugin skill paths that don't exist are skipped with a warning."""
         session_dir = tmp_path / "session" / ".claude"
@@ -3155,55 +3153,34 @@ class TestSyncSkills:
 
         assert not (session_dir / "skills" / "legacy").exists()
 
-    def test_learned_skills_are_synced_when_learned_tier_selected(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
+    def test_personalized_skill_syncs_full_tree(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/remember-routing"
+        references = skill / "references"
+        references.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
             "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
         )
-        (learned_skill / "notes.md").write_text("Use the right queue.")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
+        (references / "runbook.md").write_text("Use the right queue.")
+        session_dir = tmp_path / "session/.claude"
 
         with _patch_settings(tmp_path):
             sync_skills(
                 session_dir,
                 project_root=tmp_path,
                 workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
             )
 
-        skill_dst = session_dir / "skills" / "remember-routing"
-        assert (skill_dst / "SKILL.md").exists()
-        assert (skill_dst / "notes.md").read_text() == "Use the right queue."
+        copied = session_dir / "skills/remember-routing"
+        assert (copied / "references/runbook.md").read_text() == "Use the right queue."
+        assert (copied / ".pynchy-personalized-skill").is_file()
 
-    def test_learned_skills_are_synced_when_all_skills_selected(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "obsidian-filer"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
+    def test_denied_personalized_skill_is_not_injected(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/obsidian-filer"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
             "---\nname: obsidian-filer\ntier: learned\n---\n# Obsidian Filer\n"
         )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["*"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert (session_dir / "skills" / "obsidian-filer" / "SKILL.md").exists()
-
-    def test_denied_learned_skill_is_not_injected(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "obsidian-filer"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: obsidian-filer\ntier: learned\n---\n# Obsidian Filer\n"
-        )
-        session_dir = tmp_path / "session" / ".codex"
-        session_dir.mkdir(parents=True)
+        session_dir = tmp_path / "session/.codex"
 
         with _patch_settings(tmp_path):
             sync_skills(
@@ -3211,390 +3188,89 @@ class TestSyncSkills:
                 project_root=tmp_path,
                 workspace_skills=["*"],
                 denied_skill_names=["obsidian-filer"],
-                learned_skill_paths=[learned_skill],
             )
 
-        assert not (session_dir / "skills" / "obsidian-filer").exists()
+        assert not (session_dir / "skills/obsidian-filer").exists()
 
-    def test_learned_skills_are_not_synced_when_workspace_skills_is_none(
-        self,
-        tmp_path: Path,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
+    def test_personalized_skill_overrides_public_default(self, tmp_path: Path):
+        default = tmp_path / "data/defaults/skills/shared-name"
+        personalized = tmp_path / "data/personalization/skills/shared-name"
+        default.mkdir(parents=True)
+        personalized.mkdir(parents=True)
+        (default / "SKILL.md").write_text("default")
+        (personalized / "SKILL.md").write_text(
+            "---\nname: shared-name\ntier: learned\n---\npersonalized"
         )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
+        session_dir = tmp_path / "session/.claude"
 
         with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=None,
-                learned_skill_paths=[learned_skill],
-            )
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["*"])
 
-        assert not (session_dir / "skills" / "remember-routing").exists()
+        copied = session_dir / "skills/shared-name/SKILL.md"
+        assert "personalized" in copied.read_text()
 
-    @pytest.mark.parametrize(
-        "frontmatter",
-        [
-            "---\nname: remember-routing\n---\n# Remember Routing\n",
-            "---\nname: remember-routing\ntier: community\n---\n# Remember Routing\n",
-        ],
-    )
-    def test_learned_skill_source_tier_does_not_select_from_matching_nonlearned_tier(
-        self,
-        tmp_path: Path,
-        frontmatter: str,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(frontmatter)
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["community"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-
-    @pytest.mark.parametrize(
-        "frontmatter",
-        [
-            "---\nname: remember-routing\n---\n# Remember Routing\n",
-            "---\nname: remember-routing\ntier: community\n---\n# Remember Routing\n",
-        ],
-    )
-    def test_learned_skill_source_tier_is_normalized_for_learned_selection(
-        self,
-        tmp_path: Path,
-        frontmatter: str,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(frontmatter)
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
-
-    def test_learned_skill_name_selects_learned_namespace(
-        self,
-        tmp_path: Path,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: ops\n---\n# Remember Routing\n"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["remember-routing"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert (session_dir / "skills" / "remember-routing" / "SKILL.md").exists()
-
-    def test_learned_skill_collision_is_skipped_and_logged(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        default_skill = tmp_path / "data" / "defaults" / "skills" / "shared-name"
-        default_skill.mkdir(parents=True)
-        (default_skill / "SKILL.md").write_text("default")
-
-        learned_skill = tmp_path / "vault-skills" / "shared-name"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: shared-name\ntier: learned\n---\nlearned"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        caplog.set_level(logging.WARNING)
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["*"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
-        assert copied_skill.read_text() == "default"
-        assert "Skipping learned skill" in caplog.text
-        assert "collision" in caplog.text
-
-    def test_learned_skill_resync_updates_prior_learned_copy(self, tmp_path: Path):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        notes = learned_skill / "notes.md"
-        notes.write_text("first version")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-            notes.write_text("second version")
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        skill_dst = session_dir / "skills" / "remember-routing"
-        assert (skill_dst / "notes.md").read_text() == "second version"
-
-    def test_learned_skill_removed_from_vault_prunes_prior_managed_copy(
-        self,
-        tmp_path: Path,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-            shutil.rmtree(learned_skill)
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-
-    @pytest.mark.parametrize("workspace_skills", [None, ["core"]])
-    def test_deselected_learned_skills_prune_prior_managed_copy(
-        self,
-        tmp_path: Path,
-        workspace_skills: list[str] | None,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=workspace_skills,
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-
-    def test_symlinked_marker_destination_is_not_pruned_or_overwritten(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        session_dir = tmp_path / "session" / ".claude"
-        skills_dst = session_dir / "skills"
-        skills_dst.mkdir(parents=True)
-        target = tmp_path / "external-managed-skill"
-        target.mkdir()
-        (target / ".pynchy-learned-skill").write_text("managed by pynchy\n")
-        (target / "payload.md").write_text("external content")
-        symlink_dst = skills_dst / "remember-routing"
-        symlink_dst.symlink_to(target, target_is_directory=True)
-
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        (learned_skill / "payload.md").write_text("vault content")
-
-        caplog.set_level(logging.WARNING)
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[],
-            )
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert symlink_dst.is_symlink()
-        assert symlink_dst.resolve() == target.resolve()
-        assert (target / "payload.md").read_text() == "external content"
-        assert "collision" in caplog.text
-
-    def test_learned_skill_copy_failure_is_skipped_and_logged(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: remember-routing\ntier: learned\n---\n# Remember Routing\n"
-        )
-        (learned_skill / "notes.md").write_text("Use the right queue.")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        caplog.set_level(logging.WARNING)
-        with (
-            _patch_settings(tmp_path),
-            patch(
-                "pynchy.host.container_manager.session_prep.shutil.copy2",
-                side_effect=OSError("copy denied"),
-            ),
-        ):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                workspace_skills=["learned"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        assert not (session_dir / "skills" / "remember-routing").exists()
-        assert "Skipping learned skill" in caplog.text
-        assert "copy denied" in caplog.text
-
-    def test_learned_skill_collision_with_plugin_is_skipped_and_logged(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ):
-        plugin_skill = tmp_path / "plugins" / "shared-name"
-        plugin_skill.mkdir(parents=True)
-        (plugin_skill / "SKILL.md").write_text("plugin")
-
-        learned_skill = tmp_path / "vault-skills" / "shared-name"
-        learned_skill.mkdir(parents=True)
-        (learned_skill / "SKILL.md").write_text(
-            "---\nname: shared-name\ntier: learned\n---\nlearned"
-        )
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        class FakeHook:
-            def pynchy_skill_paths(self):
-                return [[str(plugin_skill)]]
-
-        class FakePM(pluggy.PluginManager):
-            hook = FakeHook()
-
-            def __init__(self):
-                pass
-
-        caplog.set_level(logging.WARNING)
-        with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                plugin_manager=FakePM(),
-                workspace_skills=["*"],
-                learned_skill_paths=[learned_skill],
-            )
-
-        copied_skill = session_dir / "skills" / "shared-name" / "SKILL.md"
-        assert copied_skill.read_text() == "plugin"
-        assert "Skipping learned skill" in caplog.text
-        assert "collision" in caplog.text
-
-    def test_learned_skill_replaces_plugin_copy_from_the_same_vault_source(
-        self,
-        tmp_path: Path,
-    ):
-        """Warm refreshes must update a global skill also exported by a plugin."""
-        learned_skill = tmp_path / "vault-skills" / "remember-routing"
-        learned_skill.mkdir(parents=True)
-        skill_md = learned_skill / "SKILL.md"
+    def test_personalized_skill_refresh_updates_and_prunes(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/remember-routing"
+        skill.mkdir(parents=True)
+        skill_md = skill / "SKILL.md"
         skill_md.write_text("---\nname: remember-routing\ntier: learned\n---\n# First Version\n")
-        session_dir = tmp_path / "session" / ".claude"
-        session_dir.mkdir(parents=True)
-
-        class FakeHook:
-            def pynchy_skill_paths(self):
-                return [[str(learned_skill)]]
-
-        class FakePM(pluggy.PluginManager):
-            hook = FakeHook()
-
-            def __init__(self):
-                pass
+        session_dir = tmp_path / "session/.claude"
 
         with _patch_settings(tmp_path):
-            sync_skills(
-                session_dir,
-                project_root=tmp_path,
-                plugin_manager=FakePM(),
-                workspace_skills=["remember-routing"],
-                learned_skill_paths=[learned_skill],
-            )
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["learned"])
             skill_md.write_text(
                 "---\nname: remember-routing\ntier: learned\n---\n# Updated Version\n"
             )
-            refresh_learned_skills(
+            refresh_personalized_skills(
                 session_dir,
-                workspace_skills=["remember-routing"],
+                project_root=tmp_path,
+                workspace_skills=["learned"],
                 denied_skill_names=None,
-                learned_skill_paths=[learned_skill],
+            )
+            assert (
+                "# Updated Version"
+                in (session_dir / "skills/remember-routing/SKILL.md").read_text()
             )
 
-        skill_dst = session_dir / "skills/remember-routing"
-        assert (skill_dst / ".pynchy-learned-skill").is_file()
-        assert "# Updated Version" in (skill_dst / "SKILL.md").read_text()
+            shutil.rmtree(skill)
+            refresh_personalized_skills(
+                session_dir,
+                project_root=tmp_path,
+                workspace_skills=["learned"],
+                denied_skill_names=None,
+            )
+
+        assert not (session_dir / "skills/remember-routing").exists()
+
+    def test_personalized_skill_with_symlink_is_not_injected(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/linked"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: linked\ntier: learned\n---\n")
+        (skill / "outside").symlink_to(tmp_path / "outside")
+        session_dir = tmp_path / "session/.claude"
+
+        with _patch_settings(tmp_path):
+            sync_skills(session_dir, project_root=tmp_path, workspace_skills=["learned"])
+
+        assert not (session_dir / "skills/linked").exists()
+
+    def test_personalized_skill_does_not_replace_session_symlink(self, tmp_path: Path):
+        skill = tmp_path / "data/personalization/skills/linked"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: linked\ntier: learned\n---\n")
+        session_skill = tmp_path / "session/.claude/skills/linked"
+        session_skill.parent.mkdir(parents=True)
+        session_skill.symlink_to(tmp_path / "outside")
+
+        with (
+            _patch_settings(tmp_path),
+            pytest.raises(ValueError, match="collision"),
+        ):
+            sync_skills(
+                tmp_path / "session/.claude",
+                project_root=tmp_path,
+                workspace_skills=["learned"],
+            )
 
 
 # ---------------------------------------------------------------------------

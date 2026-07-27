@@ -1,4 +1,4 @@
-"""Prepare the per-workspace agent homes that expose learned skills."""
+"""Prepare per-workspace agent homes from canonical skill sources."""
 
 from __future__ import annotations
 
@@ -11,12 +11,11 @@ if TYPE_CHECKING:
 
 from pynchy.config import get_settings
 from pynchy.host.container_manager.session_prep import (
-    refresh_learned_skills,
+    refresh_personalized_skills,
     sync_skills,
     write_settings_json,
 )
 from pynchy.host.learning.paths import LearningConfigError, LearningPaths, resolve_learning_paths
-from pynchy.host.learning.skills import iter_learned_skill_dirs
 from pynchy.host.orchestrator.workspace_config import load_resolved_config
 
 _LEARNING_VAULT_DIRECTORY_REQUIRED_ERROR = (
@@ -38,10 +37,10 @@ def prepare_agent_homes(
     group_folder: str,
     plugin_manager: pluggy.PluginManager | None = None,
 ) -> PreparedAgentHomes:
-    """Sync selected and learned skills into the workspace's agent homes.
+    """Sync selected canonical skills into the workspace's agent homes.
 
     Both cold starts and warm follow-ups use the same bind-mounted homes. Refreshing
-    them before each turn makes skills written by the parallel reviewer available on
+    personalized skills before each turn makes reviewer updates available on
     the next turn without restarting the session.
     """
     settings = get_settings()
@@ -50,14 +49,12 @@ def prepare_agent_homes(
         group_folder,
         profile_override=_learning_profile_override_for_group(group_folder),
     )
-    learned_skill_paths: list[Path] | None = None
     if learning_paths is not None:
         _validate_learning_vault(learning_paths.vault_root)
         learning_paths.memory_root.mkdir(parents=True, exist_ok=True)
-        # Learned skills stay global so profiles can deliberately share them.
-        # The resolved `skills` list is the profile's allowlist; do not add a
-        # learned tier implicitly. Keep docs/usage/memory.md aligned.
-        learned_skill_paths = iter_learned_skill_dirs(group_folder)
+
+    personalization_skills = settings.project_root / "data" / "personalization" / "skills"
+    personalization_skills.mkdir(parents=True, exist_ok=True)
 
     session_root = settings.data_dir / "sessions" / group_folder
     claude_home = session_root / ".claude"
@@ -69,7 +66,6 @@ def prepare_agent_homes(
         plugin_manager=plugin_manager,
         workspace_skills=workspace_skills,
         denied_skill_names=denied_skill_names,
-        learned_skill_paths=learned_skill_paths,
     )
 
     codex_home = session_root / ".codex"
@@ -80,7 +76,6 @@ def prepare_agent_homes(
         plugin_manager=plugin_manager,
         workspace_skills=workspace_skills,
         denied_skill_names=denied_skill_names,
-        learned_skill_paths=learned_skill_paths,
     )
     return PreparedAgentHomes(
         claude_home=claude_home,
@@ -89,25 +84,17 @@ def prepare_agent_homes(
     )
 
 
-def refresh_learned_agent_skills(group_folder: str) -> None:
-    """Expose skills the parallel reviewer wrote since the last agent turn."""
-    learning_paths = resolve_learning_paths(
-        group_folder,
-        profile_override=_learning_profile_override_for_group(group_folder),
-    )
-    if learning_paths is None:
-        return
-
-    _validate_learning_vault(learning_paths.vault_root)
+def refresh_personalized_agent_skills(group_folder: str) -> None:
+    """Expose personalization skill updates on the next agent turn."""
     workspace_skills, denied_skill_names = _workspace_skill_policy(group_folder)
-    learned_skill_paths = iter_learned_skill_dirs(group_folder)
-    session_root = get_settings().data_dir / "sessions" / group_folder
+    settings = get_settings()
+    session_root = settings.data_dir / "sessions" / group_folder
     for agent_home in (session_root / ".claude", session_root / ".codex"):
-        refresh_learned_skills(
+        refresh_personalized_skills(
             agent_home,
+            project_root=settings.project_root,
             workspace_skills=workspace_skills,
             denied_skill_names=denied_skill_names,
-            learned_skill_paths=learned_skill_paths,
         )
 
 

@@ -22,17 +22,12 @@ from pynchy.logger import logger
 
 _DEFAULT_TIER = "community"
 _PLUGIN_SKILL_MARKER = ".pynchy-plugin-skill"
-_LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
+_PERSONALIZED_SKILL_MARKER = ".pynchy-personalized-skill"
+_LEGACY_LEARNED_SKILL_MARKER = ".pynchy-learned-skill"
 _SKILL_NAME_COLLISION_ERROR = (
     "Skill name collision: skill '{skill_name}' conflicts with an existing skill. "
     "Rename the plugin skill directory to avoid shadowing a default or other plugin skill."
 )
-_LEARNED_SKILL_SYMLINK_ERROR = "learned skill file is a symlink: {path}"
-_LEARNED_SKILL_ESCAPE_ERROR = "learned skill file escapes skill dir: {path}"
-
-
-class _LearnedSkillSyncError(Exception):
-    pass
 
 
 def parse_skill_tier(skill_dir: Path) -> tuple[str, str]:
@@ -95,78 +90,63 @@ def is_skill_selected(name: str, tier: str, workspace_skills: list[str] | None) 
 # ---------------------------------------------------------------------------
 
 
-def sync_skills(  # noqa: PLR0913, RUF100 - requires explicit plugin, workspace, and learned-skill inputs.
+def sync_skills(
     session_dir: Path,
     *,
     project_root: Path,
     plugin_manager: pluggy.PluginManager | None = None,
     workspace_skills: list[str] | None = None,
     denied_skill_names: list[str] | None = None,
-    learned_skill_paths: list[Path] | None = None,
 ) -> None:
-    """Copy configured defaults and plugin skills into the session directory.
+    """Copy selected canonical skills into one generated agent registry.
 
     Args:
         session_dir: Path to the agent home directory for this session
         plugin_manager: Optional pluggy.PluginManager for plugin skills
         workspace_skills: Skill tier/name filter from workspace config; None = core only
-        learned_skill_paths: Optional learned skill directories from the Obsidian vault
     """
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
 
+    _sync_configured_skills(
+        project_root / "data" / "defaults" / "skills",
+        skills_dst,
+        workspace_skills,
+    )
+    refresh_personalized_skills(
+        session_dir,
+        project_root=project_root,
+        workspace_skills=workspace_skills,
+        denied_skill_names=denied_skill_names,
+    )
     # Tool-associated skills cross this boundary through their owning plugin,
     # keeping built-in and third-party plugins equally pluggable.
-    for skills_src in (
-        project_root / "data" / "defaults" / "skills",
-        project_root / "data" / "personalization" / "skills",
-    ):
-        _sync_configured_skills(skills_src, skills_dst, workspace_skills)
     _sync_plugin_skills(skills_dst, plugin_manager, workspace_skills, project_root)
 
-    desired_learned_skill_names = _selected_learned_skill_names(
-        learned_skill_paths,
-        workspace_skills,
-        denied_skill_names,
-    )
-    _prune_stale_learned_skill_copies(skills_dst, desired_learned_skill_names)
 
-    if learned_skill_paths and workspace_skills is not None:
-        _sync_learned_skills(
-            skills_dst,
-            learned_skill_paths,
-            workspace_skills,
-            denied_skill_names or [],
-        )
-
-
-def refresh_learned_skills(
+def refresh_personalized_skills(
     session_dir: Path,
     *,
+    project_root: Path,
     workspace_skills: list[str] | None,
     denied_skill_names: list[str] | None,
-    learned_skill_paths: list[Path] | None,
 ) -> None:
-    """Refresh only vault-backed skills in an already-prepared agent home.
-
-    Warm sessions do not need their built-in or plugin skills rebuilt.
-    They do need the reviewer output that appeared after their container started.
-    """
+    """Refresh canonical personalization skills in an existing agent home."""
     skills_dst = session_dir / "skills"
     skills_dst.mkdir(parents=True, exist_ok=True)
-    desired_learned_skill_names = _selected_learned_skill_names(
-        learned_skill_paths,
+    skills_src = project_root / "data" / "personalization" / "skills"
+    desired_names = _selected_personalized_skill_names(
+        skills_src,
         workspace_skills,
         denied_skill_names,
     )
-    _prune_stale_learned_skill_copies(skills_dst, desired_learned_skill_names)
-    if learned_skill_paths and workspace_skills is not None:
-        _sync_learned_skills(
-            skills_dst,
-            learned_skill_paths,
-            workspace_skills,
-            denied_skill_names or [],
-        )
+    _prune_stale_personalized_skill_copies(skills_dst, desired_names)
+    _sync_personalized_skills(
+        skills_src,
+        skills_dst,
+        workspace_skills,
+        denied_skill_names or [],
+    )
 
 
 def _sync_configured_skills(
@@ -196,7 +176,7 @@ def _sync_configured_skill_dir(
     dst_dir = skills_dst / skill_dir.name
     if dst_dir.exists():
         shutil.rmtree(dst_dir)
-    _copy_direct_skill_files(skill_dir, dst_dir)
+    shutil.copytree(skill_dir, dst_dir)
 
 
 def _sync_plugin_skills(
@@ -257,10 +237,11 @@ def _sync_plugin_skill_path(
 
 def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path, project_root: Path) -> None:
     dst_dir = skills_dst / skill_path.name
-    if (
-        _is_learned_skill_copy(dst_dir)
-        or _is_plugin_skill_copy_from(dst_dir, skill_path)
-        or _is_unmarked_plugin_skill_copy(dst_dir, skill_path, project_root)
+    if _is_marked_skill_copy(dst_dir, _PERSONALIZED_SKILL_MARKER):
+        logger.info("Personalized skill overrides plugin skill", skill=skill_path.name)
+        return
+    if _is_plugin_skill_copy_from(dst_dir, skill_path) or _is_unmarked_plugin_skill_copy(
+        dst_dir, skill_path, project_root
     ):
         shutil.rmtree(dst_dir)
     if dst_dir.exists():
@@ -271,14 +252,7 @@ def _copy_plugin_skill_path(skill_path: Path, skills_dst: Path, project_root: Pa
     logger.info("Synced plugin skill", skill=skill_path.name)
 
 
-def _copy_direct_skill_files(skill_dir: Path, dst_dir: Path) -> None:
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for f in skill_dir.iterdir():
-        if f.is_file():
-            shutil.copy2(f, dst_dir / f.name)
-
-
-def _is_learned_skill_copy(dst_dir: Path) -> bool:
+def _is_marked_skill_copy(dst_dir: Path, marker_name: str) -> bool:
     try:
         dst_stat = dst_dir.lstat()
     except OSError:
@@ -286,19 +260,12 @@ def _is_learned_skill_copy(dst_dir: Path) -> bool:
     if not stat.S_ISDIR(dst_stat.st_mode):
         return False
 
-    marker = dst_dir / _LEARNED_SKILL_MARKER
+    marker = dst_dir / marker_name
     try:
         marker_stat = marker.lstat()
     except OSError:
         return False
     return stat.S_ISREG(marker_stat.st_mode)
-
-
-def _default_skill_dirs(project_root: Path, name: str) -> tuple[Path, ...]:
-    return (
-        project_root / "data" / "defaults" / "skills" / name,
-        project_root / "data" / "personalization" / "skills" / name,
-    )
 
 
 def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
@@ -326,142 +293,100 @@ def _is_plugin_skill_copy_from(dst_dir: Path, skill_path: Path) -> bool:
 def _is_unmarked_plugin_skill_copy(dst_dir: Path, skill_path: Path, project_root: Path) -> bool:
     if not dst_dir.exists() or not dst_dir.is_dir():
         return False
-    marker = dst_dir / _PLUGIN_SKILL_MARKER
-    if marker.exists():
+    if (dst_dir / _PLUGIN_SKILL_MARKER).exists():
         return False
-
     if any(path.name.startswith(".pynchy-") for path in dst_dir.iterdir()):
         return False
+    configured_sources = (
+        project_root / "data/defaults/skills" / skill_path.name,
+        project_root / "data/personalization/skills" / skill_path.name,
+    )
+    return not any(path.exists() for path in configured_sources)
 
-    return not any(path.exists() for path in _default_skill_dirs(project_root, skill_path.name))
 
-
-def _selected_learned_skill_names(
-    learned_skill_paths: list[Path] | None,
+def _selected_personalized_skill_names(
+    skills_src: Path,
     workspace_skills: list[str] | None,
     denied_skill_names: list[str] | None,
 ) -> set[str]:
-    if learned_skill_paths is None or workspace_skills is None:
+    if not skills_src.is_dir():
         return set()
 
     selected_names: set[str] = set()
     denied = set(denied_skill_names or [])
-    for skill_path in learned_skill_paths:
-        if not skill_path.exists() or not skill_path.is_dir():
+    for skill_path in skills_src.iterdir():
+        if (
+            not skill_path.exists()
+            or not skill_path.is_dir()
+            or _skill_tree_contains_symlink(skill_path)
+        ):
             continue
 
-        name, _tier = parse_skill_tier(skill_path)
-        if name not in denied and is_skill_selected(name, "learned", workspace_skills):
+        name, tier = parse_skill_tier(skill_path)
+        if name not in denied and is_skill_selected(name, tier, workspace_skills):
             selected_names.add(skill_path.name)
 
     return selected_names
 
 
-def _prune_stale_learned_skill_copies(skills_dst: Path, desired_names: set[str]) -> None:
+def _prune_stale_personalized_skill_copies(skills_dst: Path, desired_names: set[str]) -> None:
     for dst_dir in sorted(skills_dst.iterdir(), key=lambda path: path.name):
-        if dst_dir.name in desired_names:
+        personalized = _is_marked_skill_copy(dst_dir, _PERSONALIZED_SKILL_MARKER)
+        legacy_learned = _is_marked_skill_copy(dst_dir, _LEGACY_LEARNED_SKILL_MARKER)
+        if personalized and dst_dir.name in desired_names:
             continue
-        if not _is_learned_skill_copy(dst_dir):
+        if not personalized and not legacy_learned:
             continue
 
         try:
             shutil.rmtree(dst_dir)
         except OSError as exc:
             logger.warning(
-                "Failed to prune stale learned skill",
+                "Failed to prune stale personalized skill",
                 skill=dst_dir.name,
                 path=str(dst_dir),
                 err=str(exc),
             )
 
 
-def _sync_learned_skills(
+def _sync_personalized_skills(
+    skills_src: Path,
     skills_dst: Path,
-    learned_skill_paths: list[Path],
-    workspace_skills: list[str],
+    workspace_skills: list[str] | None,
     denied_skill_names: list[str],
 ) -> None:
-    # Learned skill collisions are non-fatal because vault content should not
-    # be able to break startup.
-    for skill_path in learned_skill_paths:
-        if not skill_path.exists() or not skill_path.is_dir():
-            logger.warning(
-                "Skipping learned skill",
-                path=str(skill_path),
-                reason="not a directory",
-            )
+    if not skills_src.is_dir():
+        return
+    for skill_path in skills_src.iterdir():
+        contains_symlink = _skill_tree_contains_symlink(skill_path)
+        if not skill_path.is_dir() or contains_symlink:
+            if contains_symlink:
+                logger.warning(
+                    "Skipping personalized skill containing symlinks",
+                    path=str(skill_path),
+                )
             continue
-
-        name, _tier = parse_skill_tier(skill_path)
-        if name in denied_skill_names or not is_skill_selected(name, "learned", workspace_skills):
+        name, tier = parse_skill_tier(skill_path)
+        if name in denied_skill_names or not is_skill_selected(name, tier, workspace_skills):
             logger.debug(
-                "Skipping learned skill (not selected)",
+                "Skipping personalized skill (not selected)",
                 skill=name,
-                tier="learned",
+                tier=tier,
             )
             continue
 
         dst_dir = skills_dst / skill_path.name
-        if (
-            dst_dir.exists()
-            and not _is_learned_skill_copy(dst_dir)
-            and not _is_plugin_skill_copy_from(dst_dir, skill_path)
-        ):
-            logger.warning(
-                "Skipping learned skill",
-                skill=skill_path.name,
-                path=str(skill_path),
-                reason="collision",
-            )
-            continue
-        # A vault plugin may export this exact source. The learned refresher
-        # owns that matching copy so reviewer edits reach current warm sessions.
-
-        try:
-            if dst_dir.exists():
-                shutil.rmtree(dst_dir)
-            _copy_learned_skill_files(skill_path, dst_dir)
-            (dst_dir / _LEARNED_SKILL_MARKER).write_text("managed by pynchy\n")
-        except (OSError, _LearnedSkillSyncError) as exc:
-            if dst_dir.exists():
-                shutil.rmtree(dst_dir, ignore_errors=True)
-            logger.warning(
-                "Skipping learned skill",
-                skill=skill_path.name,
-                path=str(skill_path),
-                reason="copy failed",
-                err=str(exc),
-            )
-            continue
-
-        logger.info("Synced learned skill", skill=skill_path.name)
+        if dst_dir.is_symlink():
+            raise ValueError(_SKILL_NAME_COLLISION_ERROR.format(skill_name=skill_path.name))
+        if dst_dir.exists():
+            shutil.rmtree(dst_dir)
+        shutil.copytree(skill_path, dst_dir)
+        (dst_dir / _PERSONALIZED_SKILL_MARKER).write_text("managed by pynchy\n")
+        logger.info("Synced personalized skill", skill=skill_path.name)
 
 
-def _copy_learned_skill_files(skill_dir: Path, dst_dir: Path) -> None:
-    resolved_skill_dir = skill_dir.resolve()
-    files = _validated_direct_learned_files(skill_dir, resolved_skill_dir)
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for f in files:
-        shutil.copy2(f, dst_dir / f.name)
-
-
-def _validated_direct_learned_files(skill_dir: Path, resolved_skill_dir: Path) -> list[Path]:
-    files: list[Path] = []
-    for f in sorted(skill_dir.iterdir(), key=lambda path: path.name):
-        if f.name == _LEARNED_SKILL_MARKER:
-            continue
-        if f.is_symlink():
-            raise _LearnedSkillSyncError(_LEARNED_SKILL_SYMLINK_ERROR.format(path=f))
-        if f.is_dir():
-            continue
-        if not f.is_file():
-            continue
-        try:
-            f.resolve(strict=True).relative_to(resolved_skill_dir)
-        except (OSError, ValueError) as exc:
-            raise _LearnedSkillSyncError(_LEARNED_SKILL_ESCAPE_ERROR.format(path=f)) from exc
-        files.append(f)
-    return files
+def _skill_tree_contains_symlink(skill_path: Path) -> bool:
+    return skill_path.is_symlink() or any(path.is_symlink() for path in skill_path.rglob("*"))
 
 
 def write_settings_json(session_dir: Path, *, project_root: Path) -> None:

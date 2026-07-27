@@ -39,7 +39,7 @@ async def test_persistent_skill_action_requires_an_ask_user_callback(tmp_path) -
 
     with (
         patch(
-            "pynchy.host.container_manager.ipc.handlers_skills.find_learned_skill_dir",
+            "pynchy.host.container_manager.ipc.handlers_skills.find_personalized_skill_dir",
             return_value=tmp_path / "obsidian-knowledge",
         ),
         patch(
