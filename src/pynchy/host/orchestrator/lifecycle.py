@@ -198,7 +198,9 @@ async def _initialize_core(app: PynchyApp) -> None:
 
     app.attach_observers(observer_plugins.attach_observers(app.event_bus))
 
-    await app.set_memory_provider(memory_plugins.get_memory_provider())
+    await app.set_memory_provider(
+        memory_plugins.get_memory_provider(get_settings().data_dir / "memories.db")
+    )
     await app.load_state()
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import cache
+from pathlib import Path  # noqa: TC003, RUF100 - beartype resolves this runtime annotation.
 from typing import Any
 
 import pluggy
@@ -31,7 +31,7 @@ from .backend import SqliteMemoryBackend
 __all__ = ["SqliteMemoryPlugin"]
 
 hookimpl = pluggy.HookimplMarker("pynchy")
-type _ActionDefinition = tuple[str, str, str, HostActionAccess, HostActionHandler]
+type _ActionDefinition = tuple[str, str, str, HostActionAccess]
 _DEFAULT_CATEGORY = "core"
 _DEFAULT_LIMIT = 5
 _MEMORY_TRUST = ServiceTrustConfig(
@@ -42,17 +42,12 @@ _MEMORY_TRUST = ServiceTrustConfig(
 )
 
 
-@cache
-def _get_backend() -> SqliteMemoryBackend:
-    return SqliteMemoryBackend()
-
-
 # ---------------------------------------------------------------------------
 # MCP service handlers (called by host IPC dispatcher)
 # ---------------------------------------------------------------------------
 
 
-async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
+async def _save_memory(backend: SqliteMemoryBackend, data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -68,7 +63,6 @@ async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
     if metadata is not None and not isinstance(metadata, dict):
         return {"error": "metadata must be an object"}
 
-    backend = _get_backend()
     result = await backend.save(
         group_folder=source_group,
         key=key,
@@ -79,7 +73,7 @@ async def _handle_save_memory(data: dict[str, Any]) -> dict[str, Any]:
     return {"result": result}
 
 
-async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
+async def _recall_memories(backend: SqliteMemoryBackend, data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -94,7 +88,6 @@ async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(limit, int):
         return {"error": "limit must be an integer"}
 
-    backend = _get_backend()
     results = await backend.recall(
         group_folder=source_group,
         query=query,
@@ -104,7 +97,7 @@ async def _handle_recall_memories(data: dict[str, Any]) -> dict[str, Any]:
     return {"result": {"memories": results, "count": len(results)}}
 
 
-async def _handle_forget_memory(data: dict[str, Any]) -> dict[str, Any]:
+async def _forget_memory(backend: SqliteMemoryBackend, data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -113,12 +106,11 @@ async def _handle_forget_memory(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(key, str) or not key:
         return {"error": "Missing required field: key"}
 
-    backend = _get_backend()
     result = await backend.forget(group_folder=source_group, key=key)
     return {"result": result}
 
 
-async def _handle_list_memories(data: dict[str, Any]) -> dict[str, Any]:
+async def _list_memories(backend: SqliteMemoryBackend, data: dict[str, Any]) -> dict[str, Any]:
     source_group = data.get("source_group")
     if not isinstance(source_group, str) or not source_group:
         return {"error": "Missing source_group"}
@@ -126,7 +118,6 @@ async def _handle_list_memories(data: dict[str, Any]) -> dict[str, Any]:
     if category is not None and not isinstance(category, str):
         return {"error": "category must be a string"}
 
-    backend = _get_backend()
     results = await backend.list_keys(
         group_folder=source_group,
         category=category,
@@ -140,34 +131,32 @@ _MEMORY_ACTIONS: tuple[_ActionDefinition, ...] = (
         "memory.save",
         "Create or update a memory in this workspace's isolated store.",
         HostActionAccess.WRITE,
-        _handle_save_memory,
     ),
     (
         "recall_memories",
         "memory.recall",
         "Search this workspace's isolated memories.",
         HostActionAccess.READ,
-        _handle_recall_memories,
     ),
     (
         "forget_memory",
         "memory.forget",
         "Delete a memory from this workspace's isolated store.",
         HostActionAccess.WRITE,
-        _handle_forget_memory,
     ),
     (
         "list_memories",
         "memory.list",
         "List keys in this workspace's isolated memory store.",
         HostActionAccess.READ,
-        _handle_list_memories,
     ),
 )
 
 
-def _memory_action(definition: _ActionDefinition) -> HostActionDescriptor:
-    tool_name, action_id, summary, access, handler = definition
+def _memory_action(
+    definition: _ActionDefinition, handler: HostActionHandler
+) -> HostActionDescriptor:
+    tool_name, action_id, summary, access = definition
     return HostActionDescriptor(
         capability=CapabilityDescriptor(
             id=CapabilityId(action_id),
@@ -192,20 +181,46 @@ def _memory_action(definition: _ActionDefinition) -> HostActionDescriptor:
     )
 
 
-MEMORY_HOST_ACTIONS = HostActionRegistration(
-    actions=tuple(_memory_action(action) for action in _MEMORY_ACTIONS)
-)
-
-
 class SqliteMemoryPlugin:
     """Plugin providing SQLite FTS5-backed persistent memory."""
 
+    def __init__(self, backend: SqliteMemoryBackend | None = None) -> None:
+        self._backend = backend
+
+    def _require_backend(self) -> SqliteMemoryBackend:
+        if self._backend is None:
+            raise RuntimeError(
+                "SQLite memory backend is unavailable before application initialization"
+            )
+        return self._backend
+
     @hookimpl
-    def pynchy_memory(self) -> SqliteMemoryBackend:
-        backend = _get_backend()
+    def pynchy_memory(self, database_path: Path) -> SqliteMemoryBackend:
+        if self._backend is None:
+            self._backend = SqliteMemoryBackend(database_path)
+        backend = self._backend
         logger.debug("SQLite memory backend provided")
         return backend
 
     @hookimpl
     def pynchy_service_handler(self) -> HostActionRegistration:
-        return MEMORY_HOST_ACTIONS
+        return HostActionRegistration(
+            actions=(
+                _memory_action(_MEMORY_ACTIONS[0], self._handle_save_memory),
+                _memory_action(_MEMORY_ACTIONS[1], self._handle_recall_memories),
+                _memory_action(_MEMORY_ACTIONS[2], self._handle_forget_memory),
+                _memory_action(_MEMORY_ACTIONS[3], self._handle_list_memories),
+            )
+        )
+
+    async def _handle_save_memory(self, data: dict[str, Any]) -> dict[str, Any]:
+        return await _save_memory(self._require_backend(), data)
+
+    async def _handle_recall_memories(self, data: dict[str, Any]) -> dict[str, Any]:
+        return await _recall_memories(self._require_backend(), data)
+
+    async def _handle_forget_memory(self, data: dict[str, Any]) -> dict[str, Any]:
+        return await _forget_memory(self._require_backend(), data)
+
+    async def _handle_list_memories(self, data: dict[str, Any]) -> dict[str, Any]:
+        return await _list_memories(self._require_backend(), data)
