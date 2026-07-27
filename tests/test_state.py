@@ -12,6 +12,7 @@ from freezegun import freeze_time
 from pynchy.host.orchestrator.temporal.schedules import agent_task_workflow_id
 from pynchy.state import (
     begin_in_flight_turn,
+    clear_in_flight_turn,
     clear_session,
     create_host_job,
     create_task,
@@ -44,6 +45,7 @@ from pynchy.state import (
     record_outbound,
     record_task_completion,
     resume_task,
+    resume_task_if_no_in_flight_turn,
     set_chat_cleared_at,
     set_last_group_sync,
     set_router_state,
@@ -1103,6 +1105,35 @@ class TestTaskAdvanced:
         assert resumed_again.superseded_occurrence_generation == 1
         assert agent_task_workflow_id(resumed_again) != resumed_workflow_id
         assert agent_task_workflow_id(resumed_again).endswith("-resume-2")
+
+    async def test_reconciler_resume_refuses_a_live_scheduled_turn(self):
+        task = replace(self._TASK_TEMPLATE, id="resume-guarded", status="paused")
+        await create_task(task)
+        await begin_in_flight_turn(
+            InFlightTurn(
+                turn_id="resume-guarded-turn",
+                chat_jid=task.chat_jid,
+                group_folder=task.group_folder,
+                work_kind=InFlightWorkKind.SCHEDULED,
+                input_messages=[],
+                input_start_cursor="",
+                input_end_cursor="",
+                started_at="2026-07-26T06:00:00+00:00",
+                task_id=task.id,
+            )
+        )
+
+        assert not await resume_task_if_no_in_flight_turn(task.id)
+        paused = await get_task_by_id(task.id)
+        assert paused is not None
+        assert paused.status == "paused"
+
+        await clear_in_flight_turn("resume-guarded-turn")
+
+        assert await resume_task_if_no_in_flight_turn(task.id)
+        active = await get_task_by_id(task.id)
+        assert active is not None
+        assert active.status == "active"
 
     async def test_resume_task_ignores_missing_and_non_paused_rows(self):
         completed = replace(

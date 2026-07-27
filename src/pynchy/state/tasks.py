@@ -216,6 +216,19 @@ async def cancel_task_and_checkpoint(task_id: str) -> None:
 
 async def resume_task(task_id: str) -> None:
     """Reactivate a task and begin one fresh circuit-breaker failure window."""
+    await _resume_paused_task(task_id, require_no_in_flight_turn=False)
+
+
+async def resume_task_if_no_in_flight_turn(task_id: str) -> bool:
+    """Reactivate a paused task only when no scheduled turn owns it."""
+    return await _resume_paused_task(task_id, require_no_in_flight_turn=True)
+
+
+async def _resume_paused_task(
+    task_id: str,
+    *,
+    require_no_in_flight_turn: bool,
+) -> bool:
     now = datetime.now(UTC).isoformat()
     async with atomic_write() as db:
         cursor = await db.execute(
@@ -238,11 +251,15 @@ async def resume_task(task_id: str) -> None:
                 occurrence_generation = occurrence_generation
                     + CASE WHEN schedule_type = 'once' THEN 1 ELSE 0 END
             WHERE id = ? AND status = 'paused'
+              AND (
+                  ? = 0
+                  OR NOT EXISTS (SELECT 1 FROM in_flight_turns WHERE task_id = ?)
+              )
             """,
-            (now, task_id),
+            (now, task_id, int(require_no_in_flight_turn), task_id),
         )
         if cursor.rowcount != 1:
-            return
+            return False
         await db.execute(
             """
             INSERT INTO task_run_logs (
@@ -254,6 +271,7 @@ async def resume_task(task_id: str) -> None:
             """,
             (task_id, now),
         )
+    return True
 
 
 async def rebind_task_root(task_id: str, *, group_folder: str, chat_jid: str) -> None:

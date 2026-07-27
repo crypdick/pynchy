@@ -54,6 +54,7 @@ from pynchy.state import (
     get_task_by_id,
     get_task_run_logs,
     get_work_item_execution_for_issue,
+    resume_task_if_no_in_flight_turn,
     update_task,
 )
 from pynchy.types import (
@@ -383,6 +384,16 @@ async def _admit_in_progress_issue(
         ),
     )
     active_task, admitted = await ensure_task_active(task, observed_at=context.observed_at)
+    if (
+        active_task.status == "paused"
+        and execution.task_id == active_task.id
+        and not _last_run_is_recent(active_task, context.observed_at)
+        and await resume_task_if_no_in_flight_turn(active_task.id)
+    ):
+        refreshed_task = await get_task_by_id(active_task.id)
+        if refreshed_task is not None and refreshed_task.status == "active":
+            active_task = refreshed_task
+            admitted = True
     await _bind_execution_task(execution, active_task)
     return active_task if admitted else None
 

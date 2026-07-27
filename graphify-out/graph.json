@@ -63640,7 +63640,7 @@
       "label": "LinearDecisionClient",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L76",
+      "source_location": "L77",
       "_origin": "ast"
     },
     {
@@ -63656,7 +63656,7 @@
       "label": ".query()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L77",
+      "source_location": "L78",
       "_origin": "ast"
     },
     {
@@ -63672,7 +63672,7 @@
       "label": ".get_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L80",
+      "source_location": "L81",
       "_origin": "ast"
     },
     {
@@ -63680,7 +63680,7 @@
       "label": ".create_comment()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L83",
+      "source_location": "L84",
       "_origin": "ast"
     },
     {
@@ -63688,7 +63688,7 @@
       "label": "DecisionIssue",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L88",
+      "source_location": "L89",
       "_origin": "ast"
     },
     {
@@ -63696,7 +63696,7 @@
       "label": ".from_payload()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L99",
+      "source_location": "L100",
       "_origin": "ast"
     },
     {
@@ -63704,7 +63704,7 @@
       "label": "_TaskAdmission",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L123",
+      "source_location": "L124",
       "_origin": "ast"
     },
     {
@@ -63712,7 +63712,7 @@
       "label": "DecisionAdmission",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L130",
+      "source_location": "L131",
       "_origin": "ast"
     },
     {
@@ -63720,7 +63720,7 @@
       "label": "_text()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L138",
+      "source_location": "L139",
       "_origin": "ast"
     },
     {
@@ -63728,7 +63728,7 @@
       "label": "linear_issue_conversation_id()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L147",
+      "source_location": "L148",
       "_origin": "ast"
     },
     {
@@ -63736,7 +63736,7 @@
       "label": "_report_plan_review_status()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L159",
+      "source_location": "L160",
       "_origin": "ast"
     },
     {
@@ -63744,7 +63744,7 @@
       "label": "_task_for_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "_origin": "ast"
     },
     {
@@ -63760,7 +63760,7 @@
       "label": "_execution_task_id()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L227",
+      "source_location": "L228",
       "_origin": "ast"
     },
     {
@@ -63768,7 +63768,7 @@
       "label": "_last_run_is_recent()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L233",
+      "source_location": "L234",
       "_origin": "ast"
     },
     {
@@ -63776,7 +63776,7 @@
       "label": "ensure_task_active()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L250",
+      "source_location": "L251",
       "_origin": "ast"
     },
     {
@@ -63784,7 +63784,7 @@
       "label": "_bind_execution_task()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L318",
+      "source_location": "L319",
       "_origin": "ast"
     },
     {
@@ -63792,7 +63792,7 @@
       "label": "decision_state_id()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L329",
+      "source_location": "L330",
       "_origin": "ast"
     },
     {
@@ -63800,7 +63800,7 @@
       "label": "_admit_in_progress_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "_origin": "ast"
     },
     {
@@ -63808,7 +63808,7 @@
       "label": "_admit_follow_ups_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L390",
+      "source_location": "L401",
       "_origin": "ast"
     },
     {
@@ -63816,7 +63816,7 @@
       "label": "_admit_human_approved_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "_origin": "ast"
     },
     {
@@ -63824,7 +63824,7 @@
       "label": "admit_decision_issue()",
       "file_type": "code",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "_origin": "ast"
     },
     {
@@ -63836,75 +63836,75 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_78",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_79",
       "label": "Run a Linear GraphQL query.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L78",
+      "source_location": "L79",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_81",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_82",
       "label": "Return one issue by its durable provider ID.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L81",
+      "source_location": "L82",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_84",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_85",
       "label": "Add one durable issue comment.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L84",
+      "source_location": "L85",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_151",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_152",
       "label": "Return or create the issue's sole routed runtime identity.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L151",
+      "source_location": "L152",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_165",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_166",
       "label": "Post actual plan-review state to the issue's existing control thread.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L165",
+      "source_location": "L166",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_255",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_256",
       "label": "Create missing work or reactivate a quiet orphan after a grace period.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L255",
+      "source_location": "L256",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_330",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_331",
       "label": "Return one required managed decision-state ID.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L330",
+      "source_location": "L331",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_488",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_499",
       "label": "Admit or recover one status-classified managed Linear issue.",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L488",
+      "source_location": "L499",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_69",
+      "id": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_70",
       "label": "# NOTE: Keep docs/integrations/linear.md \"Receive Linear callbacks\" aligned with",
       "file_type": "rationale",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L69",
+      "source_location": "L70",
       "_origin": "ast"
     },
     {
@@ -75940,11 +75940,27 @@
       "_origin": "ast"
     },
     {
+      "id": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "label": "resume_task_if_no_in_flight_turn()",
+      "file_type": "code",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L222",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_tasks_resume_paused_task",
+      "label": "_resume_paused_task()",
+      "file_type": "code",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L227",
+      "_origin": "ast"
+    },
+    {
       "id": "pynchy_state_tasks_rebind_task_root",
       "label": "rebind_task_root()",
       "file_type": "code",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L259",
+      "source_location": "L277",
       "_origin": "ast"
     },
     {
@@ -75952,7 +75968,7 @@
       "label": "delete_task()",
       "file_type": "code",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L273",
+      "source_location": "L291",
       "_origin": "ast"
     },
     {
@@ -75960,7 +75976,7 @@
       "label": "get_active_task_for_group()",
       "file_type": "code",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L281",
+      "source_location": "L299",
       "_origin": "ast"
     },
     {
@@ -75968,7 +75984,7 @@
       "label": "record_task_completion()",
       "file_type": "code",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L294",
+      "source_location": "L312",
       "_origin": "ast"
     },
     {
@@ -75976,7 +75992,7 @@
       "label": "log_task_run()",
       "file_type": "code",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L310",
+      "source_location": "L328",
       "_origin": "ast"
     },
     {
@@ -75984,7 +76000,7 @@
       "label": "get_task_run_logs()",
       "file_type": "code",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L340",
+      "source_location": "L358",
       "_origin": "ast"
     },
     {
@@ -76060,43 +76076,51 @@
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_tasks_rationale_260",
+      "id": "pynchy_state_tasks_rationale_223",
+      "label": "Reactivate a paused task only when no scheduled turn owns it.",
+      "file_type": "rationale",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L223",
+      "_origin": "ast"
+    },
+    {
+      "id": "pynchy_state_tasks_rationale_278",
       "label": "Move a config task to a replacement root workspace.",
       "file_type": "rationale",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L260",
+      "source_location": "L278",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_tasks_rationale_274",
+      "id": "pynchy_state_tasks_rationale_292",
       "label": "Delete a task, its run logs, and any unfinished agent checkpoint.",
       "file_type": "rationale",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L274",
+      "source_location": "L292",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_tasks_rationale_282",
+      "id": "pynchy_state_tasks_rationale_300",
       "label": "Find the active scheduled task for a periodic agent group.",
       "file_type": "rationale",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L282",
+      "source_location": "L300",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_tasks_rationale_295",
+      "id": "pynchy_state_tasks_rationale_313",
       "label": "Record task execution evidence without maintaining Temporal-owned timing.",
       "file_type": "rationale",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L295",
+      "source_location": "L313",
       "_origin": "ast"
     },
     {
-      "id": "pynchy_state_tasks_rationale_341",
+      "id": "pynchy_state_tasks_rationale_359",
       "label": "Return recent run logs for a scheduled task, newest first.",
       "file_type": "rationale",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L341",
+      "source_location": "L359",
       "_origin": "ast"
     },
     {
@@ -260444,7 +260468,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260455,7 +260479,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260465,7 +260489,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L76",
+      "source_location": "L77",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260475,7 +260499,7 @@
       "relation": "inherits",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L76",
+      "source_location": "L77",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260485,7 +260509,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L77",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260496,7 +260520,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L77",
+      "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260506,7 +260530,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L80",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260517,7 +260541,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L80",
+      "source_location": "L81",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260527,7 +260551,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L83",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260538,7 +260562,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L83",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260548,7 +260572,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L88",
+      "source_location": "L89",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260558,7 +260582,7 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L99",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260569,7 +260593,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L99",
+      "source_location": "L100",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260579,7 +260603,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L123",
+      "source_location": "L124",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260589,7 +260613,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L130",
+      "source_location": "L131",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260599,7 +260623,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L138",
+      "source_location": "L139",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260610,7 +260634,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L138",
+      "source_location": "L139",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260620,7 +260644,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L147",
+      "source_location": "L148",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260630,7 +260654,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L159",
+      "source_location": "L160",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260641,7 +260665,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L159",
+      "source_location": "L160",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260652,7 +260676,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L159",
+      "source_location": "L160",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260663,7 +260687,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L159",
+      "source_location": "L160",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260673,7 +260697,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260684,7 +260708,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260695,7 +260719,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260706,7 +260730,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260717,7 +260741,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260728,7 +260752,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L184",
+      "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260738,7 +260762,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L227",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260749,7 +260773,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L227",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260760,7 +260784,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L227",
+      "source_location": "L228",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260770,7 +260794,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L233",
+      "source_location": "L234",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260781,7 +260805,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L233",
+      "source_location": "L234",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260792,7 +260816,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L233",
+      "source_location": "L234",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260802,7 +260826,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L250",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260813,7 +260837,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L250",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260824,7 +260848,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L250",
+      "source_location": "L251",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260834,7 +260858,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L318",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260845,7 +260869,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L318",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260856,7 +260880,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L318",
+      "source_location": "L319",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260866,7 +260890,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L329",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260877,7 +260901,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L329",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260887,7 +260911,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260898,7 +260922,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260909,7 +260933,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260920,7 +260944,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260931,7 +260955,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260942,7 +260966,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L340",
+      "source_location": "L341",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260952,7 +260976,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L390",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260963,7 +260987,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L390",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260974,7 +260998,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L390",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260985,7 +261009,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L390",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -260996,7 +261020,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L390",
+      "source_location": "L401",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261006,7 +261030,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261017,7 +261041,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261028,7 +261052,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261039,7 +261063,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261050,7 +261074,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261061,7 +261085,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L413",
+      "source_location": "L424",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261071,7 +261095,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261082,7 +261106,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261093,7 +261117,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261104,7 +261128,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261115,7 +261139,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261126,7 +261150,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L481",
+      "source_location": "L492",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261137,7 +261161,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L111",
+      "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261148,7 +261172,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L169",
+      "source_location": "L170",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261159,7 +261183,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L209",
+      "source_location": "L210",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261170,7 +261194,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L223",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261181,7 +261205,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L276",
+      "source_location": "L277",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261192,7 +261216,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L375",
+      "source_location": "L376",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261203,7 +261227,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L379",
+      "source_location": "L380",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261214,7 +261238,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L382",
+      "source_location": "L383",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261225,7 +261249,18 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L385",
+      "source_location": "L386",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_admit_in_progress_issue",
+      "target": "pynchy_plugins_integrations_linear_work_item_tasks_last_run_is_recent",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
+      "source_location": "L390",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261236,7 +261271,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L386",
+      "source_location": "L397",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261247,7 +261282,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L403",
+      "source_location": "L414",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261258,7 +261293,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L407",
+      "source_location": "L418",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261269,7 +261304,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L409",
+      "source_location": "L420",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261280,7 +261315,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L422",
+      "source_location": "L433",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261291,7 +261326,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L454",
+      "source_location": "L465",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261302,7 +261337,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L458",
+      "source_location": "L469",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261313,7 +261348,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L476",
+      "source_location": "L487",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261324,7 +261359,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L477",
+      "source_location": "L488",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261335,7 +261370,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L490",
+      "source_location": "L501",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261346,7 +261381,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L492",
+      "source_location": "L503",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261357,7 +261392,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L493",
+      "source_location": "L504",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -261372,92 +261407,92 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_78",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_79",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_lineardecisionclient_query",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L78",
+      "source_location": "L79",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_81",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_82",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_lineardecisionclient_get_issue",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L81",
+      "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_84",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_85",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_lineardecisionclient_create_comment",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L84",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_151",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_152",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_linear_issue_conversation_id",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L151",
+      "source_location": "L152",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_165",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_166",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_report_plan_review_status",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L165",
+      "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_255",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_256",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_ensure_task_active",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L255",
+      "source_location": "L256",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_330",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_331",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_decision_state_id",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L330",
+      "source_location": "L331",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_488",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_499",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks_admit_decision_issue",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L488",
+      "source_location": "L499",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_69",
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_rationale_70",
       "target": "pynchy_plugins_integrations_linear_work_item_tasks",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L69",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283744,7 +283779,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283755,7 +283790,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L212",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283766,7 +283801,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L213",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283777,7 +283812,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283788,7 +283823,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L222",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283799,7 +283834,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L223",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -283810,7 +283845,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294688,11 +294723,31 @@
     },
     {
       "source": "pynchy_state_tasks",
+      "target": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L222",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_tasks",
+      "target": "pynchy_state_tasks_resume_paused_task",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L227",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_tasks",
       "target": "pynchy_state_tasks_rebind_task_root",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L259",
+      "source_location": "L277",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294702,7 +294757,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L273",
+      "source_location": "L291",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294712,7 +294767,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L281",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294723,7 +294778,7 @@
       "context": "return_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L281",
+      "source_location": "L299",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294733,7 +294788,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L294",
+      "source_location": "L312",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294743,7 +294798,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L310",
+      "source_location": "L328",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294754,7 +294809,7 @@
       "context": "parameter_type",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L310",
+      "source_location": "L328",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294764,7 +294819,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L340",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294775,7 +294830,7 @@
       "context": "generic_arg",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L340",
+      "source_location": "L358",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294835,13 +294890,35 @@
       "_origin": "ast"
     },
     {
+      "source": "pynchy_state_tasks_resume_task",
+      "target": "pynchy_state_tasks_resume_paused_task",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L219",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "target": "pynchy_state_tasks_resume_paused_task",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L224",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
       "source": "pynchy_state_tasks_get_active_task_for_group",
       "target": "pynchy_state_tasks_row_to_task",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L291",
+      "source_location": "L309",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294852,7 +294929,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L353",
+      "source_location": "L371",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -294947,52 +295024,62 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_tasks_rationale_260",
+      "source": "pynchy_state_tasks_rationale_223",
+      "target": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/tasks.py",
+      "source_location": "L223",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_tasks_rationale_278",
       "target": "pynchy_state_tasks_rebind_task_root",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L260",
+      "source_location": "L278",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_tasks_rationale_274",
+      "source": "pynchy_state_tasks_rationale_292",
       "target": "pynchy_state_tasks_delete_task",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L274",
+      "source_location": "L292",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_tasks_rationale_282",
+      "source": "pynchy_state_tasks_rationale_300",
       "target": "pynchy_state_tasks_get_active_task_for_group",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L282",
+      "source_location": "L300",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_tasks_rationale_295",
+      "source": "pynchy_state_tasks_rationale_313",
       "target": "pynchy_state_tasks_record_task_completion",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L295",
+      "source_location": "L313",
       "weight": 1.0,
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_tasks_rationale_341",
+      "source": "pynchy_state_tasks_rationale_359",
       "target": "pynchy_state_tasks_get_task_run_logs",
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L341",
+      "source_location": "L359",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301844,7 +301931,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301855,7 +301942,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L212",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301866,7 +301953,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L213",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301877,7 +301964,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301888,7 +301975,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L222",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301899,7 +301986,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L223",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -301910,7 +301997,7 @@
       "context": "export",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -328987,6 +329074,17 @@
     },
     {
       "source": "pynchy_plugins_integrations_linear_work_item_tasks",
+      "target": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks",
       "target": "pynchy_state_tasks_update_task",
       "relation": "imports",
       "context": "import",
@@ -329003,7 +329101,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -329014,7 +329112,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -329025,7 +329123,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -329036,7 +329134,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333805,6 +333903,17 @@
     },
     {
       "source": "pynchy_state_init",
+      "target": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/state/__init__.py",
+      "source_location": "L187",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_state_init",
       "target": "pynchy_state_tasks_update_task",
       "relation": "imports",
       "context": "import",
@@ -333821,7 +333930,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333832,7 +333941,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333843,7 +333952,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333854,7 +333963,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333865,7 +333974,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333876,7 +333985,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333887,7 +333996,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L203",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333898,7 +334007,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L212",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333909,7 +334018,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L212",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333920,7 +334029,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L212",
+      "source_location": "L213",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333931,7 +334040,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L213",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333942,7 +334051,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L213",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333953,7 +334062,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333964,7 +334073,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333975,7 +334084,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L222",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333986,7 +334095,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L223",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -333997,7 +334106,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L223",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334008,7 +334117,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L223",
+      "source_location": "L224",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334019,7 +334128,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334030,7 +334139,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334041,7 +334150,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334052,7 +334161,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334063,7 +334172,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334074,7 +334183,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334085,7 +334194,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334096,7 +334205,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334107,7 +334216,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334118,7 +334227,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -334129,7 +334238,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/__init__.py",
-      "source_location": "L228",
+      "source_location": "L229",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350838,7 +350947,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L152",
+      "source_location": "L153",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350849,7 +350958,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L155",
+      "source_location": "L156",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350860,7 +350969,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L172",
+      "source_location": "L173",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350871,7 +350980,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L204",
+      "source_location": "L205",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350882,7 +350991,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L256",
+      "source_location": "L257",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350893,7 +351002,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L258",
+      "source_location": "L259",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350904,7 +351013,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L267",
+      "source_location": "L268",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350915,7 +351024,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L281",
+      "source_location": "L282",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350926,7 +351035,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L322",
+      "source_location": "L323",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350937,7 +351046,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L325",
+      "source_location": "L326",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350948,7 +351057,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L346",
+      "source_location": "L347",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350959,7 +351068,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L348",
+      "source_location": "L349",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350970,7 +351079,29 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L349",
+      "source_location": "L350",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_admit_in_progress_issue",
+      "target": "pynchy_state_tasks_resume_task_if_no_in_flight_turn",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
+      "source_location": "L391",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "pynchy_plugins_integrations_linear_work_item_tasks_admit_in_progress_issue",
+      "target": "pynchy_state_tasks_get_task_by_id",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
+      "source_location": "L393",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350981,7 +351112,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L395",
+      "source_location": "L406",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -350992,7 +351123,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L419",
+      "source_location": "L430",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -351003,7 +351134,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L428",
+      "source_location": "L439",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -351014,7 +351145,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L461",
+      "source_location": "L472",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -351025,7 +351156,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L463",
+      "source_location": "L474",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353681,13 +353812,13 @@
       "_origin": "ast"
     },
     {
-      "source": "pynchy_state_tasks_resume_task",
+      "source": "pynchy_state_tasks_resume_paused_task",
       "target": "pynchy_state_connection_atomic_write",
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L220",
+      "source_location": "L233",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353698,7 +353829,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L261",
+      "source_location": "L279",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353709,7 +353840,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L275",
+      "source_location": "L293",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353720,7 +353851,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L283",
+      "source_location": "L301",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353731,7 +353862,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L296",
+      "source_location": "L314",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353742,7 +353873,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L312",
+      "source_location": "L330",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -353753,7 +353884,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "pynchy/state/tasks.py",
-      "source_location": "L342",
+      "source_location": "L360",
       "weight": 1.0,
       "_origin": "ast"
     },
@@ -371492,7 +371623,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371502,7 +371633,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371512,7 +371643,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371522,7 +371653,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371532,7 +371663,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371542,7 +371673,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371552,7 +371683,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371562,7 +371693,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371572,7 +371703,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371582,7 +371713,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371592,7 +371723,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371602,7 +371733,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L59",
+      "source_location": "L60",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371612,7 +371743,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371622,7 +371753,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371632,7 +371763,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 0.8,
       "_origin": "ast"
     },
@@ -371642,7 +371773,7 @@
       "relation": "uses",
       "confidence": "INFERRED",
       "source_file": "pynchy/plugins/integrations/linear_work_item_tasks.py",
-      "source_location": "L67",
+      "source_location": "L68",
       "weight": 0.8,
       "_origin": "ast"
     },
