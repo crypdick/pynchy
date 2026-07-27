@@ -170,7 +170,9 @@ async def _initialize_core(app: PynchyApp) -> None:
     """Plugins, gateway, database, observers, memory, state."""
     service_installer.install_service()
 
-    app.plugin_manager = get_plugin_manager()
+    app.plugin_manager = get_plugin_manager(
+        {name: plugin.enabled for name, plugin in get_settings().plugins.items()}
+    )
     initialize_host_action_catalog(app.plugin_manager)
     app.set_speech_synthesizer(speech_plugins.get_speech_synthesizer(app.plugin_manager))
     workspace_config.configure_plugin_workspaces(app.plugin_manager)

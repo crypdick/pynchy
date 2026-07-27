@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
-from conftest import make_settings
 from pydantic import ValidationError
 
 from pynchy.capabilities import (
@@ -16,7 +15,6 @@ from pynchy.capabilities import (
     HostActionHandler,
     ProbeStatus,
 )
-from pynchy.config import PluginConfig
 from pynchy.plugins import get_plugin_manager
 from pynchy.plugins.computer_use import (
     ComputerUseBackendAvailability,
@@ -101,12 +99,8 @@ def test_computer_use_surface_and_provider_plugins_are_registered() -> None:
 
 
 def test_provider_plugins_can_be_disabled_independently() -> None:
-    settings = make_settings(plugins={"peekaboo": PluginConfig(enabled=False)})
-    with (
-        patch("pynchy.plugins.registry.get_settings", return_value=settings),
-        patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0),
-    ):
-        pm = get_plugin_manager()
+    with patch("pluggy.PluginManager.load_setuptools_entrypoints", return_value=0):
+        pm = get_plugin_manager({"peekaboo": False})
 
     names = {pm.get_name(plugin) for plugin in pm.get_plugins()}
     assert "builtin-computer-use" in names
