@@ -9,7 +9,9 @@ from pynchy.host.container_manager.ipc.protocol import (  # noqa: TC001, RUF100 
 )
 from pynchy.types import (  # noqa: TC001, RUF100 - beartype resolves IPC dependency protocol signatures at runtime.
     Channel,
+    HostJob,
     OutboundEvent,
+    ScheduledTask,
     WorkspaceProfile,
 )
 
@@ -72,6 +74,63 @@ class IpcDeps(Protocol):
         source_group: str,
         is_admin: bool,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]: ...
+
+
+@runtime_checkable
+class PendingQuestionStore(Protocol):
+    """Persistence boundary for interactive questions raised over IPC."""
+
+    def create(  # noqa: PLR0913, RUF100 - file-backed payload mirrors the channel callback contract.
+        self,
+        *,
+        request_id: str,
+        source_group: str,
+        chat_jid: str,
+        channel_name: str,
+        session_id: str,
+        questions: list[dict[str, Any]],
+    ) -> None: ...
+
+    def update_message_id(self, request_id: str, source_group: str, message_id: str) -> None: ...
+
+    def resolve(self, request_id: str, source_group: str) -> None: ...
+
+
+@runtime_checkable
+class AskUserDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for interactive questions."""
+
+    def pending_question_store(self) -> PendingQuestionStore: ...
+
+
+@runtime_checkable
+class ScheduledWorkStore(Protocol):
+    """Persistence capability for IPC-owned scheduled work."""
+
+    async def create_task(self, task: ScheduledTask) -> None: ...
+
+    async def create_host_job(self, job: dict[str, Any]) -> None: ...
+
+    async def get_task_by_id(self, task_id: str) -> ScheduledTask | None: ...
+
+    async def get_host_job_by_id(self, job_id: str) -> HostJob | None: ...
+
+    async def update_task(self, task_id: str, updates: dict[str, Any]) -> None: ...
+
+    async def update_host_job(self, job_id: str, updates: dict[str, Any]) -> None: ...
+
+    async def resume_task(self, task_id: str) -> None: ...
+
+    async def delete_task(self, task_id: str) -> None: ...
+
+    async def delete_host_job(self, job_id: str) -> None: ...
+
+
+@runtime_checkable
+class TaskHandlerDeps(IpcDeps, Protocol):
+    """Narrow IPC dependency capability for scheduled-work handlers."""
+
+    def scheduled_work_store(self) -> ScheduledWorkStore: ...
 
 
 def resolve_chat_jid(source_group: str, deps: IpcDeps) -> str | None:

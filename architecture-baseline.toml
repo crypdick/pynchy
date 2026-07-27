@@ -121,14 +121,6 @@ imports = ["pynchy.state"]
 reason = "pynchy.host.container_manager.ipc.handlers_approval still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_ask_user"
-target_component = "application"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.host.orchestrator.messaging.pending_questions"]
-reason = "pynchy.host.container_manager.ipc.handlers_ask_user still has a runtime-import dependency on application; Introduce or narrow a use-case-owned port instead of importing a concrete application implementation."
-
-[[violations]]
 importer = "pynchy.host.container_manager.ipc.handlers_lifecycle"
 target_component = "config"
 kind = "runtime-import"
@@ -215,14 +207,6 @@ kind = "runtime-import"
 count = 1
 imports = ["pynchy.state"]
 reason = "pynchy.host.container_manager.ipc.handlers_source_health still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
-
-[[violations]]
-importer = "pynchy.host.container_manager.ipc.handlers_tasks"
-target_component = "state_adapter"
-kind = "runtime-import"
-count = 1
-imports = ["pynchy.state"]
-reason = "pynchy.host.container_manager.ipc.handlers_tasks still has a runtime-import dependency on state_adapter; Use a use-case-owned semantic persistence port and preserve transaction boundaries in the adapter implementation."
 
 [[violations]]
 importer = "pynchy.host.container_manager.ipc.input_processing"

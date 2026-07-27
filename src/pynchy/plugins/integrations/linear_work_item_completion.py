@@ -18,12 +18,14 @@ from pynchy.types import WorkItemExecution, WorkItemExecutionStatus
 
 
 async def complete_reviewed_work_item(
-    workspace: str,
+    execution_workspace: str,
     issue_id: str,
     delivery_id: str,
+    *,
+    controller_workspace: str | None = None,
 ) -> WorkItemExecution | None:
-    """Complete a linked execution after Linear reports the issue in Done."""
-    execution = await get_work_item_execution_for_issue(issue_id, workspace=workspace)
+    """Complete owner-local work against the board that reported Done."""
+    execution = await get_work_item_execution_for_issue(issue_id, workspace=execution_workspace)
     if execution is None:
         return None
     request_id = f"linear-review:{delivery_id}"
@@ -52,8 +54,9 @@ async def complete_reviewed_work_item(
             )
     else:
         return None
-    async with linear_client(workspace=workspace) as client:
-        resolved = await reconcile_work_item(client, workspace, issue_id, transition)
+    board_workspace = controller_workspace or execution_workspace
+    async with linear_client(workspace=board_workspace) as client:
+        resolved = await reconcile_work_item(client, board_workspace, issue_id, transition)
     if resolved.status is not WorkItemExecutionStatus.COMPLETED:
         raise LinearError("Linear review completion could not be reconciled")
     return resolved

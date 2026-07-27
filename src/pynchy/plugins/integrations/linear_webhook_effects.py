@@ -46,15 +46,16 @@ async def process_linear_webhook_event(event: WebhookEvent) -> WebhookEvent:
     if event.lifecycle is not None:
         # Terminal callbacks are completed at their durable FIFO head.
         return event
-    workspace = conversation.workspace
-    if workspace is None:
+    runtime_workspace = conversation.workspace
+    if runtime_workspace is None:
         raise WebhookProcessingError("Linear host effect has no resolved workspace")
+    controller_workspace = conversation.controller_workspace or runtime_workspace
     try:
-        if await _controller_owns_event(event, workspace):
+        if await _controller_owns_event(event, controller_workspace):
             # The periodic controller owns planning and authorized execution.
             # Persist its routed identity without admitting a second agent turn.
             # The controller task binds to this same conversation runtime.
-            await resolve_conversation(conversation.subject, GroupFolder(workspace))
+            await resolve_conversation(conversation.subject, GroupFolder(runtime_workspace))
             return replace(
                 event,
                 instructions=None,
@@ -95,12 +96,18 @@ async def process_linear_webhook_lifecycle(delivery: WebhookLifecycleDelivery) -
     ):
         return
     workspace = str(delivery.workspace)
+    controller_workspace = (
+        context.get("linear_controller_workspace", workspace) if context is not None else workspace
+    )
     if callback_state != managed_done_state:
+        return
+    if not isinstance(controller_workspace, str) or not controller_workspace:
         return
     await complete_reviewed_work_item(
         workspace,
         delivery.subject_id,
         str(delivery.identity.delivery_id),
+        controller_workspace=controller_workspace,
     )
 
 
@@ -119,8 +126,6 @@ async def _controller_owns_event(event: WebhookEvent, workspace: str) -> bool:
         in_progress_state_id = state_id(board.states["in_progress"])
         existing = await get_active_work_item_execution(event.subject_id)
         if existing is not None:
-            if existing.workspace != workspace:
-                raise WorkItemClaimConflictError(existing)
             return current_state_id in {approved_state_id, in_progress_state_id}
         latest = await get_work_item_execution_for_issue(event.subject_id, workspace=workspace)
         if (

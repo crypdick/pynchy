@@ -8,7 +8,11 @@ from pynchy.conversation.models import (
     ConversationSubjectKey,
     ConversationSubjectNamespace,
 )
-from pynchy.state import get_conversation_for_subject_key, resolve_conversation
+from pynchy.state import (
+    get_active_work_item_execution,
+    get_conversation_for_subject_key,
+    resolve_conversation,
+)
 from pynchy.types import GroupFolder
 
 
@@ -17,8 +21,10 @@ async def resolve_linear_issue_conversation(
     workspace: str,
     account_name: str,
 ) -> Conversation:
-    """Return or create the issue's sole routed runtime identity."""
-    group_folder = GroupFolder(workspace)
+    """Return one issue runtime, pinned to any active execution's workspace."""
+    execution = await get_active_work_item_execution(issue_id)
+    owner_workspace = execution.workspace if execution is not None else workspace
+    group_folder = GroupFolder(owner_workspace)
     existing = await get_conversation_for_subject_key(
         ConversationSubjectKey(issue_id),
         workspace=group_folder,

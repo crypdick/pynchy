@@ -15,21 +15,12 @@ from croniter import croniter
 
 from pynchy.host.container_manager.ipc.deps import (
     IpcDeps,  # noqa: TC001, RUF100 - beartype resolves task handler signatures at runtime.
+    ScheduledWorkStore,
+    TaskHandlerDeps,
 )
 from pynchy.host.container_manager.ipc.registry import register
 from pynchy.host.container_manager.security import cop_gate as cop_gate_module
 from pynchy.logger import logger
-from pynchy.state import (
-    create_host_job,
-    create_task,
-    delete_host_job,
-    delete_task,
-    get_host_job_by_id,
-    get_task_by_id,
-    resume_task,
-    update_host_job,
-    update_task,
-)
 from pynchy.types import GroupFolder, ScheduledTask, SessionPolicy, WorkspaceProfile
 
 
@@ -50,6 +41,12 @@ class _HostJobRequest:
     schedule_value: str
     cwd: str | None
     timeout_seconds: int
+
+
+def _scheduled_work_store(deps: IpcDeps) -> ScheduledWorkStore:
+    if not isinstance(deps, TaskHandlerDeps):
+        raise TypeError("scheduled-work handlers require scheduled-work persistence")
+    return deps.scheduled_work_store()
 
 
 def _validate_schedule_from_ipc(
@@ -127,7 +124,7 @@ async def _handle_schedule_task(
         return
     task_id = f"task-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
 
-    await create_task(
+    await _scheduled_work_store(deps).create_task(
         ScheduledTask(
             id=task_id,
             group_folder=request.target_folder,
@@ -279,7 +276,7 @@ async def _handle_schedule_host_job(
         )
         return
     job_id = f"host-{int(datetime.now(UTC).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
-    await create_host_job(
+    await _scheduled_work_store(deps).create_host_job(
         {
             "id": job_id,
             "name": request.name,
@@ -306,15 +303,17 @@ async def _handle_pause_task(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    _deps: IpcDeps,
+    deps: IpcDeps,
 ) -> None:
+    store = _scheduled_work_store(deps)
     task_id = data.get("taskId", "")
-    update = update_host_job if task_id.startswith("host-") else update_task
+    update = store.update_host_job if task_id.startswith("host-") else store.update_task
     await _authorized_task_action(
         data,
         source_group,
         is_admin=is_admin,
         action_name="pause",
+        store=store,
         action=lambda tid: update(tid, {"status": "paused"}),
     )
 
@@ -323,19 +322,21 @@ async def _handle_resume_task(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    _deps: IpcDeps,
+    deps: IpcDeps,
 ) -> None:
+    store = _scheduled_work_store(deps)
     task_id = data.get("taskId", "")
     action = (
-        (lambda tid: update_host_job(tid, {"status": "active"}))
+        (lambda tid: store.update_host_job(tid, {"status": "active"}))
         if task_id.startswith("host-")
-        else resume_task
+        else store.resume_task
     )
     await _authorized_task_action(
         data,
         source_group,
         is_admin=is_admin,
         action_name="resume",
+        store=store,
         action=action,
     )
 
@@ -344,25 +345,28 @@ async def _handle_cancel_task(
     data: dict[str, Any],
     source_group: str,
     is_admin: bool,  # noqa: FBT001, RUF100 - registered handler callback keeps the IPC dispatch contract.
-    _deps: IpcDeps,
+    deps: IpcDeps,
 ) -> None:
+    store = _scheduled_work_store(deps)
     task_id = data.get("taskId", "")
-    action = delete_host_job if task_id.startswith("host-") else delete_task
+    action = store.delete_host_job if task_id.startswith("host-") else store.delete_task
     await _authorized_task_action(
         data,
         source_group,
         is_admin=is_admin,
         action_name="cancel",
+        store=store,
         action=action,
     )
 
 
-async def _authorized_task_action(
+async def _authorized_task_action(  # noqa: PLR0913, RUF100 - authorization needs task identity, actor, persistence, and operation.
     data: dict[str, Any],
     source_group: str,
     *,
     is_admin: bool,
     action_name: str,
+    store: ScheduledWorkStore,
     action: Callable[[str], Awaitable[Any]],
 ) -> None:
     """Fetch a task, verify authorization, and execute an action on it.
@@ -386,7 +390,7 @@ async def _authorized_task_action(
             )
             return
 
-        job = await get_host_job_by_id(task_id)
+        job = await store.get_host_job_by_id(task_id)
         if job:
             await action(task_id)
             logger.info(
@@ -398,7 +402,7 @@ async def _authorized_task_action(
         else:
             logger.warning("Host job not found", task_id=task_id)
     else:
-        task = await get_task_by_id(task_id)
+        task = await store.get_task_by_id(task_id)
         if task and (is_admin or task.group_folder == source_group):
             await action(task_id)
             logger.info(
